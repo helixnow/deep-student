@@ -4,7 +4,9 @@
 //! skill scan/install. Bin names are validated before any process lookup.
 
 use std::collections::HashSet;
-use std::process::Command;
+use std::env;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use std::sync::OnceLock;
@@ -15,6 +17,8 @@ use tokio::time::timeout;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+#[cfg(target_os = "windows")]
+use std::process::Command;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -76,12 +80,25 @@ pub async fn skill_probe_requires(
 /// Extract YAML frontmatter body (without `---` delimiters).
 pub fn extract_frontmatter(text: &str) -> Option<&str> {
     let trimmed = text.trim_start();
-    if !trimmed.starts_with("---") {
+    let opening_end = trimmed.find('\n')?;
+    if !is_frontmatter_delimiter_line(&trimmed[..=opening_end]) {
         return None;
     }
-    let rest = trimmed.strip_prefix("---")?;
-    let end = rest.find("\n---")?;
-    Some(rest[..end].trim())
+    let body_start = opening_end + 1;
+    let mut offset = body_start;
+    for line in trimmed[body_start..].split_inclusive('\n') {
+        if is_frontmatter_delimiter_line(line) {
+            return Some(trimmed[body_start..offset].trim());
+        }
+        offset += line.len();
+    }
+    None
+}
+
+fn is_frontmatter_delimiter_line(line: &str) -> bool {
+    line.trim_end_matches(|character| character == '\r' || character == '\n')
+        .trim_end_matches(|character| character == ' ' || character == '\t')
+        == "---"
 }
 
 /// Parse `requires.bins` / `requires.env` from SKILL.md (top-level + nested compatibility metadata).
@@ -102,9 +119,19 @@ pub fn parse_requires_from_skill_md(text: &str) -> SkillRequires {
         parse_requires_block(frontmatter, "requires", "env"),
     );
 
-    if let Some(openclaw) = parse_openclaw_requires(frontmatter) {
-        merge_string_lists(&mut bins, openclaw.bins);
-        merge_string_lists(&mut env, openclaw.env);
+    // OpenClaw-compatible nested metadata:
+    // metadata.openclaw.requires.{bins,env}
+    if let Some(metadata) = parse_mapping_value(frontmatter, "metadata", 0) {
+        if let Some(openclaw) = parse_mapping_value(&metadata, "openclaw", 0) {
+            merge_string_lists(
+                &mut bins,
+                parse_requires_block(&openclaw, "requires", "bins"),
+            );
+            merge_string_lists(
+                &mut env,
+                parse_requires_block(&openclaw, "requires", "env"),
+            );
+        }
     }
 
     SkillRequires { bins, env }
@@ -119,54 +146,53 @@ fn merge_string_lists(target: &mut Vec<String>, incoming: Vec<String>) {
     }
 }
 
-fn parse_openclaw_requires(frontmatter: &str) -> Option<SkillRequires> {
-    let metadata_value = parse_mapping_value(frontmatter, "metadata", 0)?;
-    if metadata_value.starts_with('{') {
-        return parse_openclaw_from_json(&metadata_value);
-    }
-    Some(parse_openclaw_from_nested_yaml(&metadata_value))
-}
-
-fn parse_openclaw_from_json(raw: &str) -> Option<SkillRequires> {
-    let value: serde_json::Value = serde_json::from_str(raw.trim()).ok()?;
-    let requires = value
-        .get("openclaw")
-        .and_then(|v| v.get("requires"))
-        .or_else(|| value.get("requires"))?;
-    Some(SkillRequires {
-        bins: json_string_array(requires.get("bins")),
-        env: json_string_array(requires.get("env")),
-    })
-}
-
-fn json_string_array(value: Option<&serde_json::Value>) -> Vec<String> {
-    value
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|item| item.as_str().map(str::trim).filter(|s| !s.is_empty()))
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn parse_openclaw_from_nested_yaml(metadata_block: &str) -> SkillRequires {
-    let openclaw = parse_mapping_value(metadata_block, "openclaw", 0)
-        .unwrap_or_else(|| metadata_block.to_string());
-    SkillRequires {
-        bins: parse_requires_block(&openclaw, "requires", "bins"),
-        env: parse_requires_block(&openclaw, "requires", "env"),
-    }
-}
-
 /// Parse list values under `parent.child` within a YAML-ish block.
 fn parse_requires_block(block: &str, parent: &str, child: &str) -> Vec<String> {
     let parent_block = match parse_mapping_value(block, parent, 0) {
         Some(value) => value,
         None => return Vec::new(),
     };
+    if let Some(values) = parse_inline_mapping_list(&parent_block, child) {
+        return values;
+    }
     parse_list_field(&parent_block, child, 0)
+}
+
+fn parse_inline_mapping_list(mapping: &str, key: &str) -> Option<Vec<String>> {
+    let mapping = mapping.trim();
+    let inner = mapping.strip_prefix('{')?.strip_suffix('}')?;
+    let mut start = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut fields = Vec::new();
+
+    for (index, character) in inner.char_indices() {
+        if let Some(active_quote) = quote {
+            if character == active_quote {
+                quote = None;
+            }
+            continue;
+        }
+        match character {
+            '"' | '\'' => quote = Some(character),
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.saturating_sub(1),
+            ',' if bracket_depth == 0 => {
+                fields.push(&inner[start..index]);
+                start = index + character.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    fields.push(&inner[start..]);
+
+    fields.into_iter().find_map(|field| {
+        let (field_key, value) = field.split_once(':')?;
+        let field_key = field_key
+            .trim()
+            .trim_matches(|character| character == '"' || character == '\'');
+        (field_key == key).then(|| parse_inline_array(value.trim()))
+    })
 }
 
 fn parse_mapping_value(block: &str, key: &str, base_indent: usize) -> Option<String> {
@@ -315,24 +341,93 @@ fn partition_requires(requires: SkillRequires) -> (SkillRequires, Vec<String>) {
     )
 }
 
+fn probe_search_dirs(path: Option<&OsStr>, home: Option<&Path>) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let mut seen = HashSet::new();
+    let mut push = |dir: PathBuf| {
+        if !dir.as_os_str().is_empty() && seen.insert(dir.clone()) {
+            dirs.push(dir);
+        }
+    };
+
+    if let Some(path) = path {
+        for dir in env::split_paths(path) {
+            push(dir);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    for dir in [
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/local/sbin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+    ] {
+        push(PathBuf::from(dir));
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    for dir in [
+        "/home/linuxbrew/.linuxbrew/bin",
+        "/home/linuxbrew/.linuxbrew/sbin",
+        "/usr/local/bin",
+        "/usr/local/sbin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+    ] {
+        push(PathBuf::from(dir));
+    }
+
+    if let Some(home) = home {
+        for relative in [".local/bin", ".cargo/bin", "bin"] {
+            push(home.join(relative));
+        }
+    }
+
+    dirs
+}
+
+#[cfg(unix)]
+fn probe_bin_in_dirs(bin: &str, dirs: &[PathBuf]) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    dirs.iter().any(|dir| {
+        std::fs::metadata(dir.join(bin))
+            .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    })
+}
+
 fn probe_bin_sync(bin: &str) -> bool {
+    let home = env::var_os("HOME").map(PathBuf::from);
+    let dirs = probe_search_dirs(env::var_os("PATH").as_deref(), home.as_deref());
+
     #[cfg(target_os = "windows")]
     {
         let mut cmd = Command::new("where");
         cmd.arg(bin);
+        if let Ok(path) = env::join_paths(&dirs) {
+            cmd.env("PATH", path);
+        }
         cmd.creation_flags(CREATE_NO_WINDOW);
         cmd.output()
             .map(|output| output.status.success())
             .unwrap_or(false)
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(unix)]
     {
-        Command::new("sh")
-            .arg("-c")
-            .arg(format!("command -v {}", bin))
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
+        probe_bin_in_dirs(bin, &dirs)
+    }
+    #[cfg(not(any(unix, target_os = "windows")))]
+    {
+        let _ = (bin, dirs);
+        false
     }
 }
 
@@ -478,45 +573,85 @@ requires:
     }
 
     #[test]
-    fn parse_openclaw_nested_metadata() {
-        let md = r#"---
-name: Demo
-description: Demo skill for requires parsing
-metadata:
-  openclaw:
-    requires:
-      bins:
-        - curl
-      env:
-        - SECRET_TOKEN
-requires:
-  bins:
-    - python
----
-"#;
-        let parsed = parse_requires_from_skill_md(md);
-        assert_eq!(parsed.bins, vec!["python", "curl"]);
-        assert_eq!(parsed.env, vec!["SECRET_TOKEN"]);
-    }
-
-    #[test]
-    fn parse_openclaw_metadata_json_string() {
-        let md = r#"---
-name: Demo
-description: Demo skill for requires parsing
-metadata: {"openclaw":{"requires":{"bins":["rg"],"env":["TOKEN"]}}}
----
-"#;
-        let parsed = parse_requires_from_skill_md(md);
-        assert_eq!(parsed.bins, vec!["rg"]);
-        assert_eq!(parsed.env, vec!["TOKEN"]);
-    }
-
-    #[test]
     fn parse_missing_frontmatter_returns_empty() {
         let parsed = parse_requires_from_skill_md("# no frontmatter\n");
         assert!(parsed.bins.is_empty());
         assert!(parsed.env.is_empty());
+    }
+
+    #[test]
+    fn frontmatter_delimiters_must_occupy_their_own_line() {
+        assert!(extract_frontmatter(
+            "---suffix\nname: Demo\n---\n"
+        )
+        .is_none());
+        assert!(extract_frontmatter(
+            "---\nname: Demo\n---suffix\n# body\n"
+        )
+        .is_none());
+        assert!(extract_frontmatter(
+            "---\nname: Demo\n\t--- \r\n# body\n"
+        )
+        .is_none());
+        assert_eq!(
+            extract_frontmatter("  ---  \r\nname: Demo\r\n--- \r\n# body\n"),
+            Some("name: Demo")
+        );
+    }
+
+    #[test]
+    fn parses_flow_map_and_openclaw_nested_requires() {
+        let flow = parse_requires_from_skill_md(
+            "---\nname: Demo\nrequires: {bins: [node, uv], env: [API_KEY]}\n---\n",
+        );
+        assert_eq!(flow.bins, vec!["node", "uv"]);
+        assert_eq!(flow.env, vec!["API_KEY"]);
+
+        let nested = parse_requires_from_skill_md(
+            "---\nname: Demo\nmetadata:\n  openclaw:\n    requires:\n      bins: [rg]\n      env:\n        - SEARCH_TOKEN\n---\n",
+        );
+        assert_eq!(nested.bins, vec!["rg"]);
+        assert_eq!(nested.env, vec!["SEARCH_TOKEN"]);
+    }
+
+    #[test]
+    fn probe_search_path_includes_gui_install_locations_without_shell_profiles() {
+        let home = Path::new("/tmp/deep-student-home");
+        let source_path =
+            env::join_paths([Path::new("/custom/bin"), Path::new("/usr/bin")]).unwrap();
+        let dirs = probe_search_dirs(Some(source_path.as_os_str()), Some(home));
+        assert!(dirs.contains(&PathBuf::from("/custom/bin")));
+        assert!(dirs.contains(&home.join(".local/bin")));
+        assert!(dirs.contains(&home.join(".cargo/bin")));
+        assert_eq!(
+            dirs.iter()
+                .filter(|path| path.as_path() == Path::new("/usr/bin"))
+                .count(),
+            1
+        );
+        #[cfg(target_os = "macos")]
+        assert!(dirs.contains(&PathBuf::from("/opt/homebrew/bin")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn probe_bin_checks_executable_files_directly() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let executable = temp.path().join("demo-tool");
+        std::fs::write(&executable, b"#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(probe_bin_in_dirs(
+            "demo-tool",
+            &[temp.path().to_path_buf()]
+        ));
+
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(!probe_bin_in_dirs(
+            "demo-tool",
+            &[temp.path().to_path_buf()]
+        ));
     }
 
     #[test]

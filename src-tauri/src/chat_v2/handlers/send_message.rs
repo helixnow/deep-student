@@ -320,6 +320,16 @@ pub(crate) fn apply_original_skill_snapshot_overrides(
         return options;
     }
 
+    // Modern renderers re-evaluate current trust/disabled/requires admission
+    // and rebuild replay skill/schema fields before invoking the backend.
+    // `Some(empty)` is an explicit marker that this check ran successfully.
+    // Never overwrite that current decision with historical embedded schemas
+    // or execution allowlists; the legacy snapshot path below remains only for
+    // older callers which do not provide the marker.
+    if options.skill_admission_errors.is_some() {
+        return options;
+    }
+
     let snapshot = preferred_meta
         .and_then(|meta| {
             meta.skill_snapshot_after
@@ -2135,6 +2145,55 @@ mod tests {
             updated.mcp_tool_schemas.unwrap()[0].server_id.as_deref(),
             Some("server-a")
         );
+    }
+
+    #[test]
+    fn test_apply_original_skill_snapshot_preserves_current_admission_projection() {
+        let options = SendOptions {
+            replay_mode: Some(ReplayMode::Original),
+            active_skill_ids: Some(vec!["currently-trusted".to_string()]),
+            execution_allowed_tools: Some(vec!["builtin-current_tool".to_string()]),
+            skill_admission_errors: Some(std::collections::HashMap::from([(
+                "revoked-skill".to_string(),
+                "untrusted: revoked".to_string(),
+            )])),
+            ..Default::default()
+        };
+        let meta = MessageMeta {
+            skill_runtime_after: Some(crate::chat_v2::types::ReplaySkillPayloadSnapshot {
+                active_skill_ids: vec!["revoked-skill".to_string()],
+                execution_allowed_tools: Some(vec!["builtin-revoked_tool".to_string()]),
+                skill_embedded_tools: std::collections::HashMap::from([(
+                    "revoked-skill".to_string(),
+                    vec![crate::chat_v2::types::McpToolSchema {
+                        name: "builtin-revoked_tool".to_string(),
+                        server_id: None,
+                        description: Some("historical schema".to_string()),
+                        input_schema: Some(serde_json::json!({ "type": "object" })),
+                    }],
+                )]),
+                mcp_tool_schemas: vec![crate::chat_v2::types::McpToolSchema {
+                    name: "builtin-revoked_tool".to_string(),
+                    server_id: None,
+                    description: Some("historical schema".to_string()),
+                    input_schema: Some(serde_json::json!({ "type": "object" })),
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let updated = apply_original_skill_snapshot_overrides(options, Some(&meta), None);
+        assert_eq!(
+            updated.active_skill_ids.unwrap(),
+            vec!["currently-trusted".to_string()]
+        );
+        assert_eq!(
+            updated.execution_allowed_tools.unwrap(),
+            vec!["builtin-current_tool".to_string()]
+        );
+        assert!(updated.skill_embedded_tools.is_none());
+        assert!(updated.mcp_tool_schemas.is_none());
     }
 
     #[test]

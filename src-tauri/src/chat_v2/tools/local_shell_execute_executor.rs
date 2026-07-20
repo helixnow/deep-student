@@ -111,6 +111,7 @@ impl LocalShellExecuteExecutor {
     const MAX_FILE_CHANGE_ENTRIES: usize = 200;
     const MAX_REVERSIBLE_SNAPSHOT_BYTES: usize = 64 * 1024 * 1024;
     const PROCESS_CLEANUP_GRACE: Duration = Duration::from_secs(10);
+    const WINDOWS_PROCESS_CLEANUP_HARD_LIMIT: Duration = Duration::from_secs(30);
 
     pub fn new() -> Self {
         Self
@@ -121,12 +122,16 @@ impl LocalShellExecuteExecutor {
     }
 
     fn root_json(root: &RuntimeRoot) -> Value {
-        serde_json::to_value(root).unwrap_or_else(|_| {
-            json!({
-                "id": root.id,
-                "label": root.label,
-                "path": root.path.to_string_lossy(),
-            })
+        json!({
+            "id": root.id,
+            "kind": root.kind,
+            "access": root.access,
+            "label": root.label,
+            "description": root.description,
+            "sessionScoped": root.session_scoped,
+            "configured": root.configured,
+            // Host absolute paths are execution internals, not model/audit data.
+            "path": format!("runtime-root://{}", root.id),
         })
     }
 
@@ -239,16 +244,49 @@ impl LocalShellExecuteExecutor {
 
     fn is_sensitive_env_key(key: &str) -> bool {
         let upper = key.to_ascii_uppercase();
-        upper.contains("TOKEN")
-            || upper.contains("SECRET")
-            || upper.contains("PASSWORD")
-            || upper.contains("PASSWD")
-            || upper.contains("API_KEY")
-            || upper.contains("ACCESS_KEY")
-            || upper.contains("PRIVATE_KEY")
-            || upper.contains("CREDENTIAL")
-            || upper == "OPENAI_API_KEY"
-            || upper == "ANTHROPIC_API_KEY"
+        let words = upper
+            .split(|character: char| !character.is_ascii_alphanumeric())
+            .filter(|word| !word.is_empty())
+            .collect::<Vec<_>>();
+        let has_sensitive_word = words.iter().any(|word| {
+            matches!(
+                *word,
+                "AUTH"
+                    | "AUTHORIZATION"
+                    | "COOKIE"
+                    | "CREDENTIAL"
+                    | "CREDENTIALS"
+                    | "DSN"
+                    | "PASSWD"
+                    | "PASSWORD"
+                    | "PAT"
+                    | "SECRET"
+                    | "SESSION"
+                    | "TOKEN"
+            )
+        });
+        let has_sensitive_compound = [
+            "API_KEY",
+            "ACCESS_KEY",
+            "PRIVATE_KEY",
+            "SIGNING_KEY",
+            "DATABASE_URL",
+            "DATABASE_URI",
+            "MONGODB_URI",
+            "MONGO_URI",
+            "REDIS_URL",
+            "AMQP_URL",
+            "BROKER_URL",
+            "CONNECTION_STRING",
+        ]
+        .iter()
+        .any(|marker| upper == *marker || upper.ends_with(&format!("_{marker}")));
+        let is_proxy_url = matches!(
+            upper.as_str(),
+            "ALL_PROXY" | "FTP_PROXY" | "HTTP_PROXY" | "HTTPS_PROXY" | "PROXY_URL"
+        ) || upper.ends_with("_PROXY_URL");
+
+        has_sensitive_word || has_sensitive_compound || is_proxy_url
     }
 
     fn is_execution_control_env_key(key: &str) -> bool {
@@ -380,7 +418,8 @@ impl LocalShellExecuteExecutor {
 
     fn command_audit(command: &str) -> (String, String, bool) {
         let (display, redacted) = redact_shell_command_for_display(command);
-        let hash = hex::encode(Sha256::digest(command.as_bytes()));
+        let normalized = analyze_shell_command(command).trimmed;
+        let hash = hex::encode(Sha256::digest(normalized.as_bytes()));
         (display, hash, redacted)
     }
 
@@ -988,6 +1027,18 @@ impl LocalShellExecuteExecutor {
         })
     }
 
+    async fn collect_file_snapshot_blocking(
+        root: PathBuf,
+        cwd: PathBuf,
+        capture_content: bool,
+    ) -> Result<FileSnapshot, String> {
+        tokio::task::spawn_blocking(move || {
+            Self::collect_file_snapshot(&root, &cwd, capture_content)
+        })
+        .await
+        .map_err(|error| format!("Local shell file snapshot task failed: {error}"))?
+    }
+
     fn external_snapshot(snapshot: &FileSnapshot) -> ExternalFileSnapshot {
         snapshot
             .files
@@ -1113,18 +1164,34 @@ impl LocalShellExecuteExecutor {
         }
     }
 
-    async fn finish_drain_task(
+    async fn finish_drain_task_with_timeout(
         task: &mut tokio::task::JoinHandle<Result<(), String>>,
-    ) -> Result<(), String> {
-        match tokio::time::timeout(Duration::from_secs(5), &mut *task).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(error)) => Err(format!("Local shell output reader task failed: {error}")),
+        timeout: Duration,
+        stream_name: &str,
+    ) -> Option<String> {
+        match tokio::time::timeout(timeout, &mut *task).await {
+            Ok(Ok(Ok(()))) => None,
+            Ok(Ok(Err(error))) => Some(format!(
+                "Local shell {stream_name} drain was incomplete: {error}"
+            )),
+            Ok(Err(error)) => Some(format!(
+                "Local shell {stream_name} reader task failed: {error}"
+            )),
             Err(_) => {
                 task.abort();
                 let _ = task.await;
-                Err("Local shell output pipes did not close after process cleanup".to_string())
+                Some(format!(
+                    "Local shell {stream_name} drain was incomplete: output pipe did not close after process cleanup"
+                ))
             }
         }
+    }
+
+    async fn finish_drain_task(
+        task: &mut tokio::task::JoinHandle<Result<(), String>>,
+        stream_name: &str,
+    ) -> Option<String> {
+        Self::finish_drain_task_with_timeout(task, Duration::from_secs(5), stream_name).await
     }
 
     async fn terminate_and_reap(child: &mut tokio::process::Child) -> Result<(), String> {
@@ -1154,9 +1221,39 @@ impl LocalShellExecuteExecutor {
                             error
                         );
                     }
-                    child.wait().await.map(|_| ()).map_err(|error| {
-                        format!("Failed to reap Windows local shell sandbox helper: {error}")
-                    })
+                    match tokio::time::timeout(
+                        Self::WINDOWS_PROCESS_CLEANUP_HARD_LIMIT,
+                        child.wait(),
+                    )
+                    .await
+                    {
+                        Ok(Ok(_status)) => Ok(()),
+                        Ok(Err(error)) => Err(format!(
+                            "Failed to reap Windows local shell sandbox helper: {error}"
+                        )),
+                        Err(_) => {
+                            log::error!(
+                                "[LocalShellExecuteExecutor] Windows sandbox helper exceeded hard cleanup limit; forcing termination"
+                            );
+                            child.kill().await.map_err(|error| {
+                                format!(
+                                    "Windows sandbox helper cleanup timed out and forced termination failed: {error}"
+                                )
+                            })?;
+                            tokio::time::timeout(Self::PROCESS_CLEANUP_GRACE, child.wait())
+                                .await
+                                .map_err(|_| {
+                                    "Windows sandbox helper did not exit after forced termination"
+                                        .to_string()
+                                })?
+                                .map(|_| ())
+                                .map_err(|error| {
+                                    format!(
+                                        "Failed to reap forced Windows sandbox helper: {error}"
+                                    )
+                                })
+                        }
+                    }
                 }
 
                 #[cfg(not(windows))]
@@ -1362,20 +1459,19 @@ impl LocalShellExecuteExecutor {
             && root.kind == RuntimeRootKind::Workspace
             && root.access == RuntimeRootAccess::ReadWrite
             && Self::command_appears_write_capable(&command);
-        let before_snapshot = if track_file_changes {
-            Self::collect_file_snapshot(
-                &root_abs_for_snapshot,
-                &cwd_abs,
+        let (before_snapshot, before_snapshot_error) = if track_file_changes {
+            match Self::collect_file_snapshot_blocking(
+                root_abs_for_snapshot.clone(),
+                cwd_abs.clone(),
                 capture_workspace_change_set,
             )
-            .ok()
+            .await
+            {
+                Ok(snapshot) => (Some(snapshot), None),
+                Err(error) => (None, Some(error)),
+            }
         } else {
-            None
-        };
-        let before_snapshot_error = if track_file_changes && before_snapshot.is_none() {
-            Some("failed to collect file snapshot before command")
-        } else {
-            None
+            (None, None)
         };
 
         if ctx.is_cancelled() {
@@ -1391,23 +1487,37 @@ impl LocalShellExecuteExecutor {
             &cwd_abs,
             root.access == RuntimeRootAccess::ReadWrite,
         );
-        let mut child = shell
-            .spawn()
-            .map_err(|error| format!("Failed to execute local shell command: {error}"))?;
-        let process_id = child
-            .id()
-            .ok_or_else(|| "Sandboxed local shell process has no process id".to_string())?;
+        let mut child = match shell.spawn() {
+            Ok(child) => child,
+            Err(error) => {
+                sandbox_backend.cleanup_command_resources(&shell);
+                return Err(format!("Failed to execute local shell command: {error}"));
+            }
+        };
+        let process_id = match child.id() {
+            Some(process_id) => process_id,
+            None => {
+                let cleanup_result = Self::terminate_and_reap(&mut child).await;
+                sandbox_backend.cleanup_command_resources(&shell);
+                cleanup_result?;
+                return Err("Sandboxed local shell process has no process id".to_string());
+            }
+        };
         let stdout_reader = match child.stdout.take() {
             Some(reader) => reader,
             None => {
-                Self::terminate_and_reap(&mut child).await?;
+                let cleanup_result = Self::terminate_and_reap(&mut child).await;
+                sandbox_backend.cleanup_command_resources(&shell);
+                cleanup_result?;
                 return Err("Failed to capture local shell stdout".to_string());
             }
         };
         let stderr_reader = match child.stderr.take() {
             Some(reader) => reader,
             None => {
-                Self::terminate_and_reap(&mut child).await?;
+                let cleanup_result = Self::terminate_and_reap(&mut child).await;
+                sandbox_backend.cleanup_command_resources(&shell);
+                cleanup_result?;
                 return Err("Failed to capture local shell stderr".to_string());
             }
         };
@@ -1431,11 +1541,15 @@ impl LocalShellExecuteExecutor {
             ctx.cancellation_token(),
         )
         .await;
-        let stdout_drain_result = Self::finish_drain_task(&mut stdout_task).await;
-        let stderr_drain_result = Self::finish_drain_task(&mut stderr_task).await;
+        sandbox_backend.cleanup_command_resources(&shell);
+        let stdout_drain_warning = Self::finish_drain_task(&mut stdout_task, "stdout").await;
+        let stderr_drain_warning = Self::finish_drain_task(&mut stderr_task, "stderr").await;
         let wait_outcome = wait_result?;
-        stdout_drain_result?;
-        stderr_drain_result?;
+        let audit_warnings = [stdout_drain_warning, stderr_drain_warning]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        let output_drain_incomplete = !audit_warnings.is_empty();
         let (status, timed_out, cancelled) = match wait_outcome {
             ShellWaitOutcome::Exited(status) => (Some(status), false, false),
             ShellWaitOutcome::TimedOut => (None, true, false),
@@ -1474,28 +1588,26 @@ impl LocalShellExecuteExecutor {
             .as_ref()
             .map(|status| status.success())
             .unwrap_or(false);
-        let after_snapshot = if track_file_changes {
-            Self::collect_file_snapshot(
-                &root_abs_for_snapshot,
-                &cwd_abs,
+        let (after_snapshot, after_snapshot_error) = if track_file_changes {
+            match Self::collect_file_snapshot_blocking(
+                root_abs_for_snapshot.clone(),
+                cwd_abs.clone(),
                 capture_workspace_change_set,
             )
-            .ok()
-        } else {
-            None
-        };
-        let snapshot_error = before_snapshot_error.or_else(|| {
-            if track_file_changes && after_snapshot.is_none() {
-                Some("failed to collect file snapshot after command")
-            } else {
-                None
+            .await
+            {
+                Ok(snapshot) => (Some(snapshot), None),
+                Err(error) => (None, Some(error)),
             }
-        });
+        } else {
+            (None, None)
+        };
+        let snapshot_error = before_snapshot_error.or(after_snapshot_error);
         let file_change_summary = Self::file_change_summary_json(
             &root,
             before_snapshot.as_ref(),
             after_snapshot.as_ref(),
-            snapshot_error,
+            snapshot_error.as_deref(),
         );
         let change_set_complete = capture_workspace_change_set
             && before_snapshot
@@ -1513,14 +1625,28 @@ impl LocalShellExecuteExecutor {
                 Some((before, after)) => {
                     let checkpoints =
                         temp_root(ctx.window_ref().app_handle(), &ctx.session_id, true)?;
-                    match workspace_change_set::record_external_changes(
-                        &checkpoints.path,
-                        &root.id,
-                        &Self::external_snapshot(before),
-                        &Self::external_snapshot(after),
-                    ) {
-                        Ok(change_set) => (serde_json::to_value(change_set).ok(), None),
-                        Err(error) => (None, Some(error)),
+                    let checkpoint_path = checkpoints.path;
+                    let root_id = root.id.clone();
+                    let before = Self::external_snapshot(before);
+                    let after = Self::external_snapshot(after);
+                    match tokio::task::spawn_blocking(move || {
+                        workspace_change_set::record_external_changes(
+                            &checkpoint_path,
+                            &root_id,
+                            &before,
+                            &after,
+                        )
+                    })
+                    .await
+                    {
+                        Ok(Ok(change_set)) => (serde_json::to_value(change_set).ok(), None),
+                        Ok(Err(error)) => (None, Some(error)),
+                        Err(error) => (
+                            None,
+                            Some(format!(
+                                "Workspace change-set recording task failed: {error}"
+                            )),
+                        ),
                     }
                 }
                 None => (
@@ -1553,6 +1679,8 @@ impl LocalShellExecuteExecutor {
             "stderr_bytes": stderr_bytes,
             "stdout_truncated": stdout_truncated,
             "stderr_truncated": stderr_truncated,
+            "output_drain_incomplete": output_drain_incomplete,
+            "audit_warnings": audit_warnings,
             "max_output_bytes": max_output_bytes,
             "env_policy": env_policy,
             "network_policy": network_policy,
@@ -1684,13 +1812,30 @@ mod tests {
             assert!(!display.contains(secret));
             assert!(display.contains("[REDACTED]"));
             assert_eq!(hash.len(), 64);
-            assert_eq!(hash, hex::encode(Sha256::digest(command.as_bytes())));
+            assert_eq!(
+                hash,
+                hex::encode(Sha256::digest(
+                    analyze_shell_command(command).trimmed.as_bytes()
+                ))
+            );
         }
 
         let benign = "git status --short";
         let (display, _hash, redacted) = LocalShellExecuteExecutor::command_audit(benign);
         assert_eq!(display, benign);
         assert!(!redacted);
+    }
+
+    #[test]
+    fn command_audit_hash_matches_preflight_newline_normalization() {
+        let command = "printf one\r\nprintf two";
+        let (_display, hash, _redacted) = LocalShellExecuteExecutor::command_audit(command);
+        assert_eq!(
+            hash,
+            hex::encode(Sha256::digest(
+                analyze_shell_command(command).trimmed.as_bytes()
+            ))
+        );
     }
 
     #[tokio::test]
@@ -1714,6 +1859,42 @@ mod tests {
         assert!(capture.total_bytes > capture.visible.len());
     }
 
+    #[tokio::test]
+    async fn drain_timeout_preserves_already_captured_output_as_a_warning() {
+        let (mut writer, reader) = tokio::io::duplex(64);
+        let capture = std::sync::Arc::new(AsyncMutex::new(BoundedPipeOutput::default()));
+        let mut drain_task = tokio::spawn(LocalShellExecuteExecutor::drain_bounded(
+            reader,
+            capture.clone(),
+            1_024,
+        ));
+        writer.write_all(b"partial output").await.unwrap();
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if capture.lock().await.total_bytes == b"partial output".len() {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("output should be captured before the drain timeout");
+
+        let warning = LocalShellExecuteExecutor::finish_drain_task_with_timeout(
+            &mut drain_task,
+            Duration::from_millis(10),
+            "stdout",
+        )
+        .await
+        .expect("an open output pipe should produce an audit warning");
+        let capture = capture.lock().await.clone();
+
+        assert!(warning.contains("stdout drain was incomplete"));
+        assert_eq!(capture.visible, b"partial output");
+        assert_eq!(capture.total_bytes, b"partial output".len());
+    }
+
     #[cfg(target_os = "macos")]
     fn macos_test_policy(root: &Path) -> SandboxPolicy {
         SandboxPolicy {
@@ -1730,11 +1911,10 @@ mod tests {
     async fn cancellation_terminates_and_reaps_sandbox_process_tree() {
         let temp = tempfile::tempdir().unwrap();
         let backend = PlatformSandboxBackend::new();
-        let mut child = backend
+        let mut command = backend
             .command("sleep 30", temp.path(), &macos_test_policy(temp.path()))
-            .unwrap()
-            .spawn()
             .unwrap();
+        let mut child = command.spawn().unwrap();
         let process_id = child.id().unwrap();
         let cancellation = CancellationToken::new();
         let cancel_from_task = cancellation.clone();
@@ -1755,6 +1935,7 @@ mod tests {
         assert!(matches!(outcome, ShellWaitOutcome::Cancelled));
         assert!(started.elapsed() < Duration::from_secs(5));
         assert!(child.try_wait().unwrap().is_some(), "child must be reaped");
+        backend.cleanup_command_resources(&command);
     }
 
     #[cfg(target_os = "macos")]
@@ -1767,11 +1948,10 @@ mod tests {
             "(sleep 1; printf leaked > '{}') >/dev/null 2>&1 & exit 0",
             marker.display()
         );
-        let mut child = backend
+        let mut shell = backend
             .command(&command, temp.path(), &macos_test_policy(temp.path()))
-            .unwrap()
-            .spawn()
             .unwrap();
+        let mut child = shell.spawn().unwrap();
         let process_id = child.id().unwrap();
 
         let outcome = LocalShellExecuteExecutor::wait_for_shell_process(
@@ -1783,6 +1963,7 @@ mod tests {
         .await
         .unwrap();
         assert!(matches!(outcome, ShellWaitOutcome::Exited(status) if status.success()));
+        backend.cleanup_command_resources(&shell);
         tokio::time::sleep(Duration::from_millis(1_250)).await;
         assert!(!marker.exists(), "background descendant survived cleanup");
     }
@@ -1854,6 +2035,70 @@ mod tests {
         });
         let err = LocalShellExecuteExecutor::build_env_plan(&args).unwrap_err();
         assert!(err.contains("blocked by the shell env policy"));
+    }
+
+    #[test]
+    fn sensitive_env_key_detection_uses_credential_boundaries() {
+        for key in [
+            "AUTH",
+            "HTTP_AUTH",
+            "AUTHORIZATION",
+            "REQUEST_COOKIE",
+            "SESSION",
+            "GITHUB_PAT",
+            "SENTRY_DSN",
+            "APP_SIGNING_KEY",
+            "DATABASE_URL",
+            "PRIMARY_DATABASE_URL",
+            "HTTP_PROXY",
+            "CORPORATE_PROXY_URL",
+            "AWS_SECRET_ACCESS_KEY",
+            "SERVICE_TOKEN",
+            "ADMIN_PASSWORD",
+        ] {
+            assert!(
+                LocalShellExecuteExecutor::is_sensitive_env_key(key),
+                "credential-bearing key should be blocked: {key}"
+            );
+        }
+
+        for key in [
+            "PATH",
+            "PATHEXT",
+            "HOME",
+            "USERPROFILE",
+            "AUTHOR",
+            "AUTH0_DOMAIN",
+            "COMPAT_MODE",
+            "TOKENIZERS_PARALLELISM",
+            "DATABASE_POOL_SIZE",
+            "NO_PROXY",
+        ] {
+            assert!(
+                !LocalShellExecuteExecutor::is_sensitive_env_key(key),
+                "benign environment key should remain available: {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn env_allowlist_rejects_new_sensitive_key_families() {
+        for key in [
+            "AUTHORIZATION",
+            "REQUEST_COOKIE",
+            "LOGIN_SESSION",
+            "GITHUB_PAT",
+            "SENTRY_DSN",
+            "APP_SIGNING_KEY",
+            "DATABASE_URL",
+            "HTTPS_PROXY",
+        ] {
+            let error = LocalShellExecuteExecutor::build_env_plan(&json!({
+                "env_allowlist": [key]
+            }))
+            .expect_err("sensitive allowlist entry must be rejected");
+            assert!(error.contains(key), "{key}: {error}");
+        }
     }
 
     #[test]
@@ -2337,5 +2582,24 @@ mod tests {
         assert_eq!(summary.get("deleted").and_then(|v| v.as_u64()), Some(1));
         assert!(summary.to_string().contains("created.txt"));
         assert!(!summary.to_string().contains("new secret content"));
+    }
+
+    #[tokio::test]
+    async fn blocking_snapshot_helper_preserves_snapshot_contents() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        fs::write(temp_dir.path().join("note.txt"), b"snapshot body").expect("write fixture");
+
+        let snapshot = LocalShellExecuteExecutor::collect_file_snapshot_blocking(
+            temp_dir.path().to_path_buf(),
+            temp_dir.path().to_path_buf(),
+            true,
+        )
+        .await
+        .expect("blocking snapshot");
+        let entry = snapshot.files.get("note.txt").expect("snapshot entry");
+        let expected_hash = hex::encode(Sha256::digest(b"snapshot body"));
+
+        assert_eq!(entry.content.as_deref(), Some(b"snapshot body".as_slice()));
+        assert_eq!(entry.sha256.as_deref(), Some(expected_hash.as_str()));
     }
 }

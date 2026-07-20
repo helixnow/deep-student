@@ -107,6 +107,7 @@ fn create_sub_context(
         question_bank_service: parent.question_bank_service.clone(),
         skill_contents: parent.skill_contents.clone(),
         skill_embedded_tools: parent.skill_embedded_tools.clone(),
+        skill_admission_errors: parent.skill_admission_errors.clone(),
         skill_package_roots: parent.skill_package_roots.clone(),
         execution_allowed_tools: parent.execution_allowed_tools.clone(),
         cancellation_token: Some(token),

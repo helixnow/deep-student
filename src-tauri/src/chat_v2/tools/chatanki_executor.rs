@@ -158,11 +158,8 @@ impl ChatAnkiPipelineGuard {
     /// `parent` 传入工具执行上下文的取消令牌时，聊天流取消（用户点停止/
     /// emergency_stop 的 cancel_all_streams）会通过 child token 自动传播到管线。
     fn register(anki_block_id: &str, parent: Option<&CancellationToken>) -> Self {
-        let cancel_token = parent
-            .map(|token| token.child_token())
-            .unwrap_or_default();
-        lock_active_chatanki_pipelines()
-            .insert(anki_block_id.to_string(), cancel_token.clone());
+        let cancel_token = parent.map(|token| token.child_token()).unwrap_or_default();
+        lock_active_chatanki_pipelines().insert(anki_block_id.to_string(), cancel_token.clone());
         Self {
             anki_block_id: anki_block_id.to_string(),
             cancel_token,
@@ -2303,22 +2300,21 @@ impl ChatAnkiToolExecutor {
         ctx: &ExecutionContext,
         start_time: Instant,
     ) -> Result<ToolResultInfo, String> {
-        let args = match serde_json::from_value::<ChatAnkiBatchUpdateCardsArgs>(
-            call.arguments.clone(),
-        )
-        .map_err(|error| error.to_string())
-        .and_then(ChatAnkiBatchUpdateCardsArgs::normalize)
-        {
-            Ok(args) => args,
-            Err(error) => {
-                return Ok(finish_chatanki_failure(
-                    call,
-                    ctx,
-                    start_time,
-                    format!("Invalid chatanki_batch_update_cards arguments: {}", error),
-                ));
-            }
-        };
+        let args =
+            match serde_json::from_value::<ChatAnkiBatchUpdateCardsArgs>(call.arguments.clone())
+                .map_err(|error| error.to_string())
+                .and_then(ChatAnkiBatchUpdateCardsArgs::normalize)
+            {
+                Ok(args) => args,
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(
+                        call,
+                        ctx,
+                        start_time,
+                        format!("Invalid chatanki_batch_update_cards arguments: {}", error),
+                    ));
+                }
+            };
         let db = match ctx.anki_db.as_ref() {
             Some(db) => db,
             None => {
@@ -5175,12 +5171,26 @@ impl ChatAnkiToolExecutor {
         }
 
         let card_ids: Vec<String> = cards.iter().map(|c| c.id.clone()).collect();
+
+        // 激活死设置：从 settings 读取 batch_size / retry_times / media_mode
+        let sync_options = {
+            let batch = db.get_setting("anki_connect_batch_size").ok().flatten();
+            let retry = db.get_setting("anki_connect_retry_times").ok().flatten();
+            let media = db.get_setting("anki_connect_media_mode").ok().flatten();
+            crate::anki_connect_service::AnkiConnectSyncOptions::from_setting_strings(
+                batch.as_deref(),
+                retry.as_deref(),
+                media.as_deref(),
+            )
+        };
+
         let report = match crate::anki_connect_service::add_notes_to_anki_detailed(
             cards.clone(),
             deck_name.clone(),
             note_type.clone(),
             card_note_types,
             templates_by_model,
+            sync_options,
         )
         .await
         {
@@ -9719,8 +9729,7 @@ fn patch_value_suspected_truncated_source(existing: &str, new_value: &str) -> bo
         return false;
     }
     let truncated_existing = safe_truncate_chars(existing, CHATANKI_CARD_FIELD_LIMIT);
-    new_value.starts_with(truncated_existing.as_str())
-        || truncated_existing.starts_with(new_value)
+    new_value.starts_with(truncated_existing.as_str()) || truncated_existing.starts_with(new_value)
 }
 
 /// 返回 patch 中疑似“以截断输出为源”的字段路径清单（空即安全）。

@@ -716,7 +716,12 @@ impl DstuToolExecutor {
             .window_ref()
             .try_state::<Arc<crate::vfs::pdf_processing_service::PdfProcessingService>>()
             .ok_or_else(|| managed_state_error("PDF processing service"))?;
+        let app_handle = {
+            use tauri::Manager;
+            ctx.window_ref().app_handle().clone()
+        };
         let upload = crate::vfs::handlers::vfs_upload_file(
+            app_handle,
             crate::vfs::handlers::VfsUploadFileParams {
                 name: name.clone(),
                 mime_type: mime_type.clone(),

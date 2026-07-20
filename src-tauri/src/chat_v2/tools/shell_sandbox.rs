@@ -105,6 +105,7 @@ pub trait SandboxBackend: Send + Sync {
         cwd: &Path,
         policy: &SandboxPolicy,
     ) -> Result<Command, String>;
+    fn cleanup_command_resources(&self, _command: &Command) {}
     fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport;
 }
 
@@ -171,8 +172,89 @@ fn isolate_process_group(_command: &mut Command) {}
 #[cfg(target_os = "macos")]
 mod macos {
     use super::*;
+    use std::ffi::OsStr;
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::Duration;
 
     const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
+    const PROFILE_FILE_PREFIX: &str = "deep-student-seatbelt-";
+    const STALE_PROFILE_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+
+    fn cleanup_stale_profile_files() {
+        let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(OsStr::to_str) else {
+                continue;
+            };
+            if !name.starts_with(PROFILE_FILE_PREFIX) || !name.ends_with(".sb") {
+                continue;
+            }
+            let Ok(metadata) = std::fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if !metadata.is_file() || metadata.file_type().is_symlink() {
+                continue;
+            }
+            let is_stale = metadata
+                .modified()
+                .ok()
+                .and_then(|modified| modified.elapsed().ok())
+                .is_some_and(|age| age >= STALE_PROFILE_AGE);
+            if is_stale {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+
+    fn write_profile_file(contents: &str) -> Result<PathBuf, String> {
+        cleanup_stale_profile_files();
+        let mut profile = tempfile::Builder::new()
+            .prefix(PROFILE_FILE_PREFIX)
+            .suffix(".sb")
+            .tempfile_in(std::env::temp_dir())
+            .map_err(|error| format!("Failed to create macOS Seatbelt profile: {error}"))?;
+        profile
+            .as_file()
+            .set_permissions(std::fs::Permissions::from_mode(0o600))
+            .map_err(|error| format!("Failed to secure macOS Seatbelt profile: {error}"))?;
+        profile
+            .write_all(contents.as_bytes())
+            .and_then(|_| profile.as_file().sync_all())
+            .map_err(|error| format!("Failed to persist macOS Seatbelt profile: {error}"))?;
+        let (_file, path) = profile
+            .keep()
+            .map_err(|error| format!("Failed to retain macOS Seatbelt profile: {error}"))?;
+        Ok(path)
+    }
+
+    fn profile_path_from_command(command: &Command) -> Option<PathBuf> {
+        let mut args = command.as_std().get_args();
+        while let Some(argument) = args.next() {
+            if argument == OsStr::new("-f") {
+                return args.next().map(PathBuf::from);
+            }
+        }
+        None
+    }
+
+    fn cleanup_profile_file(command: &Command) {
+        let Some(path) = profile_path_from_command(command) else {
+            return;
+        };
+        let Some(name) = path.file_name().and_then(OsStr::to_str) else {
+            return;
+        };
+        if path.parent() == Some(std::env::temp_dir().as_path())
+            && name.starts_with(PROFILE_FILE_PREFIX)
+            && name.ends_with(".sb")
+        {
+            let _ = std::fs::remove_file(path);
+        }
+    }
 
     fn seatbelt_literal(path: &Path) -> Result<String, String> {
         let canonical = path.canonicalize().map_err(|error| {
@@ -280,11 +362,19 @@ mod macos {
                 ));
             }
             let profile = profile(policy)?;
+            let profile_path = write_profile_file(&profile)?;
             let mut command = Command::new(SANDBOX_EXEC);
-            command.args(["-p", &profile, "/bin/sh", "-c", shell_command]);
+            command
+                .arg("-f")
+                .arg(profile_path)
+                .args(["/bin/sh", "-c", shell_command]);
             configure_stdio(&mut command, cwd);
             isolate_process_group(&mut command);
             Ok(command)
+        }
+
+        fn cleanup_command_resources(&self, command: &Command) {
+            cleanup_profile_file(command);
         }
 
         fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport {
@@ -594,7 +684,8 @@ mod linux_tests {
 
     /// 在参数向量中查找连续的一段参数是否存在
     fn contains_sequence(args: &[OsString], expected: &[OsString]) -> bool {
-        args.windows(expected.len()).any(|window| window == expected)
+        args.windows(expected.len())
+            .any(|window| window == expected)
     }
 
     #[test]
@@ -746,6 +837,8 @@ mod linux_tests {
 mod tests {
     use super::macos::profile;
     use super::*;
+    use std::ffi::OsStr;
+    use std::os::unix::fs::PermissionsExt;
     use std::time::Duration;
 
     #[test]
@@ -799,6 +892,7 @@ mod tests {
         let command_text = format!("printf blocked > '{}/escape.txt'", blocked.display());
         let mut command = backend.command(&command_text, &allowed, &policy).unwrap();
         let status = command.spawn().unwrap().wait().await.unwrap();
+        backend.cleanup_command_resources(&command);
         assert!(!status.success());
         assert!(!blocked.join("escape.txt").exists());
     }
@@ -816,12 +910,9 @@ mod tests {
         let backend = PlatformSandboxBackend::new();
         let script =
             "sh -c 'printf child > child.txt' && awk 'BEGIN { print \"awk\" }' > interpreter.txt";
-        let output = backend
-            .command(script, temp.path(), &policy)
-            .unwrap()
-            .output()
-            .await
-            .unwrap();
+        let mut command = backend.command(script, temp.path(), &policy).unwrap();
+        let output = command.output().await.unwrap();
+        backend.cleanup_command_resources(&command);
         assert!(
             output.status.success(),
             "stderr: {}",
@@ -910,14 +1001,9 @@ mod tests {
         };
         let backend = PlatformSandboxBackend::new();
         let script = format!("nc -G 1 -z 127.0.0.1 {port}");
-        let status = backend
-            .command(&script, temp.path(), &policy)
-            .unwrap()
-            .spawn()
-            .unwrap()
-            .wait()
-            .await
-            .unwrap();
+        let mut command = backend.command(&script, temp.path(), &policy).unwrap();
+        let status = command.spawn().unwrap().wait().await.unwrap();
+        backend.cleanup_command_resources(&command);
         assert!(!status.success());
         drop(listener);
     }
@@ -933,15 +1019,14 @@ mod tests {
             allow_network: false,
         };
         let backend = PlatformSandboxBackend::new();
-        let mut child = backend
+        let mut command = backend
             .command(
                 "sleep 30 & echo $! > descendant.pid; wait",
                 temp.path(),
                 &policy,
             )
-            .unwrap()
-            .spawn()
             .unwrap();
+        let mut child = command.spawn().unwrap();
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
                 if temp.path().join("descendant.pid").exists() {
@@ -960,6 +1045,7 @@ mod tests {
                 .unwrap();
         terminate_process_group(&mut child).unwrap();
         child.wait().await.unwrap();
+        backend.cleanup_command_resources(&command);
 
         let gone = tokio::time::timeout(Duration::from_secs(2), async {
             loop {
@@ -977,5 +1063,39 @@ mod tests {
             gone.is_ok(),
             "descendant process survived process-group kill"
         );
+    }
+
+    #[test]
+    fn seatbelt_profile_is_private_temp_file_and_not_inline_argv() {
+        let temp = tempfile::tempdir().unwrap();
+        let policy = SandboxPolicy {
+            readable_roots: vec![temp.path().to_path_buf()],
+            writable_roots: vec![temp.path().to_path_buf()],
+            protected_read_roots: vec![],
+            protected_write_roots: vec![],
+            allow_network: false,
+        };
+        let backend = PlatformSandboxBackend::new();
+        let command = backend
+            .command("printf ok", temp.path(), &policy)
+            .expect("seatbelt command");
+        let args = command.as_std().get_args().collect::<Vec<_>>();
+        let profile_index = args
+            .iter()
+            .position(|argument| *argument == OsStr::new("-f"))
+            .expect("sandbox-exec should use a profile file");
+        let profile_path = PathBuf::from(args[profile_index + 1]);
+        let metadata = std::fs::metadata(&profile_path).expect("profile metadata");
+
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+        assert!(std::fs::read_to_string(&profile_path)
+            .unwrap()
+            .contains("(deny default)"));
+        assert!(!args
+            .iter()
+            .any(|argument| argument.to_string_lossy().contains("(deny default)")));
+
+        backend.cleanup_command_resources(&command);
+        assert!(!profile_path.exists());
     }
 }

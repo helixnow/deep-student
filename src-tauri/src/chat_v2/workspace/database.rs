@@ -5,6 +5,11 @@ use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::data_governance::file_deletion_queue::{
+    cancel_ready_workspace_deletion, finish_workspace_deletion, prepare_workspace_deletion,
+    recover_workspace_deletions,
+};
+
 use super::types::WorkspaceId;
 
 pub type WorkspaceDatabasePool = Pool<SqliteConnectionManager>;
@@ -227,6 +232,15 @@ impl WorkspaceDatabase {
         std::fs::create_dir_all(workspaces_dir)
             .map_err(|e| format!("Failed to create workspaces directory: {}", e))?;
 
+        // 在打开/新建同名数据库前先收敛崩溃遗留的 prepared intent。恢复完成后
+        // 继续创建同 ID 工作区属于显式重建，应取消尚未发布的旧 tombstone。
+        if let Some(chat_conn) = Self::open_deletion_journal(workspaces_dir)? {
+            recover_workspace_deletions(&chat_conn, workspaces_dir)
+                .map_err(|e| format!("Failed to recover workspace deletion intent: {}", e))?;
+            cancel_ready_workspace_deletion(&chat_conn, workspace_id)
+                .map_err(|e| format!("Failed to cancel recreated workspace deletion: {}", e))?;
+        }
+
         let db_path = workspaces_dir.join(format!("ws_{}.db", workspace_id));
 
         // 🔧 批判性修复：检测数据库损坏并尝试恢复
@@ -383,6 +397,12 @@ impl WorkspaceDatabase {
         Ok(())
     }
 
+    /// 当前是否处于维护模式（备份/恢复期间连接池被切换到内存池）
+    pub fn is_in_maintenance_mode(&self) -> bool {
+        self.maintenance_mode
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
     pub fn exit_maintenance_mode(&self) -> Result<(), String> {
         let manager = SqliteConnectionManager::file(&self.db_path).with_init(|conn| {
             conn.execute_batch(
@@ -413,60 +433,70 @@ impl WorkspaceDatabase {
     pub fn delete_database(workspaces_dir: &Path, workspace_id: &str) -> Result<(), String> {
         validate_workspace_id(workspace_id)?;
         let db_path = workspaces_dir.join(format!("ws_{}.db", workspace_id));
-        let deleted_size = std::fs::metadata(&db_path).ok().map(|m| m.len());
-        if db_path.exists() {
-            std::fs::remove_file(&db_path)
-                .map_err(|e| format!("Failed to delete workspace database: {}", e))?;
+        let chat_conn = Self::open_deletion_journal(workspaces_dir)?.ok_or_else(|| {
+            "chat_v2.db 不存在，无法持久化工作区删除意图；已拒绝物理删除".to_string()
+        })?;
+
+        recover_workspace_deletions(&chat_conn, workspaces_dir)
+            .map_err(|e| format!("Failed to recover workspace deletion intent: {}", e))?;
+
+        // 重复调用保持幂等：文件和 metadata 都已消失、且已有 ready/published
+        // journal 时，不制造第二个 operation_id。
+        if !db_path.exists() {
+            let metadata_exists: bool = chat_conn
+                .query_row(
+                    "SELECT EXISTS(
+                         SELECT 1 FROM workspace_index WHERE workspace_id = ?1
+                     )",
+                    rusqlite::params![workspace_id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| format!("Failed to inspect workspace metadata: {}", e))?;
+            let journal_exists: bool = chat_conn
+                .query_row(
+                    "SELECT EXISTS(
+                         SELECT 1 FROM __file_deletion_journal
+                          WHERE target_kind = 'workspace'
+                            AND entity_key = ?1
+                            AND state IN ('ready', 'published')
+                     )",
+                    rusqlite::params![workspace_id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| format!("Failed to inspect workspace deletion journal: {}", e))?;
+            if !metadata_exists && journal_exists {
+                return Ok(());
+            }
         }
-        let wal_path = workspaces_dir.join(format!("ws_{}.db-wal", workspace_id));
-        if wal_path.exists() {
-            let _ = std::fs::remove_file(&wal_path);
-        }
-        let shm_path = workspaces_dir.join(format!("ws_{}.db-shm", workspace_id));
-        if shm_path.exists() {
-            let _ = std::fs::remove_file(&shm_path);
-        }
-        Self::enqueue_workspace_deletion_best_effort(workspaces_dir, workspace_id, deleted_size);
+
+        // workspace_index metadata 删除与 prepared intent 在同一个 SQLite
+        // SAVEPOINT 中提交；只有提交成功后才允许触碰物理数据库文件。
+        let intent = prepare_workspace_deletion(&chat_conn, workspaces_dir, workspace_id)
+            .map_err(|e| format!("Failed to prepare workspace deletion: {}", e))?;
+        finish_workspace_deletion(&chat_conn, workspaces_dir, &intent)
+            .map_err(|e| format!("Failed to finish workspace deletion: {}", e))?;
         Ok(())
     }
 
-    fn enqueue_workspace_deletion_best_effort(
-        workspaces_dir: &Path,
-        workspace_id: &str,
-        size: Option<u64>,
-    ) {
+    fn open_deletion_journal(workspaces_dir: &Path) -> Result<Option<Connection>, String> {
         let Some(active_dir) = workspaces_dir.parent() else {
-            return;
+            return Err(format!(
+                "工作区目录没有父目录，无法定位删除日志: {}",
+                workspaces_dir.display()
+            ));
         };
         let chat_db = active_dir.join("chat_v2.db");
         if !chat_db.exists() {
-            return;
+            return Ok(None);
         }
 
-        match Connection::open(&chat_db) {
-            Ok(conn) => {
-                let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
-                if let Err(err) =
-                    crate::data_governance::file_deletion_queue::enqueue_workspace_deletion(
-                        &conn,
-                        workspace_id,
-                        size,
-                    )
-                {
-                    log::warn!(
-                        "[WorkspaceDatabase] 写入工作区删除队列失败（不阻塞删除）: workspace_id={}, err={}",
-                        workspace_id,
-                        err
-                    );
-                }
-            }
-            Err(err) => {
-                log::warn!(
-                    "[WorkspaceDatabase] 打开 chat_v2.db 写工作区删除队列失败（不阻塞删除）: {}",
-                    err
-                );
-            }
-        }
+        let conn = Connection::open(&chat_db)
+            .map_err(|e| format!("Failed to open workspace deletion journal: {}", e))?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| format!("Failed to configure workspace deletion journal: {}", e))?;
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .map_err(|e| format!("Failed to enable workspace deletion foreign keys: {}", e))?;
+        Ok(Some(conn))
     }
 }
 
@@ -532,6 +562,49 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    fn setup_workspace_deletion() -> (TempDir, PathBuf, String) {
+        let temp = TempDir::new().unwrap();
+        let active_dir = temp.path().join("active");
+        let workspaces_dir = active_dir.join("workspaces");
+        std::fs::create_dir_all(&workspaces_dir).unwrap();
+        let workspace_id = "ws_delete_test".to_string();
+        let conn = Connection::open(active_dir.join("chat_v2.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE workspace_index (
+                 workspace_id TEXT PRIMARY KEY,
+                 name TEXT,
+                 status TEXT NOT NULL DEFAULT 'active',
+                 creator_session_id TEXT NOT NULL,
+                 created_at TEXT NOT NULL,
+                 updated_at TEXT NOT NULL
+             );
+             CREATE TABLE __workspace_deletion_queue (
+                 workspace_id TEXT PRIMARY KEY,
+                 size INTEGER,
+                 deleted_at TEXT NOT NULL,
+                 retry_count INTEGER NOT NULL DEFAULT 0
+             );",
+        )
+        .unwrap();
+        conn.execute_batch(include_str!(
+            "../../../migrations/chat_v2/V20260721__workspace_deletion_intent_journal.sql"
+        ))
+        .unwrap();
+        conn.execute(
+            "INSERT INTO workspace_index (
+                 workspace_id, creator_session_id, created_at, updated_at
+             ) VALUES (?1, 'creator', 'now', 'now')",
+            rusqlite::params![workspace_id],
+        )
+        .unwrap();
+        std::fs::write(
+            workspaces_dir.join(format!("ws_{}.db", workspace_id)),
+            b"workspace baseline",
+        )
+        .unwrap();
+        (temp, workspaces_dir, workspace_id)
+    }
+
     #[test]
     fn validate_workspace_id_accepts_generated_ids() {
         let id = super::super::types::Workspace::generate_id();
@@ -563,5 +636,105 @@ mod tests {
         // 合法 id 正常创建
         let db = WorkspaceDatabase::new(temp.path(), "ws_testvalid123").unwrap();
         assert!(db.db_path().exists());
+    }
+
+    #[test]
+    fn prepare_failure_keeps_workspace_file_and_metadata() {
+        let (_temp, workspaces_dir, workspace_id) = setup_workspace_deletion();
+        let chat_db = workspaces_dir.parent().unwrap().join("chat_v2.db");
+        let conn = Connection::open(&chat_db).unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_workspace_prepare
+             BEFORE INSERT ON __file_deletion_journal
+             BEGIN
+                 SELECT RAISE(FAIL, 'injected prepare failure');
+             END;",
+        )
+        .unwrap();
+        drop(conn);
+
+        let error = WorkspaceDatabase::delete_database(&workspaces_dir, &workspace_id).unwrap_err();
+        assert!(error.contains("injected prepare failure"));
+        assert!(workspaces_dir
+            .join(format!("ws_{}.db", workspace_id))
+            .exists());
+        let conn = Connection::open(chat_db).unwrap();
+        let metadata_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(
+                     SELECT 1 FROM workspace_index WHERE workspace_id = ?1
+                 )",
+                rusqlite::params![workspace_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(metadata_exists);
+    }
+
+    #[test]
+    fn ready_failure_is_reported_and_next_call_recovers() {
+        let (_temp, workspaces_dir, workspace_id) = setup_workspace_deletion();
+        let wal_path = workspaces_dir.join(format!("ws_{}.db-wal", workspace_id));
+        let shm_path = workspaces_dir.join(format!("ws_{}.db-shm", workspace_id));
+        std::fs::write(&wal_path, b"wal").unwrap();
+        std::fs::write(&shm_path, b"shm").unwrap();
+        let chat_db = workspaces_dir.parent().unwrap().join("chat_v2.db");
+        let conn = Connection::open(&chat_db).unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_workspace_outbox
+             BEFORE INSERT ON __workspace_deletion_queue
+             BEGIN
+                 SELECT RAISE(FAIL, 'injected workspace outbox failure');
+             END;",
+        )
+        .unwrap();
+        drop(conn);
+
+        let error = WorkspaceDatabase::delete_database(&workspaces_dir, &workspace_id).unwrap_err();
+        assert!(error.contains("injected workspace outbox failure"));
+        assert!(!workspaces_dir
+            .join(format!("ws_{}.db", workspace_id))
+            .exists());
+        assert!(!wal_path.exists());
+        assert!(!shm_path.exists());
+        let conn = Connection::open(&chat_db).unwrap();
+        let state: String = conn
+            .query_row(
+                "SELECT state FROM __file_deletion_journal
+                  WHERE entity_key = ?1",
+                rusqlite::params![workspace_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(state, "prepared");
+        conn.execute_batch("DROP TRIGGER fail_workspace_outbox")
+            .unwrap();
+        drop(conn);
+
+        WorkspaceDatabase::delete_database(&workspaces_dir, &workspace_id).unwrap();
+        let conn = Connection::open(chat_db).unwrap();
+        let state: String = conn
+            .query_row(
+                "SELECT state FROM __file_deletion_journal
+                  WHERE entity_key = ?1",
+                rusqlite::params![workspace_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(state, "ready");
+        conn.execute(
+            "DELETE FROM __workspace_deletion_queue WHERE workspace_id = ?1",
+            rusqlite::params![workspace_id],
+        )
+        .unwrap();
+        let published: String = conn
+            .query_row(
+                "SELECT state FROM __file_deletion_journal
+                  WHERE entity_key = ?1",
+                rusqlite::params![workspace_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(published, "published");
     }
 }

@@ -172,12 +172,12 @@ mod tests {
             "sources": [{ "citationTag": "[记忆-1]", "noteId": "note_a" }]
         }))];
         // 同一编号引用两次只计一次；英文别名大小写不敏感
-        let ids =
-            extract_cited_memory_note_ids("[记忆-1] …… [Memory-1] 再次引用", &tool_results);
+        let ids = extract_cited_memory_note_ids("[记忆-1] …… [Memory-1] 再次引用", &tool_results);
         assert_eq!(ids, vec!["note_a"]);
         // 正文无记忆引用（裸文本"记忆-1"不带方括号不算）
-        assert!(extract_cited_memory_note_ids("提到过 记忆-1 但没有引用标记", &tool_results)
-            .is_empty());
+        assert!(
+            extract_cited_memory_note_ids("提到过 记忆-1 但没有引用标记", &tool_results).is_empty()
+        );
     }
 }
 
@@ -1208,14 +1208,15 @@ impl ChatV2Pipeline {
             tokio::task::spawn_blocking(move || {
                 use crate::memory::MemoryService;
                 use crate::vfs::lance_store::VfsLanceStore;
-                let lance_store =
-                    match crate::chat_v2::pipeline::managed_vfs_lance_store_for(&vfs_db_for_usage) {
-                        Some(s) => s,
-                        None => match VfsLanceStore::new(vfs_db_for_usage.clone()) {
-                            Ok(s) => std::sync::Arc::new(s),
-                            Err(_) => return,
-                        },
-                    };
+                let lance_store = match crate::chat_v2::pipeline::managed_vfs_lance_store_for(
+                    &vfs_db_for_usage,
+                ) {
+                    Some(s) => s,
+                    None => match VfsLanceStore::new(vfs_db_for_usage.clone()) {
+                        Ok(s) => std::sync::Arc::new(s),
+                        Err(_) => return,
+                    },
+                };
                 let service =
                     MemoryService::new(vfs_db_for_usage, lance_store, llm_manager_for_usage);
                 log::debug!(
@@ -1239,7 +1240,10 @@ impl ChatV2Pipeline {
         }
 
         if mem_config.is_privacy_mode().unwrap_or(false) {
-            log::debug!("[{}] Privacy mode enabled, skipping auto-extraction", log_tag);
+            log::debug!(
+                "[{}] Privacy mode enabled, skipping auto-extraction",
+                log_tag
+            );
             return;
         }
 

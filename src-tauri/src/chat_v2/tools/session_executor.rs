@@ -512,8 +512,8 @@ impl SessionToolExecutor {
         raw: &str,
         title_override: Option<&str>,
     ) -> Result<Value, String> {
-        let payload: Value = serde_json::from_str(raw)
-            .map_err(|e| format!("SESSION_IMPORT_INVALID_JSON: {}", e))?;
+        let payload: Value =
+            serde_json::from_str(raw).map_err(|e| format!("SESSION_IMPORT_INVALID_JSON: {}", e))?;
         let session_value = payload.get("session").cloned().ok_or(
             "SESSION_IMPORT_INVALID_FORMAT: missing 'session' field (expected the JSON produced by session export)",
         )?;
@@ -555,8 +555,7 @@ impl SessionToolExecutor {
         conn.execute_batch("BEGIN IMMEDIATE")
             .map_err(|e| format!("SESSION_IMPORT_DB_FAILED: {}", e))?;
         let insert_result = (|| -> Result<(), String> {
-            ChatV2Repo::create_session_with_conn(&conn, &new_session)
-                .map_err(|e| e.to_string())?;
+            ChatV2Repo::create_session_with_conn(&conn, &new_session).map_err(|e| e.to_string())?;
             for message in &new_messages {
                 ChatV2Repo::create_message_with_conn(&conn, message).map_err(|e| e.to_string())?;
             }
@@ -2065,7 +2064,12 @@ fn remap_imported_session(
     mut messages: Vec<ChatMessage>,
     mut blocks: Vec<MessageBlock>,
     title_override: Option<&str>,
-) -> (ChatSession, Vec<ChatMessage>, Vec<MessageBlock>, ImportRemapStats) {
+) -> (
+    ChatSession,
+    Vec<ChatMessage>,
+    Vec<MessageBlock>,
+    ImportRemapStats,
+) {
     let original_session_id = session.id.clone();
     let new_session_id = ChatSession::generate_id();
 
@@ -2735,7 +2739,9 @@ mod tests {
     fn session_import_rejects_invalid_payloads() {
         let (_temp_dir, db) = setup_chat_db();
         let bad_json = SessionToolExecutor::import_session_payload(&db, "not-json", None);
-        assert!(bad_json.unwrap_err().contains("SESSION_IMPORT_INVALID_JSON"));
+        assert!(bad_json
+            .unwrap_err()
+            .contains("SESSION_IMPORT_INVALID_JSON"));
 
         let missing_session =
             SessionToolExecutor::import_session_payload(&db, r#"{"messages":[]}"#, None);

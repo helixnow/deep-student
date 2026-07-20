@@ -636,12 +636,12 @@ const GENERIC_REQUIRED_SUMMARY_HEADINGS: [&str; 6] = [
     "## 关键事实和偏好",
 ];
 
-pub(crate) const LEARNING_COMPACTION_PROFILE: CompactionPromptProfile = CompactionPromptProfile {
+pub(crate) static LEARNING_COMPACTION_PROFILE: CompactionPromptProfile = CompactionPromptProfile {
     system: LEARNING_COMPACTION_PROMPT_SYSTEM,
     required_headings: &LEARNING_REQUIRED_SUMMARY_HEADINGS,
 };
 
-pub(crate) const GENERIC_COMPACTION_PROFILE: CompactionPromptProfile = CompactionPromptProfile {
+pub(crate) static GENERIC_COMPACTION_PROFILE: CompactionPromptProfile = CompactionPromptProfile {
     system: GENERIC_COMPACTION_PROMPT_SYSTEM,
     required_headings: &GENERIC_REQUIRED_SUMMARY_HEADINGS,
 };
@@ -690,7 +690,7 @@ fn summary_is_structurally_valid(summary: &str, profile: &CompactionPromptProfil
 }
 
 // ============================================================================
-// 标识符保真审计（借鉴 OpenClaw compaction-safeguard）
+// 标识符保真审计（用于压缩前后的标识符保真）
 // ============================================================================
 
 /// 单次审计最多追踪的标识符数量，防止修复 prompt 膨胀
@@ -3932,7 +3932,10 @@ mod tests {
         assert_eq!(failed.reason_code(), Some("summaryFailed"));
         assert!(failed.is_failed());
 
-        assert_eq!(CompactionSkipReason::UsableTooSmall.as_code(), "usableTooSmall");
+        assert_eq!(
+            CompactionSkipReason::UsableTooSmall.as_code(),
+            "usableTooSmall"
+        );
         assert_eq!(CompactionSkipReason::Cancelled.as_code(), "cancelled");
         assert_eq!(CompactionSkipReason::StaleLineage.as_code(), "staleLineage");
         assert_eq!(CompactionSkipReason::NoModel.as_code(), "noModel");
@@ -3940,7 +3943,10 @@ mod tests {
             CompactionSkipReason::NoCompactibleRange.as_code(),
             "noCompactibleRange"
         );
-        assert_eq!(CompactionSkipReason::InternalError.as_code(), "internalError");
+        assert_eq!(
+            CompactionSkipReason::InternalError.as_code(),
+            "internalError"
+        );
     }
 
     /// 🆕 模板选择：学习类模式走学习域模板，agent/通用/未知模式走通用模板
@@ -3952,7 +3958,12 @@ mod tests {
                 &LEARNING_COMPACTION_PROFILE
             ));
         }
-        for mode in [Some("agent"), Some("general_chat"), Some("unknown_mode"), None] {
+        for mode in [
+            Some("agent"),
+            Some("general_chat"),
+            Some("unknown_mode"),
+            None,
+        ] {
             assert!(std::ptr::eq(
                 compaction_profile_for_mode(mode),
                 &GENERIC_COMPACTION_PROFILE
@@ -4009,8 +4020,16 @@ mod tests {
             commit 0123456789abcdef0123，服务跑在 localhost:14158。";
         let ids = extract_opaque_identifiers(text, IDENTIFIER_AUDIT_MAX);
         let has = |needle: &str| ids.iter().any(|id| id.contains(needle));
-        assert!(has("https://example.com/api/v1?key=abc123"), "URL: {:?}", ids);
-        assert!(has("3f2a9b7c-1d2e-4f5a-8b6c-7d8e9f0a1b2c"), "UUID: {:?}", ids);
+        assert!(
+            has("https://example.com/api/v1?key=abc123"),
+            "URL: {:?}",
+            ids
+        );
+        assert!(
+            has("3f2a9b7c-1d2e-4f5a-8b6c-7d8e9f0a1b2c"),
+            "UUID: {:?}",
+            ids
+        );
         assert!(has("0123456789abcdef0123"), "hash: {:?}", ids);
         assert!(has("msg_deadbeef1234"), "project id: {:?}", ids);
         assert!(

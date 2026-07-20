@@ -11,10 +11,10 @@ use super::router::{InboxOverflow, MessageRouter};
 use super::sleep_manager::{SleepManager, WakeResultInfo};
 use super::subagent_task::SubagentTaskManager;
 use super::types::*;
+use crate::backup_common::{DataGovernanceOperationGuard, DataGovernanceOperationKind};
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::runtime_roots::cleanup_session_runtime_roots;
-use crate::data_governance::file_deletion_queue::enqueue_workspace_deletion;
 use tauri::AppHandle;
 
 struct WorkspaceInstance {
@@ -264,6 +264,12 @@ impl WorkspaceCoordinator {
     }
 
     pub fn delete_workspace(&self, workspace_id: &str) -> Result<(), String> {
+        let _operation = DataGovernanceOperationGuard::try_acquire(
+            DataGovernanceOperationKind::DeletePropagation,
+            None,
+        )
+        .map_err(|error| error.to_string())?;
+
         // 在关闭/删除之前获取 worker 会话列表，用于清理 ChatSession
         let worker_session_ids = self
             .list_agents(workspace_id)
@@ -277,36 +283,13 @@ impl WorkspaceCoordinator {
             .unwrap_or_default();
 
         self.close_workspace(workspace_id)?;
-        let db_path = self.workspaces_dir.join(format!("ws_{}.db", workspace_id));
-        let deleted_size = std::fs::metadata(&db_path).ok().map(|m| m.len());
         self.db_manager.delete(workspace_id)?;
-
-        if let Some(db) = &self.chat_v2_db {
-            match db.get_conn_safe() {
-                Ok(conn) => {
-                    if let Err(err) = enqueue_workspace_deletion(&conn, workspace_id, deleted_size)
-                    {
-                        log::warn!(
-                            "[WorkspaceCoordinator] 写入工作区删除队列失败（不阻塞删除）: workspace_id={}, err={}",
-                            workspace_id,
-                            err
-                        );
-                    }
-                }
-                Err(err) => {
-                    log::warn!(
-                        "[WorkspaceCoordinator] 打开 chat_v2.db 写删除队列失败（不阻塞删除）: {}",
-                        err
-                    );
-                }
-            }
-        }
 
         // 从 workspace_index 删除记录
         self.remove_from_index(workspace_id)?;
 
         // 清理关联的 worker ChatSession（避免残留会话）
-        self.cleanup_agent_sessions(&worker_session_ids);
+        self.cleanup_agent_sessions(&worker_session_ids)?;
 
         Ok(())
     }
@@ -905,35 +888,43 @@ impl WorkspaceCoordinator {
     }
 
     /// 🆕 清理关联的 worker ChatSession
-    fn cleanup_agent_sessions(&self, worker_session_ids: &[String]) {
+    fn cleanup_agent_sessions(&self, worker_session_ids: &[String]) -> Result<(), String> {
+        if worker_session_ids.is_empty() {
+            return Ok(());
+        }
         let db = match &self.chat_v2_db {
             Some(db) => db,
-            None => return,
+            None => {
+                return Err(
+                    "工作区已删除，但 Chat V2 数据库不可用，关联 worker 会话未清理".to_string(),
+                )
+            }
         };
+        let mut errors = Vec::new();
         for session_id in worker_session_ids {
             let Some(app_handle) = &self.app_handle else {
-                log::warn!(
-                    "[WorkspaceCoordinator] Deferring deletion of worker session {} because AppHandle is unavailable for runtime-root cleanup",
+                errors.push(format!(
+                    "{}: AppHandle 不可用，无法清理 runtime root",
                     session_id
-                );
+                ));
                 continue;
             };
             if let Err(error) = cleanup_session_runtime_roots(app_handle, session_id) {
-                log::warn!(
-                    "[WorkspaceCoordinator] Deferring deletion of worker session {} because runtime-root cleanup failed: {}",
-                    session_id,
-                    error
-                );
+                errors.push(format!("{}: runtime root 清理失败: {}", session_id, error));
                 continue;
             }
             if let Err(e) = ChatV2Repo::delete_session_v2(db, session_id) {
-                log::warn!(
-                    "[WorkspaceCoordinator] Failed to delete worker session {}: {:?}",
-                    session_id,
-                    e
-                );
+                errors.push(format!("{}: worker 会话删除失败: {:?}", session_id, e));
                 continue;
             }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "工作区已删除，但部分关联会话清理失败: {}",
+                errors.join("; ")
+            ))
         }
     }
 
@@ -1277,7 +1268,9 @@ mod tests {
         let mut rx = sleep_manager.begin_sleep(&data).expect("begin sleep");
         assert!(sleep_manager.is_sleep_active(&data.id));
 
-        coordinator.close_workspace(&ws.id).expect("close workspace");
+        coordinator
+            .close_workspace(&ws.id)
+            .expect("close workspace");
 
         // 未决睡眠收到取消式唤醒，注册表被清空
         let payload = rx.try_recv().expect("cancel payload delivered");

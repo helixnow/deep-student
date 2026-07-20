@@ -2016,7 +2016,12 @@ mod tests {
             extract_zip_into_temp_root(temp_dir.path(), &staged.relative_path, None).unwrap_err();
         assert!(error.contains("unsafe path"), "{error}");
         // 预检失败发生在建目录之前，temp root 外不得有任何写入
-        assert!(!temp_dir.path().parent().unwrap().join("outside.txt").exists());
+        assert!(!temp_dir
+            .path()
+            .parent()
+            .unwrap()
+            .join("outside.txt")
+            .exists());
     }
 
     #[test]

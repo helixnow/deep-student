@@ -1476,6 +1476,7 @@ impl ChatV2Pipeline {
                     &canvas_note_id,
                     &skill_contents,
                     &options.skill_embedded_tools,
+                    &options.skill_admission_errors,
                     &options.skill_package_roots,
                     &active_skill_ids,
                     &execution_allowed_tools,

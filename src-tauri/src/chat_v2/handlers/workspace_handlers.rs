@@ -188,6 +188,39 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
     format!("{}…", truncated)
 }
 
+fn resolve_profile_skill_snapshot(
+    skill_ids: &[String],
+    metadata: Option<&serde_json::Value>,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    if skill_ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let available: std::collections::HashMap<String, String> = metadata
+        .and_then(|value| value.get("profile_skill_contents"))
+        .cloned()
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|error| format!("Invalid persisted persona skill snapshot: {}", error))?
+        .unwrap_or_default();
+    let mut selected = std::collections::HashMap::new();
+    let mut missing = Vec::new();
+    for skill_id in skill_ids {
+        match available.get(skill_id) {
+            Some(content) => {
+                selected.insert(skill_id.clone(), content.clone());
+            }
+            None => missing.push(skill_id.clone()),
+        }
+    }
+    if !missing.is_empty() {
+        return Err(format!(
+            "Persisted persona skill snapshot is missing [{}]; refusing to run with silently ignored skills",
+            missing.join(", ")
+        ));
+    }
+    Ok(selected)
+}
+
 /// 提取子代理最终 assistant 消息的 content 块文本并截断，供 result_summary 使用
 /// （逻辑参考 headless.rs 的 summarize_assistant_message）。
 fn summarize_worker_assistant_message(
@@ -1316,6 +1349,39 @@ pub async fn run_workspace_agent_backend(
         .and_then(|m| m.get("system_prompt"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
+    let profile_skill_contents = if has_persisted_profile {
+        let skill_ids = runtime_config
+            .as_ref()
+            .map(|config| config.skill_ids.as_slice())
+            .unwrap_or(&[]);
+        resolve_profile_skill_snapshot(skill_ids, session.metadata.as_ref()).map_err(|error| {
+            fail_with_drained_rollback(
+                &coordinator,
+                workspace_id,
+                agent_session_id,
+                &original_message_ids,
+                error,
+            )
+        })?
+    } else {
+        std::collections::HashMap::new()
+    };
+    let profile_skill_ids = if has_persisted_profile {
+        runtime_config
+            .as_ref()
+            .map(|config| config.skill_ids.clone())
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let profile_reasoning_effort = if has_persisted_profile {
+        runtime_config
+            .as_ref()
+            .and_then(|config| config.reasoning_effort.as_ref())
+            .map(|effort| effort.as_str().to_string())
+    } else {
+        None
+    };
 
     let system_prompt = match (&runtime_config, has_persisted_profile) {
         (Some(config), true) => {
@@ -1451,6 +1517,13 @@ pub async fn run_workspace_agent_backend(
             system_prompt_override: system_prompt,
             // profile.model_id 优先，legacy recommended_models[0] 回退
             model_id: selected_model,
+            // Persona model references are exact config ids. The context compiler
+            // must fail instead of selecting another local/cloud configuration.
+            strict_model_id: has_persisted_profile
+                && runtime_config
+                    .as_ref()
+                    .is_some_and(|config| config.model_id.is_some()),
+            reasoning_effort: profile_reasoning_effort,
             // Worker 默认禁用 RAG 等检索功能
             rag_enabled: Some(false),
             graph_rag_enabled: Some(false),
@@ -1459,6 +1532,9 @@ pub async fn run_workspace_agent_backend(
             mcp_tool_schemas: Some(workspace_tool_schemas),
             // 🆕 执行层 fail-closed：白名单外的调用在审批/执行前被直接拦截
             execution_allowed_tools: Some(worker_allowed_tools),
+            active_skill_ids: (!profile_skill_ids.is_empty()).then_some(profile_skill_ids),
+            skill_contents: (!profile_skill_contents.is_empty())
+                .then_some(profile_skill_contents),
             stream_generation: Some(stream_generation),
             ..Default::default()
         }),
@@ -2096,28 +2172,45 @@ pub async fn workspace_restore_executions(
 }
 
 // ============================================================
-// 子代理档案列表（设置页管理入口）
+// 子代理档案管理（设置页管理入口）
 // ============================================================
 
-/// 单个子代理档案的列表摘要（内建 + 自定义）。
+/// 内建子代理档案的列表摘要。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentProfileSummary {
     pub id: String,
     pub description: Option<String>,
-    /// 自定义档案的 base 档案 id；内建档案为 None。
-    /// 注：当前恒为 None——`AgentProfile` 解析后不保留 base 来源
-    /// （custom_agents 从 base 克隆后即丢弃该信息），待后端补存后填充。
-    pub base: Option<String>,
     pub model: Option<String>,
     pub tool_count: usize,
-    pub is_builtin: bool,
+}
+
+/// 单个自定义档案文件的列表摘要（含加载器会跳过的非法文件，供设置页修复）。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomAgentFileSummary {
+    pub file_name: String,
+    pub bytes: u64,
+    /// RFC3339 修改时间（stat 失败时为 None）。
+    pub modified_at: Option<String>,
+    /// frontmatter 宽容解析结果（文件非法时也尽量给出）。
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub base: Option<String>,
+    pub model: Option<String>,
+    /// fail-closed 解析成功时的工具数。
+    pub tool_count: Option<usize>,
+    /// 加载器是否会接受该文件（false = 定义非法，运行时被跳过）。
+    pub valid: bool,
+    /// 是否实际生效（valid 且同名档案中按文件名排序先加载者）。
+    pub active: bool,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListAgentProfilesResponse {
-    pub profiles: Vec<AgentProfileSummary>,
+    pub builtin: Vec<AgentProfileSummary>,
+    pub custom_files: Vec<CustomAgentFileSummary>,
     /// 自定义档案目录（`{workspaces_dir}/agents`）的绝对路径。
     pub agents_dir: String,
 }
@@ -2143,35 +2236,162 @@ pub async fn workspace_list_agent_profiles(
         );
     }
 
-    let summarize = |profile: &crate::chat_v2::workspace::AgentProfile,
-                     is_builtin: bool|
-     -> AgentProfileSummary {
-        AgentProfileSummary {
-            id: profile.id.clone(),
-            description: profile.description.clone(),
-            base: None,
-            model: profile.model.clone(),
-            tool_count: profile.allowed_tools.len(),
-            is_builtin,
-        }
-    };
-
-    let mut profiles: Vec<AgentProfileSummary> =
+    let builtin: Vec<AgentProfileSummary> =
         [DEFAULT_PROFILE_ID, WORKER_PROFILE_ID, EXPLORER_PROFILE_ID]
             .iter()
             .filter_map(|id| AgentProfileResolver::built_in(id))
-            .map(|profile| summarize(&profile, true))
+            .map(|profile| AgentProfileSummary {
+                id: profile.id.clone(),
+                description: profile.description.clone(),
+                model: profile.model.clone(),
+                tool_count: profile.allowed_tools.len(),
+            })
             .collect();
-    profiles.extend(
-        crate::chat_v2::workspace::load_custom_profiles(&agents_dir)
-            .iter()
-            .map(|profile| summarize(profile, false)),
-    );
+
+    // active 判定与加载器一致：按文件名排序后，同名档案先加载者生效
+    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let custom_files = crate::chat_v2::workspace::list_custom_agent_files(&agents_dir)
+        .into_iter()
+        .map(|file| {
+            let active = file
+                .profile
+                .as_ref()
+                .is_some_and(|profile| seen_ids.insert(profile.id.clone()));
+            CustomAgentFileSummary {
+                file_name: file.file_name,
+                bytes: file.bytes,
+                modified_at: file.modified_at,
+                name: file.summary.name,
+                description: file.summary.description,
+                base: file.summary.base,
+                model: file.summary.model,
+                tool_count: file.profile.as_ref().map(|p| p.allowed_tools.len()),
+                valid: file.profile.is_some(),
+                active,
+            }
+        })
+        .collect();
 
     Ok(ListAgentProfilesResponse {
-        profiles,
+        builtin,
+        custom_files,
         agents_dir: agents_dir.to_string_lossy().into_owned(),
     })
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentProfileFileResponse {
+    pub file_name: String,
+    pub content: String,
+}
+
+/// 读取单个自定义档案文件全文（设置页编辑用）。
+///
+/// 文件名/路径安全校验与 agent 侧 custom_agent_* 工具共用同一套实现
+/// （`CustomAgentExecutor`），两条读写路径规则保持一致。
+#[tauri::command]
+pub async fn workspace_read_agent_profile_file(
+    coordinator: State<'_, Arc<WorkspaceCoordinator>>,
+    file_name: String,
+) -> Result<AgentProfileFileResponse, String> {
+    use crate::chat_v2::tools::custom_agent_executor::CustomAgentExecutor;
+
+    let agents_dir = coordinator.custom_agents_dir();
+    let path = CustomAgentExecutor::resolve_persona_path(&agents_dir, &file_name)?;
+    if !path.exists() {
+        return Err("PROFILE_FILE_NOT_FOUND".to_string());
+    }
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read profile file '{}': {}", file_name, e))?;
+    Ok(AgentProfileFileResponse { file_name, content })
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveAgentProfileFileResponse {
+    pub file_name: String,
+    /// frontmatter 中声明的档案 id。
+    pub agent_name: String,
+    pub bytes: usize,
+    /// Model catalog could not be read at save time. Runtime still enforces
+    /// exact model identity and will fail rather than fall back.
+    pub warnings: Vec<serde_json::Value>,
+}
+
+/// 写入（新建或覆盖）单个自定义档案文件（设置页编辑用）。
+///
+/// `overwrite=false` 时目标已存在返回 `PROFILE_FILE_EXISTS`（前端本地化）。
+/// 内容校验与加载器 fail-closed 规则一致，拦截落盘后永远不生效的定义。
+#[tauri::command]
+pub async fn workspace_save_agent_profile_file(
+    coordinator: State<'_, Arc<WorkspaceCoordinator>>,
+    llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
+    file_name: String,
+    content: String,
+    overwrite: bool,
+) -> Result<SaveAgentProfileFileResponse, String> {
+    use crate::chat_v2::tools::custom_agent_executor::CustomAgentExecutor;
+    use crate::chat_v2::workspace::agent_profile::validate_persona_model_config;
+
+    let (agent_name, _, model) = CustomAgentExecutor::validate_persona_content(&content)?;
+    let mut warnings = Vec::new();
+    if let Some(model_id) = model.as_deref() {
+        match llm_manager.get_api_configs().await {
+            Ok(configs) => validate_persona_model_config(model_id, &configs)?,
+            Err(error) => warnings.push(serde_json::json!({
+                "code": "PERSONA_MODEL_CATALOG_UNAVAILABLE",
+                "model_id": model_id,
+                "message": format!(
+                    "Failed to read the model catalog: {}. The profile was saved, but runtime will require this exact model configuration and will not fall back.",
+                    error
+                ),
+            })),
+        }
+    }
+    let agents_dir = coordinator.custom_agents_dir();
+    let path = CustomAgentExecutor::resolve_persona_path(&agents_dir, &file_name)?;
+    let _file_guard =
+        crate::chat_v2::workspace::custom_agents::lock_custom_agent_files()?;
+    if !overwrite && path.exists() {
+        return Err("PROFILE_FILE_EXISTS".to_string());
+    }
+    CustomAgentExecutor::atomic_write(&path, content.as_bytes())?;
+    log::info!(
+        "[Workspace::handlers] Saved custom agent profile '{}' ({} bytes) via settings",
+        file_name,
+        content.len()
+    );
+    Ok(SaveAgentProfileFileResponse {
+        file_name,
+        agent_name,
+        bytes: content.len(),
+        warnings,
+    })
+}
+
+/// 删除单个自定义档案文件（设置页编辑用）。删除立即生效且不可撤销。
+#[tauri::command]
+pub async fn workspace_delete_agent_profile_file(
+    coordinator: State<'_, Arc<WorkspaceCoordinator>>,
+    file_name: String,
+) -> Result<(), String> {
+    use crate::chat_v2::tools::custom_agent_executor::CustomAgentExecutor;
+
+    let agents_dir = coordinator.custom_agents_dir();
+    let path = CustomAgentExecutor::resolve_persona_path(&agents_dir, &file_name)?;
+    let _file_guard =
+        crate::chat_v2::workspace::custom_agents::lock_custom_agent_files()?;
+    if !path.exists() {
+        return Err("PROFILE_FILE_NOT_FOUND".to_string());
+    }
+    std::fs::remove_file(&path)
+        .map_err(|e| format!("Failed to delete profile file '{}': {}", file_name, e))?;
+    log::info!(
+        "[Workspace::handlers] Deleted custom agent profile '{}' via settings",
+        file_name
+    );
+    Ok(())
 }
 
 #[cfg(test)]
@@ -2239,5 +2459,27 @@ mod runtime_completion_tests {
         assert!(value.get("correlation_id").is_none());
         // usage 读不到时整个键省略
         assert!(value.get("token_usage").is_none());
+    }
+
+    #[test]
+    fn profile_skill_snapshot_selects_declared_ids_and_rejects_missing() {
+        let metadata = serde_json::json!({
+            "profile_skill_contents": {
+                "research": "snapshot body",
+                "unrelated": "must not be injected"
+            }
+        });
+        let selected =
+            resolve_profile_skill_snapshot(&["research".to_string()], Some(&metadata)).unwrap();
+        assert_eq!(selected.len(), 1);
+        assert_eq!(
+            selected.get("research").map(String::as_str),
+            Some("snapshot body")
+        );
+        assert!(!selected.contains_key("unrelated"));
+
+        let error =
+            resolve_profile_skill_snapshot(&["missing".to_string()], Some(&metadata)).unwrap_err();
+        assert!(error.contains("silently ignored"));
     }
 }

@@ -1104,6 +1104,9 @@ mod tests {
         assert_eq!(history[2].content, "latest user turn");
     }
 
+    /// 🔧 2026-07 修复：group_history_units 已改为按 user 轮分组（3c6a57f09），
+    /// 本测试改写为轮次语义。核心意图不变：tool_call args / tool_result data
+    /// 必须计入单元 token 预算——若不计入，纯文本总量不会超预算，最旧轮不会被丢。
     #[test]
     fn test_trim_history_by_token_budget_counts_tool_payloads() {
         let mut tool_call_message = make_empty_message("assistant", String::new());
@@ -1125,23 +1128,34 @@ mod tests {
         });
 
         let mut history = vec![
+            // 轮 1（含大 tool payload）
             make_empty_message("user", "oldest user message".to_string()),
             tool_call_message,
             tool_result_message,
-            make_empty_message("assistant", "latest assistant reply".to_string()),
+            // 轮 2
+            make_empty_message("user", "middle user turn".to_string()),
+            make_empty_message("assistant", "middle assistant reply".to_string()),
+            // 轮 3
             make_empty_message("user", "latest user turn".to_string()),
+            make_empty_message("assistant", "latest assistant reply".to_string()),
         ];
 
-        trim_history_by_token_budget(
-            &mut history,
-            estimate_token_count("latest assistant replylatest user turn"),
+        // 预算 = 所有纯文本 token + 余量，但远小于 tool payload 的 token 量。
+        // 只有把 payload 计入预算，总量才会超限并触发丢弃最旧轮。
+        let all_text_tokens = estimate_token_count(
+            "oldest user messageokmiddle user turnmiddle assistant replylatest user turnlatest assistant reply",
         );
+        trim_history_by_token_budget(&mut history, all_text_tokens + 200);
 
-        assert_eq!(history.len(), 2);
-        assert_eq!(history[0].content, "latest assistant reply");
-        assert_eq!(history[1].content, "latest user turn");
+        assert_eq!(history.len(), 4, "含大 payload 的最旧轮必须被整体移除");
+        assert_eq!(history[0].content, "middle user turn");
+        assert!(history
+            .iter()
+            .all(|msg| msg.tool_call.is_none() && msg.tool_result.is_none()));
     }
 
+    /// 🔧 2026-07 修复：同上，按 user 轮分组语义改写。核心意图不变：
+    /// tool_call / tool_result 必须随所在轮次整体移除，不能留下孤儿。
     #[test]
     fn test_trim_history_by_token_budget_removes_complete_tool_rounds() {
         let mut tool_call_message = make_empty_message("assistant", String::new());
@@ -1151,7 +1165,7 @@ mod tests {
             args_json: json!({ "query": "enzyme kinetics" }),
         });
 
-        let mut tool_result_message = make_empty_message("tool", "ok".to_string());
+        let mut tool_result_message = make_empty_message("tool", "big ".repeat(2000));
         tool_result_message.tool_result = Some(crate::models::ToolResult {
             call_id: "call-1".to_string(),
             ok: true,
@@ -1163,24 +1177,32 @@ mod tests {
         });
 
         let mut history = vec![
+            // 轮 1（工具轮，体积大）
             make_empty_message("user", "turn 1".to_string()),
             tool_call_message,
             tool_result_message,
-            make_empty_message("assistant", "turn 2 assistant".to_string()),
+            // 轮 2
             make_empty_message("user", "turn 2 user".to_string()),
+            make_empty_message("assistant", "turn 2 assistant".to_string()),
+            // 轮 3
+            make_empty_message("user", "turn 3 user".to_string()),
+            make_empty_message("assistant", "turn 3 assistant".to_string()),
         ];
 
         trim_history_by_token_budget(
             &mut history,
-            estimate_token_count("turn 2 assistantturn 2 user"),
+            estimate_token_count("turn 2 userturn 2 assistantturn 3 userturn 3 assistant") + 100,
         );
 
-        assert_eq!(history.len(), 2);
-        assert!(history
-            .iter()
-            .all(|msg| msg.tool_call.is_none() && msg.tool_result.is_none()));
-        assert_eq!(history[0].content, "turn 2 assistant");
-        assert_eq!(history[1].content, "turn 2 user");
+        assert_eq!(history.len(), 4);
+        assert!(
+            history
+                .iter()
+                .all(|msg| msg.tool_call.is_none() && msg.tool_result.is_none()),
+            "工具轮必须被整体移除，不能留下孤儿 tool_call / tool_result"
+        );
+        assert_eq!(history[0].content, "turn 2 user");
+        assert_eq!(history[3].content, "turn 3 assistant");
     }
 
     /// 🆕 trim 返回值：报告实际丢弃的条数与 token 估算，未丢弃时为零
@@ -1241,7 +1263,10 @@ mod tests {
         // 5 个 user 轮，前 2 轮的工具输出应被占位符化（K=3）
         let mut history: Vec<LegacyChatMessage> = Vec::new();
         for i in 0..5 {
-            history.extend(make_tool_round(&format!("call-{}", i), &format!("turn {}", i)));
+            history.extend(make_tool_round(
+                &format!("call-{}", i),
+                &format!("turn {}", i),
+            ));
         }
 
         let replaced =
@@ -1256,7 +1281,10 @@ mod tests {
         assert!(tool_msgs[0].content.contains("web_search"));
         assert!(tool_msgs[1].content.contains("旧工具输出已省略"));
         for recent in &tool_msgs[2..] {
-            assert_eq!(recent.content, big_output, "最近 3 轮的工具输出必须保留原文");
+            assert_eq!(
+                recent.content, big_output,
+                "最近 3 轮的工具输出必须保留原文"
+            );
         }
         // call_id 配对完整（占位符化不破坏工具链协议）
         assert!(validate_tool_chain(&history));

@@ -189,8 +189,7 @@ impl ChatV2Pipeline {
         // J2 修复：注入即"在场"。异步给注入的分类成员记忆回写 `_last_injected`
         // 时间戳（不阻塞 prompt 构建；同一会话每小时至多写一次），使被每轮注入、
         // LLM 从不需要主动搜索的稳定记忆不会因零命中被 evolution 降级为 `_stale`。
-        if !injected_member_ids.is_empty()
-            && Self::should_mark_injection_presence(&ctx.session_id)
+        if !injected_member_ids.is_empty() && Self::should_mark_injection_presence(&ctx.session_id)
         {
             injected_member_ids.sort();
             injected_member_ids.dedup();

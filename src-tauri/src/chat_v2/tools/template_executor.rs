@@ -1398,14 +1398,11 @@ impl TemplateDesignerExecutor {
                     Ok(f) => f,
                     Err(e) => return Ok(Self::emit_failure(call, ctx, &e, start_time)),
                 };
-                let preview_data_json = match Self::extract_opt_str(
-                    &draft,
-                    "previewDataJson",
-                    "preview_data_json",
-                ) {
-                    Ok(v) => v,
-                    Err(e) => return Ok(Self::emit_failure(call, ctx, &e, start_time)),
-                };
+                let preview_data_json =
+                    match Self::extract_opt_str(&draft, "previewDataJson", "preview_data_json") {
+                        Ok(v) => v,
+                        Err(e) => return Ok(Self::emit_failure(call, ctx, &e, start_time)),
+                    };
                 (front, back, css, fields, None, preview_data_json)
             } else {
                 let msg = "请提供 templateId 或 template 草稿用于预览".to_string();

@@ -1,6 +1,6 @@
 //! Chat V2 - Tap 式技能源（GitHub 仓库即技能目录）
 //!
-//! 对标 OpenClaw 的 ClawHub tap / Hermes 的 skills sources：任何一个包含
+//! 技能源解析：任何一个包含
 //! 若干 `SKILL.md` 技能目录的 GitHub 仓库都可以作为"技能源"被浏览与安装。
 //!
 //! ## 流程

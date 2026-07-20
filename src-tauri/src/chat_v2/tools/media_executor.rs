@@ -158,8 +158,7 @@ impl MediaToolExecutor {
             // ★ ISO BMFF：仅接受签名确认为纯音频的 M4A/M4B/M4P 品牌容器；
             // 其余 ftyp 品牌（mp42/isom/qt 等）仍按视频容器 fail-closed
             let brand = &bytes[8..12];
-            if brand.starts_with(b"M4A") || brand.starts_with(b"M4B") || brand.starts_with(b"M4P")
-            {
+            if brand.starts_with(b"M4A") || brand.starts_with(b"M4B") || brand.starts_with(b"M4P") {
                 Ok("audio/mp4")
             } else {
                 Err(
@@ -275,9 +274,7 @@ impl MediaToolExecutor {
                     .canonicalize()
                     .map_err(|error| format!("MEDIA_SOURCE_NOT_FOUND: {error}"))?;
                 if !target_canon.starts_with(&root_canon) || !target_canon.is_file() {
-                    return Err(
-                        "MEDIA_SOURCE_UNAUTHORIZED: source escaped its runtime root".into()
-                    );
+                    return Err("MEDIA_SOURCE_UNAUTHORIZED: source escaped its runtime root".into());
                 }
                 let metadata = target_canon
                     .metadata()
@@ -535,11 +532,11 @@ mod tests {
             .unwrap_err()
             .contains("MEDIA_VIDEO_EXTRACTION_UNSUPPORTED"));
         // WMA 返回明确的不支持原因
-        assert!(MediaToolExecutor::media_signature(
-            b"\x30\x26\xb2\x75\x8e\x66\xcf\x11wma"
-        )
-        .unwrap_err()
-        .contains("WMA"));
+        assert!(
+            MediaToolExecutor::media_signature(b"\x30\x26\xb2\x75\x8e\x66\xcf\x11wma")
+                .unwrap_err()
+                .contains("WMA")
+        );
     }
 
     #[test]

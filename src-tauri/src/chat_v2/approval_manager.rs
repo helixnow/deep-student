@@ -1078,10 +1078,9 @@ impl ApprovalManager {
                     .map(str::trim)
                     .filter(|reason| !reason.is_empty())
                 {
-                    Some(reason) => format!(
-                        "将信任技能 {}（信任绑定当前包指纹）: {}",
-                        skill_id, reason
-                    ),
+                    Some(reason) => {
+                        format!("将信任技能 {}（信任绑定当前包指纹）: {}", skill_id, reason)
+                    }
                     None => format!("将信任技能 {}（信任绑定当前包指纹）", skill_id),
                 }
             }
@@ -1189,10 +1188,9 @@ impl ApprovalManager {
                     .map(str::trim)
                     .filter(|summary| !summary.is_empty())
                 {
-                    Some(summary) => format!(
-                        "将写入自定义子代理 persona {}: {}",
-                        file_name, summary
-                    ),
+                    Some(summary) => {
+                        format!("将写入自定义子代理 persona {}: {}", file_name, summary)
+                    }
                     None => format!(
                         "将写入自定义子代理 persona: workspaces/agents/{}",
                         file_name
@@ -1215,10 +1213,7 @@ impl ApprovalManager {
                         "将删除自定义子代理 persona: {}（{}，不可恢复）",
                         file_name, title
                     ),
-                    None => format!(
-                        "将删除自定义子代理 persona: {}（不可恢复）",
-                        file_name
-                    ),
+                    None => format!("将删除自定义子代理 persona: {}（不可恢复）", file_name),
                 }
             }
             _ => format!("将执行工具: {}", tool_name),

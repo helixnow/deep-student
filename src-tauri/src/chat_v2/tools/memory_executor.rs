@@ -616,9 +616,7 @@ impl MemoryToolExecutor {
                 if !note.title.starts_with("__") {
                     let svc_for_usage = service.clone();
                     let used_id = note.id.clone();
-                    tokio::task::spawn_blocking(move || {
-                        svc_for_usage.record_used(&[used_id])
-                    });
+                    tokio::task::spawn_blocking(move || svc_for_usage.record_used(&[used_id]));
                 }
                 let folder_path = service
                     .get_note_relative_folder_path(&note.id)
@@ -1774,10 +1772,10 @@ impl MemoryToolExecutor {
         if activity.chars().count() > MEMORY_LOG_ACTIVITY_MAX_CHARS {
             return Err(Self::invalid_args(
                 "activity",
-                format!("activity 最多允许 {MEMORY_LOG_ACTIVITY_MAX_CHARS} 个字符（一句话概括即可）"),
                 format!(
-                    "activity may contain at most {MEMORY_LOG_ACTIVITY_MAX_CHARS} characters."
+                    "activity 最多允许 {MEMORY_LOG_ACTIVITY_MAX_CHARS} 个字符（一句话概括即可）"
                 ),
+                format!("activity may contain at most {MEMORY_LOG_ACTIVITY_MAX_CHARS} characters."),
             ));
         }
 

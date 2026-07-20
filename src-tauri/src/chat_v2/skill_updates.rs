@@ -1,7 +1,7 @@
 //! Chat V2 - 技能更新检查与一键更新
 //!
 //! 基于 `skill.provenance.<skill_id>` 中记录的安装来源（HTTPS zip URL）与
-//! `package_sha256`，重新拉取上游包并对比内容哈希（对标 Hermes 的
+//! `package_sha256`，重新拉取上游包并对比内容哈希（用于
 //! `skills check` / `skills update` drift 检测）。
 //!
 //! ## 安全说明
@@ -25,7 +25,7 @@ use crate::commands::AppState;
 
 const PROVENANCE_SETTINGS_PREFIX: &str = "skill.provenance.";
 
-/// 与 `SkillInstallExecutor` / ClawHub 安装写入的 provenance JSON 对齐（camelCase）。
+/// 与 `SkillInstallExecutor` / 社区技能市场 安装写入的 provenance JSON 对齐（camelCase）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StoredProvenance {
@@ -38,12 +38,12 @@ struct StoredProvenance {
     installed_at: String,
     #[serde(default)]
     session_id: String,
-    /// ClawHub 安装时写入的 slug（优先于 sourceDetail 解析）
+    /// 社区技能市场 安装时写入的 slug（优先于 sourceDetail 解析）
     #[serde(default)]
-    clawhub_slug: Option<String>,
-    /// ClawHub 安装时写入的 version
+    market_slug: Option<String>,
+    /// 社区技能市场 安装时写入的 version
     #[serde(default)]
-    clawhub_version: Option<String>,
+    market_version: Option<String>,
 }
 
 /// 单个技能的更新检查结果
@@ -59,12 +59,12 @@ pub struct SkillUpdateCheckResult {
     pub source_summary: String,
     /// 本地记录的包哈希（provenance 中的 `package_sha256`，所有来源均为真实哈希）。
     pub current_sha256: String,
-    /// 远端包哈希。clawhub 来源的检查只比对 version、不下载包，故为 `None`。
+    /// 远端包哈希。社区市场来源的检查只比对 version、不下载包，故为 `None`。
     pub remote_sha256: Option<String>,
-    /// 已安装版本（目前仅 clawhub 来源填充）。
+    /// 已安装版本（目前仅 社区市场来源填充）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_version: Option<String>,
-    /// 远端最新版本（目前仅 clawhub 来源填充）。
+    /// 远端最新版本（目前仅 社区市场来源填充）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remote_version: Option<String>,
     pub error: Option<String>,
@@ -116,34 +116,38 @@ fn load_provenance(
     })
 }
 
-/// 解析 ClawHub provenance 中的 slug + 已安装 version。
-fn resolve_clawhub_identity(provenance: &StoredProvenance) -> Result<(String, String), String> {
+/// 解析 社区技能市场 provenance 中的 slug + 已安装 version。
+fn resolve_skill_market_identity(
+    provenance: &StoredProvenance,
+) -> Result<(String, String), String> {
     if let Some(slug) = provenance
-        .clawhub_slug
+        .market_slug
         .as_ref()
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
     {
         let version = provenance
-            .clawhub_version
+            .market_version
             .as_ref()
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .or_else(|| {
-                super::clawhub_client::decode_clawhub_provenance(&provenance.source_detail)
-                    .ok()
-                    .map(|(_, v)| v)
+                super::skill_market_client::decode_skill_market_provenance(
+                    &provenance.source_detail,
+                )
+                .ok()
+                .map(|(_, v)| v)
             })
             .unwrap_or_default();
         return Ok((slug.to_string(), version));
     }
-    super::clawhub_client::decode_clawhub_provenance(&provenance.source_detail)
+    super::skill_market_client::decode_skill_market_provenance(&provenance.source_detail)
 }
 
 /// 重新获取上游的**规范技能包字节**：
 /// - `url` 来源：直接下载 zip
 /// - `tap` 来源：下载仓库 zip 后确定性重打包技能子目录
-/// - `clawhub` 来源：经 ClawHub 下载（含 GitHub handoff）
+/// - `skill_market` 来源：经社区技能市场 下载（含 GitHub handoff）
 async fn refetch_package_bytes(
     fetch: &FetchExecutor,
     provenance: &StoredProvenance,
@@ -168,9 +172,9 @@ async fn refetch_package_bytes(
             .map_err(|e| format!("Repack task failed: {}", e))??;
             Ok((bytes, None))
         }
-        "clawhub" => {
-            let (slug, _installed_version) = resolve_clawhub_identity(provenance)?;
-            let client = super::clawhub_client::ClawHubClient::shared()?;
+        "skill_market" => {
+            let (slug, _installed_version) = resolve_skill_market_identity(provenance)?;
+            let client = super::skill_market_client::SkillMarketClient::shared()?;
             // 先取 latest version，再按该 version 下载
             let remote_version = match client.skill_detail(&slug).await {
                 Ok(detail) if !detail.version.trim().is_empty() => detail.version,
@@ -198,15 +202,15 @@ async fn refetch_package_bytes(
 }
 
 fn is_refetchable_kind(source_kind: &str) -> bool {
-    matches!(source_kind, "url" | "tap" | "clawhub")
+    matches!(source_kind, "url" | "tap" | "skill_market")
 }
 
-async fn check_clawhub_one(
+async fn check_skill_market_one(
     skill_id: String,
     provenance: StoredProvenance,
 ) -> SkillUpdateCheckResult {
     let source_summary = provenance.source_detail.clone();
-    let (slug, installed_version) = match resolve_clawhub_identity(&provenance) {
+    let (slug, installed_version) = match resolve_skill_market_identity(&provenance) {
         Ok(identity) => identity,
         Err(e) => {
             return SkillUpdateCheckResult {
@@ -224,7 +228,7 @@ async fn check_clawhub_one(
         }
     };
 
-    let client = match super::clawhub_client::ClawHubClient::shared() {
+    let client = match super::skill_market_client::SkillMarketClient::shared() {
         Ok(c) => c,
         Err(e) => {
             return SkillUpdateCheckResult {
@@ -245,7 +249,7 @@ async fn check_clawhub_one(
     match client.skill_detail(&slug).await {
         Ok(detail) => {
             let remote_version = detail.version;
-            let outdated = super::clawhub_client::clawhub_version_outdated(
+            let outdated = super::skill_market_client::skill_market_version_outdated(
                 &installed_version,
                 &remote_version,
             );
@@ -255,7 +259,7 @@ async fn check_clawhub_one(
                 update_available: outdated,
                 source_kind: provenance.source_kind,
                 source_summary,
-                // ClawHub 检查只比对 version、不重新下载包：sha 字段保留本地
+                // 社区技能市场 检查只比对 version、不重新下载包：sha 字段保留本地
                 // 真实哈希，remote_sha256 无法得知故为 None；版本漂移在
                 // current_version/remote_version 中表达。
                 current_sha256: provenance.package_sha256,
@@ -290,8 +294,8 @@ async fn check_one(
     provenance: StoredProvenance,
 ) -> SkillUpdateCheckResult {
     let source_summary = provenance.source_detail.clone();
-    if provenance.source_kind == "clawhub" {
-        return check_clawhub_one(skill_id, provenance).await;
+    if provenance.source_kind == "skill_market" {
+        return check_skill_market_one(skill_id, provenance).await;
     }
 
     if !is_refetchable_kind(&provenance.source_kind) {
@@ -435,25 +439,29 @@ async fn skill_update_from_source_impl(
     }
 
     let fetch = FetchExecutor::new();
-    let (bytes, clawhub_remote_version) = refetch_package_bytes(&fetch, &provenance)
+    let (bytes, market_remote_version) = refetch_package_bytes(&fetch, &provenance)
         .await
         .map_err(ChatV2Error::IoError)?;
     let remote_sha256 = sha256_hex(&bytes);
 
-    let clawhub_version_bumped = provenance.source_kind == "clawhub"
-        && clawhub_remote_version
+    let market_version_bumped = provenance.source_kind == "skill_market"
+        && market_remote_version
             .as_ref()
             .map(|remote| {
                 let installed = provenance
-                    .clawhub_version
+                    .market_version
                     .clone()
-                    .or_else(|| resolve_clawhub_identity(&provenance).ok().map(|(_, v)| v))
+                    .or_else(|| {
+                        resolve_skill_market_identity(&provenance)
+                            .ok()
+                            .map(|(_, v)| v)
+                    })
                     .unwrap_or_default();
-                super::clawhub_client::clawhub_version_outdated(&installed, remote)
+                super::skill_market_client::skill_market_version_outdated(&installed, remote)
             })
             .unwrap_or(false);
 
-    if remote_sha256 == provenance.package_sha256 && !clawhub_version_bumped {
+    if remote_sha256 == provenance.package_sha256 && !market_version_bumped {
         return Ok(SkillUpdateApplyResult {
             skill_id,
             updated: false,
@@ -478,18 +486,19 @@ async fn skill_update_from_source_impl(
     let prepared =
         prepare_skill_package_from_zip_bytes(bytes, DEFAULT_AGENT_SKILLS_BASE, true).await?;
 
-    let (source_detail, clawhub_slug, clawhub_version) = if provenance.source_kind == "clawhub" {
-        let (slug, _) = resolve_clawhub_identity(&provenance).map_err(ChatV2Error::InvalidInput)?;
-        let version = clawhub_remote_version
+    let (source_detail, market_slug, market_version) = if provenance.source_kind == "skill_market" {
+        let (slug, _) =
+            resolve_skill_market_identity(&provenance).map_err(ChatV2Error::InvalidInput)?;
+        let version = market_remote_version
             .clone()
             .filter(|v| !v.trim().is_empty())
             .unwrap_or_else(|| {
                 provenance
-                    .clawhub_version
+                    .market_version
                     .clone()
                     .unwrap_or_else(|| "unknown".to_string())
             });
-        let detail = super::clawhub_client::encode_clawhub_provenance(&slug, &version);
+        let detail = super::skill_market_client::encode_skill_market_provenance(&slug, &version);
         (detail, Some(slug), Some(version))
     } else {
         (provenance.source_detail.clone(), None, None)
@@ -504,11 +513,11 @@ async fn skill_update_from_source_impl(
         "sessionId": provenance.session_id,
         "updatedFromSha256": provenance.package_sha256,
     });
-    if let Some(slug) = clawhub_slug {
-        new_provenance["clawhubSlug"] = json!(slug);
+    if let Some(slug) = market_slug {
+        new_provenance["marketSlug"] = json!(slug);
     }
-    if let Some(version) = clawhub_version {
-        new_provenance["clawhubVersion"] = json!(version);
+    if let Some(version) = market_version {
+        new_provenance["marketVersion"] = json!(version);
     }
     let provenance_json = serde_json::to_string_pretty(&new_provenance)
         .map_err(|e| ChatV2Error::IoError(format!("Failed to serialize provenance: {}", e)))?;
@@ -581,48 +590,51 @@ mod tests {
     }
 
     #[test]
-    fn clawhub_provenance_identity_prefers_explicit_fields() {
+    fn skill_market_provenance_identity_prefers_explicit_fields() {
         let provenance = StoredProvenance {
-            source_kind: "clawhub".to_string(),
-            source_detail: "clawhub:old-slug@0.9.0".to_string(),
+            source_kind: "skill_market".to_string(),
+            source_detail: "skill_market:old-slug@0.9.0".to_string(),
             package_sha256: "abc".to_string(),
             risk_level: "low".to_string(),
             installed_at: String::new(),
             session_id: String::new(),
-            clawhub_slug: Some("sonoscli".to_string()),
-            clawhub_version: Some("1.0.0".to_string()),
+            market_slug: Some("sonoscli".to_string()),
+            market_version: Some("1.0.0".to_string()),
         };
-        let (slug, version) = resolve_clawhub_identity(&provenance).expect("identity");
+        let (slug, version) = resolve_skill_market_identity(&provenance).expect("identity");
         assert_eq!(slug, "sonoscli");
         assert_eq!(version, "1.0.0");
     }
 
     #[test]
-    fn clawhub_is_refetchable_kind() {
-        assert!(is_refetchable_kind("clawhub"));
+    fn skill_market_is_refetchable_kind() {
+        assert!(is_refetchable_kind("skill_market"));
         assert!(is_refetchable_kind("url"));
         assert!(!is_refetchable_kind("runtime_path"));
     }
 
     #[test]
-    fn clawhub_provenance_json_roundtrip_keeps_version_fields() {
+    fn skill_market_provenance_json_roundtrip_keeps_version_fields() {
         let raw = r#"{
-            "sourceKind": "clawhub",
-            "sourceDetail": "clawhub:sonoscli@1.0.0",
+            "sourceKind": "skill_market",
+            "sourceDetail": "skill_market:sonoscli@1.0.0",
             "packageSha256": "abc",
             "riskLevel": "low",
             "installedAt": "2026-07-18T00:00:00Z",
             "sessionId": "skills_management",
-            "clawhubSlug": "sonoscli",
-            "clawhubVersion": "1.0.0"
+            "marketSlug": "sonoscli",
+            "marketVersion": "1.0.0"
         }"#;
-        let parsed: StoredProvenance = serde_json::from_str(raw).expect("parse clawhub provenance");
-        assert_eq!(parsed.source_kind, "clawhub");
-        assert_eq!(parsed.clawhub_slug.as_deref(), Some("sonoscli"));
-        assert_eq!(parsed.clawhub_version.as_deref(), Some("1.0.0"));
-        assert!(super::super::clawhub_client::clawhub_version_outdated(
-            parsed.clawhub_version.as_deref().unwrap_or(""),
-            "1.1.0"
-        ));
+        let parsed: StoredProvenance =
+            serde_json::from_str(raw).expect("parse skill market provenance");
+        assert_eq!(parsed.source_kind, "skill_market");
+        assert_eq!(parsed.market_slug.as_deref(), Some("sonoscli"));
+        assert_eq!(parsed.market_version.as_deref(), Some("1.0.0"));
+        assert!(
+            super::super::skill_market_client::skill_market_version_outdated(
+                parsed.market_version.as_deref().unwrap_or(""),
+                "1.1.0"
+            )
+        );
     }
 }

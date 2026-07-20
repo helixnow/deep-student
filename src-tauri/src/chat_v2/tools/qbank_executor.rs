@@ -349,10 +349,7 @@ fn structured_key_content_entries(
 
 /// 校验 structured_data 与 question_type 的匹配性（只校验形状，判分逻辑在 question_bank_service）。
 /// 错误信息面向 LLM：指出具体字段与期望格式。
-fn validate_structured_data(
-    question_type: &RepoQuestionType,
-    data: &Value,
-) -> Result<(), String> {
+fn validate_structured_data(question_type: &RepoQuestionType, data: &Value) -> Result<(), String> {
     if !question_type_supports_structured_data(question_type) {
         return Err(qbank_error(
             "INVALID_ARGS",
@@ -524,10 +521,7 @@ fn validate_structured_data(
                         r#"格式：{"items":[{"key","content"}],"correct_order":["K2","K1",...]}，correct_order 必须是 items key 的一个排列"#,
                     )
                 })?;
-            let order_keys: Vec<&str> = correct_order
-                .iter()
-                .filter_map(Value::as_str)
-                .collect();
+            let order_keys: Vec<&str> = correct_order.iter().filter_map(Value::as_str).collect();
             if order_keys.len() != correct_order.len() {
                 return Err(qbank_error(
                     "INVALID_ARGS",
@@ -579,9 +573,7 @@ fn validate_structured_data(
                 }
             }
             if let Some(unit) = object.get("unit") {
-                let valid = unit
-                    .as_str()
-                    .is_some_and(|text| text.chars().count() <= 50);
+                let valid = unit.as_str().is_some_and(|text| text.chars().count() <= 50);
                 if !valid {
                     return Err(qbank_error(
                         "INVALID_ARGS",
@@ -2395,7 +2387,8 @@ impl QBankExecutor {
             }
         }
 
-        let (page, page_size, start, end) = Self::page_bounds(&call.arguments, source_hashes.len())?;
+        let (page, page_size, start, end) =
+            Self::page_bounds(&call.arguments, source_hashes.len())?;
         let images: Vec<Value> = source_hashes[start..end]
             .iter()
             .enumerate()
@@ -2523,10 +2516,10 @@ impl QBankExecutor {
         // 容错：模型直接传 JSON 数组/对象/数字/布尔时按规范序列化为字符串透传。
         let user_answer: String = match call.arguments.get("user_answer") {
             Some(Value::String(text)) => text.clone(),
-            Some(value @ (Value::Array(_) | Value::Object(_) | Value::Number(_) | Value::Bool(_))) => {
-                serde_json::to_string(value)
-                    .map_err(|error| format!("user_answer 序列化失败: {error}"))?
-            }
+            Some(
+                value @ (Value::Array(_) | Value::Object(_) | Value::Number(_) | Value::Bool(_)),
+            ) => serde_json::to_string(value)
+                .map_err(|error| format!("user_answer 序列化失败: {error}"))?,
             _ => return Err("Missing 'user_answer' parameter".to_string()),
         };
         let user_answer = user_answer.as_str();
@@ -2842,13 +2835,10 @@ impl QBankExecutor {
         // structured_data 与最终题型的匹配校验：
         // 切换到 matching/ordering/numeric 时必须同调用携带对应格式的 structured_data，
         // 否则新题型没有可判分的数据结构。
-        let switching_to_structured_type = params
-            .question_type
-            .as_ref()
-            .is_some_and(|next_type| {
-                question_type_requires_structured_data(next_type)
-                    && *next_type != question.question_type
-            });
+        let switching_to_structured_type = params.question_type.as_ref().is_some_and(|next_type| {
+            question_type_requires_structured_data(next_type)
+                && *next_type != question.question_type
+        });
         params.structured_data = parse_structured_data_arg(
             &call.arguments,
             &final_question_type,
@@ -4808,9 +4798,7 @@ impl ToolExecutor for QBankExecutor {
             "qbank_toggle_bookmark" => self.execute_toggle_bookmark(call, ctx).await,
             "qbank_get_submissions" => self.execute_get_submissions(call, ctx).await,
             "qbank_get_question_history" => self.execute_get_question_history(call, ctx).await,
-            "qbank_batch_update_questions" => {
-                self.execute_batch_update_questions(call, ctx).await
-            }
+            "qbank_batch_update_questions" => self.execute_batch_update_questions(call, ctx).await,
             "qbank_list_source_images" => self.execute_list_source_images(call, ctx).await,
             "qbank_search_questions" => self.execute_search_questions(call, ctx).await,
             "qbank_submit_answer" => self.execute_submit_answer(call, ctx).await,

@@ -9,7 +9,9 @@ use tauri::Manager;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::shell_sandbox::{PlatformSandboxBackend, SandboxBackend, SandboxCapability};
 use super::strip_tool_namespace;
-use crate::chat_v2::approval_scope::{analyze_shell_command, redact_shell_command_for_display};
+use crate::chat_v2::approval_scope::{
+    analyze_shell_command, redact_shell_command_for_display, redact_tool_arguments_for_display,
+};
 use crate::chat_v2::context::local_shell_contract_for_platform;
 use crate::chat_v2::runtime_roots::{
     explicit_runtime_root_id_from_args, normalize_runtime_relative_path,
@@ -47,12 +49,15 @@ impl LocalShellPreflightExecutor {
     }
 
     fn root_json(root: &RuntimeRoot) -> Value {
-        serde_json::to_value(root).unwrap_or_else(|_| {
-            json!({
-                "id": root.id,
-                "label": root.label,
-                "path": root.path.to_string_lossy(),
-            })
+        json!({
+            "id": root.id,
+            "kind": root.kind,
+            "access": root.access,
+            "label": root.label,
+            "description": root.description,
+            "sessionScoped": root.session_scoped,
+            "configured": root.configured,
+            "path": format!("runtime-root://{}", root.id),
         })
     }
 
@@ -452,8 +457,9 @@ impl ToolExecutor for LocalShellPreflightExecutor {
         ctx: &ExecutionContext,
     ) -> Result<ToolResultInfo, String> {
         let start = Instant::now();
+        let redacted_arguments = redact_tool_arguments_for_display(&call.name, &call.arguments);
 
-        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
+        ctx.emit_tool_call_start(&call.name, redacted_arguments.clone(), Some(&call.id));
 
         let result = self.execute_preflight(&call.arguments, ctx).await;
         let duration_ms = start.elapsed().as_millis() as u64;
@@ -468,7 +474,7 @@ impl ToolExecutor for LocalShellPreflightExecutor {
                     Some(call.id.clone()),
                     Some(ctx.block_id.clone()),
                     call.name.clone(),
-                    call.arguments.clone(),
+                    redacted_arguments.clone(),
                     output,
                     duration_ms,
                 );
@@ -486,7 +492,7 @@ impl ToolExecutor for LocalShellPreflightExecutor {
                     Some(call.id.clone()),
                     Some(ctx.block_id.clone()),
                     call.name.clone(),
-                    call.arguments.clone(),
+                    redacted_arguments,
                     error,
                     duration_ms,
                 );
@@ -639,6 +645,32 @@ mod tests {
         assert_eq!(
             LocalShellPreflightExecutor::sha256_hex(&analysis.trimmed),
             LocalShellPreflightExecutor::sha256_hex(command)
+        );
+    }
+
+    #[test]
+    fn preflight_tool_arguments_cross_audit_boundaries_redacted() {
+        let arguments = json!({
+            "command": "curl --token raw-command-secret https://example.test",
+            "env": {
+                "MODE": "raw-env-secret"
+            },
+            "inherit_env": false,
+        });
+
+        let redacted =
+            redact_tool_arguments_for_display("builtin-local_shell_preflight", &arguments);
+
+        assert!(!redacted.to_string().contains("raw-command-secret"));
+        assert!(!redacted.to_string().contains("raw-env-secret"));
+        assert_eq!(
+            redacted.get("env").and_then(|env| env.get("MODE")),
+            Some(&Value::String("[REDACTED]".to_string()))
+        );
+        assert_eq!(
+            arguments.get("command").and_then(Value::as_str),
+            Some("curl --token raw-command-secret https://example.test"),
+            "execution analysis must continue to receive the original arguments"
         );
     }
 }

@@ -7,6 +7,7 @@ use tauri::{Emitter, Manager};
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
+use super::subagent_executor::build_profile_skill_snapshot;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::chat_v2::workspace::{
     AgentProfileResolver, AgentProfileSelection, AgentRole, AgentStatus, DocumentType, MessageType,
@@ -202,6 +203,20 @@ impl WorkspaceToolExecutor {
 
         // 推荐模型：由前端在调用 runAgent 时通过 model_id 参数传递
         let recommended_models: Vec<String> = vec![];
+        let worker_profile = if is_worker {
+            Some(AgentProfileResolver::resolve(AgentProfileSelection {
+                skill_id: skill_id.clone(),
+                ..Default::default()
+            })?)
+        } else {
+            None
+        };
+        let profile_skill_contents = match worker_profile.as_ref() {
+            Some(profile) => {
+                build_profile_skill_snapshot(&profile.skills, ctx.skill_contents.as_ref())?
+            }
+            None => std::collections::HashMap::new(),
+        };
 
         // 创建会话记录
         use crate::chat_v2::repo::ChatV2Repo;
@@ -224,6 +239,12 @@ impl WorkspaceToolExecutor {
             object.insert("parent_session_id".into(), json!(ctx.session_id));
             object.insert("is_subagent".into(), json!(true));
             object.insert("subagent_depth".into(), json!(creator_depth + 1));
+            if !profile_skill_contents.is_empty() {
+                object.insert(
+                    "profile_skill_contents".into(),
+                    json!(profile_skill_contents),
+                );
+            }
         }
 
         let now = chrono::Utc::now();
@@ -257,11 +278,12 @@ impl WorkspaceToolExecutor {
         // 🆕 Worker 持久化解析后的 AgentProfile（契约 C2：legacy skill 自动映射
         // worker profile），供 run_workspace_agent_backend 运行时消费。
         let agent_metadata = if is_worker {
-            let profile = AgentProfileResolver::resolve(AgentProfileSelection {
-                skill_id: skill_id.clone(),
-                ..Default::default()
-            })?;
-            Some(AgentProfileResolver::persist_into_metadata(None, &profile))
+            Some(AgentProfileResolver::persist_into_metadata(
+                None,
+                worker_profile
+                    .as_ref()
+                    .expect("worker profile was resolved before session creation"),
+            ))
         } else {
             None
         };

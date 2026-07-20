@@ -254,6 +254,8 @@ pub struct ExecutionContext {
     pub skill_contents: Option<std::collections::HashMap<String, String>>,
     /// 技能嵌入工具映射（skillId -> embedded tools）
     pub skill_embedded_tools: Option<std::collections::HashMap<String, Vec<McpToolSchema>>>,
+    /// 技能运行时准入拒绝原因（skillId -> reason）
+    pub skill_admission_errors: Option<std::collections::HashMap<String, String>>,
     /// Skill package roots exposed as read-only `skill:<skillId>` runtime roots.
     pub skill_package_roots: Option<std::collections::HashMap<String, String>>,
     /// 后端受限运行时的工具执行白名单；普通对话为 None。
@@ -308,6 +310,7 @@ impl ExecutionContext {
             question_bank_service: None,
             skill_contents: None,
             skill_embedded_tools: None,
+            skill_admission_errors: None,
             skill_package_roots: None,
             execution_allowed_tools: None,
             cancellation_token: None,
@@ -378,6 +381,7 @@ impl ExecutionContext {
             question_bank_service: self.question_bank_service.clone(),
             skill_contents: self.skill_contents.clone(),
             skill_embedded_tools: self.skill_embedded_tools.clone(),
+            skill_admission_errors: self.skill_admission_errors.clone(),
             skill_package_roots: self.skill_package_roots.clone(),
             execution_allowed_tools: self.execution_allowed_tools.clone(),
             cancellation_token: Some(token),

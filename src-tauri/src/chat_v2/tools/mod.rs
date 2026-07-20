@@ -73,9 +73,9 @@ pub mod mcp_content_materializer; // External MCP image/blob content -> session 
 pub mod mcp_manage_executor; // 🆕 MCP server 修改/启停/删除执行器（update/remove High，set_enabled Medium）
 pub mod mcp_propose_executor; // 🆕 MCP server 提案执行器（High 敏感度，secure store 写入）
 pub mod mcp_settings_store; // MCP tools.list secure 读写 helper
-pub mod notes_import_executor; // 🆕 笔记库 zip 导入执行器（staged zip → NotesImporter）
 pub mod media_executor; // Managed attachment audio transcription
 pub mod memory_executor;
+pub mod notes_import_executor; // 🆕 笔记库 zip 导入执行器（staged zip → NotesImporter）
 pub mod office_fidelity_executor; // Read-only OOXML/PDF fidelity inventory and completion gate
 pub mod office_output; // Shared VFS/workspace delivery for generated OOXML files
 pub mod paper_save_executor; // 🆕 论文保存+引用格式化工具执行器

@@ -8,18 +8,20 @@
 //! - `mcp_server_set_enabled`（Medium，可 remember，scope 绑定 server + 启停方向）：
 //!   启用/停用已有 server。启用前校验 env 占位符已填完（fail-closed）。
 //! - `mcp_server_remove`（High，必审批、never-remember）：删除 server 配置。
-//!   参数必须携带 `expected_transport`（来自 self_inspect 的 mcp 段），审批卡与
-//!   执行期都据此展示/复核 transport 摘要，防止凭名字误删。
+//!   参数必须携带 `expected_transport` 与 `expected_entry_revision`（来自
+//!   self_inspect 的 mcp 段），审批卡与执行期都复核目标版本。
 //!
 //! 三个工具写入成功后经 `emit_mcp_list_changed` 通知前端重载 MCP 连接
 //! （settings_changed 域事件 → systemSettingsChanged → bootstrapMcpFromSettings）。
 //! 读→改→写 全程持 `mcp_list_mutation_guard` 进程内锁（不跨 await）。
 
+use std::sync::OnceLock;
 use std::time::Instant;
 
 use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
 use tauri::Manager;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
@@ -53,11 +55,31 @@ const UPDATE_ALLOWED_KEYS: &[&str] = &[
     "reason",
 ];
 const SET_ENABLED_ALLOWED_KEYS: &[&str] = &["server_id", "enabled", "reason"];
-const REMOVE_ALLOWED_KEYS: &[&str] = &["server_id", "expected_transport", "reason"];
+const REMOVE_ALLOWED_KEYS: &[&str] = &[
+    "server_id",
+    "expected_transport",
+    "expected_entry_revision",
+    "reason",
+];
 
 /// manage 侧审计记录键前缀（与 propose 的 `mcp.propose.provenance.` 并存）
 const MANAGE_PROVENANCE_PREFIX: &str = "mcp.manage.provenance.";
 const PROPOSE_PROVENANCE_PREFIX: &str = "mcp.propose.provenance.";
+static MCP_ENTRY_REVISION_KEY: OnceLock<[u8; 32]> = OnceLock::new();
+
+pub(super) fn mcp_entry_revision(entry: &Value) -> String {
+    let encoded = serde_json::to_vec(entry).unwrap_or_default();
+    let key = MCP_ENTRY_REVISION_KEY.get_or_init(|| {
+        let mut value = [0u8; 32];
+        value[..16].copy_from_slice(uuid::Uuid::new_v4().as_bytes());
+        value[16..].copy_from_slice(uuid::Uuid::new_v4().as_bytes());
+        value
+    });
+    let mut hasher = Sha256::new();
+    hasher.update(key);
+    hasher.update(encoded);
+    hex::encode(hasher.finalize())
+}
 
 #[derive(Debug, Clone, Default)]
 struct UpdateInput {
@@ -71,6 +93,7 @@ struct UpdateInput {
 }
 
 /// apply_update 的结果：更新后的 entry + 决策摘要
+#[derive(Debug)]
 struct UpdateOutcome {
     entry: Value,
     transport: McpTransport,
@@ -169,21 +192,53 @@ impl McpManageExecutor {
 
     fn entry_enabled(entry: &Value) -> bool {
         // 存量条目缺省视为启用（与前端 toServerConfigs / Settings 兼容口径一致）
-        entry.get("enabled").and_then(Value::as_bool).unwrap_or(true)
+        entry
+            .get("enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(true)
     }
 
-    /// 先精确匹配 id，再按 name（忽略大小写）匹配，避免同名歧义时误改别的条目
-    fn find_server_index(list: &[Value], server_id: &str) -> Option<usize> {
+    /// 先精确匹配 stable id，再按 name（忽略大小写）匹配。
+    ///
+    /// 任一层出现多个候选都 fail-closed，避免旧数据中重复 identity/name
+    /// 导致修改或删除错误目标。
+    fn find_server_index(list: &[Value], server_id: &str) -> Result<Option<usize>, String> {
         let needle = server_id.trim();
-        list.iter()
-            .position(|e| Self::entry_id(e) == Some(needle))
-            .or_else(|| {
-                list.iter().position(|e| {
-                    Self::entry_name(e)
-                        .map(|n| n.eq_ignore_ascii_case(needle))
-                        .unwrap_or(false)
-                })
+        let id_matches: Vec<usize> = list
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                (Self::entry_id(entry) == Some(needle)).then_some(index)
             })
+            .collect();
+        match id_matches.as_slice() {
+            [index] => return Ok(Some(*index)),
+            [] => {}
+            _ => {
+                return Err(format!(
+                    "MCP server identity '{}' is ambiguous: multiple entries share this stable id",
+                    needle
+                ))
+            }
+        }
+
+        let name_matches: Vec<usize> = list
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                Self::entry_name(entry)
+                    .is_some_and(|name| name.eq_ignore_ascii_case(needle))
+                    .then_some(index)
+            })
+            .collect();
+        match name_matches.as_slice() {
+            [] => Ok(None),
+            [index] => Ok(Some(*index)),
+            _ => Err(format!(
+                "MCP server name '{}' is ambiguous. Re-run self_inspect and address the duplicate stable ids before retrying.",
+                needle
+            )),
+        }
     }
 
     fn server_not_found(server_id: &str) -> String {
@@ -266,6 +321,47 @@ impl McpManageExecutor {
             &serialized,
         )
         .map_err(|e| format!("failed to write provenance: {}", e))
+    }
+
+    fn provenance_cleanup_keys(entry_id: &str, entry_name: &str) -> Vec<String> {
+        let mut keys = std::collections::HashSet::from([
+            format!("{}{}", PROPOSE_PROVENANCE_PREFIX, entry_id),
+            format!("{}{}", MANAGE_PROVENANCE_PREFIX, entry_id),
+        ]);
+        // Compatibility with legacy propose provenance anchored to display name.
+        keys.insert(format!("{}{}", PROPOSE_PROVENANCE_PREFIX, entry_name));
+        let mut keys: Vec<String> = keys.into_iter().collect();
+        keys.sort();
+        keys
+    }
+
+    fn migrate_legacy_propose_provenance(
+        db: &Database,
+        entry_id: &str,
+        legacy_name: &str,
+    ) -> Result<(), String> {
+        let stable_key = format!("{}{}", PROPOSE_PROVENANCE_PREFIX, entry_id);
+        let legacy_key = format!("{}{}", PROPOSE_PROVENANCE_PREFIX, legacy_name);
+        if stable_key == legacy_key {
+            return Ok(());
+        }
+        let Some(payload) = db
+            .get_setting(&legacy_key)
+            .map_err(|error| format!("failed to read legacy provenance: {}", error))?
+        else {
+            return Ok(());
+        };
+        let stable_exists = db
+            .get_setting(&stable_key)
+            .map_err(|error| format!("failed to read stable provenance: {}", error))?
+            .is_some();
+        if !stable_exists {
+            db.save_setting(&stable_key, &payload)
+                .map_err(|error| format!("failed to migrate provenance: {}", error))?;
+        }
+        db.delete_setting(&legacy_key)
+            .map(|_| ())
+            .map_err(|error| format!("failed to delete legacy provenance: {}", error))
     }
 
     // ------------------------------------------------------------------
@@ -417,10 +513,7 @@ impl McpManageExecutor {
                             .and_then(Value::as_str)
                             .map(str::trim)
                             .filter(|v| !v.is_empty());
-                        env.insert(
-                            key.clone(),
-                            json!(kept.unwrap_or(ENV_PLACEHOLDER)),
-                        );
+                        env.insert(key.clone(), json!(kept.unwrap_or(ENV_PLACEHOLDER)));
                     }
                     entry.insert("env".to_string(), Value::Object(env));
                 } else if transport_changed {
@@ -492,7 +585,10 @@ impl McpManageExecutor {
         }
 
         if changed.is_empty() {
-            return Err("No effective change: the provided values match the current configuration".to_string());
+            return Err(
+                "No effective change: the provided values match the current configuration"
+                    .to_string(),
+            );
         }
 
         let updated = Value::Object(entry);
@@ -549,7 +645,7 @@ impl McpManageExecutor {
         let (old_entry, outcome, entry_id) = {
             let _guard = mcp_list_mutation_guard();
             let mut list = Self::with_database(ctx, read_mcp_tools_list)?;
-            let index = Self::find_server_index(&list, &input.server_id)
+            let index = Self::find_server_index(&list, &input.server_id)?
                 .ok_or_else(|| Self::server_not_found(&input.server_id))?;
             if let Some(name) = &input.name {
                 if let Some(conflict) = Self::find_name_conflict(&list, index, name) {
@@ -577,6 +673,16 @@ impl McpManageExecutor {
         }) {
             log::warn!("[McpManageExecutor] provenance write failed: {}", e);
         }
+        if let Some(old_name) = Self::entry_name(&old_entry) {
+            if let Err(error) = Self::with_database(ctx, |db| {
+                Self::migrate_legacy_propose_provenance(db, &entry_id, old_name)
+            }) {
+                log::warn!(
+                    "[McpManageExecutor] legacy proposal provenance migration failed: {}",
+                    error
+                );
+            }
+        }
 
         // 无新增密钥需求且 server 启用中 → 自动连测，失败回滚旧配置
         if outcome.enabled && !outcome.needs_secrets {
@@ -586,25 +692,41 @@ impl McpManageExecutor {
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
             if !success {
-                // 目标条目定点回滚（不整表覆盖，避免吞掉并发变更）
-                {
+                // Compare-and-rollback: restore only if the entry is still the
+                // exact version written by this update. A concurrent edit to
+                // the same id must never be overwritten by a late test failure.
+                let restored_previous = {
                     let _guard = mcp_list_mutation_guard();
                     let mut list = Self::with_database(ctx, read_mcp_tools_list)?;
-                    if let Some(idx) = Self::find_server_index(&list, &entry_id) {
-                        list[idx] = old_entry.clone();
-                        Self::with_database(ctx, |db| write_mcp_tools_list(db, &list))?;
+                    if let Some(idx) = Self::find_server_index(&list, &entry_id)? {
+                        if list[idx] == outcome.entry {
+                            list[idx] = old_entry.clone();
+                            Self::with_database(ctx, |db| write_mcp_tools_list(db, &list))?;
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
                     }
-                }
+                };
                 let error = test_result
                     .get("error")
                     .or_else(|| test_result.get("message"))
                     .and_then(Value::as_str)
                     .map(sanitize_test_error)
                     .unwrap_or_else(|| "connection test failed".to_string());
-                return Err(format!(
-                    "MCP connection test failed after update: {}. The previous configuration has been restored.",
-                    error
-                ));
+                return Err(if restored_previous {
+                    format!(
+                        "MCP connection test failed after update: {}. The previous configuration has been restored.",
+                        error
+                    )
+                } else {
+                    format!(
+                        "MCP connection test failed after update: {}. The entry changed concurrently, so its newer value was preserved instead of rolling it back.",
+                        error
+                    )
+                });
             }
 
             let tools_count = test_result
@@ -671,10 +793,12 @@ impl McpManageExecutor {
         let (entry_id, previous_enabled, summary) = {
             let _guard = mcp_list_mutation_guard();
             let mut list = Self::with_database(ctx, read_mcp_tools_list)?;
-            let index = Self::find_server_index(&list, &server_id)
+            let index = Self::find_server_index(&list, &server_id)?
                 .ok_or_else(|| Self::server_not_found(&server_id))?;
             let entry = &list[index];
-            let entry_id = Self::entry_id(entry).unwrap_or(server_id.as_str()).to_string();
+            let entry_id = Self::entry_id(entry)
+                .unwrap_or(server_id.as_str())
+                .to_string();
             let previous_enabled = Self::entry_enabled(entry);
 
             if enabled {
@@ -722,11 +846,20 @@ impl McpManageExecutor {
         let expected_transport_raw =
             McpProposeExecutor::parse_required_string(args, "expected_transport")?;
         let expected_transport = McpTransport::parse(&expected_transport_raw)?;
+        let expected_entry_revision =
+            McpProposeExecutor::parse_required_string(args, "expected_entry_revision")?;
+        if expected_entry_revision.len() != 64
+            || !expected_entry_revision
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err("expected_entry_revision must be a 64-character SHA-256 hex string".into());
+        }
 
         let (entry_id, entry_name, transport_raw, summary) = {
             let _guard = mcp_list_mutation_guard();
             let mut list = Self::with_database(ctx, read_mcp_tools_list)?;
-            let index = Self::find_server_index(&list, &server_id)
+            let index = Self::find_server_index(&list, &server_id)?
                 .ok_or_else(|| Self::server_not_found(&server_id))?;
             let entry = &list[index];
 
@@ -741,9 +874,20 @@ impl McpManageExecutor {
                     expected_transport_raw, actual_raw, server_id
                 ));
             }
+            let actual_entry_revision = mcp_entry_revision(entry);
+            if !actual_entry_revision.eq_ignore_ascii_case(&expected_entry_revision) {
+                return Err(format!(
+                    "MCP server '{}' changed after removal approval. Re-run self_inspect (section=mcp) and retry with the current entry_revision.",
+                    server_id
+                ));
+            }
 
-            let entry_id = Self::entry_id(entry).unwrap_or(server_id.as_str()).to_string();
-            let entry_name = Self::entry_name(entry).unwrap_or(entry_id.as_str()).to_string();
+            let entry_id = Self::entry_id(entry)
+                .unwrap_or(server_id.as_str())
+                .to_string();
+            let entry_name = Self::entry_name(entry)
+                .unwrap_or(entry_id.as_str())
+                .to_string();
             let summary = Self::entry_summary(entry);
             list.remove(index);
             Self::with_database(ctx, |db| write_mcp_tools_list(db, &list))?;
@@ -754,10 +898,9 @@ impl McpManageExecutor {
         let mut cleanup_warnings: Vec<String> = Vec::new();
         let cleanup = Self::with_database(ctx, |db| {
             let mut warnings = Vec::new();
-            for key in [
-                format!("{}{}", PROPOSE_PROVENANCE_PREFIX, entry_name),
-                format!("{}{}", MANAGE_PROVENANCE_PREFIX, entry_id),
-            ] {
+            // Current provenance is anchored to stable id. Also remove the
+            // display-name key for compatibility with pre-migration records.
+            for key in Self::provenance_cleanup_keys(&entry_id, &entry_name) {
                 if let Err(e) = db.delete_setting(&key) {
                     warnings.push(format!("failed to delete provenance '{}': {}", key, e));
                 }
@@ -775,6 +918,7 @@ impl McpManageExecutor {
             "server_id": entry_id,
             "name": entry_name,
             "transport": transport_raw,
+            "entry_revision": expected_entry_revision,
             "server": summary,
             "message": "MCP server configuration removed. The frontend MCP client will drop the connection; this cannot be undone (filled env values are deleted with the entry).",
             "settings_key": MCP_TOOLS_LIST_KEY,
@@ -960,8 +1104,8 @@ mod tests {
         .unwrap_err();
         assert!(err.contains("Unknown field"));
 
-        let err = McpManageExecutor::parse_update_input(&json!({ "server_id": "brave" }))
-            .unwrap_err();
+        let err =
+            McpManageExecutor::parse_update_input(&json!({ "server_id": "brave" })).unwrap_err();
         assert!(err.contains("At least one field"));
     }
 
@@ -992,7 +1136,10 @@ mod tests {
             Some("user-filled-secret")
         );
         assert_eq!(
-            outcome.entry.pointer("/env/NEW_VAR").and_then(Value::as_str),
+            outcome
+                .entry
+                .pointer("/env/NEW_VAR")
+                .and_then(Value::as_str),
             Some(ENV_PLACEHOLDER)
         );
         assert!(outcome.needs_secrets);
@@ -1037,10 +1184,7 @@ mod tests {
         assert!(outcome.entry.get("command").is_none());
         assert!(outcome.entry.get("env").is_none());
         assert_eq!(
-            outcome
-                .entry
-                .get("transportType")
-                .and_then(Value::as_str),
+            outcome.entry.get("transportType").and_then(Value::as_str),
             Some("sse")
         );
         assert_eq!(
@@ -1085,12 +1229,33 @@ mod tests {
             json!({ "id": "a", "name": "Alpha" }),
             json!({ "id": "b", "name": "beta" }),
         ];
-        assert_eq!(McpManageExecutor::find_server_index(&list, "b"), Some(1));
         assert_eq!(
-            McpManageExecutor::find_server_index(&list, "ALPHA"),
+            McpManageExecutor::find_server_index(&list, "b").unwrap(),
+            Some(1)
+        );
+        assert_eq!(
+            McpManageExecutor::find_server_index(&list, "ALPHA").unwrap(),
             Some(0)
         );
-        assert_eq!(McpManageExecutor::find_server_index(&list, "gamma"), None);
+        assert_eq!(
+            McpManageExecutor::find_server_index(&list, "gamma").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn find_server_index_rejects_ambiguous_legacy_identity_or_name() {
+        let duplicate_ids = vec![
+            json!({ "id": "same", "name": "one" }),
+            json!({ "id": "same", "name": "two" }),
+        ];
+        assert!(McpManageExecutor::find_server_index(&duplicate_ids, "same").is_err());
+
+        let duplicate_names = vec![
+            json!({ "id": "a", "name": "Same" }),
+            json!({ "id": "b", "name": "same" }),
+        ];
+        assert!(McpManageExecutor::find_server_index(&duplicate_names, "SAME").is_err());
     }
 
     #[test]
@@ -1114,7 +1279,18 @@ mod tests {
         });
         let mut missing = McpManageExecutor::missing_env_vars(&entry);
         missing.sort();
-        assert_eq!(missing, vec!["EMPTY".to_string(), "PLACEHOLDER".to_string()]);
+        assert_eq!(
+            missing,
+            vec!["EMPTY".to_string(), "PLACEHOLDER".to_string()]
+        );
+    }
+
+    #[test]
+    fn renamed_server_cleanup_keeps_stable_id_provenance_key() {
+        let keys = McpManageExecutor::provenance_cleanup_keys("old-stable-id", "new-display-name");
+        assert!(keys.contains(&"mcp.propose.provenance.old-stable-id".to_string()));
+        assert!(keys.contains(&"mcp.propose.provenance.new-display-name".to_string()));
+        assert!(keys.contains(&"mcp.manage.provenance.old-stable-id".to_string()));
     }
 
     #[test]

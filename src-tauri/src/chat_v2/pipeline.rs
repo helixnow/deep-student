@@ -115,9 +115,7 @@ pub(crate) use variant_adapter::*;
 /// - 无全局 AppHandle（集成测试 / headless 环境）
 /// - 启动时 VfsLanceStore 初始化失败（lib.rs 已降级，不 manage）
 /// - `vfs_db` 与托管实例不一致
-pub(crate) fn managed_vfs_lance_store_for(
-    vfs_db: &Arc<VfsDatabase>,
-) -> Option<Arc<VfsLanceStore>> {
+pub(crate) fn managed_vfs_lance_store_for(vfs_db: &Arc<VfsDatabase>) -> Option<Arc<VfsLanceStore>> {
     use tauri::Manager;
     let app_handle = crate::get_global_app_handle()?;
     let managed_db = app_handle.try_state::<Arc<VfsDatabase>>()?;
@@ -321,8 +319,8 @@ impl ChatV2Pipeline {
             super::tools::skill_install_executor::SkillInstallExecutor::new(),
         )); // 🆕 skill_scan / skill_install 技能包自装（High 安装必审批 + provenance）
         executors.push(Arc::new(
-            super::clawhub_client::ClawHubReadToolExecutor::new(),
-        )); // 🆕 clawhub_search / clawhub_skill_detail 只读市场工具（写操作仍走 UI/确认）
+            super::skill_market_client::SkillMarketReadToolExecutor::new(),
+        )); // 🆕 skill_market_search / skill_market_skill_detail 只读市场工具（写操作仍走 UI/确认）
         executors.push(Arc::new(
             super::tools::skill_workshop_executor::SkillWorkshopExecutor::new(),
         )); // 🆕 skill_workshop_propose / skill_workshop_apply 提案式自建/自改技能
@@ -1013,8 +1011,7 @@ impl ChatV2Pipeline {
                         e
                     );
                     ctx.needs_compaction = false;
-                    emitter
-                        .emit_compaction_failed(CompactionSkipReason::InternalError.as_code());
+                    emitter.emit_compaction_failed(CompactionSkipReason::InternalError.as_code());
                 }
             }
         }
@@ -1126,21 +1123,21 @@ mod tests {
     }
 
     #[test]
-    fn test_clawhub_read_tools_registered_before_general_executor() {
+    fn test_skill_market_read_tools_registered_before_general_executor() {
         let registry = ChatV2Pipeline::create_executor_registry();
         let search = registry
-            .get_executor("builtin-clawhub_search")
-            .expect("builtin-clawhub_search must have a registered executor");
-        assert_eq!(search.name(), "ClawHubReadToolExecutor");
+            .get_executor("builtin-skill_market_search")
+            .expect("builtin-skill_market_search must have a registered executor");
+        assert_eq!(search.name(), "SkillMarketReadToolExecutor");
         let detail = registry
-            .get_executor("builtin-clawhub_skill_detail")
-            .expect("builtin-clawhub_skill_detail must have a registered executor");
-        assert_eq!(detail.name(), "ClawHubReadToolExecutor");
+            .get_executor("builtin-skill_market_skill_detail")
+            .expect("builtin-skill_market_skill_detail must have a registered executor");
+        assert_eq!(detail.name(), "SkillMarketReadToolExecutor");
         // 写操作不得由只读执行器承接
         let download = registry
-            .get_executor("builtin-clawhub_download_and_scan")
+            .get_executor("builtin-skill_market_download_and_scan")
             .expect("fallback executor");
-        assert_ne!(download.name(), "ClawHubReadToolExecutor");
+        assert_ne!(download.name(), "SkillMarketReadToolExecutor");
     }
 
     #[test]

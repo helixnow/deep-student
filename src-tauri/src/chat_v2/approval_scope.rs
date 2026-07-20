@@ -930,29 +930,28 @@ fn make_skill_lifecycle_approval_scope(
     let (tool_source, short_tool_name) = tool_source_namespace(tool_name, args);
     let skill_id = extract_str_field(args, &["skill_id", "skillId"])?;
 
-    let (approval_identity, source_summary, sha_prefix, declared_risk) =
-        if short == "skill_trust_request" {
-            // inspect（Low）不会走审批；grant 必须携带 inspect 返回的整包指纹
-            let expected_sha256 = extract_str_field(
-                args,
-                &["expected_package_sha256", "expectedPackageSha256"],
-            )?;
-            let declared_risk = extract_str_field(args, &["declared_risk_level", "declaredRiskLevel"])
-                .unwrap_or_else(|| "low".to_string());
-            let reason_summary = extract_str_field(args, &["reason"])
-                .map(|reason| reason.chars().take(120).collect::<String>());
-            let identity = format!("trust:{}:{}:{}", skill_id, expected_sha256, declared_risk);
-            let prefix: String = expected_sha256.chars().take(12).collect();
-            (identity, reason_summary, Some(prefix), Some(declared_risk))
-        } else {
-            let identity = format!("remove:{}", skill_id);
-            let summary = format!(
-                "{}/{}",
-                crate::chat_v2::skills::DEFAULT_AGENT_SKILLS_BASE,
-                skill_id
-            );
-            (identity, Some(summary), None, None)
-        };
+    let (approval_identity, source_summary, sha_prefix, declared_risk) = if short
+        == "skill_trust_request"
+    {
+        // inspect（Low）不会走审批；grant 必须携带 inspect 返回的整包指纹
+        let expected_sha256 =
+            extract_str_field(args, &["expected_package_sha256", "expectedPackageSha256"])?;
+        let declared_risk = extract_str_field(args, &["declared_risk_level", "declaredRiskLevel"])
+            .unwrap_or_else(|| "low".to_string());
+        let reason_summary = extract_str_field(args, &["reason"])
+            .map(|reason| reason.chars().take(120).collect::<String>());
+        let identity = format!("trust:{}:{}:{}", skill_id, expected_sha256, declared_risk);
+        let prefix: String = expected_sha256.chars().take(12).collect();
+        (identity, reason_summary, Some(prefix), Some(declared_risk))
+    } else {
+        let identity = format!("remove:{}", skill_id);
+        let summary = format!(
+            "{}/{}",
+            crate::chat_v2::skills::DEFAULT_AGENT_SKILLS_BASE,
+            skill_id
+        );
+        (identity, Some(summary), None, None)
+    };
 
     Some(RuntimeApprovalScope {
         kind: "skill_lifecycle".to_string(),
@@ -1035,11 +1034,14 @@ fn make_custom_agent_approval_scope(
         let prefix: String = content_sha256.chars().take(12).collect();
         (identity, Some(summary), Some(prefix))
     } else {
-        let identity = format!("remove:{}", file_name);
+        let content_sha256 =
+            extract_str_field(args, &["expected_content_sha256", "expectedContentSha256"])?;
+        let identity = format!("remove:{}:{}", file_name, content_sha256);
+        let prefix: String = content_sha256.chars().take(12).collect();
         (
             identity,
             Some(format!("workspaces/agents/{}", file_name)),
-            None,
+            Some(prefix),
         )
     };
 
@@ -1109,12 +1111,19 @@ fn make_mcp_manage_approval_scope(
     let (tool_source, short_tool_name) = tool_source_namespace(tool_name, args);
     let server_id = extract_str_field(args, &["server_id", "serverId"])?;
 
-    let (approval_identity, source_summary) = if canonical == "mcp_server_remove" {
+    let (approval_identity, source_summary, revision_prefix) =
+        if canonical == "mcp_server_remove" {
         let expected_transport =
             extract_str_field(args, &["expected_transport", "expectedTransport"])?;
+        let expected_revision =
+            extract_str_field(args, &["expected_entry_revision", "expectedEntryRevision"])?;
         (
-            format!("remove:{}:{}", server_id, expected_transport),
+            format!(
+                "remove:{}:{}:{}",
+                server_id, expected_transport, expected_revision
+            ),
             Some(format!("{} (transport={})", server_id, expected_transport)),
+            Some(expected_revision.chars().take(12).collect::<String>()),
         )
     } else {
         // update：审批绑定完整参数对象（凭据红线由执行器拒 env 字段，
@@ -1132,6 +1141,7 @@ fn make_mcp_manage_approval_scope(
         (
             format!("update:{}:{}", server_id, raw_hash(&encoded)),
             Some(format!("{}: [{}]", server_id, changed_fields.join(", "))),
+            None,
         )
     };
 
@@ -1172,7 +1182,7 @@ fn make_mcp_manage_approval_scope(
         sandbox_enforced: None,
         remember_disabled: Some(true),
         source_summary,
-        expected_sha256_prefix: None,
+        expected_sha256_prefix: revision_prefix,
         declared_risk_level: None,
         skill_id: None,
     })
@@ -1599,10 +1609,8 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
         }
         "skill_trust_request" => {
             let skill_id = extract_str_field(args, &["skill_id", "skillId"]);
-            let package_sha256 = extract_str_field(
-                args,
-                &["expected_package_sha256", "expectedPackageSha256"],
-            );
+            let package_sha256 =
+                extract_str_field(args, &["expected_package_sha256", "expectedPackageSha256"]);
             match (skill_id, package_sha256) {
                 (Some(id), Some(sha)) => Some(format!("skill={}:sha={}", id, sha)),
                 _ => None,
@@ -1631,8 +1639,13 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
         "mcp_server_remove" => {
             let server_id = extract_str_field(args, &["server_id", "serverId"]);
             let transport = extract_str_field(args, &["expected_transport", "expectedTransport"]);
-            match (server_id, transport) {
-                (Some(id), Some(t)) => Some(format!("server={}:transport={}", id, t)),
+            let revision =
+                extract_str_field(args, &["expected_entry_revision", "expectedEntryRevision"]);
+            match (server_id, transport, revision) {
+                (Some(id), Some(t), Some(revision)) => Some(format!(
+                    "server={}:transport={}:revision={}",
+                    id, t, revision
+                )),
                 _ => None,
             }
         }
@@ -1656,7 +1669,13 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
             }
         }
         "custom_agent_remove" => {
-            extract_str_field(args, &["file_name", "fileName"]).map(|file| format!("file={}", file))
+            let file_name = extract_str_field(args, &["file_name", "fileName"]);
+            let content_sha256 =
+                extract_str_field(args, &["expected_content_sha256", "expectedContentSha256"]);
+            match (file_name, content_sha256) {
+                (Some(file), Some(sha)) => Some(format!("file={}:sha={}", file, sha)),
+                _ => None,
+            }
         }
 
         // --- 未知工具：尝试从通用资源字段中保守提取；否则 fallback v1 ---
@@ -3519,9 +3538,9 @@ mod tests {
             "_serverId": "filesystem-staging"
         });
 
-        let k1 = make_runtime_scope_key_v2("mcp_obsidian_append_content", &args1);
-        let k2 = make_runtime_scope_key_v2("mcp_obsidian_append_content", &args2);
-        let k3 = make_runtime_scope_key_v2("mcp_obsidian_append_content", &args_other_server);
+        let k1 = make_runtime_scope_key_v2("mcp_notes_append_content", &args1);
+        let k2 = make_runtime_scope_key_v2("mcp_notes_append_content", &args2);
+        let k3 = make_runtime_scope_key_v2("mcp_notes_append_content", &args_other_server);
 
         assert_eq!(k1, k2, "same MCP path target should ignore content changes");
         assert_ne!(
@@ -3747,8 +3766,9 @@ mod tests {
     fn skill_lifecycle_runtime_scopes_are_never_remember_and_fingerprint_bound() {
         // skill_remove：scope 携带目标技能与安装目录摘要
         let remove_args = json!({ "skill_id": "pdf-tools" });
-        let remove_scope = make_runtime_approval_scope("builtin-skill_remove", &remove_args, "high")
-            .expect("skill_remove scope");
+        let remove_scope =
+            make_runtime_approval_scope("builtin-skill_remove", &remove_args, "high")
+                .expect("skill_remove scope");
         assert_eq!(remove_scope.kind, "skill_lifecycle");
         assert_eq!(remove_scope.remember_disabled, Some(true));
         assert_eq!(remove_scope.skill_id.as_deref(), Some("pdf-tools"));
@@ -3814,29 +3834,35 @@ mod tests {
         // set_enabled 是 Medium、可 remember
         assert!(!never_remember_approval("builtin-mcp_server_set_enabled"));
 
-        // remove：scope 展示 server + transport 摘要
-        let remove_args = json!({ "server_id": "brave", "expected_transport": "stdio" });
+        // remove：scope 展示 server + transport 摘要，并绑定完整条目 revision
+        let remove_args = json!({
+            "server_id": "brave",
+            "expected_transport": "stdio",
+            "expected_entry_revision": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        });
         let remove_scope =
             make_runtime_approval_scope("builtin-mcp_server_remove", &remove_args, "high")
                 .expect("mcp_server_remove scope");
         assert_eq!(remove_scope.kind, "mcp_manage");
         assert_eq!(remove_scope.remember_disabled, Some(true));
-        let summary = remove_scope.source_summary.unwrap();
+        let summary = remove_scope.source_summary.as_deref().unwrap();
         assert!(summary.contains("brave"));
         assert!(summary.contains("stdio"));
         assert_eq!(
             make_runtime_scope_key_v2("builtin-mcp_server_remove", &remove_args).as_deref(),
-            Some("builtin:mcp_server_remove::server=brave:transport=stdio")
+            Some("builtin:mcp_server_remove::server=brave:transport=stdio:revision=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+        );
+        assert_eq!(
+            remove_scope.expected_sha256_prefix.as_deref(),
+            Some("0123456789ab")
         );
         // 缺 transport 摘要时 fail-closed
-        assert!(
-            make_runtime_approval_scope(
-                "builtin-mcp_server_remove",
-                &json!({ "server_id": "brave" }),
-                "high"
-            )
-            .is_none()
-        );
+        assert!(make_runtime_approval_scope(
+            "builtin-mcp_server_remove",
+            &json!({ "server_id": "brave" }),
+            "high"
+        )
+        .is_none());
 
         // update：scope 绑定完整参数对象哈希，摘要列出变更字段
         let update_args = json!({
@@ -3904,8 +3930,11 @@ mod tests {
         )
         .is_none());
 
-        // custom_agent_remove：scope 携带目标文件名
-        let remove_args = json!({ "file_name": "paper-summarizer.md" });
+        // custom_agent_remove：scope 同时绑定目标文件名与审阅内容版本
+        let remove_args = json!({
+            "file_name": "paper-summarizer.md",
+            "expected_content_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        });
         let remove_scope =
             make_runtime_approval_scope("builtin-custom_agent_remove", &remove_args, "high")
                 .expect("custom_agent_remove scope");
@@ -3913,12 +3942,22 @@ mod tests {
         assert_eq!(remove_scope.remember_disabled, Some(true));
         assert!(remove_scope
             .source_summary
+            .as_deref()
             .unwrap()
             .contains("paper-summarizer.md"));
         assert_eq!(
             make_runtime_scope_key_v2("builtin-custom_agent_remove", &remove_args).as_deref(),
-            Some("builtin:custom_agent_remove::file=paper-summarizer.md")
+            Some("builtin:custom_agent_remove::file=paper-summarizer.md:sha=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
         );
+        assert_eq!(
+            remove_scope.expected_sha256_prefix.as_deref(),
+            Some("0123456789ab")
+        );
+        assert!(make_runtime_scope_key_v2(
+            "builtin-custom_agent_remove",
+            &json!({ "file_name": "paper-summarizer.md" })
+        )
+        .is_none());
 
         for tool in ["builtin-custom_agent_apply", "builtin-custom_agent_remove"] {
             assert!(never_remember_approval(tool), "{tool}");
@@ -3941,10 +3980,11 @@ mod tests {
             make_runtime_scope_key_v2("builtin-skill_set_enabled", &disable),
             make_runtime_scope_key_v2("builtin-skill_set_enabled", &enable),
         );
-        assert!(
-            make_runtime_scope_key_v2("builtin-skill_set_enabled", &json!({ "skill_id": "x" }))
-                .is_none()
-        );
+        assert!(make_runtime_scope_key_v2(
+            "builtin-skill_set_enabled",
+            &json!({ "skill_id": "x" })
+        )
+        .is_none());
         assert!(make_runtime_scope_key_v2(
             "builtin-skill_set_enabled",
             &json!({ "enabled": false })

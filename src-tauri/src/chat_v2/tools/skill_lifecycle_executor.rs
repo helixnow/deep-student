@@ -378,7 +378,10 @@ impl SkillLifecycleExecutor {
     // ------------------------------------------------------------------
 
     /// 解析并校验待信任技能包根目录（必须落在允许的技能目录白名单内）。
-    fn trusted_package_root(description: &SkillDescription, skill_id: &str) -> Result<PathBuf, String> {
+    fn trusted_package_root(
+        description: &SkillDescription,
+        skill_id: &str,
+    ) -> Result<PathBuf, String> {
         let package_root = description
             .package_root
             .as_deref()
@@ -459,7 +462,9 @@ impl SkillLifecycleExecutor {
             .get("expected_package_sha256")
             .or_else(|| args.get("expectedPackageSha256"))
             .and_then(Value::as_str)
-            .ok_or("expected_package_sha256 is required (use package_sha256 from action=inspect)")?;
+            .ok_or(
+                "expected_package_sha256 is required (use package_sha256 from action=inspect)",
+            )?;
         let expected_package_sha256 =
             Self::normalize_sha256(expected_package_sha256, "expected_package_sha256")?;
         let declared_risk = args
@@ -573,7 +578,9 @@ impl ToolExecutor for SkillLifecycleExecutor {
         let result = match short {
             tool_names::SKILL_SET_ENABLED => self.execute_set_enabled(&call.arguments, ctx).await,
             tool_names::SKILL_REMOVE => self.execute_remove(&call.arguments, ctx).await,
-            tool_names::SKILL_TRUST_REQUEST => self.execute_trust_request(&call.arguments, ctx).await,
+            tool_names::SKILL_TRUST_REQUEST => {
+                self.execute_trust_request(&call.arguments, ctx).await
+            }
             other => Err(format!("Unsupported skill lifecycle tool: {}", other)),
         };
 

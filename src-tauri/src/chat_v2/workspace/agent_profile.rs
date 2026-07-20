@@ -3,12 +3,12 @@
 //! A profile is resolved before an agent is persisted. `skill_id` remains a
 //! compatibility alias, but never acts as the agent's runtime configuration.
 //!
-//! Profiles are consumed for real by `run_workspace_agent_backend`
-//! (handlers/workspace_handlers.rs): `system_instructions` becomes the worker
-//! system prompt (plus a workspace preamble), `model_id` selects the model, and
-//! `allowed_tools` drives both schema injection (headless read-only schemas)
-//! and the fail-closed execution whitelist. Tool names must therefore match
-//! real executor names (`builtin-*`).
+//! Profiles are consumed by `run_workspace_agent_backend`
+//! (handlers/workspace_handlers.rs): system instructions, exact model id,
+//! reasoning effort, allowed-tool whitelist, and creation-time skill snapshots
+//! all feed the worker `SendOptions`. Custom permission/context-inheritance
+//! declarations are currently rejected by the parser instead of being silently
+//! recorded; the worker's actual permission boundary is the tool whitelist.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -29,6 +29,18 @@ pub enum ReasoningEffort {
     Medium,
     High,
     XHigh,
+}
+
+impl ReasoningEffort {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Minimal => "minimal",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::XHigh => "xhigh",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -234,8 +246,8 @@ impl AgentProfileResolver {
     /// - overrides（model 等）在 custom profile 上同样生效；
     /// - `skill_id` legacy 别名逻辑不变：只有内建 id 能作为别名选中 profile，
     ///   未知值仍作为技能记录挂到选中的 profile 上；
-    /// - 注意：自定义文件的 `skills:` 字段解析后写入 `profile.skills` 仅作
-    ///   记录，运行时**不会**自动加载技能内容（当前限制，防止误导）。
+    /// - 自定义文件的 `skills:` 字段会在 subagent 创建时绑定内容快照；
+    ///   找不到任一技能时创建路径 fail-closed。
     pub fn resolve_with_custom(
         selection: AgentProfileSelection,
         custom_agents_dir: Option<&std::path::Path>,
@@ -378,6 +390,41 @@ impl AgentProfileResolver {
         normalize_ids(&mut profile.skills, "skill")?;
         Ok(())
     }
+}
+
+/// Validate a persona's explicit model against the current runtime catalog.
+///
+/// Persona model references are configuration ids, not display model names.
+/// Keeping this exact makes runtime selection stable when several vendors expose
+/// the same model name and prevents an unavailable local model from silently
+/// resolving to an unrelated cloud configuration.
+pub fn validate_persona_model_config(
+    model_id: &str,
+    configs: &[crate::llm_manager::ApiConfig],
+) -> Result<(), String> {
+    let model_id = model_id.trim();
+    let config = configs
+        .iter()
+        .find(|config| config.id == model_id)
+        .ok_or_else(|| {
+            format!(
+                "PERSONA_MODEL_NOT_FOUND: model configuration id '{}' does not exist",
+                model_id
+            )
+        })?;
+    if !config.enabled {
+        return Err(format!(
+            "PERSONA_MODEL_DISABLED: model configuration '{}' is disabled or has no usable authentication",
+            model_id
+        ));
+    }
+    if config.is_embedding || config.is_reranker || config.is_image_generation {
+        return Err(format!(
+            "PERSONA_MODEL_UNSUPPORTED: model configuration '{}' is not a chat generation model",
+            model_id
+        ));
+    }
+    Ok(())
 }
 
 fn normalize_ids(values: &mut Vec<String>, label: &str) -> Result<(), String> {
@@ -549,7 +596,10 @@ mod tests {
         )
         .unwrap_err();
         for id in ["default", "worker", "explorer", "paper-summarizer"] {
-            assert!(error.contains(id), "error must list available id {id}: {error}");
+            assert!(
+                error.contains(id),
+                "error must list available id {id}: {error}"
+            );
         }
 
         // custom_dir=None 等价原 resolve：仅列内建
@@ -575,5 +625,40 @@ mod tests {
         let runtime = AgentProfileResolver::runtime_config_for_agent(&agent).unwrap();
         assert_eq!(runtime.skill_ids, vec!["research"]);
         assert!(!runtime.allowed_tools.is_empty());
+    }
+
+    #[test]
+    fn persona_model_validation_requires_exact_enabled_generation_config_id() {
+        let enabled = crate::llm_manager::ApiConfig {
+            id: "local-chat".into(),
+            model: "shared-model-name".into(),
+            enabled: true,
+            ..Default::default()
+        };
+        let disabled = crate::llm_manager::ApiConfig {
+            id: "disabled-chat".into(),
+            model: "disabled".into(),
+            enabled: false,
+            ..Default::default()
+        };
+        let embedding = crate::llm_manager::ApiConfig {
+            id: "embedding".into(),
+            model: "embedding".into(),
+            enabled: true,
+            is_embedding: true,
+            ..Default::default()
+        };
+        let configs = vec![enabled, disabled, embedding];
+
+        assert!(validate_persona_model_config("local-chat", &configs).is_ok());
+        assert!(validate_persona_model_config("shared-model-name", &configs)
+            .unwrap_err()
+            .contains("PERSONA_MODEL_NOT_FOUND"));
+        assert!(validate_persona_model_config("disabled-chat", &configs)
+            .unwrap_err()
+            .contains("PERSONA_MODEL_DISABLED"));
+        assert!(validate_persona_model_config("embedding", &configs)
+            .unwrap_err()
+            .contains("PERSONA_MODEL_UNSUPPORTED"));
     }
 }

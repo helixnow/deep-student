@@ -13,8 +13,9 @@ use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::types::{ChatSession, PersistStatus, ToolCall, ToolResultInfo};
 use crate::chat_v2::workspace::config::{MAX_SUBAGENT_DEPTH, SUBAGENT_WAIT_BUDGET_SECS};
 use crate::chat_v2::workspace::{
-    AgentProfileOverride, AgentProfileResolver, AgentProfileSelection, AgentRole, AgentStatus,
-    MessageType, SubagentTaskData, SubagentTaskStatus, WorkspaceCoordinator,
+    agent_profile::validate_persona_model_config, AgentProfileOverride, AgentProfileResolver,
+    AgentProfileSelection, AgentRole, AgentStatus, MessageType, SubagentTaskData,
+    SubagentTaskStatus, WorkspaceCoordinator,
 };
 
 pub const SUBAGENT_TOOL_NAME: &str = "subagent_call";
@@ -99,6 +100,38 @@ fn derive_workspace_name(task: &str) -> String {
     } else {
         name
     }
+}
+
+pub(super) fn build_profile_skill_snapshot(
+    skill_ids: &[String],
+    available: Option<&std::collections::HashMap<String, String>>,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    if skill_ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let available = available.ok_or_else(|| {
+        format!(
+            "Profile requires skills [{}], but the current runtime has no skill content registry",
+            skill_ids.join(", ")
+        )
+    })?;
+    let mut snapshot = std::collections::HashMap::new();
+    let mut missing = Vec::new();
+    for skill_id in skill_ids {
+        match available.get(skill_id) {
+            Some(content) => {
+                snapshot.insert(skill_id.clone(), content.clone());
+            }
+            None => missing.push(skill_id.clone()),
+        }
+    }
+    if !missing.is_empty() {
+        return Err(format!(
+            "Profile skills are unavailable in the current runtime: [{}]. Refusing to create a worker that would silently ignore them.",
+            missing.join(", ")
+        ));
+    }
+    Ok(snapshot)
 }
 
 /// 判断一条收件箱消息是否是本次子代理的运行时完成信封。
@@ -326,7 +359,9 @@ impl SubagentExecutor {
         )?;
 
         // 6. 走既有后端派发
-        let (run, chat_v2_state) = self.dispatch_agent_run(ctx, &workspace_id, resume_id).await?;
+        let (run, chat_v2_state) = self
+            .dispatch_agent_run(ctx, &workspace_id, resume_id)
+            .await?;
         // 幂等分支特征（run_workspace_agent_backend）：目标 agent 正在
         // Running/Queued 且已有活跃流时直接返回 message_id 为空的响应，
         // 消息留在 inbox 由下一轮注入消费——此时新 task 可能长期 pending。
@@ -403,6 +438,22 @@ impl SubagentExecutor {
 
         // 契约 C7：resume_agent_session_id 提供时走续跑路径，跳过创建
         if let Some(resume_id) = args.resume_agent_session_id.clone() {
+            let mut unsupported = Vec::new();
+            if args.profile.is_some() {
+                unsupported.push("profile");
+            }
+            if args.skill_id.is_some() {
+                unsupported.push("skill_id");
+            }
+            if args.model.is_some() {
+                unsupported.push("model");
+            }
+            if !unsupported.is_empty() {
+                return Err(format!(
+                    "resume_agent_session_id reuses the persisted agent profile; [{}] cannot be overridden during resume. Omit these fields or create a new subagent.",
+                    unsupported.join(", ")
+                ));
+            }
             return self.execute_resume_call(&args, &resume_id, ctx).await;
         }
 
@@ -452,6 +503,21 @@ impl SubagentExecutor {
             },
             Some(&self.coordinator.custom_agents_dir()),
         )?;
+        let profile_skill_contents =
+            build_profile_skill_snapshot(&profile.skills, ctx.skill_contents.as_ref())?;
+        if let Some(model_id) = profile.model.as_deref() {
+            let manager = ctx.llm_manager.as_ref().ok_or_else(|| {
+                format!(
+                    "Cannot validate persona model '{}': model catalog is unavailable. Runtime fallback is disabled for explicit persona models.",
+                    model_id
+                )
+            })?;
+            let configs = manager
+                .get_api_configs()
+                .await
+                .map_err(|error| format!("Failed to read model catalog: {}", error))?;
+            validate_persona_model_config(model_id, &configs)?;
+        }
 
         let agent_session_id = format!("subagent_{}_{}", profile.id, ulid::Ulid::new());
         let agent_label = args.skill_id.clone().unwrap_or_else(|| profile.id.clone());
@@ -493,6 +559,16 @@ impl SubagentExecutor {
                 "is_subagent": true,
                 "parent_session_id": ctx.session_id,
                 "subagent_depth": current_depth + 1,
+                // Durable creation-time skill snapshot. The worker runtime consumes
+                // only ids declared by the persisted profile; embedded tools are not
+                // inherited, so a skill cannot widen the profile tool whitelist.
+                "profile_skill_contents": profile_skill_contents,
+                "effective_agent_profile": {
+                    "id": profile.id.clone(),
+                    "model_id": profile.model.clone(),
+                    "reasoning_effort": profile.reasoning_effort.as_ref().map(|effort| effort.as_str()),
+                    "skill_ids": profile.skills.clone(),
+                },
             })),
             group_id: None,
             tags_hash: None,
@@ -1037,6 +1113,29 @@ mod tests {
         let content = build_task_content(&with_ctx);
         assert!(content.starts_with("do it\n\n[Context]\n"));
         assert!(content.contains("\"hint\": 1"));
+    }
+
+    #[test]
+    fn profile_skill_snapshot_is_exact_and_fails_closed_on_missing_content() {
+        let available = std::collections::HashMap::from([
+            ("research".to_string(), "research body".to_string()),
+            ("other".to_string(), "other body".to_string()),
+        ]);
+        let snapshot = build_profile_skill_snapshot(
+            &["research".to_string()],
+            Some(&available),
+        )
+        .unwrap();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot.get("research").map(String::as_str), Some("research body"));
+        assert!(!snapshot.contains_key("other"));
+
+        let error = build_profile_skill_snapshot(
+            &["missing".to_string()],
+            Some(&available),
+        )
+        .unwrap_err();
+        assert!(error.contains("silently ignore"));
     }
 
     #[test]

@@ -187,6 +187,38 @@ fn select_generation_config(
     candidates.first().map(|config| (*config).clone())
 }
 
+fn resolve_strict_requested_model(
+    strict: bool,
+    requested_model_id: Option<&str>,
+    configs: &[ApiConfig],
+    dedicated_ocr_ids: &HashSet<String>,
+) -> Result<Option<ApiConfig>, String> {
+    if !strict {
+        return Ok(None);
+    }
+    let model_id = requested_model_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or("strict model selection requires a non-empty model configuration id")?;
+    let config = configs
+        .iter()
+        .find(|config| config.id == model_id)
+        .cloned()
+        .ok_or_else(|| {
+            format!(
+                "Explicit persona model '{}' is unavailable; refusing to fall back to another model",
+                model_id
+            )
+        })?;
+    if generation_model_kind(&config, dedicated_ocr_ids).is_none() {
+        return Err(format!(
+            "Explicit persona model '{}' is disabled or is not a chat generation model; refusing to fall back",
+            model_id
+        ));
+    }
+    Ok(Some(config))
+}
+
 fn apply_send_overrides(config: &mut ApiConfig, options: &SendOptions) {
     crate::llm_manager::routing::ParamOverrides {
         temperature: options.temperature,
@@ -324,24 +356,34 @@ impl ChatV2Pipeline {
             .get_api_configs()
             .await
             .map_err(|error| ChatV2Error::Llm(error.to_string()))?;
-        // A disabled/deleted override is an input to capability planning, not an early fatal
-        // error. The planner may resolve it to another model of the requested capability or to
-        // the best remaining TM/MM capability.
-        let initially_selected = self
-            .llm_manager
-            .select_model_for(
-                "default",
-                requested_model_id.clone(),
-                ctx.options.temperature,
-                ctx.options.top_p,
-                ctx.options.frequency_penalty,
-                ctx.options.presence_penalty,
-                ctx.options.max_tokens,
-            )
-            .await
-            .ok()
-            .map(|(config, _)| config)
-            .filter(|config| generation_model_kind(config, &dedicated_ocr_ids).is_some());
+        let strict_requested = resolve_strict_requested_model(
+            ctx.options.strict_model_id,
+            requested_model_id.as_deref(),
+            &all_configs,
+            &dedicated_ocr_ids,
+        )
+        .map_err(ChatV2Error::Llm)?;
+        // Ordinary chat overrides may use capability fallback. Persona workers
+        // set strict_model_id, in which case the exact enabled config above is
+        // the only permissible initially selected model.
+        let initially_selected = if let Some(config) = strict_requested.clone() {
+            Some(config)
+        } else {
+            self.llm_manager
+                .select_model_for(
+                    "default",
+                    requested_model_id.clone(),
+                    ctx.options.temperature,
+                    ctx.options.top_p,
+                    ctx.options.frequency_penalty,
+                    ctx.options.presence_penalty,
+                    ctx.options.max_tokens,
+                )
+                .await
+                .ok()
+                .map(|(config, _)| config)
+                .filter(|config| generation_model_kind(config, &dedicated_ocr_ids).is_some())
+        };
 
         let canonical_content = canonical_content_for_freeze(&ctx.canonical_content, || {
             self.build_canonical_current_content(ctx)
@@ -399,6 +441,14 @@ impl ChatV2Pipeline {
             &dedicated_ocr_ids,
         )
         .ok_or_else(|| ChatV2Error::Llm("能力规划未解析到可执行模型".to_string()))?;
+        if let Some(strict) = strict_requested.as_ref() {
+            if active.id != strict.id {
+                return Err(ChatV2Error::Llm(format!(
+                    "Explicit persona model '{}' cannot serve this request; refusing capability fallback to '{}'",
+                    strict.id, active.id
+                )));
+            }
+        }
         apply_send_overrides(&mut active, &ctx.options);
 
         let mut auxiliary_candidates = Vec::new();
@@ -1725,6 +1775,37 @@ mod tests {
             select_generation_config(&configs, None, plan.active_model.unwrap(), &HashSet::new())
                 .unwrap();
         assert_eq!(active.id, "available-mm");
+    }
+
+    #[test]
+    fn strict_persona_model_requires_exact_enabled_config_id() {
+        let configs = vec![
+            model_config("disabled-local", false, false),
+            model_config("available-cloud", true, false),
+        ];
+        let dedicated = HashSet::new();
+
+        let missing =
+            resolve_strict_requested_model(true, Some("missing-local"), &configs, &dedicated)
+                .unwrap_err();
+        assert!(missing.contains("refusing to fall back"));
+
+        let disabled =
+            resolve_strict_requested_model(true, Some("disabled-local"), &configs, &dedicated)
+                .unwrap_err();
+        assert!(disabled.contains("disabled"));
+
+        let exact =
+            resolve_strict_requested_model(true, Some("available-cloud"), &configs, &dedicated)
+                .unwrap()
+                .unwrap();
+        assert_eq!(exact.id, "available-cloud");
+        assert!(
+            resolve_strict_requested_model(false, Some("missing-local"), &configs, &dedicated)
+                .unwrap()
+                .is_none(),
+            "non-persona chat keeps its existing capability fallback behavior"
+        );
     }
 
     #[test]

@@ -258,18 +258,25 @@ impl SelfInspectExecutor {
         json!({
             "available": true,
             "servers": servers,
-            "note": "Only server name, transport type, and enabled flag are exposed; command, args, env, url, headers, and tokens are omitted.",
+            "note": "Only management id, display name, transport, enabled state, stable-id presence, and an opaque entry revision are exposed; command, args, env, url, headers, and tokens are omitted. Legacy rows without ids use their display name as the management selector.",
         })
     }
 
-    /// MCP 字段白名单：只保留 name / transport / enabled。
+    /// MCP 字段白名单：只保留管理 id / name / transport / enabled / opaque revision。
     fn sanitize_mcp_server_entry(entry: &Value) -> Option<Value> {
         let name = entry
             .get("name")
-            .or_else(|| entry.get("id"))
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())?;
+        let stable_id = entry
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        // Legacy rows predate stable ids. Expose the unique display name as a
+        // management selector instead of silently hiding the row.
+        let id = stable_id.unwrap_or(name);
         let transport = entry
             .get("transportType")
             .or_else(|| entry.get("transport"))
@@ -290,9 +297,12 @@ impl SelfInspectExecutor {
             .unwrap_or(true);
 
         Some(json!({
+            "id": id,
             "name": name,
             "transport": transport,
             "enabled": enabled,
+            "has_stable_id": stable_id.is_some(),
+            "entry_revision": super::mcp_manage_executor::mcp_entry_revision(entry),
         }))
     }
 
@@ -333,6 +343,64 @@ impl SelfInspectExecutor {
             "runtime_enabled": runtime_enabled,
             "settings": settings_entries,
             "note": "Only setting key names and configured flags are shown; values are never returned. Keys stored only in secure store may be invisible here.",
+        })
+    }
+
+    fn collect_effective_runtime(
+        ctx: &ExecutionContext,
+        limitations: &mut Vec<String>,
+    ) -> Value {
+        let profile = ctx.chat_v2_db.as_ref().and_then(|db| {
+            let conn = match db.get_conn_safe() {
+                Ok(conn) => conn,
+                Err(_) => {
+                    limitations.push(
+                        "failed to read current session metadata for effective persona".to_string(),
+                    );
+                    return None;
+                }
+            };
+            match ChatV2Repo::get_session_with_conn(&conn, &ctx.session_id) {
+                Ok(Some(session)) => session.metadata.and_then(|metadata| {
+                    let effective = metadata.get("effective_agent_profile")?;
+                    Some(json!({
+                        "id": effective.get("id").and_then(Value::as_str),
+                        "model_id": effective.get("model_id").and_then(Value::as_str),
+                        "reasoning_effort": effective.get("reasoning_effort").and_then(Value::as_str),
+                        "skill_ids": effective.get("skill_ids").and_then(Value::as_array).cloned().unwrap_or_default(),
+                    }))
+                }),
+                Ok(None) => None,
+                Err(_) => {
+                    limitations.push(
+                        "failed to read current session metadata for effective persona".to_string(),
+                    );
+                    None
+                }
+            }
+        });
+
+        json!({
+            "persona": profile,
+            "permissions": {
+                "execution_allowlist_enforced": ctx.execution_allowed_tools.is_some(),
+                "allowed_tool_count": ctx.execution_allowed_tools.as_ref().map(Vec::len),
+                "custom_permission_overrides_supported": false,
+            },
+            "features": {
+                "web_search_enabled": ctx.web_search_enabled,
+                "rag_enabled": ctx.rag_enabled,
+                "memory_enabled": ctx.memory_enabled,
+            },
+            "automations": {
+                "definitions_exposed": false,
+                "note": "Automation definitions and payloads are not part of this session-safe projection.",
+            },
+            "approval": {
+                "policy_details_exposed": false,
+                "fail_closed": true,
+                "note": "Remembered approvals and trust records are intentionally not returned.",
+            },
         })
     }
 
@@ -382,7 +450,13 @@ impl SelfInspectExecutor {
             .includes_search()
             .then(|| Self::collect_search(main_db, ctx.web_search_enabled, &mut limitations));
 
-        let payload = Self::assemble_payload(section, roots, skills, mcp, search, limitations);
+        let effective_runtime = (section == InspectSection::All)
+            .then(|| Self::collect_effective_runtime(ctx, &mut limitations));
+        let mut payload =
+            Self::assemble_payload(section, roots, skills, mcp, search, limitations);
+        if let (Some(runtime), Some(object)) = (effective_runtime, payload.as_object_mut()) {
+            object.insert("effective_runtime".to_string(), runtime);
+        }
         Ok(redact_sensitive_json(payload))
     }
 }
@@ -572,6 +646,10 @@ mod tests {
         });
         let sanitized = SelfInspectExecutor::sanitize_mcp_server_entry(&entry).unwrap();
         assert_eq!(
+            sanitized.get("id").and_then(Value::as_str),
+            Some("brave-search")
+        );
+        assert_eq!(
             sanitized.get("name").and_then(Value::as_str),
             Some("Brave Search")
         );
@@ -583,6 +661,17 @@ mod tests {
             sanitized.get("enabled").and_then(Value::as_bool),
             Some(true)
         );
+        assert_eq!(
+            sanitized.get("has_stable_id").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            sanitized
+                .get("entry_revision")
+                .and_then(Value::as_str)
+                .map(str::len),
+            Some(64)
+        );
         assert!(sanitized.get("command").is_none());
         assert!(sanitized.get("env").is_none());
         assert!(sanitized.get("url").is_none());
@@ -593,6 +682,20 @@ mod tests {
         assert!(!serialized.contains("secret-value"));
         assert!(!serialized.contains("plain-key"));
         assert!(!serialized.contains("Bearer"));
+
+        let legacy = SelfInspectExecutor::sanitize_mcp_server_entry(&json!({
+            "name": "Legacy Server",
+            "transport": "stdio",
+        }))
+        .unwrap();
+        assert_eq!(
+            legacy.get("id").and_then(Value::as_str),
+            Some("Legacy Server")
+        );
+        assert_eq!(
+            legacy.get("has_stable_id").and_then(Value::as_bool),
+            Some(false)
+        );
     }
 
     #[test]

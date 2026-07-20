@@ -1,6 +1,6 @@
-//! ClawHub 技能市场只读客户端（SkillTap 接入）
+//! 社区技能市场只读客户端。
 //!
-//! 公开 API：`https://clawhub.ai/api/v1/*`
+//! 社区技能市场 API。
 //! - search / skills 列表 / skill detail / verify / download
 //! - security-verdicts（批量，供列表徽章）
 //!
@@ -11,7 +11,7 @@
 //! - 下载：zip 直下，或 GitHub handoff JSON → 拉取 archiveUrl → 子目录重打包
 //! - 扫描/安装复用 `install_skill_package_from_zip_bytes` /
 //!   `prepare_skill_package_from_zip_bytes`（与 skill_scan / skill_install 同内核）
-//! - provenance：`sourceKind=clawhub`，`sourceDetail=clawhub:{slug}@{version}`
+//! - provenance：`sourceKind=skill_market`，`sourceDetail=skill_market:{slug}@{version}`
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -32,14 +32,15 @@ use super::skills::{
 use super::tools::skill_install_executor::AGENT_INSTALLED_MARKER;
 use crate::commands::AppState;
 
-const CLAWHUB_BASE: &str = "https://clawhub.ai";
+/// 社区技能市场 API。
+const COMMUNITY_SKILL_MARKET_BASE: &str = "https://clawhub.ai";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 const MAX_429_RETRIES: u32 = 2;
 const DEFAULT_LIMIT: u32 = 24;
 const MAX_LIMIT: u32 = 50;
 const PROVENANCE_SETTINGS_PREFIX: &str = "skill.provenance.";
-const USER_AGENT: &str = "DeepStudent-ClawHub/1.0";
+const USER_AGENT: &str = "DeepStudent-SkillMarket/1.0";
 const TEMP_ARTIFACT_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 // ============================================================================
@@ -55,7 +56,7 @@ pub(crate) struct RawHttpResponse {
 
 /// 可注入的 HTTP 传输层。生产用 reqwest；单测用 MockTransport。
 #[async_trait::async_trait]
-pub(crate) trait ClawHubTransport: Send + Sync {
+pub(crate) trait SkillMarketTransport: Send + Sync {
     async fn send(
         &self,
         method: &str,
@@ -77,7 +78,7 @@ impl ReqwestTransport {
                 if attempt.previous().len() >= 5 {
                     return attempt.error("too many redirects");
                 }
-                if is_allowed_clawhub_transport_url(attempt.url()) {
+                if is_allowed_skill_market_transport_url(attempt.url()) {
                     attempt.follow()
                 } else {
                     attempt.stop()
@@ -89,7 +90,7 @@ impl ReqwestTransport {
     }
 }
 
-fn is_allowed_clawhub_transport_url(url: &url::Url) -> bool {
+fn is_allowed_skill_market_transport_url(url: &url::Url) -> bool {
     url.scheme() == "https"
         && matches!(
             url.host_str(),
@@ -98,7 +99,7 @@ fn is_allowed_clawhub_transport_url(url: &url::Url) -> bool {
 }
 
 #[async_trait::async_trait]
-impl ClawHubTransport for ReqwestTransport {
+impl SkillMarketTransport for ReqwestTransport {
     async fn send(
         &self,
         method: &str,
@@ -121,7 +122,7 @@ impl ClawHubTransport for ReqwestTransport {
         let response = builder
             .send()
             .await
-            .map_err(|e| format!("ClawHub request failed: {}", e))?;
+            .map_err(|e| format!("Community skill marketplace request failed: {}", e))?;
         let status = response.status().as_u16();
         let mut headers = HashMap::new();
         for (k, v) in response.headers().iter() {
@@ -132,10 +133,10 @@ impl ClawHubTransport for ReqwestTransport {
         let body = response
             .bytes()
             .await
-            .map_err(|e| format!("ClawHub read body failed: {}", e))?
+            .map_err(|e| format!("Community skill marketplace read body failed: {}", e))?
             .to_vec();
         if body.len() as u64 > MAX_SKILL_PACKAGE_ZIP_BYTES.saturating_add(1024 * 1024) {
-            return Err("ClawHub response exceeds size limit".to_string());
+            return Err("Community skill marketplace response exceeds size limit".to_string());
         }
         Ok(RawHttpResponse {
             status,
@@ -224,12 +225,12 @@ static GLOBAL_CACHE: std::sync::LazyLock<Arc<ResponseCache>> =
 // 客户端
 // ============================================================================
 
-pub(crate) struct ClawHubClient<T: ClawHubTransport> {
+pub(crate) struct SkillMarketClient<T: SkillMarketTransport> {
     transport: T,
     cache: Arc<ResponseCache>,
 }
 
-impl ClawHubClient<ReqwestTransport> {
+impl SkillMarketClient<ReqwestTransport> {
     /// 使用进程级共享缓存（跨命令命中）
     pub(crate) fn shared() -> Result<Self, String> {
         Ok(Self {
@@ -239,7 +240,7 @@ impl ClawHubClient<ReqwestTransport> {
     }
 }
 
-impl<T: ClawHubTransport> ClawHubClient<T> {
+impl<T: SkillMarketTransport> SkillMarketClient<T> {
     #[cfg(test)]
     fn with_transport(transport: T, cache: Arc<ResponseCache>) -> Self {
         Self { transport, cache }
@@ -270,7 +271,7 @@ impl<T: ClawHubTransport> ClawHubClient<T> {
             }
             if response.status == 429 {
                 return Err(format!(
-                    "RATE_LIMITED: ClawHub rate limit exceeded (Retry-After={})",
+                    "RATE_LIMITED: Community skill marketplace rate limit exceeded (Retry-After={})",
                     response
                         .headers
                         .get("retry-after")
@@ -290,25 +291,25 @@ impl<T: ClawHubTransport> ClawHubClient<T> {
         q: &str,
         limit: u32,
         non_suspicious_only: bool,
-    ) -> Result<ClawHubSearchResponse, String> {
+    ) -> Result<SkillMarketSearchResponse, String> {
         let limit = limit.clamp(1, MAX_LIMIT);
         let url = format!(
             "{}/api/v1/search?q={}&limit={}&nonSuspiciousOnly={}",
-            CLAWHUB_BASE,
+            COMMUNITY_SKILL_MARKET_BASE,
             urlencoding_encode(q),
             limit,
             non_suspicious_only
         );
         let response = self.request_cached("GET", &url, None).await?;
         ensure_ok(&response, "search")?;
-        let parsed: ClawHubSearchApi = serde_json::from_slice(&response.body)
-            .map_err(|e| format!("Invalid ClawHub search JSON: {}", e))?;
-        Ok(ClawHubSearchResponse {
+        let parsed: SkillMarketSearchApi = serde_json::from_slice(&response.body)
+            .map_err(|e| format!("Invalid community marketplace search JSON: {}", e))?;
+        Ok(SkillMarketSearchResponse {
             mode: "search".to_string(),
             items: parsed
                 .results
                 .into_iter()
-                .map(|r| ClawHubSkillCard {
+                .map(|r| SkillMarketSkillCard {
                     slug: r.slug,
                     display_name: r.display_name.unwrap_or_default(),
                     summary: r.summary.unwrap_or_default(),
@@ -330,7 +331,7 @@ impl<T: ClawHubTransport> ClawHubClient<T> {
         sort: &str,
         limit: u32,
         non_suspicious_only: bool,
-    ) -> Result<ClawHubSearchResponse, String> {
+    ) -> Result<SkillMarketSearchResponse, String> {
         let limit = limit.clamp(1, MAX_LIMIT);
         let sort = match sort {
             "downloads" | "stars" | "trending" => sort,
@@ -338,13 +339,13 @@ impl<T: ClawHubTransport> ClawHubClient<T> {
         };
         let url = format!(
             "{}/api/v1/skills?sort={}&limit={}&nonSuspiciousOnly={}",
-            CLAWHUB_BASE, sort, limit, non_suspicious_only
+            COMMUNITY_SKILL_MARKET_BASE, sort, limit, non_suspicious_only
         );
         let response = self.request_cached("GET", &url, None).await?;
         ensure_ok(&response, "skills")?;
-        let parsed: ClawHubSkillsListApi = serde_json::from_slice(&response.body)
-            .map_err(|e| format!("Invalid ClawHub skills JSON: {}", e))?;
-        Ok(ClawHubSearchResponse {
+        let parsed: SkillMarketSkillsListApi = serde_json::from_slice(&response.body)
+            .map_err(|e| format!("Invalid community marketplace skills JSON: {}", e))?;
+        Ok(SkillMarketSearchResponse {
             mode: "list".to_string(),
             items: parsed
                 .items
@@ -356,7 +357,7 @@ impl<T: ClawHubTransport> ClawHubClient<T> {
                         .map(|v| v.version.clone())
                         .or_else(|| r.tags.as_ref().and_then(|t| t.latest.clone()))
                         .unwrap_or_default();
-                    ClawHubSkillCard {
+                    SkillMarketSkillCard {
                         slug: r.slug,
                         display_name: r.display_name.unwrap_or_default(),
                         summary: r.summary.unwrap_or_default(),
@@ -371,17 +372,17 @@ impl<T: ClawHubTransport> ClawHubClient<T> {
         })
     }
 
-    pub(crate) async fn skill_detail(&self, slug: &str) -> Result<ClawHubSkillDetail, String> {
+    pub(crate) async fn skill_detail(&self, slug: &str) -> Result<SkillMarketSkillDetail, String> {
         let slug = sanitize_slug(slug)?;
         let url = format!(
             "{}/api/v1/skills/{}",
-            CLAWHUB_BASE,
+            COMMUNITY_SKILL_MARKET_BASE,
             urlencoding_encode(&slug)
         );
         let response = self.request_cached("GET", &url, None).await?;
         ensure_ok(&response, "skill detail")?;
-        let parsed: ClawHubSkillDetailApi = serde_json::from_slice(&response.body)
-            .map_err(|e| format!("Invalid ClawHub detail JSON: {}", e))?;
+        let parsed: SkillMarketSkillDetailApi = serde_json::from_slice(&response.body)
+            .map_err(|e| format!("Invalid community marketplace detail JSON: {}", e))?;
         let skill = parsed.skill.unwrap_or_default();
         let version = parsed
             .latest_version
@@ -389,7 +390,7 @@ impl<T: ClawHubTransport> ClawHubClient<T> {
             .map(|v| v.version.clone())
             .or_else(|| skill.tags.as_ref().and_then(|t| t.latest.clone()))
             .unwrap_or_default();
-        Ok(ClawHubSkillDetail {
+        Ok(SkillMarketSkillDetail {
             slug: skill.slug.unwrap_or(slug),
             display_name: skill.display_name.unwrap_or_default(),
             summary: skill.summary.unwrap_or_default(),
@@ -414,11 +415,11 @@ impl<T: ClawHubTransport> ClawHubClient<T> {
         &self,
         slug: &str,
         version: Option<&str>,
-    ) -> Result<ClawHubVerifyResult, String> {
+    ) -> Result<SkillMarketVerifyResult, String> {
         let slug = sanitize_slug(slug)?;
         let mut url = format!(
             "{}/api/v1/skills/{}/verify",
-            CLAWHUB_BASE,
+            COMMUNITY_SKILL_MARKET_BASE,
             urlencoding_encode(&slug)
         );
         if let Some(v) = version.map(str::trim).filter(|v| !v.is_empty()) {
@@ -426,9 +427,9 @@ impl<T: ClawHubTransport> ClawHubClient<T> {
         }
         let response = self.request_cached("GET", &url, None).await?;
         ensure_ok(&response, "verify")?;
-        let parsed: ClawHubVerifyApi = serde_json::from_slice(&response.body)
-            .map_err(|e| format!("Invalid ClawHub verify JSON: {}", e))?;
-        Ok(ClawHubVerifyResult {
+        let parsed: SkillMarketVerifyApi = serde_json::from_slice(&response.body)
+            .map_err(|e| format!("Invalid community marketplace verify JSON: {}", e))?;
+        Ok(SkillMarketVerifyResult {
             ok: parsed.ok.unwrap_or(false),
             decision: parsed.decision.unwrap_or_default(),
             reasons: parsed.reasons.unwrap_or_default(),
@@ -452,7 +453,7 @@ impl<T: ClawHubTransport> ClawHubClient<T> {
     pub(crate) async fn security_verdicts(
         &self,
         items: &[(String, String)],
-    ) -> Result<Vec<ClawHubVerifyResult>, String> {
+    ) -> Result<Vec<SkillMarketVerifyResult>, String> {
         if items.is_empty() {
             return Ok(vec![]);
         }
@@ -462,17 +463,25 @@ impl<T: ClawHubTransport> ClawHubClient<T> {
                 "version": version,
             })).collect::<Vec<_>>()
         });
-        let url = format!("{}/api/v1/skills/-/security-verdicts", CLAWHUB_BASE);
+        let url = format!(
+            "{}/api/v1/skills/-/security-verdicts",
+            COMMUNITY_SKILL_MARKET_BASE
+        );
         // POST 不走 GET 缓存键路径；仍尊重 429
         let response = self.request_cached("POST", &url, Some(&payload)).await?;
         ensure_ok(&response, "security-verdicts")?;
-        let parsed: ClawHubSecurityVerdictsApi = serde_json::from_slice(&response.body)
-            .map_err(|e| format!("Invalid ClawHub security-verdicts JSON: {}", e))?;
+        let parsed: SkillMarketSecurityVerdictsApi = serde_json::from_slice(&response.body)
+            .map_err(|e| {
+                format!(
+                    "Invalid community marketplace security-verdicts JSON: {}",
+                    e
+                )
+            })?;
         Ok(parsed
             .items
             .unwrap_or_default()
             .into_iter()
-            .map(|item| ClawHubVerifyResult {
+            .map(|item| SkillMarketVerifyResult {
                 ok: item.ok.unwrap_or(false),
                 decision: item.decision.unwrap_or_default(),
                 reasons: item.reasons.unwrap_or_default(),
@@ -503,7 +512,7 @@ impl<T: ClawHubTransport> ClawHubClient<T> {
         let slug = sanitize_slug(slug)?;
         let mut url = format!(
             "{}/api/v1/download?slug={}",
-            CLAWHUB_BASE,
+            COMMUNITY_SKILL_MARKET_BASE,
             urlencoding_encode(&slug)
         );
         if let Some(v) = version.map(str::trim).filter(|v| !v.is_empty()) {
@@ -516,7 +525,10 @@ impl<T: ClawHubTransport> ClawHubClient<T> {
             tokio::time::sleep(wait.min(Duration::from_secs(30))).await;
             let response = self.transport.send("GET", &url, None).await?;
             if response.status == 429 {
-                return Err("RATE_LIMITED: ClawHub download rate limit exceeded".to_string());
+                return Err(
+                    "RATE_LIMITED: Community skill marketplace download rate limit exceeded"
+                        .to_string(),
+                );
             }
             return self
                 .resolve_download_response(&slug, version, response)
@@ -533,12 +545,15 @@ impl<T: ClawHubTransport> ClawHubClient<T> {
         response: RawHttpResponse,
     ) -> Result<DownloadedPackage, String> {
         if response.status == 429 {
-            return Err("RATE_LIMITED: ClawHub download rate limit exceeded".to_string());
+            return Err(
+                "RATE_LIMITED: Community skill marketplace download rate limit exceeded"
+                    .to_string(),
+            );
         }
         if response.status < 200 || response.status >= 300 {
             let preview = String::from_utf8_lossy(&response.body);
             return Err(format!(
-                "ClawHub download failed (HTTP {}): {}",
+                "Community skill marketplace download failed (HTTP {}): {}",
                 response.status,
                 preview.chars().take(200).collect::<String>()
             ));
@@ -726,13 +741,13 @@ pub(crate) fn classify_download_payload(
     if looks_json {
         let handoff: GitHubHandoff = serde_json::from_slice(body).map_err(|e| {
             format!(
-                "ClawHub download returned JSON but not a GitHub handoff: {}",
+                "Community marketplace download returned JSON but not a GitHub handoff: {}",
                 e
             )
         })?;
         if handoff.source_ref != "public-github" {
             return Err(format!(
-                "Unsupported ClawHub handoff sourceRef: {}",
+                "Unsupported community marketplace handoff sourceRef: {}",
                 handoff.source_ref
             ));
         }
@@ -751,7 +766,7 @@ pub(crate) fn classify_download_payload(
         return Ok(DownloadPayload::Zip(body.to_vec()));
     }
     Err(format!(
-        "Unrecognized ClawHub download payload (content-type={}, first_bytes={:?})",
+        "Unrecognized community marketplace download payload (content-type={}, first_bytes={:?})",
         content_type,
         body.iter().take(8).copied().collect::<Vec<_>>()
     ))
@@ -778,7 +793,7 @@ fn ensure_ok(response: &RawHttpResponse, label: &str) -> Result<(), String> {
     }
     let preview = String::from_utf8_lossy(&response.body);
     Err(format!(
-        "ClawHub {} failed (HTTP {}): {}",
+        "Community marketplace {} failed (HTTP {}): {}",
         label,
         response.status,
         preview.chars().take(200).collect::<String>()
@@ -793,7 +808,7 @@ fn sanitize_slug(slug: &str) -> Result<String, String> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
     {
-        return Err("Invalid ClawHub skill slug".to_string());
+        return Err("Invalid community marketplace skill slug".to_string());
     }
     Ok(trimmed.to_string())
 }
@@ -811,16 +826,16 @@ fn urlencoding_encode(s: &str) -> String {
     out
 }
 
-pub(crate) fn encode_clawhub_provenance(slug: &str, version: &str) -> String {
-    format!("clawhub:{}@{}", slug, version)
+pub(crate) fn encode_skill_market_provenance(slug: &str, version: &str) -> String {
+    format!("skill_market:{}@{}", slug, version)
 }
 
-/// 解析 `clawhub:{slug}@{version}`；version 可为空（仅 slug）。
-pub(crate) fn decode_clawhub_provenance(detail: &str) -> Result<(String, String), String> {
+/// 解析 `skill_market:{slug}@{version}`；version 可为空（仅 slug）。
+pub(crate) fn decode_skill_market_provenance(detail: &str) -> Result<(String, String), String> {
     let trimmed = detail.trim();
-    let rest = trimmed.strip_prefix("clawhub:").ok_or_else(|| {
+    let rest = trimmed.strip_prefix("skill_market:").ok_or_else(|| {
         format!(
-            "Invalid ClawHub provenance (expected clawhub:slug@version): {}",
+            "Invalid marketplace provenance (expected skill_market:slug@version): {}",
             detail
         )
     })?;
@@ -832,15 +847,15 @@ pub(crate) fn decode_clawhub_provenance(detail: &str) -> Result<(String, String)
     Ok((slug, version_raw.trim().to_string()))
 }
 
-/// ClawHub 版本比对：远程非空且与本地不同则视为可更新。
-pub(crate) fn clawhub_version_outdated(installed: &str, remote: &str) -> bool {
+/// SkillMarket 版本比对：远程非空且与本地不同则视为可更新。
+pub(crate) fn skill_market_version_outdated(installed: &str, remote: &str) -> bool {
     let installed = installed.trim();
     let remote = remote.trim();
     !remote.is_empty() && remote != installed
 }
 
 fn write_temp_zip(slug: &str, bytes: &[u8]) -> Result<String, String> {
-    let dir = std::env::temp_dir().join("deep-student-clawhub");
+    let dir = std::env::temp_dir().join("deep-student-skill-market");
     std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create temp dir: {}", e))?;
     cleanup_stale_temp_artifacts(&dir);
     let safe: String = slug
@@ -906,37 +921,37 @@ impl Drop for TempArtifactCleanup {
 }
 
 fn read_bound_temp_zip(path: &str) -> Result<(Vec<u8>, TempArtifactCleanup), String> {
-    let base = std::env::temp_dir().join("deep-student-clawhub");
-    let canonical_base = base
-        .canonicalize()
-        .map_err(|e| format!("ClawHub scan artifact directory is unavailable: {e}"))?;
+    let base = std::env::temp_dir().join("deep-student-skill-market");
+    let canonical_base = base.canonicalize().map_err(|e| {
+        format!("Community marketplace scan artifact directory is unavailable: {e}")
+    })?;
     let candidate = std::path::PathBuf::from(path);
     let canonical = candidate
         .canonicalize()
-        .map_err(|e| format!("ClawHub scan artifact is unavailable: {e}"))?;
+        .map_err(|e| format!("Community marketplace scan artifact is unavailable: {e}"))?;
     if !canonical.starts_with(&canonical_base)
         || canonical.extension().and_then(|v| v.to_str()) != Some("zip")
     {
-        return Err("Invalid ClawHub scan artifact path".to_string());
+        return Err("Invalid community marketplace scan artifact path".to_string());
     }
     let metadata = std::fs::symlink_metadata(&canonical)
-        .map_err(|e| format!("Failed to inspect ClawHub scan artifact: {e}"))?;
+        .map_err(|e| format!("Failed to inspect community marketplace scan artifact: {e}"))?;
     if !metadata.file_type().is_file() || metadata.len() > MAX_SKILL_PACKAGE_ZIP_BYTES {
-        return Err("Invalid or oversized ClawHub scan artifact".to_string());
+        return Err("Invalid or oversized community marketplace scan artifact".to_string());
     }
     let bytes = std::fs::read(&canonical)
-        .map_err(|e| format!("Failed to read ClawHub scan artifact: {e}"))?;
+        .map_err(|e| format!("Failed to read community marketplace scan artifact: {e}"))?;
     Ok((bytes, TempArtifactCleanup(canonical)))
 }
 
 fn enforce_install_verdict(
-    verdict: &ClawHubVerifyResult,
+    verdict: &SkillMarketVerifyResult,
     slug: &str,
     version: &str,
 ) -> Result<(), String> {
     if !verdict.ok || !verdict.security_passed {
         return Err(format!(
-            "ClawHub security verification rejected {}@{}: {}",
+            "Community marketplace security verification rejected {}@{}: {}",
             slug,
             version,
             verdict.reasons.join("; ")
@@ -944,7 +959,8 @@ fn enforce_install_verdict(
     }
     if verdict.slug != slug || verdict.version != version {
         return Err(
-            "ClawHub verification response does not match requested slug/version".to_string(),
+            "Community marketplace verification response does not match requested slug/version"
+                .to_string(),
         );
     }
     Ok(())
@@ -956,7 +972,7 @@ fn enforce_install_verdict(
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ClawHubSkillCard {
+pub struct SkillMarketSkillCard {
     pub slug: String,
     pub display_name: String,
     pub summary: String,
@@ -965,19 +981,19 @@ pub struct ClawHubSkillCard {
     pub owner_handle: String,
     pub stars: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub verify: Option<ClawHubVerifyResult>,
+    pub verify: Option<SkillMarketVerifyResult>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ClawHubSearchResponse {
+pub struct SkillMarketSearchResponse {
     pub mode: String,
-    pub items: Vec<ClawHubSkillCard>,
+    pub items: Vec<SkillMarketSkillCard>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ClawHubSkillDetail {
+pub struct SkillMarketSkillDetail {
     pub slug: String,
     pub display_name: String,
     pub summary: String,
@@ -991,7 +1007,7 @@ pub struct ClawHubSkillDetail {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ClawHubVerifyResult {
+pub struct SkillMarketVerifyResult {
     pub ok: bool,
     pub decision: String,
     pub reasons: Vec<String>,
@@ -1005,10 +1021,10 @@ pub struct ClawHubVerifyResult {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ClawHubDownloadScanResult {
+pub struct SkillMarketDownloadScanResult {
     pub slug: String,
     pub version: String,
-    /// `clawhub:{slug}@{version}`
+    /// `skill_market:{slug}@{version}`
     pub provenance: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temp_zip_path: Option<String>,
@@ -1017,88 +1033,88 @@ pub struct ClawHubDownloadScanResult {
     pub installed: bool,
 }
 
-// ---- 宽松反序列化（ClawHub 字段随版本漂移） ----
+// ---- 宽松反序列化（SkillMarket 字段随版本漂移） ----
 
 #[derive(Debug, Deserialize)]
-struct ClawHubSearchApi {
+struct SkillMarketSearchApi {
     #[serde(default)]
-    results: Vec<ClawHubSearchItemApi>,
+    results: Vec<SkillMarketSearchItemApi>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ClawHubSearchItemApi {
+struct SkillMarketSearchItemApi {
     slug: String,
     display_name: Option<String>,
     summary: Option<String>,
     version: Option<String>,
     downloads: Option<u64>,
     owner_handle: Option<String>,
-    owner: Option<ClawHubOwnerApi>,
+    owner: Option<SkillMarketOwnerApi>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ClawHubOwnerApi {
+struct SkillMarketOwnerApi {
     handle: String,
     display_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ClawHubSkillsListApi {
+struct SkillMarketSkillsListApi {
     #[serde(default)]
-    items: Vec<ClawHubListItemApi>,
+    items: Vec<SkillMarketListItemApi>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ClawHubListItemApi {
+struct SkillMarketListItemApi {
     slug: String,
     display_name: Option<String>,
     summary: Option<String>,
-    tags: Option<ClawHubTagsApi>,
-    stats: Option<ClawHubStatsApi>,
-    latest_version: Option<ClawHubVersionApi>,
+    tags: Option<SkillMarketTagsApi>,
+    stats: Option<SkillMarketStatsApi>,
+    latest_version: Option<SkillMarketVersionApi>,
 }
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ClawHubSkillDetailApi {
-    skill: Option<ClawHubSkillBodyApi>,
-    latest_version: Option<ClawHubVersionApi>,
-    owner: Option<ClawHubOwnerApi>,
+struct SkillMarketSkillDetailApi {
+    skill: Option<SkillMarketSkillBodyApi>,
+    latest_version: Option<SkillMarketVersionApi>,
+    owner: Option<SkillMarketOwnerApi>,
 }
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ClawHubSkillBodyApi {
+struct SkillMarketSkillBodyApi {
     slug: Option<String>,
     display_name: Option<String>,
     summary: Option<String>,
     description: Option<String>,
-    tags: Option<ClawHubTagsApi>,
-    stats: Option<ClawHubStatsApi>,
+    tags: Option<SkillMarketTagsApi>,
+    stats: Option<SkillMarketStatsApi>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ClawHubTagsApi {
+struct SkillMarketTagsApi {
     latest: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ClawHubStatsApi {
+struct SkillMarketStatsApi {
     downloads: Option<u64>,
     stars: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ClawHubVersionApi {
+struct SkillMarketVersionApi {
     version: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ClawHubVerifyApi {
+struct SkillMarketVerifyApi {
     ok: Option<bool>,
     decision: Option<String>,
     reasons: Option<Vec<String>>,
@@ -1106,23 +1122,23 @@ struct ClawHubVerifyApi {
     version: Option<String>,
     publisher_handle: Option<String>,
     publisher_display_name: Option<String>,
-    security: Option<ClawHubSecurityApi>,
+    security: Option<SkillMarketSecurityApi>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ClawHubSecurityApi {
+struct SkillMarketSecurityApi {
     status: Option<String>,
     passed: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ClawHubSecurityVerdictsApi {
-    items: Option<Vec<ClawHubSecurityVerdictItemApi>>,
+struct SkillMarketSecurityVerdictsApi {
+    items: Option<Vec<SkillMarketSecurityVerdictItemApi>>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ClawHubSecurityVerdictItemApi {
+struct SkillMarketSecurityVerdictItemApi {
     ok: Option<bool>,
     decision: Option<String>,
     reasons: Option<Vec<String>>,
@@ -1132,7 +1148,7 @@ struct ClawHubSecurityVerdictItemApi {
     requested_version: Option<String>,
     publisher_handle: Option<String>,
     publisher_display_name: Option<String>,
-    security: Option<ClawHubSecurityApi>,
+    security: Option<SkillMarketSecurityApi>,
 }
 
 // ============================================================================
@@ -1140,11 +1156,11 @@ struct ClawHubSecurityVerdictItemApi {
 // ============================================================================
 
 async fn enrich_verify(
-    client: &ClawHubClient<ReqwestTransport>,
-    mut items: Vec<ClawHubSkillCard>,
-) -> Vec<ClawHubSkillCard> {
+    client: &SkillMarketClient<ReqwestTransport>,
+    mut items: Vec<SkillMarketSkillCard>,
+) -> Vec<SkillMarketSkillCard> {
     // 仅对已有 version 的条目做批量裁决；无 version 的搜索结果保持未知徽章，
-    // 避免 N 次 /verify 拖垮列表与触碰限流。安装流程会单独调 clawhub_verify。
+    // 避免 N 次 /verify 拖垮列表与触碰限流。安装流程会单独调 skill_market_verify。
     let with_version: Vec<(String, String)> = items
         .iter()
         .filter(|i| !i.version.is_empty())
@@ -1155,7 +1171,7 @@ async fn enrich_verify(
         return items;
     }
     if let Ok(verdicts) = client.security_verdicts(&with_version).await {
-        let map: HashMap<String, ClawHubVerifyResult> = verdicts
+        let map: HashMap<String, SkillMarketVerifyResult> = verdicts
             .into_iter()
             .map(|v| (format!("{}@{}", v.slug, v.version), v))
             .collect();
@@ -1172,30 +1188,30 @@ async fn enrich_verify(
     items
 }
 
-/// 搜索或浏览 ClawHub 技能。
+/// 搜索或浏览 SkillMarket 技能。
 ///
 /// - `q` 非空 → `GET /api/v1/search`
 /// - `q` 空 → `GET /api/v1/skills?sort=`（默认 trending）
 /// - `nonSuspiciousOnly` 默认 true
 #[tauri::command]
-pub async fn clawhub_search(
+pub async fn skill_market_search(
     q: Option<String>,
     limit: Option<u32>,
     non_suspicious_only: Option<bool>,
     sort: Option<String>,
-) -> Result<ClawHubSearchResponse, String> {
-    clawhub_search_impl(q, limit, non_suspicious_only, sort)
+) -> Result<SkillMarketSearchResponse, String> {
+    skill_market_search_impl(q, limit, non_suspicious_only, sort)
         .await
         .map_err(String::from)
 }
 
-async fn clawhub_search_impl(
+async fn skill_market_search_impl(
     q: Option<String>,
     limit: Option<u32>,
     non_suspicious_only: Option<bool>,
     sort: Option<String>,
-) -> ChatV2Result<ClawHubSearchResponse> {
-    let client = ClawHubClient::shared().map_err(ChatV2Error::IoError)?;
+) -> ChatV2Result<SkillMarketSearchResponse> {
+    let client = SkillMarketClient::shared().map_err(ChatV2Error::IoError)?;
     let limit = limit.unwrap_or(DEFAULT_LIMIT);
     let non_suspicious_only = non_suspicious_only.unwrap_or(true);
     let q = q.unwrap_or_default();
@@ -1207,45 +1223,50 @@ async fn clawhub_search_impl(
                 non_suspicious_only,
             )
             .await
-            .map_err(map_clawhub_err)?
+            .map_err(map_skill_market_err)?
     } else {
         client
             .search(q.trim(), limit, non_suspicious_only)
             .await
-            .map_err(map_clawhub_err)?
+            .map_err(map_skill_market_err)?
     };
     result.items = enrich_verify(&client, result.items).await;
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn clawhub_skill_detail(slug: String) -> Result<ClawHubSkillDetail, String> {
-    clawhub_skill_detail_impl(slug).await.map_err(String::from)
+pub async fn skill_market_skill_detail(slug: String) -> Result<SkillMarketSkillDetail, String> {
+    skill_market_skill_detail_impl(slug)
+        .await
+        .map_err(String::from)
 }
 
-async fn clawhub_skill_detail_impl(slug: String) -> ChatV2Result<ClawHubSkillDetail> {
-    let client = ClawHubClient::shared().map_err(ChatV2Error::IoError)?;
-    client.skill_detail(&slug).await.map_err(map_clawhub_err)
+async fn skill_market_skill_detail_impl(slug: String) -> ChatV2Result<SkillMarketSkillDetail> {
+    let client = SkillMarketClient::shared().map_err(ChatV2Error::IoError)?;
+    client
+        .skill_detail(&slug)
+        .await
+        .map_err(map_skill_market_err)
 }
 
 #[tauri::command]
-pub async fn clawhub_verify(
+pub async fn skill_market_verify(
     slug: String,
     version: Option<String>,
-) -> Result<ClawHubVerifyResult, String> {
-    let client = ClawHubClient::shared().map_err(|e| String::from(ChatV2Error::IoError(e)))?;
+) -> Result<SkillMarketVerifyResult, String> {
+    let client = SkillMarketClient::shared().map_err(|e| String::from(ChatV2Error::IoError(e)))?;
     client
         .verify(&slug, version.as_deref())
         .await
-        .map_err(|e| String::from(map_clawhub_err(e)))
+        .map_err(|e| String::from(map_skill_market_err(e)))
 }
 
-/// 下载 ClawHub 技能 → 临时 zip → 复用 skill_scan 内核扫描。
+/// 下载 SkillMarket 技能 → 临时 zip → 复用 skill_scan 内核扫描。
 ///
 /// `install=true` 时继续走与 `skill_install` 相同的 staging 安装内核，并写入
-/// provenance：`sourceKind=clawhub` / `sourceDetail=clawhub:{slug}@{version}`。
+/// provenance：`sourceKind=skill_market` / `sourceDetail=skill_market:{slug}@{version}`。
 #[tauri::command]
-pub async fn clawhub_download_and_scan(
+pub async fn skill_market_download_and_scan(
     state: State<'_, AppState>,
     slug: String,
     version: Option<String>,
@@ -1253,8 +1274,8 @@ pub async fn clawhub_download_and_scan(
     overwrite: Option<bool>,
     expected_package_sha256: Option<String>,
     temp_zip_path: Option<String>,
-) -> Result<ClawHubDownloadScanResult, String> {
-    clawhub_download_and_scan_impl(
+) -> Result<SkillMarketDownloadScanResult, String> {
+    skill_market_download_and_scan_impl(
         state,
         slug,
         version,
@@ -1267,7 +1288,7 @@ pub async fn clawhub_download_and_scan(
     .map_err(String::from)
 }
 
-async fn clawhub_download_and_scan_impl(
+async fn skill_market_download_and_scan_impl(
     state: State<'_, AppState>,
     slug: String,
     version: Option<String>,
@@ -1275,10 +1296,10 @@ async fn clawhub_download_and_scan_impl(
     overwrite: Option<bool>,
     expected_package_sha256: Option<String>,
     temp_zip_path: Option<String>,
-) -> ChatV2Result<ClawHubDownloadScanResult> {
+) -> ChatV2Result<SkillMarketDownloadScanResult> {
     let install = install.unwrap_or(false);
     let overwrite = overwrite.unwrap_or(false);
-    let client = ClawHubClient::shared().map_err(ChatV2Error::IoError)?;
+    let client = SkillMarketClient::shared().map_err(ChatV2Error::IoError)?;
 
     // 若未指定 version，先 detail 解析 latest
     let mut resolved_version = version.unwrap_or_default();
@@ -1290,16 +1311,16 @@ async fn clawhub_download_and_scan_impl(
 
     if resolved_version.is_empty() {
         return Err(ChatV2Error::InvalidInput(
-            "ClawHub version could not be resolved".to_string(),
+            "Community marketplace version could not be resolved".to_string(),
         ));
     }
-    let provenance = encode_clawhub_provenance(&slug, &resolved_version);
+    let provenance = encode_skill_market_provenance(&slug, &resolved_version);
 
     if !install {
         let downloaded = client
             .download_package_bytes(&slug, Some(resolved_version.as_str()))
             .await
-            .map_err(map_clawhub_err)?;
+            .map_err(map_skill_market_err)?;
         let temp_zip_path =
             write_temp_zip(&slug, &downloaded.bytes).map_err(ChatV2Error::IoError)?;
         let scan = install_skill_package_from_zip_bytes(
@@ -1309,7 +1330,7 @@ async fn clawhub_download_and_scan_impl(
             true,
         )
         .await?;
-        return Ok(ClawHubDownloadScanResult {
+        return Ok(SkillMarketDownloadScanResult {
             slug,
             version: resolved_version,
             provenance,
@@ -1324,13 +1345,15 @@ async fn clawhub_download_and_scan_impl(
         .as_deref()
         .ok_or_else(|| {
             ChatV2Error::InvalidInput(
-                "expectedPackageSha256 is required when installing a ClawHub skill".to_string(),
+                "expectedPackageSha256 is required when installing a community marketplace skill"
+                    .to_string(),
             )
         })
         .and_then(|value| normalize_expected_sha256(value).map_err(ChatV2Error::InvalidInput))?;
     let temp_zip_path = temp_zip_path.ok_or_else(|| {
         ChatV2Error::InvalidInput(
-            "tempZipPath from the confirmed ClawHub scan is required when installing".to_string(),
+            "tempZipPath from the confirmed community marketplace scan is required when installing"
+                .to_string(),
         )
     })?;
 
@@ -1342,7 +1365,7 @@ async fn clawhub_download_and_scan_impl(
     let verdict = client
         .verify(&slug, Some(&resolved_version))
         .await
-        .map_err(map_clawhub_err)?;
+        .map_err(map_skill_market_err)?;
     enforce_install_verdict(&verdict, &slug, &resolved_version)
         .map_err(ChatV2Error::InvalidInput)?;
 
@@ -1351,7 +1374,7 @@ async fn clawhub_download_and_scan_impl(
             .await?;
     if prepared.result().package_sha256 != expected_package_sha256 {
         return Err(ChatV2Error::InvalidInput(format!(
-            "ClawHub package changed after confirmation: expected {}, got {}",
+            "Community marketplace package changed after confirmation: expected {}, got {}",
             expected_package_sha256,
             prepared.result().package_sha256
         )));
@@ -1359,14 +1382,14 @@ async fn clawhub_download_and_scan_impl(
 
     let skill_id = prepared.result().skill_id.clone();
     let provenance_json = json!({
-        "sourceKind": "clawhub",
+        "sourceKind": "skill_market",
         "sourceDetail": provenance,
         "packageSha256": prepared.result().package_sha256,
         "riskLevel": prepared.result().risk_level,
         "installedAt": chrono::Utc::now().to_rfc3339(),
         "sessionId": "skills_management",
-        "clawhubSlug": slug,
-        "clawhubVersion": resolved_version,
+        "marketSlug": slug,
+        "marketVersion": resolved_version,
     });
     let provenance_str = serde_json::to_string_pretty(&provenance_json)
         .map_err(|e| ChatV2Error::IoError(format!("Failed to serialize provenance: {}", e)))?;
@@ -1380,11 +1403,11 @@ async fn clawhub_download_and_scan_impl(
     if let Err(persist_error) = state.database.save_setting(&key, &provenance_str) {
         return match committed.rollback() {
             Ok(()) => Err(ChatV2Error::IoError(format!(
-                "Failed to persist clawhub provenance ({}); the install was rolled back.",
+                "Failed to persist skill market provenance ({}); the install was rolled back.",
                 persist_error
             ))),
             Err(rollback_error) => Err(ChatV2Error::IoError(format!(
-                "Failed to persist clawhub provenance ({}), and rollback also failed ({}).",
+                "Failed to persist skill market provenance ({}), and rollback also failed ({}).",
                 persist_error, rollback_error
             ))),
         };
@@ -1392,13 +1415,13 @@ async fn clawhub_download_and_scan_impl(
     committed.finalize();
 
     log::info!(
-        "[ClawHub] Installed '{}' from {} (sha256={})",
+        "[Community marketplace] Installed '{}' from {} (sha256={})",
         installed_result.skill_id,
         provenance,
         installed_result.package_sha256
     );
 
-    Ok(ClawHubDownloadScanResult {
+    Ok(SkillMarketDownloadScanResult {
         slug,
         version: resolved_version,
         provenance,
@@ -1409,7 +1432,7 @@ async fn clawhub_download_and_scan_impl(
     })
 }
 
-fn map_clawhub_err(err: String) -> ChatV2Error {
+fn map_skill_market_err(err: String) -> ChatV2Error {
     if err.starts_with("RATE_LIMITED:") {
         ChatV2Error::Other(err)
     } else if err.contains("Invalid") || err.contains("Unsupported") || err.contains("Incomplete") {
@@ -1420,18 +1443,18 @@ fn map_clawhub_err(err: String) -> ChatV2Error {
 }
 
 // ============================================================================
-// Agent 只读工具：clawhub_search / clawhub_skill_detail
+// Agent 只读工具：skill_market_search / skill_market_skill_detail
 // ============================================================================
 
 pub mod tool_names {
-    pub const CLAWHUB_SEARCH: &str = "clawhub_search";
-    pub const CLAWHUB_SKILL_DETAIL: &str = "clawhub_skill_detail";
+    pub const SKILL_MARKET_SEARCH: &str = "skill_market_search";
+    pub const SKILL_MARKET_SKILL_DETAIL: &str = "skill_market_skill_detail";
 }
 
-/// ClawHub 只读工具执行器（搜索 / 详情）。写操作（download+install）不在此暴露。
-pub struct ClawHubReadToolExecutor;
+/// SkillMarket 只读工具执行器（搜索 / 详情）。写操作（download+install）不在此暴露。
+pub struct SkillMarketReadToolExecutor;
 
-impl ClawHubReadToolExecutor {
+impl SkillMarketReadToolExecutor {
     pub fn new() -> Self {
         Self
     }
@@ -1455,7 +1478,7 @@ impl ClawHubReadToolExecutor {
             .get("sort")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        let result = clawhub_search_impl(q, limit, non_suspicious_only, sort)
+        let result = skill_market_search_impl(q, limit, non_suspicious_only, sort)
             .await
             .map_err(|e| e.to_string())?;
         serde_json::to_value(result)
@@ -1470,21 +1493,21 @@ impl ClawHubReadToolExecutor {
             .filter(|s| !s.is_empty())
             .ok_or("slug is required")?
             .to_string();
-        let result = clawhub_skill_detail_impl(slug)
+        let result = skill_market_skill_detail_impl(slug)
             .await
             .map_err(|e| e.to_string())?;
         serde_json::to_value(result).map_err(|e| format!("Failed to serialize detail: {}", e))
     }
 }
 
-impl Default for ClawHubReadToolExecutor {
+impl Default for SkillMarketReadToolExecutor {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[async_trait::async_trait]
-impl crate::chat_v2::tools::ToolExecutor for ClawHubReadToolExecutor {
+impl crate::chat_v2::tools::ToolExecutor for SkillMarketReadToolExecutor {
     async fn execute(
         &self,
         call: &crate::chat_v2::types::ToolCall,
@@ -1497,9 +1520,12 @@ impl crate::chat_v2::tools::ToolExecutor for ClawHubReadToolExecutor {
         ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         let result = match short {
-            tool_names::CLAWHUB_SEARCH => Self::execute_search(&call.arguments).await,
-            tool_names::CLAWHUB_SKILL_DETAIL => Self::execute_detail(&call.arguments).await,
-            other => Err(format!("Unsupported ClawHub read tool: {}", other)),
+            tool_names::SKILL_MARKET_SEARCH => Self::execute_search(&call.arguments).await,
+            tool_names::SKILL_MARKET_SKILL_DETAIL => Self::execute_detail(&call.arguments).await,
+            other => Err(format!(
+                "Unsupported community marketplace read tool: {}",
+                other
+            )),
         };
 
         let duration = start_time.elapsed().as_millis() as u64;
@@ -1519,7 +1545,10 @@ impl crate::chat_v2::tools::ToolExecutor for ClawHubReadToolExecutor {
                     duration,
                 );
                 if let Err(e) = ctx.save_tool_block(&tool_result) {
-                    log::warn!("[ClawHubReadToolExecutor] Failed to save tool block: {}", e);
+                    log::warn!(
+                        "[SkillMarketReadToolExecutor] Failed to save tool block: {}",
+                        e
+                    );
                 }
                 Ok(tool_result)
             }
@@ -1534,7 +1563,10 @@ impl crate::chat_v2::tools::ToolExecutor for ClawHubReadToolExecutor {
                     duration,
                 );
                 if let Err(e) = ctx.save_tool_block(&tool_result) {
-                    log::warn!("[ClawHubReadToolExecutor] Failed to save tool block: {}", e);
+                    log::warn!(
+                        "[SkillMarketReadToolExecutor] Failed to save tool block: {}",
+                        e
+                    );
                 }
                 Ok(tool_result)
             }
@@ -1544,7 +1576,7 @@ impl crate::chat_v2::tools::ToolExecutor for ClawHubReadToolExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
         matches!(
             Self::strip_namespace(tool_name),
-            tool_names::CLAWHUB_SEARCH | tool_names::CLAWHUB_SKILL_DETAIL
+            tool_names::SKILL_MARKET_SEARCH | tool_names::SKILL_MARKET_SKILL_DETAIL
         )
     }
 
@@ -1560,7 +1592,7 @@ impl crate::chat_v2::tools::ToolExecutor for ClawHubReadToolExecutor {
     }
 
     fn name(&self) -> &'static str {
-        "ClawHubReadToolExecutor"
+        "SkillMarketReadToolExecutor"
     }
 }
 
@@ -1589,7 +1621,7 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl ClawHubTransport for MockTransport {
+    impl SkillMarketTransport for MockTransport {
         async fn send(
             &self,
             _method: &str,
@@ -1673,7 +1705,7 @@ mod tests {
 
     #[test]
     fn install_verdict_is_exact_and_fail_closed() {
-        let mut verdict = ClawHubVerifyResult {
+        let mut verdict = SkillMarketVerifyResult {
             ok: true,
             decision: "allow".into(),
             reasons: vec![],
@@ -1740,7 +1772,7 @@ mod tests {
                     .to_vec(),
             },
         ]);
-        let client = ClawHubClient::with_transport(transport, cache);
+        let client = SkillMarketClient::with_transport(transport, cache);
         let result = client.search("demo", 5, true).await.expect("search ok");
         assert_eq!(result.items.len(), 1);
         assert_eq!(result.items[0].slug, "demo");
@@ -1773,7 +1805,7 @@ mod tests {
         // 第二次仍命中，不依赖 transport
         let hit2 = cache.get(&key).expect("cache hit again");
         assert_eq!(
-            serde_json::from_slice::<ClawHubSearchApi>(&hit2.body)
+            serde_json::from_slice::<SkillMarketSearchApi>(&hit2.body)
                 .unwrap()
                 .results[0]
                 .slug,
@@ -1823,7 +1855,7 @@ mod tests {
                 body: repo_bytes,
             },
         ]);
-        let client = ClawHubClient::with_transport(transport, cache);
+        let client = SkillMarketClient::with_transport(transport, cache);
         let pkg = client
             .download_package_bytes("demo", Some("1.0.0"))
             .await
@@ -1844,33 +1876,34 @@ mod tests {
     #[test]
     fn provenance_format() {
         assert_eq!(
-            encode_clawhub_provenance("sonoscli", "1.0.0"),
-            "clawhub:sonoscli@1.0.0"
+            encode_skill_market_provenance("sonoscli", "1.0.0"),
+            "skill_market:sonoscli@1.0.0"
         );
     }
 
     #[test]
     fn decode_provenance_slug_and_version() {
-        let (slug, version) = decode_clawhub_provenance("clawhub:sonoscli@1.0.0").expect("decode");
+        let (slug, version) =
+            decode_skill_market_provenance("skill_market:sonoscli@1.0.0").expect("decode");
         assert_eq!(slug, "sonoscli");
         assert_eq!(version, "1.0.0");
     }
 
     #[test]
-    fn decode_provenance_rejects_non_clawhub() {
-        assert!(decode_clawhub_provenance("https://example.com/pkg.zip").is_err());
+    fn decode_provenance_rejects_non_skill_market() {
+        assert!(decode_skill_market_provenance("https://example.com/pkg.zip").is_err());
     }
 
     #[test]
     fn version_outdated_marks_when_remote_differs() {
-        assert!(clawhub_version_outdated("1.0.0", "1.1.0"));
-        assert!(!clawhub_version_outdated("1.1.0", "1.1.0"));
-        assert!(!clawhub_version_outdated("1.0.0", ""));
-        assert!(clawhub_version_outdated("", "1.0.0"));
+        assert!(skill_market_version_outdated("1.0.0", "1.1.0"));
+        assert!(!skill_market_version_outdated("1.1.0", "1.1.0"));
+        assert!(!skill_market_version_outdated("1.0.0", ""));
+        assert!(skill_market_version_outdated("", "1.0.0"));
         // 空白等价空远程 → 不标 outdated
-        assert!(!clawhub_version_outdated("1.0.0", "   "));
+        assert!(!skill_market_version_outdated("1.0.0", "   "));
         // 修剪后相等
-        assert!(!clawhub_version_outdated(" 1.2.0 ", "1.2.0"));
+        assert!(!skill_market_version_outdated(" 1.2.0 ", "1.2.0"));
     }
 
     #[tokio::test]
@@ -1886,11 +1919,11 @@ mod tests {
             }"#
             .to_vec(),
         }]);
-        let client = ClawHubClient::with_transport(transport, cache);
+        let client = SkillMarketClient::with_transport(transport, cache);
         let detail = client.skill_detail("sonoscli").await.expect("detail");
         assert_eq!(detail.version, "1.2.0");
-        assert!(clawhub_version_outdated("1.0.0", &detail.version));
-        assert!(!clawhub_version_outdated("1.2.0", &detail.version));
+        assert!(skill_market_version_outdated("1.0.0", &detail.version));
+        assert!(!skill_market_version_outdated("1.2.0", &detail.version));
         assert_eq!(client.transport.calls.load(Ordering::SeqCst), 1);
     }
 
@@ -1927,7 +1960,7 @@ mod tests {
                 body: b"rate limited".to_vec(),
             },
         ]);
-        let client = ClawHubClient::with_transport(transport, cache);
+        let client = SkillMarketClient::with_transport(transport, cache);
         let err = client
             .search("demo", 5, true)
             .await
@@ -1953,7 +1986,7 @@ mod tests {
             },
             body: z.clone(),
         }]);
-        let client = ClawHubClient::with_transport(transport, cache);
+        let client = SkillMarketClient::with_transport(transport, cache);
         let pkg = client
             .download_package_bytes("demo", Some("2.0.0"))
             .await
@@ -2010,7 +2043,7 @@ mod tests {
                 body: repo_bytes,
             },
         ]);
-        let client = ClawHubClient::with_transport(transport, cache);
+        let client = SkillMarketClient::with_transport(transport, cache);
         let pkg = client
             .download_package_bytes("demo", Some("1.0.0"))
             .await
@@ -2023,13 +2056,13 @@ mod tests {
     #[test]
     fn read_tool_executor_handles_search_and_detail_only() {
         use crate::chat_v2::tools::ToolExecutor;
-        let executor = ClawHubReadToolExecutor::new();
-        assert!(executor.can_handle("builtin-clawhub_search"));
-        assert!(executor.can_handle("builtin-clawhub_skill_detail"));
-        assert!(!executor.can_handle("builtin-clawhub_download_and_scan"));
-        assert!(!executor.can_handle("builtin-clawhub_verify"));
+        let executor = SkillMarketReadToolExecutor::new();
+        assert!(executor.can_handle("builtin-skill_market_search"));
+        assert!(executor.can_handle("builtin-skill_market_skill_detail"));
+        assert!(!executor.can_handle("builtin-skill_market_download_and_scan"));
+        assert!(!executor.can_handle("builtin-skill_market_verify"));
         assert_eq!(
-            executor.sensitivity_level("builtin-clawhub_search"),
+            executor.sensitivity_level("builtin-skill_market_search"),
             crate::chat_v2::tools::ToolSensitivity::Low
         );
     }

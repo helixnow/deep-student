@@ -18,6 +18,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use crate::chat_v2::event_types;
@@ -92,6 +93,8 @@ struct LoadSkillsOutput {
     loaded_skill_ids: Vec<String>,
     /// 本次加载后可用的工具名称
     loaded_tool_names: Vec<String>,
+    /// 本次因运行时准入被拒绝的技能及原因
+    rejected_skills: HashMap<String, String>,
     /// Skill 状态版本
     skill_state_version: u64,
     /// 轻量提示
@@ -100,6 +103,28 @@ struct LoadSkillsOutput {
 
 /// Skills 工具执行器
 pub struct SkillsExecutor;
+
+fn classify_requested_skills(
+    requested: &[String],
+    skill_contents: Option<&HashMap<String, String>>,
+    admission_errors: Option<&HashMap<String, String>>,
+) -> (Vec<String>, Vec<String>, HashMap<String, String>) {
+    let mut loaded = Vec::new();
+    let mut not_found = Vec::new();
+    let mut rejected = HashMap::new();
+
+    for skill_id in requested {
+        if let Some(reason) = admission_errors.and_then(|errors| errors.get(skill_id)) {
+            rejected.insert(skill_id.clone(), reason.clone());
+        } else if skill_contents.is_some_and(|contents| contents.contains_key(skill_id)) {
+            loaded.push(skill_id.clone());
+        } else {
+            not_found.push(skill_id.clone());
+        }
+    }
+
+    (loaded, not_found, rejected)
+}
 
 impl SkillsExecutor {
     pub fn new() -> Self {
@@ -203,21 +228,11 @@ impl ToolExecutor for SkillsExecutor {
                     ));
                 }
 
-                let mut loaded_skills: Vec<String> = Vec::new();
-                let mut not_found_skills: Vec<String> = Vec::new();
-
-                if let Some(ref skill_contents) = ctx.skill_contents {
-                    for skill_id in &parsed_input.skills {
-                        if skill_contents.contains_key(skill_id) {
-                            loaded_skills.push(skill_id.clone());
-                        } else {
-                            not_found_skills.push(skill_id.clone());
-                        }
-                    }
-                } else {
-                    // 没有 skill_contents，所有技能都找不到
-                    not_found_skills = parsed_input.skills.clone();
-                }
+                let (loaded_skills, not_found_skills, rejected_skills) = classify_requested_skills(
+                    &parsed_input.skills,
+                    ctx.skill_contents.as_ref(),
+                    ctx.skill_admission_errors.as_ref(),
+                );
 
                 let mut session_loaded_skill_ids = loaded_skills.clone();
                 let mut skill_state_version = 0_u64;
@@ -378,26 +393,55 @@ impl ToolExecutor for SkillsExecutor {
                     }
                 }
 
+                let rejected_message = if rejected_skills.is_empty() {
+                    None
+                } else {
+                    let mut entries: Vec<String> = rejected_skills
+                        .iter()
+                        .map(|(id, reason)| format!("{} ({})", id, reason))
+                        .collect();
+                    entries.sort();
+                    Some(format!("Rejected: {}", entries.join(", ")))
+                };
                 let message = if loaded_skills.is_empty() {
-                    if not_found_skills.is_empty() {
+                    if not_found_skills.is_empty() && rejected_message.is_none() {
                         "No new skills were loaded.".to_string()
                     } else {
-                        format!("No skills loaded. Missing: {}", not_found_skills.join(", "))
+                        let mut parts = Vec::new();
+                        if !not_found_skills.is_empty() {
+                            parts.push(format!("Missing: {}", not_found_skills.join(", ")));
+                        }
+                        if let Some(rejected) = rejected_message {
+                            parts.push(rejected);
+                        }
+                        format!("No skills loaded. {}", parts.join(". "))
                     }
-                } else if not_found_skills.is_empty() {
+                } else if not_found_skills.is_empty() && rejected_message.is_none() {
                     "Skills loaded. Instructions will be provided in the next message.".to_string()
                 } else {
+                    let mut parts = Vec::new();
+                    if !not_found_skills.is_empty() {
+                        parts.push(format!("Missing: {}", not_found_skills.join(", ")));
+                    }
+                    if let Some(rejected) = rejected_message {
+                        parts.push(rejected);
+                    }
                     format!(
-                        "Skills loaded. Instructions will be provided in the next message. Missing: {}",
-                        not_found_skills.join(", ")
+                        "Skills loaded. Instructions will be provided in the next message. {}",
+                        parts.join(". ")
                     )
                 };
 
                 // 构建输出结构
                 let output = LoadSkillsOutput {
-                    status: "success".to_string(),
+                    status: if loaded_skills.is_empty() && !rejected_skills.is_empty() {
+                        "error".to_string()
+                    } else {
+                        "success".to_string()
+                    },
                     loaded_skill_ids: session_loaded_skill_ids,
                     loaded_tool_names,
+                    rejected_skills,
                     skill_state_version,
                     message,
                 };
@@ -478,5 +522,25 @@ mod tests {
             "load_skills"
         ); // 🆕 支持 mcp_ 前缀
         assert_eq!(SkillsExecutor::strip_prefix("load_skills"), "load_skills");
+    }
+
+    #[test]
+    fn admission_errors_reject_disabled_skills_before_content_lookup() {
+        let requested = vec!["disabled-skill".to_string(), "ok-skill".to_string()];
+        let contents = HashMap::from([
+            ("disabled-skill".to_string(), "must not load".to_string()),
+            ("ok-skill".to_string(), "ok".to_string()),
+        ]);
+        let admission_errors = HashMap::from([(
+            "disabled-skill".to_string(),
+            "disabled: Skill \"disabled-skill\" is disabled and cannot be loaded".to_string(),
+        )]);
+
+        let (loaded, missing, rejected) =
+            classify_requested_skills(&requested, Some(&contents), Some(&admission_errors));
+
+        assert_eq!(loaded, vec!["ok-skill"]);
+        assert!(missing.is_empty());
+        assert!(rejected["disabled-skill"].starts_with("disabled:"));
     }
 }

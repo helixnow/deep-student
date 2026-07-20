@@ -18,7 +18,6 @@ pub mod agents_md; // AGENTS.md 常驻指令发现与注入
 pub mod approval_manager; // 🆕 工具审批管理器（文档 29 P1-3）
 pub mod approval_scope; // 🆕 工具审批作用域键提取器（P2 / M-081 修复）
 pub mod automations; // 🆕 周期自动化定义存储与调度器
-pub mod clawhub_client; // 🆕 ClawHub 技能市场只读客户端（SkillTap 接入）
 pub(crate) mod context; // PipelineContext 拆分
 pub mod database;
 pub mod error;
@@ -35,6 +34,7 @@ pub mod resource_types; // 统一上下文注入系统 - 资源类型定义（�
 pub mod role_packs;
 pub mod runtime_roots;
 pub mod shell_command_policy;
+pub mod skill_market_client; // 🆕 社区技能市场只读客户端（SkillTap 接入）
 pub mod skill_requires; // SKILL.md requires.bins/env 解析与本地探测
 pub mod skill_taps; // 🆕 Tap 式技能源（GitHub 仓库即技能目录）
 pub mod skill_updates; // 🆕 技能更新检查与一键更新（基于 provenance URL）

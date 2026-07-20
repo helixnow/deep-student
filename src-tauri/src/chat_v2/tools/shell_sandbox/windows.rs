@@ -63,6 +63,7 @@ const MAX_PAYLOAD_BYTES: u64 = 1024 * 1024;
 const MAX_POLICY_ROOTS: usize = 128;
 const ACTIVE_PROCESS_LIMIT: u32 = 128;
 const PROCESS_CPU_TIME_LIMIT_SECS: i64 = 130;
+const STALE_PAYLOAD_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 #[link(name = "kernel32")]
 unsafe extern "system" {
@@ -301,7 +302,68 @@ fn payload_file() -> PathBuf {
     std::env::temp_dir().join(format!("{PAYLOAD_PREFIX}{}.json", Uuid::new_v4().simple()))
 }
 
+fn cleanup_stale_payloads() {
+    let Ok(entries) = fs::read_dir(std::env::temp_dir()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(OsStr::to_str) else {
+            continue;
+        };
+        if !name.starts_with(PAYLOAD_PREFIX) || !name.ends_with(".json") {
+            continue;
+        }
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            continue;
+        }
+        let is_stale = metadata
+            .modified()
+            .ok()
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age >= STALE_PAYLOAD_AGE);
+        if is_stale {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+fn cleanup_payload_file(path: &Path) {
+    let Ok(temp) = std::env::temp_dir().canonicalize() else {
+        return;
+    };
+    let Ok(canonical) = path.canonicalize() else {
+        return;
+    };
+    let Some(name) = canonical.file_name().and_then(OsStr::to_str) else {
+        return;
+    };
+    let Ok(metadata) = fs::symlink_metadata(&canonical) else {
+        return;
+    };
+    if canonical.parent() == Some(temp.as_path())
+        && name.starts_with(PAYLOAD_PREFIX)
+        && name.ends_with(".json")
+        && metadata.is_file()
+        && !metadata.file_type().is_symlink()
+    {
+        let _ = fs::remove_file(canonical);
+    }
+}
+
+fn payload_path_from_command(command: &Command) -> Option<PathBuf> {
+    let mut args = command.as_std().get_args();
+    if args.next().as_deref() != Some(OsStr::new(HELPER_ARG)) {
+        return None;
+    }
+    args.next().map(PathBuf::from)
+}
+
 fn write_payload(payload: &WindowsSandboxPayload) -> Result<PathBuf, String> {
+    cleanup_stale_payloads();
     let bytes = serde_json::to_vec(payload)
         .map_err(|error| format!("Failed to encode Windows sandbox payload: {error}"))?;
     if bytes.len() as u64 > MAX_PAYLOAD_BYTES {
@@ -386,13 +448,19 @@ impl SandboxBackend for PlatformSandboxBackend {
             policy: policy.clone(),
             profile_name,
         };
-        let payload_path = write_payload(&payload)?;
         let executable = std::env::current_exe()
             .map_err(|error| format!("Cannot locate the AppContainer launcher: {error}"))?;
+        let payload_path = write_payload(&payload)?;
         let mut command = Command::new(executable);
         command.arg(HELPER_ARG).arg(payload_path);
         configure_stdio(&mut command, cwd);
         Ok(command)
+    }
+
+    fn cleanup_command_resources(&self, command: &Command) {
+        if let Some(path) = payload_path_from_command(command) {
+            cleanup_payload_file(&path);
+        }
     }
 
     fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport {
@@ -514,7 +582,17 @@ fn grant_policy(policy: &SandboxPolicy, sid: PSID) -> Result<Vec<PathBuf>, Strin
 
     let result = (|| {
         for path in &policy.readable_roots {
-            apply(path, GRANT_ACCESS, read)?;
+            // Windows and Program Files roots commonly already grant
+            // AppContainer read/execute through inherited package ACLs while
+            // denying WRITE_DAC to a normal desktop user. A failed redundant
+            // read grant must not make every shell command unavailable. Keep
+            // write grants and all deny rules fail-closed below.
+            if let Err(error) = apply(path, GRANT_ACCESS, read) {
+                log::warn!(
+                    "[WindowsSandbox] Continuing after optional read ACL grant failed: {}",
+                    error
+                );
+            }
         }
         for path in &policy.writable_roots {
             apply(path, GRANT_ACCESS, write)?;
@@ -981,6 +1059,24 @@ mod tests {
         assert!(validate_payload(&mut payload)
             .unwrap_err()
             .contains("selected cwd"));
+    }
+
+    #[test]
+    fn spawn_failure_cleanup_removes_unconsumed_payload() {
+        let temp = tempfile::tempdir().unwrap();
+        let payload = WindowsSandboxPayload {
+            command: "echo ok".to_string(),
+            cwd: temp.path().to_path_buf(),
+            policy: policy(temp.path(), temp.path()),
+            profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
+        };
+        let payload_path = write_payload(&payload).unwrap();
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command.arg(HELPER_ARG).arg(&payload_path);
+
+        PlatformSandboxBackend::new().cleanup_command_resources(&command);
+
+        assert!(!payload_path.exists());
     }
 
     #[test]

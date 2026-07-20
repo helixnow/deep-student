@@ -2638,7 +2638,7 @@ impl BuiltinResourceExecutor {
         format!("n{}", *counter)
     }
 
-    /// 去除 HTML 标签（XMind html 备注降级为纯文本用；轻量状态机，不引入新依赖）
+    /// 去除 HTML 标签（导图包 HTML 备注降级为纯文本用；轻量状态机，不引入新依赖）
     fn strip_html_tags(input: &str) -> String {
         let mut out = String::with_capacity(input.len());
         let mut in_tag = false;
@@ -2666,16 +2666,15 @@ impl BuiltinResourceExecutor {
                 .map_err(|e| format!("Failed to resolve resource '{}': {}", trimmed, e))?
                 .ok_or_else(|| format!("Resource not found: {}", trimmed))?;
             match resource.source_id.as_deref() {
-                Some(sid) if sid.starts_with("file_") || sid.starts_with("att_") => {
-                    sid.to_string()
-                }
-                _ => Self::resolve_source_id_by_resource_id(vfs_db, "files", trimmed)
-                    .ok_or_else(|| {
+                Some(sid) if sid.starts_with("file_") || sid.starts_with("att_") => sid.to_string(),
+                _ => Self::resolve_source_id_by_resource_id(vfs_db, "files", trimmed).ok_or_else(
+                    || {
                         format!(
                             "Resource '{}' does not resolve to a file_/att_ attachment",
                             trimmed
                         )
-                    })?,
+                    },
+                )?,
             }
         } else {
             return Err(format!(
@@ -2709,10 +2708,9 @@ impl BuiltinResourceExecutor {
         let conn = chat_db
             .get_conn_safe()
             .map_err(|e| format!("Failed to open chat database: {}", e))?;
-        let messages = crate::chat_v2::repo::ChatV2Repo::get_session_messages_with_conn(
-            &conn, session_id,
-        )
-        .map_err(|e| format!("Failed to load session messages: {}", e))?;
+        let messages =
+            crate::chat_v2::repo::ChatV2Repo::get_session_messages_with_conn(&conn, session_id)
+                .map_err(|e| format!("Failed to load session messages: {}", e))?;
 
         for msg in messages.iter().rev() {
             let Some(meta) = &msg.meta else { continue };
@@ -2720,7 +2718,10 @@ impl BuiltinResourceExecutor {
                 continue;
             };
             for context_ref in &snapshot.user_refs {
-                if candidate_ids.iter().any(|id| id == &context_ref.resource_id) {
+                if candidate_ids
+                    .iter()
+                    .any(|id| id == &context_ref.resource_id)
+                {
                     return Ok(true);
                 }
             }
@@ -2790,7 +2791,7 @@ impl BuiltinResourceExecutor {
             "xmind" => return "xmind",
             "mmap" => return "mmap",
             "opml" => return "opml",
-            "mm" => return "freemind",
+            "mm" => return "mm",
             "md" | "markdown" => return "markdown",
             "txt" => return "text",
             "json" => return "json",
@@ -2813,7 +2814,7 @@ impl BuiltinResourceExecutor {
                 return "opml";
             }
             if lower.contains("<map") {
-                return "freemind";
+                return "mm";
             }
             return "opml";
         }
@@ -2905,9 +2906,7 @@ impl BuiltinResourceExecutor {
             node: Value,
         ) {
             if let Some((_, parent)) = stack.last_mut() {
-                if let Some(children) =
-                    parent.get_mut("children").and_then(|c| c.as_array_mut())
-                {
+                if let Some(children) = parent.get_mut("children").and_then(|c| c.as_array_mut()) {
                     children.push(node);
                 }
             } else {
@@ -2944,11 +2943,14 @@ impl BuiltinResourceExecutor {
                 let depth = hash_count - 1;
                 let text_value = content[hash_count..].trim();
                 Self::mindmap_import_claim_node(stats, depth)?;
-                items.push((depth, json!({
-                    "id": Self::mindmap_import_alloc_id(&mut counter, false),
-                    "text": if text_value.is_empty() { "未命名主题" } else { text_value },
-                    "children": [],
-                })));
+                items.push((
+                    depth,
+                    json!({
+                        "id": Self::mindmap_import_alloc_id(&mut counter, false),
+                        "text": if text_value.is_empty() { "未命名主题" } else { text_value },
+                        "children": [],
+                    }),
+                ));
                 heading_base = Some(depth);
                 continue;
             }
@@ -3085,7 +3087,12 @@ impl BuiltinResourceExecutor {
         let mut children: Vec<Value> = Vec::new();
         for child in node.children() {
             if child.is_element() && child.tag_name().name().eq_ignore_ascii_case("outline") {
-                children.push(Self::opml_outline_to_value(child, depth + 1, stats, counter)?);
+                children.push(Self::opml_outline_to_value(
+                    child,
+                    depth + 1,
+                    stats,
+                    counter,
+                )?);
             }
         }
 
@@ -3108,8 +3115,7 @@ impl BuiltinResourceExecutor {
         fallback_title: &str,
         stats: &mut MindMapImportStats,
     ) -> Result<Value, String> {
-        let doc = roxmltree::Document::parse(text)
-            .map_err(|e| format!("OPML 解析失败: {}", e))?;
+        let doc = roxmltree::Document::parse(text).map_err(|e| format!("OPML 解析失败: {}", e))?;
         let body = doc
             .descendants()
             .find(|n| n.is_element() && n.tag_name().name().eq_ignore_ascii_case("body"))
@@ -3132,7 +3138,12 @@ impl BuiltinResourceExecutor {
         Self::mindmap_import_claim_node(stats, 0)?;
         let mut children: Vec<Value> = Vec::new();
         for outline in outlines {
-            children.push(Self::opml_outline_to_value(outline, 1, stats, &mut counter)?);
+            children.push(Self::opml_outline_to_value(
+                outline,
+                1,
+                stats,
+                &mut counter,
+            )?);
         }
         let title = doc
             .descendants()
@@ -3149,14 +3160,11 @@ impl BuiltinResourceExecutor {
     }
 
     // ------------------------------------------------------------------
-    // FreeMind / Freeplane (.mm) 解析
+    // .mm XML 解析
     // ------------------------------------------------------------------
 
-    /// 提取 FreeMind richcontent 文本；NODE 折叠为单行，NOTE 保留行结构
-    fn freemind_richcontent_text(
-        node: roxmltree::Node<'_, '_>,
-        content_type: &str,
-    ) -> Option<String> {
+    /// 提取 .mm richcontent 文本；NODE 折叠为单行，NOTE 保留行结构
+    fn mm_richcontent_text(node: roxmltree::Node<'_, '_>, content_type: &str) -> Option<String> {
         let rich = node.children().find(|child| {
             child.is_element()
                 && child.tag_name().name().eq_ignore_ascii_case("richcontent")
@@ -3194,7 +3202,7 @@ impl BuiltinResourceExecutor {
         }
     }
 
-    fn freemind_node_to_value(
+    fn mm_node_to_value(
         node: roxmltree::Node<'_, '_>,
         depth: usize,
         stats: &mut MindMapImportStats,
@@ -3212,9 +3220,9 @@ impl BuiltinResourceExecutor {
             .filter(|s| !s.is_empty());
         let text = attr_text
             .map(str::to_string)
-            .or_else(|| Self::freemind_richcontent_text(node, "NODE"))
+            .or_else(|| Self::mm_richcontent_text(node, "NODE"))
             .unwrap_or_else(|| "未命名主题".to_string());
-        let note = Self::freemind_richcontent_text(node, "NOTE");
+        let note = Self::mm_richcontent_text(node, "NOTE");
 
         // 源 ID → 实际节点 ID；无源 ID 时登记自映射，供 arrowlink 端点重映射
         let original_id = node
@@ -3260,8 +3268,14 @@ impl BuiltinResourceExecutor {
         let mut children: Vec<Value> = Vec::new();
         for child in node.children() {
             if child.is_element() && child.tag_name().name().eq_ignore_ascii_case("node") {
-                children.push(Self::freemind_node_to_value(
-                    child, depth + 1, stats, counter, id_map, raw_links, false,
+                children.push(Self::mm_node_to_value(
+                    child,
+                    depth + 1,
+                    stats,
+                    counter,
+                    id_map,
+                    raw_links,
+                    false,
                 )?);
             }
         }
@@ -3280,23 +3294,23 @@ impl BuiltinResourceExecutor {
         Ok(value)
     }
 
-    fn parse_freemind_to_mindmap(
+    fn parse_mm_to_mindmap(
         text: &str,
         fallback_title: &str,
         stats: &mut MindMapImportStats,
     ) -> Result<(Value, Vec<Value>), String> {
-        let doc = roxmltree::Document::parse(text)
-            .map_err(|e| format!("FreeMind XML 解析失败: {}", e))?;
+        let doc =
+            roxmltree::Document::parse(text).map_err(|e| format!(".mm XML 解析失败: {}", e))?;
         let map_element = doc.root_element();
         if !map_element.tag_name().name().eq_ignore_ascii_case("map") {
-            return Err("无效的 FreeMind 文件：缺少 map 根元素".to_string());
+            return Err("无效的 .mm 文件：缺少 map 根元素".to_string());
         }
         let root_nodes: Vec<roxmltree::Node<'_, '_>> = map_element
             .children()
             .filter(|n| n.is_element() && n.tag_name().name().eq_ignore_ascii_case("node"))
             .collect();
         if root_nodes.is_empty() {
-            return Err("无效的 FreeMind 文件：没有 node 元素".to_string());
+            return Err("无效的 .mm 文件：没有 node 元素".to_string());
         }
 
         let mut counter: usize = 0;
@@ -3304,15 +3318,27 @@ impl BuiltinResourceExecutor {
         let mut raw_links: Vec<(String, String, Option<String>)> = Vec::new();
 
         let root = if root_nodes.len() == 1 {
-            Self::freemind_node_to_value(
-                root_nodes[0], 0, stats, &mut counter, &mut id_map, &mut raw_links, true,
+            Self::mm_node_to_value(
+                root_nodes[0],
+                0,
+                stats,
+                &mut counter,
+                &mut id_map,
+                &mut raw_links,
+                true,
             )?
         } else {
             Self::mindmap_import_claim_node(stats, 0)?;
             let mut children: Vec<Value> = Vec::new();
             for node in root_nodes {
-                children.push(Self::freemind_node_to_value(
-                    node, 1, stats, &mut counter, &mut id_map, &mut raw_links, false,
+                children.push(Self::mm_node_to_value(
+                    node,
+                    1,
+                    stats,
+                    &mut counter,
+                    &mut id_map,
+                    &mut raw_links,
+                    false,
                 )?);
             }
             json!({
@@ -3323,13 +3349,12 @@ impl BuiltinResourceExecutor {
         };
 
         let mut assoc_counter: usize = 0;
-        let associations =
-            Self::remap_import_associations(&raw_links, &id_map, &mut assoc_counter);
+        let associations = Self::remap_import_associations(&raw_links, &id_map, &mut assoc_counter);
         Ok((root, associations))
     }
 
     // ------------------------------------------------------------------
-    // XMind (.xmind zip：Zen content.json 优先，回退 XMind 8 content.xml)
+    // .xmind zip：content.json 优先，回退 content.xml
     // ------------------------------------------------------------------
 
     fn xmind_json_topic_to_value(
@@ -3380,24 +3405,22 @@ impl BuiltinResourceExecutor {
             .filter(|s| !s.is_empty())
             .unwrap_or("未命名主题");
 
-        let note = topic
-            .get("notes")
-            .and_then(|notes| {
-                notes
-                    .get("plain")
-                    .and_then(|p| p.get("content"))
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .or_else(|| {
-                        notes
-                            .get("html")
-                            .and_then(|h| h.get("content"))
-                            .and_then(|v| v.as_str())
-                            .map(Self::strip_html_tags)
-                            .filter(|s| !s.is_empty())
-                    })
-            });
+        let note = topic.get("notes").and_then(|notes| {
+            notes
+                .get("plain")
+                .and_then(|p| p.get("content"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    notes
+                        .get("html")
+                        .and_then(|h| h.get("content"))
+                        .and_then(|v| v.as_str())
+                        .map(Self::strip_html_tags)
+                        .filter(|s| !s.is_empty())
+                })
+        });
 
         // 任务 marker：task-done → 已完成；其余 task-* → 未完成任务
         let mut completed: Option<bool> = None;
@@ -3420,7 +3443,12 @@ impl BuiltinResourceExecutor {
         {
             for child in attached {
                 children.push(Self::xmind_json_topic_to_value(
-                    child, depth + 1, stats, counter, id_map, false,
+                    child,
+                    depth + 1,
+                    stats,
+                    counter,
+                    id_map,
+                    false,
                 )?);
             }
         }
@@ -3469,12 +3497,10 @@ impl BuiltinResourceExecutor {
         // 丢弃项计数：<xhtml:img>（localName=img）、boundaries、summaries、xlink:href
         stats.dropped_images += Self::xmind_xml_child_elements(topic, "img").len();
         for container in Self::xmind_xml_child_elements(topic, "summaries") {
-            stats.dropped_summaries +=
-                Self::xmind_xml_child_elements(container, "summary").len();
+            stats.dropped_summaries += Self::xmind_xml_child_elements(container, "summary").len();
         }
         for container in Self::xmind_xml_child_elements(topic, "boundaries") {
-            stats.dropped_boundaries +=
-                Self::xmind_xml_child_elements(container, "boundary").len();
+            stats.dropped_boundaries += Self::xmind_xml_child_elements(container, "boundary").len();
         }
         if topic.attributes().any(|attr| attr.name() == "href") {
             stats.dropped_hyperlinks += 1;
@@ -3532,7 +3558,12 @@ impl BuiltinResourceExecutor {
                 }
                 for child_topic in Self::xmind_xml_child_elements(topics_group, "topic") {
                     children.push(Self::xmind_xml_topic_to_value(
-                        child_topic, depth + 1, stats, counter, id_map, false,
+                        child_topic,
+                        depth + 1,
+                        stats,
+                        counter,
+                        id_map,
+                        false,
                     )?);
                 }
             }
@@ -3559,22 +3590,27 @@ impl BuiltinResourceExecutor {
     ) -> Result<(Value, Vec<Value>), String> {
         let cursor = std::io::Cursor::new(bytes);
         let mut archive = zip::ZipArchive::new(cursor)
-            .map_err(|e| format!("无效的 XMind 文件（zip 解包失败）: {}", e))?;
+            .map_err(|e| format!("无效的 .xmind 文件（zip 解包失败）: {}", e))?;
 
-        // XMind Zen：content.json
+        // .xmind：content.json
         if let Some(content_json) = Self::read_mindmap_zip_entry(&mut archive, "content.json")? {
             let raw: Value = serde_json::from_str(&content_json)
-                .map_err(|e| format!("无效的 XMind content.json: {}", e))?;
+                .map_err(|e| format!("无效的 .xmind content.json: {}", e))?;
             let sheet_values: Vec<Value> = match raw {
                 Value::Array(items) => items,
                 other => vec![other],
             };
             let sheets: Vec<&Value> = sheet_values
                 .iter()
-                .filter(|sheet| sheet.get("rootTopic").map(|t| t.is_object()).unwrap_or(false))
+                .filter(|sheet| {
+                    sheet
+                        .get("rootTopic")
+                        .map(|t| t.is_object())
+                        .unwrap_or(false)
+                })
                 .collect();
             if sheets.is_empty() {
-                return Err("无效的 XMind：缺少根主题".to_string());
+                return Err("无效的 .xmind：缺少根主题".to_string());
             }
 
             let mut counter: usize = 0;
@@ -3608,9 +3644,14 @@ impl BuiltinResourceExecutor {
             let root = if sheets.len() == 1 {
                 let root_topic = sheets[0]
                     .get("rootTopic")
-                    .ok_or_else(|| "无效的 XMind：缺少根主题".to_string())?;
+                    .ok_or_else(|| "无效的 .xmind：缺少根主题".to_string())?;
                 Self::xmind_json_topic_to_value(
-                    root_topic, 0, stats, &mut counter, &mut id_map, true,
+                    root_topic,
+                    0,
+                    stats,
+                    &mut counter,
+                    &mut id_map,
+                    true,
                 )?
             } else {
                 Self::mindmap_import_claim_node(stats, 0)?;
@@ -3618,15 +3659,20 @@ impl BuiltinResourceExecutor {
                 for sheet in &sheets {
                     let root_topic = sheet
                         .get("rootTopic")
-                        .ok_or_else(|| "无效的 XMind：缺少根主题".to_string())?;
+                        .ok_or_else(|| "无效的 .xmind：缺少根主题".to_string())?;
                     children.push(Self::xmind_json_topic_to_value(
-                        root_topic, 1, stats, &mut counter, &mut id_map, false,
+                        root_topic,
+                        1,
+                        stats,
+                        &mut counter,
+                        &mut id_map,
+                        false,
                     )?);
                 }
                 json!({
                     "id": "root",
                     "text": fallback_title,
-                    "note": format!("合并自 {} 个 XMind 画布", sheets.len()),
+                    "note": format!("合并自 {} 个 .xmind 画布", sheets.len()),
                     "children": children,
                 })
             };
@@ -3637,10 +3683,10 @@ impl BuiltinResourceExecutor {
             return Ok((root, associations));
         }
 
-        // XMind 8：content.xml
+        // .xmind XML：content.xml
         if let Some(content_xml) = Self::read_mindmap_zip_entry(&mut archive, "content.xml")? {
             let doc = roxmltree::Document::parse(&content_xml)
-                .map_err(|e| format!("无效的 XMind content.xml: {}", e))?;
+                .map_err(|e| format!("无效的 .xmind content.xml: {}", e))?;
             let sheet_elements: Vec<roxmltree::Node<'_, '_>> = doc
                 .descendants()
                 .filter(|n| n.is_element() && n.tag_name().name().eq_ignore_ascii_case("sheet"))
@@ -3648,11 +3694,13 @@ impl BuiltinResourceExecutor {
             let root_topics: Vec<roxmltree::Node<'_, '_>> = sheet_elements
                 .iter()
                 .filter_map(|sheet| {
-                    Self::xmind_xml_child_elements(*sheet, "topic").first().copied()
+                    Self::xmind_xml_child_elements(*sheet, "topic")
+                        .first()
+                        .copied()
                 })
                 .collect();
             if root_topics.is_empty() {
-                return Err("无效的 XMind：缺少根主题".to_string());
+                return Err("无效的 .xmind：缺少根主题".to_string());
             }
 
             let mut counter: usize = 0;
@@ -3674,20 +3722,30 @@ impl BuiltinResourceExecutor {
 
             let root = if root_topics.len() == 1 {
                 Self::xmind_xml_topic_to_value(
-                    root_topics[0], 0, stats, &mut counter, &mut id_map, true,
+                    root_topics[0],
+                    0,
+                    stats,
+                    &mut counter,
+                    &mut id_map,
+                    true,
                 )?
             } else {
                 Self::mindmap_import_claim_node(stats, 0)?;
                 let mut children: Vec<Value> = Vec::new();
                 for topic in &root_topics {
                     children.push(Self::xmind_xml_topic_to_value(
-                        *topic, 1, stats, &mut counter, &mut id_map, false,
+                        *topic,
+                        1,
+                        stats,
+                        &mut counter,
+                        &mut id_map,
+                        false,
                     )?);
                 }
                 json!({
                     "id": "root",
                     "text": fallback_title,
-                    "note": format!("合并自 {} 个 XMind 画布", root_topics.len()),
+                    "note": format!("合并自 {} 个 .xmind 画布", root_topics.len()),
                     "children": children,
                 })
             };
@@ -3698,11 +3756,11 @@ impl BuiltinResourceExecutor {
             return Ok((root, associations));
         }
 
-        Err("无效的 XMind 文件：缺少 content.json 或 content.xml".to_string())
+        Err("无效的 .xmind 文件：缺少 content.json 或 content.xml".to_string())
     }
 
     // ------------------------------------------------------------------
-    // MindManager (.mmap zip：Document.xml，OneTopic/SubTopics 结构)
+    // .mmap zip：Document.xml，OneTopic/SubTopics 结构
     // ------------------------------------------------------------------
 
     fn mmap_topic_to_value(
@@ -3724,7 +3782,11 @@ impl BuiltinResourceExecutor {
         for sub_topics in Self::xmind_xml_child_elements(topic, "SubTopics") {
             for child_topic in Self::xmind_xml_child_elements(sub_topics, "Topic") {
                 children.push(Self::mmap_topic_to_value(
-                    child_topic, depth + 1, stats, counter, false,
+                    child_topic,
+                    depth + 1,
+                    stats,
+                    counter,
+                    false,
                 )?);
             }
         }
@@ -3742,19 +3804,19 @@ impl BuiltinResourceExecutor {
     ) -> Result<Value, String> {
         let cursor = std::io::Cursor::new(bytes);
         let mut archive = zip::ZipArchive::new(cursor)
-            .map_err(|e| format!("无效的 MindManager 文件（zip 解包失败）: {}", e))?;
+            .map_err(|e| format!("无效的 .mmap 文件（zip 解包失败）: {}", e))?;
         let document_xml = Self::read_mindmap_zip_entry(&mut archive, "Document.xml")?
-            .ok_or_else(|| "无效的 MindManager 文件：缺少 Document.xml".to_string())?;
+            .ok_or_else(|| "无效的 .mmap 文件：缺少 Document.xml".to_string())?;
         let doc = roxmltree::Document::parse(&document_xml)
-            .map_err(|e| format!("无效的 MindManager Document.xml: {}", e))?;
+            .map_err(|e| format!("无效的 .mmap Document.xml: {}", e))?;
         let one_topic = doc
             .descendants()
             .find(|n| n.is_element() && n.tag_name().name().eq_ignore_ascii_case("OneTopic"))
-            .ok_or_else(|| "无效的 MindManager 文件：缺少 OneTopic 元素".to_string())?;
+            .ok_or_else(|| "无效的 .mmap 文件：缺少 OneTopic 元素".to_string())?;
         let root_topic = Self::xmind_xml_child_elements(one_topic, "Topic")
             .first()
             .copied()
-            .ok_or_else(|| "无效的 MindManager 文件：OneTopic 下缺少 Topic".to_string())?;
+            .ok_or_else(|| "无效的 .mmap 文件：OneTopic 下缺少 Topic".to_string())?;
 
         let mut counter: usize = 0;
         Self::mmap_topic_to_value(root_topic, 0, stats, &mut counter, true)
@@ -3844,35 +3906,33 @@ impl BuiltinResourceExecutor {
                     (root, Vec::new(), "mmap")
                 }
                 "zip" => {
-                    // 无扩展名 zip：先按 XMind 解析，失败再按 MindManager 解析
+                    // 无扩展名 zip：先按 .xmind 解析，失败再按 .mmap 解析
                     match Self::parse_xmind_to_mindmap(&bytes, &fallback_title, &mut stats) {
                         Ok((root, assoc)) => (root, assoc, "xmind"),
                         Err(xmind_error) => {
                             stats = MindMapImportStats::default();
-                            let root =
-                                Self::parse_mmap_to_mindmap(&bytes, &mut stats).map_err(
-                                    |mmap_error| {
-                                        format!(
-                                            "无法识别的 zip 导图文件。XMind 解析: {}；MindManager 解析: {}",
-                                            xmind_error, mmap_error
-                                        )
-                                    },
-                                )?;
+                            let root = Self::parse_mmap_to_mindmap(&bytes, &mut stats).map_err(
+                                |mmap_error| {
+                                    format!(
+                                        "无法识别的 zip 导图文件。.xmind 解析: {}；.mmap 解析: {}",
+                                        xmind_error, mmap_error
+                                    )
+                                },
+                            )?;
                             (root, Vec::new(), "mmap")
                         }
                     }
                 }
                 "opml" => {
                     let text = String::from_utf8_lossy(&bytes).into_owned();
-                    let root =
-                        Self::parse_opml_to_mindmap(&text, &fallback_title, &mut stats)?;
+                    let root = Self::parse_opml_to_mindmap(&text, &fallback_title, &mut stats)?;
                     (root, Vec::new(), "opml")
                 }
-                "freemind" => {
+                "mm" => {
                     let text = String::from_utf8_lossy(&bytes).into_owned();
                     let (root, assoc) =
-                        Self::parse_freemind_to_mindmap(&text, &fallback_title, &mut stats)?;
-                    (root, assoc, "freemind")
+                        Self::parse_mm_to_mindmap(&text, &fallback_title, &mut stats)?;
+                    (root, assoc, "mm")
                 }
                 "json" => {
                     let text = String::from_utf8_lossy(&bytes).into_owned();
@@ -3886,7 +3946,10 @@ impl BuiltinResourceExecutor {
                     let mut root = root;
                     let mut counter: usize = 0;
                     Self::validate_and_fill_json_import_node(
-                        &mut root, 0, &mut stats, &mut counter,
+                        &mut root,
+                        0,
+                        &mut stats,
+                        &mut counter,
                     )?;
                     let associations = parsed
                         .get("associations")
@@ -3903,7 +3966,11 @@ impl BuiltinResourceExecutor {
                     (
                         root,
                         Vec::new(),
-                        if detected == "text" { "text" } else { "markdown" },
+                        if detected == "text" {
+                            "text"
+                        } else {
+                            "markdown"
+                        },
                     )
                 }
             };
@@ -4181,10 +4248,7 @@ impl BuiltinResourceExecutor {
         let mut associations_updated = false;
         if let Some(new_associations) = associations_arg {
             if let Some(obj) = doc.as_object_mut() {
-                obj.insert(
-                    "associations".to_string(),
-                    Value::Array(new_associations),
-                );
+                obj.insert("associations".to_string(), Value::Array(new_associations));
                 // 复用统一校验：过滤端点不存在/自指的连线，补全缺失 id
                 Self::sanitize_mindmap_associations(&mut doc);
                 associations_updated = true;

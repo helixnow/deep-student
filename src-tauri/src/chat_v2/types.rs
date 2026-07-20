@@ -2198,6 +2198,11 @@ pub struct SendOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
 
+    /// Backend-only exact-model contract. When true, capability planning must
+    /// not replace `model_id` with another configuration.
+    #[serde(skip)]
+    pub strict_model_id: bool,
+
     /// 温度
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
@@ -2445,6 +2450,11 @@ pub struct SendOptions {
     /// 后端 load_skills 执行后从此字段获取工具 Schema 并动态追加到 tools 数组
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_embedded_tools: Option<std::collections::HashMap<String, Vec<McpToolSchema>>>,
+
+    /// Frontend runtime-admission failures (skillId -> non-sensitive reason).
+    /// Rejected skills have no entry in skill_contents/skill_embedded_tools.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_admission_errors: Option<std::collections::HashMap<String, String>>,
 
     /// 技能包根目录映射（skillId -> package root）
     ///

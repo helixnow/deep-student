@@ -13,7 +13,7 @@ use tauri::Manager;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::mcp_settings_store::{
-    emit_mcp_list_changed, read_mcp_tools_list, restore_list_snapshot, write_mcp_tools_list,
+    emit_mcp_list_changed, mcp_list_mutation_guard, read_mcp_tools_list, write_mcp_tools_list,
     MCP_TOOLS_LIST_KEY,
 };
 use super::self_inspect_executor::redact_sensitive_json;
@@ -350,7 +350,14 @@ impl McpProposeExecutor {
     fn server_name(entry: &Value) -> Option<&str> {
         entry
             .get("name")
-            .or_else(|| entry.get("id"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+    }
+
+    fn server_id(entry: &Value) -> Option<&str> {
+        entry
+            .get("id")
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|v| !v.is_empty())
@@ -386,15 +393,15 @@ impl McpProposeExecutor {
     }
 
     fn find_duplicate(existing: &[Value], input: &ProposeInput) -> Option<String> {
-        let target_name = input.name.to_ascii_lowercase();
         for entry in existing {
-            if let Some(name) = Self::server_name(entry) {
-                if name.eq_ignore_ascii_case(&input.name)
-                    || name.to_ascii_lowercase() == target_name
-                {
+            for identity in [Self::server_id(entry), Self::server_name(entry)]
+                .into_iter()
+                .flatten()
+            {
+                if identity.eq_ignore_ascii_case(&input.name) {
                     return Some(format!(
-                        "MCP server with name '{}' is already configured",
-                        name
+                        "MCP server identity '{}' is already configured",
+                        identity
                     ));
                 }
             }
@@ -471,17 +478,44 @@ impl McpProposeExecutor {
         (Value::Object(entry), enabled)
     }
 
-    fn provenance_key(name: &str) -> String {
-        format!("mcp.propose.provenance.{}", name)
+    /// Remove only the entry installed by this proposal from a freshly-read list.
+    ///
+    /// The stable id is unique by construction. Treat duplicate ids as corruption
+    /// and fail closed instead of guessing which entry to remove.
+    fn remove_proposed_entry(list: &mut Vec<Value>, stable_id: &str) -> Result<bool, String> {
+        let matches: Vec<usize> = list
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                (Self::server_id(entry) == Some(stable_id)).then_some(index)
+            })
+            .collect();
+        match matches.as_slice() {
+            [] => Ok(false),
+            [index] => {
+                list.remove(*index);
+                Ok(true)
+            }
+            _ => Err(format!(
+                "cannot safely roll back MCP server '{}': multiple entries share the stable id",
+                stable_id
+            )),
+        }
+    }
+
+    fn provenance_key(stable_id: &str) -> String {
+        format!("mcp.propose.provenance.{}", stable_id)
     }
 
     fn write_provenance(
         db: &Database,
         input: &ProposeInput,
+        stable_id: &str,
         session_id: &str,
         enabled_on_install: bool,
     ) -> Result<(), String> {
         let payload = json!({
+            "server_id": stable_id,
             "purpose": input.purpose,
             "session_id": session_id,
             "proposed_at": Utc::now().to_rfc3339(),
@@ -490,12 +524,15 @@ impl McpProposeExecutor {
         });
         let serialized = serde_json::to_string(&payload)
             .map_err(|e| format!("failed to serialize provenance: {}", e))?;
-        db.save_setting(&Self::provenance_key(&input.name), &serialized)
+        db.save_setting(&Self::provenance_key(stable_id), &serialized)
             .map_err(|e| format!("failed to write provenance: {}", e))
     }
 
     fn server_summary(entry: &Value, input: &ProposeInput) -> Value {
         let mut summary = Map::new();
+        if let Some(id) = Self::server_id(entry) {
+            summary.insert("id".to_string(), json!(id));
+        }
         summary.insert("name".to_string(), json!(input.name));
         summary.insert("transport".to_string(), json!(input.transport.as_str()));
         summary.insert(
@@ -528,24 +565,45 @@ impl McpProposeExecutor {
         input: ProposeInput,
     ) -> Result<Value, String> {
         // 读→查重→写 临界区：与 mcp_manage_executor 共享同一把进程内锁
-        let (snapshot, entry, should_test) = {
-            let _guard = super::mcp_settings_store::mcp_list_mutation_guard();
+        let (entry, stable_id, should_test) = {
+            let _guard = mcp_list_mutation_guard();
             let existing = Self::with_database(ctx, read_mcp_tools_list)?;
             if let Some(reason) = Self::find_duplicate(&existing, &input) {
                 return Err(reason);
             }
 
-            let snapshot = restore_list_snapshot(&existing);
             let (entry, should_test) = Self::build_server_entry(&input);
+            let stable_id = Self::server_id(&entry)
+                .ok_or("new MCP server entry is missing its stable id")?
+                .to_string();
             let mut updated = existing;
             updated.push(entry.clone());
 
             Self::with_database(ctx, |db| write_mcp_tools_list(db, &updated))?;
-            (snapshot, entry, should_test)
+            (entry, stable_id, should_test)
         };
-        Self::with_database(ctx, |db| {
-            Self::write_provenance(db, &input, &ctx.session_id, should_test)
-        })?;
+        if let Err(provenance_error) = Self::with_database(ctx, |db| {
+            Self::write_provenance(db, &input, &stable_id, &ctx.session_id, should_test)
+        }) {
+            let rollback = {
+                let _guard = mcp_list_mutation_guard();
+                let mut latest = Self::with_database(ctx, read_mcp_tools_list)?;
+                let removed = Self::remove_proposed_entry(&mut latest, &stable_id)?;
+                if removed {
+                    Self::with_database(ctx, |db| write_mcp_tools_list(db, &latest))?;
+                }
+                removed
+            };
+            return Err(format!(
+                "{}; newly added configuration {}",
+                provenance_error,
+                if rollback {
+                    "was removed"
+                } else {
+                    "was already absent"
+                }
+            ));
+        }
 
         if should_test {
             let test_result = run_connection_test(input.transport, &entry).await;
@@ -555,7 +613,27 @@ impl McpProposeExecutor {
                 .unwrap_or(false);
 
             if !success {
-                Self::with_database(ctx, |db| write_mcp_tools_list(db, &snapshot))?;
+                // Re-lock after the await, re-read the latest list, and remove only
+                // this proposal's stable id. Never restore an old whole-list snapshot:
+                // doing so would erase concurrent update/remove/propose changes.
+                let rollback = {
+                    let _guard = mcp_list_mutation_guard();
+                    let mut latest = Self::with_database(ctx, read_mcp_tools_list)?;
+                    let removed = Self::remove_proposed_entry(&mut latest, &stable_id)?;
+                    if removed {
+                        Self::with_database(ctx, |db| write_mcp_tools_list(db, &latest))?;
+                    }
+                    removed
+                };
+                if let Err(cleanup_error) = Self::with_database(ctx, |db| {
+                    db.delete_setting(&Self::provenance_key(&stable_id))
+                        .map_err(|e| format!("failed to delete proposal provenance: {}", e))
+                }) {
+                    log::warn!(
+                        "[McpProposeExecutor] Failed to clean provenance after rollback: {}",
+                        cleanup_error
+                    );
+                }
                 let error = test_result
                     .get("error")
                     .or_else(|| test_result.get("message"))
@@ -563,8 +641,13 @@ impl McpProposeExecutor {
                     .map(sanitize_test_error)
                     .unwrap_or_else(|| "connection test failed".to_string());
                 return Err(format!(
-                    "MCP connection test failed: {}. Configuration has been rolled back.",
-                    error
+                    "MCP connection test failed: {}. Configuration {}.",
+                    error,
+                    if rollback {
+                        "has been rolled back without changing concurrent MCP entries"
+                    } else {
+                        "was already absent when rollback re-read the latest list"
+                    }
                 ));
             }
 
@@ -757,6 +840,29 @@ mod tests {
     }
 
     #[test]
+    fn detects_duplicate_stable_id_after_display_name_was_changed() {
+        let existing = vec![json!({
+            "id": "brave",
+            "name": "Brave Search (renamed)",
+            "transportType": "stdio",
+            "command": "npx",
+            "args": ["-y", "other"]
+        })];
+        let input = ProposeInput {
+            name: "BRAVE".to_string(),
+            transport: McpTransport::Stdio,
+            purpose: "search".to_string(),
+            command: Some("different-command".to_string()),
+            args: vec![],
+            env_required: vec![],
+            url: None,
+        };
+        let error = McpProposeExecutor::find_duplicate(&existing, &input).unwrap();
+        assert!(error.contains("identity"));
+        assert!(error.contains("brave"));
+    }
+
+    #[test]
     fn detects_duplicate_command_args() {
         let existing = vec![json!({
             "id": "pkg",
@@ -821,10 +927,33 @@ mod tests {
     }
 
     #[test]
-    fn restore_snapshot_roundtrip() {
-        let snapshot = vec![json!({"id": "a"})];
-        let restored = restore_list_snapshot(&snapshot);
-        assert_eq!(restored, snapshot);
+    fn targeted_rollback_preserves_concurrent_list_changes() {
+        let mut latest = vec![
+            json!({"id": "existing", "name": "renamed concurrently", "enabled": false}),
+            json!({"id": "proposal", "name": "proposal"}),
+            json!({"id": "concurrent-add", "name": "added during connection test"}),
+        ];
+        assert!(McpProposeExecutor::remove_proposed_entry(&mut latest, "proposal").unwrap());
+        assert_eq!(
+            latest,
+            vec![
+                json!({"id": "existing", "name": "renamed concurrently", "enabled": false}),
+                json!({"id": "concurrent-add", "name": "added during connection test"}),
+            ]
+        );
+    }
+
+    #[test]
+    fn targeted_rollback_fails_closed_on_duplicate_stable_ids() {
+        let mut latest = vec![
+            json!({"id": "proposal", "name": "first"}),
+            json!({"id": "proposal", "name": "second"}),
+            json!({"id": "unrelated"}),
+        ];
+        let before = latest.clone();
+        let error = McpProposeExecutor::remove_proposed_entry(&mut latest, "proposal").unwrap_err();
+        assert!(error.contains("multiple entries"));
+        assert_eq!(latest, before);
     }
 
     #[test]

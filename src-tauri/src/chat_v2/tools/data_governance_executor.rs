@@ -19,7 +19,9 @@ use crate::backup_job_manager::{
     BackupJobManagerState, BackupJobPhase, BackupJobStatus, BackupJobSummary,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::data_governance::commands_sync::CloudConfigSsotError;
+use crate::cloud_config_commands::{
+    load_cloud_config_ssot, load_hydrated_cloud_config_ssot, CloudConfigSsotError,
+};
 
 const BACKUP_STATUS_TOOL: &str = "backup_status";
 const BACKUP_JOB_STATUS_TOOL: &str = "backup_job_status";
@@ -233,7 +235,7 @@ impl DataGovernanceToolExecutor {
 
         let (cloud_configured, config_warning) = match ctx.main_db.as_deref() {
             Some(database) => {
-                match crate::data_governance::commands_sync::load_cloud_config_ssot(database) {
+                match load_cloud_config_ssot(database) {
                     Ok(_) => (true, None),
                     Err(CloudConfigSsotError::NotConfigured) => (
                         false,
@@ -321,8 +323,7 @@ impl DataGovernanceToolExecutor {
         })?;
         let app = ctx.window_ref().app_handle().clone();
         let config =
-            crate::data_governance::commands_sync::load_hydrated_cloud_config_ssot(&app, database)
-                .map_err(cloud_config_tool_error)?;
+            load_hydrated_cloud_config_ssot(&app, database).map_err(cloud_config_tool_error)?;
 
         let sync = crate::data_governance::commands_sync::data_governance_run_sync(
             app,

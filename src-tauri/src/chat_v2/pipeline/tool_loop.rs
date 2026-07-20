@@ -1337,6 +1337,7 @@ impl ChatV2Pipeline {
                 let canvas_note_id = ctx.options.canvas_note_id.clone();
                 let skill_contents = ctx.options.skill_contents.clone();
                 let skill_embedded_tools = ctx.options.skill_embedded_tools.clone();
+                let skill_admission_errors = ctx.options.skill_admission_errors.clone();
                 let skill_package_roots = ctx.options.skill_package_roots.clone();
                 let active_skill_ids = ctx.options.active_skill_ids.clone();
                 let execution_allowed_tools = ctx.options.execution_allowed_tools.clone();
@@ -1380,6 +1381,7 @@ impl ChatV2Pipeline {
                         &canvas_note_id,
                         &skill_contents,
                         &skill_embedded_tools,
+                        &skill_admission_errors,
                         &skill_package_roots,
                         &active_skill_ids,
                         &execution_allowed_tools,
@@ -2177,6 +2179,7 @@ impl ChatV2Pipeline {
         skill_embedded_tools: &Option<
             std::collections::HashMap<String, Vec<super::super::types::McpToolSchema>>,
         >,
+        skill_admission_errors: &Option<std::collections::HashMap<String, String>>,
         skill_package_roots: &Option<std::collections::HashMap<String, String>>,
         _active_skill_ids: &Option<Vec<String>>,
         execution_allowed_tools: &Option<Vec<String>>,
@@ -2287,6 +2290,7 @@ impl ChatV2Pipeline {
                             canvas_note_id,
                             skill_contents,
                             skill_embedded_tools,
+                            skill_admission_errors,
                             skill_package_roots,
                             _active_skill_ids,
                             execution_allowed_tools,
@@ -2417,6 +2421,7 @@ impl ChatV2Pipeline {
                         canvas_note_id,
                         skill_contents,
                         skill_embedded_tools,
+                        skill_admission_errors,
                         skill_package_roots,
                         _active_skill_ids,
                         execution_allowed_tools,
@@ -2513,6 +2518,7 @@ impl ChatV2Pipeline {
         skill_embedded_tools: &Option<
             std::collections::HashMap<String, Vec<super::super::types::McpToolSchema>>,
         >,
+        skill_admission_errors: &Option<std::collections::HashMap<String, String>>,
         skill_package_roots: &Option<std::collections::HashMap<String, String>>,
         active_skill_ids: &Option<Vec<String>>,
         execution_allowed_tools: &Option<Vec<String>>,
@@ -2540,6 +2546,7 @@ impl ChatV2Pipeline {
                     canvas_note_id,
                     skill_contents,
                     skill_embedded_tools,
+                    skill_admission_errors,
                     skill_package_roots,
                     active_skill_ids,
                     execution_allowed_tools,
@@ -2784,6 +2791,7 @@ impl ChatV2Pipeline {
         skill_embedded_tools: &Option<
             std::collections::HashMap<String, Vec<super::super::types::McpToolSchema>>,
         >,
+        skill_admission_errors: &Option<std::collections::HashMap<String, String>>,
         skill_package_roots: &Option<std::collections::HashMap<String, String>>,
         _active_skill_ids: &Option<Vec<String>>,
         execution_allowed_tools: &Option<Vec<String>>,
@@ -3426,11 +3434,7 @@ impl ChatV2Pipeline {
         .with_vfs_db(self.vfs_db.clone()) // 🆕 学习资源工具需要访问 VFS 数据库
         // 托管 VfsLanceStore 单例注入：Memory-as-VFS 搜索 / 资源删除时的向量清理依赖它。
         // 启动初始化失败或 headless 测试时为 None，工具侧按各自策略降级。
-        .with_vfs_lance_store(
-            self.vfs_db
-                .as_ref()
-                .and_then(managed_vfs_lance_store_for),
-        )
+        .with_vfs_lance_store(self.vfs_db.as_ref().and_then(managed_vfs_lance_store_for))
         .with_llm_manager(Some(self.llm_manager.clone())) // 🆕 VFS RAG 工具需要 LLM 管理器
         .with_chat_v2_db(Some(self.db.clone())) // 🆕 工具块防闪退保存
         .with_question_bank_service(self.question_bank_service.clone()) // 🆕 智能题目集工具
@@ -3452,6 +3456,7 @@ impl ChatV2Pipeline {
         // 🆕 渐进披露：传递 skill_contents
         ctx.skill_contents = skill_contents.clone();
         ctx.skill_embedded_tools = skill_embedded_tools.clone();
+        ctx.skill_admission_errors = skill_admission_errors.clone();
 
         // 🆕 取消支持：传递取消令牌
         if let Some(token) = cancellation_token.as_ref() {
@@ -4619,6 +4624,7 @@ mod tests {
                 &None,
                 &None,
                 &None,
+                &None,
                 None,
                 None,
                 None,
@@ -4906,6 +4912,7 @@ mod tests {
                 None,
                 None,
                 None,
+                &None,
                 &None,
                 &None,
                 &None,

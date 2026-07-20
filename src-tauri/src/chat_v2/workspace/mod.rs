@@ -30,7 +30,10 @@ pub use config::{
     MAX_AGENT_RETRY_ATTEMPTS, MAX_INBOX_SIZE, MAX_MESSAGES_PER_INJECTION,
 };
 pub use coordinator::WorkspaceCoordinator;
-pub use custom_agents::{find_custom_profile, load_custom_profiles};
+pub use custom_agents::{
+    find_custom_profile, frontmatter_summary, list_custom_agent_files, load_custom_profiles,
+    CustomAgentFileInfo, FrontmatterSummary,
+};
 pub use database::{WorkspaceDatabase, WorkspaceDatabaseManager, WorkspaceDatabasePool};
 pub use emitter::{workspace_events, WorkspaceEventEmitter};
 pub use inbox::InboxManager;

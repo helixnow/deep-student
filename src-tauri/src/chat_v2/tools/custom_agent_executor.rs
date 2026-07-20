@@ -37,7 +37,9 @@ use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::skills::is_portable_skill_path_component;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::chat_v2::workspace::{AgentProfileResolver, WorkspaceCoordinator};
+use crate::chat_v2::workspace::{
+    agent_profile::validate_persona_model_config, AgentProfileResolver, WorkspaceCoordinator,
+};
 
 pub mod tool_names {
     pub const CUSTOM_AGENT_LIST: &str = "custom_agent_list";
@@ -121,7 +123,10 @@ impl CustomAgentExecutor {
     /// persona 文件名校验：单层组件、`<stem>.md`，stem 只允许小写字母/数字/
     /// 连字符（与 custom_agents.rs 的 name 字符集对齐），并通过可移植目录名
     /// 检查（Windows 保留名等）。任何路径分隔符/穿越都会被字符集直接排除。
-    fn validate_file_name(raw: &str) -> Result<String, String> {
+    ///
+    /// pub(crate)：设置页的 workspace_*_agent_profile_file 命令复用同一套
+    /// 安全校验（见 workspace_handlers.rs），保证两条写入路径规则一致。
+    pub(crate) fn validate_file_name(raw: &str) -> Result<String, String> {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
             return Err("file_name must not be empty".to_string());
@@ -148,14 +153,17 @@ impl CustomAgentExecutor {
             ));
         }
         if !is_portable_skill_path_component(trimmed) {
-            return Err(format!("file_name '{}' is not a portable file name", trimmed));
+            return Err(format!(
+                "file_name '{}' is not a portable file name",
+                trimmed
+            ));
         }
         Ok(trimmed.to_string())
     }
 
     /// 解析目标路径并做双保险：join 后 parent 必须精确等于 base（validate_file_name
     /// 的字符集已排除穿越，此处 fail-closed 再断言一次），符号链接一律拒绝。
-    fn resolve_persona_path(base: &Path, file_name: &str) -> Result<PathBuf, String> {
+    pub(crate) fn resolve_persona_path(base: &Path, file_name: &str) -> Result<PathBuf, String> {
         let file_name = Self::validate_file_name(file_name)?;
         let candidate = base.join(&file_name);
         if candidate.parent() != Some(base)
@@ -186,7 +194,9 @@ impl CustomAgentExecutor {
     ///
     /// 与 custom_agents.rs 的加载器 fail-closed 规则对齐：写入侧提前拦截
     /// 加载器必然跳过的定义，避免落盘死文件。
-    fn validate_persona_content(content: &str) -> Result<(String, Option<String>), String> {
+    pub(crate) fn validate_persona_content(
+        content: &str,
+    ) -> Result<(String, Option<String>, Option<String>), String> {
         let bytes = content.as_bytes();
         if bytes.is_empty() {
             return Err("content must not be empty".to_string());
@@ -209,6 +219,7 @@ impl CustomAgentExecutor {
         let mut name: Option<String> = None;
         let mut description: Option<String> = None;
         let mut base: Option<String> = None;
+        let mut model: Option<String> = None;
         let mut closed = false;
         for line in lines {
             if line.trim() == "---" {
@@ -234,6 +245,32 @@ impl CustomAgentExecutor {
                         if !v.is_empty() {
                             base = Some(v.to_string());
                         }
+                    }
+                    "model" => {
+                        let v = value.trim();
+                        if !v.is_empty() {
+                            model = Some(v.to_string());
+                        }
+                    }
+                    "reasoning_effort" | "reasoningEffort" => {
+                        let value = value
+                            .trim()
+                            .trim_matches(|c| c == '"' || c == '\'');
+                        if !matches!(
+                            value,
+                            "minimal" | "low" | "medium" | "high" | "xhigh" | "x_high"
+                        ) {
+                            return Err(format!(
+                                "reasoning_effort '{}' is invalid (allowed: minimal / low / medium / high / xhigh)",
+                                value
+                            ));
+                        }
+                    }
+                    "permissions" | "context_inheritance" | "contextInheritance" => {
+                        return Err(format!(
+                            "frontmatter field '{}' is unsupported: custom personas cannot change sandbox, approval, network, or context-inheritance policy",
+                            key.trim()
+                        ));
                     }
                     _ => {}
                 }
@@ -270,7 +307,35 @@ impl CustomAgentExecutor {
                 name
             ));
         }
-        Ok((name, description))
+        Ok((name, description, model))
+    }
+
+    async fn validate_model_for_write(
+        ctx: &ExecutionContext,
+        model: Option<&str>,
+    ) -> Result<Vec<Value>, String> {
+        let Some(model_id) = model else {
+            return Ok(Vec::new());
+        };
+        let Some(manager) = ctx.llm_manager.as_ref() else {
+            return Ok(vec![json!({
+                "code": "PERSONA_MODEL_CATALOG_UNAVAILABLE",
+                "model_id": model_id,
+                "message": "The model catalog was unavailable in this execution context. The profile was accepted with an explicit warning; runtime will still require the exact model configuration and will not fall back.",
+            })]);
+        };
+        let configs = match manager.get_api_configs().await {
+            Ok(configs) => configs,
+            Err(error) => {
+                return Ok(vec![json!({
+                    "code": "PERSONA_MODEL_CATALOG_UNAVAILABLE",
+                    "model_id": model_id,
+                    "message": format!("Failed to read the model catalog: {}. Runtime will require the exact model configuration and will not fall back.", error),
+                })]);
+            }
+        };
+        validate_persona_model_config(model_id, &configs)?;
+        Ok(Vec::new())
     }
 
     /// 首行标题：frontmatter 之后第一个非空行（用于审批卡/diff 摘要）。
@@ -410,7 +475,7 @@ impl CustomAgentExecutor {
 
     /// 原子写入：同目录临时文件 + fsync + rename；覆盖时先把旧文件挪到
     /// backup 再发布（Windows rename 不覆盖已存在目标），失败回滚。
-    fn atomic_write(target: &Path, bytes: &[u8]) -> Result<(), String> {
+    pub(crate) fn atomic_write(target: &Path, bytes: &[u8]) -> Result<(), String> {
         let dir = target
             .parent()
             .ok_or_else(|| format!("Target path has no parent: {:?}", target))?;
@@ -454,8 +519,8 @@ impl CustomAgentExecutor {
         let dir = self.agents_dir();
         let mut personas = Vec::new();
         if dir.exists() {
-            let entries =
-                fs::read_dir(&dir).map_err(|e| format!("Failed to list agents directory: {}", e))?;
+            let entries = fs::read_dir(&dir)
+                .map_err(|e| format!("Failed to list agents directory: {}", e))?;
             let mut paths: Vec<PathBuf> = entries
                 .flatten()
                 .map(|entry| entry.path())
@@ -499,7 +564,7 @@ impl CustomAgentExecutor {
             "agents_dir": dir.to_string_lossy(),
             "personas": personas,
             "count": count,
-            "note": "Custom subagent personas are Markdown files with YAML frontmatter (name/description/base/model/tools/skills). They are re-scanned on every subagent_call — changes take effect immediately without restart.",
+            "note": "Custom subagent personas support name/description/base/model/reasoning_effort/tools/skills. skills and reasoning_effort are consumed by the worker runtime. permissions and context_inheritance are unsupported and rejected. Profiles are re-scanned on every subagent_call.",
         }))
     }
 
@@ -532,7 +597,11 @@ impl CustomAgentExecutor {
     // custom_agent_propose（propose / list / reject）
     // ------------------------------------------------------------------
 
-    fn execute_propose_draft(&self, args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
+    async fn execute_propose_draft(
+        &self,
+        args: &Value,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
         let file_name = args
             .get("file_name")
             .or_else(|| args.get("fileName"))
@@ -543,7 +612,8 @@ impl CustomAgentExecutor {
             .get("content")
             .and_then(Value::as_str)
             .ok_or("content is required (full persona Markdown with YAML frontmatter)")?;
-        let (agent_name, description) = Self::validate_persona_content(content)?;
+        let (agent_name, description, model) = Self::validate_persona_content(content)?;
+        let warnings = Self::validate_model_for_write(ctx, model.as_deref()).await?;
 
         let pending_root = self.pending_dir();
         if Self::count_pending_proposals(&pending_root)? >= MAX_PENDING_PROPOSALS {
@@ -607,7 +677,7 @@ impl CustomAgentExecutor {
             ),
         };
 
-        Ok(json!({
+        let mut output = json!({
             "proposal_id": proposal_id,
             "action": action,
             "file_name": file_name,
@@ -623,7 +693,11 @@ impl CustomAgentExecutor {
             "change_summary": change_summary,
             "status": "pending",
             "next_step": "Show the user the change_summary (and full draft if asked), then call custom_agent_apply with proposal_id, file_name, expected_content_sha256, expected_proposal_revision and change_summary from this result. Apply requires user approval and cannot be remembered.",
-        }))
+        });
+        if !warnings.is_empty() {
+            output["warnings"] = json!(warnings);
+        }
+        Ok(output)
     }
 
     fn execute_propose_list(&self) -> Result<Value, String> {
@@ -693,9 +767,17 @@ impl CustomAgentExecutor {
         }))
     }
 
-    fn execute_propose(&self, args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
-        match args.get("action").and_then(Value::as_str).unwrap_or("propose") {
-            "propose" => self.execute_propose_draft(args, ctx),
+    async fn execute_propose(
+        &self,
+        args: &Value,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        match args
+            .get("action")
+            .and_then(Value::as_str)
+            .unwrap_or("propose")
+        {
+            "propose" => self.execute_propose_draft(args, ctx).await,
             "list" => self.execute_propose_list(),
             "reject" => self.execute_propose_reject(args),
             other => Err(format!(
@@ -783,10 +865,12 @@ impl CustomAgentExecutor {
             );
         }
         // 落盘前重跑内容校验（builtin id 集合可能随版本变化，fail-closed）
-        let (agent_name, _) = Self::validate_persona_content(&content)?;
+        let (agent_name, _, _) = Self::validate_persona_content(&content)?;
 
         // 目标文件 TOCTOU：create 要求目标仍不存在；update 要求目标内容
         // 仍是提案时的版本（否则会覆盖用户/其他会话的手工修改）
+        let _file_guard =
+            crate::chat_v2::workspace::custom_agents::lock_custom_agent_files()?;
         let agents_dir = self.agents_dir();
         let target = Self::resolve_persona_path(&agents_dir, &file_name)?;
         match meta.previous_sha256.as_deref() {
@@ -825,7 +909,12 @@ impl CustomAgentExecutor {
         applied_meta.status = "applied".to_string();
         let meta_warning = Self::write_proposal_meta(&dir, &applied_meta)
             .err()
-            .map(|e| format!("persona was written, but marking the proposal applied failed: {}", e));
+            .map(|e| {
+                format!(
+                    "persona was written, but marking the proposal applied failed: {}",
+                    e
+                )
+            });
 
         let mut output = json!({
             "applied": true,
@@ -844,6 +933,32 @@ impl CustomAgentExecutor {
         Ok(output)
     }
 
+    async fn execute_apply_checked(
+        &self,
+        args: &Value,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let proposal_id = args
+            .get("proposal_id")
+            .or_else(|| args.get("proposalId"))
+            .and_then(Value::as_str)
+            .ok_or("proposal_id is required")?;
+        Self::validate_proposal_id(proposal_id)?;
+        let content = fs::read_to_string(
+            self.pending_dir()
+                .join(proposal_id)
+                .join(PROPOSAL_PERSONA_FILE),
+        )
+        .map_err(|e| format!("Failed to read proposal draft for model validation: {}", e))?;
+        let (_, _, model) = Self::validate_persona_content(&content)?;
+        let warnings = Self::validate_model_for_write(ctx, model.as_deref()).await?;
+        let mut output = self.execute_apply(args)?;
+        if !warnings.is_empty() {
+            output["warnings"] = json!(warnings);
+        }
+        Ok(output)
+    }
+
     // ------------------------------------------------------------------
     // custom_agent_remove
     // ------------------------------------------------------------------
@@ -855,6 +970,15 @@ impl CustomAgentExecutor {
             .and_then(Value::as_str)
             .ok_or("file_name is required")?;
         let file_name = Self::validate_file_name(file_name)?;
+        let expected_content_sha256 = args
+            .get("expected_content_sha256")
+            .or_else(|| args.get("expectedContentSha256"))
+            .and_then(Value::as_str)
+            .ok_or("expected_content_sha256 is required from custom_agent_get")?;
+        let expected_content_sha256 =
+            Self::normalize_sha256(expected_content_sha256, "expected_content_sha256")?;
+        let _file_guard =
+            crate::chat_v2::workspace::custom_agents::lock_custom_agent_files()?;
         let target = Self::resolve_persona_path(&self.agents_dir(), &file_name)?;
         if !target.exists() {
             return Err(format!(
@@ -862,15 +986,24 @@ impl CustomAgentExecutor {
                 file_name
             ));
         }
-        let heading = fs::read_to_string(&target)
-            .ok()
-            .and_then(|content| Self::first_heading(&content));
+        let content = fs::read(&target)
+            .map_err(|e| format!("Failed to read persona '{}': {}", file_name, e))?;
+        let actual_content_sha256 = Self::sha256_hex(&content);
+        if actual_content_sha256 != expected_content_sha256 {
+            return Err(format!(
+                "Persona '{}' changed after removal approval: expected {}, got {}. Read it again before removing.",
+                file_name, expected_content_sha256, actual_content_sha256
+            ));
+        }
+        let content_text = String::from_utf8_lossy(&content);
+        let heading = Self::first_heading(content_text.as_ref());
         fs::remove_file(&target)
             .map_err(|e| format!("Failed to remove persona '{}': {}", file_name, e))?;
         Ok(json!({
             "removed": true,
             "file_name": file_name,
             "first_heading": heading,
+            "content_sha256": actual_content_sha256,
             "path": format!("workspaces/agents/{}", file_name),
             "message": "Persona removed. It disappears from subagent profile resolution immediately; this cannot be undone.",
         }))
@@ -892,8 +1025,10 @@ impl ToolExecutor for CustomAgentExecutor {
         let result = match short {
             tool_names::CUSTOM_AGENT_LIST => self.execute_list(),
             tool_names::CUSTOM_AGENT_GET => self.execute_get(&call.arguments),
-            tool_names::CUSTOM_AGENT_PROPOSE => self.execute_propose(&call.arguments, ctx),
-            tool_names::CUSTOM_AGENT_APPLY => self.execute_apply(&call.arguments),
+            tool_names::CUSTOM_AGENT_PROPOSE => self.execute_propose(&call.arguments, ctx).await,
+            tool_names::CUSTOM_AGENT_APPLY => {
+                self.execute_apply_checked(&call.arguments, ctx).await
+            }
             tool_names::CUSTOM_AGENT_REMOVE => self.execute_remove(&call.arguments),
             other => Err(format!("Unsupported custom agent tool: {}", other)),
         };
@@ -1031,7 +1166,9 @@ mod tests {
         // 缺 frontmatter / 未闭合 / 缺 name / 非法 name / builtin 冲突 / 超限
         assert!(CustomAgentExecutor::validate_persona_content("# no frontmatter").is_err());
         assert!(CustomAgentExecutor::validate_persona_content("---\nname: x").is_err());
-        assert!(CustomAgentExecutor::validate_persona_content("---\nbase: worker\n---\nBody").is_err());
+        assert!(
+            CustomAgentExecutor::validate_persona_content("---\nbase: worker\n---\nBody").is_err()
+        );
         assert!(
             CustomAgentExecutor::validate_persona_content("---\nname: Upper-Case\n---\nBody")
                 .is_err()
@@ -1044,8 +1181,28 @@ mod tests {
             "---\nname: ok-agent\nbase: not-a-builtin\n---\nBody"
         )
         .is_err());
-        let huge = format!("---\nname: big-agent\n---\n{}", "x".repeat(MAX_PERSONA_BYTES));
+        let huge = format!(
+            "---\nname: big-agent\n---\n{}",
+            "x".repeat(MAX_PERSONA_BYTES)
+        );
         assert!(CustomAgentExecutor::validate_persona_content(&huge).is_err());
+
+        for unsupported in [
+            "---\nname: unsafe-agent\npermissions: workspace-write\n---\nBody",
+            "---\nname: unsafe-agent\ncontext_inheritance: full\n---\nBody",
+            "---\nname: unsafe-agent\nreasoning_effort: unlimited\n---\nBody",
+        ] {
+            assert!(
+                CustomAgentExecutor::validate_persona_content(unsupported).is_err(),
+                "unsupported/invalid runtime field must be rejected"
+            );
+        }
+
+        let (_, _, model) = CustomAgentExecutor::validate_persona_content(
+            "---\nname: exact-model\nmodel: local-config-id\nreasoning_effort: high\n---\nBody",
+        )
+        .unwrap();
+        assert_eq!(model.as_deref(), Some("local-config-id"));
     }
 
     #[test]
@@ -1130,8 +1287,13 @@ mod tests {
         assert!(replay.is_err());
 
         // remove：删除后文件消失
+        let expected_content_sha256 =
+            CustomAgentExecutor::sha256_hex(VALID_PERSONA.as_bytes());
         let removed = executor
-            .execute_remove(&json!({ "file_name": "paper-summarizer.md" }))
+            .execute_remove(&json!({
+                "file_name": "paper-summarizer.md",
+                "expected_content_sha256": expected_content_sha256,
+            }))
             .expect("remove ok");
         assert_eq!(removed["removed"], json!(true));
         assert!(!target.exists());
@@ -1163,7 +1325,11 @@ mod tests {
         .unwrap();
         CustomAgentExecutor::write_proposal_meta(&dir, &meta).unwrap();
         let revision = CustomAgentExecutor::proposal_revision_sha256(&meta);
-        fs::write(agents_dir.join("drift-agent.md"), "---\nname: drift-agent\n---\nManual").unwrap();
+        fs::write(
+            agents_dir.join("drift-agent.md"),
+            "---\nname: drift-agent\n---\nManual",
+        )
+        .unwrap();
 
         let error = executor
             .execute_apply(&json!({
