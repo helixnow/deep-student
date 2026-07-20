@@ -1623,7 +1623,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     <DsButton
                       variant="ghost"
                       size="sm"
-                      className="flex-1 !h-7"
+                      className="flex-1 !h-7 [@media(pointer:coarse)]:!h-11"
                       disabled={isDeleting}
                       onClick={() => {
                         setDeleteConfirmOpen(false);
@@ -1635,7 +1635,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     <DsButton
                       variant="ghost"
                       size="sm"
-                      className="flex-1 !h-7 bg-destructive/10 text-destructive hover:bg-destructive/[0.15]"
+                      className="flex-1 !h-7 [@media(pointer:coarse)]:!h-11 bg-destructive/10 text-destructive hover:bg-destructive/[0.15]"
                       disabled={isDeleting}
                       onClick={() => void handleConfirmDelete()}
                     >
@@ -1842,7 +1842,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           onChange={(e) => setSelectedAnswer(e.target.value)}
           placeholder={t('editor.answerPlaceholder')}
           disabled={!!submitResult}
-          className="h-11"
+          className="h-11 [@media(pointer:coarse)]:text-[16px]"
         />
       );
     }
@@ -1853,7 +1853,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         placeholder={t('editor.answerPlaceholder')}
         disabled={!!submitResult}
         rows={4}
-        className="resize-none"
+        className="resize-none [@media(pointer:coarse)]:text-[16px]"
       />
     );
   };
@@ -2896,7 +2896,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         placeholder={t('editor.notePlaceholder')}
                         rows={3}
                         autoFocus
-                        className="resize-none text-sm"
+                        className="resize-none text-sm [@media(pointer:coarse)]:text-[16px]"
 />
                       <p className="text-[11px] text-muted-foreground/60">
                         {t('editor.noteAutoSaveHint')}
@@ -2941,7 +2941,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               size="sm"
               onClick={() => handleNavigate('prev')}
               disabled={currentIndex === 0}
-              className="h-8 px-3"
+              className="h-8 px-3 [@media(pointer:coarse)]:!min-h-11"
             >
               <CaretLeft size={16} className="mr-1" />
               {t('editor.prevQuestion')}
@@ -2949,7 +2949,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
             <Popover>
               <PopoverTrigger asChild>
-                <DsButton variant="ghost" size="sm" className="!px-3 !py-1.5 hover:bg-[var(--interactive-hover)]">
+                <DsButton variant="ghost" size="sm" className="!px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 hover:bg-[var(--interactive-hover)]">
                   <span className="font-medium">{currentIndex + 1}</span>
                   <span className="text-muted-foreground">/ {totalQuestions}</span>
                   <CaretDown size={14} className="text-muted-foreground" />
@@ -2964,7 +2964,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={t('editor.searchPlaceholder')}
-                    className="h-8 pl-8 text-sm"
+                    className="h-8 pl-8 text-sm [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]"
 />
                 </div>
                 <div className="text-xs text-muted-foreground mb-2">
@@ -2982,7 +2982,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     const q = questions[idx];
                     const status = q.status || 'new';
                     return (
-                      <DsButton key={q.id} variant="ghost" size="icon" iconOnly onClick={() => { requestNavigate(idx); setSearchQuery(''); }} className={cn('!w-7 !h-7 text-xs font-medium [content-visibility:auto] [contain-intrinsic-size:auto_28px]', idx === currentIndex && 'bg-primary text-primary-foreground', idx !== currentIndex && status === 'mastered' && 'bg-success/10 text-success hover:bg-success/20', idx !== currentIndex && status === 'review' && 'bg-warning/10 text-warning hover:bg-warning/20', idx !== currentIndex && status === 'new' && 'bg-muted/50 text-muted-foreground hover:bg-[var(--interactive-hover)]', idx !== currentIndex && status === 'in_progress' && 'bg-primary/10 text-primary hover:bg-primary/20')}>
+                      <DsButton key={q.id} variant="ghost" size="icon" iconOnly onClick={() => { requestNavigate(idx); setSearchQuery(''); }} className={cn('!w-7 !h-7 [@media(pointer:coarse)]:!w-full [@media(pointer:coarse)]:!h-10 text-xs font-medium [content-visibility:auto] [contain-intrinsic-size:auto_28px]', idx === currentIndex && 'bg-primary text-primary-foreground', idx !== currentIndex && status === 'mastered' && 'bg-success/10 text-success hover:bg-success/20', idx !== currentIndex && status === 'review' && 'bg-warning/10 text-warning hover:bg-warning/20', idx !== currentIndex && status === 'new' && 'bg-muted/50 text-muted-foreground hover:bg-[var(--interactive-hover)]', idx !== currentIndex && status === 'in_progress' && 'bg-primary/10 text-primary hover:bg-primary/20')}>
                         {idx + 1}
                       </DsButton>
                     );
@@ -3001,7 +3001,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               size="sm"
               onClick={() => handleNavigate('next')}
               disabled={currentIndex === totalQuestions - 1}
-              className="h-8 px-3"
+              className="h-8 px-3 [@media(pointer:coarse)]:!min-h-11"
             >
               {t('editor.nextQuestion')}
               <CaretRight size={16} className="ml-1" />

@@ -528,7 +528,7 @@ const MarkerDetailCard: React.FC<{
               variant="ghost"
               size="sm"
               onClick={() => onApplySuggestion(applyChange)}
-              className="!h-6 gap-1 px-2 text-xs text-primary/80 hover:text-primary hover:bg-primary/10"
+              className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:px-3 text-primary/80 hover:text-primary hover:bg-primary/10"
             >
               <Check size={12} />
               {t('essay_grading:markers.apply')}
@@ -539,7 +539,7 @@ const MarkerDetailCard: React.FC<{
               variant="ghost"
               size="sm"
               onClick={handleCopy}
-              className="!h-6 gap-1 px-2 text-xs text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:px-3 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
             >
               {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
               {copied ? t('essay_grading:annotation_card.copied') : t('essay_grading:annotation_card.copy_suggestion')}

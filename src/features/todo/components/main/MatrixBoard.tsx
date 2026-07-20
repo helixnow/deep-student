@@ -142,6 +142,8 @@ interface MatrixBoardProps {
   /** 批量多选集合（与列表视图共用同一选择编排） */
   checkedIds?: ReadonlySet<string>;
   onCheckToggle?: (id: string, opts: { shift: boolean }) => void;
+  /** 📱 触屏批量多选模式（行首显复选框、点行即勾选） */
+  checkMode?: boolean;
   onToggle: (id: string) => void;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
@@ -154,6 +156,7 @@ export const MatrixBoard: React.FC<MatrixBoardProps> = ({
   focusedItemId,
   checkedIds,
   onCheckToggle,
+  checkMode,
   onToggle,
   onSelect,
   onDelete,
@@ -228,6 +231,7 @@ export const MatrixBoard: React.FC<MatrixBoardProps> = ({
                         isFocused={focusedItemId === item.id}
                         isChecked={checkedIds?.has(item.id) ?? false}
                         onCheckToggle={onCheckToggle}
+                        checkMode={checkMode}
                       />
                     </DraggableMatrixRow>
                   ))

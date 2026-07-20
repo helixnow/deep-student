@@ -132,7 +132,7 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
             <div onClick={(e) => e.stopPropagation()}>
               <AppMenu>
                 <AppMenuTrigger asChild>
-                  <DsButton variant="ghost" iconOnly size="sm" className="w-8 h-8 -mr-2 text-muted-foreground hover:text-foreground">
+                  <DsButton variant="ghost" iconOnly size="sm" className="w-8 h-8 [@media(pointer:coarse)]:w-10 [@media(pointer:coarse)]:h-10 -mr-2 text-muted-foreground hover:text-foreground">
                     <DotsThreeVertical size={16} />
                   </DsButton>
                 </AppMenuTrigger>
@@ -229,7 +229,7 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
             </DsButton>
             <AppMenu>
               <AppMenuTrigger asChild>
-                <DsButton variant="ghost" iconOnly size="sm" className="w-8 h-8 text-muted-foreground hover:text-foreground">
+                <DsButton variant="ghost" iconOnly size="sm" className="w-8 h-8 [@media(pointer:coarse)]:w-10 [@media(pointer:coarse)]:h-10 text-muted-foreground hover:text-foreground">
                   <DotsThreeVertical size={16} />
                 </DsButton>
               </AppMenuTrigger>

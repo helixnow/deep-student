@@ -243,7 +243,7 @@ export const LanguageSelect: React.FC<LanguageSelectProps> = ({
           aria-label={t('translation:language_select.trigger_label')}
           className={cn(
             '!inline-flex !justify-between !gap-1.5 !rounded-md font-medium',
-            'h-8 px-2.5 text-sm',
+            'h-8 px-2.5 text-sm [@media(pointer:coarse)]:h-10',
             'disabled:pointer-events-none disabled:opacity-50',
             className,
           )}

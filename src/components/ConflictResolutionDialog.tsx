@@ -406,7 +406,7 @@ function DatabaseConflictCard({
       {isExpanded && (
         <CardContent className="pt-0 pb-4">
           <Separator className="mb-4" />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* 本地状态 */}
             <div
               className={`p-3 rounded-lg border-2 ${newerSide === 'local' ? 'border-green-500 bg-green-50/50' : 'border-muted'}`}
@@ -540,7 +540,8 @@ function JsonDiffViewer({ localData, cloudData, title }: JsonDiffViewerProps) {
     <div className="space-y-2">
       {title && <Label className="text-sm font-medium">{title}</Label>}
       <div className="rounded-lg border overflow-hidden">
-        <div className="grid grid-cols-2 bg-muted/50 text-xs font-medium">
+        {/* 窄屏上下堆叠：表头只在 sm+ 显示，窄屏由行内图标区分本地/云端 */}
+        <div className="hidden sm:grid sm:grid-cols-2 bg-muted/50 text-xs font-medium">
           <div className="p-2 flex items-center gap-2 border-r">
             <HardDrive size={12} />
             {t('local_data')}
@@ -556,9 +557,10 @@ function JsonDiffViewer({ localData, cloudData, title }: JsonDiffViewerProps) {
             return (
               <div
                 key={key}
-                className={`grid grid-cols-2 text-xs ${diffColors[diffType]}`}
+                className={`grid grid-cols-1 sm:grid-cols-2 text-xs ${diffColors[diffType]}`}
               >
-                <div className="p-2 border-r border-b font-mono">
+                <div className="p-2 sm:border-r border-b font-mono">
+                  <HardDrive size={10} className="sm:hidden inline-block mr-1 align-middle text-muted-foreground" />
                   <span className="text-muted-foreground">{key}: </span>
                   {key in localData ? (
                     <span
@@ -575,6 +577,7 @@ function JsonDiffViewer({ localData, cloudData, title }: JsonDiffViewerProps) {
                   )}
                 </div>
                 <div className="p-2 border-b font-mono">
+                  <Cloud size={10} className="sm:hidden inline-block mr-1 align-middle text-muted-foreground" />
                   <span className="text-muted-foreground">{key}: </span>
                   {key in cloudData ? (
                     <span
@@ -685,7 +688,7 @@ function RecordConflictCard({
           <Separator className="mb-4" />
           <div className="space-y-4">
             {/* 版本时间对比 */}
-            <div className="grid grid-cols-2 gap-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div className="flex items-center gap-2">
                 <Clock size={12} className="text-muted-foreground" />
                 <span className="text-muted-foreground">{t('local_time')}:</span>
@@ -744,7 +747,7 @@ function StrategySelection({
         </Alert>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {strategies.map((strategy) => {
           const info = getStrategyInfo(strategy, t);
           const isSelected = selectedStrategy === strategy;

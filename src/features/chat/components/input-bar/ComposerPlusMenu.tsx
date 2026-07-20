@@ -638,7 +638,8 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
       {permissionPreset === 'full_access' && (
         <button
           type="button"
-          className="ml-1 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold text-warning"
+          // 📱 11px 最低可读字号 + 伪元素扩大触控命中区（视觉 pill 不变）
+          className="ml-1 rounded bg-warning/15 px-1.5 py-0.5 text-[11px] font-semibold text-warning relative after:absolute after:-inset-y-2 after:inset-x-0 after:content-['']"
           onClick={() => applyPermissionPreset('relaxed')}
           data-testid="full-access-active"
           title={t('chatV2:authority.permissionPreset.fullAccessDowngradeHint')}
@@ -649,7 +650,8 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
       {permissionPreset === 'danger_full_access' && (
         <button
           type="button"
-          className="ml-1 rounded bg-destructive px-1.5 py-0.5 text-[10px] font-semibold text-destructive-foreground shadow-sm"
+          // 📱 11px 最低可读字号 + 伪元素扩大触控命中区（视觉 pill 不变）
+          className="ml-1 rounded bg-destructive px-1.5 py-0.5 text-[11px] font-semibold text-destructive-foreground shadow-sm relative after:absolute after:-inset-y-2 after:inset-x-0 after:content-['']"
           onClick={() => applyPermissionPreset('relaxed')}
           data-testid="danger-full-access-active"
           title={t('chatV2:authority.permissionPreset.dangerDowngradeHint')}

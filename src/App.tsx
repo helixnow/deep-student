@@ -852,7 +852,21 @@ function App() {
 
   // Workbench 仅桌面端生效（设计文档：移动端不适用，继续现有滑动布局）；
   // 屏宽之外再按平台护栏：宽屏 Android 平板 / iPad 也不进 OS 模式
-  const workbenchActive = workbenchMode && !isSmallScreen && !isMobilePlatform();
+  //
+  // 迟滞（250ms 宽度稳定确认）：isSmallScreen 在 768 边界即时翻转会整壳硬切，
+  // WorkbenchDesktop 连同所有窗口立刻卸载，绕过 ResourceAppWorkspace 的未保存
+  // 确认与 windowCloseGuard。拖拽窗口宽度瞬间穿越 768 再回来时不应误卸载整棵树。
+  // 仅工作台壳切换用稳定值；页面内布局仍用即时 isSmallScreen，不受影响。
+  const [shellStableSmallScreen, setShellStableSmallScreen] = useState(isSmallScreen);
+  useEffect(() => {
+    if (isSmallScreen === shellStableSmallScreen) return;
+    const timer = window.setTimeout(() => {
+      // 250ms 后仍是新值才提交（期间弹回则本 effect 已被 cleanup 取消）
+      setShellStableSmallScreen(isSmallScreen);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [isSmallScreen, shellStableSmallScreen]);
+  const workbenchActive = workbenchMode && !shellStableSmallScreen && !isMobilePlatform();
 
   const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');
   // ★ previousView 用于模板选择返回

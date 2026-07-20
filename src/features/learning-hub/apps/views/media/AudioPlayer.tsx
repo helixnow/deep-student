@@ -176,7 +176,10 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 aria-pressed={loop}
                 title={t('learningHub:mediaPreview.loop')}
                 onClick={toggleLoop}
-                className={cn('h-8 w-8', loop && 'bg-[var(--interactive-hover)] text-primary')}
+                className={cn(
+                  'h-8 w-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
+                  loop && 'bg-[var(--interactive-hover)] text-primary',
+                )}
               >
                 <Repeat size={16} aria-hidden="true" />
               </DsButton>
@@ -253,7 +256,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                     : t('learningHub:mediaPreview.mute')
                 }
                 onClick={toggleMute}
-                className="h-8 w-8"
+                className="h-8 w-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
               >
                 <VolumeIcon size={16} aria-hidden="true" />
               </DsButton>

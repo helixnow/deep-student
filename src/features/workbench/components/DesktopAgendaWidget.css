@@ -133,6 +133,19 @@
   color: var(--text-primary, hsl(var(--foreground)));
 }
 
+/* 触屏：27px 头部图标钮 / 28px 待办勾选放大命中区（视觉随行高自适应） */
+@media (pointer: coarse) {
+  .wb-agenda-icon-button {
+    width: 38px;
+    height: 38px;
+  }
+
+  .wb-agenda-check {
+    width: 38px;
+    flex-basis: 38px;
+  }
+}
+
 .wb-agenda-add-button {
   margin-left: 2px;
   background: hsl(var(--primary) / 13%);

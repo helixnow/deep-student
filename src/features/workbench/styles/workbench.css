@@ -312,6 +312,29 @@ html[data-wb-material='minimal'] .wb-desk-menu.wb-glass-lens {
   box-shadow: 0 0 0 2px var(--wb-snap-stroke);
 }
 
+/* 触屏：12px 三键手指点不中。伪元素扩热区（横向恰好补满 8px 间隙不重叠，
+   纵向扩到 ~32px），视觉尺寸不变；符号常显（hover 浮现在触屏不可达） */
+@media (pointer: coarse) {
+  .wb-traffic-close::after,
+  .wb-traffic-min::after,
+  .wb-traffic-zoom::after {
+    content: '';
+    position: absolute;
+    inset: -10px -4px;
+  }
+
+  .wb-traffic-close > *,
+  .wb-traffic-min > *,
+  .wb-traffic-zoom > * {
+    opacity: 1;
+  }
+
+  /* 脏窗口：× 让位给常驻脏点（避免二者叠显） */
+  .wb-title-bar .wb-traffic:not(:hover):not(:focus-within) .wb-traffic-close[data-dirty] > .wb-title-glyph {
+    opacity: 0;
+  }
+}
+
 /* ==========================================================================
  * Dock
  * ========================================================================== */

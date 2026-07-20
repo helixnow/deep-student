@@ -1581,6 +1581,12 @@
     font-size: 16px;
   }
 
+  /* 搜索输入框同理：≥44px 触控高度 + 16px 防 iOS 聚焦缩放 */
+  .ds-search-input {
+    height: 44px;
+    font-size: 16px;
+  }
+
   .ds-zoom-option,
   .ds-more-item {
     padding-top: 11px;

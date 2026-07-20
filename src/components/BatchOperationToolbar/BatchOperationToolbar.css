@@ -43,7 +43,7 @@
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
   font-size: 14px;
-  width: 300px;
+  width: min(300px, 100%);
   transition: all 0.2s;
   background: hsl(var(--background));
   color: hsl(var(--foreground));
@@ -348,40 +348,45 @@
   font-weight: 500;
 }
 
-/* 响应式设计 */
-@media (max-width: 1023.98px) {
+/* 响应式设计（断点统一为项目移动约定 767.98px） */
+@media (max-width: 767.98px) {
   .batch-operation-toolbar {
     flex-direction: column;
     gap: 12px;
   }
-  
+
   .toolbar-section {
     width: 100%;
     justify-content: space-between;
   }
-  
+
   .selection-info {
     margin-left: 0;
   }
-}
 
-@media (max-width: 639.98px) {
   .search-input {
     width: 100%;
   }
-  
+
   .batch-actions {
     flex-wrap: wrap;
   }
-  
+
   .action-btn {
     flex: 1;
     min-width: 80px;
     justify-content: center;
   }
-  
+
   .action-btn span {
     display: none;
+  }
+}
+
+/* 触屏：批量操作按钮满足 44px 触控目标 */
+@media (pointer: coarse) {
+  .action-btn {
+    min-height: 44px;
   }
 }
 

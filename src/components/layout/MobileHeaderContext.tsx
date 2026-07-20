@@ -26,7 +26,11 @@ export interface MobileHeaderConfig {
   titleNode?: ReactNode;
   /** 副标题 */
   subtitle?: string;
-  /** 右侧操作区域 */
+  /**
+   * 右侧操作区域。
+   * 约定：≤2 个动作（每个 ≥44px 触控目标）。顶栏无溢出收纳机制，
+   * 超过 2 个会挤压标题区并在窄屏溢出；更多动作请收进页面内「更多」菜单。
+   */
   rightActions?: ReactNode;
   /** 是否显示菜单按钮（用于打开次级侧边栏） */
   showMenu?: boolean;

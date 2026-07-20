@@ -271,7 +271,8 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             'absolute bottom-2 right-2',
             'px-1.5 py-0.5 rounded',
             'bg-black/50 text-white text-xs',
-            'opacity-0 group-hover:opacity-100 transition-opacity'
+            // 触屏无 hover：尺寸信息常显（纯信息展示，不遮挡关键内容）
+            'opacity-0 group-hover:opacity-100 transition-opacity [@media(pointer:coarse)]:opacity-100'
           )}
         >
           {width} × {height}

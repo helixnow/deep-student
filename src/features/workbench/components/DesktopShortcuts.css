@@ -114,3 +114,12 @@
   text-align: center;
   outline: none;
 }
+
+/* 触屏：<16px 输入框在 iOS 聚焦时触发页面自动缩放；同步加高便于点按 */
+@media (pointer: coarse) {
+  .wb-desk-icon__input {
+    width: 108px;
+    min-height: 32px;
+    font-size: 16px;
+  }
+}

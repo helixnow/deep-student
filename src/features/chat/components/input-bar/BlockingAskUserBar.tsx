@@ -369,6 +369,8 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                   disabled={disabled}
                   className={cn(
                     'flex-1 border-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/60',
+                    // 📱 16px 输入契约：iOS WKWebView 聚焦 <16px 输入框会自动放大页面
+                    '[@media(pointer:coarse)]:text-[16px]',
                     disabled && 'cursor-not-allowed opacity-50'
                   )}
                 />

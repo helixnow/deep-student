@@ -58,6 +58,15 @@
   visibility: hidden;
 }
 
+/* 📱 触屏：格子放大便于点按（与 index.tsx 的 CELL_COARSE=15 保持一致） */
+@media (pointer: coarse) {
+  .lh-cell {
+    width: 15px;
+    height: 15px;
+    border-radius: 4px;
+  }
+}
+
 .lh-cell-static {
   pointer-events: none;
 }

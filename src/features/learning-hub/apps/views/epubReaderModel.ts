@@ -440,7 +440,9 @@ export async function renderEpubChapter(
     body { max-width: 48rem; margin: 0 auto; padding: 2.75rem ${paddingInline}rem 5.5rem; overflow-wrap: anywhere; text-rendering: optimizeLegibility; }
     body, body :where(p, li, blockquote, dd) { line-height: ${lineHeight} !important; }${fontFamilyCss}
     img, svg, video { max-width: 100%; height: auto; }
-    table { max-width: 100%; border-collapse: collapse; }
+    /* 宽表格/代码块在窄 iframe 内自身横向滚动，避免撑破正文横向溢出 */
+    table { max-width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
+    pre { overflow-x: auto; max-width: 100%; }
     a { color: ${palette.link}; }
     ::selection { background: ${palette.highlight}; }
     mark[data-epub-search] { padding: 0 1px; border-radius: 2px; color: inherit; background: ${palette.highlight}; }

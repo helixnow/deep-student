@@ -130,6 +130,19 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
     [autoScale, zoomScale]
   );
 
+  // 📱 移动端字号适读补偿：autoScale 把整页压到 <0.7（375px 下 A4 约 0.44）
+  // 时正文视觉字号跌破可读下限。按 √ 曲线给字号变量乘补偿（0.7 处连续、
+  // 上限 1.6），页面布局宽度不变，文本页内重排为更多行换取可读字号；
+  // 用户手动调节的 fontScale 在补偿基础上继续生效。
+  const mobileFontCompensation = useMemo(() => {
+    if (!isMobile || autoScale >= 0.7) return 1;
+    return Math.min(1.6, Number(Math.sqrt(0.7 / autoScale).toFixed(3)));
+  }, [isMobile, autoScale]);
+  const effectiveFontScale = useMemo(
+    () => Number((fontScale * mobileFontCompensation).toFixed(3)),
+    [fontScale, mobileFontCompensation]
+  );
+
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -443,7 +456,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
           aria-label={fileName ? t('learningHub:docPreview.docxPreviewLabel', { name: fileName }) : t('learningHub:docPreview.docxPreviewDefault')}
           style={{
             ['--docx-scale' as string]: effectiveScale.toString(),
-            [FONT_SCALE_VAR as string]: fontScale.toString(),
+            [FONT_SCALE_VAR as string]: effectiveFontScale.toString(),
           } as React.CSSProperties}
         />
       </CustomScrollArea>

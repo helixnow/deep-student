@@ -114,18 +114,21 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
   const copyTimerRef = useRef<number | null>(null);
 
   // 容器级窄屏检测：面板可能只占视口一半（分栏）或运行在 workbench 浮窗，
-  // 视口断点在此不可靠，以自身实测宽度决定双列 / 纵向交错
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  // 视口断点在此不可靠，以自身实测宽度决定双列 / 纵向交错。
+  // callback ref：空态提前 return 时容器不存在，出现内容后再挂载也能正确开始观察
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const [isNarrow, setIsNarrow] = useState(false);
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const update = () => setIsNarrow(el.clientWidth < NARROW_STACK_THRESHOLD);
+  const setContainerRef = useCallback((node: HTMLDivElement | null) => {
+    resizeObserverRef.current?.disconnect();
+    resizeObserverRef.current = null;
+    if (!node || typeof ResizeObserver === 'undefined') return;
+    const update = () => setIsNarrow(node.clientWidth < NARROW_STACK_THRESHOLD);
     update();
     const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
+    ro.observe(node);
+    resizeObserverRef.current = ro;
   }, []);
+  useEffect(() => () => resizeObserverRef.current?.disconnect(), []);
 
   useEffect(() => () => {
     if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
@@ -160,7 +163,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
 
   return (
     <CustomScrollArea className="flex-1 min-h-0">
-      <div ref={containerRef} className="p-4 space-y-0">
+      <div ref={setContainerRef} className="p-4 space-y-0">
         {/* 表头（窄容器合并为单行：语向 + 状态 + 段数） */}
         {isNarrow ? (
           <div className="flex items-center gap-2 pt-1 pb-3 mb-1 border-b sticky top-0 bg-background z-10 text-xs font-medium text-muted-foreground min-w-0">

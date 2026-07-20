@@ -539,6 +539,36 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
         default:
       }
     };
+    // 📱 触屏左右滑动翻页（最小版）：只在横向位移显著大于纵向（>2 倍）
+    // 且超过 60px 时触发，纵向阅读滚动/斜向手势/双指缩放/选字均不受影响。
+    // 监听 passive，不 preventDefault —— 不与 iframe 内原生滚动争夺手势。
+    let swipeStart: { x: number; y: number } | null = null;
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        swipeStart = null;
+        return;
+      }
+      // 起点在可横向滚动的表格/代码块内：手势归它们自己，不参与翻页
+      const target = event.target as Element | null;
+      if (target?.closest?.('table, pre')) {
+        swipeStart = null;
+        return;
+      }
+      swipeStart = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+    };
+    const handleTouchEnd = (event: TouchEvent) => {
+      const start = swipeStart;
+      swipeStart = null;
+      if (!start || event.touches.length > 0) return;
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      // 有选区时按选字语义处理，不翻页
+      if (frameWindow.getSelection()?.toString().trim()) return;
+      const dx = touch.clientX - start.x;
+      const dy = touch.clientY - start.y;
+      if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
+      pageBy(dx < 0 ? 1 : -1);
+    };
     frameWindow.addEventListener('scroll', updateProgress, { passive: true });
     // The EPUB document lives in an iframe and cannot use the app-level event registry.
     // eslint-disable-next-line no-restricted-syntax
@@ -547,11 +577,17 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
     document.addEventListener('click', handleClick);
     // eslint-disable-next-line no-restricted-syntax
     document.addEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line no-restricted-syntax
+    document.addEventListener('touchstart', handleTouchStart, { passive: true });
+    // eslint-disable-next-line no-restricted-syntax
+    document.addEventListener('touchend', handleTouchEnd, { passive: true });
     iframeCleanupRef.current = () => {
       frameWindow.removeEventListener('scroll', updateProgress);
       document.removeEventListener('selectionchange', updateSelection);
       document.removeEventListener('click', handleClick);
       document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchend', handleTouchEnd);
       if (frameRequest) frameWindow.cancelAnimationFrame(frameRequest);
       if (restoreFrame) frameWindow.cancelAnimationFrame(restoreFrame);
       if (restoreTimer) frameWindow.clearTimeout(restoreTimer);

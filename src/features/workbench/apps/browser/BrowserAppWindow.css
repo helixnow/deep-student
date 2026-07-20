@@ -63,6 +63,14 @@
   outline-offset: 1px;
 }
 
+/* 触屏：28px 工具栏按钮放大到 40px 命中区 */
+@media (pointer: coarse) {
+  .wb-browser-icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+}
+
 .wb-browser-address {
   position: relative;
   display: flex;
@@ -335,15 +343,15 @@
   transition: background-color 120ms var(--wb-ease, ease);
 }
 
-@media (width <= 700px) {
-  .wb-browser-root {
-    padding: 8px;
-  }
+/* 窄窗分级走 data-wb-sys-size（useWbSysSize 写在 .wb-browser-root 上）：
+   原 @media (width <= 700px) 按视口宽度判定，工作台窗口宽度与视口无关，属死代码 */
+.wb-browser-root[data-wb-sys-size='compact'] {
+  padding: 8px;
+}
 
-  .wb-browser-detached {
-    align-items: flex-start;
-    flex-direction: column;
-  }
+.wb-browser-root[data-wb-sys-size='compact'] .wb-browser-detached {
+  align-items: flex-start;
+  flex-direction: column;
 }
 
 .wb-browser-hint-action:hover {

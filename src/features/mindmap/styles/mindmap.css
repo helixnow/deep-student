@@ -1232,7 +1232,9 @@
 /* Structure and style use one flat popover language. */
 .mm-settings-popover {
   width: 288px;
+  /* dvh 优先（移动端动态工具栏/键盘下取真实可视高度），vh 兜底旧内核 */
   max-height: min(680px, calc(100vh - 64px));
+  max-height: min(680px, calc(100dvh - 64px));
   border: 1px solid var(--mm-border);
   border-radius: var(--mm-radius-popup, 8px);
   color: var(--mm-text);
@@ -1317,7 +1319,7 @@
   padding: 7px 4px 1px;
   border-top: 1px solid var(--mm-border);
   color: var(--mm-text-muted);
-  font-size: 10px;
+  font-size: 11px;
   text-align: left;
 }
 
@@ -2043,6 +2045,15 @@
     inset: -6px;
   }
 
+  /* 样式面板色板：22px 触屏点不准，放大到 32px 并加大间距（flex-wrap 自动换行不溢出） */
+  .mm-style-swatch {
+    width: 32px;
+    height: 32px;
+  }
+  .mm-style-swatches {
+    gap: 8px;
+  }
+
   /* 画布：折叠钮触屏常显淡色（覆盖 invisible/group-hover 显隐），
      配合上方 .mm-collapse-btn 命中扩展 */
   .mm-collapse-wrap {
@@ -2140,7 +2151,7 @@
   gap: 3px;
   border-radius: var(--mm-radius-control, 5px);
   color: var(--mm-text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.1;
   overflow: hidden;
   transition: background-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease);

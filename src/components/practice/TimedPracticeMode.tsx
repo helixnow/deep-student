@@ -270,7 +270,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                   setDurationMinutes(normalizeDurationMinutes(Number(raw)));
                 }}
                 onBlur={(e) => setDurationMinutes(normalizeDurationMinutes(Number(e.target.value)))}
-                className="text-center font-medium"
+                className="text-center font-medium [@media(pointer:coarse)]:text-[16px]"
 />
               <div className="flex flex-wrap gap-1.5">
                 {DURATION_PRESETS.map((preset) => (
@@ -299,7 +299,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                   setQuestionCount(normalizeQuestionCount(Number(raw)));
                 }}
                 onBlur={(e) => setQuestionCount(normalizeQuestionCount(Number(e.target.value)))}
-                className="text-center font-medium"
+                className="text-center font-medium [@media(pointer:coarse)]:text-[16px]"
 />
             </div>
           </div>

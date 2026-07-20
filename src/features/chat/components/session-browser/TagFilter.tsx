@@ -183,7 +183,9 @@ export const AddTagInput: React.FC<{
       onBlur={handleSubmit}
       autoFocus
       placeholder={t('tags.addPlaceholder')}
-      className="h-7 w-24 text-2xs"
+      // 📱 16px 输入契约：2xs（10px）在 coarse 指针下会触发 iOS 聚焦放大且难以点按，
+      // 放大字号并加宽输入框（桌面视觉不变）
+      className="h-7 w-24 text-2xs [@media(pointer:coarse)]:text-[16px] [@media(pointer:coarse)]:w-32"
     />
   );
 };

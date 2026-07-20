@@ -59,7 +59,7 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
           role="tab"
           aria-selected={showFront}
           onClick={() => setShowFront(true)}
-          className="min-h-11 gap-1.5 text-sm sm:min-h-8"
+          className="min-h-11 gap-1.5 text-sm sm:min-h-8 [@media(pointer:coarse)]:min-h-11"
         >
           <Eye size={14} />
           {t('anki:card_front')}
@@ -71,7 +71,7 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
           role="tab"
           aria-selected={!showFront}
           onClick={() => setShowFront(false)}
-          className="min-h-11 gap-1.5 text-sm sm:min-h-8"
+          className="min-h-11 gap-1.5 text-sm sm:min-h-8 [@media(pointer:coarse)]:min-h-11"
         >
           <Eye size={14} />
           {t('anki:card_back')}

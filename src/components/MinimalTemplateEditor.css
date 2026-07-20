@@ -7,13 +7,11 @@
   background: transparent;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   padding: 0 32px;
-  margin-bottom: -200px;
 }
 
 /* 代码编辑模式：撑满父容器，禁止外部滚动 */
 .minimal-template-editor.code-mode {
   height: 100%;
-  margin-bottom: 0;
   padding: 0;
   gap: 0;
   overflow: hidden;
@@ -423,25 +421,10 @@
   gap: 8px;
 }
 
-/* 底部操作栏 - 参考设置页面风格 */
-.editor-footer {
-  background: transparent;
-  border-top: none;
-  padding: 24px 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: auto;
-}
-
+/* 底部操作栏：布局改由 TSX 内联 Tailwind 承担，此处仅保留仍被引用的 .footer-info */
 .footer-info {
   font-size: 14px;
   color: hsl(var(--muted-foreground));
-}
-
-.footer-actions {
-  display: flex;
-  gap: 12px;
 }
 
 /* 加载状态 */
@@ -535,24 +518,6 @@
     min-height: 120px;
   }
 
-  /* 移动端优化按钮布局 */
-  .editor-footer,
-  .setting-section .flex.items-center.justify-between {
-    flex-direction: column;
-    gap: 16px;
-    align-items: stretch;
-  }
-
-  .footer-actions,
-  .setting-section .flex.gap-3 {
-    width: 100%;
-    flex-direction: column;
-  }
-
-  .footer-actions > *,
-  .setting-section .flex.gap-3 > * {
-    width: 100%;
-  }
 }
 
 /* 细节优化 - 已移除 builtin-badge，使用 shadcn 组件 */

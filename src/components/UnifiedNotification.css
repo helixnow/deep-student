@@ -148,7 +148,7 @@
   white-space: normal;
   word-break: break-word;
   overflow-wrap: break-word;
-  max-height: 60vh;
+  max-height: 60dvh;
   overflow-y: auto;
   transition: max-height 300ms var(--ease-standard), white-space 0ms;
 }
@@ -165,7 +165,7 @@
   border: 1px solid hsl(var(--notif-accent) / 0.22);
   background: hsl(var(--notif-accent) / 0.08);
   color: hsl(var(--foreground) / 0.72);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 650;
   line-height: 1;
 }
@@ -338,7 +338,9 @@
    CSS-3: 断点与 shell <768 对齐；top 避让 56px 移动顶栏（--mobile-header-total-height 已含安全区） */
 @media (max-width: 767.98px) {
   .notification-container {
-    top: calc(var(--mobile-header-total-height, calc(56px + env(safe-area-inset-top, 0px))) + 8px);
+    /* 容器挂在 body 上，--mobile-header-total-height（app-shell 作用域）不可见时
+       fallback 必须走 :root 级 --android-safe-area-top 链（Android env() 不可靠） */
+    top: calc(var(--mobile-header-total-height, calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px)))) + 8px);
     left: 50%;
     right: auto;
     width: calc(100vw - 20px);
@@ -390,6 +392,6 @@
   .unified-notification-text.expanded {
     display: block;
     -webkit-line-clamp: unset;
-    max-height: 60vh;
+    max-height: 60dvh;
   }
 }

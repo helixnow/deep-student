@@ -449,7 +449,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   }
                 }}
                 placeholder={isAndroid() ? '30' : '0'}
-                className="!w-20 h-8 text-xs bg-transparent"
+                className="!w-20 h-8 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:!w-24 [@media(pointer:coarse)]:text-base text-xs bg-transparent"
                 min="0"
               />
               <span className="text-xs text-muted-foreground/70">{t('settings:developer.units.px')}</span>
@@ -510,7 +510,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 ]}
                 size="sm"
                 variant="ghost"
-                className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+                className="h-8 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:!min-w-[6rem] text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
                 width={80}
               />
               <DsButton

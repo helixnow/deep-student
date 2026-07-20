@@ -497,6 +497,12 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
                   : t('workbench:resourceHome.essaySettings')}
               </WorkbenchSidebarRowLabel>
             </WorkbenchSidebarRow>
+            {/* 禁用原因内联提示：native title 在触屏上不可见 */}
+            {!selectedItem && (
+              <span className="wb-resource-workspace-settings-hint">
+                {t('workbench:resourceHome.settingsNeedSelection')}
+              </span>
+            )}
           </div>
         )}
 

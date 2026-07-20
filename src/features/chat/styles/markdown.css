@@ -806,6 +806,13 @@
   }
 }
 
+@media (width <= 767.98px) {
+  /* 引用图片块：桌面半宽在窄屏只剩 ~180px，改为通栏展示 */
+  .chat-v2 .citation-image-block {
+    max-width: 100%;
+  }
+}
+
 @media (width <= 479.98px) {
   .chat-v2 .markdown-content {
     font-size: 0.95rem;

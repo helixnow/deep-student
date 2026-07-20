@@ -102,7 +102,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
           size="sm"
           onClick={addBlank}
           disabled={blanks.length >= MAX_BLANKS}
-          className="ui-press h-5 px-1.5 text-[10px]"
+          className="ui-press h-5 px-1.5 text-[10px] [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:text-xs"
         >
           <Plus size={10} className="mr-0.5" />
           {t('editor.structEdit.addBlank')}
@@ -169,7 +169,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
                   }
                 }}
                 placeholder={t('editor.structEdit.answerDraftPlaceholder')}
-                className="h-7 flex-1 text-xs"
+                className="h-7 flex-1 text-xs [@media(pointer:coarse)]:text-[16px]"
               />
               <DsButton
                 variant="ghost"

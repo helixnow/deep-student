@@ -32,6 +32,8 @@ interface TodoRowsListProps {
   /** 批量多选集合（可选；未启用多选的调用方不传） */
   checkedIds?: ReadonlySet<string>;
   onCheckToggle?: (id: string, opts: { shift: boolean }) => void;
+  /** 📱 触屏批量多选模式（行首显复选框、点行即勾选） */
+  checkMode?: boolean;
   onToggle: (id: string) => void;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
@@ -45,6 +47,7 @@ const VirtualRows: React.FC<TodoRowsListProps & { scrollElement: HTMLElement }> 
   focusedItemId,
   checkedIds,
   onCheckToggle,
+  checkMode,
   onToggle,
   onSelect,
   onDelete,
@@ -116,6 +119,7 @@ const VirtualRows: React.FC<TodoRowsListProps & { scrollElement: HTMLElement }> 
               isFocused={focusedItemId === row.item.id}
               isChecked={checkedIds?.has(row.item.id) ?? false}
               onCheckToggle={onCheckToggle}
+              checkMode={checkMode}
             />
           </div>
         );
@@ -147,6 +151,7 @@ export const TodoRowsList: React.FC<TodoRowsListProps> = (props) => {
                 isFocused={props.focusedItemId === row.item.id}
                 isChecked={props.checkedIds?.has(row.item.id) ?? false}
                 onCheckToggle={props.onCheckToggle}
+                checkMode={props.checkMode}
               />
             </AnimatedListRow>
           ))}
@@ -163,6 +168,7 @@ export const TodoRowsList: React.FC<TodoRowsListProps> = (props) => {
       props.focusedItemId,
       props.checkedIds,
       props.onCheckToggle,
+      props.checkMode,
     ],
   );
 

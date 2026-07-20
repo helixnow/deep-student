@@ -180,9 +180,15 @@ html.dark .summary-box {
   .loading-spinner { animation: none !important; }
 }
 
-/* 移动端密集排版 */
-@media (max-width: 639.98px) {
+/* 移动端密集排版（断点对齐项目移动约定 767.98px） */
+@media (max-width: 767.98px) {
   .summary-header { padding: 8px 10px; }
   .summary-content { max-height: 220px; }
   .summary-content-viewport { padding: 12px; }
+}
+
+/* 触屏：操作按钮扩大触控目标 */
+@media (pointer: coarse) {
+  .sb-btn { height: 36px; }
+  .sb-btn-icon { width: 36px; height: 36px; }
 }

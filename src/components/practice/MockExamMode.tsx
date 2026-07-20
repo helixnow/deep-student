@@ -425,6 +425,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                   setDurationMinutes(normalizeDurationMinutes(Number(raw)));
                 }}
                 onBlur={(e) => setDurationMinutes(normalizeDurationMinutes(Number(e.target.value)))}
+                className="[@media(pointer:coarse)]:text-[16px]"
 />
             </div>
             <div className="space-y-2">
@@ -440,6 +441,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                   setTotalCount(normalizeTotalCount(Number(raw)));
                 }}
                 onBlur={(e) => setTotalCount(normalizeTotalCount(Number(e.target.value)))}
+                className="[@media(pointer:coarse)]:text-[16px]"
 />
             </div>
           </div>

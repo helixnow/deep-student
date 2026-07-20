@@ -659,6 +659,28 @@
   outline-offset: 1px;
 }
 
+/* 触屏：返回按钮（24px）与「统计」入口（11px + 3px padding）放大触控目标 */
+@media (pointer: coarse) {
+  .wb-sys-pomo-view-back {
+    width: 40px;
+    height: 40px;
+  }
+
+  .wb-sys-pomo-today-stats {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  /* 传输控制行：28px（!h-7）图标钮 / 32px 主钮统一放大到 ≥40px 命中区。
+     !important 对冲 Tailwind !h-7/!w-7；特异性 (0,1,1) 高于工具类 */
+  .wb-sys-pomo-controls button {
+    height: auto !important;
+    min-height: 40px !important;
+    min-width: 40px !important;
+  }
+}
+
 .wb-sys-pomo-view-title {
   font-size: 13px;
   font-weight: 600;

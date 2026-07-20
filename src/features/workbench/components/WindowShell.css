@@ -171,3 +171,67 @@
   height: 14px;
   cursor: nesw-resize;
 }
+
+/* 触屏：8/14px 命中带手指几乎点不中，放大到边 18px / 角 28px。
+   外扩 6px + 内收 12px：不改变视觉（透明），仅边缘 12px 内的内容点击让位给缩放柄 */
+@media (pointer: coarse) {
+  .wb-shell-rz-n {
+    top: -6px;
+    height: 18px;
+  }
+
+  .wb-shell-rz-s {
+    bottom: -6px;
+    height: 18px;
+  }
+
+  .wb-shell-rz-e {
+    right: -6px;
+    width: 18px;
+  }
+
+  .wb-shell-rz-w {
+    left: -6px;
+    width: 18px;
+  }
+
+  .wb-shell-rz-n,
+  .wb-shell-rz-s {
+    left: 28px;
+    right: 28px;
+  }
+
+  .wb-shell-rz-e,
+  .wb-shell-rz-w {
+    top: 28px;
+    bottom: 28px;
+  }
+
+  .wb-shell-rz-ne,
+  .wb-shell-rz-nw,
+  .wb-shell-rz-se,
+  .wb-shell-rz-sw {
+    width: 28px;
+    height: 28px;
+  }
+
+  .wb-shell-rz-ne {
+    top: -8px;
+    right: -8px;
+  }
+
+  .wb-shell-rz-nw {
+    top: -8px;
+    left: -8px;
+  }
+
+  .wb-shell-rz-se {
+    bottom: -8px;
+    right: -8px;
+  }
+
+  .wb-shell-rz-sw {
+    bottom: -8px;
+    left: -8px;
+  }
+}

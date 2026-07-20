@@ -99,7 +99,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
             }
           }}
           placeholder={tTemplate('field_name_placeholder')}
-          className="!h-7 text-sm flex-1 min-w-0"
+          className="md:!h-7 text-sm flex-1 min-w-0 [@media(pointer:coarse)]:text-base"
           aria-invalid={!!error}
         />
         {used && (
@@ -200,7 +200,7 @@ export const TemplateEditorFieldManager: React.FC<TemplateEditorFieldManagerProp
           <Plus size={14} className="mr-1.5" />
           {tTemplate('add_field')}
         </DsButton>
-        <span className="text-[10px] text-muted-foreground/60">
+        <span className="text-[10px] max-md:text-[11px] text-muted-foreground/60">
           {t('templateEditor.renameSyncHint')}
         </span>
       </div>

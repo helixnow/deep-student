@@ -432,6 +432,18 @@
   content: '';
 }
 
+/* 触屏：6px 视觉拖拽条命中区过窄，伪元素横向外扩到 ~22px（compact 竖排改纵向外扩），
+   并常显加深底色作视觉指示（hover 不可达） */
+@media (pointer: coarse) {
+  .notes-pane-resize::after {
+    inset: 0 -8px;
+  }
+
+  .notes-pane-resize {
+    background: hsl(var(--border) / 88%);
+  }
+}
+
 .notes-pane-resize:hover,
 .notes-pane-resize[data-resize-handle-state='drag'] {
   background: hsl(var(--primary) / 48%);
@@ -1027,6 +1039,13 @@
   height: 6px;
   min-height: 6px;
   cursor: row-resize;
+}
+
+/* compact 竖排时拖拽条为横条，命中区改纵向外扩 */
+@media (pointer: coarse) {
+  .notes-workspace[data-compact='true'] .notes-pane-resize::after {
+    inset: -8px 0;
+  }
 }
 
 .notes-workspace[data-compact='true'] .notes-statusbar span:first-child {

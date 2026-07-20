@@ -25,6 +25,8 @@ const TagTreeImportCheckModal: React.FC<Props> = ({ open, result, onConfirm, onC
     <UnifiedModal isOpen={open} onClose={onCancel} contentClassName="tag-tree-modal">
         <h3>{t('tag_tree.import_check_title')}</h3>
 
+        {/* 中部内容可滚动，避免长警告/错误列表在小屏被裁剪不可达 */}
+        <div className="tag-tree-modal-body">
         <div className="summary">
           <p>{t('tag_tree.total_tags')}：<strong>{totalTags}</strong></p>
           <p>{t('tag_tree.max_depth')}：<strong>{maxDepth}</strong></p>
@@ -68,6 +70,7 @@ const TagTreeImportCheckModal: React.FC<Props> = ({ open, result, onConfirm, onC
             </ul>
           </>
         )}
+        </div>
 
         <div className="actions">
           <DsButton variant="default" size="sm" onClick={onCancel}>{t('actions.cancel')}</DsButton>

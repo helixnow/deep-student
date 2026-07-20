@@ -122,6 +122,14 @@
   border-top: 1px solid hsl(var(--border) / 70%);
 }
 
+/* 「设置」禁用原因的内联提示（title 在触屏不可见） */
+.wb-resource-workspace-settings-hint {
+  padding: 2px 8px 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+
 .wb-resource-workspace-sidebar-footer {
   display: flex;
   height: 22px;
@@ -139,6 +147,11 @@
   width: 20px;
   height: 20px;
   min-height: 20px;
+}
+
+/* 窄窗（compact 档）：10px 底栏字号过小，提到 11px */
+[data-wb-sys-size='compact'] .wb-resource-workspace-sidebar-footer {
+  font-size: 11px;
 }
 
 .wb-resource-workspace-main {
@@ -246,6 +259,8 @@
     min-height: 52px;
     padding-bottom: var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px));
     flex: 0 0 auto;
+    /* 10px 底栏字号在触屏上过小，提到 12px */
+    font-size: 12px;
   }
 }
 

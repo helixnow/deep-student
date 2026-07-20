@@ -88,6 +88,8 @@ const SidebarResizeHandle: React.FC<{
       tabIndex={0}
       className={[
         'absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize touch-none select-none',
+        // 6px 视觉不变，透明伪元素横向外扩 12px 命中区（触屏可拖；宿主本身 absolute 已是定位上下文）
+        "before:absolute before:inset-y-0 before:-inset-x-3 before:content-['']",
         'transition-colors duration-150',
         'hover:bg-[color:var(--interactive-hover)] active:bg-[color:var(--interactive-selected)]',
         'outline-none focus-visible:bg-[color:var(--interactive-hover)] focus-visible:ring-1 focus-visible:ring-ring',

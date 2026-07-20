@@ -615,7 +615,8 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         iconOnly
                         onClick={() => toggleFavorite(selectedSkill.id)}
                         className={cn(
-                          '!h-6 !w-6',
+                          // 视觉 24px，透明伪元素扩大触控命中区（与列表行收藏按钮同契约）
+                          '!h-6 !w-6 relative after:absolute after:-inset-2.5 after:content-[\'\']',
                           isFavorite(selectedSkill.id)
                             ? 'text-warning hover:text-warning'
                             : 'text-[color:var(--composer-panel-muted-foreground)] opacity-60 hover:text-warning hover:opacity-100'

@@ -20,6 +20,14 @@
   opacity: 1;
 }
 
+/* 📱 触屏无 hover：预览常显，避免功能不可达 */
+@media (hover: none) {
+  .notes-outline-preview {
+    max-height: 20px;
+    opacity: 1;
+  }
+}
+
 .notes-outline-caret {
   border-radius: var(--notes-radius-control, 5px);
   transition: background-color var(--notes-hover-transition, 120ms ease);

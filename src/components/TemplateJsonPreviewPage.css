@@ -323,8 +323,4 @@
     font-size: 11px;
     max-height: 180px;
   }
-
-  .input-column .json-editor-wrapper {
-    min-height: 250px;
-  }
 }

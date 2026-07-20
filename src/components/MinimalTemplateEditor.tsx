@@ -993,11 +993,12 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                     {t('generate_template_json')}
                   </DsButton>
                 </div>
+                {/* 动态高度：移动端虚拟键盘弹出时 dvh 收缩，编辑器不被遮挡 */}
                 <UnifiedCodeEditor
                   value={previewDataJson}
                   onChange={(value) => setPreviewDataJson(value)}
                   language="json"
-                  height="400px"
+                  height="min(400px, 45dvh)"
                   placeholder="{}"
 />
                 {!validateJson(previewDataJson) && (
@@ -1154,8 +1155,8 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
 
         </EditorContent>
 
-        {/* 底部操作栏 - 固定在 editor-main 底部，不参与滚动 */}
-        <div className="flex-none px-4 py-1.5 border-t border-border/40 flex items-center justify-between gap-3">
+        {/* 底部操作栏 - 固定在 editor-main 底部，不参与滚动；窄屏允许换行避免按钮被挤出 */}
+        <div className="flex-none px-4 py-1.5 border-t border-border/40 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="footer-info flex items-center gap-3 min-w-0">
             {isDirty && (
               <span className="template-editor-dirty-bar" role="status">

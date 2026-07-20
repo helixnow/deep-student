@@ -814,7 +814,8 @@
     "completed": "已完成 {{count}} 项",
     "rescheduled": "已改期 {{count}} 项",
     "prioritySet": "已更新 {{count}} 项优先级",
-    "skippedCount": "跳过 {{count}} 项"
+    "skippedCount": "跳过 {{count}} 项",
+    "selectMode": "选择"
   },
   "quickAdd": {
     "removeToken": "移除"

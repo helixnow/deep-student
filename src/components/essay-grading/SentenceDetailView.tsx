@@ -106,7 +106,7 @@ const InlineCopyButton: React.FC<{ text: string; label: string; copiedLabel: str
       aria-label={copied ? copiedLabel : label}
       onClick={handleCopy}
       className={cn(
-        'h-6 px-1.5 ml-auto shrink-0 gap-1 text-xs transition-colors duration-200 motion-reduce:transition-none',
+        'h-6 px-1.5 ml-auto shrink-0 gap-1 text-xs transition-colors duration-200 motion-reduce:transition-none [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:px-2.5',
         copied
           ? 'text-success hover:text-success'
           : 'text-muted-foreground/50 hover:text-foreground'
@@ -254,7 +254,8 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
               className={cn(
                 'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border border-border/40',
                 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]',
-                'transition-colors duration-150 motion-reduce:transition-none'
+                'transition-colors duration-150 motion-reduce:transition-none',
+                '[@media(pointer:coarse)]:min-h-9 [@media(pointer:coarse)]:px-3'
               )}
             >
               <span className={cn('w-1.5 h-1.5 rounded-full', GROUP_DOT_CLASS[group])} />

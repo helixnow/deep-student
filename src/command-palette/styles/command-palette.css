@@ -347,7 +347,7 @@
   min-width: 20px;
   height: 20px;
   padding: 0 4px;
-  font-size: 10px;
+  font-size: 11px;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
   color: hsl(var(--muted-foreground));
   background-color: hsl(var(--background));
@@ -399,6 +399,9 @@
        不能用只定义在 app-shell 上的 --mobile-safe-area-*） */
     padding-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px));
     padding-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+    /* 横屏刘海/圆角屏：全屏形态左右同样需要避让安全区 */
+    padding-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px));
+    padding-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px));
     animation: command-palette-page-in 180ms ease-out;
   }
 

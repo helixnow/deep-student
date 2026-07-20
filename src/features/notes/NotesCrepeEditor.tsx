@@ -386,7 +386,13 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const isCoarsePointer = useMediaQuery('(pointer: coarse)');
   const isSmallScreen = useIsMobile();
   const isTouchEditingSurface = isSmallScreen || isCoarsePointer;
-  const wantsMobileToolbar = isTouchEditingSurface && !effectiveReadOnly && !!editorApi && !suppressMobileToolbar;
+  // 📱 P0 泄漏修复：编辑器壳层不可见（保活 tab display:none、三屏滑动移出
+  // 视口、切换到其他应用视图）时必须收回 body 级工具条，否则它会悬浮在
+  // 聊天输入栏 / 待办 / Finder 底栏之上拦截点击。IntersectionObserver 对
+  // display:none 与 transform 移出视口的祖先都会上报不相交，天然覆盖全部宿主。
+  const [shellInViewport, setShellInViewport] = useState(true);
+  const wantsMobileToolbar =
+    isTouchEditingSurface && !effectiveReadOnly && !!editorApi && !suppressMobileToolbar && shellInViewport;
   // 单实例门控：多个可见编辑器只让最近交互的实例渲染 body 级工具条
   const mobileToolbarInstanceId = useId();
   const mobileToolbarOwner = useSyncExternalStore(subscribeMobileToolbarOwner, getMobileToolbarOwner);
@@ -406,6 +412,22 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const notesShellRef = useRef<HTMLDivElement>(null);
+
+  // 壳层可见性监听（P0 泄漏修复的数据源）。仅触屏编辑面需要，桌面纯鼠标不挂观察器。
+  useEffect(() => {
+    if (!isTouchEditingSurface) {
+      setShellInViewport(true);
+      return undefined;
+    }
+    const shell = notesShellRef.current;
+    if (!shell) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      if (entry) setShellInViewport(entry.isIntersecting);
+    });
+    observer.observe(shell);
+    return () => observer.disconnect();
+  }, [isTouchEditingSurface]);
 
   // 用户在本实例内交互（聚焦/触点）时抢占工具条持有权
   useEffect(() => {

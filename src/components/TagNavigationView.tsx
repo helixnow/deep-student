@@ -670,7 +670,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
               size="icon"
               iconOnly
               onClick={() => setSearchQuery('')}
-              className="!absolute !right-1.5 !top-1/2 !-translate-y-1/2 !h-5 !w-5 !p-0 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              className="!absolute !right-1.5 !top-1/2 !-translate-y-1/2 !h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!right-0 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
               aria-label={t('learningHub:exam.library.clearSearch')}
               title={t('learningHub:exam.library.clearSearch')}
             >
@@ -685,7 +685,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
             variant="ghost"
             size="sm"
             onClick={() => handleViewModeChange('tree')}
-            className={cn('ui-state-colors h-7 w-7 p-0', viewMode === 'tree' && 'bg-background shadow-sm')}
+            className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10', viewMode === 'tree' && 'bg-background shadow-sm')}
             aria-label={t('learningHub:exam.library.treeView')}
             title={t('learningHub:exam.library.treeView')}
           >
@@ -695,7 +695,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
             variant="ghost"
             size="sm"
             onClick={() => handleViewModeChange('cloud')}
-            className={cn('ui-state-colors h-7 w-7 p-0', viewMode === 'cloud' && 'bg-background shadow-sm')}
+            className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10', viewMode === 'cloud' && 'bg-background shadow-sm')}
             aria-label={t('learningHub:exam.library.cloudView')}
             title={t('learningHub:exam.library.cloudView')}
           >
@@ -710,7 +710,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
             size="icon"
             iconOnly
             onClick={toggleExpandAll}
-            className="!h-7 !w-7 !p-1.5 flex-shrink-0 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+            className="!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 flex-shrink-0 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
             aria-label={allExpanded ? t('learningHub:exam.library.collapseAll') : t('learningHub:exam.library.expandAll')}
             title={allExpanded ? t('learningHub:exam.library.collapseAll') : t('learningHub:exam.library.expandAll')}
           >

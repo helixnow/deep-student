@@ -49,6 +49,7 @@ export const PlaybackRateMenu: React.FC<PlaybackRateMenuProps> = ({
           title={label}
           className={cn(
             'h-8 px-2 text-xs font-medium tabular-nums',
+            '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11',
             overlay && 'text-white hover:bg-[var(--overlay-control-hover)]',
           )}
         >
@@ -71,6 +72,7 @@ export const PlaybackRateMenu: React.FC<PlaybackRateMenuProps> = ({
             }}
             className={cn(
               'flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-xs tabular-nums',
+              '[@media(pointer:coarse)]:min-h-11',
               'transition-colors duration-150 motion-reduce:transition-none',
               'hover:bg-[var(--interactive-hover)]',
               option === rate ? 'font-medium text-primary' : 'text-foreground',

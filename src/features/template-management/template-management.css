@@ -1268,6 +1268,13 @@
     margin-right: 12px;
   }
 
+  /* 10px 微字体在小屏可读性差，统一提升 */
+  .wb-tm-badge,
+  .wb-tm-preview-meta,
+  .wb-tm-side-toggle-btn {
+    font-size: 11px;
+  }
+
   .wb-tm-card-badges {
     width: 100%;
     margin-top: 6px;
@@ -1292,7 +1299,7 @@
     flex-basis: 100%;
   }
 
-  .wb-tm-export-list {
+  .wb-tm-export-list-grid {
     grid-template-columns: 1fr;
   }
 

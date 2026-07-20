@@ -171,8 +171,8 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
         )}
       </div>
 
-      {/* 手机端使用纵向卡片，避免三列表格被裁切并让字段选择保持完整宽度 */}
-      <div className="space-y-2 sm:hidden">
+      {/* 手机端使用纵向卡片，避免三列表格被裁切并让字段选择保持完整宽度（≤767px 对齐 useIsMobile） */}
+      <div className="space-y-2 md:hidden">
         {headers.map((header, index) => {
           const currentTarget = getColumnTarget(header);
           const suggestedTarget = suggestMapping(header);
@@ -242,7 +242,7 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
 
       {/* 较宽视口保留表格；容器允许横向滚动，窄工作台窗口不再裁切列 */}
       <CustomScrollArea
-        className="hidden rounded-lg border border-border sm:block"
+        className="hidden rounded-lg border border-border md:block"
         orientation="horizontal"
         fullHeight={false}
       >

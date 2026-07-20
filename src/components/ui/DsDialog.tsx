@@ -156,6 +156,8 @@ export function DsDialog({
   // 非 Android 平台 keyboardHeight 恒为 0，无行为变化。
   const keyboardHeight = useKeyboardHeight();
   const keyboardAvoid = keyboardHeight > 0;
+  // 非 adjustResize 模式下键盘遮挡的布局高度（keyboardHeight 变化触发重渲染时重新读取）
+  const obscuredHeight = keyboardAvoid ? getLayoutViewportObscuredHeight() : 0;
 
   // 移动 sheet 下滑关闭（M-5）：顶部把手视觉暗示可拖拽，此前没有对应手势。
   // 拖拽只从把手区启动（dragListener=false），不与内容区滚动抢手势。
@@ -176,7 +178,7 @@ export function DsDialog({
             ? {
                 ...(isMobileSheet ? {} : { alignItems: 'flex-start', paddingTop: '12px' }),
                 // adjustResize 下为 0；非 resize 模式下补偿键盘遮挡区域
-                paddingBottom: `${getLayoutViewportObscuredHeight()}px`,
+                paddingBottom: `${obscuredHeight}px`,
               }
             : {}),
         }}
@@ -215,7 +217,12 @@ export function DsDialog({
           )}
           style={{
             zIndex: Z_INDEX.modal + 1,
-            maxHeight: isMobileSheet ? 'min(86dvh, calc(100dvh - 0.5rem))' : 'min(85vh, 720px)',
+            // 键盘弹出（非 adjustResize）时 sheet 高度需扣除键盘遮挡区，否则内容被键盘盖住
+            maxHeight: isMobileSheet
+              ? (keyboardAvoid
+                  ? `min(86dvh, calc(100dvh - ${obscuredHeight}px - 0.5rem))`
+                  : 'min(86dvh, calc(100dvh - 0.5rem))')
+              : 'min(85vh, 720px)',
             paddingBottom: isMobileSheet
               ? 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))'
               : undefined,
@@ -242,8 +249,8 @@ export function DsDialog({
               aria-label={t('actions.close')}
               className={cn(
                 'absolute z-10 text-muted-foreground/50 hover:text-foreground',
-                // 移动 sheet 形态：触控目标放大到 40px（右上角命中区）
-                isMobileSheet ? 'right-2 top-2 h-10 w-10' : 'w-6 h-6 top-2.5 right-2.5',
+                // 移动 sheet 形态：触控目标放大到 44px（右上角命中区）
+                isMobileSheet ? 'right-2 top-2 h-11 w-11' : 'w-6 h-6 top-2.5 right-2.5',
               )}
               onClick={() => onOpenChange(false)}
             >
@@ -403,13 +410,28 @@ export function DsAlertDialog({
   // Android 返回键 = 取消（确认框不可遮罩关闭，但返回键应等同"取消"，与 ESC 一致）
   useAndroidBackClose(open, handleCancel);
 
+  // Android 键盘避让：与 DsDialog 同一套 useKeyboardHeight 机制（children 内含输入框时生效）
+  const keyboardHeight = useKeyboardHeight();
+  const keyboardAvoid = keyboardHeight > 0;
+  const obscuredHeight = keyboardAvoid ? getLayoutViewportObscuredHeight() : 0;
+
   return (
     <ModalPortal open={open}>
       <motion.div
         data-overlay-container="true"
         onPointerDown={(e) => e.stopPropagation()}
         className="pointer-events-auto fixed inset-0 flex items-center justify-center p-4"
-        style={{ zIndex: Z_INDEX.modal }}
+        style={{
+          zIndex: Z_INDEX.modal,
+          ...(keyboardAvoid
+            ? {
+                alignItems: 'flex-start',
+                paddingTop: '12px',
+                // adjustResize 下为 0；非 resize 模式下补偿键盘遮挡区域
+                paddingBottom: `${obscuredHeight}px`,
+              }
+            : {}),
+        }}
         initial="hidden"
         animate="visible"
         exit="exit"

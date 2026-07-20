@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowSquareOut, PencilSimple, Trash } from '@phosphor-icons/react';
 import { useShallow } from 'zustand/react/shallow';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useLongPress, type LongPressPoint } from '@/hooks/mobile/useLongPress';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { DstuNodeType } from '@/dstu/types';
 import {
@@ -135,6 +136,8 @@ interface ShortcutIconProps {
   editing: boolean;
   onOpen: (shortcut: DesktopShortcut) => void;
   onContextMenu: (e: React.MouseEvent, shortcut: DesktopShortcut) => void;
+  /** 触屏长按呼出菜单（右键的触屏替代） */
+  onLongPressMenu: (point: LongPressPoint, shortcut: DesktopShortcut) => void;
   onRenameCommit: (id: string, name: string) => void;
   onRenameCancel: () => void;
 }
@@ -145,6 +148,7 @@ const ShortcutIcon: React.FC<ShortcutIconProps> = ({
   editing,
   onOpen,
   onContextMenu,
+  onLongPressMenu,
   onRenameCommit,
   onRenameCancel,
 }) => {
@@ -152,6 +156,12 @@ const ShortcutIcon: React.FC<ShortcutIconProps> = ({
   const [editName, setEditName] = useState(shortcut.name);
   // 触屏无双击语义：单击直接打开
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
+  // 触屏长按 = 右键菜单（长按触发后抑制本次 click，避免同时打开快捷方式）
+  const longPress = useLongPress({
+    onLongPress: (point) => onLongPressMenu(point, shortcut),
+    disabled: !isTouchPrimary || editing,
+    preventContextMenu: false,
+  });
 
   useEffect(() => {
     if (editing) setEditName(shortcut.name);
@@ -173,6 +183,7 @@ const ShortcutIcon: React.FC<ShortcutIconProps> = ({
       data-menu-open={menuOpen ? 'true' : undefined}
       data-wb-desk-shortcut={shortcut.id}
       aria-label={shortcut.name}
+      {...longPress.bind}
       onClick={isTouchPrimary && !editing ? () => onOpen(shortcut) : undefined}
       onDoubleClick={editing ? undefined : () => onOpen(shortcut)}
       onKeyDown={(e) => {
@@ -381,16 +392,25 @@ export const DesktopShortcutsLayer: React.FC = () => {
     [t],
   );
 
-  const handleContextMenu = useCallback((e: React.MouseEvent, shortcut: DesktopShortcut) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const openMenuAt = useCallback((x: number, y: number, shortcut: DesktopShortcut) => {
     if (menuExitTimerRef.current !== null) {
       window.clearTimeout(menuExitTimerRef.current);
       menuExitTimerRef.current = null;
     }
     setMenuClosing(false);
-    setMenu({ shortcut, x: e.clientX, y: e.clientY });
+    setMenu({ shortcut, x, y });
   }, []);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, shortcut: DesktopShortcut) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openMenuAt(e.clientX, e.clientY, shortcut);
+  }, [openMenuAt]);
+
+  // 触屏长按 = 右键（按下坐标呼出同一菜单）
+  const handleLongPressMenu = useCallback((point: LongPressPoint, shortcut: DesktopShortcut) => {
+    openMenuAt(point.x, point.y, shortcut);
+  }, [openMenuAt]);
 
   const closeMenu = useCallback(() => {
     setMenuClosing(true);
@@ -422,6 +442,7 @@ export const DesktopShortcutsLayer: React.FC = () => {
             editing={editingId === shortcut.id}
             onOpen={handleOpen}
             onContextMenu={handleContextMenu}
+            onLongPressMenu={handleLongPressMenu}
             onRenameCommit={handleRenameCommit}
             onRenameCancel={() => setEditingId(null)}
           />

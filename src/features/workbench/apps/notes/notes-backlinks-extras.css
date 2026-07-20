@@ -227,6 +227,15 @@
   outline-offset: 1px;
 }
 
+/* 触屏：hover 不可达，「新建」按钮常显并放大触控目标 */
+@media (pointer: coarse) {
+  .notes-backlinks-panel-create-button {
+    opacity: 1;
+    width: 36px;
+    height: 36px;
+  }
+}
+
 .notes-backlinks-panel-create-button:disabled {
   cursor: wait;
   opacity: 0.6;

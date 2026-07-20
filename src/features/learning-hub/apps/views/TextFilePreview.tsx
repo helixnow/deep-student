@@ -343,8 +343,8 @@ const CopyTextButton: React.FC<{ text: string }> = ({ text }) => {
     <button
       type="button"
       onClick={handleCopy}
-      // 📱 触屏：放大到 ≥40px 触控目标（桌面保持紧凑内联尺寸）
-      className="ui-state-colors inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:px-2.5"
+      // 📱 触屏：放大到 ≥44px 触控目标（桌面保持紧凑内联尺寸）
+      className="ui-state-colors inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5"
       aria-label={t('learningHub:filePreview.copy')}
     >
       {copied ? <Check size={12} className="text-success" aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
@@ -725,8 +725,8 @@ const CsvTable: React.FC<CsvTableProps> = ({ parsed, hasHeader, revealFull }) =>
                   type="button"
                   onClick={() => cycleSort(i)}
                   title={nextActionLabel}
-                  // 📱 触屏：表头排序按钮 ≥40px 高，避免误触相邻列
-                  className="ui-state-colors group flex w-full items-center gap-1 px-3 py-1.5 text-left hover:bg-accent [@media(pointer:coarse)]:min-h-10"
+                  // 📱 触屏：表头排序按钮 ≥44px 高，避免误触相邻列
+                  className="ui-state-colors group flex w-full items-center gap-1 px-3 py-1.5 text-left hover:bg-accent [@media(pointer:coarse)]:min-h-11"
                 >
                   <span className={cn('max-w-[24rem] truncate', !headerCells && 'text-muted-foreground')}>
                     {headerCells
@@ -994,7 +994,7 @@ const TextFilePreviewComponent: React.FC<TextFilePreviewProps> = ({ content, fil
             ]}
             copyText={content}
           >
-            <label className="flex cursor-pointer select-none items-center gap-1.5 [@media(pointer:coarse)]:min-h-10">
+            <label className="flex cursor-pointer select-none items-center gap-1.5 [@media(pointer:coarse)]:min-h-11">
               <input
                 type="checkbox"
                 checked={csvHasHeader}

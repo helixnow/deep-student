@@ -47,6 +47,10 @@ interface FinderToolbarProps {
   titlebarMode?: false | 'shell' | 'window';
 }
 
+/** 触屏面包屑命中区扩展：padding 撑出热区，负 margin 抵消占位（对齐 MobileBreadcrumb 范式） */
+const CRUMB_TOUCH_HIT_CLASS =
+  '[@media(pointer:coarse)]:!px-1.5 [@media(pointer:coarse)]:!py-2.5 [@media(pointer:coarse)]:!-mx-0.5 [@media(pointer:coarse)]:!-my-2.5';
+
 const SORT_OPTIONS: { value: SortBy; labelKey: string }[] = [
   { value: 'name', labelKey: 'finder.sort.name' },
   { value: 'updatedAt', labelKey: 'finder.sort.updatedAt' },
@@ -86,6 +90,7 @@ function CompressedBreadcrumbs({
       onClick={() => (onNavigateHome ? onNavigateHome() : onBreadcrumbClick(-1))}
       className={cn(
         '!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight',
+        CRUMB_TOUCH_HIT_CLASS,
         breadcrumbs.length === 0
           ? 'text-foreground/85 cursor-default'
           : 'text-foreground/55 hover:text-foreground'
@@ -120,7 +125,7 @@ function CompressedBreadcrumbs({
           variant="ghost"
           size="sm"
           onClick={() => onBreadcrumbClick(0)}
-          className="!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground"
+          className={cn('!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground', CRUMB_TOUCH_HIT_CLASS)}
           title={parentCrumb?.name}
           aria-label={parentCrumb?.name || '…'}
         >
@@ -132,7 +137,7 @@ function CompressedBreadcrumbs({
             variant="ghost"
             size="sm"
             onClick={() => onBreadcrumbClick(parentIndex)}
-            className="!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground"
+            className={cn('!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground', CRUMB_TOUCH_HIT_CLASS)}
             title={parentCrumb.name}
           >
             <span className="truncate max-w-[72px]">{parentCrumb.name}</span>
@@ -163,7 +168,7 @@ function CompressedBreadcrumbs({
                 variant="ghost"
                 size="sm"
                 onClick={() => onBreadcrumbClick(index)}
-                className="!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground"
+                className={cn('!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground', CRUMB_TOUCH_HIT_CLASS)}
                 title={crumb.name}
               >
                 <span className="truncate max-w-[88px]">{crumb.name}</span>
@@ -213,7 +218,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         variant="ghost"
         size="icon"
         iconOnly
-        className="pointer-events-auto !h-7 !w-7 !p-1 text-foreground/70 hover:bg-background/70"
+        className="pointer-events-auto !h-7 !w-7 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-foreground/70 hover:bg-background/70"
         onClick={onBack}
         disabled={!canGoBack}
         title={t('finder.toolbar.back')}
@@ -225,7 +230,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         variant="ghost"
         size="icon"
         iconOnly
-        className="pointer-events-auto !h-7 !w-7 !p-1 text-foreground/70 hover:bg-background/70"
+        className="pointer-events-auto !h-7 !w-7 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-foreground/70 hover:bg-background/70"
         onClick={onForward}
         disabled={!canGoForward}
         title={t('finder.toolbar.forward')}
@@ -247,7 +252,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
               size="icon"
               iconOnly
               className={cn(
-                'pointer-events-auto !h-7 !w-7 !p-1',
+                'pointer-events-auto !h-7 !w-7 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10',
                 viewMode === mode ? 'bg-background text-foreground shadow-sm' : 'text-foreground/65 hover:bg-background/70'
               )}
               onClick={() => onViewModeChange(mode)}
@@ -268,7 +273,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
               variant="ghost"
               size="icon"
               iconOnly
-              className="pointer-events-auto !h-8 !w-8 !p-1.5 rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
+              className="pointer-events-auto !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
               title={t('finder.sort.title')}
               aria-label={t('finder.sort.title')}
             >
@@ -307,7 +312,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
           variant="ghost"
           size="icon"
           iconOnly
-          className="pointer-events-auto !h-8 !w-8 !p-1.5 rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
+          className="pointer-events-auto !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
           onClick={onNewFolder}
           title={t('finder.toolbar.newFolder')}
           aria-label={t('finder.toolbar.newFolder')}
@@ -321,7 +326,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
           variant="ghost"
           size="icon"
           iconOnly
-          className="pointer-events-auto !h-8 !w-8 !p-1.5 rounded-xl text-foreground/65 hover:bg-[color:var(--interactive-hover)]"
+          className="pointer-events-auto !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 rounded-xl text-foreground/65 hover:bg-[color:var(--interactive-hover)]"
           onClick={onRefresh}
           title={t('common:refresh')}
           aria-label={t('common:refresh')}
@@ -342,7 +347,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         disabled={searchDisabled}
         placeholder={resolvedSearchPlaceholder}
         aria-label={resolvedSearchPlaceholder}
-        className="h-8 w-full appearance-none rounded-xl border border-transparent bg-[color:var(--interactive-hover)]/70 pl-8 pr-2.5 text-ui text-foreground outline-none placeholder:text-foreground/45 focus:border-[color:var(--border)] focus:bg-background [&::-webkit-search-cancel-button]:hidden"
+        className="h-8 [@media(pointer:coarse)]:h-10 w-full appearance-none rounded-xl border border-transparent bg-[color:var(--interactive-hover)]/70 pl-8 pr-2.5 text-ui [@media(pointer:coarse)]:text-[16px] text-foreground outline-none placeholder:text-foreground/45 focus:border-[color:var(--border)] focus:bg-background [&::-webkit-search-cancel-button]:hidden"
       />
     </div>
   ) : null;

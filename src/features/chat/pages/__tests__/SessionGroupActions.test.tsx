@@ -68,8 +68,8 @@ describe('SessionGroupActions', () => {
     expect(source).toContain('<div className="flex items-center gap-0.5">');
     expect(source).not.toContain('className="flex items-center gap-0.5 opacity-0');
 
-    // Only the menu trigger stays hover/focus/menu-open visible.
-    expect(quickAction).toContain('className="opacity-0 transition-opacity duration-150 group-hover/sidebar-section:opacity-100 group-focus-within/sidebar-section:opacity-100 data-[menu-open=true]:opacity-100"');
+    // Only the menu trigger stays hover/focus/menu-open visible (always visible on coarse pointers).
+    expect(quickAction).toContain('className="opacity-0 transition-opacity duration-150 group-hover/sidebar-section:opacity-100 group-focus-within/sidebar-section:opacity-100 data-[menu-open=true]:opacity-100 [@media(pointer:coarse)]:opacity-100"');
     expect(quickAction).toMatch(/opacity-0[\s\S]*?<\/div>\s*<CommonTooltip/);
   });
 

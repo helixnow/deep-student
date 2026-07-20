@@ -51,7 +51,9 @@
   }
 }
 
-/* 极窄档（minSize.w = 480）：进一步压缩水平留白，保住内容宽度 */
+/* 极窄档：进一步压缩水平留白，保住内容宽度。
+ * 注：chat 窗 minSize.w = 640（register.ts），窗口本身缩不到 520；
+ * 该档仅在容器（wb-chat 内容列）被侧栏/分屏挤窄到 ≤520 时生效。 */
 @container wb-chat (max-width: 520px) {
   [data-wb-chat-session] .md\:px-8 {
     padding-inline: 0.75rem;

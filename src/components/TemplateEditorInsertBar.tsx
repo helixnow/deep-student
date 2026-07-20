@@ -49,7 +49,7 @@ export const TemplateEditorInsertBar: React.FC<TemplateEditorInsertBarProps> = (
   return (
     <div className="template-editor-insert-bar">
       <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider shrink-0">
+        <span className="text-[10px] max-md:text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider shrink-0">
           {t('templateEditor.insertField')}
         </span>
         {fields.map(field => (
@@ -65,7 +65,7 @@ export const TemplateEditorInsertBar: React.FC<TemplateEditorInsertBarProps> = (
         ))}
       </div>
       <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-        <span className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider shrink-0">
+        <span className="text-[10px] max-md:text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider shrink-0">
           {t('templateEditor.snippets')}
         </span>
         <button

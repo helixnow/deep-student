@@ -243,6 +243,8 @@ export function ImageCropDialog({
                   iconOnly
                   disabled={currentPage === 0}
                   onClick={() => { setCurrentPage(p => p - 1); setCropRect(null); }}
+                  aria-label={t('prev')}
+                  className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                 >
                   <CaretLeft size={16} />
                 </DsButton>
@@ -255,6 +257,8 @@ export function ImageCropDialog({
                   iconOnly
                   disabled={currentPage === sourceImages.length - 1}
                   onClick={() => { setCurrentPage(p => p + 1); setCropRect(null); }}
+                  aria-label={t('next')}
+                  className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                 >
                   <CaretRight size={16} />
                 </DsButton>
@@ -275,6 +279,7 @@ export function ImageCropDialog({
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
+                onTouchCancel={handleTouchEnd}
               >
                 <img
                   ref={imageRef}
@@ -366,7 +371,7 @@ export function ImageCropDialog({
             size="sm"
             disabled={!cropRect || cropping}
             onClick={handleCrop}
-            className="!h-9 flex-shrink-0 px-3"
+            className="!h-9 flex-shrink-0 px-3 [@media(pointer:coarse)]:!h-11"
           >
             {cropping ? (
               <CircleNotch size={14} className="mr-1 animate-spin" />
@@ -395,7 +400,7 @@ export function ImageCropDialog({
               variant="ghost"
               size="sm"
               onClick={() => setCropRect(null)}
-              className="!h-8 flex-shrink-0 px-2 text-xs"
+              className="!h-8 flex-shrink-0 px-2 text-xs [@media(pointer:coarse)]:!h-11"
             >
               <Trash size={14} className="mr-1" />
               {t('question_bank.clear_selection')}

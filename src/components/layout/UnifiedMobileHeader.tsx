@@ -155,7 +155,10 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
         )}
       </div>
 
-      {/* 右侧：操作按钮 */}
+      {/* 右侧：操作按钮。
+          约定：≤2 个动作（每个 ≥44px 触控目标）。头部无溢出收纳机制，
+          超过 2 个会挤压中间标题区并在 320-375px 窄屏溢出；
+          更多动作请收进页面内的「更多」菜单，而不是继续往这里塞。 */}
       <div className="flex min-w-[var(--touch-target-size)] shrink-0 items-center justify-end gap-1" data-no-drag>
         {config.rightActions}
       </div>

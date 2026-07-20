@@ -18,7 +18,7 @@
   border-radius: 12px;
   width: 90%;
   max-width: 700px;
-  max-height: 80vh;
+  max-height: 80dvh;
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-content-elevated);
@@ -219,11 +219,20 @@
   gap: 12px;
 }
 
+/* 触屏：输入控件 16px，避免 iOS 聚焦时自动放大页面（覆盖上方 14px） */
+@media (pointer: coarse) {
+  .filter-type-select,
+  .filter-operator-select,
+  .filter-value-input {
+    font-size: 16px;
+  }
+}
+
 /* 响应式设计 */
 @media (max-width: 767.98px) {
   .filter-builder {
     width: 95%;
-    max-height: 90vh;
+    max-height: 90dvh;
   }
   
   .filter-row {
@@ -276,25 +285,25 @@
   font-style: italic;
 }
 
-/* 日期输入框样式 */
-input[type="date"] {
+/* 日期输入框样式（收敛到 .filter-builder 作用域，避免污染全局 input/select） */
+.filter-builder input[type="date"] {
   position: relative;
   padding-right: 30px;
 }
 
-input[type="date"]::-webkit-calendar-picker-indicator {
+.filter-builder input[type="date"]::-webkit-calendar-picker-indicator {
   position: absolute;
   right: 8px;
   cursor: pointer;
   opacity: 0.6;
 }
 
-input[type="date"]::-webkit-calendar-picker-indicator:hover {
+.filter-builder input[type="date"]::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
 }
 
 /* 选择框下拉箭头样式 */
-select {
+.filter-builder select {
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;

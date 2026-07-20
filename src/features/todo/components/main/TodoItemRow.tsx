@@ -333,6 +333,8 @@ export interface TodoItemRowProps {
   isChecked?: boolean;
   /** 批量多选：Cmd/Ctrl/Shift + 点击时回调（shift = 范围选择） */
   onCheckToggle?: (id: string, opts: { shift: boolean }) => void;
+  /** 📱 批量多选模式（触屏工具栏「选择」开关）：行首显复选框、点行即勾选、滑动手势暂停 */
+  checkMode?: boolean;
   /** 子任务缩进层级（0 = 顶层） */
   depth?: number;
   /** 子任务完成进度（仅父任务显示） */
@@ -351,6 +353,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
   isFocused = false,
   isChecked = false,
   onCheckToggle,
+  checkMode = false,
   depth = 0,
   subtaskProgress,
   dragHandle,
@@ -452,8 +455,8 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
 
   const showCheckFilled = isCompleted || completing;
 
-  // ===== 滑动手势（pointer events + 轴锁定；仅 coarse 指针、未完成、非编辑态） =====
-  const swipeEnabled = isTouchPrimary && !isCompleted && !completing && !isEditing;
+  // ===== 滑动手势（pointer events + 轴锁定；仅 coarse 指针、未完成、非编辑态、非多选模式） =====
+  const swipeEnabled = isTouchPrimary && !isCompleted && !completing && !isEditing && !checkMode;
 
   // ===== 首次使用滑动提示（一次性；claim 逻辑见文件头）=====
   const [swipeHintPlaying, setSwipeHintPlaying] = useState(false);
@@ -587,6 +590,11 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
         closeActions();
         return;
       }
+      // 📱 多选模式（触屏）：点行即勾选，不打开详情
+      if (checkMode && onCheckToggle) {
+        onCheckToggle(item.id, { shift: e.shiftKey });
+        return;
+      }
       // Cmd/Ctrl 点选 或 Shift 范围选：进入批量多选，不打开详情
       if (onCheckToggle && (e.metaKey || e.ctrlKey || e.shiftKey)) {
         onCheckToggle(item.id, { shift: e.shiftKey });
@@ -594,7 +602,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
       }
       onSelect(item.id);
     },
-    [actionsOpen, closeActions, onCheckToggle, onSelect, item.id],
+    [actionsOpen, closeActions, checkMode, onCheckToggle, onSelect, item.id],
   );
 
   const handleSwipeReschedule = useCallback(
@@ -740,6 +748,20 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
       >
       {dragHandle}
 
+      {checkMode ? (
+        // 📱 多选模式：行首换成选择复选框（视觉方形区分完成圆圈），点行任意处即切换
+        <span
+          aria-hidden
+          className={cn(
+            'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-[5px] border-[1.5px] transition-colors duration-150',
+            isChecked
+              ? 'border-[color:hsl(var(--primary))] bg-[color:hsl(var(--primary))] text-[color:hsl(var(--primary-foreground))]'
+              : 'border-[color:var(--shell-workspace-border,hsl(var(--border)))]',
+          )}
+        >
+          {isChecked && <Check size={12} weight="bold" />}
+        </span>
+      ) : (
       <button
         onClick={handleToggleClick}
         // 触屏：透明 padding 扩大命中到 ≥44px，负 margin 保持布局不变
@@ -775,6 +797,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
           </div>
         )}
       </button>
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col justify-center">
         {isEditing && onRename ? (

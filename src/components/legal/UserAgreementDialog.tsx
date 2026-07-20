@@ -253,10 +253,12 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
       )}
       style={{
         zIndex: Z_INDEX.modal,
-        paddingTop: 'calc(0.75rem + var(--mobile-safe-area-top, 0px))',
-        paddingBottom: 'calc(0.75rem + var(--mobile-safe-area-bottom, 0px))',
-        paddingLeft: 'calc(0.75rem + var(--mobile-safe-area-left, 0px))',
-        paddingRight: 'calc(0.75rem + var(--mobile-safe-area-right, 0px))',
+        // Portal 到 body：--mobile-safe-area-*（app-shell 作用域）不可见，
+        // 必须走 :root 级 --android-safe-area-* 链（对齐 command-palette.css 注释）
+        paddingTop: 'calc(0.75rem + var(--android-safe-area-top, env(safe-area-inset-top, 0px)))',
+        paddingBottom: 'calc(0.75rem + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)))',
+        paddingLeft: 'calc(0.75rem + var(--android-safe-area-left, env(safe-area-inset-left, 0px)))',
+        paddingRight: 'calc(0.75rem + var(--android-safe-area-right, env(safe-area-inset-right, 0px)))',
       }}
       onClick={handleOverlayClick}
     >
@@ -290,7 +292,7 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
             : 'opacity-0 scale-[0.97] translate-y-2',
         )}
         style={{
-          maxHeight: 'min(80dvh, calc(100dvh - 1.5rem - var(--mobile-safe-area-top, 0px) - var(--mobile-safe-area-bottom, 0px)))',
+          maxHeight: 'min(80dvh, calc(100dvh - 1.5rem - var(--android-safe-area-top, env(safe-area-inset-top, 0px)) - var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))))',
         }}
       >
         {/* 标题区 */}

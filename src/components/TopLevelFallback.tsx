@@ -180,7 +180,10 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
+        // dvh：移动端动态工具栏/键盘下取真实可视高度（旧内核回退 100vh 由内联双写不可行，
+        // 此处兜底页无滚动内容，100dvh 不支持时浏览器忽略该行保留 100vh）
         height: '100vh',
+        ...(typeof CSS !== 'undefined' && CSS.supports?.('height', '100dvh') ? { height: '100dvh' } : {}),
         width: '100vw',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         ...glassStyle,

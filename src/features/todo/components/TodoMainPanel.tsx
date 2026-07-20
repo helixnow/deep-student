@@ -342,6 +342,23 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     setCheckedIds((prev) => (prev.size > 0 ? new Set() : prev));
   }, []);
 
+  // 📱 触屏批量多选模式：触屏无 Cmd/Ctrl/Shift 修饰键，工具栏「选择」开关进入，
+  // 进入后行首显示复选框、点行即勾选（不打开详情）。行内左右滑手势暂停避免误触。
+  const [checkMode, setCheckMode] = useState(false);
+  const exitCheckMode = useCallback(() => {
+    setCheckMode(false);
+    clearChecked();
+  }, [clearChecked]);
+
+  // 多选模式下 Android 返回键 = 退出多选（先于导航返回）
+  useEffect(() => {
+    if (!checkMode) return;
+    return registerBackHandler(() => {
+      exitCheckMode();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [checkMode, exitCheckMode]);
+
   // 分组折叠（upcoming/today 视图的时间段分组）
   const [collapsedBuckets, setCollapsedBuckets] = useState<ReadonlySet<TodoDueBucket>>(new Set());
   const toggleBucketCollapsed = useCallback((bucket: TodoDueBucket) => {
@@ -925,6 +942,25 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               <CheckCircle size={14} />
               <span className="hidden sm:inline">{t('todo:filters.showCompleted')}</span>
             </DsButton>
+
+            {/* 📱 批量多选开关：触屏没有 Cmd/Ctrl/Shift 点选入口，用模式切换替代 */}
+            <DsButton
+              variant="utility"
+              size="sm"
+              onClick={() => (checkMode ? exitCheckMode() : setCheckMode(true))}
+              data-selected={checkMode}
+              aria-pressed={checkMode}
+              aria-label={t('todo:bulk.selectMode', '选择')}
+              title={t('todo:bulk.selectMode', '选择')}
+              className={cn(
+                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
+                checkMode &&
+                  '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
+              )}
+            >
+              <ListChecks size={14} />
+              <span className="hidden sm:inline">{t('todo:bulk.selectMode', '选择')}</span>
+            </DsButton>
           </div>
 
           {/* 窄屏内联搜索行（flex-wrap 下换行占满整行；关闭时清空搜索词） */}
@@ -965,9 +1001,12 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
           )}
         </div>
 
-        {/* 批量多选操作条（内联，非弹窗）：Cmd/Ctrl/Shift 点选行后出现 */}
+        {/* 批量多选操作条（内联，非弹窗）：Cmd/Ctrl/Shift 点选行或多选模式勾选后出现 */}
         {checkedIds.size > 0 && (
-          <BulkActionBar checkedIds={checkedIds} onClear={clearChecked} />
+          <BulkActionBar
+            checkedIds={checkedIds}
+            onClear={checkMode ? exitCheckMode : clearChecked}
+          />
         )}
 
         {/* 内容区 */}
@@ -1035,6 +1074,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                           isFocused={focusedItemId === item.id}
                           isChecked={checkedIds.has(item.id)}
                           onCheckToggle={handleCheckToggle}
+                          checkMode={checkMode}
                           subtaskProgress={subtaskProgressOf(item.id)}
                         />
                         {(childrenByParent.get(item.id) || []).map((child) => (
@@ -1049,6 +1089,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                             isFocused={focusedItemId === child.id}
                             isChecked={checkedIds.has(child.id)}
                             onCheckToggle={handleCheckToggle}
+                            checkMode={checkMode}
                             depth={1}
                           />
                         ))}
@@ -1064,6 +1105,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 focusedItemId={focusedItemId}
                 checkedIds={checkedIds}
                 onCheckToggle={handleCheckToggle}
+                checkMode={checkMode}
                 onToggle={toggleItem}
                 onSelect={handleSelect}
                 onDelete={deleteItem}
@@ -1131,6 +1173,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                               isFocused={focusedItemId === item.id}
                               isChecked={checkedIds.has(item.id)}
                               onCheckToggle={handleCheckToggle}
+                              checkMode={checkMode}
                             />
                           ))}
                         </div>
@@ -1147,6 +1190,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 focusedItemId={focusedItemId}
                 checkedIds={checkedIds}
                 onCheckToggle={handleCheckToggle}
+                checkMode={checkMode}
                 onToggle={toggleItem}
                 onSelect={handleSelect}
                 onDelete={deleteItem}

@@ -814,7 +814,8 @@
     "completed": "Completed {{count}} items",
     "rescheduled": "Rescheduled {{count}} items",
     "prioritySet": "Updated priority for {{count}} items",
-    "skippedCount": "{{count}} skipped"
+    "skippedCount": "{{count}} skipped",
+    "selectMode": "Select"
   },
   "quickAdd": {
     "removeToken": "Remove"

@@ -81,7 +81,7 @@ export const ModelEssayView: React.FC<ModelEssayViewProps> = ({ essay, className
           aria-pressed={serif}
           onClick={() => setSerif((v) => !v)}
           className={cn(
-            'w-6 h-6 transition-colors duration-150 motion-reduce:transition-none',
+            'w-6 h-6 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9 transition-colors duration-150 motion-reduce:transition-none',
             serif ? 'bg-primary/10 text-primary' : 'text-muted-foreground/50 hover:text-foreground'
           )}
         >
@@ -93,7 +93,7 @@ export const ModelEssayView: React.FC<ModelEssayViewProps> = ({ essay, className
           aria-label={copied ? t('essay_grading:sections.copied') : t('common:copy')}
           onClick={handleCopy}
           className={cn(
-            'h-6 px-1.5 gap-1 text-xs transition-colors duration-200 motion-reduce:transition-none',
+            'h-6 px-1.5 gap-1 text-xs [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:px-2.5 transition-colors duration-200 motion-reduce:transition-none',
             copied
               ? 'text-success hover:text-success'
               : 'text-muted-foreground/50 hover:text-foreground'

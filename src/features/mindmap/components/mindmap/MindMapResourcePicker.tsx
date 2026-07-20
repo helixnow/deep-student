@@ -402,7 +402,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
       role="dialog"
       aria-label={t('refs.pickerTitle')}
       className={cn(
-        'fixed w-[360px] max-w-[calc(100vw-32px)] max-h-[min(420px,calc(100vh-96px))] flex flex-col',
+        'fixed w-[360px] max-w-[calc(100vw-32px)] max-h-[min(420px,calc(100dvh-96px))] flex flex-col',
         'mindmap-container rounded-[var(--mm-radius-popup,8px)] border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)]',
         'shadow-[var(--mm-popover-shadow)]',
         'ui-zoom-fade-in',

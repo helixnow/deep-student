@@ -1558,6 +1558,15 @@
   }
 }
 
+/* 📱 触屏：非笔记宿主（白板等）保留的划词气泡按钮 ~30px 难以点准，放大到 ≥40px */
+@media (pointer: coarse) {
+  .crepe-editor-wrapper .milkdown .milkdown-toolbar button.toolbar-item,
+  .crepe-editor-wrapper .milkdown .milkdown-toolbar .toolbar-item {
+    min-width: 40px !important;
+    min-height: 40px !important;
+  }
+}
+
 /* 移动端：编辑器浮层（斜杠菜单/气泡工具栏/链接浮层）防超屏 */
 @media (max-width: 767.98px) {
   .crepe-editor-wrapper .milkdown .milkdown-slash-menu {

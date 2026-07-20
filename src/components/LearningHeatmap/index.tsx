@@ -7,7 +7,7 @@
  * - 细腻的 hover 缩放 / 今日光环 / 骨架屏
  */
 
-import React, { useMemo, useState, useRef, useLayoutEffect, useCallback } from 'react';
+import React, { useMemo, useState, useRef, useLayoutEffect, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +15,7 @@ import { useLearningHeatmap, type LearningActivity } from '../../hooks/useLearni
 import { ArrowsClockwise, TrendUp, Calendar, Lightning, Pulse } from '@phosphor-icons/react';
 import { cn } from '../../lib/utils';
 import { CustomScrollArea } from '../custom-scroll-area';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import './LearningHeatmap.css';
 
 // ============================================================================
@@ -36,7 +37,9 @@ export interface LearningHeatmapProps {
 
 const CELL = 11;
 const GAP = 3;
-const STEP = CELL + GAP;
+/** 📱 触屏：11px 格子无法点准，coarse 指针下放大格子/间距 */
+const CELL_COARSE = 15;
+const GAP_COARSE = 4;
 /** 月份标签行高度 */
 const MONTH_ROW_H = 18;
 /** tooltip 半宽，用于水平方向 clamp（防止贴视口边缘被裁） */
@@ -197,15 +200,15 @@ function StatsCard({ icon, label, value }: StatsCardProps) {
 // 骨架屏 — 用同规格网格做呼吸占位，避免加载完成后布局跳动
 // ============================================================================
 
-function HeatmapSkeleton({ weeksCount }: { weeksCount: number }) {
+function HeatmapSkeleton({ weeksCount, cell, gap }: { weeksCount: number; cell: number; gap: number }) {
   return (
     <div className="lh-skeleton" style={{ paddingTop: MONTH_ROW_H }}>
       <div
         className="lh-grid"
         style={{
-          gridTemplateRows: `repeat(7, ${CELL}px)`,
-          gridAutoColumns: `${CELL}px`,
-          gap: GAP,
+          gridTemplateRows: `repeat(7, ${cell}px)`,
+          gridAutoColumns: `${cell}px`,
+          gap,
         }}
       >
         {Array.from({ length: weeksCount * 7 }, (_, i) => (
@@ -241,6 +244,12 @@ export function LearningHeatmap({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<HoverState | null>(null);
 
+  // 📱 触屏：格子/间距放大便于点按；tooltip 改为点击显示（无 hover）
+  const isCoarse = useMediaQuery('(pointer: coarse)');
+  const cell = isCoarse ? CELL_COARSE : CELL;
+  const gap = isCoarse ? GAP_COARSE : GAP;
+  const step = cell + gap;
+
   const grid = useMemo(() => buildGrid(months), [months]);
   const todayKey = toDateKey(grid.today);
 
@@ -260,7 +269,7 @@ export function LearningHeatmap({
     [maxCount]
   );
 
-  const contentWidth = grid.weeks.length * STEP - GAP;
+  const contentWidth = grid.weeks.length * step - gap;
 
   // 初始滚动到最新日期
   useLayoutEffect(() => {
@@ -268,12 +277,9 @@ export function LearningHeatmap({
     if (el && !loading) el.scrollLeft = el.scrollWidth;
   }, [loading, contentWidth]);
 
-  // 事件委托：hover 单元格时定位单例 tooltip（视口坐标 + portal，不受滚动容器裁剪）
-  const handleGridOver = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const target = e.target as HTMLElement;
-      const dateKey = target.dataset?.date;
-      if (!dateKey) return;
+  /** 按单元格定位单例 tooltip（视口坐标 + portal，不受滚动容器裁剪） */
+  const showTooltipFor = useCallback(
+    (target: HTMLElement, dateKey: string) => {
       const rect = target.getBoundingClientRect();
       const rawLeft = rect.left + rect.width / 2;
       const left = Math.min(
@@ -293,7 +299,46 @@ export function LearningHeatmap({
     [byDate]
   );
 
+  // 事件委托：hover 单元格显示 tooltip（触屏无 hover，改走下方 click 切换，避免 tap 合成 mouseover 与 click 互相打架）
+  const handleGridOver = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (isCoarse) return;
+      const target = e.target as HTMLElement;
+      const dateKey = target.dataset?.date;
+      if (!dateKey) return;
+      showTooltipFor(target, dateKey);
+    },
+    [isCoarse, showTooltipFor]
+  );
+
   const clearHover = useCallback(() => setHover(null), []);
+
+  // 📱 触屏：点格子显示 tooltip，再点同格或空白处关闭
+  const handleGridClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!isCoarse) return;
+      const target = e.target as HTMLElement;
+      const dateKey = target.dataset?.date;
+      if (!dateKey || hover?.dateKey === dateKey) {
+        setHover(null);
+        return;
+      }
+      showTooltipFor(target, dateKey);
+    },
+    [isCoarse, hover?.dateKey, showTooltipFor]
+  );
+
+  // 触屏下点击网格外任意处关闭 tooltip
+  useEffect(() => {
+    if (!hover || !isCoarse) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.('.lh-grid') || target?.closest?.('.lh-tooltip')) return;
+      setHover(null);
+    };
+    document.addEventListener('pointerdown', onDocPointerDown);
+    return () => document.removeEventListener('pointerdown', onDocPointerDown);
+  }, [hover, isCoarse]);
 
   const weekLabels: Array<string | null> = [
     null, t('calendar.weekMon'), null, t('calendar.weekWed'), null, t('calendar.weekFri'), null,
@@ -340,11 +385,11 @@ export function LearningHeatmap({
         {/* 星期标签（不随内容滚动） */}
         <div
           className="lh-week-labels shrink-0 flex flex-col"
-          style={{ paddingTop: MONTH_ROW_H, gap: GAP }}
+          style={{ paddingTop: MONTH_ROW_H, gap }}
           aria-hidden="true"
         >
           {weekLabels.map((label, i) => (
-            <div key={i} style={{ height: CELL, lineHeight: `${CELL}px` }}>
+            <div key={i} style={{ height: cell, lineHeight: `${cell}px` }}>
               {label ?? ''}
             </div>
           ))}
@@ -358,13 +403,13 @@ export function LearningHeatmap({
           orientation="horizontal"
         >
           {loading ? (
-            <HeatmapSkeleton weeksCount={grid.weeks.length} />
+            <HeatmapSkeleton weeksCount={grid.weeks.length} cell={cell} gap={gap} />
           ) : (
             <div className="lh-content relative w-max" style={{ width: contentWidth }}>
               {/* 月份标签 */}
               <div className="lh-month-labels" style={{ height: MONTH_ROW_H }} aria-hidden="true">
                 {grid.monthMarks.map(({ weekIndex, month }) => (
-                  <span key={`${weekIndex}-${month}`} style={{ left: weekIndex * STEP }}>
+                  <span key={`${weekIndex}-${month}`} style={{ left: weekIndex * step }}>
                     {t(`calendar.month${month + 1}`)}
                   </span>
                 ))}
@@ -374,12 +419,13 @@ export function LearningHeatmap({
               <div
                 className="lh-grid"
                 style={{
-                  gridTemplateRows: `repeat(7, ${CELL}px)`,
-                  gridAutoColumns: `${CELL}px`,
-                  gap: GAP,
+                  gridTemplateRows: `repeat(7, ${cell}px)`,
+                  gridAutoColumns: `${cell}px`,
+                  gap,
                 }}
                 onMouseOver={handleGridOver}
                 onMouseLeave={clearHover}
+                onClick={handleGridClick}
                 role="img"
                 aria-label={t('heatmap.totalActivities', { count: totalActivities })}
               >
@@ -413,7 +459,7 @@ export function LearningHeatmap({
       {showLegend && !loading && (
         <div className="flex items-center justify-end gap-2 mt-3 px-1">
           <span className="lh-legend-label">{t('heatmap.legend.less', 'Less')}</span>
-          <div className="flex" style={{ gap: GAP }}>
+          <div className="flex" style={{ gap }}>
             {[0, 1, 2, 3, 4].map(level => (
               <div key={level} className="lh-cell lh-cell-static" data-level={level} />
             ))}

@@ -172,11 +172,11 @@ export const TemplateEditorPreviewPanel: React.FC<TemplateEditorPreviewPanelProp
                     value={formatSampleValue(sampleData[field])}
                     placeholder={t('templateEditor.sampleValuePlaceholder') as string}
                     onChange={(e) => handleSampleInput(field, e.target.value)}
-                    className="!h-7 text-xs"
+                    className="md:!h-7 text-xs [@media(pointer:coarse)]:text-base"
                   />
                 </div>
               ))}
-              <p className="text-[10px] text-muted-foreground/60 col-span-full mt-0.5">
+              <p className="text-[10px] max-md:text-[11px] text-muted-foreground/60 col-span-full mt-0.5">
                 {t('templateEditor.sampleDataHint')}
               </p>
             </div>

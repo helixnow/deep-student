@@ -319,3 +319,54 @@
 .template-editor-dirty-discard:hover {
   color: hsl(var(--danger));
 }
+
+/* ---------- 触屏适配 ----------
+   触屏设备无 hover 且指尖精度低：自绘小控件统一加大触控目标
+   （参考 template-management.css 的 @media (pointer: coarse) 范式） */
+@media (pointer: coarse) {
+  .template-editor-chip {
+    min-height: 44px;
+    padding: 2px 14px;
+    font-size: 12px;
+  }
+
+  .template-editor-segmented-item {
+    min-height: 40px;
+    padding: 3px 14px;
+    font-size: 12px;
+  }
+
+  .template-editor-icon-toggle {
+    width: 44px;
+    height: 44px;
+  }
+
+  .template-editor-required-toggle {
+    min-height: 40px;
+    padding: 1px 12px;
+    font-size: 11px;
+  }
+
+  .template-editor-sample-toggle {
+    min-height: 44px;
+    font-size: 12px;
+  }
+
+  .template-editor-dirty-discard {
+    /* 内联文字按钮：以伪元素扩命中区，视觉不变 */
+    position: relative;
+  }
+
+  .template-editor-dirty-discard::before {
+    content: '';
+    position: absolute;
+    inset: -14px -8px;
+  }
+}
+
+/* 移动端窄屏：10px 微字体提升可读性 */
+@media (max-width: 767.98px) {
+  .template-editor-required-toggle {
+    font-size: 11px;
+  }
+}

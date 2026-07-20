@@ -90,7 +90,9 @@ export function registerSandboxApp(): void {
     instanceMode: 'single',
     memoryWeight: 2,
     defaultFrame: { w: 960, h: 680 },
-    minSize: { w: 560, h: 420 },
+    // 最小宽 640 与 chat 对齐：560–640 区间没有 compact 适配分支（useWbSysSize
+    // 的 compact 档 <640，而 SandboxAppWindow.css 无对应消费），直接避免进入该区间
+    minSize: { w: 640, h: 420 },
     render: React.lazy(() => import('./SandboxAppWindow')),
     onActivation: handleSandboxActivation,
     agentManifest: createSandboxAgentManifest(handleSandboxActivation),

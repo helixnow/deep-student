@@ -761,7 +761,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             aria-invalid={showContentRequired}
             aria-describedby={showContentRequired ? 'inline-edit-content-error' : undefined}
             className={cn(
-              'text-sm transition-colors',
+              'text-sm transition-colors [@media(pointer:coarse)]:text-[16px]',
               showContentRequired && 'border-destructive/60 focus-visible:ring-destructive/30'
             )}
             autoFocus
@@ -822,7 +822,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                   </span>
                 )}
               </Label>
-              <DsButton variant="ghost" size="sm" onClick={handleAddOption} disabled={editData.options.length >= MAX_OPTIONS} className="ui-press h-5 text-[10px] px-1.5">
+              <DsButton variant="ghost" size="sm" onClick={handleAddOption} disabled={editData.options.length >= MAX_OPTIONS} className="ui-press h-5 text-[10px] px-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:text-xs">
                 <Plus size={10} className="mr-0.5" />
                 {t('common:actions.add')}
               </DsButton>
@@ -864,7 +864,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                     <Input
                       value={opt.content}
                       onChange={(e) => handleOptionChange(index, 'content', e.target.value)}
-                      className="flex-1 min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground/50"
+                      className="flex-1 min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground/50 [@media(pointer:coarse)]:text-[16px]"
                       placeholder={`${opt.key} ...`}
 />
                     <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOption(index)} className="flex-shrink-0 !w-4 !h-4 !p-0 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10 text-muted-foreground hover:text-destructive" aria-label="remove">
@@ -973,7 +973,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                   onChange={(e) => handleFieldChange('answer', e.target.value)}
                   rows={2}
                   placeholder={t('exam_sheet:questionBank.edit.answerPlaceholder')}
-                  className="text-sm"
+                  className="text-sm [@media(pointer:coarse)]:text-[16px]"
                 />
               </div>
             )}
@@ -1001,7 +1001,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               onChange={(e) => handleFieldChange('answer', e.target.value)}
               rows={2}
               placeholder={t('exam_sheet:questionBank.edit.answerPlaceholder')}
-              className="text-sm"
+              className="text-sm [@media(pointer:coarse)]:text-[16px]"
 />
           </div>
         )}
@@ -1015,7 +1015,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               onChange={(e) => setTagInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
               placeholder={t('exam_sheet:questionBank.edit.tagPlaceholder')}
-              className="flex-1 text-sm h-8"
+              className="flex-1 text-sm h-8 [@media(pointer:coarse)]:text-[16px]"
 />
             <DsButton
               variant="ghost"
@@ -1110,7 +1110,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                       size="sm"
                       iconOnly
                       onClick={() => handleRemoveImage(img.id)}
- className="w-6 h-6 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity text-white hover:text-white hover:bg-[var(--overlay-control-hover)]"
+ className="w-6 h-6 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity text-white hover:text-white hover:bg-[var(--overlay-control-hover)]"
                     >
                       <Trash size={12} />
                     </DsButton>
@@ -1144,7 +1144,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             variant="ghost"
             size="sm"
             onClick={() => setShowOptional((v) => !v)}
-            className="h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
+            className="h-6 px-1 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-10"
             aria-expanded={showOptional}
           >
             {showOptional ? (
@@ -1169,7 +1169,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                   onChange={(e) => handleFieldChange('explanation', e.target.value)}
                   rows={2}
                   placeholder={t('exam_sheet:questionBank.edit.explanationPlaceholder')}
-                  className="text-sm"
+                  className="text-sm [@media(pointer:coarse)]:text-[16px]"
 />
               </div>
               <div className="space-y-1.5">
@@ -1182,7 +1182,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                   onChange={(e) => handleFieldChange('userNote', e.target.value)}
                   rows={2}
                   placeholder={t('exam_sheet:questionBank.edit.notePlaceholder')}
-                  className="text-sm"
+                  className="text-sm [@media(pointer:coarse)]:text-[16px]"
 />
               </div>
             </div>
@@ -1246,7 +1246,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => setShowDiscardConfirm(false)}
-              className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-10 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
             >
               {t('learningHub:exam.library.keepEditing')}
             </DsButton>
@@ -1254,7 +1254,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               variant="danger"
               size="sm"
               onClick={onCancel}
-              className="!h-auto !px-2 !py-1 text-xs"
+              className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-10 text-xs"
             >
               {t('common:actions.discard')}
             </DsButton>
@@ -1268,7 +1268,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           variant="ghost"
           size="sm"
           onClick={() => setShowPreview((v) => !v)}
-          className={cn('h-6 text-xs', showPreview ? 'text-primary' : 'text-muted-foreground')}
+          className={cn('h-6 text-xs [@media(pointer:coarse)]:!min-h-10', showPreview ? 'text-primary' : 'text-muted-foreground')}
           aria-expanded={showPreview}
         >
           <Eye size={14} className="mr-1" />

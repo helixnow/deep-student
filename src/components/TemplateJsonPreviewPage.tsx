@@ -358,11 +358,12 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
                 <Badge variant="secondary">{t('json_preview.supports_multiple')}</Badge>
               </div>
               <p className="panel-desc">{t('json_preview.input_desc')}</p>
+              {/* 动态高度：移动端虚拟键盘弹出时 dvh 收缩，编辑器不被遮挡 */}
               <UnifiedCodeEditor
                 value={inputValue}
                 onChange={(value) => setInputValue(value)}
                 language="json"
-                height="400px"
+                height="min(400px, 45dvh)"
                 className="json-editor-wrapper"
 />
               <div className="panel-footer">

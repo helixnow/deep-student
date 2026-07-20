@@ -460,3 +460,17 @@
   background: var(--interactive-hover, hsl(var(--accent)));
   color: hsl(var(--foreground));
 }
+
+/* 触屏（仿 FavoritesSection .nfs-unfavorite）：hover 不可达，行内按钮常显并放大触控目标 */
+@media (pointer: coarse) {
+  .nwt-row-more,
+  .nwt-link-drag {
+    opacity: 1;
+    width: 36px;
+    height: 36px;
+  }
+
+  .nwt-link-drag {
+    flex: 0 0 36px;
+  }
+}

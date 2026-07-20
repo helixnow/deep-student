@@ -383,7 +383,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                 variant="ghost" size="sm"
                 onClick={() => toggleDifficulty(key)}
                 className={cn(
-                  '!h-auto !rounded-md !px-3 !py-1.5 text-sm font-medium',
+                  '!h-auto !rounded-md !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 text-sm font-medium',
                   selectedDifficulties.includes(key)
                     ? color
                     : 'bg-muted text-muted-foreground hover:bg-[var(--interactive-hover)]'
@@ -410,7 +410,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                   variant="ghost" size="sm"
                   onClick={() => toggleTag(tag)}
                   className={cn(
-                    '!h-auto !rounded-md !px-3 !py-1.5 text-sm',
+                    '!h-auto !rounded-md !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 text-sm',
                     selectedTags.includes(tag)
                       ? 'bg-primary/10 text-primary'
                       : 'bg-muted text-muted-foreground hover:bg-[var(--interactive-hover)]'

@@ -7,7 +7,7 @@
  * - DocxPreview 移动端收窄台面留白，提高 autoScale 后的可读宽度；
  * - EpubPreview 的移动端断点与 App shell 同源（md=768），不再自造 700px；
  * - XlsxPreview 多 Sheet 时窄屏隐藏尺寸读数，防止底部状态条挤压标签条；
- * - TextFilePreview 触屏触控目标 ≥40px、Markdown 长词不横向溢出。
+ * - TextFilePreview 触屏触控目标 ≥44px、Markdown 长词不横向溢出。
  */
 
 import { readFileSync } from 'node:fs';
@@ -88,10 +88,10 @@ describe('XlsxPreview narrow status bar', () => {
 describe('TextFilePreview touch targets and overflow', () => {
   const source = read('TextFilePreview.tsx');
 
-  it('grows the copy button and csv sort headers to >=40px on coarse pointers', () => {
-    expect(source).toContain('[@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:px-2.5');
-    expect(source).toContain('hover:bg-accent [@media(pointer:coarse)]:min-h-10');
-    expect(source).toContain('gap-1.5 [@media(pointer:coarse)]:min-h-10');
+  it('grows the copy button and csv sort headers to >=44px on coarse pointers', () => {
+    expect(source).toContain('[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5');
+    expect(source).toContain('hover:bg-accent [@media(pointer:coarse)]:min-h-11');
+    expect(source).toContain('gap-1.5 [@media(pointer:coarse)]:min-h-11');
   });
 
   it('prevents long-word horizontal overflow in markdown prose', () => {

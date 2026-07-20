@@ -3,6 +3,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { createPortal } from 'react-dom';
 import { X, MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowClockwise, House, CaretLeft, CaretRight, TextT, Crop, Check, ArrowCounterClockwise, Download } from '@phosphor-icons/react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useTranslation } from 'react-i18next';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 import { Switch } from './ui/shad/Switch';
@@ -70,6 +71,12 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   // are registered once and can't see React state updates.
   const isCropModeRef = useRef(false);
   isCropModeRef.current = isCropMode;
+
+  // 捏合缩放锚点补偿需要在原生事件回调里读取最新 scale/position
+  const scaleStateRef = useRef(scale);
+  scaleStateRef.current = scale;
+  const positionStateRef = useRef(position);
+  positionStateRef.current = position;
   
   // 焦点陷阱
   const focusTrapRef = useFocusTrap(isOpen);
@@ -147,6 +154,20 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, onNext, onPrev]);
+
+  // Android 系统返回键：裁剪模式先退出裁剪，再按才关闭查看器（对齐 Escape 语义）
+  useEffect(() => {
+    if (!isOpen) return;
+    return registerBackHandler(() => {
+      if (isCropModeRef.current) {
+        setIsCropMode(false);
+        setCropRect(null);
+        return true;
+      }
+      onClose();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isOpen, onClose]);
 
   // 锁定页面滚动，避免滚动造成的视觉偏移
   useEffect(() => {
@@ -282,9 +303,28 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
       if (e.touches.length === 2) {
         e.preventDefault();
         const dist = getTouchDist(e.touches[0], e.touches[1]);
+        if (touchStateRef.current.lastTouchDist <= 0) return;
         const ratio = dist / touchStateRef.current.lastTouchDist;
-        setScale(prev => Math.max(0.1, Math.min(5, prev * ratio)));
         touchStateRef.current.lastTouchDist = dist;
+        // ★ 以双指中心为锚点：缩放后补偿 position，让捏合中心下的图像点不动。
+        // transform 为 translate(p) scale(s)（transform-origin 在图片中心 C0+p），
+        // 保持锚点 F 不动 ⇒ p' = p + (1 - s'/s)·(F - C0 - p)
+        const center = getTouchCenter(e.touches[0], e.touches[1]);
+        touchStateRef.current.lastTouchCenter = center;
+        const prev = scaleStateRef.current;
+        const next = Math.max(0.1, Math.min(5, prev * ratio));
+        if (next !== prev) {
+          const rect = container.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          const k = next / prev;
+          const pos = positionStateRef.current;
+          setScale(next);
+          setPosition({
+            x: pos.x + (1 - k) * (center.x - cx - pos.x),
+            y: pos.y + (1 - k) * (center.y - cy - pos.y),
+          });
+        }
       } else if (e.touches.length === 1 && touchStateRef.current.isTouching) {
         const dx = e.touches[0].clientX - touchStateRef.current.lastTouchCenter.x;
         const dy = e.touches[0].clientY - touchStateRef.current.lastTouchCenter.y;
@@ -293,17 +333,27 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
       }
     };
 
-    const onTouchEnd = () => {
-      touchStateRef.current.isTouching = false;
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        // 捏合抬起一指后无缝转入单指拖拽：重设锚点并清掉过期的捏合距离
+        touchStateRef.current.lastTouchDist = 0;
+        touchStateRef.current.lastTouchCenter = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        touchStateRef.current.isTouching = true;
+      } else {
+        touchStateRef.current.lastTouchDist = 0;
+        touchStateRef.current.isTouching = false;
+      }
     };
 
     container.addEventListener('touchstart', onTouchStart, { passive: false });
     container.addEventListener('touchmove', onTouchMove, { passive: false });
     container.addEventListener('touchend', onTouchEnd);
+    container.addEventListener('touchcancel', onTouchEnd);
     return () => {
       container.removeEventListener('touchstart', onTouchStart);
       container.removeEventListener('touchmove', onTouchMove);
       container.removeEventListener('touchend', onTouchEnd);
+      container.removeEventListener('touchcancel', onTouchEnd);
     };
   }, [isCropMode]);
 
@@ -314,17 +364,28 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     return () => { cropCleanupRef.current?.(); };
   }, []);
 
-  const handleCropMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  // ★ 触屏适配：改用 Pointer Events + setPointerCapture，鼠标与手指共用一条路径
+  // （旧实现只绑 mousemove/mouseup，触屏完全无法框选）；
+  // 覆盖层加 touch-action: none，框选期间浏览器不再接管滚动手势。
+  const handleCropPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!isCropMode || !cropContainerRef.current) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    const containerRect = cropContainerRef.current.getBoundingClientRect();
+    const el = cropContainerRef.current;
+    const pointerId = e.pointerId;
+    const containerRect = el.getBoundingClientRect();
     const x = e.clientX - containerRect.left;
     const y = e.clientY - containerRect.top;
     setCropRect({ startX: x, startY: y, endX: x, endY: y });
     setIsCropping(true);
+    try {
+      el.setPointerCapture(pointerId);
+    } catch {
+      // pointer capture 不可用时退化为元素内跟踪
+    }
 
-    // 同图片拖拽：mousemove 只缓存坐标，rAF 合并 getBoundingClientRect + setState
+    // 同图片拖拽：pointermove 只缓存坐标，rAF 合并 getBoundingClientRect + setState
     let rafId = 0;
     let pendingPoint: { x: number; y: number } | null = null;
 
@@ -340,30 +401,35 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
       setCropRect(prev => prev ? { ...prev, endX: mx, endY: my } : null);
     };
 
-    const handleGlobalCropMove = (ev: MouseEvent) => {
+    const handleCropMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
       pendingPoint = { x: ev.clientX, y: ev.clientY };
       if (rafId === 0) {
         rafId = requestAnimationFrame(processFrame);
       }
     };
 
-    const handleGlobalCropUp = () => {
+    const handleCropUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
       setIsCropping(false);
       // 冲刷最后一个点，保证裁剪框终点与松手位置一致
       if (rafId !== 0) cancelAnimationFrame(rafId);
       processFrame();
-      document.removeEventListener('mousemove', handleGlobalCropMove);
-      document.removeEventListener('mouseup', handleGlobalCropUp);
+      el.removeEventListener('pointermove', handleCropMove);
+      el.removeEventListener('pointerup', handleCropUp);
+      el.removeEventListener('pointercancel', handleCropUp);
       cropCleanupRef.current = null;
     };
 
-    document.addEventListener('mousemove', handleGlobalCropMove);
-    document.addEventListener('mouseup', handleGlobalCropUp);
+    el.addEventListener('pointermove', handleCropMove);
+    el.addEventListener('pointerup', handleCropUp);
+    el.addEventListener('pointercancel', handleCropUp);
     cropCleanupRef.current = () => {
       if (rafId !== 0) cancelAnimationFrame(rafId);
       pendingPoint = null;
-      document.removeEventListener('mousemove', handleGlobalCropMove);
-      document.removeEventListener('mouseup', handleGlobalCropUp);
+      el.removeEventListener('pointermove', handleCropMove);
+      el.removeEventListener('pointerup', handleCropUp);
+      el.removeEventListener('pointercancel', handleCropUp);
     };
   }, [isCropMode]);
 
@@ -449,20 +515,17 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     ? t('common:imageViewer.toggleBlurOff')
     : t('common:imageViewer.toggleBlurOn');
 
-  // Calculate main area height
-  const toolbarH = 36;
-  const thumbH = images.length > 1 ? 88 : 0;
-  const mainHeight = `calc(100vh - ${toolbarH}px - ${thumbH}px)`;
-
+  // 主体高度交给 flex（flex-1 + min-h-0）分配；不再用 100vh/工具栏常量拼 calc
+  // —— 内联 100vh 会压死 CSS 类里的 100dvh 兜底，且 36px 常量与触屏 44px 工具栏不符
   const overlay = (
     <div className={overlayClassName}>
-      <div 
-        className={containerClassName} 
+      <div
+        className={containerClassName}
         ref={focusTrapRef}
-        style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw' }}
+        style={{ display: 'flex', flexDirection: 'column' }}
       >
-        {/* 主体区域：图片 + OCR 面板 */}
-        <div className="flex flex-1 min-h-0" style={{ height: mainHeight }}>
+        {/* 主体区域：图片 + OCR 面板（<768 上下堆叠，避免侧栏挤掉图片） */}
+        <div className="flex flex-1 min-h-0 max-md:flex-col">
           {/* 图片容器 */}
           <div
             ref={zoomContainerRef}
@@ -473,8 +536,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             {isCropMode && (
               <div
                 ref={cropContainerRef}
-                className="absolute inset-0 z-20 cursor-crosshair"
-                onMouseDown={handleCropMouseDown}
+                className="absolute inset-0 z-20 cursor-crosshair touch-none"
+                onPointerDown={handleCropPointerDown}
               >
                 {/* 半透明蒙层 */}
                 <div className="absolute inset-0 bg-black/40" />
@@ -550,7 +613,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
           {/* OCR 文字面板 */}
           {showOcrPanel && (
-            <div className="w-[320px] flex-shrink-0 flex flex-col border-l border-[hsl(var(--border)/0.5)] bg-[hsl(var(--card)/0.95)] backdrop-blur-md">
+            <div className="w-[320px] flex-shrink-0 flex flex-col border-l border-[hsl(var(--border)/0.5)] bg-[hsl(var(--card)/0.95)] backdrop-blur-md max-md:w-full max-md:h-2/5 max-md:min-h-0 max-md:border-l-0 max-md:border-t">
               <div className="flex items-center justify-between px-3 py-2 border-b border-[hsl(var(--border)/0.4)]">
                 <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
                   <TextT size={14} />

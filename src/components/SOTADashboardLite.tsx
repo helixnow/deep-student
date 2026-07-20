@@ -145,6 +145,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         iconOnly
         aria-label={t('export_stats_button')}
         onClick={() => exportDataRef.current()}
+        className="!h-11 !w-11"
       >
         <DownloadSimple size={18} />
       </DsButton>
@@ -502,7 +503,8 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
 
         .sota-charts {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+          /* min(500px, 100%)：容器窄于 500px（移动端）时轨道收缩到容器宽，避免横向溢出 */
+          grid-template-columns: repeat(auto-fit, minmax(min(500px, 100%), 1fr));
           gap: 20px;
         }
 

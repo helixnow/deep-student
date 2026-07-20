@@ -273,7 +273,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
                   key={filter}
                   onClick={() => handleFilterChange(filter)}
                   className={cn(
-                    "px-2.5 py-1 text-xs rounded-full transition-colors duration-150 motion-reduce:transition-none tabular-nums [@media(pointer:coarse)]:min-h-9 [@media(pointer:coarse)]:px-3",
+                    "px-2.5 py-1 text-xs rounded-full transition-colors duration-150 motion-reduce:transition-none tabular-nums [@media(pointer:coarse)]:min-h-9 [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:items-center",
                     markerFilter === filter
                       ? "bg-primary/10 text-primary font-medium"
                       : "text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]",

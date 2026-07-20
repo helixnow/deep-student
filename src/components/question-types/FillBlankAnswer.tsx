@@ -73,7 +73,8 @@ export const FillBlankAnswer: React.FC<FillBlankAnswerProps> = ({
                   disabled={submitted}
                   autoComplete="off"
                   className={cn(
-                    'h-11 transition-colors',
+                    // 16px：<16px 输入框在 iOS 聚焦时会触发页面自动缩放
+                    'h-11 transition-colors [@media(pointer:coarse)]:text-[16px]',
                     revealCorrect === true && 'border-success/60 bg-success/[0.05] text-success pr-9',
                     revealCorrect === false && 'border-destructive/60 bg-destructive/[0.05] text-destructive qbank-anim-shake pr-9'
                   )}

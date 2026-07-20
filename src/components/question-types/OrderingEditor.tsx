@@ -85,7 +85,7 @@ export const OrderingEditor: React.FC<OrderingEditorProps> = ({ value, onChange,
             size="sm"
             onClick={handleAdd}
             disabled={value.items.length >= MAX_ITEMS}
-            className="ui-press h-5 px-1.5 text-[10px]"
+            className="ui-press h-5 px-1.5 text-[10px] [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:text-xs"
           >
             <Plus size={10} className="mr-0.5" />
             {t('editor.structEdit.addItem')}
@@ -103,7 +103,7 @@ export const OrderingEditor: React.FC<OrderingEditorProps> = ({ value, onChange,
               value={item.content}
               onChange={(e) => handleItemChange(index, e.target.value)}
               placeholder={`${item.key} ...`}
-              className="min-w-0 flex-1 bg-transparent text-xs"
+              className="min-w-0 flex-1 bg-transparent text-xs [@media(pointer:coarse)]:text-[16px]"
             />
             <DsButton
               variant="ghost"

@@ -492,7 +492,8 @@ function cellStyleToCss(cell: ExcelJS.Cell): string {
     }
     if (align.vertical === 'top') parts.push('vertical-align:top');
     else if (align.vertical === 'middle') parts.push('vertical-align:middle');
-    if (align.wrapText) parts.push('white-space:normal;word-break:break-word;max-width:26rem');
+    // 窄屏（<32.5rem 视口）下 26rem 固定上限会超出可视宽度，用 80vw 兜底
+    if (align.wrapText) parts.push('white-space:normal;word-break:break-word;max-width:min(26rem,80vw)');
   }
 
   return parts.join(';');
@@ -1116,7 +1117,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="h-6 w-6 flex-shrink-0 p-0 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
+                className="h-6 w-6 flex-shrink-0 p-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
                 onClick={handlePrevSheet}
                 disabled={currentSheetIndex === 0}
                 title={t('learningHub:officePreview.prevSheet')}
@@ -1145,7 +1146,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
                           : tab.name
                       }
                       onClick={() => setCurrentSheetIndex(index)}
-                      className={`h-6 [@media(pointer:coarse)]:h-10 flex-shrink-0 rounded-sm py-0 text-xs transition-colors duration-150 ${
+                      className={`h-6 [@media(pointer:coarse)]:h-11 flex-shrink-0 rounded-sm py-0 text-xs transition-colors duration-150 ${
                         compactTabs ? 'max-w-[6rem] px-1.5' : 'max-w-[10rem] px-2'
                       } ${
                         isActive
@@ -1167,7 +1168,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="h-6 w-6 flex-shrink-0 p-0 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
+                className="h-6 w-6 flex-shrink-0 p-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
                 onClick={handleNextSheet}
                 disabled={currentSheetIndex === sheetCount - 1}
                 title={t('learningHub:officePreview.nextSheet')}

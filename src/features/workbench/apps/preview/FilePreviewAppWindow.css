@@ -178,6 +178,29 @@
   border-radius: 8px;
 }
 
+/* 触屏：lg 视口下 DsButton 图标钮收缩到 28px 基准、搜索条按钮 24px，
+   coarse 指针统一放大触控目标；输入 16px 防 iOS 聚焦放大 */
+@media (pointer: coarse) {
+  .wb-file-preview-toolbar .wb-file-preview-tip-anchor > button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .wb-file-preview-search {
+    height: 40px;
+  }
+
+  .wb-file-preview-search input {
+    font-size: 16px;
+  }
+
+  .wb-file-preview-search .wb-file-preview-search-btn {
+    height: 36px;
+    width: 36px;
+    min-width: 36px;
+  }
+}
+
 .wb-file-preview-content {
   min-height: 0;
   flex: 1;

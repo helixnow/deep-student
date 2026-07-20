@@ -18,7 +18,8 @@
 export const inputShellClass = [
   // 形状 / 字色 / 过渡
   'rounded-[var(--radius-shell-control)]',
-  'text-sm text-foreground transition-colors',
+  // 触屏（coarse）下 16px：iOS 对 <16px 输入聚焦时会强制放大页面
+  'text-sm [@media(pointer:coarse)]:text-base text-foreground transition-colors',
   // 边框 / 底色（默认态）
   'border border-[color:var(--input-shell-border)]',
   'bg-[color:var(--input-shell-surface)]',

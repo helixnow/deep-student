@@ -95,9 +95,55 @@ export const RichDocumentPreview: React.FC<RichDocumentPreviewProps> = ({
       }
     };
 
+    // 触屏双指捏合：ctrl+wheel 在触屏上不存在，捏合是唯一直觉缩放手势
+    // （做法对齐 ImageContentView 的原生非 passive touchmove）。
+    // 手势期间用本地值累积倍率，避免依赖 React state 回流造成跳变。
+    let pinchDist = 0;
+    let pinchZoom = 0;
+    const getTouchDist = (touches: TouchList) =>
+      Math.hypot(
+        touches[1].clientX - touches[0].clientX,
+        touches[1].clientY - touches[0].clientY,
+      );
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        pinchDist = getTouchDist(e.touches);
+        pinchZoom = zoomRef.current.zoomScale;
+      } else {
+        pinchDist = 0;
+      }
+    };
+    const handleTouchMove = (e: TouchEvent) => {
+      if (pinchDist <= 0 || e.touches.length !== 2) return;
+      e.preventDefault();
+      const dist = getTouchDist(e.touches);
+      if (dist <= 0) return;
+      const factor = dist / pinchDist;
+      pinchDist = dist;
+      pinchZoom = clampNumber(pinchZoom * factor, ZOOM_MIN, ZOOM_MAX);
+      const { zoomScale: current, onZoomChange: change } = zoomRef.current;
+      const next = Number(pinchZoom.toFixed(4));
+      if (next !== current) {
+        change(next);
+      }
+    };
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        pinchDist = 0;
+      }
+    };
+
     root.addEventListener('wheel', handleWheel, { passive: false });
+    root.addEventListener('touchstart', handleTouchStart, { passive: true });
+    root.addEventListener('touchmove', handleTouchMove, { passive: false });
+    root.addEventListener('touchend', handleTouchEnd, { passive: true });
+    root.addEventListener('touchcancel', handleTouchEnd, { passive: true });
     return () => {
       root.removeEventListener('wheel', handleWheel);
+      root.removeEventListener('touchstart', handleTouchStart);
+      root.removeEventListener('touchmove', handleTouchMove);
+      root.removeEventListener('touchend', handleTouchEnd);
+      root.removeEventListener('touchcancel', handleTouchEnd);
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
       }

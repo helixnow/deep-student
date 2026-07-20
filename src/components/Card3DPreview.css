@@ -275,26 +275,57 @@
   overflow-x: auto;
 }
 
+/* 圆点视觉由 ::after 绘制，按钮本体承担命中区（触屏下扩到 40px，视觉不变） */
 .nav-dot {
+  position: relative;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
-  background: hsl(var(--muted-foreground) / 0.3);
+  flex: 0 0 auto;
+  background: transparent;
   border: none;
   cursor: pointer;
   transition: all 0.3s ease;
   padding: 0;
 }
 
-.nav-dot:hover {
+.nav-dot::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: hsl(var(--muted-foreground) / 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+.nav-dot:hover::after {
   background: hsl(var(--muted-foreground) / 0.6);
-  transform: scale(1.2);
+  transform: translate(-50%, -50%) scale(1.2);
 }
 
 .nav-dot.active {
   width: 24px;
+}
+
+.nav-dot.active::after {
+  width: 24px;
   border-radius: 4px;
   background: hsl(var(--foreground));
+  transform: translate(-50%, -50%);
+}
+
+@media (pointer: coarse) {
+  .nav-dot {
+    width: 40px;
+    height: 40px;
+  }
+
+  .nav-dot.active {
+    width: 40px;
+  }
 }
 
 /* 说明文字 */
@@ -353,6 +384,15 @@
   /* 移动端优化：减少变换复杂度 */
   .card-3d {
     transition-duration: 0.3s;
+  }
+}
+
+/* 触屏：控制/翻页按钮保证 ≥44px 触控目标（置于窄屏 40px 覆盖之后，coarse 下优先生效） */
+@media (pointer: coarse) {
+  .control-btn,
+  .nav-btn {
+    width: 44px;
+    height: 44px;
   }
 }
 
@@ -564,6 +604,7 @@
 
 .chat-card3d-compact .nav-dot:hover::after {
   background: hsl(var(--muted-foreground) / 0.45);
+  transform: translate(-50%, -50%);
 }
 
 .chat-card3d-compact .nav-dot.active::after {

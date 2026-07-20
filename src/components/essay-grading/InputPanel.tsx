@@ -474,7 +474,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           <div className="sm:hidden flex min-w-0 items-center gap-1">
             {hasClearableContent && !isGrading && (
               mobileClearConfirm.armed ? (
-                <DsButton variant="destructive" size="sm" onClick={mobileClearConfirm.handleClick} aria-label={t('essay_grading:confirm.clear')} className="!h-7 shrink-0 px-2 text-xs transition-colors duration-150">
+                <DsButton variant="destructive" size="sm" onClick={mobileClearConfirm.handleClick} aria-label={t('essay_grading:confirm.clear')} className={cn(COARSE_HIT, "!h-7 shrink-0 px-2 text-xs transition-colors duration-150")}>
                   <Trash size={13} />
                   {t('essay_grading:confirm.clear')}
                 </DsButton>
@@ -486,7 +486,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             )}
             {isGrading ? (
               mobileCancelConfirm.armed ? (
-                <DsButton variant="destructive" size="sm" onClick={mobileCancelConfirm.handleClick} aria-label={t('essay_grading:confirm.cancel')} className="!h-7 shrink-0 px-2 text-xs transition-colors duration-150">
+                <DsButton variant="destructive" size="sm" onClick={mobileCancelConfirm.handleClick} aria-label={t('essay_grading:confirm.cancel')} className={cn(COARSE_HIT, "!h-7 shrink-0 px-2 text-xs transition-colors duration-150")}>
                   {t('essay_grading:confirm.cancel')}
                 </DsButton>
               ) : (
