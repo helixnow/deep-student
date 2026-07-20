@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionDialog } from '@/components/ui/NotionDialog';
+import { DsDialog } from '@/components/ui/DsDialog';
 import { Input } from '@/components/ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Switch } from '@/components/ui/shad/Switch';
@@ -1026,7 +1026,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         {modelAdapterOptions.map(option => {
                           const isSelected = formData.modelAdapter === option.value;
                           return (
-                            <NotionButton
+                            <DsButton
                               key={option.value}
                               variant="ghost"
                               size="sm"
@@ -1060,7 +1060,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               )}
                             >
                               <span className={cn('text-xs leading-tight', isSelected && 'font-medium')}>{option.label}</span>
-                            </NotionButton>
+                            </DsButton>
                           );
                         })}
                       </div>
@@ -2169,7 +2169,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
             className="flex-none px-3 pt-2 pb-8 sm:pb-2 border-t border-border/40 flex items-center gap-2"
             style={mobilePanelMode && keyboardInset > 0 ? { paddingBottom: `calc(0.5rem + ${keyboardInset}px)` } : undefined}
           >
-            <NotionButton
+            <DsButton
               type="button"
               variant="ghost"
               onClick={() => void handleTestConnection()}
@@ -2192,18 +2192,18 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
               {connectionTest.state === 'failed' && (
                 <span className="text-xs text-destructive">{t('settings:api.modal.test_connection_failed_short')}</span>
               )}
-            </NotionButton>
+            </DsButton>
             <div className="flex-1" />
             {/* P1-7 移动端右滑面板：保存唯一出口在统一顶栏 Check，底栏只保留「测试连接」，
                 避免顶栏/底栏双保存出口造成心智分叉（表单仍可经 requestSubmit 提交） */}
             {!mobilePanelMode && (
               <>
-                <NotionButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground">
+                <DsButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground">
                   {t('common:actions.cancel')}
-                </NotionButton>
-                <NotionButton type="submit" variant="primary" className="min-w-[100px]">
+                </DsButton>
+                <DsButton type="submit" variant="primary" className="min-w-[100px]">
                   {t('common:actions.save')}
-                </NotionButton>
+                </DsButton>
               </>
             )}
           </div>
@@ -2222,7 +2222,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   // 模态框模式：使用 Dialog 包裹
   // containerSelector 限制遮罩和居中区域在主内容区域（不包含左侧边栏）
   return (
-    <NotionDialog
+    <DsDialog
       open={true}
       onOpenChange={() => {}}
       closeOnOverlay={false}
@@ -2231,7 +2231,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       className="p-0 overflow-hidden"
     >
       {formContent}
-    </NotionDialog>
+    </DsDialog>
   );
 };
 

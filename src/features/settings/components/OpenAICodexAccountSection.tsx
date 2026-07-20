@@ -13,7 +13,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Progress } from '@/components/ui/shad/Progress';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -442,7 +442,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
 
         {state === 'signed_in' && (
           <div className="flex shrink-0 items-center gap-1">
-            <NotionButton
+            <DsButton
               size="sm"
               variant="ghost"
               iconOnly
@@ -452,8 +452,8 @@ export const OpenAICodexAccountSection: React.FC = () => {
               title={translate(t, 'refresh_usage', 'Refresh usage')}
             >
               <ArrowClockwise className={`h-3.5 w-3.5 ${usageLoading ? 'animate-spin' : ''}`} />
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               size="sm"
               variant="ghost"
               onClick={() => void handleLogout()}
@@ -461,7 +461,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
             >
               {busyAction === 'logout' ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <SignOut className="h-3.5 w-3.5" />}
               {translate(t, 'sign_out', 'Sign out')}
-            </NotionButton>
+            </DsButton>
           </div>
         )}
       </div>
@@ -473,7 +473,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
         </div>
       ) : (state === 'signed_out' || state === 'reauth_required' || (!status && operationFailed)) ? (
         <div className="flex flex-wrap items-center gap-2 border-t border-border/30 px-4 py-3">
-          <NotionButton
+          <DsButton
             size="sm"
             variant="primary"
             onClick={() => void handleLogin('browser')}
@@ -483,8 +483,8 @@ export const OpenAICodexAccountSection: React.FC = () => {
             {state === 'reauth_required'
               ? translate(t, 'sign_in_again', 'Sign in again')
               : translate(t, 'sign_in_browser', 'Sign in with browser')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             size="sm"
             variant="ghost"
             onClick={() => void handleLogin('device_code')}
@@ -492,18 +492,18 @@ export const OpenAICodexAccountSection: React.FC = () => {
           >
             {busyAction === 'device_code' ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <DeviceMobile className="h-3.5 w-3.5" />}
             {translate(t, 'sign_in_device', 'Use device code')}
-          </NotionButton>
+          </DsButton>
           {state === 'reauth_required' && (
-            <NotionButton size="sm" variant="ghost" onClick={() => void handleLogout()} disabled={disabled}>
+            <DsButton size="sm" variant="ghost" onClick={() => void handleLogout()} disabled={disabled}>
               {busyAction === 'logout' ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <SignOut className="h-3.5 w-3.5" />}
               {translate(t, 'remove_account', 'Remove account')}
-            </NotionButton>
+            </DsButton>
           )}
           {!status && (
-            <NotionButton size="sm" variant="ghost" onClick={() => void refreshStatus(true)} disabled={disabled}>
+            <DsButton size="sm" variant="ghost" onClick={() => void refreshStatus(true)} disabled={disabled}>
               <ArrowClockwise className="h-3.5 w-3.5" />
               {translate(t, 'retry', 'Retry')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       ) : isPending ? (
@@ -516,7 +516,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
               <code className="select-all rounded bg-muted px-2 py-1 font-mono text-sm font-medium tracking-widest text-foreground">
                 {login.userCode}
               </code>
-              <NotionButton
+              <DsButton
                 size="sm"
                 variant="ghost"
                 iconOnly
@@ -527,23 +527,23 @@ export const OpenAICodexAccountSection: React.FC = () => {
                 title={translate(t, 'copy_code', 'Copy code')}
               >
                 {codeCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
           <div className="flex flex-wrap items-center gap-2">
             {login?.authUrl && (
-              <NotionButton size="sm" variant="ghost" onClick={() => void openUrl(login.authUrl!)}>
+              <DsButton size="sm" variant="ghost" onClick={() => void openUrl(login.authUrl!)}>
                 <ArrowSquareOut className="h-3.5 w-3.5" />
                 {translate(t, 'reopen_sign_in', 'Reopen sign-in page')}
-              </NotionButton>
+              </DsButton>
             )}
             {login?.verificationUrl && (
-              <NotionButton size="sm" variant="ghost" onClick={() => void openUrl(login.verificationUrl!)}>
+              <DsButton size="sm" variant="ghost" onClick={() => void openUrl(login.verificationUrl!)}>
                 <ArrowSquareOut className="h-3.5 w-3.5" />
                 {translate(t, 'open_verification', 'Open verification page')}
-              </NotionButton>
+              </DsButton>
             )}
-            <NotionButton
+            <DsButton
               size="sm"
               variant="ghost"
               onClick={() => void handleCancel()}
@@ -551,7 +551,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
             >
               {busyAction === 'cancel' ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
               {translate(t, 'cancel_sign_in', 'Cancel sign-in')}
-            </NotionButton>
+            </DsButton>
             {pendingExpiry && (
               <span className="text-xs text-muted-foreground">
                 {translate(t, 'expires_at', 'Expires {{time}}', { time: pendingExpiry })}

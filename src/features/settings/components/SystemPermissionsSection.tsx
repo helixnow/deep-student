@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import {
   ArrowClockwise,
   Bell,
@@ -7,7 +8,7 @@ import {
   Microphone,
 } from '@phosphor-icons/react';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   getSystemAuthorizationSnapshot,
@@ -26,7 +27,13 @@ import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { isTauriRuntime } from '@/api/tauriClient';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
-import { SettingsGroup } from './settingsTabPrimitives';
+import { SettingsGroup, SwitchRow } from './settingsTabPrimitives';
+
+interface KeystoreProtectionStatus {
+  supported: boolean;
+  enabled: boolean;
+  seedInKeystore: boolean;
+}
 
 const INITIAL_SNAPSHOT: SystemAuthorizationSnapshot = {
   notifications: 'checking',
@@ -116,21 +123,22 @@ function AuthorizationRow({
           </p>
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2 pl-10 md:pl-0">
+      <div className="flex w-full shrink-0 items-center justify-between gap-2 pl-10 md:w-auto md:justify-start md:pl-0">
         <StatusBadge status={status} title={title} />
         {actionLabel && onAction ? (
-          <NotionButton
+          <DsButton
             variant="default"
             size="sm"
             disabled={actionBusy || actionDisabled}
             aria-busy={actionBusy || undefined}
             onClick={onAction}
+            className="min-h-11 md:min-h-0"
           >
             {actionBusy
               ? <ArrowClockwise aria-hidden="true" size={13} className="animate-spin" />
               : null}
             {actionLabel}
-          </NotionButton>
+          </DsButton>
         ) : null}
       </div>
     </div>
@@ -146,6 +154,36 @@ export function SystemPermissionsSection() {
   const [snapshot, setSnapshot] = useState<SystemAuthorizationSnapshot>(INITIAL_SNAPSHOT);
   const [busyPermission, setBusyPermission] = useState<'notifications' | 'microphone' | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [keystoreStatus, setKeystoreStatus] = useState<KeystoreProtectionStatus | null>(null);
+  const [keystoreBusy, setKeystoreBusy] = useState(false);
+
+  useEffect(() => {
+    if (!supported) return;
+    void tauriInvoke<KeystoreProtectionStatus>('secure_store_get_keystore_protection')
+      .then(setKeystoreStatus)
+      .catch(() => setKeystoreStatus(null));
+  }, [supported]);
+
+  const toggleKeystoreProtection = useCallback(async (enabled: boolean) => {
+    setKeystoreBusy(true);
+    try {
+      const next = await tauriInvoke<KeystoreProtectionStatus>(
+        'secure_store_set_keystore_protection',
+        { enabled },
+      );
+      setKeystoreStatus(next);
+      showGlobalNotification(
+        'success',
+        enabled
+          ? t('system_authorization.keychain.enabled_notice')
+          : t('system_authorization.keychain.disabled_notice'),
+      );
+    } catch (error) {
+      showGlobalNotification('error', getErrorMessage(error));
+    } finally {
+      setKeystoreBusy(false);
+    }
+  }, [t]);
 
   const refresh = useCallback(async () => {
     if (!supported || busyPermissionRef.current) return;
@@ -324,22 +362,32 @@ export function SystemPermissionsSection() {
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2 pl-10 md:pl-0">
+        <div className="flex w-full shrink-0 items-center justify-between gap-2 pl-10 md:w-auto md:justify-start md:pl-0">
           <span className="inline-flex h-6 shrink-0 items-center rounded-full border border-border/50 bg-muted/40 px-2 text-2xs font-medium text-muted-foreground">
             {t('system_authorization.files.status')}
           </span>
-          <NotionButton variant="default" size="sm" onClick={openDirectoryPermissions}>
+          <DsButton variant="default" size="sm" className="min-h-11 md:min-h-0" onClick={openDirectoryPermissions}>
             {t('system_authorization.files.manage')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
+      {keystoreStatus?.supported && (
+        <SwitchRow
+          title={t('system_authorization.keychain.title')}
+          description={t('system_authorization.keychain.description')}
+          checked={keystoreStatus.enabled}
+          loading={keystoreBusy}
+          onCheckedChange={(value) => void toggleKeystoreProtection(value)}
+        />
+      )}
       <div className="flex justify-end border-t border-border/30 px-1 pt-2">
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           disabled={refreshing}
           aria-busy={refreshing || undefined}
           onClick={() => void refresh()}
+          className="min-h-11 md:min-h-0"
         >
           <ArrowClockwise
             aria-hidden="true"
@@ -347,7 +395,7 @@ export function SystemPermissionsSection() {
             className={refreshing ? 'animate-spin' : undefined}
           />
           {t('system_authorization.refresh')}
-        </NotionButton>
+        </DsButton>
       </div>
     </SettingsGroup>
   );

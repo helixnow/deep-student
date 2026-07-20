@@ -8,7 +8,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretDown, CaretUp, Check, Clock, DownloadSimple, MagnifyingGlass, Plus, Spinner, Stack } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Input } from '@/components/ui/shad/Input';
@@ -240,7 +240,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
             disabled={models.length === 0}
           />
         </div>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => fetchModels(true)}
@@ -249,7 +249,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
         >
           {loading ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <DownloadSimple className="h-3.5 w-3.5" />}
           {loading ? t('settings:vendor_model_fetcher.fetching') : t('settings:vendor_model_fetcher.fetch_button')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 模型列表 */}
@@ -275,7 +275,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
               )}
             </div>
             {newModels.length > 0 && (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={handleAddAll}
@@ -284,7 +284,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
               >
                 {addingAll ? <Spinner className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
                 {t('settings:vendor_model_fetcher.add_all_new', { count: newModels.length })}
-              </NotionButton>
+              </DsButton>
             )}
           </div>
 

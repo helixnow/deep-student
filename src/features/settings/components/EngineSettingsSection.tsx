@@ -2,14 +2,14 @@
  * 外部搜索引擎配置组件
  * 
  * 从 Settings.tsx 拆分：EngineSettingsSection
- * Notion 风格：简洁、无边框、双栏布局
+ * 简洁风格：简洁、无边框、双栏布局
  */
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowSquareOut } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { AppSelect } from '@/components/ui/app-menu';
 import { SecurePasswordInput } from '@/components/SecurePasswordInput';
@@ -51,7 +51,7 @@ interface ProviderStrategy {
 
 type ProviderStrategiesMap = Record<string, ProviderStrategy>;
 
-// 内部组件：设置行 - Notion 风格（与 ModelAssignmentRow 保持一致的结构）
+// 内部组件：设置行 - 简洁风格（与 ModelAssignmentRow 保持一致的结构）
 const SettingRow = ({
   title,
   description,
@@ -275,12 +275,12 @@ export const EngineSettingsSection: React.FC<{
                 {engineResults[id].ok ? '✓' : '✗'} {engineResults[id].ms ? `${engineResults[id].ms}ms` : ''}
               </span>
             )}
-            <NotionButton onClick={() => testEngine(id)} disabled={engineTesting === id || !enabled} size="sm" variant="ghost" className="border border-border/30">
+            <DsButton onClick={() => testEngine(id)} disabled={engineTesting === id || !enabled} size="sm" variant="ghost" className="border border-border/30">
               {engineTesting === id ? t('settings:status_labels.testing') : t('settings:status_labels.test_availability')}
-            </NotionButton>
-            <NotionButton size="sm" variant="primary" onClick={handleSaveProviderStrategies} disabled={providerSaving || !providerStrategies}>
+            </DsButton>
+            <DsButton size="sm" variant="primary" onClick={handleSaveProviderStrategies} disabled={providerSaving || !providerStrategies}>
               {providerSaving ? t('common:actions.saving') : t('settings:advanced_search.providers.save_button')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
         <div>
@@ -327,7 +327,7 @@ export const EngineSettingsSection: React.FC<{
                 const isActive = activeEngine === id;
                 const isConfigured = isConfiguredMap[id];
                 return (
-                  <NotionButton
+                  <DsButton
                     key={id}
                     variant="ghost"
                     onClick={() => setActiveEngine(id)}
@@ -346,7 +346,7 @@ export const EngineSettingsSection: React.FC<{
                         <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', isConfigured ? 'bg-success/80' : 'bg-muted-foreground/30')} />
                       </div>
                     </div>
-                  </NotionButton>
+                  </DsButton>
                 );
               })}
             </div>
@@ -374,9 +374,9 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">Google CSE</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://cse.google.com/cse/create/new", "_blank")} title={t('settings:external_search.create_custom_search')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://cse.google.com/cse/create/new", "_blank")} title={t('settings:external_search.create_custom_search')}>
                       <ArrowSquareOut size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -411,9 +411,9 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">SerpAPI</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://serpapi.com/users/sign_up", "_blank")} title={t('settings:external_search.get_serpapi_key')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://serpapi.com/users/sign_up", "_blank")} title={t('settings:external_search.get_serpapi_key')}>
                       <ArrowSquareOut size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -437,9 +437,9 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">Tavily</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://tavily.com", "_blank")} title={t('settings:external_search.get_tavily_key')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://tavily.com", "_blank")} title={t('settings:external_search.get_tavily_key')}>
                       <ArrowSquareOut size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -463,9 +463,9 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">Brave</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://api.search.brave.com/", "_blank")} title={t('settings:external_search.get_brave_key')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://api.search.brave.com/", "_blank")} title={t('settings:external_search.get_brave_key')}>
                       <ArrowSquareOut size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -489,9 +489,9 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">SearXNG</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://docs.searxng.org/", "_blank")} title={t('settings:external_search.searxng_docs')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://docs.searxng.org/", "_blank")} title={t('settings:external_search.searxng_docs')}>
                       <ArrowSquareOut size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -526,9 +526,9 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">{t('settings:external_search.zhipu_name')}</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bigmodel.cn/", "_blank")} title={t('settings:external_search.zhipu_apply')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bigmodel.cn/", "_blank")} title={t('settings:external_search.zhipu_apply')}>
                       <ArrowSquareOut size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -552,9 +552,9 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">{t('settings:external_search.bocha_name')}</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bochaai.com/", "_blank")} title={t('settings:external_search.bocha_apply')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bochaai.com/", "_blank")} title={t('settings:external_search.bocha_apply')}>
                       <ArrowSquareOut size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">

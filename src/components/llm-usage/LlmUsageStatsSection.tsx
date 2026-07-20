@@ -2,7 +2,7 @@
  * LLM 使用统计组件
  *
  * 嵌入式组件，用于在数据统计页面中显示 LLM API 调用统计
- * 遵循 Notion 风格设计：极简、大留白、精致排版
+ * 遵循 简洁风格设计：极简、大留白、精致排版
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
@@ -30,7 +30,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '../../lib/utils';
 import { Skeleton } from '../ui/shad/Skeleton';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { LlmUsageApi, UsageSummary, UsageTrendPoint, ModelSummary, CallerTypeSummary } from '../../api/llmUsageApi';
 import { useTranslation } from 'react-i18next';
 
@@ -570,10 +570,10 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
     return (
       <div className={cn('w-full', className)}>
         <div className="flex items-center justify-end mb-4">
-          <NotionButton variant="ghost" size="sm" onClick={loadData}>
+          <DsButton variant="ghost" size="sm" onClick={loadData}>
             <ArrowsClockwise size={14} className="mr-2" />
             {t('actions.retry')}
-          </NotionButton>
+          </DsButton>
         </div>
         <div className="py-12 text-center">
           <p className="text-muted-foreground text-sm">{t('no_data_or_load_failed')}</p>
@@ -593,9 +593,9 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
       {/* 刷新按钮 */}
       {!statsOnly && (
         <div className="flex justify-end mb-4">
-          <NotionButton variant="ghost" size="sm" onClick={loadData} className="text-muted-foreground hover:text-foreground h-8 px-2">
+          <DsButton variant="ghost" size="sm" onClick={loadData} className="text-muted-foreground hover:text-foreground h-8 px-2">
             <ArrowsClockwise size={14} />
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 

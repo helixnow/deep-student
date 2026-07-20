@@ -6,7 +6,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, FloppyDisk, Spinner, Trash, WarningCircle } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { VendorConfig } from '@/types';
 import { ApiKeyField } from './ApiKeyField';
 import { isPlausibleApiKey } from '../utils/apiKeyValidation';
@@ -267,7 +267,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
         <span>{statusText}</span>
       </div>
       <div className="flex flex-wrap gap-2 pt-1">
-        <NotionButton
+        <DsButton
           variant="primary"
           size="sm"
           onClick={() => {
@@ -278,8 +278,8 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
         >
           {saveStatus === 'saving' ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <FloppyDisk className="h-3.5 w-3.5" />}
           {t('common:actions.save')}
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="danger"
           size="sm"
           onClick={handleClearApiKey}
@@ -290,7 +290,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
           {confirmingClear
             ? t('settings:vendor_panel.clear_api_key_confirm')
             : t('settings:vendor_panel.clear_api_key')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );

@@ -27,7 +27,7 @@ import {
   Download,
   ArrowsLeftRight,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/shad/Card';
@@ -328,7 +328,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                 {t('data:sync_settings.sync_status')}
               </CardTitle>
             </div>
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={handleRefresh}
@@ -339,7 +339,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               ) : (
                 <ArrowClockwise className="h-4 w-4" />
               )}
-            </NotionButton>
+            </DsButton>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -463,7 +463,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
           {/* 同步按钮组 */}
           <div className="flex items-center gap-3">
-            <NotionButton
+            <DsButton
               variant="outline"
               onClick={() => handleSync('upload')}
               disabled={isSyncing}
@@ -471,8 +471,8 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
             >
               <Upload className="h-4 w-4 mr-2" />
               {t('data:sync_settings.upload')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="outline"
               onClick={() => handleSync('download')}
               disabled={isSyncing}
@@ -480,15 +480,15 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
             >
               <Download className="h-4 w-4 mr-2" />
               {t('data:sync_settings.download')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               onClick={() => handleSync('bidirectional')}
               disabled={isSyncing}
               className="flex-1"
             >
               <ArrowsLeftRight className="h-4 w-4 mr-2" />
               {t('data:sync_settings.bidirectional')}
-            </NotionButton>
+            </DsButton>
           </div>
 
           {/* 同步进度显示 */}
@@ -583,13 +583,13 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                       conflicts.database_conflicts.length + conflicts.record_conflicts.length,
                   })}
                 </span>
-                <NotionButton
+                <DsButton
                   variant="outline"
                   size="sm"
                   onClick={() => setShowConflictDialog(true)}
                 >
                   {t('data:sync_settings.view_conflicts')}
-                </NotionButton>
+                </DsButton>
               </AlertDescription>
             </Alert>
           ) : lastResult?.success ? (
@@ -607,16 +607,16 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               <Warning className="h-4 w-4" />
               <AlertDescription className="flex items-center justify-between">
                 <span>{error}</span>
-                <NotionButton variant="ghost" size="sm" onClick={clearError}>
+                <DsButton variant="ghost" size="sm" onClick={clearError}>
                   {t('common:actions.dismiss')}
-                </NotionButton>
+                </DsButton>
               </AlertDescription>
             </Alert>
           )}
 
           {/* 操作按钮 */}
           <div className="flex items-center gap-3">
-            <NotionButton
+            <DsButton
               variant="outline"
               onClick={handleDetectConflicts}
               disabled={isDetecting}
@@ -633,16 +633,16 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                   {t('data:sync_settings.detect_conflicts')}
                 </>
               )}
-            </NotionButton>
+            </DsButton>
             {conflicts?.has_conflicts && (
-              <NotionButton
+              <DsButton
                 onClick={() => setShowConflictDialog(true)}
                 disabled={isResolving}
                 className="flex-1"
               >
                 <Lightning className="h-4 w-4 mr-2" />
                 {t('data:sync_settings.resolve_conflicts')}
-              </NotionButton>
+              </DsButton>
             )}
           </div>
 

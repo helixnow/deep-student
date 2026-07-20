@@ -30,12 +30,12 @@ const SettingRow = ({
     <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="mt-0.5 break-words text-xs leading-relaxed text-muted-foreground/70 md:line-clamp-2">
           {description}
         </p>
       )}
     </div>
-    <div className="flex-shrink-0">
+    <div className="w-full min-w-0 flex-shrink-0 md:w-auto">
       {children}
     </div>
   </div>
@@ -64,7 +64,7 @@ const SwitchRow = ({
     <div className="flex-1 min-w-0">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="mt-0.5 break-words text-xs leading-relaxed text-muted-foreground/70 md:line-clamp-2">
           {description}
         </p>
       )}
@@ -134,7 +134,7 @@ export const ParamsTab: React.FC<ParamsTabProps> = ({
                 onChange={e => setExtra((prev: any) => ({ ...prev, chatStreamTimeoutSeconds: e.target.value }))}
                 onBlur={() => { void handleSaveChatStreamTimeout(); }}
                 placeholder={t('common:settings.chat_stream.timeout_placeholder') ?? ''}
-                className="!w-28 h-8 text-xs bg-transparent"
+                className="h-11 !w-32 bg-transparent text-xs md:h-8 md:!w-28"
               />
             </SettingRow>
 

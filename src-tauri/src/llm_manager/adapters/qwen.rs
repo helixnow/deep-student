@@ -4,6 +4,7 @@
 //! - `enable_thinking`: 启用思维链
 //! - `thinking_budget`: 思维 token 预算
 //! - `reasoning_effort`: 推理强度 (high/medium/low)
+//! - `preserve_thinking`: Qwen3.6/3.7 保留多轮思考上下文
 //!
 //! 注意：这些参数需要通过 `extra_body` 传递
 //!
@@ -78,6 +79,11 @@ impl QwenAdapter {
     fn clamp_siliconflow_thinking_budget(budget: i32) -> i32 {
         budget.clamp(128, 32768)
     }
+
+    fn supports_preserve_thinking(model: &str) -> bool {
+        let normalized = model.trim().to_lowercase();
+        normalized.contains("qwen3.6") || normalized.contains("qwen3.7")
+    }
 }
 
 impl RequestAdapter for QwenAdapter {
@@ -111,6 +117,13 @@ impl RequestAdapter for QwenAdapter {
             let enable_thinking_value =
                 forced_thinking || resolve_enable_thinking(config, enable_thinking);
             body.insert("enable_thinking".to_string(), json!(enable_thinking_value));
+
+            if is_dashscope && Self::supports_preserve_thinking(&config.model) {
+                body.insert(
+                    "preserve_thinking".to_string(),
+                    json!(enable_thinking_value && config.include_thoughts),
+                );
+            }
 
             if let Some(budget) = config.thinking_budget {
                 let sanitized = if is_siliconflow {
@@ -235,6 +248,50 @@ mod tests {
                 Some(&json!(false)),
                 "model={model}"
             );
+        }
+    }
+
+    #[test]
+    fn test_qwen37_preserves_thinking_history_on_dashscope() {
+        let adapter = QwenAdapter;
+        let config = ApiConfig {
+            provider_type: Some("qwen".to_string()),
+            base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string(),
+            model: "qwen3.7-plus".to_string(),
+            supports_reasoning: true,
+            thinking_enabled: true,
+            include_thoughts: true,
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body.get("preserve_thinking"), Some(&json!(true)));
+    }
+
+    #[test]
+    fn test_preserve_thinking_is_scoped_to_supported_dashscope_models() {
+        let adapter = QwenAdapter;
+        for config in [
+            ApiConfig {
+                provider_type: Some("qwen".to_string()),
+                model: "qwen3.5-plus".to_string(),
+                supports_reasoning: true,
+                include_thoughts: true,
+                ..Default::default()
+            },
+            ApiConfig {
+                provider_type: Some("siliconflow".to_string()),
+                model: "Qwen/Qwen3.7-Plus".to_string(),
+                supports_reasoning: true,
+                include_thoughts: true,
+                ..Default::default()
+            },
+        ] {
+            let mut body = Map::new();
+            adapter.apply_reasoning_config(&mut body, &config, None);
+            assert!(!body.contains_key("preserve_thinking"));
         }
     }
 

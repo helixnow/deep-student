@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { CircleNotch } from '@phosphor-icons/react';
 
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import {
   DEFAULT_INITIAL_LINE_WINDOW,
@@ -97,7 +97,7 @@ export const MarkdownEditorWindowSettings: React.FC = () => {
         <span className="text-xs text-muted-foreground/70">
           {t('settings:notes_editor.initial_line_window.unit', 'lines')}
         </span>
-        <NotionButton
+        <DsButton
           variant="default"
           size="sm"
           disabled={disabled}
@@ -108,7 +108,7 @@ export const MarkdownEditorWindowSettings: React.FC = () => {
         >
           {saving ? <CircleNotch size={12} className="animate-spin" /> : null}
           {t('settings:notes_editor.initial_line_window.reset', 'Reset initial line window')}
-        </NotionButton>
+        </DsButton>
       </div>
     </SettingRow>
   );

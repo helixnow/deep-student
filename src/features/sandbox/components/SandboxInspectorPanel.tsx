@@ -2,7 +2,7 @@ import React from 'react';
 import { X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { SandboxSession, SandboxViewportPreset } from '../types';
 
 interface SandboxInspectorPanelProps {
@@ -46,7 +46,7 @@ export function SandboxInspectorPanel({
       <div className="border-b border-border px-4 py-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-foreground">{t('sandbox.inspector')}</h2>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -56,7 +56,7 @@ export function SandboxInspectorPanel({
             className="!h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:-my-1.5"
           >
             <X size={14} />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-4 py-4 text-sm text-muted-foreground">

@@ -9,11 +9,13 @@ import {
   Keyboard,
   Palette,
   Plug,
+  PuzzlePiece,
   Robot,
   Shield,
   SlidersHorizontal,
   Wrench,
 } from '@phosphor-icons/react';
+import { isMobilePlatform } from '@/utils/platform';
 
 export type SettingsSidebarNavItem = {
   value: string;
@@ -31,6 +33,8 @@ export type SettingsSearchIndexItem = {
 export function useSettingsNavigation() {
   const { t } = useTranslation(['settings', 'common', 'data']);
 
+  const hidePlugins = isMobilePlatform();
+
   const sidebarNavGroups = useMemo<SettingsSidebarNavItem[][]>(() => ([
     [
       { value: 'apis', icon: Robot, label: t('settings:tabs.api_config'), tourId: 'settings-tab-apis' },
@@ -44,6 +48,9 @@ export function useSettingsNavigation() {
     [
       { value: 'mcp', icon: Plug, label: t('settings:tabs.mcp_tools') },
       { value: 'search', icon: Globe, label: t('settings:tabs.external_search') },
+      ...(!hidePlugins
+        ? [{ value: 'plugins', icon: PuzzlePiece, label: t('settings:tabs.plugins') }]
+        : []),
     ],
     [
       { value: 'statistics', icon: ChartBar, label: t('settings:tabs.statistics') },
@@ -54,7 +61,7 @@ export function useSettingsNavigation() {
       { value: 'shortcuts', icon: Keyboard, label: t('settings:tabs.shortcuts') },
       { value: 'about', icon: BookOpen, label: t('settings:tabs.about') },
     ],
-  ]), [t]);
+  ]), [t, hidePlugins]);
 
   const sidebarNavItems = useMemo(() => sidebarNavGroups.flat(), [sidebarNavGroups]);
 
@@ -78,6 +85,7 @@ export function useSettingsNavigation() {
       keywords: ['voice input', 'dictation', 'asr', 'microphone', 'speech to text', '听写', '语音输入'],
     },
     { tab: 'automation', label: t('settings:automation.title'), keywords: ['automation', 'schedule', 'reminder', 'agent', '自动化', '定时', '调度'] },
+    { tab: 'automation', label: t('settings:subagentProfiles.title'), keywords: ['subagent', 'profile', 'persona', 'agent', '子代理', '档案', '智能体'] },
     {
       tab: 'general',
       label: t('settings:voice_input.shortcut_title'),
@@ -103,6 +111,12 @@ export function useSettingsNavigation() {
     { tab: 'models', label: t('settings:api.anki_card_title'), keywords: ['anki', 'card'] },
     { tab: 'mcp', label: t('settings:mcp.server'), keywords: ['mcp', 'server', 'tool'] },
     { tab: 'mcp', label: t('settings:mcp.add_server'), keywords: ['add server', 'mcp'] },
+    ...(!hidePlugins
+      ? [
+          { tab: 'plugins', label: t('settings:tabs.plugins'), keywords: ['plugin', 'ilink', 'wechat', '微信', 'clawbot', '集成'] },
+          { tab: 'plugins', label: t('settings:plugins.scan_qr'), keywords: ['qr', '扫码', '绑定'] },
+        ]
+      : []),
     { tab: 'search', label: t('settings:search_engine.title'), keywords: ['search engine', 'google', 'bing', 'tavily', 'searxng'] },
     { tab: 'search', label: 'SearXNG', keywords: ['searxng', 'search'] },
     { tab: 'search', label: 'Tavily', keywords: ['tavily', 'search', 'api'] },
@@ -117,7 +131,7 @@ export function useSettingsNavigation() {
     { tab: 'params', label: t('settings:params.top_p'), keywords: ['top p', 'nucleus sampling'] },
     { tab: 'shortcuts', label: t('settings:tabs.shortcuts'), keywords: ['shortcuts', 'keyboard', 'hotkey'] },
     { tab: 'about', label: t('settings:tabs.about'), keywords: ['about', 'version', 'acknowledgements'] },
-  ], [t]);
+  ], [t, hidePlugins]);
 
   return {
     sidebarNavGroups,

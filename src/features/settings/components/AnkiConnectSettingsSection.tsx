@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Input } from '@/components/ui/shad/Input';
 import { ankiConnectClient, AnkiConnectSettings } from '@/services/ankiConnectClient';
@@ -83,9 +83,9 @@ export const AnkiConnectSettingsSection: React.FC<AnkiConnectSettingsSectionProp
           <span className="text-xs">{t('common:anki.settings.open_on_failure_label')}</span>
           <Switch checked={settings.anki_connect_open_folder_on_failure} onCheckedChange={(v) => savePartial({ anki_connect_open_folder_on_failure: v })} />
         </div>
-        <NotionButton size="sm" className="w-full h-auto py-1.5 text-xs whitespace-normal" onClick={testConnection} disabled={!settings.anki_connect_enabled || testing}>
+        <DsButton size="sm" className="w-full h-auto py-1.5 text-xs whitespace-normal" onClick={testConnection} disabled={!settings.anki_connect_enabled || testing}>
           {testing ? t('common:anki.settings.testing') : t('common:anki.settings.test_connection_short')}
-        </NotionButton>
+        </DsButton>
       </div>
     );
   }
@@ -137,14 +137,14 @@ export const AnkiConnectSettingsSection: React.FC<AnkiConnectSettingsSectionProp
       </SettingRow>
 
       <div className="flex justify-end px-1 pt-2.5">
-        <NotionButton
+        <DsButton
           variant="default"
           size="sm"
           onClick={testConnection}
           disabled={!settings.anki_connect_enabled || testing}
         >
           {testing ? t('common:anki.settings.testing') : t('common:anki.settings.test_connection')}
-        </NotionButton>
+        </DsButton>
       </div>
     </SettingsGroup>
   );

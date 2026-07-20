@@ -251,6 +251,15 @@ impl RequestAdapter for GenericOpenAIAdapter {
         let requested_effort = Self::requested_effort(config);
         let has_reasoning_effort = requested_effort.is_some();
 
+        // GPT-5.6 Responses API 专属：reasoning.mode (standard/pro) 只在
+        // openai_responses 协议下注入嵌套 reasoning 对象。
+        let has_responses_reasoning_mode =
+            crate::llm_manager::should_use_openai_responses_for_config(config)
+                && config.model.trim().to_lowercase().starts_with("gpt-5.6")
+                && config.reasoning_mode.as_deref().is_some_and(|mode| {
+                    matches!(mode.trim().to_lowercase().as_str(), "standard" | "pro")
+                });
+
         // Generic/OpenAI-compatible hosts must not receive model-vendor native fields.
         body.remove("enable_thinking");
         body.remove("thinking_budget");
@@ -304,6 +313,22 @@ impl RequestAdapter for GenericOpenAIAdapter {
                 "none"
             };
             Self::insert_reasoning_effort(body, config, normalized);
+        }
+
+        // 注入放在 effort 处理之后：insert_reasoning_effort/none/unset 分支会清理
+        // 嵌套 reasoning 对象，注入过早会被覆盖（Responses 协议转换保留嵌套格式）。
+        if has_responses_reasoning_mode {
+            if let Some(mode) = config.reasoning_mode.as_deref() {
+                let normalized = mode.trim().to_lowercase();
+                if matches!(normalized.as_str(), "standard" | "pro") {
+                    let reasoning = body
+                        .entry("reasoning".to_string())
+                        .or_insert_with(|| json!({}));
+                    if let Some(reasoning) = reasoning.as_object_mut() {
+                        reasoning.insert("mode".to_string(), json!(normalized));
+                    }
+                }
+            }
         }
 
         early_return
@@ -397,6 +422,28 @@ mod tests {
         // 应该是顶级参数，不是嵌套的 reasoning.effort
         assert_eq!(body.get("reasoning_effort"), Some(&json!("xhigh")));
         assert!(!body.contains_key("reasoning"));
+    }
+
+    #[test]
+    fn test_gpt56_pro_mode_is_responses_only() {
+        let adapter = GenericOpenAIAdapter;
+        let mut config = ApiConfig {
+            provider_type: Some("openai".to_string()),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-5.6-sol".to_string(),
+            api_protocol: Some("openai_responses".to_string()),
+            reasoning_effort: Some("high".to_string()),
+            reasoning_mode: Some("pro".to_string()),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+        adapter.apply_reasoning_config(&mut body, &config, None);
+        assert_eq!(body["reasoning"]["mode"], json!("pro"));
+
+        config.api_protocol = Some("openai_chat_completions".to_string());
+        let mut chat_body = Map::new();
+        adapter.apply_reasoning_config(&mut chat_body, &config, None);
+        assert!(!chat_body.contains_key("reasoning"));
     }
 
     #[test]

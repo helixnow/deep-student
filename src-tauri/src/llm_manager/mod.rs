@@ -2369,6 +2369,9 @@ pub struct ApiConfig {
     pub is_read_only: bool,
     #[serde(default)]
     pub reasoning_effort: Option<String>,
+    /// GPT-5.6 Responses API reasoning.mode (standard/pro)
+    #[serde(default)]
+    pub reasoning_mode: Option<String>,
     #[serde(default)]
     pub thinking_enabled: bool,
     #[serde(default)]
@@ -2450,6 +2453,7 @@ impl Default for ApiConfig {
             is_builtin: false,
             is_read_only: false,
             reasoning_effort: None,
+            reasoning_mode: None,
             thinking_enabled: false,
             thinking_budget: None,
             include_thoughts: false,
@@ -2584,6 +2588,9 @@ pub struct ModelProfile {
     pub temperature: f32,
     #[serde(default)]
     pub reasoning_effort: Option<String>,
+    /// GPT-5.6 Responses API reasoning.mode (standard/pro)
+    #[serde(default)]
+    pub reasoning_mode: Option<String>,
     #[serde(default)]
     pub thinking_enabled: bool,
     #[serde(default)]
@@ -2643,6 +2650,7 @@ impl Default for ModelProfile {
             max_output_tokens: default_max_output_tokens(),
             temperature: default_temperature(),
             reasoning_effort: None,
+            reasoning_mode: None,
             thinking_enabled: false,
             thinking_budget: None,
             include_thoughts: false,
@@ -5224,6 +5232,7 @@ impl LLMManager {
             is_builtin: profile.is_builtin || vendor.is_builtin,
             is_read_only: vendor.is_read_only,
             reasoning_effort: profile.reasoning_effort.clone(),
+            reasoning_mode: profile.reasoning_mode.clone(),
             thinking_enabled: profile.thinking_enabled,
             thinking_budget: profile.thinking_budget,
             include_thoughts: profile.include_thoughts,
@@ -5338,6 +5347,7 @@ impl LLMManager {
                 max_output_tokens: cfg.max_output_tokens,
                 temperature: cfg.temperature,
                 reasoning_effort: cfg.reasoning_effort.clone(),
+                reasoning_mode: cfg.reasoning_mode.clone(),
                 thinking_enabled: cfg.thinking_enabled,
                 thinking_budget: cfg.thinking_budget,
                 include_thoughts: cfg.include_thoughts,
@@ -5436,6 +5446,7 @@ impl LLMManager {
                     is_builtin: false,
                     is_read_only: false,
                     reasoning_effort: None,
+                    reasoning_mode: None,
                     thinking_enabled: false,
                     thinking_budget: None,
                     include_thoughts: false,
@@ -5499,6 +5510,7 @@ impl LLMManager {
                 is_builtin: false,
                 is_read_only: false,
                 reasoning_effort: None,
+                reasoning_mode: None,
                 thinking_enabled: false,
                 thinking_budget: None,
                 include_thoughts: false,
@@ -5601,6 +5613,7 @@ impl LLMManager {
                 max_output_tokens: cfg.max_output_tokens,
                 temperature: cfg.temperature,
                 reasoning_effort: cfg.reasoning_effort.clone(),
+                reasoning_mode: cfg.reasoning_mode.clone(),
                 thinking_enabled: cfg.thinking_enabled,
                 thinking_budget: cfg.thinking_budget,
                 include_thoughts: cfg.include_thoughts,

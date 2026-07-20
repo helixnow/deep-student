@@ -7,7 +7,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { CircleNotch, Lightning, Chat, Database, Question, FolderOpen } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Switch } from '@/components/ui/shad/Switch';
 import { TauriAPI } from '@/utils/tauriApi';
@@ -110,14 +110,14 @@ export const LanceOptimizationPanel: React.FC = () => {
             {t('lance_optimization.description')}
           </p>
         </div>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => setShowInfo(!showInfo)}
           className="h-8"
         >
           <Question size={14} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 信息面板 */}
@@ -168,7 +168,7 @@ export const LanceOptimizationPanel: React.FC = () => {
 
       {/* 优化按钮组 */}
       <div className="grid grid-cols-2 gap-3">
-        <NotionButton
+        <DsButton
           variant="ghost"
           disabled={optimizing.chat}
           onClick={() => optimizeTable('chat', 'optimize_chat_embeddings_table')}
@@ -180,9 +180,9 @@ export const LanceOptimizationPanel: React.FC = () => {
             <Chat size={16} />
           )}
           <span className="text-xs">{t('lance_optimization.chat_table')}</span>
-        </NotionButton>
+        </DsButton>
 
-        <NotionButton
+        <DsButton
           variant="ghost"
           disabled={optimizing.vfs}
           onClick={() => optimizeTable('vfs', 'vfs_optimize_lance')}
@@ -194,11 +194,11 @@ export const LanceOptimizationPanel: React.FC = () => {
             <FolderOpen size={16} />
           )}
           <span className="text-xs">{t('lance_optimization.vfs_table')}</span>
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 一键优化所有表 */}
-      <NotionButton
+      <DsButton
         variant="default"
         disabled={Object.values(optimizing).some(v => v)}
         onClick={optimizeAll}
@@ -215,7 +215,7 @@ export const LanceOptimizationPanel: React.FC = () => {
             {t('lance_optimization.optimize_all')}
           </>
         )}
-      </NotionButton>
+      </DsButton>
     </div>
   );
 };

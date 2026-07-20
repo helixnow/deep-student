@@ -2,7 +2,7 @@ import React from 'react';
 import { ArrowClockwise, SidebarSimple, X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 interface SandboxToolbarProps {
   title: string;
@@ -39,7 +39,7 @@ export function SandboxToolbar({
       </div>
 
       <div className="flex items-center gap-2">
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -49,8 +49,8 @@ export function SandboxToolbar({
           className={iconBtnClass}
         >
           <ArrowClockwise size={16} />
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -60,8 +60,8 @@ export function SandboxToolbar({
           className={iconBtnClass}
         >
           <SidebarSimple size={16} />
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -71,7 +71,7 @@ export function SandboxToolbar({
           className={iconBtnClass}
         >
           <X size={16} />
-        </NotionButton>
+        </DsButton>
       </div>
     </header>
   );

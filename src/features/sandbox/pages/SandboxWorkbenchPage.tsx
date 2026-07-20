@@ -4,7 +4,7 @@ import { ArrowClockwise, SidebarSimple } from '@phosphor-icons/react';
 
 import { useMobileHeader } from '@/components/layout';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   LEGACY_SANDBOX_OWNER_KEY,
   selectSandboxWorkbenchOwnerState,
@@ -32,7 +32,7 @@ export function SandboxWorkbenchPage() {
     title: t('sandbox.title'),
     rightActions: hasSession ? (
       <>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           iconOnly
@@ -40,8 +40,8 @@ export function SandboxWorkbenchPage() {
           onClick={() => refreshSession(LEGACY_SANDBOX_OWNER_KEY)}
         >
           <ArrowClockwise size={18} />
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost"
           size="sm"
           iconOnly
@@ -49,7 +49,7 @@ export function SandboxWorkbenchPage() {
           onClick={() => setInspectorOpen(!inspectorOpen, LEGACY_SANDBOX_OWNER_KEY)}
         >
           <SidebarSimple size={18} />
-        </NotionButton>
+        </DsButton>
       </>
     ) : undefined,
   }, [t, hasSession, inspectorOpen, refreshSession, setInspectorOpen]);

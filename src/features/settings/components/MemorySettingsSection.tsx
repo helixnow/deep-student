@@ -1,12 +1,12 @@
 /**
  * 记忆设置区块
- * Notion 风格：简洁、无边框、hover 效果
+ * 简洁风格：简洁、无边框、hover 效果
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Check, CircleNotch, WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -212,10 +212,10 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
         <div className="flex flex-col items-center justify-center py-6 gap-2">
           <WarningCircle size={24} className="text-destructive/60" />
           <span className="text-xs text-muted-foreground">{t('settings:memory.loadError')}</span>
-          <NotionButton variant="ghost" size="sm" onClick={loadData} className="text-primary">
+          <DsButton variant="ghost" size="sm" onClick={loadData} className="text-primary">
             <ArrowClockwise size={14} />
             {t('common:retry')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     );
@@ -277,7 +277,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
               width={160}
             />
 
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => setShowCreateInput(!showCreateInput)}
@@ -285,7 +285,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
             >
               <Plus size={14} className="mr-1" />
               {t('settings:memory.createFolder')}
-            </NotionButton>
+            </DsButton>
           </div>
         </SettingRow>
 
@@ -304,7 +304,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
                   }
                 }}
               />
-              <NotionButton
+              <DsButton
                 size="sm"
                 variant="primary"
                 onClick={handleCreateFolder}
@@ -315,7 +315,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
                 ) : (
                   <Check size={14} />
                 )}
-              </NotionButton>
+              </DsButton>
       </div>
           </div>
         )}

@@ -1,11 +1,11 @@
 import React, { useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Key, LinkSimple, NotePencil, Trash, Prohibit } from '@phosphor-icons/react';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
+import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody, DsDialogFooter } from '@/components/ui/DsDialog';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Label } from '@/components/ui/shad/Label';
 import { Switch } from '@/components/ui/shad/Switch';
 import { SecurePasswordInput } from '@/components/SecurePasswordInput';
@@ -426,7 +426,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
             />
             {vendor && vendor.id && (
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <NotionButton
+                <DsButton
                   type="button"
                   size="sm"
                   variant="danger"
@@ -438,7 +438,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
                 >
                   <Trash className="h-3.5 w-3.5" />
                   {t('settings:vendor_modal.clear_api_key')}
-                </NotionButton>
+                </DsButton>
                 {forceClearApiKey && (
                   <div className="text-xs text-destructive">
                     {t('settings:vendor_modal.clear_api_key_warning')}
@@ -506,23 +506,23 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
 
   // 模态框模式
   return (
-    <NotionDialog open={open} onOpenChange={onClose} maxWidth="max-w-lg">
-        <NotionDialogHeader>
-          <NotionDialogTitle>
+    <DsDialog open={open} onOpenChange={onClose} maxWidth="max-w-lg">
+        <DsDialogHeader>
+          <DsDialogTitle>
             {vendor ? t('settings:vendor_modal.title_edit') : t('settings:vendor_modal.title_new')}
-          </NotionDialogTitle>
-          <NotionDialogDescription>{t('settings:vendor_modal.subtitle')}</NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogBody>
+          </DsDialogTitle>
+          <DsDialogDescription>{t('settings:vendor_modal.subtitle')}</DsDialogDescription>
+        </DsDialogHeader>
+        <DsDialogBody>
           {formContent}
-        </NotionDialogBody>
-        <NotionDialogFooter className="!border-t-0">
-          <NotionButton variant="ghost" size="sm" onClick={onClose}>
+        </DsDialogBody>
+        <DsDialogFooter className="!border-t-0">
+          <DsButton variant="ghost" size="sm" onClick={onClose}>
             {t('common:actions.cancel')}
-          </NotionButton>
-          <NotionButton variant="primary" size="sm" onClick={handleSave}>{t('common:actions.save')}</NotionButton>
-        </NotionDialogFooter>
-    </NotionDialog>
+          </DsButton>
+          <DsButton variant="primary" size="sm" onClick={handleSave}>{t('common:actions.save')}</DsButton>
+        </DsDialogFooter>
+    </DsDialog>
   );
 });
 

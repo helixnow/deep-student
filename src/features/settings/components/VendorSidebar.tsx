@@ -13,7 +13,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import { CaretRight, DotsSixVertical, Plus } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { cn } from '@/lib/utils';
 import { ProviderIcon, getProviderBadgeChromeStyle } from '@/components/ui/ProviderIcon';
@@ -232,7 +232,7 @@ export const VendorSidebar: React.FC = () => {
           <div className="text-sm font-medium text-foreground">
             {t('settings:vendor_panel.list_title')}
           </div>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             iconOnly
@@ -241,7 +241,7 @@ export const VendorSidebar: React.FC = () => {
             aria-label={t('settings:vendor_panel.add_vendor_button')}
           >
             <Plus className="h-3.5 w-3.5" />
-          </NotionButton>
+          </DsButton>
         </div>
 
         {/* 加载态 skeleton */}

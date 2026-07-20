@@ -10,7 +10,7 @@ import { Input } from './ui/shad/Input';
 import { AppSelect } from './ui/app-menu';
 import { Textarea } from './ui/shad/Textarea';
 
-// 内部组件：带开关的设置行 - Notion 风格
+// 内部组件：带开关的设置行 - 简洁风格
 const SwitchRow = ({
   title,
   description,
@@ -35,7 +35,7 @@ const SwitchRow = ({
   </div>
 );
 
-// 内部组件：设置行 - Notion 风格
+// 内部组件：设置行 - 简洁风格
 const SettingRow = ({
   title,
   description,

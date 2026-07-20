@@ -11,7 +11,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { SiliconFlowLogo } from '@/components/ui/SiliconFlowLogo';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/shad/Card';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Label } from '@/components/ui/shad/Label';
 import { Badge } from '@/components/ui/shad/Badge';
 import { CollapsibleModelSelector, type CollapsibleModelOption } from '@/components/ui/shad/CollapsibleModelSelector';
@@ -1074,7 +1074,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       </div>
       <div className="flex items-center justify-between gap-2 pt-2">
         <div className="flex flex-wrap gap-2">
-          <NotionButton
+          <DsButton
             variant="primary"
             size="sm"
             onClick={() => {
@@ -1085,20 +1085,20 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
           >
             {savingApiKey ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <FloppyDisk className="h-3.5 w-3.5" />}
             {t('common:actions.save')}
-          </NotionButton>
+          </DsButton>
         </div>
-        {/* Notion 风格按钮 - 一键分配 */}
-        <NotionButton variant="ghost" size="sm" onClick={handleOneClickAssign} disabled={loading || !apiKey.trim()} className="text-primary bg-primary/10 hover:bg-primary/20">
+        {/* 简洁风格按钮 - 一键分配 */}
+        <DsButton variant="ghost" size="sm" onClick={handleOneClickAssign} disabled={loading || !apiKey.trim()} className="text-primary bg-primary/10 hover:bg-primary/20">
           <Lightning className="h-3.5 w-3.5" />
           {t('common:siliconflow.one_click_assign')}
-        </NotionButton>
-        {/* Notion 风格按钮 - 清除 (右对齐) */}
-        <NotionButton variant={confirmingClearApiKey ? 'danger' : 'ghost'} size="sm" onClick={clearSavedApiKey} disabled={loading || (!apiKey && !lastSavedApiKeyRef.current)} title={t('common:siliconflow.clear_api_key_title')} className={confirmingClearApiKey ? undefined : 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20'}>
+        </DsButton>
+        {/* 简洁风格按钮 - 清除 (右对齐) */}
+        <DsButton variant={confirmingClearApiKey ? 'danger' : 'ghost'} size="sm" onClick={clearSavedApiKey} disabled={loading || (!apiKey && !lastSavedApiKeyRef.current)} title={t('common:siliconflow.clear_api_key_title')} className={confirmingClearApiKey ? undefined : 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20'}>
           <Trash className="h-3.5 w-3.5" />
           {confirmingClearApiKey
             ? t('common:siliconflow.clear_confirm_button')
             : t('common:siliconflow.clear_button')}
-        </NotionButton>
+        </DsButton>
       </div>
       {/* 一键分配的嵌入维度结果反馈（成功/失败均可见） */}
       {dimensionSetupResult && (
@@ -1191,14 +1191,14 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     <div className={variant === 'models' ? 'rounded-lg border border-dashed border-border/50 bg-muted/20 p-4 space-y-3' : 'space-y-3'}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <NotionButton
+          <DsButton
             variant="default"
             onClick={() => fetchSiliconFlowModels(true)}
             disabled={loading || !apiKey.trim()}
           >
             {loading ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <DownloadSimple className="h-3.5 w-3.5" />}
             {loading ? t('common:siliconflow.fetching_models') : t('common:siliconflow.get_model_list')}
-          </NotionButton>
+          </DsButton>
         </div>
         <p className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
           <Stack className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1235,10 +1235,10 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         ) : (
           <div />
         )}
-        <NotionButton variant="primary" onClick={handleCreateConfig} disabled={!selectedModel} className="shrink-0 whitespace-nowrap">
+        <DsButton variant="primary" onClick={handleCreateConfig} disabled={!selectedModel} className="shrink-0 whitespace-nowrap">
           <Plus className="h-3.5 w-3.5" />
           {t('common:siliconflow.create_api_config')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );

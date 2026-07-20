@@ -1,5 +1,5 @@
 /**
- * MCP 工具协议管理 - Notion/deep-agent_new 风格重构
+ * MCP 工具协议管理 - 简洁/deep-agent_new 风格重构
  *
  * 设计原则：
  * - 使用 bg-card rounded-lg border border-border 作为卡片基础
@@ -49,13 +49,13 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
 import { isBuiltinServer, BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
 import { SettingSection } from './SettingsCommon';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Input } from '@/components/ui/shad/Input';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { ApiKeyField } from './ApiKeyField';
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { 
@@ -289,14 +289,14 @@ function ServerListItem({
             {t('settings:mcp_descriptions.confirm_delete')}
           </span>
           <div className="flex items-center gap-2">
-            <NotionButton
+            <DsButton
               size="sm"
               variant="ghost"
               onClick={() => setConfirmingDelete(false)}
             >
               {t('settings:mcp_server_edit.cancel')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               size="sm"
               variant="danger"
               disabled={deleting}
@@ -312,7 +312,7 @@ function ServerListItem({
               }}
             >
               {t('settings:mcp_descriptions.action_delete')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -417,17 +417,17 @@ function ServerListItem({
                 ? 'opacity-100'
                 : 'opacity-0 pointer-events-none [@media(pointer:coarse)]:opacity-100 [@media(pointer:coarse)]:pointer-events-auto'
             )}>
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'preview' ? null : 'preview'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'preview' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_preview')} aria-label="preview">
+              <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'preview' ? null : 'preview'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'preview' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_preview')} aria-label="preview">
                 <Eye className="w-3.5 h-3.5" />
-              </NotionButton>
+              </DsButton>
               {!isBuiltin && (
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onTest(); }} disabled={disableTest || isTesting} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" title={t('settings:mcp_descriptions.action_test')} aria-label="test">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onTest(); }} disabled={disableTest || isTesting} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" title={t('settings:mcp_descriptions.action_test')} aria-label="test">
                   {isTesting ? (
                     <ArrowClockwise className="w-3.5 h-3.5 animate-spin" />
                   ) : (
                     <Flask className="w-3.5 h-3.5" />
                   )}
-                </NotionButton>
+                </DsButton>
               )}
               {isTesting && testStepLabel && (
                 <span className="text-2xs text-muted-foreground whitespace-nowrap animate-pulse">
@@ -436,12 +436,12 @@ function ServerListItem({
               )}
               {!isBuiltin && (
                 <>
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'edit' ? null : 'edit'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'edit' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_edit')} aria-label={t('settings:a11y.edit')}>
+                  <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'edit' ? null : 'edit'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'edit' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_edit')} aria-label={t('settings:a11y.edit')}>
                     <PencilSimple className="w-3.5 h-3.5" />
-                  </NotionButton>
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 hover:text-destructive" title={t('settings:mcp_descriptions.action_delete')} aria-label={t('settings:a11y.delete')}>
+                  </DsButton>
+                  <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 hover:text-destructive" title={t('settings:mcp_descriptions.action_delete')} aria-label={t('settings:a11y.delete')}>
                     <Trash className="w-3.5 h-3.5" />
-                  </NotionButton>
+                  </DsButton>
                 </>
               )}
             </div>
@@ -762,14 +762,14 @@ function ServerEditPanel({
     <div className="p-4 space-y-6">
       {/* 模式切换标签 */}
       <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit border border-border/40">
-        <NotionButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn(editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+        <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn(editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
           <FileCode className="w-3.5 h-3.5" />
           {t('settings:mcp_server_edit.form_mode')}
-        </NotionButton>
-        <NotionButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn(editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+        </DsButton>
+        <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn(editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
           <CodeBlock className="w-3.5 h-3.5" />
           {t('settings:mcp_server_edit.json_config')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -867,10 +867,10 @@ function ServerEditPanel({
 
             {/* 高级配置折叠区 */}
             <div className="border border-border/40 rounded-lg overflow-hidden">
-              <NotionButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none">
+              <DsButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none">
                 <span>{t('settings:mcp_server_edit.advanced_config')}</span>
                 {showAdvanced ? <CaretUp className="w-4 h-4" /> : <CaretDown className="w-4 h-4" />}
-              </NotionButton>
+              </DsButton>
 
               {showAdvanced && (
                 <div className="px-4 pb-4 space-y-6 border-t border-border/40 pt-4 bg-muted/10">
@@ -898,9 +898,9 @@ function ServerEditPanel({
                       <label className="text-2xs text-muted-foreground uppercase tracking-wider">
                         {t('settings:mcp_server_edit.env_vars')}
                       </label>
-                      <NotionButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0">
+                      <DsButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0">
                         + {t('settings:mcp_server_edit.add')}
-                      </NotionButton>
+                      </DsButton>
                     </div>
                     {envEntries.length === 0 ? (
                       <div className="text-xs text-muted-foreground py-2 italic">{t('settings:mcp_server_edit.no_env_vars')}</div>
@@ -921,9 +921,9 @@ function ServerEditPanel({
                               className="flex-1 text-xs font-mono"
                               placeholder="value"
                             />
-                            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
+                            <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
                               <Trash className="w-3.5 h-3.5" />
-                            </NotionButton>
+                            </DsButton>
                           </div>
                         ))}
                       </div>
@@ -967,7 +967,7 @@ function ServerEditPanel({
 
         {/* 操作按钮 */}
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-border/40">
-          <NotionButton
+          <DsButton
             type="button"
             variant="ghost"
             size="sm"
@@ -975,15 +975,15 @@ function ServerEditPanel({
             disabled={isSaving}
           >
             {t('settings:mcp_server_edit.cancel')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             type="submit"
             variant="primary"
             size="sm"
             disabled={isSaving}
           >
             {t('settings:mcp_server_edit.save')}
-          </NotionButton>
+          </DsButton>
         </div>
       </form>
     </div>
@@ -1218,14 +1218,14 @@ function NewServerEditItem({
       <div className="p-4 space-y-6">
         {/* 模式切换标签 */}
         <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit border border-border/40">
-          <NotionButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn(editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn(editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
             <FileCode className="w-3.5 h-3.5" />
             {t('settings:mcp_server_edit.form_mode')}
-          </NotionButton>
-          <NotionButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn(editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+          </DsButton>
+          <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn(editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
             <CodeBlock className="w-3.5 h-3.5" />
             JSON
-          </NotionButton>
+          </DsButton>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -1323,10 +1323,10 @@ function NewServerEditItem({
 
               {/* 高级配置折叠区 */}
               <div className="border border-border/40 rounded-lg overflow-hidden">
-                <NotionButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none">
+                <DsButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none">
                   <span>{t('settings:mcp_server_edit.advanced_config')}</span>
                   {showAdvanced ? <CaretUp className="w-4 h-4" /> : <CaretDown className="w-4 h-4" />}
-                </NotionButton>
+                </DsButton>
 
                 {showAdvanced && (
                   <div className="px-4 pb-4 space-y-6 border-t border-border/40 pt-4 bg-muted/10">
@@ -1367,9 +1367,9 @@ function NewServerEditItem({
                         <label className="text-2xs text-muted-foreground uppercase tracking-wider">
                           {t('settings:mcp_server_edit.env_vars')}
                         </label>
-                        <NotionButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0">
+                        <DsButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0">
                           + {t('settings:mcp_server_edit.add')}
-                        </NotionButton>
+                        </DsButton>
                       </div>
                       {envEntries.length === 0 ? (
                         <div className="text-xs text-muted-foreground py-2 italic">{t('settings:mcp_server_edit.no_env_vars')}</div>
@@ -1390,9 +1390,9 @@ function NewServerEditItem({
                                 className="flex-1 text-xs font-mono"
                                 placeholder="value"
                               />
-                              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
+                              <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
                                 <Trash className="w-3.5 h-3.5" />
-                              </NotionButton>
+                              </DsButton>
                             </div>
                           ))}
                         </div>
@@ -1436,7 +1436,7 @@ function NewServerEditItem({
 
           {/* 操作按钮 */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-border/40">
-            <NotionButton
+            <DsButton
               type="button"
               variant="ghost"
               size="sm"
@@ -1444,15 +1444,15 @@ function NewServerEditItem({
               disabled={isSubmitting}
             >
               {t('settings:mcp_server_edit.cancel')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               type="submit"
               variant="primary"
               size="sm"
               disabled={isSubmitting}
             >
               {t('settings:mcp_server_edit.create')}
-            </NotionButton>
+            </DsButton>
           </div>
         </form>
       </div>
@@ -1475,14 +1475,14 @@ function EmptyServerList({ onAdd }: { onAdd: () => void }) {
       <p className="text-xs text-muted-foreground mb-6 max-w-xs mx-auto leading-relaxed">
         {t('settings:mcp_descriptions.click_add_to_start')}
       </p>
-      <NotionButton
+      <DsButton
         onClick={onAdd}
         variant="primary"
         size="sm"
       >
         <Plus className="w-4 h-4 mr-1" />
         {t('settings:mcp_server_list.add_server')}
-      </NotionButton>
+      </DsButton>
     </div>
   );
 }
@@ -1508,33 +1508,33 @@ function ActionMenu({
 
   const menuItems = (
     <>
-      <NotionButton variant="ghost" size="sm" onClick={() => { onReconnect(); setIsOpen(false); }} className="w-full !justify-start">
+      <DsButton variant="ghost" size="sm" onClick={() => { onReconnect(); setIsOpen(false); }} className="w-full !justify-start">
         <ArrowClockwise className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.reconnect')}
-      </NotionButton>
-      <NotionButton variant="ghost" size="sm" onClick={() => { onRefresh(); setIsOpen(false); }} className="w-full !justify-start">
+      </DsButton>
+      <DsButton variant="ghost" size="sm" onClick={() => { onRefresh(); setIsOpen(false); }} className="w-full !justify-start">
         <Sparkle className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.refresh_list')}
-      </NotionButton>
-      <NotionButton variant="ghost" size="sm" onClick={() => { onHealthCheck(); setIsOpen(false); }} className="w-full !justify-start">
+      </DsButton>
+      <DsButton variant="ghost" size="sm" onClick={() => { onHealthCheck(); setIsOpen(false); }} className="w-full !justify-start">
         <Flask className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.health_check')}
-      </NotionButton>
-      <NotionButton variant="ghost" size="sm" onClick={() => { onClearCache(); setIsOpen(false); }} className="w-full !justify-start">
+      </DsButton>
+      <DsButton variant="ghost" size="sm" onClick={() => { onClearCache(); setIsOpen(false); }} className="w-full !justify-start">
         <Sparkle className="w-3.5 h-3.5 text-muted-foreground rotate-45" />
         {t('settings:mcp.clear_cache')}
-      </NotionButton>
+      </DsButton>
       <div className="my-1 border-t border-border/50" />
-      <NotionButton variant="ghost" size="sm" onClick={() => { onOpenPolicy(); setIsOpen(false); }} className="w-full !justify-start">
+      <DsButton variant="ghost" size="sm" onClick={() => { onOpenPolicy(); setIsOpen(false); }} className="w-full !justify-start">
         <Key className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.security_policy')}
-      </NotionButton>
+      </DsButton>
     </>
   );
 
   return (
     <div className={cn('relative', isSmallScreen && isOpen && 'w-full')}>
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         onClick={() => setIsOpen(!isOpen)}
@@ -1543,7 +1543,7 @@ function ActionMenu({
       >
         <DotsThree className="w-4 h-4" />
         {t('settings:mcp_descriptions.quick_actions')}
-      </NotionButton>
+      </DsButton>
 
       {isOpen && (
         isSmallScreen ? (
@@ -1674,7 +1674,7 @@ export function PresetServerSelector({
                   {presets.map((preset) => {
                     const isAdded = isPresetAdded(preset.id);
                     return (
-                      <NotionButton
+                      <DsButton
                         key={preset.id}
                         variant="ghost"
                         size="sm"
@@ -1727,7 +1727,7 @@ export function PresetServerSelector({
                             {t(preset.descriptionKey)}
                           </div>
                         </div>
-                      </NotionButton>
+                      </DsButton>
                     );
                   })}
                 </div>
@@ -1828,18 +1828,18 @@ export function PresetServerSelector({
 
   const permissionFooterButtons = (
     <>
-      <NotionButton variant="default" size="sm" onClick={closePermissionDrawer}>
+      <DsButton variant="default" size="sm" onClick={closePermissionDrawer}>
         {t('common:cancel')}
-      </NotionButton>
-      <NotionButton variant="primary" size="sm" onClick={confirmInstall}>
+      </DsButton>
+      <DsButton variant="primary" size="sm" onClick={confirmInstall}>
         {t('settings:mcp_presets.confirm_install')}
-      </NotionButton>
+      </DsButton>
     </>
   );
 
   return (
     <div className={cn('relative', isSmallScreen && isOpen && 'w-full')}>
-      <NotionButton
+      <DsButton
         ref={addPresetBtnRef}
         onClick={() => setIsOpen(!isOpen)}
         variant="default"
@@ -1850,7 +1850,7 @@ export function PresetServerSelector({
       >
         <Package className="w-4 h-4 mr-1" aria-hidden="true" />
         {t('settings:mcp_presets.add_preset')}
-      </NotionButton>
+      </DsButton>
 
       {isOpen && (
         isSmallScreen ? (
@@ -2019,7 +2019,7 @@ function shellRuleRemovalRelaxesPolicy(
  *
  * Tauri WebView（macOS/iOS WKWebView、Android WebView）默认不实现阻塞式
  * JS 确认框，window.confirm 可能不弹窗直接返回 false，导致危险操作静默失效；
- * 这里统一改走 NotionAlertDialog，返回 Promise<boolean> 供 async 调用点 await。
+ * 这里统一改走 DsAlertDialog，返回 Promise<boolean> 供 async 调用点 await。
  */
 function useAppConfirm() {
   const { t } = useTranslation(['common']);
@@ -2040,7 +2040,7 @@ function useAppConfirm() {
   }, []);
 
   const confirmDialog = (
-    <NotionAlertDialog
+    <DsAlertDialog
       open={request !== null}
       onOpenChange={open => { if (!open) settle(false); }}
       title={t('common:actions.confirm')}
@@ -2264,10 +2264,10 @@ function ShellCommandRulesSection() {
             {t('settings:tool_permissions.shell_rules.desc')}
           </p>
         </div>
-        <NotionButton variant="ghost" size="sm" onClick={beginAdd} disabled={loading || saving} className="text-xs">
+        <DsButton variant="ghost" size="sm" onClick={beginAdd} disabled={loading || saving} className="text-xs">
           <Plus className="h-3.5 w-3.5 mr-1" />
           {t('settings:tool_permissions.shell_rules.add')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       <div className="rounded-lg border border-border/40 bg-muted/10 p-3 mb-3">
@@ -2278,7 +2278,7 @@ function ShellCommandRulesSection() {
           </div>
           <div className="flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5 self-start sm:self-auto" role="group" aria-label={t('settings:tool_permissions.shell_rules.default_title')}>
             {(['allow', 'ask', 'deny'] as ShellCommandAction[]).map(effect => (
-              <NotionButton
+              <DsButton
                 key={effect}
                 variant="ghost"
                 size="sm"
@@ -2288,7 +2288,7 @@ function ShellCommandRulesSection() {
                 className={cn('!h-7 !px-2 text-xs', defaultEffect === effect && actionClass[effect])}
               >
                 {t(`settings:tool_permissions.shell_rules.action_${effect}`)}
-              </NotionButton>
+              </DsButton>
             ))}
           </div>
         </div>
@@ -2296,9 +2296,9 @@ function ShellCommandRulesSection() {
           <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/5 px-2.5 py-2 text-xs text-warning">
             <Warning className="h-3.5 w-3.5 flex-shrink-0" />
             <span className="flex-1">{t('settings:tool_permissions.shell_rules.default_allow_warning')}</span>
-            <NotionButton variant="ghost" size="sm" onClick={() => void handleDefaultEffect('allow')} className="!h-6 text-xs">
+            <DsButton variant="ghost" size="sm" onClick={() => void handleDefaultEffect('allow')} className="!h-6 text-xs">
               {t('settings:tool_permissions.shell_rules.confirm_allow')}
-            </NotionButton>
+            </DsButton>
           </div>
         )}
       </div>
@@ -2367,10 +2367,10 @@ function ShellCommandRulesSection() {
             </div>
           )}
           <div className="mt-3 flex justify-end gap-2">
-            <NotionButton variant="ghost" size="sm" onClick={() => { setShowEditor(false); setPendingRisk(null); }} className="text-xs">{t('common:cancel')}</NotionButton>
-            <NotionButton variant="default" size="sm" onClick={() => void saveDraft()} disabled={saving} className="text-xs">
+            <DsButton variant="ghost" size="sm" onClick={() => { setShowEditor(false); setPendingRisk(null); }} className="text-xs">{t('common:cancel')}</DsButton>
+            <DsButton variant="default" size="sm" onClick={() => void saveDraft()} disabled={saving} className="text-xs">
               {t(pendingRisk ? 'settings:tool_permissions.shell_rules.confirm_allow' : 'common:save')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -2401,9 +2401,9 @@ function ShellCommandRulesSection() {
             </span>
             {selectedRuleIds.size > 0 && (
               <div className="ml-auto flex flex-wrap items-center gap-1">
-                <NotionButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('enable')} className="!h-7 text-xs">{t('settings:tool_permissions.shell_rules.bulk_enable')}</NotionButton>
-                <NotionButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('disable')} className="!h-7 text-xs">{t('settings:tool_permissions.shell_rules.bulk_disable')}</NotionButton>
-                <NotionButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('delete')} className="!h-7 text-xs text-destructive">{t('settings:tool_permissions.shell_rules.bulk_delete')}</NotionButton>
+                <DsButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('enable')} className="!h-7 text-xs">{t('settings:tool_permissions.shell_rules.bulk_enable')}</DsButton>
+                <DsButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('disable')} className="!h-7 text-xs">{t('settings:tool_permissions.shell_rules.bulk_disable')}</DsButton>
+                <DsButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('delete')} className="!h-7 text-xs text-destructive">{t('settings:tool_permissions.shell_rules.bulk_delete')}</DsButton>
               </div>
             )}
           </div>
@@ -2432,8 +2432,8 @@ function ShellCommandRulesSection() {
                   </div>
                   <div className="flex items-center justify-end gap-1">
                     <Switch checked={rule.enabled} disabled={saving} onCheckedChange={enabled => void setRuleEnabled(rule, enabled)} aria-label={t('settings:tool_permissions.shell_rules.toggle_rule', { pattern: rule.pattern })} />
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => beginEdit(rule)} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" title={t('common:actions.edit')} aria-label={t('common:actions.edit')}><PencilSimple className="h-3.5 w-3.5" /></NotionButton>
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => void deleteRule(rule)} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground hover:text-destructive" title={t('common:delete')} aria-label={t('common:delete')}><Trash className="h-3.5 w-3.5" /></NotionButton>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => beginEdit(rule)} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" title={t('common:actions.edit')} aria-label={t('common:actions.edit')}><PencilSimple className="h-3.5 w-3.5" /></DsButton>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => void deleteRule(rule)} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground hover:text-destructive" title={t('common:delete')} aria-label={t('common:delete')}><Trash className="h-3.5 w-3.5" /></DsButton>
                   </div>
                 </div>;
               })}
@@ -2899,7 +2899,7 @@ function ToolPermissionsSection({ toolsByServer }: {
           const isActive = currentLevel === level;
           const config = SENSITIVITY_CONFIG[level];
           return (
-            <NotionButton
+            <DsButton
               key={level}
               variant="ghost"
               size="sm"
@@ -2923,7 +2923,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                 : t(`settings:tool_permissions.set_to_${level}`)}
             >
               {t(`settings:tool_permissions.level_${level}`)}
-            </NotionButton>
+            </DsButton>
           );
         })}
       </div>
@@ -2945,7 +2945,7 @@ function ToolPermissionsSection({ toolsByServer }: {
         {levels.map(level => {
           const active = level === 'default' ? allInherited : sharedLevel === level;
           return (
-            <NotionButton
+            <DsButton
               key={level}
               variant="ghost"
               size="sm"
@@ -2965,7 +2965,7 @@ function ToolPermissionsSection({ toolsByServer }: {
               {level === 'default'
                 ? t('settings:tool_permissions.level_default')
                 : t(`settings:tool_permissions.level_${level}`)}
-            </NotionButton>
+            </DsButton>
           );
         })}
       </div>
@@ -2983,7 +2983,7 @@ function ToolPermissionsSection({ toolsByServer }: {
         {levels.map(level => {
           const active = level === 'default' ? currentLevel === null : currentLevel === level;
           return (
-            <NotionButton
+            <DsButton
               key={level}
               variant="ghost"
               size="sm"
@@ -3000,7 +3000,7 @@ function ToolPermissionsSection({ toolsByServer }: {
               {level === 'default'
                 ? t('settings:tool_permissions.level_default')
                 : t(`settings:tool_permissions.level_${level}`)}
-            </NotionButton>
+            </DsButton>
           );
         })}
       </div>
@@ -3121,7 +3121,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                     <SelectItem value="read_write">{t('settings:tool_permissions.runtime_root_read_write')}</SelectItem>
                   </SelectContent>
                 </Select>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={handleBrowseRuntimeRoot}
@@ -3130,8 +3130,8 @@ function ToolPermissionsSection({ toolsByServer }: {
                 >
                   <FolderOpen className="h-3 w-3 mr-1" />
                   {t('settings:tool_permissions.runtime_root_browse')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={handleSetWorkspaceRoot}
@@ -3140,8 +3140,8 @@ function ToolPermissionsSection({ toolsByServer }: {
                 >
                   <Check className="h-3 w-3 mr-1" />
                   {t('settings:tool_permissions.runtime_root_set_workspace')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={handleAuthorizeRuntimeRoot}
@@ -3155,7 +3155,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                   {t(pendingRootRisk
                     ? 'settings:tool_permissions.runtime_root_confirm_add'
                     : 'settings:tool_permissions.runtime_root_add')}
-                </NotionButton>
+                </DsButton>
               </div>
             </div>
 
@@ -3179,14 +3179,14 @@ function ToolPermissionsSection({ toolsByServer }: {
                               ?? newRuntimeRootPath.trim(),
                           })}
                     </span>
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       onClick={handleReselectRuntimeRoot}
                       className="!h-auto !px-1 !py-0 ml-1 align-baseline text-xs font-medium text-primary hover:underline"
                     >
                       {t('settings:tool_permissions.runtime_root_reselect')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
               </div>
@@ -3276,19 +3276,19 @@ function ToolPermissionsSection({ toolsByServer }: {
                           {root.kind === 'workspace' && !root.configured && (
                             <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs leading-relaxed text-warning">
                               <span>{t('settings:tool_permissions.runtime_root_not_configured_hint')}</span>
-                              <NotionButton
+                              <DsButton
                                 variant="ghost"
                                 size="sm"
                                 onClick={handleFocusRuntimeRootInput}
                                 className="!h-auto !px-1 !py-0 text-xs font-medium text-primary hover:underline"
                               >
                                 {t('settings:tool_permissions.runtime_root_configure_now')}
-                              </NotionButton>
+                              </DsButton>
                             </div>
                           )}
                         </div>
                         {canRevoke && (
-                          <NotionButton
+                          <DsButton
                             variant="ghost"
                             size="icon"
                             iconOnly
@@ -3298,10 +3298,10 @@ function ToolPermissionsSection({ toolsByServer }: {
                             aria-label={t('settings:tool_permissions.runtime_root_remove')}
                           >
                             <Trash className="h-3.5 w-3.5" />
-                          </NotionButton>
+                          </DsButton>
                         )}
                         {canResetWorkspace && (
-                          <NotionButton
+                          <DsButton
                             variant="ghost"
                             size="icon"
                             iconOnly
@@ -3311,7 +3311,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                             aria-label={t('settings:tool_permissions.runtime_root_workspace_reset')}
                           >
                             <ArrowClockwise className="h-3.5 w-3.5" />
-                          </NotionButton>
+                          </DsButton>
                         )}
                       </div>
                     );
@@ -3343,7 +3343,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                   {t('settings:tool_permissions.policy_overview_desc')}
                 </p>
               </div>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={fetchConfig}
@@ -3352,7 +3352,7 @@ function ToolPermissionsSection({ toolsByServer }: {
               >
                 <ArrowClockwise className={cn('h-3 w-3 mr-1', (isLoading || isBulkUpdating) && 'animate-spin')} />
                 {t('settings:tool_permissions.refresh')}
-              </NotionButton>
+              </DsButton>
             </div>
 
             {allTools.length === 0 ? (
@@ -3383,7 +3383,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                   <span className="text-xs text-muted-foreground">{t('settings:tool_permissions.group_by')}</span>
                   <div className="flex items-center bg-muted/40 rounded-md p-0.5" role="group" aria-label={t('settings:tool_permissions.group_by')}>
                     {(['domain', 'source'] as const).map(mode => (
-                      <NotionButton
+                      <DsButton
                         key={mode}
                         variant="ghost"
                         size="sm"
@@ -3395,7 +3395,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                         )}
                       >
                         {t(`settings:tool_permissions.group_by_${mode}`)}
-                      </NotionButton>
+                      </DsButton>
                     ))}
                   </div>
                 </div>
@@ -3435,7 +3435,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                   <span>{t('settings:tool_permissions.dynamic_risk_hint')}</span>
                 </div>
 
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowAdvancedTools(value => !value)}
@@ -3445,7 +3445,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                   <CaretRight className={cn('h-3.5 w-3.5 mr-1 transition-transform', showAdvancedTools && 'rotate-90')} />
                   {t('settings:tool_permissions.advanced_title')}
                   <span className="ml-1 text-muted-foreground">({toolOverrides.length})</span>
-                </NotionButton>
+                </DsButton>
 
                 {showAdvancedTools && (
                   <div className="mt-3 border-t border-border/30 pt-3">
@@ -3520,14 +3520,14 @@ function ToolPermissionsSection({ toolsByServer }: {
                             <div className="ml-auto">
                               <BulkLevelSelector toolNames={Array.from(selectedTools)} />
                             </div>
-                            <NotionButton
+                            <DsButton
                               variant="ghost"
                               size="sm"
                               onClick={() => setSelectedTools(new Set())}
                               className="!h-6 text-xs [@media(pointer:coarse)]:!h-9"
                             >
                               {t('settings:tool_permissions.clear_selection')}
-                            </NotionButton>
+                            </DsButton>
                           </>
                         )}
                       </div>
@@ -3616,7 +3616,7 @@ function ToolPermissionsSection({ toolsByServer }: {
               <span className="text-xs text-muted-foreground">
                 {t('settings:tool_permissions.history_records', { count: historyCount })}
               </span>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={handleClearHistory}
@@ -3624,7 +3624,7 @@ function ToolPermissionsSection({ toolsByServer }: {
               >
                 <Trash className="h-3 w-3 mr-1" />
                 {t('settings:tool_permissions.clear_history')}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
         </div>
@@ -3801,7 +3801,7 @@ export function McpToolsSection({
                 void onAddServer(config);
               }}
             />
-            <NotionButton
+            <DsButton
               onClick={() => {
                 setIsAddingNew(true);
                 setExpandedPanels(new Map()); // 关闭其他展开的面板
@@ -3812,7 +3812,7 @@ export function McpToolsSection({
             >
               <Plus className="w-4 h-4 mr-1" />
               {t('settings:mcp.add_server')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
 

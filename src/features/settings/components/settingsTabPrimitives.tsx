@@ -16,16 +16,16 @@ export const SettingRow = ({
 }) => (
   // 双栏切换点与 useBreakpoint().isSmallScreen（<768，App shell 移动模式）对齐，
   // 避免 640-767px 区间「移动页面模式 + 桌面双栏行」的形态混搭
-  <div className={cn('group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 overflow-hidden', settingsQuietInteractiveRowClassName, className)}>
+  <div className={cn('group flex min-w-0 flex-col gap-2 overflow-hidden px-1 py-2.5 md:flex-row md:items-start', settingsQuietInteractiveRowClassName, className)}>
     <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="mt-0.5 break-words text-xs leading-relaxed text-muted-foreground/70 md:line-clamp-2">
           {description}
         </p>
       )}
     </div>
-    <div className="flex-shrink-0">
+    <div className="w-full min-w-0 flex-shrink-0 md:w-auto">
       {children}
     </div>
   </div>
@@ -60,7 +60,7 @@ export const SwitchRow = ({
       <div className="flex-1 min-w-0">
         <h3 id={switchLabelId} className="text-sm text-foreground/90 leading-tight">{title}</h3>
         {description && (
-          <p id={switchDescriptionId} className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+          <p id={switchDescriptionId} className="mt-0.5 break-words text-xs leading-relaxed text-muted-foreground/70 md:line-clamp-2">
             {description}
           </p>
         )}
@@ -85,25 +85,37 @@ export const SwitchRow = ({
   );
 };
 
-export const GroupTitle = ({ title }: { title: string }) => (
-  <div className="px-1 mb-3 mt-0">
-    <h3 className="text-base font-semibold text-foreground">{title}</h3>
+export const GroupTitle = ({
+  title,
+  titleId,
+  actions,
+}: {
+  title: string;
+  titleId?: string;
+  actions?: React.ReactNode;
+}) => (
+  <div className={cn('mb-3 mt-0 min-w-0 px-1', actions && 'flex flex-wrap items-center justify-between gap-2')}>
+    <h3 id={titleId} className="text-base font-semibold text-foreground">{title}</h3>
+    {actions && <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">{actions}</div>}
   </div>
 );
 
 export const SettingsGroup = ({
   title,
   description,
+  actions,
   children,
   className,
 }: {
   title: string;
   description?: string;
+  /** 标题行右侧操作区（如刷新/新建按钮）。 */
+  actions?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }) => (
-  <section className={cn('rounded-2xl border border-border/40 bg-background px-3 py-3 sm:px-4', className)}>
-    <GroupTitle title={title} />
+  <section className={cn('min-w-0 rounded-2xl border border-border/40 bg-background px-3 py-3 sm:px-4', className)}>
+    <GroupTitle title={title} actions={actions} />
     {description ? (
       <p className="px-1 pb-3 text-xs leading-5 text-muted-foreground/80">
         {description}

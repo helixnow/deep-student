@@ -1,7 +1,7 @@
 /**
  * 模型分配 Tab 组件
  * 从 Settings.tsx 拆分，包含完整的模型分配功能
- * Notion 风格：简洁、无边框、hover 效果
+ * 简洁风格：简洁、无边框、hover 效果
  */
 
 import React, { useState, useEffect } from 'react';
@@ -44,6 +44,7 @@ interface ModelsTabProps {
     memory_decision_model_config_id: string;
     voice_input_asr_model_config_id: string;
     image_generation_model_config_id: string;
+    compaction_model_config_id: string;
   };
   setConfig: React.Dispatch<React.SetStateAction<any>>;
   apiConfigs: ApiConfig[];
@@ -56,7 +57,7 @@ interface ModelsTabProps {
   saveSingleAssignmentField: (field: string, value: string | null) => Promise<any>;
 }
 
-// 内部组件：设置行 - Notion 风格（无 icon，简洁）
+// 内部组件：设置行 - 简洁风格（无 icon，简洁）
 const ModelAssignmentRow = ({
   title,
   description,
@@ -86,7 +87,7 @@ const ModelAssignmentRow = ({
   <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
     <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+      <p className="mt-0.5 break-words text-xs leading-relaxed text-muted-foreground/70 md:line-clamp-2">
         {description}
       </p>
     </div>
@@ -107,7 +108,7 @@ const ModelAssignmentRow = ({
         allowEmpty
         placeholder={placeholder}
         className="w-full justify-between h-9 bg-transparent hover:bg-[var(--interactive-hover)] transition-colors border border-border/30 hover:border-border/50"
-        popoverClassName="w-[280px]"
+        popoverClassName="w-[min(280px,calc(100vw-2rem))]"
       />
       {models.length === 0 && noModelsMessage && (
         <div className="text-xs text-destructive/80 mt-1">
@@ -146,7 +147,7 @@ const TranslationDisplayModeRow = ({
   <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
     <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+      <p className="mt-0.5 break-words text-xs leading-relaxed text-muted-foreground/70 md:line-clamp-2">
         {description}
       </p>
     </div>
@@ -313,6 +314,18 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               models={toUnifiedModelInfo(getAllEnabledApis(config.memory_decision_model_config_id))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('memory_decision_saved')}
+              onSave={handleSave}
+              setConfig={setConfig}
+            />
+            <ModelAssignmentRow
+              title={t('settings:api_config.compaction_model_label')}
+              description={t('settings:api_config.compaction_model_hint')}
+              value={config.compaction_model_config_id}
+              field="compaction_model_config_id"
+              configKey="compaction_model_config_id"
+              models={toUnifiedModelInfo(getAllEnabledApis(config.compaction_model_config_id))}
+              placeholder={t('settings:api.select_model')}
+              notificationKey={notify('compaction_model_saved')}
               onSave={handleSave}
               setConfig={setConfig}
             />

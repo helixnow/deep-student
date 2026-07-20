@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { 
@@ -164,14 +164,14 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
           )}
         </div>
         
-        <NotionButton variant="primary" size="sm" onClick={testAllEngines} disabled={testing || engines.filter(e => e.enabled).length === 0} className="!px-3 !py-1 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+        <DsButton variant="primary" size="sm" onClick={testAllEngines} disabled={testing || engines.filter(e => e.enabled).length === 0} className="!px-3 !py-1 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
           {testing ? (
             <ArrowClockwise size={16} className="animate-spin" />
           ) : (
             <Lightning size={16} />
           )}
           <span>{testing ? t('searchEngine.testing') : t('searchEngine.testAvailability')}</span>
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 引擎状态列表 */}

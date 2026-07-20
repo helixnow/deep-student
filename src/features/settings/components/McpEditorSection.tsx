@@ -3,8 +3,8 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
-import { NotionButton } from '@/components/ui/NotionButton';
-import { NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
+import { DsButton } from '@/components/ui/DsButton';
+import { DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody, DsDialogFooter } from '@/components/ui/DsDialog';
 import UnifiedModal from '@/components/UnifiedModal';
 import { Input } from '@/components/ui/shad/Input';
 import { AppSelect } from '@/components/ui/app-menu';
@@ -166,23 +166,23 @@ function McpOAuthControls({
         )} />
       </div>
       <div className="flex flex-wrap gap-2">
-        <NotionButton
+        <DsButton
           size="sm"
           variant="primary"
           disabled={busy || hasApiKey || !resourceUrl.trim()}
           onClick={() => void startOauth()}
         >
           {authorized ? t('settings:mcp.oauth.reauth') : t('settings:mcp.oauth.login')}
-        </NotionButton>
+        </DsButton>
         {busy && (
-          <NotionButton size="sm" variant="default" onClick={() => void cancelOauth()}>
+          <DsButton size="sm" variant="default" onClick={() => void cancelOauth()}>
             {t('settings:mcp.oauth.cancel')}
-          </NotionButton>
+          </DsButton>
         )}
         {authorized && (
-          <NotionButton size="sm" variant="default" disabled={busy} onClick={() => void revokeOauth()}>
+          <DsButton size="sm" variant="default" disabled={busy} onClick={() => void revokeOauth()}>
             {t('settings:mcp.oauth.logout')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     </div>
@@ -317,9 +317,9 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         <span>{label}</span>
         <Popover>
           <PopoverTrigger asChild>
-            <NotionButton type="button" variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground">
+            <DsButton type="button" variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground">
               <InfoIcon size={16} />
-            </NotionButton>
+            </DsButton>
           </PopoverTrigger>
           <PopoverContent align="start" className="max-w-sm text-xs leading-relaxed">
             {description}
@@ -1056,10 +1056,10 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
     return (
       <UnifiedModal isOpen={true} onClose={handleClose} closeOnOverlayClick={false} contentClassName={modalContentClassName}>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <NotionDialogHeader>
-            <NotionDialogTitle>{isEditing ? t('settings:mcp_descriptions.edit_tool_title') : t('settings:mcp_descriptions.add_tool_title')}</NotionDialogTitle>
-            <NotionDialogDescription>{t('settings:mcp_descriptions.tool_modal_hint')}</NotionDialogDescription>
-          </NotionDialogHeader>
+          <DsDialogHeader>
+            <DsDialogTitle>{isEditing ? t('settings:mcp_descriptions.edit_tool_title') : t('settings:mcp_descriptions.add_tool_title')}</DsDialogTitle>
+            <DsDialogDescription>{t('settings:mcp_descriptions.tool_modal_hint')}</DsDialogDescription>
+          </DsDialogHeader>
           <Tabs value={mcpToolModal.mode} onValueChange={handleModeChange} className="mt-1.5 flex flex-1 flex-col justify-start px-3 pb-0 min-h-0">
             <TabsList className="grid w-full grid-cols-2 rounded-lg bg-muted p-1 flex-shrink-0">
             <TabsTrigger value="form" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings:mcp_descriptions.form_mode')}</TabsTrigger>
@@ -1228,7 +1228,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-foreground">{t('settings:mcp_descriptions.env_title')}</span>
-                <NotionButton variant="ghost" size="sm" onClick={addEnvRow}>+ {t('settings:mcp_descriptions.add_env')}</NotionButton>
+                <DsButton variant="ghost" size="sm" onClick={addEnvRow}>+ {t('settings:mcp_descriptions.add_env')}</DsButton>
               </div>
               <div className="space-y-2">
                 {envEntries.length === 0 && (
@@ -1247,9 +1247,9 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                       onChange={e => handleEnvValueChange(key, e.target.value)}
                       placeholder={t('settings:placeholders.env_value')}
                     />
-                    <NotionButton variant="ghost" iconOnly size="sm" className="h-8 w-8" onClick={() => removeEnvRow(key)}>
+                    <DsButton variant="ghost" iconOnly size="sm" className="h-8 w-8" onClick={() => removeEnvRow(key)}>
                       <Trash size={16} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 ))}
               </div>
@@ -1261,7 +1261,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                   <div className="text-sm font-medium text-foreground">{t('settings:mcp_descriptions.connection_test_title')}</div>
                   <p className="mt-1 text-xs text-muted-foreground">{t('settings:mcp_descriptions.connection_test_desc')}</p>
                 </div>
-                <NotionButton variant="ghost" onClick={handleTestConnection}>{t('settings:mcp_descriptions.run_test')}</NotionButton>
+                <DsButton variant="ghost" onClick={handleTestConnection}>{t('settings:mcp_descriptions.run_test')}</DsButton>
               </div>
             </div>
             </div>
@@ -1292,10 +1292,10 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             </Alert>
           )}
 
-          <NotionDialogFooter>
-            <NotionButton variant="ghost" size="sm" onClick={handleClose}>{t('common:actions.cancel')}</NotionButton>
-            <NotionButton size="sm" onClick={handleSubmit}>{isEditing ? t('common:actions.save') : t('common:actions.create')}</NotionButton>
-          </NotionDialogFooter>
+          <DsDialogFooter>
+            <DsButton variant="ghost" size="sm" onClick={handleClose}>{t('common:actions.cancel')}</DsButton>
+            <DsButton size="sm" onClick={handleSubmit}>{isEditing ? t('common:actions.save') : t('common:actions.create')}</DsButton>
+          </DsDialogFooter>
         </div>
       </UnifiedModal>
     );
@@ -1474,20 +1474,15 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
 
     return (
       <div
-        className="h-full flex flex-col bg-background"
+        className="h-full flex flex-col bg-background [&_input]:min-h-11"
         style={{
           paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
         }}
       >
-        <div className="px-4 pt-4 pb-2 border-b border-border flex-shrink-0">
-          <h2 className="text-lg font-semibold">{isEditing ? t('settings:mcp_descriptions.edit_tool_title') : t('settings:mcp_descriptions.add_tool_title')}</h2>
-          <p className="text-sm text-muted-foreground mt-1">{t('settings:mcp_descriptions.tool_modal_hint')}</p>
-        </div>
-
-        <Tabs value={mcpToolModal.mode} onValueChange={handleModeChange} className="flex-1 flex flex-col min-h-0 px-4 pt-3">
-          <TabsList className="grid w-full grid-cols-2 rounded-lg bg-muted p-1 flex-shrink-0">
-            <TabsTrigger value="form" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings:mcp_descriptions.form_mode')}</TabsTrigger>
-            <TabsTrigger value="json" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">JSON</TabsTrigger>
+        <Tabs value={mcpToolModal.mode} onValueChange={handleModeChange} className="flex-1 flex flex-col min-h-0 px-4 pt-4">
+          <TabsList className="grid h-auto min-h-11 w-full flex-shrink-0 grid-cols-2 rounded-lg bg-muted p-1">
+            <TabsTrigger value="form" className="min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings:mcp_descriptions.form_mode')}</TabsTrigger>
+            <TabsTrigger value="json" className="min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm">JSON</TabsTrigger>
           </TabsList>
 
           <div className="flex-1 overflow-hidden min-h-0 mt-3">
@@ -1521,6 +1516,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                       ]}
                       variant="outline"
                       size="sm"
+                      className="min-h-11"
                     />
                   </div>
 
@@ -1547,7 +1543,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                           value={draft.apiKey || ''}
                           onChange={e => updateDraft({ apiKey: e.target.value })}
                           placeholder={t('settings:placeholders.api_key')}
-                          inputClassName="font-mono"
+                          inputClassName="min-h-11 font-mono"
                           revealed={showMcpApiKey}
                           canReveal={(draft.apiKey || '').trim().length > 0}
                           onToggle={() => setShowMcpApiKey(v => !v)}
@@ -1592,7 +1588,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                   <div className="space-y-2">
                     <label className="text-sm font-medium">{t('settings:mcp_descriptions.env_label')}</label>
                     {envEntries.map(([key, value], idx) => (
-                      <div key={idx} className="flex gap-2">
+                      <div key={idx} className="flex min-w-0 flex-col gap-2 sm:flex-row">
                         <Input
                           value={key}
                           onChange={e => {
@@ -1602,17 +1598,18 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                             updateDraft({ env: newEnv });
                           }}
                           placeholder={t('settings:placeholders.env_key')}
-                          className="flex-1"
+                          className="min-w-0 flex-1"
                         />
                         <Input
                           value={value}
                           onChange={e => updateDraft({ env: { ...draft.env, [key]: e.target.value } })}
                           placeholder={t('settings:placeholders.env_value')}
-                          className="flex-1"
+                          className="min-w-0 flex-1"
                         />
-                        <NotionButton
+                        <DsButton
                           variant="ghost"
                           iconOnly size="sm"
+                          className="self-end max-sm:!h-11 max-sm:!w-11 sm:self-auto"
                           onClick={() => {
                             const newEnv = { ...draft.env };
                             delete newEnv[key];
@@ -1620,17 +1617,18 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                           }}
                         >
                           <X className="h-4 w-4" />
-                        </NotionButton>
+                        </DsButton>
                       </div>
                     ))}
-                    <NotionButton
+                    <DsButton
                       variant="default"
                       size="sm"
                       onClick={() => updateDraft({ env: { ...draft.env, '': '' } })}
+                      className="min-h-11 sm:min-h-0"
                     >
                       <Plus className="h-4 w-4 mr-1" />
                       {t('settings:mcp_descriptions.add_env')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
               </CustomScrollArea>
@@ -1660,9 +1658,9 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
           </Alert>
         )}
 
-        <div className="flex gap-2 px-4 py-3 border-t border-border flex-shrink-0">
-          <NotionButton variant="ghost" onClick={handleClose} className="flex-1">{t('common:actions.cancel')}</NotionButton>
-          <NotionButton onClick={handleSubmit} className="flex-1">{isEditing ? t('common:actions.save') : t('common:actions.create')}</NotionButton>
+        <div className="flex flex-shrink-0 gap-2 border-t border-border px-4 py-3">
+          <DsButton variant="ghost" onClick={handleClose} className="min-h-11 flex-1">{t('common:actions.cancel')}</DsButton>
+          <DsButton onClick={handleSubmit} className="min-h-11 flex-1">{isEditing ? t('common:actions.save') : t('common:actions.create')}</DsButton>
         </div>
       </div>
     );
@@ -1718,16 +1716,11 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
 
     return (
       <div
-        className="h-full flex flex-col bg-background"
+        className="h-full flex flex-col bg-background [&_input]:min-h-11"
         style={{
           paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
         }}
       >
-        <div className="px-4 pt-4 pb-2 border-b border-border flex-shrink-0">
-          <h2 className="text-lg font-semibold">{t('settings:sections.policy_title')}</h2>
-          <p className="text-sm text-muted-foreground mt-1">{t('settings:mcp_descriptions.policy_subtitle')}</p>
-        </div>
-
         <CustomScrollArea className="flex-1" viewportClassName="px-4 py-4">
           <div className="space-y-4">
             {/* 广告所有工具 */}
@@ -1821,9 +1814,9 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
           </div>
         </CustomScrollArea>
 
-        <div className="flex gap-2 px-4 py-3 border-t border-border flex-shrink-0">
-          <NotionButton variant="ghost" onClick={handleClose} className="flex-1">{t('common:actions.cancel')}</NotionButton>
-          <NotionButton onClick={handleSave} className="flex-1">{t('common:actions.save')}</NotionButton>
+        <div className="flex flex-shrink-0 gap-2 border-t border-border px-4 py-3">
+          <DsButton variant="ghost" onClick={handleClose} className="min-h-11 flex-1">{t('common:actions.cancel')}</DsButton>
+          <DsButton onClick={handleSave} className="min-h-11 flex-1">{t('common:actions.save')}</DsButton>
         </div>
       </div>
     );
@@ -2064,9 +2057,11 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
     }
   };
 
-  const handleClosePreview = () => {
+  // 必须保持引用稳定：Settings.tsx 的 dismissRightPanel → handleMobileSettingsBack →
+  // useMobileHeader deps 依赖此函数，若每次渲染新建会导致顶栏配置 effect 无限重跑
+  const handleClosePreview = useCallback(() => {
     setMcpPreview({ open: false, loading: false, tools: [], prompts: [], resources: [] });
-  };
+  }, []);
 
   const mcpServers = normalizedMcpServers;
   const serverStatusMap = useMemo(() => {

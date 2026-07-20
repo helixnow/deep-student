@@ -8,11 +8,11 @@ import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { AppSelect } from '@/components/ui/app-menu';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import UnifiedModal from '@/components/UnifiedModal';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter, NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody, DsDialogFooter, DsAlertDialog } from '@/components/ui/DsDialog';
 import { ShadApiEditModal, GENERAL_DEFAULT_MIN_P, GENERAL_DEFAULT_TOP_K } from './ShadApiEditModal';
 import { VendorConfigModal, type VendorConfigModalRef } from './VendorConfigModal';
 import { Input } from '@/components/ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { TauriAPI } from '@/utils/tauriApi';
 import { ModelAssignments, VendorConfig, ModelProfile, ApiConfig } from '@/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert';
@@ -32,7 +32,7 @@ import useTheme, { type ThemeMode, type ThemePalette } from '@/hooks/useTheme';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useVendorModels } from '@/hooks/useVendorModels';
 import { consumePendingSettingsRoute } from '@/utils/pendingSettingsTab';
-import { isAndroid } from '@/utils/platform';
+import { isAndroid, isMobilePlatform } from '@/utils/platform';
 import { ShortcutSettings } from '@/command-palette';
 import '@/command-palette/styles/shortcut-settings.css';
 import { AppMenuDemo } from '@/components/ui/app-menu';
@@ -44,6 +44,7 @@ import { GeneralTab } from './GeneralTab';
 import { ApisTab } from './ApisTab';
 import { ParamsTab } from './ParamsTab';
 import { ExternalSearchTab } from './ExternalSearchTab';
+import { PluginsTab } from './plugins/PluginsTab';
 import { AutomationSettingsSection } from './AutomationSettingsSection';
 import { SubagentProfilesSection } from './SubagentProfilesSection';
 import type { AutomationListen } from './automationSettingsApi';
@@ -230,6 +231,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     memory_decision_model_config_id: '', // 记忆决策模型
     voice_input_asr_model_config_id: '', // 语音输入 ASR 模型
     image_generation_model_config_id: '', // 生图模型
+    compaction_model_config_id: '', // 上下文压缩专用模型（未设置回退对话模型）
     translation_display_mode: 'aligned', // 聊天翻译显示模式：'aligned' 短语对照（默认）/ 'streaming' 流式纯译文
 
     // MCP 工具协议设置（默认保持可配置；启用与否由消息级选择决定）
@@ -336,6 +338,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       memory_decision_model_config_id: modelAssignments.memory_decision_model_config_id || '',
       voice_input_asr_model_config_id: modelAssignments.voice_input_asr_model_config_id || '',
       image_generation_model_config_id: modelAssignments.image_generation_model_config_id || '',
+      compaction_model_config_id: modelAssignments.compaction_model_config_id || '',
       translation_display_mode: (modelAssignments.translation_display_mode === 'streaming' ? 'streaming' : 'aligned'),
     }));
   }, [modelAssignments]);
@@ -553,7 +556,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   ]);
 
   // Android 返回键：设置两级导航逐级回退（供应商详情 → 供应商列表 → 分区内容 → 分区列表）。
-  // Dialog / 右滑面板 / 左抽屉由 overlay 优先级 handler（NotionDialog、MobileSlidingLayout）
+  // Dialog / 右滑面板 / 左抽屉由 overlay 优先级 handler（DsDialog、MobileSlidingLayout）
   // 先行消费；此处只在中屏「分区内容态」接管，与顶栏返回箭头同一条回退链。
   // 分区列表态返回 false，交给应用级视图历史 fallback。
   const settingsBackStateRef = useRef({ screenPosition, mobileNavView, activeTab, mobileVendorDetailOpen });
@@ -572,7 +575,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     }, BACK_PRIORITY.view);
   }, [isSmallScreen]);
 
-  // P0-4：移动端 MCP 工具/资源预览改走三屏右滑面板（替代 NotionDialog）
+  // P0-4：移动端 MCP 工具/资源预览改走三屏右滑面板（替代 DsDialog）
   useEffect(() => {
     if (!isSmallScreen) return;
     if (mcpPreview.open) {
@@ -595,9 +598,28 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const SettingsBreadcrumb = useMemo(() => {
     let text = t('settings:title');
     if (screenPosition === 'right') {
-      text = rightPanelType === 'mcpPreview'
-        ? (mcpPreview.serverName || t('settings:mcp.preview.default_title'))
-        : t('settings:title_edit');
+      switch (rightPanelType) {
+        case 'mcpPreview':
+          text = mcpPreview.serverName || t('settings:mcp.preview.default_title');
+          break;
+        case 'mcpTool':
+          text = mcpToolModal.draft.name?.trim()
+            || (mcpToolModal.index == null
+              ? t('settings:mcp_descriptions.add_tool_title')
+              : t('settings:mcp_descriptions.edit_tool_title'));
+          break;
+        case 'mcpPolicy':
+          text = t('settings:mcp.security_policy');
+          break;
+        case 'modelEditor':
+          text = modelEditor?.api?.name || t('settings:title_edit');
+          break;
+        case 'vendorConfig':
+          text = editingVendor?.name || t('settings:title_edit');
+          break;
+        default:
+          text = t('settings:title_edit');
+      }
     } else if (mobileNavView === 'content') {
       if (activeTab === 'apis' && mobileVendorDetailOpen && selectedVendor) {
         text = selectedVendor.name || activeNavItem?.label || t('settings:title');
@@ -614,6 +636,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     screenPosition,
     rightPanelType,
     mcpPreview.serverName,
+    mcpToolModal.draft.name,
+    mcpToolModal.index,
+    modelEditor,
+    editingVendor,
     mobileNavView,
     activeTab,
     mobileVendorDetailOpen,
@@ -626,14 +652,14 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     if (screenPosition !== 'right') return undefined;
     if (rightPanelType === 'vendorConfig') {
       return (
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => vendorConfigModalRef.current?.save()} title={t('common:actions.save')} aria-label={t('settings:a11y.save')} className="text-primary">
+        <DsButton variant="ghost" size="icon" iconOnly onClick={() => vendorConfigModalRef.current?.save()} title={t('common:actions.save')} aria-label={t('settings:a11y.save')} className="!h-11 !w-11 text-primary">
           <Check size={20} />
-        </NotionButton>
+        </DsButton>
       );
     }
     if (rightPanelType === 'modelEditor') {
       return (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -643,10 +669,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           }}
           title={t('common:actions.save')}
           aria-label={t('settings:a11y.save')}
-          className="text-primary"
+          className="!h-11 !w-11 text-primary"
         >
           <Check size={20} />
-        </NotionButton>
+        </DsButton>
       );
     }
     return undefined;
@@ -961,6 +987,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           memory_decision_model_config_id: string | null;
           voice_input_asr_model_config_id: string | null;
           image_generation_model_config_id: string | null;
+          compaction_model_config_id: string | null;
           translation_display_mode: string | null;
         }>('get_model_assignments');
         setConfig(prev => ({
@@ -976,6 +1003,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           memory_decision_model_config_id: modelAssignments?.memory_decision_model_config_id || '',
           voice_input_asr_model_config_id: modelAssignments?.voice_input_asr_model_config_id || '',
           image_generation_model_config_id: modelAssignments?.image_generation_model_config_id || '',
+          compaction_model_config_id: modelAssignments?.compaction_model_config_id || '',
           translation_display_mode: (modelAssignments?.translation_display_mode === 'streaming' ? 'streaming' : 'aligned'),
         }));
       } catch {
@@ -1163,7 +1191,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     </CustomScrollArea>
   );
 
-  // P0-4：MCP 工具/资源预览正文（桌面 NotionDialog 与移动右滑面板共用）
+  // P0-4：MCP 工具/资源预览正文（桌面 DsDialog 与移动右滑面板共用）
   const renderMcpPreviewBody = () => {
     if (mcpPreview.loading) {
       return <div className="py-12 text-center text-sm text-muted-foreground">{t('settings:mcp.preview.loading')}</div>;
@@ -1348,17 +1376,17 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           />
         )}
 
-        {/* MCP 预览：桌面用 NotionDialog；移动端由三屏右滑面板承载（见 renderRightPanel） */}
+        {/* MCP 预览：桌面用 DsDialog；移动端由三屏右滑面板承载（见 renderRightPanel） */}
         {!isSmallScreen && (
-          <NotionDialog open={mcpPreview.open} onOpenChange={(open) => { if (!open) handleClosePreview(); }} maxWidth="max-w-3xl">
-            <NotionDialogHeader>
-              <NotionDialogTitle>{mcpPreview.serverName || t('settings:mcp.preview.default_title')}</NotionDialogTitle>
-              <NotionDialogDescription>{t('settings:mcp.preview.description')}</NotionDialogDescription>
+          <DsDialog open={mcpPreview.open} onOpenChange={(open) => { if (!open) handleClosePreview(); }} maxWidth="max-w-3xl">
+            <DsDialogHeader>
+              <DsDialogTitle>{mcpPreview.serverName || t('settings:mcp.preview.default_title')}</DsDialogTitle>
+              <DsDialogDescription>{t('settings:mcp.preview.description')}</DsDialogDescription>
               {mcpPreview.serverId && (
                 <div className="mt-1 text-xs text-muted-foreground break-all">{t('settings:mcp.preview.id_label')}：{mcpPreview.serverId}</div>
               )}
-            </NotionDialogHeader>
-            <NotionDialogBody>
+            </DsDialogHeader>
+            <DsDialogBody>
               <CustomScrollArea
                 className="flex-1 min-h-0 px-6 py-6"
                 viewportClassName="px-6 py-6"
@@ -1368,11 +1396,11 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
               >
                 {renderMcpPreviewBody()}
               </CustomScrollArea>
-            </NotionDialogBody>
-            <NotionDialogFooter>
-              <NotionButton variant="default" size="sm" onClick={handleClosePreview}>{t('common:close')}</NotionButton>
-            </NotionDialogFooter>
-          </NotionDialog>
+            </DsDialogBody>
+            <DsDialogFooter>
+              <DsButton variant="default" size="sm" onClick={handleClosePreview}>{t('common:close')}</DsButton>
+            </DsDialogFooter>
+          </DsDialog>
         )}
         {/* 外部搜索设置 */}
         {activeTab === 'search' && (
@@ -1393,6 +1421,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             getImageGenerationApis={getImageGenerationApis}
             saveSingleAssignmentField={saveSingleAssignmentField}
           />
+        )}
+        {activeTab === 'plugins' && !isMobilePlatform() && (
+          <PluginsTab models={toUnifiedModelInfo(getAllEnabledApis())} />
+        )}
+        {activeTab === 'plugins' && isMobilePlatform() && (
+          <div className="py-10 text-sm text-muted-foreground">{t('settings:plugins.mobile_hidden')}</div>
         )}
         {activeTab === 'mcp' && (
           <McpToolsSection
@@ -1514,11 +1548,11 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 marginBottom: '16px'
               }}>
                 <h3 style={{ margin: '0', fontSize: '18px', fontWeight: '600' }}>{t('settings:mcp.security_policy')}</h3>
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))} aria-label={t('settings:a11y.close')}>
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))} aria-label={t('settings:a11y.close')}>
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                     <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
-                </NotionButton>
+                </DsButton>
               </div>
               {/* 矮窗口下限高滚动，避免表单被 max-h-[85vh] + overflow-hidden 裁剪后按钮不可达 */}
               <div className="min-h-0 flex-1 overflow-y-auto" style={{ display: 'grid', gap: 12 }}>
@@ -1610,8 +1644,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-                <NotionButton variant="ghost" onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}>{t('common:actions.cancel')}</NotionButton>
-                <NotionButton
+                <DsButton variant="ghost" onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}>{t('common:actions.cancel')}</DsButton>
+                <DsButton
                   onClick={async () => {
                     const nextPolicy = {
                       mcpAdvertiseAll: mcpPolicyModal.advertiseAll,
@@ -1646,7 +1680,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                     showGlobalNotification('success', t('settings:mcp_descriptions.policy_saved'));
                     setMcpPolicyModal(prev => ({ ...prev, open: false }));
                   }}
-                >{t('common:save')}</NotionButton>
+                >{t('common:save')}</DsButton>
               </div>
             </div>
           </UnifiedModal>
@@ -1780,23 +1814,23 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         </MobileSlidingLayout>
         {/* VendorConfigModal 在移动端已通过右侧滑动面板渲染，这里不再重复渲染 */}
         {/* P0-5：模型/供应商删除确认在移动端改为行内二次确认（VendorDetailPanel），
-            不再渲染 NotionAlertDialog（遵循移动端无弹层契约） */}
+            不再渲染 DsAlertDialog（遵循移动端无弹层契约） */}
 
         {/* 现代化菜单演示对话框 */}
-        <NotionDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">
-          <NotionDialogHeader>
-            <NotionDialogTitle className="flex items-center gap-2">
+        <DsDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">
+          <DsDialogHeader>
+            <DsDialogTitle className="flex items-center gap-2">
               <Stack size={20} />
               {t('acknowledgements.ui_components.app_menu')}
-            </NotionDialogTitle>
-            <NotionDialogDescription>
+            </DsDialogTitle>
+            <DsDialogDescription>
               {t('acknowledgements.ui_components.app_menu_desc')}
-            </NotionDialogDescription>
-          </NotionDialogHeader>
-          <NotionDialogBody>
+            </DsDialogDescription>
+          </DsDialogHeader>
+          <DsDialogBody>
             <AppMenuDemo />
-          </NotionDialogBody>
-        </NotionDialog>
+          </DsDialogBody>
+        </DsDialog>
       </div>
     );
   }
@@ -1831,7 +1865,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         }}
         onSave={handleSaveVendorModal}
       />
-      <NotionAlertDialog
+      <DsAlertDialog
         open={Boolean(modelDeleteDialog)}
         onOpenChange={open => { if (!open) setModelDeleteDialog(null); }}
         title={t('settings:vendor_panel.delete_model_title')}
@@ -1850,8 +1884,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         ) : (
           <p className="text-sm text-muted-foreground">{t('settings:common_labels.confirm_delete_api')}</p>
         )}
-      </NotionAlertDialog>
-      <NotionAlertDialog
+      </DsAlertDialog>
+      <DsAlertDialog
         open={Boolean(vendorDeleteDialog)}
         onOpenChange={open => { if (!open) setVendorDeleteDialog(null); }}
         title={t('settings:vendor_panel.delete_vendor_title')}
@@ -1864,23 +1898,23 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         {vendorDeleteDialog && (
           <p className="text-sm text-muted-foreground">{t('settings:vendor_panel.confirm_delete', { name: vendorDeleteDialog.name })}</p>
         )}
-      </NotionAlertDialog>
+      </DsAlertDialog>
 
       {/* 现代化菜单演示对话框 */}
-      <NotionDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">
-        <NotionDialogHeader>
-          <NotionDialogTitle className="flex items-center gap-2">
+      <DsDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">
+        <DsDialogHeader>
+          <DsDialogTitle className="flex items-center gap-2">
             <Stack size={20} />
             {t('acknowledgements.ui_components.app_menu')}
-          </NotionDialogTitle>
-          <NotionDialogDescription>
+          </DsDialogTitle>
+          <DsDialogDescription>
             {t('acknowledgements.ui_components.app_menu_desc')}
-          </NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogBody>
+          </DsDialogDescription>
+        </DsDialogHeader>
+        <DsDialogBody>
           <AppMenuDemo />
-        </NotionDialogBody>
-      </NotionDialog>
+        </DsDialogBody>
+      </DsDialog>
     </div>
   );
 };

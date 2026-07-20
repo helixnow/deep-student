@@ -1085,6 +1085,8 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       review_analysis_model_config_id: null,
       voice_input_asr_model_config_id: mapping[t('settings:mapping_keys.voice_input_asr_configured')] || null,
       image_generation_model_config_id: mapping[t('settings:mapping_keys.image_generation_configured')] || null,
+      // 压缩专用模型不属于供应商映射，保持现状不变
+      compaction_model_config_id: null,
       // 显示模式不属于供应商映射，保持现状不变（持久化层 #[serde(default)] 兜底为 null）
       translation_display_mode: null,
     };

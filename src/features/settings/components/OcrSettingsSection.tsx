@@ -1,13 +1,13 @@
 /**
  * OCR 策略设置区块
- * Notion 风格：简洁、无边框、hover 效果
+ * 简洁风格：简洁、无边框、hover 效果
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowCounterClockwise, CircleNotch } from '@phosphor-icons/react';
 import { Switch } from '@/components/ui/shad/Switch';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/lib/utils';
@@ -270,7 +270,7 @@ export const OcrSettingsSection: React.FC = () => {
       <GroupTitle 
         title={t('settings:ocr.title')}
         rightSlot={
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handleReset}
@@ -279,7 +279,7 @@ export const OcrSettingsSection: React.FC = () => {
           >
             <ArrowCounterClockwise size={12} />
             {t('common:actions.reset')}
-          </NotionButton>
+          </DsButton>
         }
       />
 

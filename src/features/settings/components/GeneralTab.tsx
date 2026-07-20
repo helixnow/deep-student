@@ -12,7 +12,7 @@ import { AnkiConnectSettingsSection } from './AnkiConnectSettingsSection';
 import { SystemPermissionsSection } from './SystemPermissionsSection';
 import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Input } from '@/components/ui/shad/Input';
 import { UserAgreementDialog } from '@/components/legal/UserAgreementDialog';
@@ -217,14 +217,14 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             title={t('settings:quick_assistant.preview', '预览快速学习')}
             description={t('settings:quick_assistant.preview_description', '打开小窗，检查剪贴板捕获、搜索、复习和学习状态。')}
           >
-            <NotionButton
+            <DsButton
               variant="default"
               size="sm"
               disabled={!quickAssistantConfig?.enabled}
               onClick={() => void openQuickAssistantWindow()}
             >
               {t('settings:quick_assistant.open', '打开小窗')}
-            </NotionButton>
+            </DsButton>
           </SettingRow>
         </SettingsGroup>
         )}
@@ -314,13 +314,13 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               title={t('settings:developer.preview_agreement.title')}
               description={t('settings:developer.preview_agreement.desc')}
             >
-              <NotionButton
+              <DsButton
                 variant="default"
                 size="sm"
                 onClick={() => setShowAgreementPreview(true)}
               >
                 {t('settings:developer.preview_agreement.button')}
-              </NotionButton>
+              </DsButton>
             </SettingRow>
         </SettingsGroup>
 
@@ -360,7 +360,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             }
           >
             {!isMobilePlatform() && (
-              <NotionButton
+              <DsButton
                 variant="primary"
                 size="sm"
                 disabled={diagnosticsExporting}
@@ -393,7 +393,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 {diagnosticsExporting
                   ? <CircleNotch size={12} className="animate-spin" />
                   : t('settings:diagnostics.export.action', 'Export ZIP')}
-              </NotionButton>
+              </DsButton>
             )}
           </SettingRow>
           {!isMobilePlatform() && (
@@ -473,7 +473,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             title={t('common:debug_panel.open_unified', t('common:debug_panel.open'))}
             description={t('settings:developer.description')}
           >
-            <NotionButton
+            <DsButton
               variant="default"
               size="sm"
               onClick={() => {
@@ -490,7 +490,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               }}
             >
               {t('common:debug_panel.open_unified', t('common:debug_panel.open'))}
-            </NotionButton>
+            </DsButton>
           </SettingRow>
 
           <SettingRow
@@ -513,7 +513,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
                 width={80}
               />
-              <NotionButton
+              <DsButton
                 variant="primary"
                 size="sm"
                 onClick={async () => {
@@ -525,7 +525,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 }}
               >
                 {t('settings:developer.open_logs')}
-              </NotionButton>
+              </DsButton>
             </div>
           </SettingRow>
 
@@ -685,7 +685,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 : t('settings:developer.debug_logs.loading')}
             >
               <div className="flex items-center gap-2">
-                <NotionButton
+                <DsButton
                   variant="default"
                   size="sm"
                   onClick={async () => {
@@ -699,8 +699,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   }}
                 >
                   {t('settings:developer.debug_logs.open')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   variant="ghost"
                   size="sm"
                   disabled={debugLogsClearing}
@@ -718,7 +718,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   }}
                 >
                   {debugLogsClearing ? <CircleNotch size={12} className="animate-spin" /> : t('settings:developer.debug_logs.clear_all')}
-                </NotionButton>
+                </DsButton>
               </div>
             </SettingRow>
           )}
@@ -790,7 +790,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 title={t('common:legal.dataRights.manageData')}
                 description={t('common:legal.dataRights.manageDataDesc')}
               >
-                <NotionButton
+                <DsButton
                   variant="default"
                   size="sm"
                   onClick={() => {
@@ -803,7 +803,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   }}
                 >
                   {t('common:legal.dataRights.goToDataGovernance')}
-                </NotionButton>
+                </DsButton>
               </SettingRow>
             </div>
         </SettingsGroup>

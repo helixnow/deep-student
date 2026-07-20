@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { Warning, Copy, Database, X, XCircle } from '@phosphor-icons/react';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { cn } from '@/lib/utils';
 import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
@@ -158,32 +158,32 @@ export const MigrationStatusBanner: React.FC = () => {
           </div>
 
           {/* 关闭按钮 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={dismiss} className={cn('shrink-0 !p-1 [@media(pointer:coarse)]:!p-2.5 [@media(pointer:coarse)]:-m-1.5', 'text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label={t('common:actions.close')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={dismiss} className={cn('shrink-0 !p-1 [@media(pointer:coarse)]:!p-2.5 [@media(pointer:coarse)]:-m-1.5', 'text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label={t('common:actions.close')}>
             <X size={14} />
-          </NotionButton>
+          </DsButton>
         </div>
 
         {/* 操作区（窄屏/英文长文案允许换行；触屏放大到 ≥36px 命中区） */}
         <div className="mt-2.5 flex flex-wrap gap-2 pl-10">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             className="h-7 px-2.5 text-xs [@media(pointer:coarse)]:h-9"
             onClick={openDataGovernance}
           >
             {t('data:governance.toast_view_details')}
-          </NotionButton>
+          </DsButton>
           {migrationLevel === 'error' && (
             <CopyDiagnosticButton />
           )}
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             className="h-7 px-2.5 text-xs text-muted-foreground [@media(pointer:coarse)]:h-9"
             onClick={dismiss}
           >
             {t('common:actions.later')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     </div>
@@ -211,7 +211,7 @@ const CopyDiagnosticButton: React.FC = () => {
   }, []);
 
   return (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="sm"
       className="h-7 px-2.5 text-xs [@media(pointer:coarse)]:h-9"
@@ -223,7 +223,7 @@ const CopyDiagnosticButton: React.FC = () => {
         : copyFailed
           ? t('data:governance.copy_failed')
           : t('data:governance.copy_log')}
-    </NotionButton>
+    </DsButton>
   );
 };
 

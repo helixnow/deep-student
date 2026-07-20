@@ -30,8 +30,8 @@ import {
 } from '@phosphor-icons/react';
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/shad/Tabs';
-import { NotionButton } from '@/components/ui/NotionButton';
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { DsButton } from '@/components/ui/DsButton';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { SettingSection } from './SettingsCommon';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -271,23 +271,23 @@ export const DebugTab: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <NotionButton variant="warning" size="sm" onClick={triggerWarning}>
+        <DsButton variant="warning" size="sm" onClick={triggerWarning}>
           <Warning className="h-3.5 w-3.5 mr-1.5" />
           {t('data:governance.debug_trigger_warning')}
-        </NotionButton>
-        <NotionButton variant="danger" size="sm" onClick={triggerError}>
+        </DsButton>
+        <DsButton variant="danger" size="sm" onClick={triggerError}>
           <XCircle className="h-3.5 w-3.5 mr-1.5" />
           {t('data:governance.debug_trigger_error')}
-        </NotionButton>
-        <NotionButton variant="primary" size="sm" onClick={triggerInfo}>
+        </DsButton>
+        <DsButton variant="primary" size="sm" onClick={triggerInfo}>
           <Database className="h-3.5 w-3.5 mr-1.5" />
           {t('data:governance.debug_trigger_info')}
-        </NotionButton>
-        <NotionButton variant="ghost" size="sm" onClick={clearMigrationStatus}>
+        </DsButton>
+        <DsButton variant="ghost" size="sm" onClick={clearMigrationStatus}>
           <XCircle className="h-3.5 w-3.5 mr-1.5" />
           {t('data:governance.debug_clear_toast')}
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="default"
           size="sm"
           onClick={simulateFlow}
@@ -298,7 +298,7 @@ export const DebugTab: React.FC = () => {
           {flowRunning
             ? t('data:governance.debug_flow_in_progress')
             : t('data:governance.debug_simulate_flow')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       <div className="space-y-2">
@@ -306,7 +306,7 @@ export const DebugTab: React.FC = () => {
           {t('data:governance.debug_slot_test_title')}
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <NotionButton
+          <DsButton
             variant="default"
             size="sm"
             onClick={runSlotCEmptyDbTest}
@@ -317,8 +317,8 @@ export const DebugTab: React.FC = () => {
             {slotCTestRunning
               ? t('data:governance.debug_slot_test_running')
               : t('data:governance.debug_run_slot_c_test')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="default"
             size="sm"
             onClick={runSlotDCloneDbTest}
@@ -329,7 +329,7 @@ export const DebugTab: React.FC = () => {
             {slotDTestRunning
               ? t('data:governance.debug_slot_test_running')
               : t('data:governance.debug_run_slot_d_test')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 
@@ -416,7 +416,7 @@ export const DebugTab: React.FC = () => {
           <p className="text-sm text-muted-foreground">
             {t('data:governance.purge_all_data_desc')}
           </p>
-          <NotionButton
+          <DsButton
             variant="danger"
             size="sm"
             onClick={() => setShowPurgeDialog(true)}
@@ -428,10 +428,10 @@ export const DebugTab: React.FC = () => {
               <Trash className="h-4 w-4 mr-2" />
             )}
             {t('data:governance.purge_all_data_button')}
-          </NotionButton>
+          </DsButton>
         </div>
 
-        <NotionAlertDialog
+        <DsAlertDialog
           open={showPurgeDialog}
           onOpenChange={(open) => { if (!open) setShowPurgeDialog(false); }}
           title={t('data:governance.purge_confirm_title')}
@@ -1156,6 +1156,17 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       showGlobalNotification('warning', t('data:governance.backup_already_running'));
       return;
     }
+    const selectedBackup = backups.find((backup) => backup.path === backupId);
+    if (
+      selectedBackup &&
+      !(selectedBackup.restorable ?? selectedBackup.backup_type === 'full')
+    ) {
+      showGlobalNotification(
+        'warning',
+        t('data:governance.restore_non_full_not_supported'),
+      );
+      return;
+    }
 
     // Task 1: 恢复前磁盘空间检查
     startTabLoading('backup');
@@ -1172,8 +1183,12 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         return;
       }
     } catch (error: unknown) {
-      // 磁盘空间检查失败不阻塞恢复，仅记录警告
-      console.warn('磁盘空间检查失败，继续恢复:', error);
+      // 只有 API 层确认是旧后端 CommandNotFound 时才会返回兼容结果。
+      // 权限、I/O、清单损坏、目标卷不明等错误必须 fail-close。
+      console.error('磁盘空间检查失败，已阻止恢复:', error);
+      showGlobalNotification('error', getErrorMessage(error));
+      stopTabLoading('backup');
+      return;
     }
 
     setIsBackupRunning(true);
@@ -1198,7 +1213,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       setJobOperation(null);
       stopTabLoading('backup');
     }
-  }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
+  }, [backups, setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
 
   // 执行云端同步（带进度事件）
   const runCloudSync = useCallback(async (
@@ -1628,32 +1643,32 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
   const content = (
     <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as DashboardTab)}>
-      <TabsList className="mb-4">
-        <TabsTrigger value="overview" className="flex items-center gap-1">
+      <TabsList className="mb-4 flex h-auto min-h-11 w-full max-w-full justify-start overflow-x-auto">
+        <TabsTrigger value="overview" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
           <Gauge className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_overview')}</span>
         </TabsTrigger>
-        <TabsTrigger value="archive" className="flex items-center gap-1">
+        <TabsTrigger value="archive" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
           <Archive className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_archive')}</span>
         </TabsTrigger>
-        <TabsTrigger value="backup" className="flex items-center gap-1">
+        <TabsTrigger value="backup" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
           <HardDrive className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_backup')}</span>
         </TabsTrigger>
-        <TabsTrigger value="sync" className="flex items-center gap-1">
+        <TabsTrigger value="sync" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
           <Cloud className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_sync')}</span>
         </TabsTrigger>
-        <TabsTrigger value="audit" className="flex items-center gap-1">
+        <TabsTrigger value="audit" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
           <FileText className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_audit')}</span>
         </TabsTrigger>
-        <TabsTrigger value="cache" className="flex items-center gap-1">
+        <TabsTrigger value="cache" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
           <Image className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_cache')}</span>
         </TabsTrigger>
-        <TabsTrigger value="debug" className="flex items-center gap-1 text-muted-foreground">
+        <TabsTrigger value="debug" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 text-muted-foreground sm:min-h-0 sm:min-w-0">
           <Bug className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.debug_tab_title')}</span>
         </TabsTrigger>

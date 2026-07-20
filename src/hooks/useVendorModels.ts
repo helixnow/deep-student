@@ -21,6 +21,7 @@ const DEFAULT_ASSIGNMENTS: ModelAssignments = {
   review_analysis_model_config_id: null,
   voice_input_asr_model_config_id: null,
   image_generation_model_config_id: null,
+  compaction_model_config_id: null,
   translation_display_mode: null,
 };
 

@@ -18,7 +18,7 @@ import {
   X,
   Upload,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { invoke } from '@tauri-apps/api/core';
 import { UnifiedDragDropZone, FILE_TYPES } from '@/components/shared/UnifiedDragDropZone';
@@ -176,9 +176,9 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium">{t('settings:ocr.test_title')}</h3>
         {onClose && (
-          <NotionButton variant="ghost" size="sm" iconOnly onClick={onClose}>
+          <DsButton variant="ghost" size="sm" iconOnly onClick={onClose}>
             <X size={16} />
-          </NotionButton>
+          </DsButton>
         )}
       </div>
 
@@ -191,20 +191,20 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
               alt={t('settings:ocr.test_image')}
               className="max-h-48 mx-auto rounded-lg shadow-sm"
             />
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClear} className="absolute top-2 right-2 !p-1 !rounded-full bg-black/50 text-white hover:bg-[var(--overlay-control-hover-strong)]" aria-label="clear">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClear} className="absolute top-2 right-2 !p-1 !rounded-full bg-black/50 text-white hover:bg-[var(--overlay-control-hover-strong)]" aria-label="clear">
               <X size={14} />
-            </NotionButton>
+            </DsButton>
           </div>
           <div className="flex justify-center gap-2">
-            <NotionButton
+            <DsButton
               variant="default"
               size="sm"
               onClick={() => clickInputRef.current?.click()}
             >
               <ImageIcon size={14} />
               {t('settings:ocr.change_image')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               onClick={handleRunTest}
               disabled={testing || engineModels.length === 0}
               size="sm"
@@ -221,7 +221,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
                   {t('settings:ocr.start_test')} ({engineModels.length} {t('settings:ocr.engines_count')})
                 </>
               )}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       ) : (

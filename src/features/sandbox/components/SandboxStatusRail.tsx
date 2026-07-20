@@ -2,7 +2,7 @@ import React from 'react';
 import { SidebarSimple } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 interface SandboxStatusRailProps {
   onOpenInspector: () => void;
@@ -17,7 +17,7 @@ export function SandboxStatusRail({ onOpenInspector }: SandboxStatusRailProps) {
           {t('sandbox.preview')}
         </span>
       </div>
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="icon"
         iconOnly
@@ -27,7 +27,7 @@ export function SandboxStatusRail({ onOpenInspector }: SandboxStatusRailProps) {
         className="!h-8 !w-8 !p-0"
       >
         <SidebarSimple size={16} />
-      </NotionButton>
+      </DsButton>
     </aside>
   );
 }

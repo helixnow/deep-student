@@ -127,6 +127,7 @@ pub fn load_builtin_api_configs() -> Result<Vec<ApiConfig>, AppError> {
                     is_builtin: true,
                     is_read_only: true,
                     reasoning_effort: None,
+                    reasoning_mode: None,
                     thinking_enabled: entry.is_reasoning,
                     thinking_budget: None,
                     include_thoughts: false,

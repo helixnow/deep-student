@@ -5,7 +5,7 @@ import { Globe, GithubLogo, Bug, ArrowSquareOut, ArrowClockwise, Download } from
 import { OpenSourceAcknowledgementsSection } from './OpenSourceAcknowledgementsSection';
 import { SiliconFlowLogo } from '@/components/ui/SiliconFlowLogo';
 import { DeepStudentLogo } from '@/components/ui/DeepStudentLogo';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { SettingSection } from './SettingsCommon';
@@ -170,7 +170,7 @@ export const AboutTab: React.FC = () => {
                   {VERSION_INFO.FULL_VERSION}
                   <span className="text-muted-foreground/50 ml-1.5 text-xs">{VERSION_INFO.GIT_HASH}</span>
                 </span>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={() => updater.checkForUpdate(false)}
@@ -181,7 +181,7 @@ export const AboutTab: React.FC = () => {
                   {updater.checking
                     ? t('about.update.checking')
                     : t('about.update.check')}
-                </NotionButton>
+                </DsButton>
               </div>
             </SettingRow>
 
@@ -215,14 +215,14 @@ export const AboutTab: React.FC = () => {
             >
               <div className="flex items-center gap-1.5">
                 {noRemind ? (
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={handleResetNoRemind}
                     className="h-6 [@media(pointer:coarse)]:h-10 px-2 text-xs text-primary"
                   >
                     {t('about.update.frequencyReEnable')}
-                  </NotionButton>
+                  </DsButton>
                 ) : (
                   <>
                     <Select value={frequency} onValueChange={(val) => handleFrequencyChange(val as UpdateFrequency)}>
@@ -313,7 +313,7 @@ export const AboutTab: React.FC = () => {
                       </a>
                     </div>
                   ) : (
-                    <NotionButton
+                    <DsButton
                       size="sm"
                       onClick={() => updater.downloadAndInstall()}
                       disabled={updater.downloading}
@@ -323,7 +323,7 @@ export const AboutTab: React.FC = () => {
                       {updater.downloading
                         ? t('about.update.downloading')
                         : t('about.update.install')}
-                    </NotionButton>
+                    </DsButton>
                   )}
                 </div>
                 {!updater.isMobile && updater.downloading && updater.progress > 0 && (
@@ -333,14 +333,14 @@ export const AboutTab: React.FC = () => {
                 )}
                 {!updater.downloading && (
                   <div className="mt-2">
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       onClick={() => updater.skipVersion(updater.info!.version)}
                       className="h-6 [@media(pointer:coarse)]:h-10 px-2 text-xs text-muted-foreground"
                     >
                       {t('about.update.dialog.skipVersion')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 )}
               </div>

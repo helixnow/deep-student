@@ -13,7 +13,7 @@ import {
   SpinnerGap,
 } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/shad/Card';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   AreaChart,
   Area,
@@ -188,10 +188,10 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
       <div className="flex flex-col items-center justify-center h-64 gap-4">
         <XCircle size={48} className="text-destructive" />
         <p className="text-destructive">{error}</p>
-        <NotionButton onClick={() => loadData()}>
+        <DsButton onClick={() => loadData()}>
           <ArrowsClockwise size={16} className="mr-2" />
           {t('actions.refresh')}
-        </NotionButton>
+        </DsButton>
       </div>
     );
   }
@@ -218,9 +218,9 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           {onBack && (
-            <NotionButton variant="ghost" size="sm" onClick={onBack}>
+            <DsButton variant="ghost" size="sm" onClick={onBack}>
               ←
-            </NotionButton>
+            </DsButton>
           )}
           <div>
             <h1 className="text-2xl font-bold">{t('title')}</h1>
@@ -230,7 +230,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
         <div className="flex items-center gap-2">
           <div className="flex border rounded-md">
             {(['7', '30', '90'] as TimeRange[]).map((range) => (
-              <NotionButton
+              <DsButton
                 key={range}
                 variant={timeRange === range ? 'default' : 'ghost'}
                 size="sm"
@@ -238,10 +238,10 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
                 className="rounded-none first:rounded-l-md last:rounded-r-md"
               >
                 {range}d
-              </NotionButton>
+              </DsButton>
             ))}
           </div>
-          <NotionButton
+          <DsButton
             variant="outline"
             size="sm"
             onClick={() => loadData(true)}
@@ -249,7 +249,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
           >
             <ArrowsClockwise size={16} className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
             {t('actions.refresh')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 

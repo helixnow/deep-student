@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { HtmlSandboxPreview } from '@/components/previews/HtmlSandboxPreview';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -185,7 +185,7 @@ export function SandboxWorkbenchSurface({
         )}
         <div className="flex flex-1 items-center justify-center px-6 py-10">
           <div className="flex flex-col items-center gap-4">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -196,7 +196,7 @@ export function SandboxWorkbenchSurface({
               className="!h-12 !w-12 rounded-2xl border border-border/80 bg-background/90 text-muted-foreground shadow-[var(--shadow-shell-soft)] backdrop-blur-md hover:bg-background hover:text-foreground"
             >
               <SidebarSimple size={18} />
-            </NotionButton>
+            </DsButton>
             <button
               type="button"
               onClick={handleClear}

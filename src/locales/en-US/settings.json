@@ -752,7 +752,8 @@
     "theme": "Theme",
     "params": "Parameters",
     "shortcuts": "Shortcuts",
-    "about": "About"
+    "about": "About",
+    "plugins": "Plugins"
   },
   "automation": {
     "title": "Automations",
@@ -903,12 +904,17 @@
   },
   "subagentProfiles": {
     "title": "Subagent Profiles",
-    "description": "Browse available subagent profiles: the three built-in profiles work out of the box, and custom profiles are defined as Markdown files in the profiles directory.",
+    "description": "Manage available subagent profiles: the three built-in profiles work out of the box, and custom profiles can be created and edited right here — changes take effect immediately.",
     "loading": "Loading subagent profiles",
+    "loading_file": "Loading profile content…",
     "builtin_badge": "Built-in",
     "custom_badge": "Custom",
+    "invalid_badge": "Invalid",
+    "inactive_badge": "Inactive",
+    "invalid_hint": "This file is incomplete or invalid and is skipped at runtime. Click edit to fix it.",
     "model": "Model: {{model}}",
     "tool_count": "Tools: {{count}}",
+    "modified_at": "Modified {{time}}",
     "builtin_names": {
       "default": "Default",
       "worker": "Worker",
@@ -918,19 +924,60 @@
       "refresh": "Refresh profiles",
       "retry": "Retry",
       "open_dir": "Open profiles directory",
-      "copy_template": "Copy template",
-      "copied": "Copied"
+      "create": "New profile",
+      "edit": "Edit profile {{name}}",
+      "edit_short": "Edit",
+      "delete": "Delete profile {{name}}",
+      "delete_short": "Delete"
+    },
+    "form": {
+      "create_title": "New custom profile",
+      "create_description": "Fill in the profile details. Once saved it is available for subagent delegation (profile id = name).",
+      "create_submit": "Create",
+      "name": "Name (id)",
+      "name_placeholder": "my-researcher",
+      "name_hint": "Lowercase letters, digits and hyphens only; also used as the file name.",
+      "base": "Base profile",
+      "base_hint": "Uses the selected built-in profile's safe tool boundary. Custom profiles cannot change sandbox, approval, network, or context-inheritance policy.",
+      "description": "Description",
+      "description_placeholder": "Research the web and report key points",
+      "model": "Model (optional)",
+      "model_placeholder": "Leave empty to use the default model",
+      "model_hint": "Enter an exact enabled model configuration ID. Runtime will not silently fall back to another local or cloud model.",
+      "instructions": "Instructions (system prompt)",
+      "instructions_placeholder": "You are a research subagent. Always include source links with your conclusions.",
+      "instructions_hint": "Leave empty to keep the base profile's default instructions.",
+      "advanced": "Advanced fields",
+      "advanced_hint": "Supports reasoning_effort, tools and skills. Skills are injected from a creation-time content snapshot. permissions / context_inheritance are unsupported and rejected.",
+      "raw_title": "File content",
+      "raw_hint": "This file could not be parsed into the form, so you are editing the raw text (it must contain closed --- frontmatter and a valid name)."
+    },
+    "delete": {
+      "inline_confirm": "Deleting takes effect immediately and cannot be undone. Delete this profile?",
+      "confirm": "Delete"
+    },
+    "notices": {
+      "created": "Profile \"{{name}}\" created",
+      "updated": "Profile \"{{name}}\" saved",
+      "deleted": "Deleted {{fileName}}"
     },
     "empty": {
       "title": "No custom profiles yet",
-      "description": "Drop a .md file into the profiles directory to define a custom subagent, then hit refresh to load it.",
-      "template_hint": "Minimal template",
-      "template": "---\nname: my-researcher\ndescription: Research the web and report key points\nbase: explorer\n---\nYou are a research subagent. Always include source links with your conclusions."
+      "description": "Create a custom profile to give subagents tailored instructions, models and tools.",
+      "cta": "New profile"
     },
     "errors": {
       "desktop_only": "Subagent profile management requires the Deep Student desktop app.",
       "reveal_failed": "Could not open the profiles directory. Check that it exists.",
-      "copy_failed": "Failed to copy the template. Please copy it manually."
+      "name_required": "Please enter a profile name",
+      "name_invalid": "Name may only contain lowercase letters, digits and hyphens (max 64 characters)",
+      "name_builtin_conflict": "Name must not match a built-in profile (default / worker / explorer)",
+      "content_required": "File content must not be empty",
+      "file_exists": "A profile file with this name already exists. Choose a different name.",
+      "not_found": "Profile file not found — it may have been deleted. Refresh the list.",
+      "unsupported_runtime_field": "Field {{field}} is not supported by the runtime and cannot be saved instead of being silently ignored.",
+      "reasoning_effort_invalid": "reasoning_effort must be minimal / low / medium / high / xhigh",
+      "model_catalog_unavailable": "The model catalog is temporarily unavailable. The profile was saved, but runtime still requires the exact model and will not fall back."
     }
   },
   "sidebar": {
@@ -985,6 +1032,12 @@
       "description": "AI can access only folders you explicitly choose. Full Disk Access is not required.",
       "status": "Authorized as Needed",
       "manage": "Manage Folders"
+    },
+    "keychain": {
+      "title": "System Keychain Protection",
+      "description": "Store the credential encryption root key in the system keychain (macOS Keychain). Off by default: the key is kept in a permission-restricted file in the app's private directory, so no system authorization prompts appear.",
+      "enabled_notice": "Enabled: the root key has been moved into the system keychain. Future access may show a system authorization prompt; choose \"Always Allow\" when asked.",
+      "disabled_notice": "Disabled: the root key has been moved back to a restricted local file. No more system authorization prompts."
     }
   },
   "debug": {
@@ -1407,6 +1460,8 @@
     "chat_title_model_hint": "Used for generating chat titles and intelligent tag extraction. Recommend models with strong comprehension and fast speed. Defaults to second model if unset.",
     "memory_decision_model_label": "Memory Decision Model",
     "memory_decision_model_hint": "Used for smart memory write deduplication/update/append decisions. Recommend a fast and lightweight model. Defaults to the enhanced model if unset.",
+    "compaction_model_label": "Context Compaction Model",
+    "compaction_model_hint": "Dedicated model for generating anchored summaries when long conversations approach the context limit. Recommend a cheap long-context model. Defaults to the current chat model if unset.",
     "batch_create_success": "Successfully created {{count}} API configurations",
     "batch_create_failed": "Failed to batch create API configurations",
     "auto_assign_success": "Auto-assignment completed, model assignments have been applied",
@@ -1824,6 +1879,7 @@
     "translation_saved": "Translation model configuration saved",
     "voice_input_asr_saved": "Voice input ASR model configuration saved",
     "image_generation_saved": "Image generation model configuration saved",
+    "compaction_model_saved": "Context compaction model configuration saved",
     "qbank_ai_grading_saved": "Question bank AI grading model configuration saved",
     "translation_save_failed": "Failed to save translation model configuration: {{error}}",
     "learning_mode_saved": "Learning mode preference updated",
@@ -2878,5 +2934,54 @@
   "params": {
     "temperature": "Temperature",
     "top_p": "Top P"
+  },
+  "plugins": {
+    "title": "Plugins & Integrations",
+    "description": "Manage desktop channel plugins (WeChat iLink Bot). Not available on mobile.",
+    "empty": "No plugins available",
+    "configure": "Configure",
+    "back_to_list": "Back to list",
+    "saved": "Plugin settings saved",
+    "connection_title": "Connection",
+    "reply_title": "Reply settings",
+    "enable_switch": "Auto-reply",
+    "pause": "Auto-reply paused",
+    "resume": "Auto-reply enabled",
+    "bind_first_hint": "Open Configure and scan the QR code to bind WeChat before enabling",
+    "binding_hint": "Scan the QR code with WeChat and confirm to bind this device as a ClawBot.",
+    "scan_qr": "Scan to bind",
+    "cancel_scan": "Cancel scan",
+    "qr_loading": "Generating QR code…",
+    "qr_status": {
+      "wait": "Scan the QR code with WeChat",
+      "scaned": "Scanned — confirm on your phone",
+      "confirmed": "Bound successfully",
+      "expired": "QR expired, refreshing…"
+    },
+    "unbound": "Not bound",
+    "bound_running_hint": "Only the WeChat user who scanned the code can trigger replies. Turn the switch off to pause anytime.",
+    "account_id": "Bot ID",
+    "user_id": "Authorized user",
+    "rebind": "Bind again",
+    "rebind_confirm_title": "Bind another WeChat account?",
+    "rebind_confirm_desc": "The bot will stop and clear its current binding. The page will return to its initial state so you can scan again.",
+    "ready_to_rebind": "Stopped and unbound. Ready to scan again.",
+    "model": "Reply model",
+    "model_desc": "Falls back to the chat model assignment when empty.",
+    "model_fallback": "Fall back to chat model",
+    "rate_limit": "Messages per minute",
+    "rate_limit_desc": "Per-contact rate limit; excess messages get a soft reject.",
+    "system_prompt": "System prompt (optional)",
+    "system_prompt_placeholder": "Customize the assistant persona…",
+    "activity": "Recent activity",
+    "states": {
+      "stopped": "Stopped",
+      "starting": "Starting",
+      "waiting_login": "Waiting for scan",
+      "running": "Running",
+      "stopping": "Stopping",
+      "error": "Error"
+    },
+    "mobile_hidden": "Plugins are desktop-only"
   }
 }

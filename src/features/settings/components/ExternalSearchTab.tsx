@@ -1,7 +1,7 @@
 /**
  * 外部搜索设置 Tab 组件
  * 整合所有外部搜索相关设置
- * Notion 风格：简洁、无边框、hover 效果
+ * 简洁风格：简洁、无边框、hover 效果
  */
 
 import React from 'react';
@@ -45,7 +45,7 @@ function cleanDomainList(raw: string): string {
     .join(', ');
 }
 
-// 内部组件：设置行 - Notion 风格（无 icon，与 ModelAssignmentRow 保持一致的结构）
+// 内部组件：设置行 - 简洁风格（无 icon，与 ModelAssignmentRow 保持一致的结构）
 const SettingRow = ({
   title,
   description,
@@ -62,7 +62,7 @@ const SettingRow = ({
     <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="mt-0.5 break-words text-xs leading-relaxed text-muted-foreground/70 md:line-clamp-2">
           {description}
         </p>
       )}
@@ -134,7 +134,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                     const v = parseInt(e.target.value || '180', 10) || 180;
                     setConfig(prev => ({ ...prev, webSearchInjectSnippetMax: Math.min(2000, Math.max(50, v)) }));
                   }}
-                  className="!w-24 h-8 text-xs bg-transparent"
+                  className="h-11 !w-28 bg-transparent text-xs md:h-8 md:!w-24"
                 />
                 <span className="text-xs text-muted-foreground/70">{t('common:unit.chars')}</span>
               </div>
@@ -153,7 +153,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                     const v = parseInt(e.target.value || '1900', 10) || 1900;
                     setConfig(prev => ({ ...prev, webSearchInjectTotalMax: Math.min(20000, Math.max(200, v)) }));
                   }}
-                  className="!w-24 h-8 text-xs bg-transparent"
+                  className="h-11 !w-28 bg-transparent text-xs md:h-8 md:!w-24"
                 />
                 <span className="text-xs text-muted-foreground/70">{t('common:unit.chars')}</span>
               </div>
@@ -183,7 +183,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                   }
                 }}
                 placeholder={t('settings:placeholders.whitelist_example')}
-                className="h-8 text-xs bg-transparent"
+                className="h-11 bg-transparent text-xs md:h-8"
               />
             </SettingRow>
             <SettingRow
@@ -201,7 +201,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                   }
                 }}
                 placeholder={t('settings:placeholders.blacklist_example')}
-                className="h-8 text-xs bg-transparent"
+                className="h-11 bg-transparent text-xs md:h-8"
               />
             </SettingRow>
           </div>

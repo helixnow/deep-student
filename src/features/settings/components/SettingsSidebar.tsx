@@ -7,7 +7,7 @@ import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, MagnifyingGlass } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   WorkbenchSidebarRow,
   WorkbenchSidebarRowLabel,
@@ -92,7 +92,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
     >
       <div className={cn('shrink-0 px-2 py-1', isCollapsed ? 'opacity-0' : 'space-y-0.5')}>
         {!isCollapsed && onBack ? (
-          <NotionButton
+          <DsButton
             variant="nav"
             size="md"
             onClick={onBack}
@@ -102,7 +102,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
             <span className="truncate">
               {t('sidebar.back_to_home', { defaultValue: SETTINGS_BACK_BUTTON_LABEL })}
             </span>
-          </NotionButton>
+          </DsButton>
         ) : null}
       </div>
 

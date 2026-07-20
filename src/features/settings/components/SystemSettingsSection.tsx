@@ -33,7 +33,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Input } from '@/components/ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 
 const SettingSection = ({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) => (
@@ -274,7 +274,7 @@ export const SystemSettingsSection: React.FC = () => {
               >
                 <div className="flex items-center gap-3">
                   {/* 主题切换器 - 使用shadcn样式 */}
-                  <NotionButton
+                  <DsButton
                     variant={themeMode === 'light' ? 'primary' : 'default'}
                     size="sm"
                     onClick={() => setThemeMode('light')}
@@ -283,9 +283,9 @@ export const SystemSettingsSection: React.FC = () => {
                   >
                     <Sun size={16} />
                     <span className="text-sm font-medium">{t('settings:system_settings.general.theme_light_button')}</span>
-                  </NotionButton>
+                  </DsButton>
                   
-                  <NotionButton
+                  <DsButton
                     variant={themeMode === 'dark' ? 'primary' : 'default'}
                     size="sm"
                     onClick={() => setThemeMode('dark')}
@@ -294,9 +294,9 @@ export const SystemSettingsSection: React.FC = () => {
                   >
                     <Moon size={16} />
                     <span className="text-sm font-medium">{t('settings:system_settings.general.theme_dark_button')}</span>
-                  </NotionButton>
+                  </DsButton>
                   
-                  <NotionButton
+                  <DsButton
                     variant={themeMode === 'auto' ? 'primary' : 'default'}
                     size="sm"
                     onClick={() => setThemeMode('auto')}
@@ -307,7 +307,7 @@ export const SystemSettingsSection: React.FC = () => {
                   >
                     <Monitor size={16} />
                     <span className="text-sm font-medium">{t('settings:system_settings.general.theme_follow_button')}</span>
-                  </NotionButton>
+                  </DsButton>
                 </div>
               </SettingItem>
             </div>
@@ -439,19 +439,19 @@ export const SystemSettingsSection: React.FC = () => {
         {/* 操作按钮 */}
         {!isAutoSaveEnabled && (
           <div className="mt-8 flex gap-4 justify-center">
-            <NotionButton onClick={handleSaveAll} disabled={saving} variant="primary">
+            <DsButton onClick={handleSaveAll} disabled={saving} variant="primary">
               <FloppyDisk size={14} />
               {saving ? t('common:status.saving') : t('settings:developer.save_all_settings')}
-            </NotionButton>
+            </DsButton>
             
-            <NotionButton
+            <DsButton
               variant="ghost"
               onClick={handleReset}
               disabled={saving}
             >
               <ArrowCounterClockwise size={14} />
               {t('common:actions.reset')}
-            </NotionButton>
+            </DsButton>
           </div>
         )}
       </div>

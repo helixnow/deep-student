@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowSquareOut, CaretDown, CaretUp, Check, DotsThree, DownloadSimple, Key, LinkSimple, NotePencil, PencilSimple, Plus, Prohibit, Pulse, Spinner, Star, Trash } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Label } from '@/components/ui/shad/Label';
@@ -106,7 +106,7 @@ const InlineEditorCollapse: React.FC<{
   );
 };
 
-// floating 态自绘 fixed 遮罩 dialog 的 Escape 栈（与 NotionDialog/shad Dialog 同语义：
+// floating 态自绘 fixed 遮罩 dialog 的 Escape 栈（与 DsDialog/shad Dialog 同语义：
 // 仅栈顶实例响应，多层浮层一次只关最上层）
 const floatingEditorEscapeStack: symbol[] = [];
 
@@ -433,7 +433,7 @@ export const VendorDetailPanel: React.FC = () => {
       )}>
         {/* 卡片头部 */}
         <div className="p-3">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap">
             <ProviderIcon modelId={api.model} size={20} showTooltip={false} />
             <div className="flex-1 min-w-0 space-y-0.5">
               <div className="flex items-center gap-2">
@@ -456,22 +456,22 @@ export const VendorDetailPanel: React.FC = () => {
             </div>
 
             {/* 操作区域：次要操作 + 编辑 + 开关（开关在最右） */}
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex w-full shrink-0 items-center justify-end gap-1.5 sm:w-auto">
               {/* 次要操作：桌面 hover 时显示；触屏/窄屏无 hover，常显（否则收藏/删除在移动端不可达）。
                   测试连接在窄屏隐藏以节省宽度——编辑器底部已有「测试连接」入口 */}
               <div className="flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 max-md:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-150">
-                <NotionButton
+                <DsButton
                   size="sm"
                   variant="ghost"
                   iconOnly
-                  className={cn(profile.isFavorite && "text-yellow-500 opacity-100")}
+                  className={cn('max-sm:!h-11 max-sm:!w-11', profile.isFavorite && "text-yellow-500 opacity-100")}
                   onClick={() => handleToggleFavorite(profile)}
                   disabled={vendorBusy}
                   title={t('settings:api_config.toggle_favorite')}
                 >
                   <Star className="h-3.5 w-3.5" weight={profile.isFavorite ? 'fill' : 'regular'} />
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   size="sm"
                   variant="ghost"
                   iconOnly
@@ -481,16 +481,16 @@ export const VendorDetailPanel: React.FC = () => {
                   title={t('settings:api_config.test_button')}
                 >
                   {testingApi === api.id ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Pulse className="h-3.5 w-3.5" />}
-                </NotionButton>
+                </DsButton>
 
                 {/* 删除：桌面触发全局确认对话框；移动端改行内二次确认（P0-5，弹层契约） */}
                 {!isReadOnly ? (
                   isSmallScreen && confirmingDelete?.type === 'model' && confirmingDelete.profileId === profile.id ? (
-                    <NotionButton
+                    <DsButton
                       size="sm"
                       variant="danger"
                       disabled={vendorBusy}
-                      className="shrink-0 whitespace-nowrap"
+                      className="min-h-11 shrink-0 whitespace-nowrap sm:min-h-0"
                       onClick={() => {
                         resetConfirmingDelete();
                         handleDeleteModelProfile(profile, { skipConfirm: true });
@@ -498,16 +498,16 @@ export const VendorDetailPanel: React.FC = () => {
                     >
                       <Trash className="h-3.5 w-3.5" />
                       {t('common:actions.confirm_delete')}
-                    </NotionButton>
+                    </DsButton>
                   ) : (
-                    <NotionButton
+                    <DsButton
                       size="sm"
                       variant="ghost"
                       iconOnly
                       disabled={vendorBusy}
                       title={t('common:actions.delete')}
                       aria-label={t('common:actions.delete')}
-                      className="text-muted-foreground hover:text-destructive"
+                      className="text-muted-foreground hover:text-destructive max-sm:!h-11 max-sm:!w-11"
                       onClick={() => {
                         if (isSmallScreen) {
                           armConfirmingDelete({ type: 'model', profileId: profile.id });
@@ -517,7 +517,7 @@ export const VendorDetailPanel: React.FC = () => {
                       }}
                     >
                       <Trash className="h-3.5 w-3.5" />
-                    </NotionButton>
+                    </DsButton>
                   )
                 ) : (
                   /* 占位：保持对齐（窄屏无需占位） */
@@ -525,16 +525,17 @@ export const VendorDetailPanel: React.FC = () => {
                 )}
               </div>
               {/* 编辑按钮 */}
-              <NotionButton
+              <DsButton
                 size="sm"
                 variant={isEditing ? "default" : "ghost"}
                 iconOnly
                 onClick={handleEditClick}
                 disabled={vendorBusy}
                 title={isEditing ? t('common:actions.close') : t('common:actions.edit')}
+                className="max-sm:!h-11 max-sm:!w-11"
               >
                 {isEditing ? <CaretUp className="h-3.5 w-3.5" /> : <PencilSimple className="h-3.5 w-3.5" />}
-              </NotionButton>
+              </DsButton>
               {/* 开关：最右 */}
               <Switch
                 checked={profile.enabled}
@@ -618,34 +619,34 @@ export const VendorDetailPanel: React.FC = () => {
               {(() => {
                 const websiteUrl = selectedVendor.websiteUrl || getProviderWebsiteUrl(selectedVendor.providerType);
                 return websiteUrl ? (
-                  <NotionButton
+                  <DsButton
                     size="sm"
                     variant="ghost"
                     iconOnly
-                    className="opacity-60 hover:opacity-100"
+                    className="opacity-60 hover:opacity-100 max-sm:!h-11 max-sm:!w-11"
                     onClick={() => void openUrl(websiteUrl)}
                     title={t('settings:vendor_panel.open_website')}
                   >
                     <ArrowSquareOut className="h-3.5 w-3.5" />
-                  </NotionButton>
+                  </DsButton>
                 ) : null;
               })()}
             </div>
-            {!isCodexOAuthVendor && <div className="flex flex-wrap gap-2">
+            {!isCodexOAuthVendor && <div className="flex w-full flex-wrap gap-2 sm:w-auto">
               {isEditingVendor ? (
                 <>
-                  <NotionButton size="sm" variant="ghost" onClick={handleCancelEditVendor}>{t('common:actions.cancel')}</NotionButton>
-                  <NotionButton size="sm" variant="primary" onClick={handleSaveEditVendor} disabled={vendorSaving}>{t('common:actions.save')}</NotionButton>
+                  <DsButton size="sm" variant="ghost" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={handleCancelEditVendor}>{t('common:actions.cancel')}</DsButton>
+                  <DsButton size="sm" variant="primary" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={handleSaveEditVendor} disabled={vendorSaving}>{t('common:actions.save')}</DsButton>
                 </>
               ) : (
                 <>
-                  <NotionButton size="sm" variant="ghost" onClick={() => handleStartEditVendor(selectedVendor)}>{t('common:actions.edit')}</NotionButton>
+                  <DsButton size="sm" variant="ghost" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={() => handleStartEditVendor(selectedVendor)}>{t('common:actions.edit')}</DsButton>
                   {!selectedVendorIsSiliconflow && !selectedVendor.isBuiltin && !selectedVendor.isReadOnly && (
                     // 桌面：确认对话框；移动端：行内二次确认（P0-5），删除后回到供应商列表屏
-                    <NotionButton
+                    <DsButton
                       size="sm"
                       variant="danger"
-                      className={cn(isSmallScreen && confirmingDelete?.type === 'vendor' && 'whitespace-nowrap')}
+                      className={cn('min-h-11 flex-1 sm:min-h-0 sm:flex-none', isSmallScreen && confirmingDelete?.type === 'vendor' && 'whitespace-nowrap')}
                       onClick={() => {
                         if (!isSmallScreen) {
                           handleDeleteVendor(selectedVendor);
@@ -663,7 +664,7 @@ export const VendorDetailPanel: React.FC = () => {
                       {isSmallScreen && confirmingDelete?.type === 'vendor'
                         ? t('common:actions.confirm_delete')
                         : t('common:actions.delete')}
-                    </NotionButton>
+                    </DsButton>
                   )}
                 </>
               )}
@@ -843,11 +844,12 @@ export const VendorDetailPanel: React.FC = () => {
                 <h3 className="text-lg font-medium text-foreground">{t('settings:vendor_panel.model_list_title')}</h3>
                 <p className="text-sm text-muted-foreground">{t('settings:vendor_panel.model_list_desc', { count: selectedVendorModels.length })}</p>
               </div>
-              <div className="flex flex-shrink-0 items-center gap-2">
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-shrink-0">
                 {!isCodexOAuthVendor && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
-                  <NotionButton
+                  <DsButton
                     size="sm"
                     variant="ghost"
+                    className="min-h-11 flex-1 sm:min-h-0 sm:flex-none"
                     onClick={() => {
                       if (isSmallScreen) {
                         setIsMobileFetcherOpen(v => !v);
@@ -858,9 +860,9 @@ export const VendorDetailPanel: React.FC = () => {
                   >
                     <DownloadSimple className="h-3.5 w-3.5" />
                     {t('settings:vendor_panel.fetch_models_button')}
-                  </NotionButton>
+                  </DsButton>
                 )}
-                <NotionButton size="sm" variant="primary" onClick={() => {
+                <DsButton size="sm" variant="primary" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={() => {
                   if (usePanelModelEditor) {
                     if (isAddingNewModel) handleCancelAddModel();
                     setInlineEditState(null);
@@ -870,7 +872,7 @@ export const VendorDetailPanel: React.FC = () => {
                   handleAddModelInline(selectedVendor);
                 }}>
                   <Plus className="h-3.5 w-3.5" />{t('settings:vendor_panel.add_model_button')}
-                </NotionButton>
+                </DsButton>
               </div>
             </div>
           )}

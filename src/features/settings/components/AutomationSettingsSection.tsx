@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import {
   ArrowsClockwise,
-  CalendarBlank,
   CaretDown,
   CircleNotch,
   PencilSimple,
@@ -13,7 +12,8 @@ import {
   WarningCircle,
 } from '@phosphor-icons/react';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import { GroupTitle } from './settingsTabPrimitives';
 import { Switch } from '@/components/ui/shad/Switch';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
@@ -68,7 +68,7 @@ type FormDraft = {
 };
 
 const inputClassName = cn(
-  'h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground',
+  'h-11 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground sm:h-9',
   'outline-none transition-colors duration-150 placeholder:text-muted-foreground/60 focus:border-ring focus:ring-2 focus:ring-ring/20',
   'disabled:cursor-not-allowed disabled:opacity-50',
 );
@@ -279,7 +279,7 @@ const AutomationForm: React.FC<AutomationFormProps> = ({
         <textarea
           id={`${idPrefix}-prompt`}
           aria-describedby={`${idPrefix}-prompt-count`}
-          className={cn(inputClassName, 'h-24 resize-y py-2 leading-5')}
+          className={cn(inputClassName, 'h-24 sm:h-24 resize-y py-2 leading-5')}
           maxLength={4000}
           value={draft.prompt}
           onChange={(event) => patch({ prompt: event.target.value })}
@@ -326,7 +326,7 @@ const AutomationForm: React.FC<AutomationFormProps> = ({
             <textarea
               id={`${idPrefix}-agent-prompt`}
               aria-describedby={`${idPrefix}-agent-prompt-count`}
-              className={cn(inputClassName, 'h-20 resize-y py-2 leading-5')}
+              className={cn(inputClassName, 'h-20 sm:h-20 resize-y py-2 leading-5')}
               maxLength={4000}
               value={draft.agentPrompt}
               placeholder={t('settings:automation.edit.agent_prompt_fallback')}
@@ -392,13 +392,13 @@ const AutomationForm: React.FC<AutomationFormProps> = ({
       {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
 
       <div className="flex items-center justify-end gap-2 border-t border-[color:var(--border-soft)] pt-3">
-        <NotionButton variant="ghost" size="sm" disabled={saving} onClick={onCancel}>
+        <DsButton variant="ghost" size="sm" className="min-h-11 sm:min-h-0" disabled={saving} onClick={onCancel}>
           {t('common:cancel')}
-        </NotionButton>
-        <NotionButton variant="primary" size="sm" disabled={saving} onClick={() => void handleSubmit()}>
+        </DsButton>
+        <DsButton variant="primary" size="sm" className="min-h-11 sm:min-h-0" disabled={saving} onClick={() => void handleSubmit()}>
           {saving && <CircleNotch className="h-4 w-4 animate-spin" aria-hidden="true" />}
           {mode === 'create' ? t('settings:automation.create.submit') : t('common:save')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );
@@ -742,18 +742,19 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               {t('settings:automation.delete.inline_confirm')}
             </span>
             <div className="flex items-center gap-2">
-              <NotionButton size="sm" variant="ghost" onClick={() => setConfirmingDeleteId(null)}>
+              <DsButton size="sm" variant="ghost" className="min-h-11 sm:min-h-0" onClick={() => setConfirmingDeleteId(null)}>
                 {t('common:cancel')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 size="sm"
                 variant="danger"
                 disabled={deleteBusy}
                 onClick={() => void handleConfirmDelete(automation)}
+                className="min-h-11 sm:min-h-0"
               >
                 {deleteBusy && <CircleNotch className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
                 {t('settings:automation.delete.confirm')}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         )}
@@ -761,7 +762,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
         {/* 点击行主体展开/收起；键盘用户通过铅笔按钮（aria-expanded）操作。 */}
         <div
           className={cn(
-            'group flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left transition-opacity duration-150',
+            'group flex w-full cursor-pointer flex-wrap items-center gap-3 px-3 py-2.5 text-left transition-opacity duration-150 sm:flex-nowrap',
             !automation.enabled && 'opacity-60',
           )}
           onClick={() => setExpandedId(expanded ? null : automation.id)}
@@ -808,7 +809,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
           </div>
 
           <div
-            className="flex shrink-0 items-center gap-1.5"
+            className="flex w-full shrink-0 items-center justify-end gap-1.5 sm:w-auto"
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}
           >
@@ -825,11 +826,11 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                 onCheckedChange={(checked) => void handleToggleEnabled(automation, checked)}
               />
             )}
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
-              className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+              className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               aria-label={t('settings:automation.actions.run_now', { name: automation.name })}
               title={t('settings:automation.actions.run_now_short')}
               disabled={rowBusy}
@@ -838,12 +839,12 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               {runBusy
                 ? <CircleNotch className="h-4 w-4 animate-spin" />
                 : <Play className="h-4 w-4" weight="fill" />}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
-              className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expanded && 'bg-primary/10 text-primary')}
+              className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', expanded && 'bg-primary/10 text-primary')}
               aria-label={t('settings:automation.actions.edit', { name: automation.name })}
               aria-expanded={expanded}
               title={t('settings:automation.actions.edit_short')}
@@ -853,37 +854,37 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               {updateBusy
                 ? <CircleNotch className="h-4 w-4 animate-spin" />
                 : <PencilSimple className="h-4 w-4" />}
-            </NotionButton>
+            </DsButton>
             {automation.heartbeat ? (
               // 触屏看不到 title tooltip：点击禁用按钮的包裹层时用行内提示说明「心跳任务不可删除」
               <span
                 title={t('settings:automation.delete.heartbeat_blocked')}
                 onClick={() => setRowMessage({ id: automation.id, text: t('settings:automation.delete.heartbeat_blocked') })}
               >
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
-                  className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+                  className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                   aria-label={t('settings:automation.actions.delete', { name: automation.name })}
                   disabled
                 >
                   <Trash className="h-4 w-4" />
-                </NotionButton>
+                </DsButton>
               </span>
             ) : (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
-                className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-destructive hover:text-destructive"
+                className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-destructive hover:text-destructive"
                 aria-label={t('settings:automation.actions.delete', { name: automation.name })}
                 title={t('settings:automation.actions.delete_short')}
                 disabled={rowBusy}
                 onClick={() => setConfirmingDeleteId(automation.id)}
               >
                 <Trash className="h-4 w-4" />
-              </NotionButton>
+              </DsButton>
             )}
           </div>
         </div>
@@ -922,47 +923,47 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
       )}
     >
       {embedded ? <h2 id="automation-settings-title" className="sr-only">{t('settings:automation.title')}</h2> : (
-        <header className="flex flex-col gap-3 px-1 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <CalendarBlank className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
-              <h2 id="automation-settings-title" className="text-base font-semibold text-foreground">
-                {t('settings:automation.title')}
-              </h2>
-            </div>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground/80">
-              {t('settings:automation.description')}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2 self-start">
-            {!loading && (
-              <span className="text-xs tabular-nums text-muted-foreground">
-                {t('settings:automation.capacity', { count, max })}
-              </span>
+        <header>
+          <GroupTitle
+            title={t('settings:automation.title')}
+            titleId="automation-settings-title"
+            actions={(
+              <>
+                {!loading && (
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {t('settings:automation.capacity', { count, max })}
+                  </span>
+                )}
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  aria-label={t('settings:automation.actions.refresh')}
+                  title={t('settings:automation.actions.refresh')}
+                  className="max-lg:!h-11 max-lg:!w-11"
+                  disabled={loading}
+                  onClick={() => void refresh()}
+                >
+                  <ArrowsClockwise className={cn('h-4 w-4', loading && 'animate-spin')} />
+                </DsButton>
+                <span title={capacityFull ? t('settings:automation.create.capacity_full', { max }) : undefined}>
+                  <DsButton
+                    variant="primary"
+                    size="sm"
+                    className="max-lg:min-h-11"
+                    disabled={desktopUnavailable || capacityFull || expandedId === 'create'}
+                    onClick={handleRequestCreate}
+                  >
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    {t('settings:automation.create.button')}
+                  </DsButton>
+                </span>
+              </>
             )}
-            <NotionButton
-              variant="ghost"
-              size="icon"
-              iconOnly
-              aria-label={t('settings:automation.actions.refresh')}
-              title={t('settings:automation.actions.refresh')}
-              disabled={loading}
-              onClick={() => void refresh()}
-            >
-              <ArrowsClockwise className={cn('h-4 w-4', loading && 'animate-spin')} />
-            </NotionButton>
-            <span title={capacityFull ? t('settings:automation.create.capacity_full', { max }) : undefined}>
-              <NotionButton
-                variant="primary"
-                size="sm"
-                disabled={desktopUnavailable || capacityFull || expandedId === 'create'}
-                onClick={handleRequestCreate}
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                {t('settings:automation.create.button')}
-              </NotionButton>
-            </span>
-          </div>
+          />
+          <p className="px-1 text-xs leading-5 text-muted-foreground/80">
+            {t('settings:automation.description')}
+          </p>
         </header>
       )}
 
@@ -973,16 +974,17 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               <WarningCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               <span className="break-words">{displayError}</span>
             </span>
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => {
                 setActionError(null);
                 void refresh();
               }}
+              className="min-h-11 sm:min-h-0"
             >
               {t('settings:automation.actions.retry')}
-            </NotionButton>
+            </DsButton>
           </div>
         )}
         {!displayError && notice && (
@@ -1063,22 +1065,24 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                     {t('settings:automation.background.confirm_hint')}
                   </span>
                   <div className="flex items-center gap-2">
-                    <NotionButton
+                    <DsButton
                       size="sm"
                       variant="ghost"
                       onClick={() => setConfirmingBackgroundOff(false)}
+                      className="min-h-11 sm:min-h-0"
                     >
                       {t('common:cancel')}
-                    </NotionButton>
-                    <NotionButton
+                    </DsButton>
+                    <DsButton
                       size="sm"
                       variant="danger"
                       disabled={backgroundBusy}
                       onClick={() => void applyBackgroundEnabled(false)}
+                      className="min-h-11 sm:min-h-0"
                     >
                       {backgroundBusy && <CircleNotch className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
                       {t('settings:automation.background.confirm')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
               )}
@@ -1120,15 +1124,15 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               <p className="mx-auto mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
                 {t('settings:automation.empty.description')}
               </p>
-              <NotionButton
+              <DsButton
                 variant="primary"
                 size="sm"
-                className="mt-4"
+                className="mt-4 min-h-11 sm:min-h-0"
                 onClick={handleRequestCreate}
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 {t('settings:automation.empty.cta')}
-              </NotionButton>
+              </DsButton>
             </div>
           ) : (
             <div className="space-y-1" data-testid="automation-list">

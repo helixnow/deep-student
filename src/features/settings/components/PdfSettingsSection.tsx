@@ -1,13 +1,13 @@
 /**
  * PDF 阅读器设置区块
- * Notion 风格：简洁、无边框、hover 效果
+ * 简洁风格：简洁、无边框、hover 效果
  */
 
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowCounterClockwise } from '@phosphor-icons/react';
 import { Switch } from '@/components/ui/shad/Switch';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { usePdfSettingsStore } from '@/features/pdf/stores/pdfSettingsStore';
 import { cn } from '@/lib/utils';
@@ -134,7 +134,7 @@ export const PdfSettingsSection: React.FC = () => {
       <GroupTitle 
         title={t('settings:pdf.title')}
         rightSlot={
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handleReset}
@@ -142,7 +142,7 @@ export const PdfSettingsSection: React.FC = () => {
           >
             <ArrowCounterClockwise size={12} />
             {t('common:actions.reset')}
-          </NotionButton>
+          </DsButton>
         }
       />
 

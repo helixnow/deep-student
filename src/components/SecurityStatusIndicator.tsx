@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Shield, Warning, CheckCircle, ArrowClockwise, Gear } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
@@ -110,9 +110,9 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
             <h3 className={`text-sm font-medium ${textClass}`}>
               {t('securityStatus.title')}
             </h3>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={loadSecurityStatus} disabled={loading} className="!p-1 hover:bg-[var(--overlay-control-hover)]" title={t('securityStatus.refresh')} aria-label="refresh">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={loadSecurityStatus} disabled={loading} className="!p-1 hover:bg-[var(--overlay-control-hover)]" title={t('securityStatus.refresh')} aria-label="refresh">
               <ArrowClockwise className={`w-3 h-3 ${loading ? 'animate-spin' : ''} ${textClass}`} />
-            </NotionButton>
+            </DsButton>
           </div>
           
           <div className={`mt-1 text-xs ${textClass} space-y-1`}>

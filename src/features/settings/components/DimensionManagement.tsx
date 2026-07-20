@@ -19,7 +19,7 @@ import {
   CaretUp,
   Trash,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -373,7 +373,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
           </p>
         </div>
         <div className="flex items-center gap-1.5 w-full sm:w-auto">
-          <NotionButton
+          <DsButton
             variant={isAddingNew ? 'default' : 'ghost'}
             size="sm"
             onClick={isAddingNew ? () => setIsAddingNew(false) : handleOpenCreateDialog}
@@ -381,8 +381,8 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
           >
             {isAddingNew ? <X size={12} className="mr-1" /> : <Plus size={12} className="mr-1" />}
             <span>{isAddingNew ? t('common:cancel') : t('settings:dimension_management.create_dimension')}</span>
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={loadDimensions}
@@ -390,7 +390,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             className="flex-1 sm:flex-none h-7 text-xs px-2 py-0"
           >
             {t('common:refresh')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
       
@@ -401,9 +401,9 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {t('settings:dimension_management.create_dimension_title')}
             </h4>
-            <NotionButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-6 w-6 p-0">
+            <DsButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-6 w-6 p-0">
                <X size={14} />
-            </NotionButton>
+            </DsButton>
           </div>
           
           <div className="space-y-2 md:space-y-0 md:grid md:grid-cols-3 md:gap-x-4 mb-3">
@@ -468,10 +468,10 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
           )}
           
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/20">
-            <NotionButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-7 text-xs flex-1 md:flex-none">
+            <DsButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-7 text-xs flex-1 md:flex-none">
               {t('common:cancel')}
-            </NotionButton>
-            <NotionButton 
+            </DsButton>
+            <DsButton 
               variant="primary" 
               size="sm" 
               onClick={handleCreateDimension} 
@@ -480,7 +480,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             >
               {creating ? <CircleNotch size={12} className="mr-1.5 animate-spin" /> : <Check size={12} className="mr-1.5" />}
               {t('common:create')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -533,9 +533,9 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             <p className="text-xs text-muted-foreground/50 mb-4 max-w-md px-4">
               {t('settings:dimension_management.no_data_hint')}
             </p>
-            <NotionButton onClick={handleOpenCreateDialog} variant="ghost" size="sm" className="h-8 text-xs">
+            <DsButton onClick={handleOpenCreateDialog} variant="ghost" size="sm" className="h-8 text-xs">
               {t('settings:dimension_management.create_first_dimension')}
-            </NotionButton>
+            </DsButton>
           </div>
         ) : (
           <>
@@ -623,7 +623,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               )}>
                                 {!isDefaultDimension(dim) && (
                                   <CommonTooltip content={dim.modelConfigId ? t('settings:dimension_management.set_as_default') : t('settings:dimension_management.bind_model_first')}>
-                                    <NotionButton
+                                    <DsButton
                                       variant="ghost"
                                       size="sm"
                                       onClick={() => handleSetAsDefault(dim)}
@@ -631,11 +631,11 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                       className="text-warning/70 hover:text-warning hover:bg-warning/10 h-6 w-6 p-0 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
                                     >
                                       <span className="text-2xs">⭐</span>
-                                    </NotionButton>
+                                    </DsButton>
                                   </CommonTooltip>
                                 )}
                                 <CommonTooltip content={t('settings:dimension_management.assign_model')}>
-                                  <NotionButton
+                                  <DsButton
                                     variant={isExpanded ? "default" : "ghost"}
                                     size="sm"
                                     onClick={() => handleChangeModel(dim)}
@@ -646,10 +646,10 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                   >
                                     {isExpanded ? <CaretUp size={12} className="mr-1" /> : <CaretDown size={12} className="mr-1" />}
                                     {t('settings:dimension_management.assign_model').split(' ')[0]}
-                                  </NotionButton>
+                                  </DsButton>
                                 </CommonTooltip>
                                 <CommonTooltip content={t('common:delete')}>
-                                  <NotionButton
+                                  <DsButton
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => handleToggleDeleteConfirm(dim)}
@@ -662,7 +662,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                     )}
                                   >
                                     <span className="text-2xs">✕</span>
-                                  </NotionButton>
+                                  </DsButton>
                                 </CommonTooltip>
                               </div>
                             </TableCell>
@@ -685,7 +685,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                       </p>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
-                                      <NotionButton
+                                      <DsButton
                                         variant="ghost"
                                         size="sm"
                                         onClick={() => setExpandedRow(null)}
@@ -693,8 +693,8 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                         className="h-7 text-xs"
                                       >
                                         {t('common:cancel')}
-                                      </NotionButton>
-                                      <NotionButton
+                                      </DsButton>
+                                      <DsButton
                                         variant="primary"
                                         size="sm"
                                         onClick={handleConfirmChangeModel}
@@ -703,7 +703,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                       >
                                         {updating ? <CircleNotch size={12} className="mr-1.5 animate-spin" /> : <Check size={12} className="mr-1.5" />}
                                         {t('common:confirm')}
-                                      </NotionButton>
+                                      </DsButton>
                                     </div>
                                   </div>
 
@@ -718,7 +718,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                     <div className="space-y-2">
                                       <div className="flex flex-wrap gap-1.5">
                                         {embeddingModels.map((model) => (
-                                          <NotionButton
+                                          <DsButton
                                             key={model.id}
                                             variant="ghost"
                                             size="sm"
@@ -731,7 +731,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                             )}
                                           >
                                             {model.name}
-                                          </NotionButton>
+                                          </DsButton>
                                         ))}
                                       </div>
 
@@ -770,7 +770,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                       })}
                                     </p>
                                     <div className="flex items-center gap-1.5 shrink-0">
-                                      <NotionButton
+                                      <DsButton
                                         variant="ghost"
                                         size="sm"
                                         tabIndex={isConfirmingDelete ? 0 : -1}
@@ -779,8 +779,8 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                         className="h-6 px-2 text-xs"
                                       >
                                         {t('common:cancel')}
-                                      </NotionButton>
-                                      <NotionButton
+                                      </DsButton>
+                                      <DsButton
                                         variant="danger"
                                         size="sm"
                                         tabIndex={isConfirmingDelete ? 0 : -1}
@@ -792,7 +792,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                           ? <CircleNotch size={12} className="mr-1 animate-spin" />
                                           : <Trash size={12} className="mr-1" />}
                                         {t('settings:dimension_management.delete_confirm_button')}
-                                      </NotionButton>
+                                      </DsButton>
                                     </div>
                                   </div>
                                 </div>
@@ -860,7 +860,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               }
                             }}
                           >
-                            <NotionButton
+                            <DsButton
                               variant="ghost"
                               size="sm"
                               onClick={() => handleSetAsDefault(dim)}
@@ -869,10 +869,10 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                             >
                               <span className="mr-1">⭐</span>
                               {t('settings:dimension_management.set_as_default')}
-                            </NotionButton>
+                            </DsButton>
                           </span>
                         )}
-                        <NotionButton
+                        <DsButton
                           variant={isExpanded ? "default" : "ghost"}
                           size="sm"
                           onClick={() => handleChangeModel(dim)}
@@ -883,9 +883,9 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                         >
                           {isExpanded ? <CaretUp size={12} className="mr-1" /> : <CaretDown size={12} className="mr-1" />}
                           {t('settings:dimension_management.assign_model')}
-                        </NotionButton>
+                        </DsButton>
                         <div className="flex-1" />
-                        <NotionButton
+                        <DsButton
                           variant="ghost"
                           size="sm"
                           onClick={() => handleToggleDeleteConfirm(dim)}
@@ -898,7 +898,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                           )}
                         >
                           <span>✕</span>
-                        </NotionButton>
+                        </DsButton>
                       </div>
                     </div>
 
@@ -922,7 +922,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
-                            <NotionButton
+                            <DsButton
                               variant="ghost"
                               size="sm"
                               tabIndex={isConfirmingDelete ? 0 : -1}
@@ -931,8 +931,8 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               className="h-7 text-xs flex-1"
                             >
                               {t('common:cancel')}
-                            </NotionButton>
-                            <NotionButton
+                            </DsButton>
+                            <DsButton
                               variant="danger"
                               size="sm"
                               tabIndex={isConfirmingDelete ? 0 : -1}
@@ -944,7 +944,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                 ? <CircleNotch size={12} className="mr-1 animate-spin" />
                                 : <Trash size={12} className="mr-1" />}
                               {t('settings:dimension_management.delete_confirm_button')}
-                            </NotionButton>
+                            </DsButton>
                           </div>
                         </div>
                       </div>
@@ -987,7 +987,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                           )}
                           
                           <div className="flex items-center gap-2">
-                            <NotionButton
+                            <DsButton
                               variant="ghost"
                               size="sm"
                               onClick={() => setExpandedRow(null)}
@@ -995,8 +995,8 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               className="h-7 text-xs flex-1"
                             >
                               {t('common:cancel')}
-                            </NotionButton>
-                            <NotionButton
+                            </DsButton>
+                            <DsButton
                               variant="primary"
                               size="sm"
                               onClick={handleConfirmChangeModel}
@@ -1005,7 +1005,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                             >
                               {updating ? <CircleNotch size={12} className="mr-1.5 animate-spin" /> : <Check size={12} className="mr-1.5" />}
                               {t('common:confirm')}
-                            </NotionButton>
+                            </DsButton>
                           </div>
                         </div>
                       </div>

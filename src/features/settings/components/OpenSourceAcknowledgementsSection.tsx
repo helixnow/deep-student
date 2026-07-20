@@ -2,15 +2,15 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { ArrowLeft, CaretDown, CaretUp, FileText, ListChecks } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
-  NotionDialog,
-  NotionDialogBody,
-  NotionDialogDescription,
-  NotionDialogFooter,
-  NotionDialogHeader,
-  NotionDialogTitle,
-} from '@/components/ui/NotionDialog';
+  DsDialog,
+  DsDialogBody,
+  DsDialogDescription,
+  DsDialogFooter,
+  DsDialogHeader,
+  DsDialogTitle,
+} from '@/components/ui/DsDialog';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 
 const GroupTitle = ({ title }: { title: string }) => (
@@ -202,7 +202,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
 
   const legalEntryButtons = (
     <>
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         className="flex-1 justify-center"
@@ -210,8 +210,8 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
       >
         <FileText size={14} />
         {t('acknowledgements.openSource.projectLicense')}
-      </NotionButton>
-      <NotionButton
+      </DsButton>
+      <DsButton
         variant="ghost"
         size="sm"
         className="flex-1 justify-center"
@@ -219,7 +219,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
       >
         <ListChecks size={14} />
         {t('acknowledgements.openSource.thirdPartyLicense')}
-      </NotionButton>
+      </DsButton>
     </>
   );
 
@@ -228,7 +228,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
       <div className="flex flex-col mb-4">
         <div className="flex items-start justify-between gap-3">
           <GroupTitle title={t('acknowledgements.openSource.title')} />
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => handleOpenChange(!open)}
@@ -242,7 +242,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
             ) : (
               <ListChecks size={14} />
             )}
-          </NotionButton>
+          </DsButton>
         </div>
         <p className="mt-2 mb-1 px-1 text-[12.5px] leading-relaxed text-muted-foreground/70">
           {t('acknowledgements.openSource.description')}
@@ -264,7 +264,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
                   </p>
                 </div>
                 {legalBody}
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   className="w-full min-h-11 justify-center"
@@ -272,7 +272,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
                 >
                   <ArrowLeft size={14} />
                   {t('acknowledgements.openSource.backToAcknowledgements')}
-                </NotionButton>
+                </DsButton>
               </>
             ) : (
               <>
@@ -285,30 +285,30 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
           </div>
         )
       ) : (
-        <NotionDialog open={open} onOpenChange={handleOpenChange} maxWidth="max-w-[760px]">
-          <NotionDialogHeader>
+        <DsDialog open={open} onOpenChange={handleOpenChange} maxWidth="max-w-[760px]">
+          <DsDialogHeader>
             <div className="min-w-0 pr-8">
-              <NotionDialogTitle>
+              <DsDialogTitle>
                 {legalDocument
                   ? t(`acknowledgements.openSource.${legalDocument}License`)
                   : t('acknowledgements.openSource.title')}
-              </NotionDialogTitle>
-              <NotionDialogDescription>
+              </DsDialogTitle>
+              <DsDialogDescription>
                 {legalDocument
                   ? t(`acknowledgements.openSource.${legalDocument}LicenseDescription`)
                   : t('acknowledgements.openSource.description')}
-              </NotionDialogDescription>
+              </DsDialogDescription>
             </div>
-          </NotionDialogHeader>
+          </DsDialogHeader>
 
-          <NotionDialogBody className="py-4">
+          <DsDialogBody className="py-4">
             {legalDocument ? legalBody : acknowledgementsBody}
-          </NotionDialogBody>
+          </DsDialogBody>
 
-          <NotionDialogFooter>
+          <DsDialogFooter>
             {legalDocument ? (
               <div className="flex w-full gap-2">
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   className="flex-1 justify-center"
@@ -316,31 +316,31 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
                 >
                   <ArrowLeft size={14} />
                   {t('acknowledgements.openSource.backToAcknowledgements')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   variant="default"
                   size="sm"
                   className="flex-1 justify-center"
                   onClick={() => handleOpenChange(false)}
                 >
                   {t('acknowledgements.openSource.closeDialog')}
-                </NotionButton>
+                </DsButton>
               </div>
             ) : (
               <div className="flex w-full flex-col gap-2 sm:flex-row">
                 {legalEntryButtons}
-                <NotionButton
+                <DsButton
                   variant="default"
                   size="sm"
                   className="flex-1 justify-center"
                   onClick={() => handleOpenChange(false)}
                 >
                   {t('acknowledgements.openSource.closeDialog')}
-                </NotionButton>
+                </DsButton>
               </div>
             )}
-          </NotionDialogFooter>
-        </NotionDialog>
+          </DsDialogFooter>
+        </DsDialog>
       )}
     </>
   );
