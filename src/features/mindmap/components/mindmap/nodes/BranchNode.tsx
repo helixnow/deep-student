@@ -341,17 +341,21 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
       }}
     >
       {/* Collapse/Expand Toggle - 位置根据 targetPosition 或 side 调整
-          触屏无 hover：mm-collapse-wrap 在 coarse 媒体查询下常驻淡色显示 */}
-      {hasChildren && (
+          触屏无 hover：mm-collapse-wrap 在 coarse 媒体查询下常驻淡色显示
+          ★ embed（只读预览）：节点组件共用全局 store，embed 文档不在全局 store 中，
+          折叠钮点击会误写当前打开的导图——仅在已折叠时保留计数徽标作纯展示 */}
+      {hasChildren && (!isEmbed || isCollapsed) && (
         <div 
           className={cn(
             "mm-collapse-wrap w-5 h-5 z-20",
+            isEmbed && "pointer-events-none",
             !selected && !isCollapsed ? "invisible group-hover:visible" : "visible"
           )}
           style={getCollapseButtonStyle()}
         >
           <NotionButton variant="ghost"
             onClick={handleToggleCollapse}
+            disabled={isEmbed}
             aria-label={isCollapsed ? t('actions.expand') : t('actions.collapse')}
             className={cn(
               "mm-collapse-btn w-5 h-5 border border-[var(--mm-border)]",
@@ -427,8 +431,9 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
         />
       </div>
 
-      {/* Action Buttons (Right side) - hidden in recite mode */}
-      {!reciteMode && (
+      {/* Action Buttons (Right side) - hidden in recite mode.
+          ★ embed（只读预览）同样隐藏：hover 出的加号/菜单/删除会误写全局 store */}
+      {!reciteMode && !isEmbed && (
       <div
         className={cn(
           "mm-node-actions nodrag nopan",

@@ -413,6 +413,76 @@ describe('mindmap store polish APIs', () => {
     expect(useMindMapStore.getState().history.past).toHaveLength(0);
   });
 
+  it('mergeWithPrevious honors the explicit previous visible row from the outline', () => {
+    seedStore(createDocument());
+    // 大纲可见列表里 node_b 的上一行是 node_a1（node_a 展开时），
+    // 行首 Backspace 应并入视觉上方那一行，而不是上一同级 node_a
+    const result = useMindMapStore
+      .getState()
+      .mergeWithPrevious('node_b', undefined, undefined, 'node_a1');
+    expect(result).toEqual({ mergedIntoId: 'node_a1', cursorOffset: 2 });
+
+    const root = useMindMapStore.getState().document.root;
+    expect(root.children.map((n) => n.id)).toEqual(['node_a']);
+    const a1 = findNodeById(root, 'node_a1')!;
+    expect(a1.text).toBe('A1Beta');
+    expect(a1.children.map((n) => n.id)).toEqual(['node_b1']);
+  });
+
+  it('mergeWithPrevious rejects when the outline reports no previous visible row', () => {
+    seedStore(createDocument());
+    expect(
+      useMindMapStore.getState().mergeWithPrevious('node_b', undefined, undefined, null),
+    ).toBeNull();
+    expect(useMindMapStore.getState().history.past).toHaveLength(0);
+  });
+
+  it('mergeWithPrevious keeps blank ranges: target intact, source shifted', () => {
+    seedStore(createDocument());
+    useMindMapStore.getState().addBlankRange('node_a', { start: 0, end: 5 }); // "Hello"
+    useMindMapStore.getState().addBlankRange('node_b', { start: 0, end: 4 }); // "Beta"
+
+    const result = useMindMapStore.getState().mergeWithPrevious('node_b');
+    expect(result?.mergedIntoId).toBe('node_a');
+
+    const merged = findNodeById(useMindMapStore.getState().document.root, 'node_a')!;
+    expect(merged.text).toBe('HelloWorldBeta');
+    expect(merged.blankedRanges).toEqual([
+      { start: 0, end: 5 },
+      { start: 10, end: 14 },
+    ]);
+  });
+
+  it('mergeNextIntoCurrent keeps blank ranges across the join', () => {
+    seedStore(createDocument());
+    useMindMapStore.getState().addBlankRange('node_a', { start: 5, end: 10 }); // "World"
+    useMindMapStore.getState().addBlankRange('node_a1', { start: 0, end: 2 }); // "A1"
+
+    const result = useMindMapStore.getState().mergeNextIntoCurrent('node_a');
+    expect(result?.mergedIntoId).toBe('node_a');
+
+    const merged = findNodeById(useMindMapStore.getState().document.root, 'node_a')!;
+    expect(merged.text).toBe('HelloWorldA1');
+    expect(merged.blankedRanges).toEqual([
+      { start: 5, end: 10 },
+      { start: 10, end: 12 },
+    ]);
+  });
+
+  it('splitNode splits blank ranges at the boundary instead of clearing them', () => {
+    seedStore(createDocument());
+    useMindMapStore.getState().addBlankRange('node_a', { start: 2, end: 8 }); // "lloWor"
+
+    const newId = useMindMapStore.getState().splitNode('node_a', 5)!;
+    const root = useMindMapStore.getState().document.root;
+    const left = findNodeById(root, 'node_a')!;
+    const right = findNodeById(root, newId)!;
+    expect(left.text).toBe('Hello');
+    expect(left.blankedRanges).toEqual([{ start: 2, end: 5 }]);
+    expect(right.text).toBe('World');
+    expect(right.blankedRanges).toEqual([{ start: 0, end: 3 }]);
+  });
+
   it('duplicateNodes inserts deep copies after sources with fresh ids in one undo step', () => {
     const document = createDocument();
     document.root.children[0].style = { bgColor: '#fff' };

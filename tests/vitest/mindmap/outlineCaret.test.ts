@@ -5,6 +5,7 @@ import {
   clearOutlineGoalColumn,
   collectSubtreeCollapseTargets,
   countDescendants,
+  createOutlineCaretController,
   estimateOutlineTextWidth,
   getOutlineGoalColumn,
   getOutlineGoalVisual,
@@ -100,6 +101,58 @@ describe('outline goal column state', () => {
     expect(takeOutlineCaret('b')).toBeNull();
     expect(takeOutlineCaret('a')).toBe(3);
     expect(takeOutlineCaret('a')).toBeNull();
+  });
+});
+
+describe('per-instance caret scopes (E01 B1)', () => {
+  it('isolates pending caret between scopes', () => {
+    const scopeA = {};
+    const scopeB = {};
+    requestOutlineCaret('n1', 2, scopeA);
+    requestOutlineCaret('n1', 9, scopeB);
+    expect(takeOutlineCaret('n1', scopeA)).toBe(2);
+    expect(takeOutlineCaret('n1', scopeB)).toBe(9);
+    expect(takeOutlineCaret('n1', scopeA)).toBeNull();
+  });
+
+  it('isolates goal column / visual goal between scopes', () => {
+    const scopeA = {};
+    const scopeB = {};
+    setOutlineGoalColumn(4, scopeA);
+    setOutlineGoalVisual(30, '15px sans-serif', scopeA);
+    expect(getOutlineGoalColumn(scopeB)).toBeNull();
+    expect(getOutlineGoalVisual(scopeB)).toBeNull();
+    expect(getOutlineGoalColumn(scopeA)).toBe(4);
+    clearOutlineGoalColumn(scopeA);
+    expect(getOutlineGoalColumn(scopeA)).toBeNull();
+    expect(getOutlineGoalVisual(scopeA)).toBeNull();
+  });
+
+  it('scoped take falls back to the default scope (viewContinuity path)', () => {
+    const scope = {};
+    // 视图切换 resume 等无 scope 的写入落在默认 scope
+    requestOutlineCaret('resume-node', 5);
+    expect(takeOutlineCaret('resume-node', scope)).toBe(5);
+    expect(takeOutlineCaret('resume-node', scope)).toBeNull();
+    // scoped 写入优先于默认 scope 的同名 pending
+    requestOutlineCaret('n2', 1);
+    requestOutlineCaret('n2', 7, scope);
+    expect(takeOutlineCaret('n2', scope)).toBe(7);
+    expect(takeOutlineCaret('n2')).toBe(1);
+  });
+
+  it('controller binds all operations to its scope', () => {
+    const ctl = createOutlineCaretController({});
+    ctl.requestOutlineCaret('x', 6);
+    expect(takeOutlineCaret('x')).toBeNull();
+    expect(ctl.takeOutlineCaret('x')).toBe(6);
+    ctl.setOutlineGoalColumn(3);
+    ctl.setOutlineGoalVisual(12, '15px sans-serif');
+    expect(getOutlineGoalColumn()).toBeNull();
+    expect(ctl.getOutlineGoalColumn()).toBe(3);
+    expect(ctl.getOutlineGoalVisual()).toEqual({ px: 12, font: '15px sans-serif' });
+    ctl.clearOutlineGoalColumn();
+    expect(ctl.getOutlineGoalColumn()).toBeNull();
   });
 });
 

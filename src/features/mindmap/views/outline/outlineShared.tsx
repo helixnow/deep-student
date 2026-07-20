@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { useMindMapStoreApi } from '../../store';
+import { useMindMapStore, useMindMapStoreApi } from '../../store';
 import { splitSearchHighlights, type OutlineFlatNode } from '../../utils/searchFilter';
 import type { MindMapKeymap } from '../../utils/mindmapPreferences';
 
@@ -19,8 +19,10 @@ export const SearchHighlightedText: React.FC<{
   query: string;
   enabled?: boolean;
 }> = ({ text, query, enabled = true }) => {
+  // W10：高亮与命中同用 store 的 searchOptions，避免大小写/全词设置下不同步
+  const searchOptions = useMindMapStore(state => state.searchOptions);
   if (!enabled || !query.trim()) return <>{text}</>;
-  const parts = splitSearchHighlights(text, query);
+  const parts = splitSearchHighlights(text, query, searchOptions);
   return (
     <>
       {parts.map((part, i) =>

@@ -8,6 +8,9 @@ import {
   NODE_DECORATION_ALLOWANCE,
   NOTE_FONT_SIZE,
   NOTE_LINE_HEIGHT_RATIO,
+  ROOT_TEXT_RENDER_ALLOWANCE,
+  depthGapScale,
+  getDepthVerticalGap,
 } from '../../constants/layout';
 import {
   getThemeFontMetrics,
@@ -87,9 +90,10 @@ function resolveNodeFontSize(node: MindMapNode, isRoot: boolean): number {
   return node.style?.fontSize || defaultFontMetrics(isRoot).fontSize;
 }
 
-/** 节点水平占位合计（主题 paddingX + 分支节点的折叠按钮/图标预留） */
+/** 节点水平占位合计（主题 paddingX + 分支装饰预留 / 根节点文本渲染预留） */
 function resolveNodeHPadding(isRoot: boolean): number {
-  return defaultFontMetrics(isRoot).paddingX + (isRoot ? 0 : NODE_DECORATION_ALLOWANCE);
+  return defaultFontMetrics(isRoot).paddingX
+    + (isRoot ? ROOT_TEXT_RENDER_ALLOWANCE : NODE_DECORATION_ALLOWANCE);
 }
 
 /** 计算节点实际宽度 */
@@ -167,12 +171,20 @@ export function calculateNodeHeight(
  * 因此以「节点对象 + config 对象」双身份做缓存键是安全的——
  * config 变化（如 measuredNodeHeights 更新）时整体失效。
  * 注意：若在测试中原地 mutate 普通对象树并复用同一 config，需自行换新 config 引用。
+ *
+ * 深度间距收敛后子树高度随节点绝对层级变化，缓存值须记录计算时的
+ * depth，仅在 depth 一致时命中（单次布局内每个节点层级唯一 → 仍 O(n)；
+ * 子树被移动到不同深度时自然失效重算）。
  */
 let subtreeHeightCacheConfig: LayoutConfig | null = null;
-let subtreeHeightCache = new WeakMap<MindMapNode, number>();
+let subtreeHeightCache = new WeakMap<MindMapNode, { depth: number; height: number }>();
 
 /** 计算子树高度（递归，带 WeakMap 缓存 → 单次布局 O(n)）
  * ★ P0 修复：添加深度限制参数
+ *
+ * @param depth 节点的绝对层级（根 = 0）。除递归防御外还决定深度间距收敛：
+ *   本节点的直接子节点之间的兄弟距 = verticalGap × depthGapScale(config, depth)。
+ *   收敛关闭时任意 depth 结果一致（scale 恒 1），保持旧行为。
  */
 export function calculateSubtreeHeight(
   node: MindMapNode,
@@ -193,7 +205,7 @@ export function calculateSubtreeHeight(
   // 根节点高度受 isRoot 影响且每次布局只算一次，不进缓存
   if (!isRoot) {
     const cached = subtreeHeightCache.get(node);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined && cached.depth === depth) return cached.height;
   }
 
   // ★ 2026-01-31 修复：使用实际节点高度而不是固定高度
@@ -203,19 +215,21 @@ export function calculateSubtreeHeight(
   if (node.collapsed || !node.children || node.children.length === 0) {
     result = nodeHeight;
   } else {
+    // 兄弟距随本节点层级收敛（根到一级 scale(0)=1 保持现值）
+    const siblingGap = getDepthVerticalGap(config, depth);
     let totalHeight = 0;
     for (let i = 0; i < node.children.length; i++) {
       // 子节点不是根节点
       totalHeight += calculateSubtreeHeight(node.children[i], config, false, depth + 1);
       if (i < node.children.length - 1) {
-        totalHeight += config.verticalGap;
+        totalHeight += siblingGap;
       }
     }
     result = Math.max(nodeHeight, totalHeight);
   }
 
   if (!isRoot) {
-    subtreeHeightCache.set(node, result);
+    subtreeHeightCache.set(node, { depth, height: result });
   }
   return result;
 }
@@ -229,6 +243,9 @@ let subtreeSizeCache = new WeakMap<MindMapNode, SubtreeSize>();
 
 /** 计算子树尺寸信息（递归，带 WeakMap 缓存 → 单次布局 O(n)）
  * ★ P0 修复：添加深度限制参数
+ *
+ * 注意：本函数是均匀间距下的包络估算（无生产调用方），
+ * 不应用深度间距收敛（depthGapScaling）——收敛开启时估算值可能略偏大。
  */
 export function calculateSubtreeSize(
   node: MindMapNode,
@@ -407,7 +424,10 @@ function shiftSubtree(
  * 递归消除子树重叠（按实际节点高度）
  * 仅在同侧（X 范围重叠）时施加垂直分离
  * ★ P0 修复：添加深度限制参数
- * @param siblingGap 兄弟子树最小垂直间距（缺省使用 config.verticalGap）
+ * @param depth 节点绝对层级（引擎从根调用时为 0，递归层数 == 层级）；
+ *   node 的直接子节点间实际分离间距 = siblingGap × depthGapScale(config, depth)，
+ *   与初排的深度收敛间距一致（收敛关闭时 scale 恒 1，保持旧行为）
+ * @param siblingGap 兄弟子树最小垂直间距基准值（缺省使用 config.verticalGap）
  */
 export function resolveSubtreeOverlaps(
   node: MindMapNode,
@@ -442,11 +462,13 @@ export function resolveSubtreeOverlaps(
     ({ bounds }) => bounds.minX < parentCenterX && bounds.maxX > parentCenterX
   );
 
+  // 本节点的子节点间分离间距随层级收敛（scale(0)=1 → 根级保持基准值）
+  const gapAtDepth = siblingGap * depthGapScale(config, depth);
   const applySeparation = (items: Array<{ node: MindMapNode; bounds: SubtreeBounds }>) => {
     let prev: SubtreeBounds | null = null;
     items.forEach(item => {
-      if (prev && item.bounds.minY < prev.maxY + siblingGap) {
-        const delta = prev.maxY + siblingGap - item.bounds.minY;
+      if (prev && item.bounds.minY < prev.maxY + gapAtDepth) {
+        const delta = prev.maxY + gapAtDepth - item.bounds.minY;
         shiftSubtree(item.node, nodesById, 0, delta, depth + 1);
         item.bounds = shiftBounds(item.bounds, 0, delta);
       }
@@ -509,7 +531,8 @@ export function recenterParents(
  * 递归消除子树重叠（水平排列版本，垂直组织图使用）
  *
  * 兄弟子树沿 X 轴顺序排列，若相邻子树的水平包围盒间距不足 siblingGap
- * 则整体右移后者。与 resolveSubtreeOverlaps 的 Y 轴逻辑对称。
+ * 则整体右移后者。与 resolveSubtreeOverlaps 的 Y 轴逻辑对称
+ * （含相同的深度间距收敛：实际间距 = siblingGap × depthGapScale(config, depth)）。
  */
 export function resolveSubtreeOverlapsX(
   node: MindMapNode,
@@ -536,11 +559,12 @@ export function resolveSubtreeOverlapsX(
     bounds: resolveSubtreeOverlapsX(child, nodesById, config, siblingGap, false, depth + 1),
   }));
 
-  // 组织图兄弟按文档顺序从左到右排列，直接按序分离
+  // 组织图兄弟按文档顺序从左到右排列，直接按序分离（间距随层级收敛）
+  const gapAtDepth = siblingGap * depthGapScale(config, depth);
   let prev: SubtreeBounds | null = null;
   childrenWithBounds.forEach(item => {
-    if (prev && item.bounds.minX < prev.maxX + siblingGap) {
-      const delta = prev.maxX + siblingGap - item.bounds.minX;
+    if (prev && item.bounds.minX < prev.maxX + gapAtDepth) {
+      const delta = prev.maxX + gapAtDepth - item.bounds.minX;
       shiftSubtree(item.node, nodesById, delta, 0, depth + 1);
       item.bounds = shiftBounds(item.bounds, delta, 0);
     }

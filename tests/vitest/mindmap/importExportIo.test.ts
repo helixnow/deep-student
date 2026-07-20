@@ -9,17 +9,30 @@
 import JSZip from 'jszip';
 import { describe, expect, it, vi } from 'vitest';
 
-// 让 i18n 文案确定可断言（合成根标题 / 空导图等）
-vi.mock('i18next', () => ({
-  default: {
-    t: (key: string, params?: Record<string, unknown>) =>
-      params
-        ? `${key} ${Object.entries(params).map(([, v]) => String(v)).join(' | ')}`
-        : key,
-  },
-}));
+// 让 i18n 文案确定可断言（合成根标题 / 空导图等）。
+// 注意：exporters 经 fileManager/store 链会连带加载 src/i18n.ts，
+// 因此 mock 需带上 isInitialized/on/addResourceBundle 等最小实例面，避免真实 init 崩溃。
+vi.mock('i18next', () => {
+  const t = (key: string, params?: Record<string, unknown>) =>
+    params
+      ? `${key} ${Object.entries(params).map(([, v]) => String(v)).join(' | ')}`
+      : key;
+  const mock = {
+    t,
+    isInitialized: true,
+    language: 'zh-CN',
+    use: () => mock,
+    init: () => Promise.resolve(t),
+    on: () => mock,
+    off: () => mock,
+    changeLanguage: () => Promise.resolve(t),
+    addResourceBundle: () => mock,
+  };
+  return { default: mock };
+});
 
 import {
+  createXMindImportReport,
   detectFormat,
   importFromFile,
   importFromFreeMind,
@@ -226,6 +239,67 @@ describe('XMind export', () => {
     expect(imported.associations).toHaveLength(1);
     expect(imported.associations?.[0]).toMatchObject({ label: 'blocks' });
   });
+
+  it('maps node bgColor to XMind topic fill (svg:fill), other styles omitted', () => {
+    const styled = doc({
+      id: 'root',
+      text: 'Styled',
+      children: [
+        {
+          id: 'c1',
+          text: 'Colored',
+          children: [],
+          style: { bgColor: '#4FC3F7', fontWeight: 'bold' },
+        },
+        { id: 'c2', text: 'Plain', children: [] },
+      ],
+    });
+    const [sheet] = buildXMindContentJson(styled) as Array<Record<string, unknown>>;
+    const rootTopic = sheet.rootTopic as Record<string, unknown>;
+    const attached = (rootTopic.children as { attached: Array<Record<string, unknown>> }).attached;
+    expect(attached[0].style).toEqual({ properties: { 'svg:fill': '#4FC3F7' } });
+    expect(attached[1].style).toBeUndefined();
+    expect(rootTopic.style).toBeUndefined();
+  });
+});
+
+describe('XMind import report (P3, dropped items)', () => {
+  it('counts dropped images and summaries from Zen content.json', async () => {
+    const zip = new JSZip();
+    zip.file('content.json', JSON.stringify([{
+      rootTopic: {
+        id: 'r',
+        title: 'Report',
+        image: { src: 'xap:resources/pic.png' },
+        summaries: [{ id: 's1' }],
+        children: {
+          attached: [
+            { id: 'c1', title: 'child', image: { src: 'xap:resources/pic2.png' } },
+          ],
+          summary: [{ id: 'st1', title: 'summary topic' }],
+        },
+      },
+    }]));
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+
+    const report = createXMindImportReport();
+    const imported = await importFromXMind(bytes, report);
+
+    expect(imported.root.text).toBe('Report');
+    expect(report.droppedImages).toBe(2);
+    // root 上 summaries 优先于 children.summary（同一份概要不重复计数）
+    expect(report.droppedSummaries).toBe(1);
+  });
+
+  it('leaves report untouched when nothing is dropped', async () => {
+    const zip = new JSZip();
+    zip.file('content.json', JSON.stringify([{ rootTopic: { id: 'r', title: 'Clean' } }]));
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+
+    const report = createXMindImportReport();
+    await importFromXMind(bytes, report);
+    expect(report).toEqual({ droppedImages: 0, droppedSummaries: 0 });
+  });
 });
 
 describe('subtree markdown export contract', () => {
@@ -287,12 +361,38 @@ describe('detectFormat / importMindMap routing', () => {
   });
 });
 
+// jsdom 的 File/Blob 未实现 text()/arrayBuffer()/slice().arrayBuffer()，
+// Node 的 File 返回的 ArrayBuffer 又与 jsdom 全局不同 realm（JSZip instanceof 判定失败），
+// 因此用当前测试 realm 的字节直接构造 File 形状的最小桩。
+function makeFile(parts: Array<string | Uint8Array>, name: string): File {
+  const chunks = parts.map((p) => (typeof p === 'string' ? new TextEncoder().encode(p) : p));
+  const total = chunks.reduce((n, c) => n + c.byteLength, 0);
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const toArrayBuffer = (view: Uint8Array): ArrayBuffer => {
+    const copy = new Uint8Array(view.byteLength);
+    copy.set(view);
+    return copy.buffer;
+  };
+  return {
+    name,
+    text: async () => new TextDecoder().decode(bytes),
+    arrayBuffer: async () => toArrayBuffer(bytes),
+    slice: (start = 0, end = bytes.byteLength) => ({
+      arrayBuffer: async () => toArrayBuffer(bytes.subarray(start, end)),
+    }),
+  } as unknown as File;
+}
+
 describe('importFromFile routing (B11)', () => {
   it('routes .mm files to the FreeMind importer', async () => {
-    const file = new File(
+    const file = makeFile(
       ['<map version="1.0.1"><node TEXT="FM Root"/></map>'],
       'notes.mm',
-      { type: 'application/xml' },
     );
     const document = await importFromFile(file);
     expect(document.root.text).toBe('FM Root');
@@ -302,7 +402,7 @@ describe('importFromFile routing (B11)', () => {
     const zip = new JSZip();
     zip.file('content.json', JSON.stringify([{ rootTopic: { id: 'r', title: 'From XMind' } }]));
     const bytes = await zip.generateAsync({ type: 'uint8array' });
-    const file = new File([bytes as unknown as BlobPart], 'map.xmind');
+    const file = makeFile([bytes], 'map.xmind');
 
     const document = await importFromFile(file);
     expect(document.root.text).toBe('From XMind');
@@ -312,16 +412,24 @@ describe('importFromFile routing (B11)', () => {
     const zip = new JSZip();
     zip.file('content.json', JSON.stringify([{ rootTopic: { id: 'r', title: 'Sniffed' } }]));
     const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
-    const file = new File([bytes as unknown as BlobPart], 'exported-map');
+    const file = makeFile([bytes], 'exported-map');
 
     const document = await importFromFile(file);
     expect(document.root.text).toBe('Sniffed');
   });
 
   it('keeps markdown extension routing', async () => {
-    const file = new File(['- a\n  - b'], 'outline.md', { type: 'text/markdown' });
+    const file = makeFile(['- a\n  - b'], 'outline.md');
     const document = await importFromFile(file);
     expect(document.root.text).toBe('a');
     expect(document.root.children[0].text).toBe('b');
+  });
+
+  it('routes .txt files through the indentation-outline (markdown) parser', async () => {
+    const file = makeFile(['Parent\n  Child\n    Deep'], 'outline.txt');
+    const document = await importFromFile(file);
+    expect(document.root.text).toBe('Parent');
+    expect(document.root.children[0].text).toBe('Child');
+    expect(document.root.children[0].children[0].text).toBe('Deep');
   });
 });

@@ -23,7 +23,9 @@ describe('mind map node actions interaction contract', () => {
   });
 
   it('keeps portal menus fixed even though mindmap-container is position-relative', () => {
-    expect(contextMenuSource.match(/position: 'fixed'/g)).toHaveLength(3);
+    // 三个 portal 菜单（关联线 / 画布空白 / 节点）共用一份 fixed 定位样式
+    expect(contextMenuSource.match(/position: 'fixed'/g)).toHaveLength(1);
+    expect(contextMenuSource.match(/style=\{menuStyle\}/g)).toHaveLength(3);
   });
 
   it('keeps plain handles non-connectable by default to avoid accidental reparent', () => {

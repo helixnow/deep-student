@@ -18,10 +18,12 @@ import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { motion } from 'framer-motion';
 import TextareaAutosize from 'react-textarea-autosize';
 import { DotsSixVertical, MagnifyingGlassPlus, Plus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { motionSafe } from '@/styles/motion-springs';
 import { useMindMapStore, useMindMapStoreApi } from '../../store';
 import type { MindMapDescriptionPreview, MindMapKeymap } from '../../utils/mindmapPreferences';
 import { NodeRefList } from '../../components/shared/NodeRefCard';
@@ -29,8 +31,11 @@ import { BlankedText } from '../../components/shared/BlankedText';
 import { InlineLatex } from '../../components/shared/InlineLatex';
 import { containsLatex } from '../../utils/renderLatex';
 import { findNodeById } from '../../utils/node/find';
+import { getAncestors } from '../../utils/node/traverse';
+import { shouldHideCompletedNode } from '../../utils/hideCompleted';
 import { openNodeRef } from '../../utils/openNodeRef';
 import { useTextSelectionBubble } from '../../hooks/useTextSelectionBubble';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import {
   createOutlineCaretController,
   getOutlineElementFont,
@@ -52,6 +57,11 @@ import {
   type FlatNode,
 } from './outlineShared';
 import { OutlineNodeMenu } from './OutlineNodeMenu';
+import {
+  animateOutlineCollapse,
+  animateOutlineRowsExit,
+  collectVisibleSubtreeIds,
+} from './collapseMotion';
 
 export type OutlineNavigateDirection = 'up' | 'down' | 'prevEnd' | 'nextStart';
 
@@ -64,12 +74,18 @@ export interface SortableOutlineNodeProps {
   isBeingDragged: boolean;
   projectedLevel: number | null;
   isEntering: boolean;
+  /** ACR 4.0 A4：Agent delete 退场动画（driver 删除前短暂标记） */
+  isExiting?: boolean;
+  /** ACR 4.0 A4：Agent update 内容更新高亮（背景一次渐隐 flash） */
+  isUpdated?: boolean;
   isSelected: boolean;
   isMultiSelectActive: boolean;
   isSearchMatch: boolean;
   isCurrentSearchMatch: boolean;
   searchQuery: string;
   nextVisibleNodeId: string | null;
+  /** 可见列表中的上一行（行首 Backspace 合并目标；null=本行是首行） */
+  prevVisibleNodeId: string | null;
   /** 焦点节点子树内的行：需要高亮的缩进线序号（=焦点节点 level），其余 null */
   focusGuideIndex: number | null;
   keymap: MindMapKeymap;
@@ -92,12 +108,15 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
   isBeingDragged,
   projectedLevel,
   isEntering,
+  isExiting = false,
+  isUpdated = false,
   isSelected,
   isMultiSelectActive,
   isSearchMatch,
   isCurrentSearchMatch,
   searchQuery,
   nextVisibleNodeId,
+  prevVisibleNodeId,
   focusGuideIndex,
   keymap,
   descriptionPreview,
@@ -225,10 +244,8 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
   };
 
   // 触屏没有 hover 手柄，保留 bullet 作为拖拽表面（长按激活）
-  const isCoarsePointer = useMemo(
-    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
-    [],
-  );
+  // useCoarsePointer 订阅 change 事件：外接/断开鼠标、二合一设备旋转后实时更新
+  const isCoarsePointer = useCoarsePointer();
 
   useEffect(() => {
     if (isFocused && !isEditingNote && !reciteMode && !multiSelectBlocksEdit && !isEscaped) {
@@ -525,7 +542,22 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
         return;
       }
 
-      // 行中 / 行首：splitNode（传 effectiveText 避免未 commit 丢字）
+      // 行首（非根）：上方插入空同级，本行文本与子树原地不动（Workflowy 语义）。
+      // 旧实现走 splitNode 把全文移入下方新节点，子树却留在原节点——
+      // 表现为「子树挂在上方空行下」，层级被打断且光标行为不可预期。
+      if (offset === 0 && !isRoot && parentId) {
+        if (effectiveText !== localText) {
+          localTextRef.current = effectiveText;
+          setLocalText(effectiveText);
+        }
+        commitText(effectiveText);
+        addNode(parentId, indexInParent);
+        // addNode 默认聚焦新节点；拉回本行，光标零跳动地停在行首
+        setFocusedNodeId(node.id);
+        return;
+      }
+
+      // 行中 / 根行首：splitNode（传 effectiveText 避免未 commit 丢字）
       const leftText = effectiveText.slice(0, offset);
       localTextRef.current = leftText;
       setLocalText(leftText);
@@ -534,7 +566,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
       const newId = splitNode(node.id, offset, effectiveText);
       if (!newId) return;
 
-      // 行首：原节点变空并保持焦点（上方空行手感）；否则焦点到新节点开头
+      // 根行首：原节点变空并保持焦点（上方空行手感）；否则焦点到新节点开头
       if (offset === 0) {
         requestOutlineCaret(node.id, 0);
         setFocusedNodeId(node.id);
@@ -579,7 +611,26 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
       if (!isRoot && localText === '') {
         e.preventDefault();
         clearOutlineGoalColumn();
+        // 光标连续性：Backspace 删空行回上一可见行行尾，Delete 落到下一行行首
+        //（而非旧行为的跳到父节点）。目标行在删除后依然存在（上/下方行不受影响）。
+        const continuityTargetId =
+          e.key === 'Backspace'
+            ? prevVisibleNodeId
+            : nextVisibleNodeId ?? prevVisibleNodeId;
         deleteNode(node.id);
+        if (continuityTargetId) {
+          const targetNode = findNodeById(
+            storeApi.getState().document.root,
+            continuityTargetId,
+          );
+          if (targetNode) {
+            requestOutlineCaret(
+              continuityTargetId,
+              e.key === 'Backspace' ? (targetNode.text || '').length : 0,
+            );
+            setFocusedNodeId(continuityTargetId);
+          }
+        }
         return;
       }
       if (!isRoot && e.key === 'Backspace' && start === 0 && end === 0) {
@@ -587,11 +638,14 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
         clearOutlineGoalColumn();
         skipNextBlurCommitRef.current = true;
         setIsEditing(false);
-        // E01 B7：专注模式下以 viewRoot 为界解析「上一可见」，不并到范围外节点
+        // E01 B7：专注模式下以 viewRoot 为界解析「上一可见」，不并到范围外节点；
+        // C：传入可见列表的上一行（尊重 hideCompleted / 搜索过滤 / 折叠），
+        // 保证合并目标就是视觉上方那一行，而不是被隐藏的上一同级。
         const result = mergeWithPrevious(
           node.id,
           localText,
           storeApi.getState().viewRootId ?? undefined,
+          prevVisibleNodeId,
         );
         if (!result) return;
         restoreCaretAfterMerge(result.mergedIntoId, result.cursorOffset);
@@ -661,7 +715,10 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
         }
         return;
       }
-      if (!node.collapsed && hasChildren) toggleCollapse(node.id);
+      if (!node.collapsed && hasChildren) {
+        const rowEl = inputRef.current?.closest<HTMLElement>('[data-node-id]') ?? null;
+        animateOutlineCollapse(rowEl, node, () => toggleCollapse(node.id));
+      }
       return;
     }
 
@@ -796,7 +853,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
     if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') {
       clearOutlineGoalColumn();
     }
-  }, [isRoot, parentId, indexInParent, node.id, node.text, node.completed, node.collapsed, hasChildren, localText, addNode, setFocusedNodeId, indentNode, outdentNode, deleteNode, commitText, toggleCollapse, collapseAll, expandAll, collapseSubtree, expandSubtree, onNavigate, onZoomIn, onZoomOut, multiSelectBlocksEdit, onBatchIndent, onBatchOutdent, onBatchDelete, nextVisibleNodeId, splitNode, mergeWithPrevious, mergeNextIntoCurrent, restoreCaretAfterMerge, storeApi, keymap, updateNode, clearOutlineGoalColumn, requestOutlineCaret, takeOutlineCaret, getOutlineGoalColumn, setOutlineGoalColumn, setOutlineGoalVisual]);
+  }, [isRoot, parentId, indexInParent, node, hasChildren, localText, addNode, setFocusedNodeId, indentNode, outdentNode, deleteNode, commitText, toggleCollapse, collapseAll, expandAll, collapseSubtree, expandSubtree, onNavigate, onZoomIn, onZoomOut, multiSelectBlocksEdit, onBatchIndent, onBatchOutdent, onBatchDelete, nextVisibleNodeId, prevVisibleNodeId, splitNode, mergeWithPrevious, mergeNextIntoCurrent, restoreCaretAfterMerge, storeApi, keymap, updateNode, clearOutlineGoalColumn, requestOutlineCaret, takeOutlineCaret, getOutlineGoalColumn, setOutlineGoalColumn, setOutlineGoalVisual]);
 
   /**
    * 粘贴语义（E01 C0.2，对齐幕布/Workflowy）：
@@ -893,13 +950,16 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
   const collapsedDescendantCount =
     !isRoot && hasChildren && isCollapsed ? countDescendants(node) : 0;
 
-  const textStyle: React.CSSProperties = {
+  // 不显式标注为 React.CSSProperties：用 satisfies 保留推断出的具体属性类型，
+  // 使其同时兼容普通元素 style 与 react-textarea-autosize 的 Style
+  //（后者 Omit 了 maxHeight/minHeight 且要求 height 为 number）。
+  const textStyle = {
     color: node.style?.textColor,
     fontWeight: node.style?.fontWeight === 'bold' ? 'bold' : 'normal',
     fontStyle: node.style?.fontStyle === 'italic' ? 'italic' : undefined,
     textDecoration: node.style?.textDecoration && node.style.textDecoration !== 'none' ? node.style.textDecoration : undefined,
     fontSize: node.style?.headingLevel === 'h1' ? '22px' : node.style?.headingLevel === 'h2' ? '18px' : node.style?.headingLevel === 'h3' ? '16px' : undefined,
-  };
+  } satisfies React.CSSProperties;
 
   return (
     <div
@@ -914,7 +974,9 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
         isCurrentSearchMatch && "search-match-current",
         isRoot && "root",
         isDragging && "is-dragging",
-        isEntering && "entering"
+        isEntering && "entering",
+        isExiting && "agent-exiting",
+        isUpdated && "agent-updated"
       )}
       onMouseDown={handleRowMouseDown}
       onClick={handleRowClick}
@@ -990,7 +1052,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
             (isRoot || reciteMode) && "-ml-[18px]"
           )}
         >
-          {/* 展开/折叠三角 */}
+          {/* 展开/折叠三角：单击切换；⌥ 整个子树；⌘ 全图折叠到此层级 */}
           {!isRoot && hasChildren && (
             <button
               type="button"
@@ -1003,9 +1065,30 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
               aria-label={isCollapsed ? t('actions.expand') : t('actions.collapse')}
               onClick={(e) => {
                 e.stopPropagation();
-                toggleCollapse(node.id);
+                const rowEl = (e.currentTarget as HTMLElement).closest<HTMLElement>('[data-node-id]');
+                // ⌘/Ctrl+点击：整图折叠到本行所在层级（对标 Workflowy 的层级折叠）
+                if (e.metaKey || e.ctrlKey) {
+                  const state = storeApi.getState();
+                  const depth = getAncestors(state.document.root, node.id).length;
+                  state.collapseToDepth(depth);
+                  return;
+                }
+                // ⌥+点击：折叠/展开整个子树
+                if (e.altKey) {
+                  if (isCollapsed) {
+                    expandSubtree(node.id);
+                  } else {
+                    animateOutlineCollapse(rowEl, node, () => collapseSubtree(node.id));
+                  }
+                  return;
+                }
+                if (isCollapsed) {
+                  toggleCollapse(node.id);
+                } else {
+                  animateOutlineCollapse(rowEl, node, () => toggleCollapse(node.id));
+                }
               }}
-              title={isCollapsed ? t('actions.expand') : t('actions.collapse')}
+              title={`${isCollapsed ? t('actions.expand') : t('actions.collapse')} · ${t('outlineV2.collapseToggleHint', { defaultValue: '⌥ 子树 · ⌘ 折叠到此层级' })}`}
             >
               <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="transition-transform">
                 <polyline points="9 18 15 12 9 6"></polyline>
@@ -1038,26 +1121,54 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
             })}
           >
             {isTaskNode ? (
-              <input
-                type="checkbox"
-                className="outline-task-checkbox"
-                checked={!!node.completed}
-                aria-checked={!!node.completed}
-                aria-label={
-                  node.completed
-                    ? t('contextMenu.unmarkComplete', { defaultValue: '取消完成' })
-                    : t('contextMenu.markComplete', { defaultValue: '标记完成' })
-                }
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                }}
-                onChange={(e) => {
-                  e.stopPropagation();
-                  if (reciteMode) return;
-                  updateNode(node.id, { completed: e.target.checked });
-                }}
-              />
+              <motion.span
+                className="inline-flex items-center justify-center"
+                // 勾选一次「弹一下」：多关键帧只能走 tween，spring 不支持
+                animate={node.completed ? { scale: [1, 1.3, 1] } : { scale: 1 }}
+                transition={motionSafe({ type: 'tween', duration: 0.25, ease: [0.22, 1, 0.36, 1] })}
+              >
+                <input
+                  type="checkbox"
+                  className="outline-task-checkbox"
+                  checked={!!node.completed}
+                  aria-checked={!!node.completed}
+                  aria-label={
+                    node.completed
+                      ? t('contextMenu.unmarkComplete', { defaultValue: '取消完成' })
+                      : t('contextMenu.markComplete', { defaultValue: '标记完成' })
+                  }
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    if (reciteMode) return;
+                    const checked = e.target.checked;
+                    const state = storeApi.getState();
+                    // hideCompleted 下勾选即隐藏：先播行退场过渡再提交，
+                    // 避免整枝瞬间消失（搜索过滤模式优先级更高时不预测）
+                    const searchFilterActive =
+                      state.searchFilterMode && !!state.searchQuery.trim();
+                    const willHide =
+                      checked &&
+                      state.hideCompleted &&
+                      !searchFilterActive &&
+                      shouldHideCompletedNode({ ...node, completed: true });
+                    if (willHide) {
+                      const rowEl =
+                        e.currentTarget.closest<HTMLElement>('[data-node-id]');
+                      animateOutlineRowsExit(
+                        rowEl?.parentElement ?? null,
+                        collectVisibleSubtreeIds(node, { includeSelf: true }),
+                        () => updateNode(node.id, { completed: true }),
+                      );
+                      return;
+                    }
+                    updateNode(node.id, { completed: checked });
+                  }}
+                />
+              </motion.span>
             ) : (
               <div className={cn(
                 "node-bullet",
@@ -1116,7 +1227,8 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
             className={cn(
               "node-input cursor-default select-text",
               isRoot && "root",
-              node.completed && "line-through text-muted-foreground"
+              "transition-colors duration-200",
+            node.completed && "line-through text-muted-foreground"
             )}
             style={textStyle}
           />
@@ -1128,6 +1240,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
           className={cn(
             "node-input resize-none overflow-hidden block w-full",
             isRoot && "root",
+            "transition-colors duration-200",
             node.completed && "line-through text-muted-foreground"
           )}
           style={textStyle}
@@ -1165,7 +1278,8 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
             className={cn(
               "node-input cursor-text",
               isRoot && "root",
-              node.completed && "line-through text-muted-foreground"
+              "transition-colors duration-200",
+            node.completed && "line-through text-muted-foreground"
             )}
             style={textStyle}
             onClick={(e) => {
@@ -1200,7 +1314,8 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
             className={cn(
               "node-input cursor-text",
               isRoot && "root",
-              node.completed && "line-through text-muted-foreground"
+              "transition-colors duration-200",
+            node.completed && "line-through text-muted-foreground"
             )}
             style={textStyle}
             onClick={(e) => {

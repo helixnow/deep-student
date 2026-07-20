@@ -45,9 +45,9 @@ export const MM_NODE_LINE_HEIGHT_RATIO = 1.5;
 /**
  * 主题字体度量：布局估算（宽高计算）与节点渲染 fallback 的权威数据源。
  *
- * 接入方（其他子代理负责）：
- * - utils/layout/helpers.ts 的 estimateNodeWidth/Height（替换硬编码 root 18 / branch 14-15）
- * - nodes/BranchNode.tsx 等节点组件的 fallback 值（替换硬编码 '14px' / '6px 12px'）
+ * 接入方：
+ * - utils/layout/helpers.ts 的节点宽高估算
+ * - nodes/RootNode.tsx / BranchNode.tsx 的字号与 padding fallback
  */
 export interface ThemeFontMetrics {
   /** 字号（px） */

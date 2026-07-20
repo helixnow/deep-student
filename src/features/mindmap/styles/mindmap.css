@@ -895,6 +895,13 @@
   border-color: var(--mm-border-strong);
 }
 
+/* hover 轻抬起：只在未选中/未编辑时给静置阴影（token 化，
+   主题内联 shadow 存在时内联优先，此规则自然让位） */
+.mm-root-node:hover:not(.selected):not(.editing),
+.mm-branch-node:hover:not(.selected):not(.editing) {
+  box-shadow: var(--mm-shadow-node);
+}
+
 /* 选中态：2px ring outline + offset（对齐 native-feel focus 语言）
    + inset 轻染（叠加在主题内联背景之上，无需覆盖 inline background） */
 .mm-root-node.selected {
@@ -1758,10 +1765,106 @@
   animation: nodeSlideIn var(--page-slide-dur, 200ms) ease-out both;
 }
 
-/* ACR R1-11：画布节点 Agent 入场（transform + opacity only，复用 nodeSlideIn；
-   reduced-motion 关停统一收敛在文件末尾的单一 block） */
-.mindmap-container .react-flow__node.agent-entering {
-  animation: nodeSlideIn var(--page-slide-dur, 200ms) ease-out both;
+/* ACR 演出优化轮：agent 演出时长单源（mindmapDriver 经 readCssTimeMs 读取同名变量，
+   TTL/退场等待由此推导——改时长只改这里，JS 不再各存一份魔法数字） */
+:root {
+  --mm-agent-enter-ms: 260ms;
+  --mm-agent-exit-ms: 180ms;
+  --mm-agent-updated-ms: 900ms;
+}
+
+/* ACR R1-11 / 4.1：画布节点 Agent 入场——轻弹簧落座（transform + opacity only；
+   keyframe 内建 1.5% 过冲，260ms；reduced-motion 关停统一收敛在文件末尾的单一 block）。
+
+   重要：React Flow 用行内 transform 定位 .react-flow__node 包装层，
+   在包装层上打 transform 动画会在动画期间覆盖定位（节点跳回画布原点）——
+   4.1 修正：动画一律挂到包装层的直接子元素（自定义节点根，无行内 transform）。 */
+@keyframes mmAgentEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(-7px) scale(0.96);
+  }
+  62% {
+    opacity: 1;
+    transform: translateY(1px) scale(1.015);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.mindmap-container .react-flow__node.agent-entering > * {
+  transform-origin: center;
+  animation: mmAgentEnter var(--mm-agent-enter-ms, 260ms) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ACR 4.0 A4 / 4.1：Agent delete 退场——收拢上浮（opacity + translateY + scale only；
+   mindmapDriver 先标记播完退场动画后才真正从 store 删除；
+   时长单源 --mm-agent-exit-ms（driver 经 readCssTimeMs 读取同值等待），
+   reduced-motion 下 driver 直接删不走此路径） */
+@keyframes nodeSlideOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.955);
+  }
+}
+
+.mindmap-container .react-flow__node.agent-exiting {
+  pointer-events: none;
+}
+
+.mindmap-container .react-flow__node.agent-exiting > * {
+  transform-origin: center;
+  animation: nodeSlideOut var(--mm-agent-exit-ms, 180ms) cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.outline-node-row.agent-exiting {
+  transform-origin: center left;
+  animation: nodeSlideOut var(--mm-agent-exit-ms, 180ms) cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
+/* ACR 4.0 A4：Agent update 内容更新高亮——与「新增=滑入」区分语义：
+   不做位移，节点背景一次渐隐 flash（::before + opacity，避免整节点重绘） */
+.mindmap-container .react-flow__node.agent-updated,
+.outline-node-row.agent-updated {
+  position: relative;
+  isolation: isolate;
+}
+
+.mindmap-container .react-flow__node.agent-updated::before,
+.outline-node-row.agent-updated::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: var(--mm-radius-row, 8px);
+  pointer-events: none;
+  z-index: 0;
+  /* ACR 4.1：与实体 flash 同语言的双色 tint（渐变静态 paint 一次，动画只动 opacity） */
+  background: linear-gradient(
+    105deg,
+    hsl(var(--acr-a, var(--primary)) / 0.26),
+    hsl(var(--acr-b, var(--info, 210 90% 55%)) / 0.24)
+  );
+  animation: mmAgentUpdatedFade var(--mm-agent-updated-ms, 900ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes mmAgentUpdatedFade {
+  0% {
+    opacity: 1;
+  }
+  /* 闪-驻-隐：快速收半亮后缓慢释放，与列表实体 flash 同节奏 */
+  30% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 /* --- 进入/退出节点视图动画 --- */
@@ -1836,6 +1939,10 @@
   .mindmap-container .react-flow__edge-path,
   .tree-edge,
   .mindmap-container .react-flow__node.agent-entering,
+  .mindmap-container .react-flow__node.agent-entering > *,
+  .mindmap-container .react-flow__node.agent-exiting,
+  .mindmap-container .react-flow__node.agent-exiting > *,
+  .outline-node-row.agent-exiting,
   .mm-mobile-node-toolbar,
   .mm-mobile-toolbar-btn,
   .mm-mobile-panel-row,
@@ -1843,6 +1950,46 @@
   .mindmap-container .react-flow {
     transition: none;
     animation: none;
+  }
+
+  /* ACR 4.0 A4：update 高亮走静态短显（不动画；driver TTL 清除标记） */
+  .mindmap-container .react-flow__node.agent-updated::before,
+  .outline-node-row.agent-updated::before {
+    animation: none;
+    opacity: 0.5;
+  }
+
+  /* reduced-motion 下退场动画被关停：节点保持原样直至 driver 删除 */
+  .mindmap-container .react-flow__node.agent-exiting,
+  .mindmap-container .react-flow__node.agent-exiting > *,
+  .outline-node-row.agent-exiting {
+    opacity: 1;
+  }
+}
+
+/* ACR 4.0 A4 forced-colors：agent 演出不依赖自定义色 */
+@media (forced-colors: active) {
+  .mindmap-container .react-flow__node.agent-updated::before,
+  .outline-node-row.agent-updated::before {
+    animation: none;
+    opacity: 0;
+  }
+
+  .mindmap-container .react-flow__node.agent-updated,
+  .outline-node-row.agent-updated {
+    outline: 2px solid Highlight;
+  }
+
+  .mindmap-container .react-flow__node.agent-exiting,
+  .mindmap-container .react-flow__node.agent-exiting > *,
+  .outline-node-row.agent-exiting {
+    animation: none;
+    opacity: 1;
+  }
+
+  .mindmap-container .react-flow__node.agent-exiting,
+  .outline-node-row.agent-exiting {
+    outline: 2px dashed GrayText;
   }
 }
 
@@ -2023,6 +2170,12 @@
 
 .mm-mobile-toolbar-btn.destructive:not(:disabled) {
   color: hsl(var(--destructive));
+}
+
+/* 删除确认态（带子树时第一次点按进入，4s 自动复位）：轻染底色强化警示 */
+.mm-mobile-toolbar-btn.destructive.is-confirming:not(:disabled) {
+  background: hsl(var(--destructive) / 0.12);
+  font-weight: 600;
 }
 
 /* 展开面板：条上方的内联区域（非 Portal、非模态） */

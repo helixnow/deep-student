@@ -30,6 +30,7 @@
  */
 
 import type { MindMapNode, LayoutConfig } from '../../types';
+import { depthGapScale } from '../../constants/layout';
 import { calculateNodeWidth, calculateNodeHeight } from './helpers';
 
 /** 最大递归深度限制（与 helpers/countDescendants 一致） */
@@ -109,7 +110,10 @@ function minVerticalClearance(placed: Box[], current: Box[]): number {
  * 递归紧凑兄弟子树（自底向上），返回子树内全部节点盒（紧凑后坐标）。
  * 首元素恒为节点自身盒（供父层重居中使用）。
  *
- * @param siblingGap 兄弟子树最小垂直净距（缺省 config.verticalGap）
+ * @param depth 节点绝对层级（引擎从根调用时为 0，递归层数 == 层级）；
+ *   node 的直接子节点间紧凑目标净距 = siblingGap × depthGapScale(config, depth)，
+ *   与 resolveSubtreeOverlaps 的分离间距一致（收敛关闭时 scale 恒 1）
+ * @param siblingGap 兄弟子树最小垂直净距基准值（缺省 config.verticalGap）
  */
 export function compactSiblingSubtrees(
   node: MindMapNode,
@@ -158,12 +162,14 @@ export function compactSiblingSubtrees(
     else spanGroup.push(item);
   }
 
+  // 紧凑目标净距随本节点层级收敛，与 resolveSubtreeOverlaps 的 gapAtDepth 一致
+  const gapAtDepth = siblingGap * depthGapScale(config, depth);
   const compactGroup = (items: Item[]) => {
     const placed: Box[] = [];
     for (const item of items) {
       if (placed.length > 0) {
         const clearance = minVerticalClearance(placed, item.boxes);
-        const delta = clearance - siblingGap;
+        const delta = clearance - gapAtDepth;
         // 仅上提（正 delta）；净距不足的异常情形维持 resolve 结果不动
         if (Number.isFinite(delta) && delta > 0) {
           shiftSubtreeY(item.node, nodesById, -delta, depth + 1);

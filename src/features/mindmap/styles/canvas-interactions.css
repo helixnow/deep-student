@@ -4,6 +4,7 @@
  * 类名契约：
  * - .mm-canvas-mode-divider           模式开关条内的分隔线（拖拽模式 | 滚轮偏好）
  * - .mm-canvas-wheel-toggle           滚轮语义偏好开关按钮（复用 mm-canvas-mode-button 基础样式）
+ * - .mm-canvas-zoom-indicator         缩放百分比指示按钮（CanvasZoomIndicator，点击恢复 100%）
  * - .react-flow__selection            框选矩形品牌化（主色染色 + 圆角）
  * - [data-mm-selection-count]::after  框选进行中的实时计数徽标
  *   （data-attribute 由 MindMapCanvas 在 onSelectionStart/Change 时写入）
@@ -26,6 +27,18 @@
 /* 滚轮开关文案较长，与拖拽模式按钮同高但允许更紧凑 */
 .mm-canvas-wheel-toggle {
   min-width: 0;
+}
+
+/* 缩放百分比指示（复用 mm-canvas-mode-button 基础样式）：
+   tabular-nums 防读数跳动，点击恢复 100% */
+.mm-canvas-zoom-indicator {
+  min-width: 46px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 触屏快捷操作条内与 28px 高的 touch-button 对齐 */
+.mm-canvas-touch-actions .mm-canvas-zoom-indicator {
+  height: 28px;
 }
 
 /* ============================================

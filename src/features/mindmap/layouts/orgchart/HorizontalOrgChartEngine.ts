@@ -10,7 +10,7 @@ import type { MindMapNode, LayoutConfig, LayoutResult, NodeStyle } from '../../t
 import type { LayoutCategory, LayoutDirection, LayoutBoundsWithMeta } from '../../registry/types';
 import { BaseLayoutEngine, MAX_TREE_DEPTH } from '../base/LayoutEngine';
 import { DEFAULT_LAYOUT_CONFIG } from '../../constants';
-import { getSiblingGap, getLevelGap } from '../../constants/layout';
+import { getSiblingGap, getLevelGap, depthGapScale } from '../../constants/layout';
 import {
   calculateNodeWidth,
   calculateNodeHeight,
@@ -55,6 +55,9 @@ export class HorizontalOrgChartEngine extends BaseLayoutEngine {
    * 计算子树高度（垂直方向占用的空间）
    * ★ P0 修复：添加深度限制参数
    * ★ P1 修复：传入 isRoot（根节点更高），兄弟间距改用语义化 siblingGap
+   *
+   * @param depth 节点绝对层级（callsite 传 level）；直接子节点间的兄弟距
+   *   = siblingGap × depthGapScale(config, depth)，与布局阶段一致
    */
   private calculateSubtreeHeight(node: MindMapNode, config: LayoutConfig, depth: number = 0, isRoot: boolean = false): number {
     // 深度限制检查
@@ -69,7 +72,7 @@ export class HorizontalOrgChartEngine extends BaseLayoutEngine {
       return nodeHeight;
     }
 
-    const siblingGap = getSiblingGap(config);
+    const siblingGap = getSiblingGap(config) * depthGapScale(config, depth);
     const childrenHeight = node.children.reduce(
       (sum, child, i) => sum + this.calculateSubtreeHeight(child, config, depth + 1, false) + (i > 0 ? siblingGap : 0),
       0
@@ -171,6 +174,8 @@ export class HorizontalOrgChartEngine extends BaseLayoutEngine {
       });
 
       // 添加边（使用 orgchart 类型实现组织结构图的直角连线）
+      // railOffset 取父子实际层距的一半：父节点层级为 level - 1（有 parentId 时 level >= 1），
+      // 深度间距收敛后层距变窄，竖直导轨须同步内移保持居中
       if (parentId) {
         edges.push({
           id: `e-${parentId}-${node.id}`,
@@ -179,7 +184,7 @@ export class HorizontalOrgChartEngine extends BaseLayoutEngine {
           type: 'orgchart',
           data: {
             direction: validDirection,
-            railOffset: levelGap / 2,
+            railOffset: (levelGap * depthGapScale(config, level - 1)) / 2,
           },
         });
       }
@@ -189,12 +194,16 @@ export class HorizontalOrgChartEngine extends BaseLayoutEngine {
         return subtreeHeight;
       }
 
+      // 层距/兄弟距随本节点层级收敛（scale(0)=1 → 根到一级保持现值）
+      const levelGapAt = levelGap * depthGapScale(config, level);
+      const siblingGapAt = siblingGap * depthGapScale(config, level);
+
       // 计算子节点的 X 坐标
       let childX: number;
       if (isLeft) {
-        childX = nodeX - levelGap;
+        childX = nodeX - levelGapAt;
       } else {
-        childX = x + nodeWidth + levelGap;
+        childX = x + nodeWidth + levelGapAt;
       }
 
       // 布局子节点（垂直排列）
@@ -202,7 +211,7 @@ export class HorizontalOrgChartEngine extends BaseLayoutEngine {
       node.children!.forEach((child) => {
         const childHeight = this.calculateSubtreeHeight(child, config, level + 1);
         layoutNode(child, childX, currentY, level + 1, node.id);
-        currentY += childHeight + siblingGap;
+        currentY += childHeight + siblingGapAt;
       });
 
       return subtreeHeight;

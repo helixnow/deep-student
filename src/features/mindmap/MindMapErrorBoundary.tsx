@@ -8,6 +8,7 @@ import React from 'react';
 import { WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import i18next from 'i18next';
+import { reportFrontendError } from '@/logging/errorReporter';
 
 interface MindMapErrorBoundaryProps {
   children: React.ReactNode;
@@ -41,6 +42,11 @@ export class MindMapErrorBoundary extends React.Component<
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
     this.setState({ errorInfo });
     console.error('[MindMapErrorBoundary] Caught error:', error, errorInfo);
+    void reportFrontendError(error, {
+      kind: 'REACT_ERROR_BOUNDARY',
+      component: 'mindmap',
+      extra: { componentStack: errorInfo.componentStack },
+    }).catch(() => undefined);
   }
 
   handleReset = (): void => {

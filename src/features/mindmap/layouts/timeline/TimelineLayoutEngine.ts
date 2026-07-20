@@ -6,6 +6,13 @@
  * 使用直角折线（orgchart 边）连接。
  *
  * 对标 XMind 的 Timeline（水平）结构。
+ *
+ * ## 深度间距收敛豁免
+ *
+ * 本引擎不应用 depthGapScaling：时间轴的深层节点是「缩进列表」形态，
+ * 层级由固定缩进（TIMELINE_CHILD_INDENT）表达，兄弟距在所有深度保持
+ * 同一 siblingGap 才能维持列表的均匀行距（XMind Timeline 同样不收敛）；
+ * 主轴一级节点本就处于 scale(0)=1 档，收敛对其无影响。
  */
 
 import type { Node, Edge } from '@xyflow/react';

@@ -157,6 +157,11 @@ export function useAnimatedNodes<NodeType extends Node = Node>(
     let changed = false;
     const next = arr.map((node) => {
       if (!spawns.has(node.id)) return node;
+      // ACR 演出优化轮：agent 入场/退场演出优先——已带 agent-entering/exiting 的
+      // 节点不再叠加通用 spawn 类，避免两套入场 keyframe 争抢同一元素
+      if (node.className && /\bagent-(?:entering|exiting)\b/.test(node.className)) {
+        return node;
+      }
       changed = true;
       const className = node.className
         ? `${node.className} ${NODE_SPAWN_CLASS}`

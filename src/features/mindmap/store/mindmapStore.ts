@@ -208,6 +208,23 @@ function afterRemoveNodes(
   }
 }
 
+/**
+ * 拆分/合并保留挖空区间的辅助：把「以节点已提交文本为基」的挖空区间
+ * 重映射到草稿文本（textOverride）。基文本与草稿一致时等价于深拷贝；
+ * 无法映射（挖空文本本身被改写）的区间被丢弃。
+ */
+function resolveDraftBlankRanges(node: MindMapNode, draftText: string): BlankRange[] {
+  if (!node.blankedRanges?.length) return [];
+  const baseText = node.text ?? '';
+  const merged = mergeRanges(validateRanges(node.blankedRanges, baseText.length));
+  return remapRangesAfterTextEdit(baseText, draftText, merged);
+}
+
+/** 合并拼接时整体平移被合并节点的挖空区间 */
+function shiftBlankRanges(ranges: BlankRange[], delta: number): BlankRange[] {
+  return ranges.map((range) => ({ start: range.start + delta, end: range.end + delta }));
+}
+
 function findAssociationPair(
   associations: MindMapAssociation[] | undefined,
   source: string,
@@ -279,6 +296,23 @@ export interface MindMapStoreState {
   agentEnteringIds: Set<string>;
   markAgentEntering: (ids: string[]) => void;
   clearAgentEntering: (ids: string[]) => void;
+
+  /**
+   * ACR 4.0 A4：Agent 删除演出的退场节点（瞬态，不进 history/draft/持久化）。
+   * mindmapDriver 在真正删除前 mark，画布/大纲追加 `agent-exiting` className
+   * 播 150-200ms opacity+translateY 退场动画，动画结束后 driver 再删除并 clear。
+   */
+  agentExitingIds: Set<string>;
+  markAgentExiting: (ids: string[]) => void;
+  clearAgentExiting: (ids: string[]) => void;
+
+  /**
+   * ACR 4.0 A4：Agent update_node 的内容更新高亮（瞬态）。
+   * 与 entering（新增=滑入）区分语义：updated=背景一次渐隐 flash，不做位移。
+   */
+  agentUpdatedIds: Set<string>;
+  markAgentUpdated: (ids: string[]) => void;
+  clearAgentUpdated: (ids: string[]) => void;
 
   /**
    * ACR R2-02：Agent 批量演出结束时请求一次 fitView（画布订阅 nonce 变化）。
@@ -482,12 +516,16 @@ export interface MindMapStoreState {
    * 行首合并到上一同级（无同级则上一可见节点）；根不可合并。
    * @param scopeRootId 分支专注（viewRootId）场景传入专注根：
    *「上一可见」在该子树的 flattenVisibleNodes 内解析，不会合并到专注范围外的节点。
+   * @param prevVisibleNodeId 大纲传入其可见列表中的上一行（额外尊重
+   * hideCompleted / 搜索过滤）。显式传 null 表示视图内无上一行 → 拒绝合并；
+   * 缺省（undefined）保持旧解析逻辑。无效 id 回落旧解析。
    * @returns 合并目标与光标位置，供 UI 恢复
    */
   mergeWithPrevious: (
     nodeId: string,
     textOverride?: string,
     scopeRootId?: string,
+    prevVisibleNodeId?: string | null,
   ) => MergeWithPreviousResult | null;
   /** 行末 Forward Delete：把下一可见节点合并进当前节点。 */
   mergeNextIntoCurrent: (
@@ -1034,6 +1072,8 @@ export function createMindMapStore(): MindMapStoreApi {
       selection: [],
       selectionAnchorId: null,
       agentEnteringIds: new Set<string>(),
+      agentExitingIds: new Set<string>(),
+      agentUpdatedIds: new Set<string>(),
       agentFitViewNonce: 0,
 
       // 渲染配置初始状态
@@ -1156,8 +1196,10 @@ export function createMindMapStore(): MindMapStoreApi {
             // 修复: 重置背诵模式状态
             state.reciteMode = false;
             state.revealedBlanks = {};
-            // ACR 瞬态入场标记随文档重载清除
+            // ACR 瞬态入场/退场/更新标记随文档重载清除
             state.agentEnteringIds = new Set();
+            state.agentExitingIds = new Set();
+            state.agentUpdatedIds = new Set();
             // 分支专注 / 视口保真为会话级，换图时重置；
             // preserveViewports（外部 watch 静默重载）时保留视口与当前视图
             state.viewRootId = null;
@@ -1207,6 +1249,8 @@ export function createMindMapStore(): MindMapStoreApi {
           state.selection = [];
           state.selectionAnchorId = null;
           state.agentEnteringIds = new Set();
+          state.agentExitingIds = new Set();
+          state.agentUpdatedIds = new Set();
           state.history = { past: [], future: [] };
           state.isDirty = false;
           state.isSaving = false;
@@ -1242,7 +1286,7 @@ export function createMindMapStore(): MindMapStoreApi {
       clearDraft: () => {
         const currentId = get().mindmapId;
         if (!currentId) return;
-        clearDraft(currentId);
+        removeDraftFromStorage(currentId);
         lastDraftVersionByMindmap.delete(currentId);
       },
 
@@ -1253,7 +1297,7 @@ export function createMindMapStore(): MindMapStoreApi {
         pendingSaveRequested = false;
         const currentId = get().mindmapId;
         if (currentId) {
-          clearDraft(currentId);
+          removeDraftFromStorage(currentId);
           lastDraftVersionByMindmap.delete(currentId);
         }
         set((state) => {
@@ -1267,6 +1311,8 @@ export function createMindMapStore(): MindMapStoreApi {
           state.selection = [];
           state.selectionAnchorId = null;
           state.agentEnteringIds = new Set(); // ACR R1-11 瞬态
+          state.agentExitingIds = new Set(); // ACR 4.0 A4 瞬态
+          state.agentUpdatedIds = new Set(); // ACR 4.0 A4 瞬态
           state.agentFitViewNonce = 0; // ACR R2-02
           state.layoutId = 'tree';
           state.layoutDirection = 'right';
@@ -1440,6 +1486,44 @@ export function createMindMapStore(): MindMapStoreApi {
           const next = new Set(state.agentEnteringIds);
           for (const id of ids) next.delete(id);
           state.agentEnteringIds = next;
+        });
+      },
+
+      // ACR 4.0 A4：瞬态退场标记（不进 history / 不标脏 / 不触发保存）
+      markAgentExiting: (ids: string[]) => {
+        if (ids.length === 0) return;
+        set((state) => {
+          const next = new Set(state.agentExitingIds);
+          for (const id of ids) next.add(id);
+          state.agentExitingIds = next;
+        });
+      },
+
+      clearAgentExiting: (ids: string[]) => {
+        if (ids.length === 0) return;
+        set((state) => {
+          const next = new Set(state.agentExitingIds);
+          for (const id of ids) next.delete(id);
+          state.agentExitingIds = next;
+        });
+      },
+
+      // ACR 4.0 A4：瞬态更新高亮标记（updated=背景 flash，区分 entering=滑入）
+      markAgentUpdated: (ids: string[]) => {
+        if (ids.length === 0) return;
+        set((state) => {
+          const next = new Set(state.agentUpdatedIds);
+          for (const id of ids) next.add(id);
+          state.agentUpdatedIds = next;
+        });
+      },
+
+      clearAgentUpdated: (ids: string[]) => {
+        if (ids.length === 0) return;
+        set((state) => {
+          const next = new Set(state.agentUpdatedIds);
+          for (const id of ids) next.delete(id);
+          state.agentUpdatedIds = next;
         });
       },
 
@@ -2081,8 +2165,30 @@ export function createMindMapStore(): MindMapStoreApi {
         applyMutation((state) => {
           const current = findNodeById(state.document.root, nodeId);
           if (!current) return;
+          // C：挖空区间随拆分边界切分而非整体清除——先重映射到拆分基文本，
+          // 再按 offset 分给左右两半（跨界区间被切成两段）。
+          const draftRanges = resolveDraftBlankRanges(current, text);
+          const leftRanges: BlankRange[] = [];
+          const rightRanges: BlankRange[] = [];
+          for (const range of draftRanges) {
+            if (range.end <= offset) {
+              leftRanges.push({ ...range });
+            } else if (range.start >= offset) {
+              rightRanges.push({ start: range.start - offset, end: range.end - offset });
+            } else {
+              if (range.start < offset) leftRanges.push({ start: range.start, end: offset });
+              rightRanges.push({ start: 0, end: range.end - offset });
+            }
+          }
           current.text = before;
-          delete current.blankedRanges;
+          if (leftRanges.length > 0) {
+            current.blankedRanges = leftRanges;
+          } else {
+            delete current.blankedRanges;
+          }
+          if (rightRanges.length > 0) {
+            newNode.blankedRanges = rightRanges;
+          }
           delete state.revealedBlanks[nodeId];
 
           if (!parent) {
@@ -2107,7 +2213,7 @@ export function createMindMapStore(): MindMapStoreApi {
         return newId;
       },
 
-      mergeWithPrevious: (nodeId: string, textOverride?: string, scopeRootId?: string) => {
+      mergeWithPrevious: (nodeId: string, textOverride?: string, scopeRootId?: string, prevVisibleNodeId?: string | null) => {
         const { document } = get();
         if (document.root.id === nodeId) return null;
 
@@ -2119,9 +2225,24 @@ export function createMindMapStore(): MindMapStoreApi {
 
         let mergeTarget: MindMapNode | null = null;
 
-        if (idx > 0) {
+        // C：大纲传入其可见列表中的上一行（尊重 hideCompleted / 搜索过滤 /
+        // 折叠），行首 Backspace 合并到「视觉上方的那一行」，而不是可能被
+        // 隐藏的上一同级。null = 视图内无上一行 → 拒绝合并。
+        if (prevVisibleNodeId !== undefined) {
+          if (prevVisibleNodeId === null) return null;
+          const candidate = findNodeById(document.root, prevVisibleNodeId);
+          if (
+            candidate &&
+            candidate.id !== nodeId &&
+            !isDescendantOf(document.root, nodeId, candidate.id)
+          ) {
+            mergeTarget = candidate;
+          }
+        }
+
+        if (!mergeTarget && idx > 0) {
           mergeTarget = parent.children[idx - 1];
-        } else {
+        } else if (!mergeTarget) {
           // 无上一同级：取可见列表中的上一节点（通常是父）。
           // E01 B7：分支专注时传入 scopeRootId，以专注子树为界解析「上一可见」，
           // 避免行首 Backspace 合并到专注范围外（UI 不可见）的节点。
@@ -2153,8 +2274,23 @@ export function createMindMapStore(): MindMapStoreApi {
           const liveIdx = liveParent.children.findIndex((c) => c.id === nodeId);
           if (liveIdx === -1) return;
 
-          target.text = (target.text ?? '') + appendedText;
-          delete target.blankedRanges;
+          // C：挖空区间不再随合并整体清除——目标文本基未变，其区间原样保留；
+          // 被合并节点的区间重映射到草稿文本后平移拼接。揭示状态因索引可能
+          // 变化而重置（背诵中重新点开即可，挖空本身不丢）。
+          const targetTextBefore = target.text ?? '';
+          const mergedBlankRanges = [
+            ...resolveDraftBlankRanges(target, targetTextBefore),
+            ...shiftBlankRanges(
+              resolveDraftBlankRanges(liveCurrent, appendedText),
+              targetTextBefore.length,
+            ),
+          ];
+          target.text = targetTextBefore + appendedText;
+          if (mergedBlankRanges.length > 0) {
+            target.blankedRanges = mergedBlankRanges;
+          } else {
+            delete target.blankedRanges;
+          }
           delete state.revealedBlanks[mergedIntoId];
           delete state.revealedBlanks[nodeId];
 
@@ -2241,8 +2377,23 @@ export function createMindMapStore(): MindMapStoreApi {
           const sourceIndex = liveSourceParent.children.findIndex((child) => child.id === sourceId);
           if (sourceIndex === -1) return;
 
-          target.text = (textOverride ?? target.text ?? '') + (liveSource.text ?? '');
-          delete target.blankedRanges;
+          // C：与 mergeWithPrevious 对称——目标区间重映射到草稿文本，
+          // 来源区间平移拼接；揭示状态重置但挖空本身保留。
+          const targetDraft = textOverride ?? target.text ?? '';
+          const sourceText = liveSource.text ?? '';
+          const mergedBlankRanges = [
+            ...resolveDraftBlankRanges(target, targetDraft),
+            ...shiftBlankRanges(
+              resolveDraftBlankRanges(liveSource, sourceText),
+              targetDraft.length,
+            ),
+          ];
+          target.text = targetDraft + sourceText;
+          if (mergedBlankRanges.length > 0) {
+            target.blankedRanges = mergedBlankRanges;
+          } else {
+            delete target.blankedRanges;
+          }
           delete state.revealedBlanks[nodeId];
           delete state.revealedBlanks[sourceId];
 
@@ -2622,7 +2773,7 @@ export function createMindMapStore(): MindMapStoreApi {
           if (nextState.mindmapId === savingMindmapId) {
             if (!nextState.isDirty) {
               pendingSaveRequested = false;
-              clearDraft(savingMindmapId);
+              removeDraftFromStorage(savingMindmapId);
               lastDraftVersionByMindmap.delete(savingMindmapId);
             } else if (pendingSaveRequested) {
               // 保存期间有显式 save() 请求（如可见性 flush）：立即补存而非等 debounce
@@ -2669,7 +2820,7 @@ export function createMindMapStore(): MindMapStoreApi {
               : null;
             // 清除过期本地草稿，避免 loadMindMap 恢复出冲突的旧版本
             if (savingMindmapId) {
-              clearDraft(savingMindmapId);
+              removeDraftFromStorage(savingMindmapId);
             }
             // 自动重新加载服务端最新版本
             if (get().mindmapId === savingMindmapId) {

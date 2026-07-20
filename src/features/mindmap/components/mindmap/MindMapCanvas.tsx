@@ -34,6 +34,7 @@ import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { CanvasContextMenu } from './CanvasContextMenu';
 import { MobileNodeToolbar, type MobileToolbarPanel } from './MobileNodeToolbar';
+import { CanvasZoomIndicator } from './CanvasZoomIndicator';
 import { MindMapResourcePicker } from './MindMapResourcePicker';
 import { findNodeById, findParentNode, isDescendantOf } from '../../utils/node/find';
 import {
@@ -55,7 +56,7 @@ import {
   resolveVisibleFocusId,
 } from '../../utils/hideCompleted';
 import { useTranslation } from 'react-i18next';
-import { House, Hand, Selection, Plus, CornersOut, MouseScroll } from '@phosphor-icons/react';
+import { House, Hand, Selection, Plus, CornersOut, MouseScroll, Pencil, Trash } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { cn } from '@/lib/utils';
 import type { LayoutDirection, MindMapNode } from '../../types';
@@ -161,6 +162,9 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   const focusedNodeId = useMindMapStore(s => s.focusedNodeId);
   const selection = useMindMapStore(s => s.selection);
   const agentEnteringIds = useMindMapStore(s => s.agentEnteringIds);
+  /** ACR 4.0 A4：delete 退场 / update 内容更新高亮（与 entering 语义区分） */
+  const agentExitingIds = useMindMapStore(s => s.agentExitingIds);
+  const agentUpdatedIds = useMindMapStore(s => s.agentUpdatedIds);
   /** ACR R2-02：driver 演出结束 requestAgentFitView → 一次 fitView（禁每 op） */
   const agentFitViewNonce = useMindMapStore(s => s.agentFitViewNonce);
   const setSelection = useMindMapStore(s => s.setSelection);
@@ -617,6 +621,14 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
       if (agentEnteringIds.has(node.id)) {
         className = className ? `${className} agent-entering` : 'agent-entering';
       }
+      // ACR 4.0 A4：delete 退场动画（driver 删除前标记，动画结束后才真正删除）
+      if (agentExitingIds.has(node.id)) {
+        className = className ? `${className} agent-exiting` : 'agent-exiting';
+      }
+      // ACR 4.0 A4：update 内容更新高亮（背景一次渐隐 flash，不做位移）
+      if (agentUpdatedIds.has(node.id)) {
+        className = className ? `${className} agent-updated` : 'agent-updated';
+      }
 
       const layoutData = node.data as object;
       let data = cache.get(layoutData);
@@ -636,7 +648,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         className,
       };
     });
-  }, [layoutNodes, focusedNodeId, selection, agentEnteringIds, document.root.id, dropTargetId, dropMode, dropOrientation, isDragging, openNodeContextMenu]);
+  }, [layoutNodes, focusedNodeId, selection, agentEnteringIds, agentExitingIds, agentUpdatedIds, document.root.id, dropTargetId, dropMode, dropOrientation, isDragging, openNodeContextMenu]);
 
   // 拖拽位置 override 叠加：每帧只为被拖子树节点新建对象，其余节点引用不变
   const nodes = useMemo(() => {
@@ -647,10 +659,43 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     });
   }, [enrichedNodes, dragPositionOverride]);
 
+  // 新节点生长起点：父节点中心（树边 target→source 反查），新建节点
+  // 从父节点滑向目标位置 + CSS 淡入缩放，对齐 XMind「从枝上长出」手感。
+  // agent 演出节点走自己的 agent-entering keyframe，不叠加位置插值。
+  const parentIdByNodeId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const edge of edges) map.set(edge.target, edge.source);
+    return map;
+  }, [edges]);
+
+  const layoutNodeById = useMemo(
+    () => new Map(layoutNodes.map((n) => [n.id, n])),
+    [layoutNodes],
+  );
+
+  const getSpawnOrigin = useCallback((node: Node) => {
+    if (node.className && /\bagent-(?:entering|exiting)\b/.test(node.className)) {
+      return undefined;
+    }
+    const parentId = parentIdByNodeId.get(node.id);
+    if (!parentId) return undefined;
+    const parent = layoutNodeById.get(parentId);
+    if (!parent) return undefined;
+    const parentW = (parent.width as number | undefined) ?? parent.measured?.width ?? 100;
+    const parentH = (parent.height as number | undefined) ?? parent.measured?.height ?? 36;
+    const nodeW = (node.width as number | undefined) ?? node.measured?.width ?? 100;
+    const nodeH = (node.height as number | undefined) ?? node.measured?.height ?? 36;
+    return {
+      x: parent.position.x + parentW / 2 - nodeW / 2,
+      y: parent.position.y + parentH / 2 - nodeH / 2,
+    };
+  }, [parentIdByNodeId, layoutNodeById]);
+
   // 布局平滑过渡；拖拽中禁用，避免把拖拽位移当成布局插值
   const animatedNodes = useAnimatedNodes(nodes, {
     duration: 200,
     enabled: !isDragging,
+    getSpawnOrigin,
   });
 
   // 关联线模式下忽略框选同步；框选节点时清掉关联线选中
@@ -751,43 +796,85 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     handleAssociationLabelEditStart,
   ]);
 
-  // 焦点节点 → 根的祖先链树边集合（"parent->child" 键），用于导航路径高亮
-  const ancestorPathEdgeKeys = useMemo(() => {
-    if (!focusedNodeId) return null;
-    const ancestors = getAncestors(document.root, focusedNodeId);
+  // 节点 → 根的祖先链树边集合（"parent->child" 键），焦点/悬停路径高亮共用
+  const pathEdgeKeysFor = useCallback((nodeId: string | null): Set<string> | null => {
+    if (!nodeId) return null;
+    const ancestors = getAncestors(document.root, nodeId);
     if (ancestors.length === 0) return null;
-    const path = [...ancestors.map((n) => n.id), focusedNodeId];
+    const path = [...ancestors.map((n) => n.id), nodeId];
     const keys = new Set<string>();
     for (let i = 0; i < path.length - 1; i++) {
       keys.add(`${path[i]}->${path[i + 1]}`);
     }
     return keys;
-  }, [document.root, focusedNodeId]);
+  }, [document.root]);
+
+  const ancestorPathEdgeKeys = useMemo(
+    () => pathEdgeKeysFor(focusedNodeId),
+    [pathEdgeKeysFor, focusedNodeId],
+  );
+
+  // 悬停节点 → 根的路径高亮（比焦点路径弱一档；触屏无 hover、拖拽中不参与）
+  const [hoverPathNodeId, setHoverPathNodeId] = useState<string | null>(null);
+  const onNodeMouseEnter = useCallback((_: React.MouseEvent, node: Node) => {
+    if (isCoarsePointer) return;
+    setHoverPathNodeId(node.id);
+  }, [isCoarsePointer]);
+  const onNodeMouseLeave = useCallback(() => {
+    setHoverPathNodeId((cur) => (cur === null ? cur : null));
+  }, []);
+
+  const hoverPathEdgeKeys = useMemo(
+    () => (isDragging || !hoverPathNodeId || hoverPathNodeId === focusedNodeId
+      ? null
+      : pathEdgeKeysFor(hoverPathNodeId)),
+    [pathEdgeKeysFor, hoverPathNodeId, focusedNodeId, isDragging],
+  );
 
   const styledEdges = useMemo(() => {
     return allEdges.map((edge) => {
       const isAssociation = (edge.data as { kind?: string } | undefined)?.kind === 'association';
+      const edgeKey = `${edge.source}->${edge.target}`;
       // 祖先链树边高亮：主色描边 + 类名（样式见 canvas-enhancements.css），对齐 XMind 导航可读性
-      const isAncestorPath =
-        !isAssociation &&
-        !!ancestorPathEdgeKeys?.has(`${edge.source}->${edge.target}`);
+      const isAncestorPath = !isAssociation && !!ancestorPathEdgeKeys?.has(edgeKey);
+      // 悬停路径：比焦点路径弱一档的主色混合，帮助扫视时快速看清分支归属
+      const isHoverPath =
+        !isAssociation && !isAncestorPath && !!hoverPathEdgeKeys?.has(edgeKey);
+      // 边强调通道（edgeEmphasis 契约）：焦点节点的直接出边加粗，
+      // 与祖先链一起构成「所在分支」的完整视觉（对齐 XMind 分支高亮）
+      const isEmphasized =
+        !isAssociation && !isAncestorPath && !!focusedNodeId && edge.source === focusedNodeId;
+      const pathClass = isAncestorPath
+        ? 'mm-edge-ancestor-path'
+        : isHoverPath
+          ? 'mm-edge-hover-path'
+          : null;
       return {
         ...edge,
-        className: isAncestorPath
+        className: pathClass
           ? edge.className
-            ? `${edge.className} mm-edge-ancestor-path`
-            : 'mm-edge-ancestor-path'
+            ? `${edge.className} ${pathClass}`
+            : pathClass
           : edge.className,
+        data: isEmphasized
+          ? { ...(edge.data as object | undefined), emphasized: true }
+          : edge.data,
         style: {
           ...edge.style,
           opacity: isAssociation ? (edge.selected ? 1 : 0.72) : 1,
           ...(isAncestorPath
             ? { stroke: 'var(--mm-primary)', strokeWidth: 2.25 }
             : {}),
+          ...(isHoverPath
+            ? {
+                stroke: 'color-mix(in srgb, var(--mm-primary) 60%, var(--mm-edge))',
+                strokeWidth: 2,
+              }
+            : {}),
         },
       };
     });
-  }, [allEdges, ancestorPathEdgeKeys]);
+  }, [allEdges, ancestorPathEdgeKeys, hoverPathEdgeKeys, focusedNodeId]);
 
   // MiniMap 分支着色：视图根的一级分支各取主题色板一色（整支继承），便于缩略图定位分支。
   // 主画布保持主题默认色（彩虹分支已禁用），仅缩略图用色板做导航提示。
@@ -1635,6 +1722,8 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         onNodesChange={onNodesChange}
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
+        onNodeMouseEnter={onNodeMouseEnter}
+        onNodeMouseLeave={onNodeMouseLeave}
         onPaneClick={onPaneClick}
         onNodeContextMenu={onNodeContextMenu}
         onPaneContextMenu={onPaneContextMenu}
@@ -1713,6 +1802,8 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
               <Plus size={15} />
               <span>{t('contextMenu.addTopic', { defaultValue: '新建主题' })}</span>
             </NotionButton>
+            <span className="mm-canvas-mode-divider" aria-hidden="true" />
+            <CanvasZoomIndicator />
           </div>
         )}
         {/* 触屏固定为平移；鼠标设备明确展示两个互斥的空白拖拽模式。 */}
@@ -1772,6 +1863,9 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
               <MouseScroll size={15} weight={wheelMode === 'zoom' ? 'fill' : 'regular'} />
               <span>{t('canvas.wheelZoom', { defaultValue: '滚轮缩放' })}</span>
             </NotionButton>
+            <span className="mm-canvas-mode-divider" aria-hidden="true" />
+            {/* 缩放百分比指示：实时读数，点击恢复 100% */}
+            <CanvasZoomIndicator />
           </div>
         )}
         {/* 小图（≤10 节点）一屏可尽收，隐藏 MiniMap 减少 chrome 与每帧刷新（E02 C12）；
@@ -1890,6 +1984,40 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         onSelect={handleResourcePickerSelect}
         onClose={handleResourcePickerClose}
       />
+
+      {/* 触屏：选中关联线的底部内联工具条。
+          关联线的编辑/删除原本只有右键菜单与 Delete 键两条通路，触屏均不可达；
+          复用 mm-mobile-node-toolbar 样式（≥44px 按钮、safe-area、上滑入场、
+          reduced-motion 降级均由既有 CSS 承担） */}
+      {isCoarsePointer && !reciteMode && selectedAssociationId && !editingAssociationId && (
+        <div
+          className="mm-mobile-node-toolbar"
+          role="toolbar"
+          aria-label={t('association.menuLabel', { defaultValue: '关联线菜单' })}
+        >
+          <div className="mm-mobile-toolbar-row">
+            <NotionButton
+              variant="ghost"
+              className="mm-mobile-toolbar-btn"
+              onClick={() => setEditingAssociationId(selectedAssociationId)}
+            >
+              <Pencil size={18} />
+              <span>{t('association.editLabel', { defaultValue: '编辑标签' })}</span>
+            </NotionButton>
+            <NotionButton
+              variant="ghost"
+              className="mm-mobile-toolbar-btn destructive"
+              onClick={() => {
+                removeAssociation(selectedAssociationId);
+                setSelectedAssociationId(null);
+              }}
+            >
+              <Trash size={18} />
+              <span>{t('association.delete', { defaultValue: '删除关联线' })}</span>
+            </NotionButton>
+          </div>
+        </div>
+      )}
 
       {/* 触屏：选中节点的底部内联工具条（替代 Portal 右键菜单路径） */}
       {showMobileToolbar && focusedNodeId && (

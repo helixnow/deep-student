@@ -10,7 +10,7 @@ import type { MindMapNode, LayoutConfig, LayoutResult, NodeStyle } from '../../t
 import type { LayoutCategory, LayoutDirection, LayoutBoundsWithMeta } from '../../registry/types';
 import { BaseLayoutEngine, MAX_TREE_DEPTH } from '../base/LayoutEngine';
 import { DEFAULT_LAYOUT_CONFIG } from '../../constants';
-import { getSiblingGap, getLevelGap } from '../../constants/layout';
+import { getSiblingGap, getLevelGap, depthGapScale } from '../../constants/layout';
 import {
   calculateNodeWidth,
   calculateNodeHeight,
@@ -56,6 +56,9 @@ export class VerticalOrgChartEngine extends BaseLayoutEngine {
    * ★ P0 修复：添加深度限制参数
    * ★ P1 修复：兄弟间距改用语义化 siblingGap（原先误用 verticalGap 命名，
    *   现通过 getSiblingGap 读取，未配置时保持原有回退值不变）
+   *
+   * @param depth 节点绝对层级（callsite 传 level）；直接子节点间的兄弟距
+   *   = siblingGap × depthGapScale(config, depth)，与布局阶段一致
    */
   private calculateSubtreeWidth(node: MindMapNode, config: LayoutConfig, depth: number = 0, isRoot: boolean = false): number {
     // 深度限制检查
@@ -68,7 +71,7 @@ export class VerticalOrgChartEngine extends BaseLayoutEngine {
       return calculateNodeWidth(node, config, isRoot);
     }
 
-    const siblingGap = getSiblingGap(config);
+    const siblingGap = getSiblingGap(config) * depthGapScale(config, depth);
     const childrenWidth = node.children.reduce(
       (sum, child, i) => sum + this.calculateSubtreeWidth(child, config, depth + 1, false) + (i > 0 ? siblingGap : 0),
       0
@@ -167,6 +170,8 @@ export class VerticalOrgChartEngine extends BaseLayoutEngine {
       });
 
       // 添加边（使用 orgchart 类型实现组织结构图的直角连线）
+      // railOffset 取父子实际层距的一半：父节点层级为 level - 1（有 parentId 时 level >= 1），
+      // 深度间距收敛后层距变窄，水平导轨须同步内移保持居中
       if (parentId) {
         edges.push({
           id: `e-${parentId}-${node.id}`,
@@ -175,7 +180,7 @@ export class VerticalOrgChartEngine extends BaseLayoutEngine {
           type: 'orgchart',
           data: {
             direction: validDirection,
-            railOffset: levelGap / 2,
+            railOffset: (levelGap * depthGapScale(config, level - 1)) / 2,
           },
         });
       }
@@ -185,6 +190,10 @@ export class VerticalOrgChartEngine extends BaseLayoutEngine {
         return subtreeWidth;
       }
 
+      // 层距/兄弟距随本节点层级收敛（scale(0)=1 → 根到一级保持现值）
+      const levelGapAt = levelGap * depthGapScale(config, level);
+      const siblingGapAt = siblingGap * depthGapScale(config, level);
+
       // 布局子节点（水平排列）
       // ★ P1 修复：向上布局时子节点 Y 按各自高度贴合（底边对齐到父节点上方
       //   levelGap 处），原先统一用父节点高度回退，多行子节点会与父节点重叠
@@ -193,10 +202,10 @@ export class VerticalOrgChartEngine extends BaseLayoutEngine {
         const childWidth = this.calculateSubtreeWidth(child, config, level + 1);
         const childHeight = calculateNodeHeight(child, false, config);
         const childY = isUp
-          ? y - levelGap - childHeight
-          : y + nodeHeight + levelGap;
+          ? y - levelGapAt - childHeight
+          : y + nodeHeight + levelGapAt;
         layoutNode(child, currentX, childY, level + 1, node.id);
-        currentX += childWidth + siblingGap;
+        currentX += childWidth + siblingGapAt;
       });
 
       return subtreeWidth;

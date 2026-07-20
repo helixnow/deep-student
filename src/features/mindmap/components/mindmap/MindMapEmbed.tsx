@@ -23,7 +23,8 @@ import '../../styles/mindmap.css';
 
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { CircleNotch, WarningCircle, ArrowsOut, MagnifyingGlassPlus, MagnifyingGlassMinus, Crosshair, GitFork } from '@phosphor-icons/react';
+import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import { WarningCircle, ArrowsOut, ArrowClockwise, MagnifyingGlassPlus, MagnifyingGlassMinus, Crosshair, GitFork } from '@phosphor-icons/react';
 import { dstu } from '@/dstu';
 
 import {
@@ -72,6 +73,16 @@ interface LoadState {
 
 // 节点数阈值：超过此数量时使用 2 倍高度
 const LARGE_MAP_NODE_THRESHOLD = 10;
+
+/** 嵌入卡片角落控制按钮的统一外观（缩放/布局/打开等） */
+const EMBED_CONTROL_BUTTON_CLASS = cn(
+  'p-1.5 rounded-md',
+  'bg-background/80 hover:bg-background',
+  'border border-border/50 hover:border-border',
+  'text-muted-foreground hover:text-foreground',
+  'transition-all duration-150',
+  'cursor-pointer',
+);
 
 /**
  * 递归统计导图节点总数
@@ -266,64 +277,44 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document }) => {
         onNodeClick={() => {}}
         onNodeDoubleClick={() => {}}
       />
-      {/* 缩放控制按钮 + 布局切换 */}
+      {/* 缩放控制按钮 + 布局切换（tooltip 统一 CommonTooltip，禁用原生 title） */}
       <div className="absolute bottom-2 left-2 flex gap-1">
-        <NotionButton variant="ghost"
-          onClick={handleToggleLayout}
-          className={cn(
-            'p-1.5 rounded-md',
-            'bg-background/80 hover:bg-background',
-            'border border-border/50 hover:border-border',
-            'text-muted-foreground hover:text-foreground',
-            'transition-all duration-150',
-            'cursor-pointer'
-          )}
-          title={isBothLayout ? t('embed.layoutSingle') : t('embed.layoutBoth')}
-        >
-          <GitFork className={cn('w-3.5 h-3.5', isBothLayout && 'text-primary')} />
-        </NotionButton>
-        <NotionButton variant="ghost"
-          onClick={handleZoomIn}
-          className={cn(
-            'p-1.5 rounded-md',
-            'bg-background/80 hover:bg-background',
-            'border border-border/50 hover:border-border',
-            'text-muted-foreground hover:text-foreground',
-            'transition-all duration-150',
-            'cursor-pointer'
-          )}
-          title={t('embed.zoomIn')}
-        >
-          <MagnifyingGlassPlus size={14} />
-        </NotionButton>
-        <NotionButton variant="ghost"
-          onClick={handleZoomOut}
-          className={cn(
-            'p-1.5 rounded-md',
-            'bg-background/80 hover:bg-background',
-            'border border-border/50 hover:border-border',
-            'text-muted-foreground hover:text-foreground',
-            'transition-all duration-150',
-            'cursor-pointer'
-          )}
-          title={t('embed.zoomOut')}
-        >
-          <MagnifyingGlassMinus size={14} />
-        </NotionButton>
-        <NotionButton variant="ghost"
-          onClick={handleFitView}
-          className={cn(
-            'p-1.5 rounded-md',
-            'bg-background/80 hover:bg-background',
-            'border border-border/50 hover:border-border',
-            'text-muted-foreground hover:text-foreground',
-            'transition-all duration-150',
-            'cursor-pointer'
-          )}
-          title={t('embed.fitView')}
-        >
-          <Crosshair className="w-3.5 h-3.5" />
-        </NotionButton>
+        <CommonTooltip content={isBothLayout ? t('embed.layoutSingle') : t('embed.layoutBoth')} position="top">
+          <NotionButton variant="ghost"
+            onClick={handleToggleLayout}
+            className={EMBED_CONTROL_BUTTON_CLASS}
+            aria-label={isBothLayout ? t('embed.layoutSingle') : t('embed.layoutBoth')}
+          >
+            <GitFork className={cn('w-3.5 h-3.5', isBothLayout && 'text-primary')} />
+          </NotionButton>
+        </CommonTooltip>
+        <CommonTooltip content={t('embed.zoomIn')} position="top">
+          <NotionButton variant="ghost"
+            onClick={handleZoomIn}
+            className={EMBED_CONTROL_BUTTON_CLASS}
+            aria-label={t('embed.zoomIn')}
+          >
+            <MagnifyingGlassPlus size={14} />
+          </NotionButton>
+        </CommonTooltip>
+        <CommonTooltip content={t('embed.zoomOut')} position="top">
+          <NotionButton variant="ghost"
+            onClick={handleZoomOut}
+            className={EMBED_CONTROL_BUTTON_CLASS}
+            aria-label={t('embed.zoomOut')}
+          >
+            <MagnifyingGlassMinus size={14} />
+          </NotionButton>
+        </CommonTooltip>
+        <CommonTooltip content={t('embed.fitView')} position="top">
+          <NotionButton variant="ghost"
+            onClick={handleFitView}
+            className={EMBED_CONTROL_BUTTON_CLASS}
+            aria-label={t('embed.fitView')}
+          >
+            <Crosshair className="w-3.5 h-3.5" />
+          </NotionButton>
+        </CommonTooltip>
       </div>
     </div>
   );
@@ -500,45 +491,71 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
     window.dispatchEvent(navEvent);
   }, [onOpen, targetId, state.parentMindmapId]);
 
-  // 渲染加载状态
+  // 渲染加载状态：模拟「根节点 + 两翼分支」的骨架屏（reduced-motion 下不闪烁）
   if (state.loading) {
     return (
       <div
         className={cn(
-          'flex flex-col items-center justify-center rounded-lg',
+          'relative flex flex-col items-center justify-center rounded-lg overflow-hidden',
           'bg-muted/30 border border-border/50',
           className
         )}
         style={{ height }}
+        role="status"
+        aria-label={t('embed.loading')}
       >
-        {displayTitle && (
-          <span className="text-sm font-medium text-foreground/70 mb-2 truncate max-w-[80%]">
-            {displayTitle}
-          </span>
-        )}
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <CircleNotch size={20} className="animate-spin" />
-          <span>{t('embed.loading')}</span>
+        <div
+          className="flex items-center gap-4 motion-safe:animate-pulse"
+          aria-hidden
+        >
+          <div className="flex flex-col items-end gap-2.5">
+            <div className="h-3 w-16 rounded-full bg-muted-foreground/15" />
+            <div className="h-3 w-24 rounded-full bg-muted-foreground/15" />
+            <div className="h-3 w-14 rounded-full bg-muted-foreground/15" />
+          </div>
+          <div className="h-7 w-28 rounded-lg bg-muted-foreground/25" />
+          <div className="flex flex-col items-start gap-2.5">
+            <div className="h-3 w-20 rounded-full bg-muted-foreground/15" />
+            <div className="h-3 w-14 rounded-full bg-muted-foreground/15" />
+            <div className="h-3 w-24 rounded-full bg-muted-foreground/15" />
+          </div>
+        </div>
+        <div className="absolute top-2.5 left-3 right-10 flex items-center gap-2 text-muted-foreground">
+          {displayTitle && (
+            <span className="text-sm font-medium text-foreground/70 truncate">
+              {displayTitle}
+            </span>
+          )}
+          <span className="text-xs whitespace-nowrap">{t('embed.loading')}</span>
         </div>
       </div>
     );
   }
 
-  // 渲染错误状态
+  // 渲染错误状态（带重试：重新触发一次数据拉取）
   if (state.error) {
     return (
       <div
         className={cn(
-          'flex items-center justify-center rounded-lg',
+          'flex flex-col items-center justify-center gap-2 rounded-lg',
           'bg-destructive/5 border border-destructive/20',
           className
         )}
         style={{ height }}
+        role="alert"
       >
         <div className="flex items-center gap-2 text-destructive">
           <WarningCircle size={20} />
           <span>{state.error}</span>
         </div>
+        <NotionButton
+          variant="ghost"
+          className="notion-btn text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => setReloadNonce((nonce) => nonce + 1)}
+        >
+          <ArrowClockwise size={13} />
+          {t('shellV2.embed.retry')}
+        </NotionButton>
       </div>
     );
   }
@@ -578,20 +595,17 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
 
       {/* 打开按钮 */}
       {showOpenButton && (
-        <NotionButton variant="ghost"
-          onClick={handleOpen}
-          className={cn(
-            'absolute top-2 right-2 p-1.5 rounded-md',
-            'bg-background/80 hover:bg-background',
-            'border border-border/50 hover:border-border',
-            'text-muted-foreground hover:text-foreground',
-            'transition-all duration-200',
-            'cursor-pointer'
-          )}
-          title={t('embed.openInNewWindow')}
-        >
-          <ArrowsOut size={16} />
-        </NotionButton>
+        <div className="absolute top-2 right-2">
+          <CommonTooltip content={t('embed.openInNewWindow')} position="left">
+            <NotionButton variant="ghost"
+              onClick={handleOpen}
+              className={EMBED_CONTROL_BUTTON_CLASS}
+              aria-label={t('embed.openInNewWindow')}
+            >
+              <ArrowsOut size={16} />
+            </NotionButton>
+          </CommonTooltip>
+        </div>
       )}
 
       {/* 底部渐变遮罩 */}

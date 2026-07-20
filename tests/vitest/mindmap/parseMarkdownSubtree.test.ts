@@ -6,6 +6,7 @@ import {
 } from '@/features/mindmap/utils/pasteMarkdown';
 import {
   encodeMindMapClipboard,
+  fingerprintText,
   hashText,
   nodesToMarkdown,
   parseMindMapClipboardPayload,
@@ -163,6 +164,13 @@ describe('clipboardCodec', () => {
   it('hashText is deterministic and content-sensitive', () => {
     expect(hashText('abc')).toBe(hashText('abc'));
     expect(hashText('abc')).not.toBe(hashText('abd'));
+  });
+
+  it('fingerprintText normalizes CRLF so clipboard roundtrips still match', () => {
+    // Windows/部分 WebView 会把写入的 \n 回读成 \r\n；指纹比对必须不受影响
+    expect(fingerprintText('a\r\nb')).toBe(fingerprintText('a\nb'));
+    expect(fingerprintText('a\r\nb')).toBe(hashText('a\nb'));
+    expect(fingerprintText('a\rb')).toBe(hashText('a\nb'));
   });
 
   it('encodes payload whose fingerprint matches its text', () => {

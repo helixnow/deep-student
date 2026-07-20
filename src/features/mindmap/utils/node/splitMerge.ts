@@ -7,10 +7,43 @@
  * 场景使用；修改任一侧的树结构/元数据合并语义时必须同步另一侧。
  */
 
-import type { MindMapNode, NodeId } from '../../types';
+import type { BlankRange, MindMapNode, NodeId } from '../../types';
 import { createNode } from './create';
 import { findNodeWithParent } from './find';
 import { insertNode } from './move';
+import { mergeRanges, remapRangesAfterTextEdit, validateRanges } from './blankRanges';
+
+/** 与 store 一致：把「以已提交文本为基」的挖空区间重映射到草稿文本 */
+function resolveDraftBlankRanges(node: MindMapNode, draftText: string): BlankRange[] {
+  if (!node.blankedRanges?.length) return [];
+  const baseText = node.text ?? '';
+  const merged = mergeRanges(validateRanges(node.blankedRanges, baseText.length));
+  return remapRangesAfterTextEdit(baseText, draftText, merged);
+}
+
+function shiftBlankRanges(ranges: BlankRange[], delta: number): BlankRange[] {
+  return ranges.map((range) => ({ start: range.start + delta, end: range.end + delta }));
+}
+
+/** 按拆分点把区间切分到左右两半（跨界区间被切成两段） */
+function splitBlankRanges(
+  ranges: BlankRange[],
+  offset: number,
+): { left: BlankRange[]; right: BlankRange[] } {
+  const left: BlankRange[] = [];
+  const right: BlankRange[] = [];
+  for (const range of ranges) {
+    if (range.end <= offset) {
+      left.push({ ...range });
+    } else if (range.start >= offset) {
+      right.push({ start: range.start - offset, end: range.end - offset });
+    } else {
+      if (range.start < offset) left.push({ start: range.start, end: offset });
+      right.push({ start: 0, end: range.end - offset });
+    }
+  }
+  return { left, right };
+}
 
 export interface SplitNodeResult {
   tree: MindMapNode;
@@ -49,12 +82,19 @@ export function splitNode(
   const left = sourceText.slice(0, clamped);
   const right = sourceText.slice(clamped);
 
+  // 与 store 一致：挖空区间随拆分边界切分而非整体清除
+  const splitRanges = splitBlankRanges(
+    resolveDraftBlankRanges(info.node, sourceText),
+    clamped,
+  );
   const newNode = createNode({ text: right });
-  // 文本变更后挖空索引失效
+  if (splitRanges.right.length > 0) {
+    newNode.blankedRanges = splitRanges.right;
+  }
   const updatedCurrent: MindMapNode = {
     ...info.node,
     text: left,
-    blankedRanges: undefined,
+    blankedRanges: splitRanges.left.length > 0 ? splitRanges.left : undefined,
   };
 
   let tree: MindMapNode;
@@ -128,11 +168,19 @@ export function mergeWithPrevious(
   if (info.index > 0) {
     const prev = info.parent.children[info.index - 1];
     const caretOffset = (prev.text ?? '').length;
+    // 与 store 一致：目标区间原样保留，来源区间重映射后平移拼接
+    const mergedRanges = [
+      ...resolveDraftBlankRanges(prev, prev.text ?? ''),
+      ...shiftBlankRanges(
+        resolveDraftBlankRanges(info.node, currentText),
+        (prev.text ?? '').length,
+      ),
+    ];
     const mergedPrev: MindMapNode = {
       ...prev,
       ...mergeNodeMeta(prev, info.node),
       text: (prev.text ?? '') + currentText,
-      blankedRanges: undefined,
+      blankedRanges: mergedRanges.length > 0 ? mergedRanges : undefined,
       children: [...prev.children, ...currentChildren],
     };
 
@@ -157,10 +205,17 @@ export function mergeWithPrevious(
     ...parent.children.slice(info.index + 1),
   ];
 
+  const mergedRanges = [
+    ...resolveDraftBlankRanges(parent, parent.text ?? ''),
+    ...shiftBlankRanges(
+      resolveDraftBlankRanges(info.node, currentText),
+      (parent.text ?? '').length,
+    ),
+  ];
   const tree = updateNodeById(root, parent.id, {
     ...mergeNodeMeta(parent, info.node),
     text: (parent.text ?? '') + currentText,
-    blankedRanges: undefined,
+    blankedRanges: mergedRanges.length > 0 ? mergedRanges : undefined,
     children: mergedParentChildren,
   });
 

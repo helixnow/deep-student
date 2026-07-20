@@ -121,6 +121,9 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   const reciteMode = useMindMapStore(state => state.reciteMode);
   /** ACR R2-02：与画布共用 agentEnteringIds，保证大纲同步入场动画 */
   const agentEnteringIds = useMindMapStore(state => state.agentEnteringIds);
+  /** ACR 4.0 A4：delete 退场 / update 内容更新高亮（与画布同步） */
+  const agentExitingIds = useMindMapStore(state => state.agentExitingIds);
+  const agentUpdatedIds = useMindMapStore(state => state.agentUpdatedIds);
 
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [dragGroupIds, setDragGroupIds] = useState<string[]>([]);
@@ -270,9 +273,13 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   // 追踪新出现的节点（展开动画）+ ACR agentEnteringIds（R2-02 大纲同步）
   const isInitialRender = useRef(true);
   const prevNodeIdsRef = useRef<Set<string>>(new Set());
+  // 专注切换（zoom in/out）会一次性显隐大量行：跳过差分入场，
+  // 由容器级 WAAPI 过渡承担视觉反馈，避免整树逐行重放动画
+  const enteringViewRootRef = useRef(viewRootId);
   const enteringNodeIds = useMemo(() => {
     const entering = new Set<string>();
-    if (!isInitialRender.current) {
+    const zoomChanged = enteringViewRootRef.current !== viewRootId;
+    if (!isInitialRender.current && !zoomChanged) {
       const prev = prevNodeIdsRef.current;
       allFlatNodes.forEach(fn => {
         if (!prev.has(fn.id)) entering.add(fn.id);
@@ -281,12 +288,13 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     // Agent 演出：即使差分未命中（如 update/move），也播 entering
     agentEnteringIds.forEach(id => entering.add(id));
     return entering;
-  }, [allFlatNodes, agentEnteringIds]);
+  }, [allFlatNodes, agentEnteringIds, viewRootId]);
 
   useEffect(() => {
     isInitialRender.current = false;
+    enteringViewRootRef.current = viewRootId;
     prevNodeIdsRef.current = new Set(allFlatNodes.map(fn => fn.id));
-  }, [allFlatNodes]);
+  }, [allFlatNodes, viewRootId]);
 
   // 拖拽时收集被拖节点（及多选组其它成员）的后代 ID，用于隐藏子树
   const dragHiddenIds = useMemo(() => {
@@ -365,6 +373,57 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   const currentSearchResultId =
     currentSearchIndex >= 0 ? (searchResults[currentSearchIndex] ?? null) : null;
   const isMultiSelectActive = selection.length > 1;
+
+  // 搜索命中定位：当前命中变化时把对应行滚到视口中部。
+  // 搜索期间焦点在搜索框里，行级聚焦 effect 不会接管滚动，这里补上。
+  useEffect(() => {
+    if (!currentSearchResultId) return;
+    const raf = requestAnimationFrame(() => {
+      const root = containerRef.current;
+      if (!root) return;
+      const escaped =
+        typeof globalThis.CSS?.escape === 'function'
+          ? globalThis.CSS.escape(currentSearchResultId)
+          : currentSearchResultId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const row = root.querySelector<HTMLElement>(`[data-node-id="${escaped}"]`);
+      if (!row) return;
+      const prefersReduced =
+        !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      row.scrollIntoView({
+        block: 'center',
+        behavior: prefersReduced ? 'auto' : 'smooth',
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [currentSearchResultId]);
+
+  // 专注模式 Esc 逐级返回：行级 Esc 已消化「退出编辑→清焦点」两段，
+  // 焦点/选中都清空后再按 Esc 上移一层专注根，直至回到整棵树。
+  useEffect(() => {
+    if (!outlineKeyboardActive || reciteMode) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      // 行级「Esc 清焦点」等已消费的按键不再叠加缩放返回
+      if (e.defaultPrevented) return;
+      const state = storeApi.getState();
+      if (!state.viewRootId) return;
+      if (state.focusedNodeId || state.selection.length > 0) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      const parent = getAncestors(state.document.root, state.viewRootId).at(-1);
+      state.setViewRootId(
+        parent && parent.id !== state.document.root.id ? parent.id : null,
+      );
+    };
+    globalThis.document.addEventListener('keydown', handleKeyDown);
+    return () => globalThis.document.removeEventListener('keydown', handleKeyDown);
+  }, [outlineKeyboardActive, reciteMode, storeApi]);
 
   const handleRowSelect = useCallback((nodeId: string, e: React.MouseEvent) => {
     const state = storeApi.getState();
@@ -719,13 +778,41 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     setOffsetLeft(event.delta.x);
   }, []);
 
+  // 拖拽悬停折叠节点 ≈600ms 自动展开（Workflowy/Finder spring-loading），
+  // 无需先放手展开再重新拖拽；skipHistory 不污染 undo 栈。
+  const dragExpandRef = useRef<{ nodeId: string; timer: number } | null>(null);
+  const clearDragExpandTimer = useCallback(() => {
+    if (dragExpandRef.current) {
+      window.clearTimeout(dragExpandRef.current.timer);
+      dragExpandRef.current = null;
+    }
+  }, []);
+
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const { over } = event;
     setOverId(over?.id ?? null);
     if (over) {
       setDropPosition(calculateDropPosition(event));
     }
-  }, [calculateDropPosition]);
+
+    const overNodeId = over ? String(over.id) : null;
+    if (dragExpandRef.current?.nodeId === overNodeId) return;
+    clearDragExpandTimer();
+    if (!overNodeId || overNodeId === String(event.active.id)) return;
+    const overNode = allFlatNodeByIdRef.current.get(overNodeId)?.node;
+    if (!overNode?.collapsed || (overNode.children?.length ?? 0) === 0) return;
+    dragExpandRef.current = {
+      nodeId: overNodeId,
+      timer: window.setTimeout(() => {
+        dragExpandRef.current = null;
+        const live = storeApi.getState();
+        const liveNode = findNodeById(live.document.root, overNodeId);
+        if (liveNode?.collapsed) {
+          live.toggleCollapse(overNodeId, { skipHistory: true });
+        }
+      }, 600),
+    };
+  }, [calculateDropPosition, clearDragExpandTimer, storeApi]);
 
   const resolveDropTarget = useCallback((
     sourceId: string,
@@ -797,6 +884,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     const { active, over } = event;
     const groupIds = dragGroupIds.length > 0 ? dragGroupIds : [String(active.id)];
 
+    clearDragExpandTimer();
     setActiveId(null);
     setOverId(null);
     setOffsetLeft(0);
@@ -818,13 +906,27 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     if (moveNodes(movingIds, drop.parentId, drop.index)) {
       setSelection(movingIds);
     }
-  }, [dragGroupIds, resolveDropTarget, document.root, moveNodes, setSelection]);
+  }, [dragGroupIds, resolveDropTarget, document.root, moveNodes, setSelection, clearDragExpandTimer]);
 
   const handleDragCancel = useCallback(() => {
+    clearDragExpandTimer();
     setActiveId(null);
     setOverId(null);
     setDragGroupIds([]);
-  }, []);
+  }, [clearDragExpandTimer]);
+
+  // 卸载兜底：拖拽悬停展开的 pending 定时器不得跨实例存活
+  useEffect(() => () => clearDragExpandTimer(), [clearDragExpandTimer]);
+
+  // 边缘自动滚动：阈值稍大、加速度稍高，长列表拖拽到视口边缘时提速更快
+  const outlineAutoScroll = useMemo(
+    () => ({
+      ...SHELL_SAFE_AUTO_SCROLL,
+      acceleration: 14,
+      threshold: { x: 0.12, y: 0.22 },
+    }),
+    [],
+  );
 
   // Empty state handling
   const hasOnlyRoot = document.root.children.length === 0;
@@ -854,7 +956,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
       >
         <DndContext
           sensors={sensors}
-          autoScroll={SHELL_SAFE_AUTO_SCROLL}
+          autoScroll={outlineAutoScroll}
           collisionDetection={closestCenter}
           onDragStart={handleDragStart}
           onDragMove={handleDragMove}
@@ -885,12 +987,15 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
                   isBeingDragged={activeId === flatNode.id}
                   projectedLevel={overId === flatNode.id ? currentProjectedLevel : null}
                   isEntering={enteringNodeIds.has(flatNode.id)}
+                  isExiting={agentExitingIds.has(flatNode.id)}
+                  isUpdated={agentUpdatedIds.has(flatNode.id)}
                   isSelected={selectionSet.has(flatNode.id)}
                   isMultiSelectActive={isMultiSelectActive}
                   isSearchMatch={searchResultSet.has(flatNode.id)}
                   isCurrentSearchMatch={currentSearchResultId === flatNode.id}
                   searchQuery={searchQuery}
                   nextVisibleNodeId={flatNodes[index + 1]?.id ?? null}
+                  prevVisibleNodeId={index > 0 ? flatNodes[index - 1].id : null}
                   focusGuideIndex={
                     focusGuide && focusGuide.ids.has(flatNode.id)
                       ? focusGuide.guideIndex

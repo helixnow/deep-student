@@ -37,7 +37,15 @@ export function useCoarsePointer(): boolean {
   return useMediaQuery('(pointer: coarse)');
 }
 
-/** 移动端窄屏检测（与 Tailwind sm 断点 640px 对齐）。 */
+/**
+ * 移动端窄屏检测（与 Tailwind sm 断点 640px 对齐）。
+ *
+ * 设计意图：<640 为「内联子屏」形态（面板全屏化等），640-767 保留压缩桌面形态
+ * （App shell 的移动切换点是 768，见 useBreakpoint().isSmallScreen）。
+ *
+ * 用 `not (min-width: 640px)` 而非 `max-width: 639px`：缩放产生的小数视口宽度
+ * （如 639.5px）下 max-width 会与 CSS 端 640 断点判定不一致，导致布局分支错位。
+ */
 export function useMobileScreen(): boolean {
-  return useMediaQuery('(max-width: 639px)');
+  return useMediaQuery('not (min-width: 640px)');
 }

@@ -9,6 +9,7 @@ import type { MindMapNode, LayoutConfig, LayoutResult, NodeStyle } from '../../t
 import type { LayoutCategory, LayoutDirection } from '../../registry/types';
 import type { LayoutBoundsWithMeta } from '../../registry/types';
 import { DEFAULT_LAYOUT_CONFIG } from '../../constants';
+import { getDepthHorizontalGap, getDepthVerticalGap } from '../../constants/layout';
 import {
   calculateSubtreeHeight,
   calculateNodeWidth,
@@ -146,6 +147,8 @@ export class LogicTreeLayoutEngine extends BaseLayoutEngine {
       // layoutBoxes 将在最终阶段统一计算
 
       // 添加边（使用 orgchart 类型实现逻辑图的阶梯连线）
+      // railOffset 取父子实际层距的一半：父节点层级为 level - 1（有 parentId 时 level >= 1），
+      // 深度间距收敛后层距变窄，竖直导轨须同步内移保持居中
       if (parentId) {
         edges.push({
           id: `e-${parentId}-${node.id}`,
@@ -154,7 +157,7 @@ export class LogicTreeLayoutEngine extends BaseLayoutEngine {
           type: 'orgchart',
           data: {
             direction: validDirection,
-            railOffset: config.horizontalGap / 2,
+            railOffset: getDepthHorizontalGap(config, level - 1) / 2,
           },
         });
       }
@@ -164,24 +167,28 @@ export class LogicTreeLayoutEngine extends BaseLayoutEngine {
         return nodeHeight;
       }
 
+      // 层距/兄弟距随本节点层级收敛（scale(0)=1 → 根到一级保持现值）
+      const levelGap = getDepthHorizontalGap(config, level);
+      const siblingGap = getDepthVerticalGap(config, level);
+
       // 计算子节点 X 位置
       let childX: number;
       if (isLeftDirection) {
         // 向左展开：子节点在父节点左侧
-        childX = nodeX - config.horizontalGap;
+        childX = nodeX - levelGap;
       } else {
         // 向右展开：子节点在父节点右侧
-        childX = x + nodeWidth + config.horizontalGap;
+        childX = x + nodeWidth + levelGap;
       }
 
-      // 计算每个子节点的子树高度
+      // 计算每个子节点的子树高度（传入子节点绝对层级，供深度间距收敛）
       const subtreeHeights = node.children!.map(child =>
-        calculateSubtreeHeight(child, config)
+        calculateSubtreeHeight(child, config, false, level + 1)
       );
 
       // 总高度
       const totalHeight = subtreeHeights.reduce(
-        (sum, h, i) => sum + h + (i > 0 ? config.verticalGap : 0),
+        (sum, h, i) => sum + h + (i > 0 ? siblingGap : 0),
         0
       );
 
@@ -191,7 +198,7 @@ export class LogicTreeLayoutEngine extends BaseLayoutEngine {
       // 布局子节点
       node.children!.forEach((child, index) => {
         layoutNode(child, childX, currentY, level + 1, node.id);
-        currentY += subtreeHeights[index] + config.verticalGap;
+        currentY += subtreeHeights[index] + siblingGap;
       });
 
       return Math.max(nodeHeight, totalHeight);

@@ -46,13 +46,15 @@ export const AssociationEdge: React.FC<EdgeProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (isEditing) {
-      setDraft(label);
-      requestAnimationFrame(() => {
-        inputRef.current?.focus();
-        inputRef.current?.select();
-      });
-    }
+    if (!isEditing) return;
+    setDraft(label);
+    // rAF 记录句柄并在清理时取消：进入编辑瞬间边被移除/退出编辑时不再对
+    // 已卸载的输入框做 focus/select
+    const frame = requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(frame);
   }, [isEditing, label]);
 
   const [edgePath, labelX, labelY] = getBezierPath({

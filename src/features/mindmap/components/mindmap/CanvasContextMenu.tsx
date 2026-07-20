@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Z_INDEX } from '@/config/zIndex';
 import {
   Plus,
@@ -33,8 +34,10 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { tweenFast, transitionInstant } from '@/styles/motion-springs';
 import { useMindMapStore } from '../../store';
 import { findNodeById, findParentNode } from '../../utils/node/find';
+import { countAllDescendants } from '../../utils/layout/countDescendants';
 import { QUICK_TEXT_COLORS, QUICK_BG_COLORS } from '../../constants';
 import { EmojiPicker } from '../shared/EmojiPicker';
 
@@ -191,6 +194,9 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
 
   /** 「添加图标」内联展开的 emoji 面板 */
   const [showIconPanel, setShowIconPanel] = useState(false);
+  /** 删除带子树节点的内联二次确认（危险项不弹 Dialog，原位展开确认条） */
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const prefersReducedMotion = useReducedMotion();
   /** 钳位后的最终坐标；null = 尚未测量（隐藏渲染，避免越界闪跳） */
   const [coords, setCoords] = useState<{ left: number; top: number } | null>(null);
 
@@ -213,9 +219,10 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
     if (!opts?.keepOpen) onClose();
   }, [onClose]);
 
-  // 打开/切换目标时收起 emoji 面板
+  // 打开/切换目标时收起 emoji 面板与删除确认
   useEffect(() => {
     setShowIconPanel(false);
+    setConfirmingDelete(false);
   }, [isOpen, nodeId]);
 
   useEffect(() => {
@@ -280,7 +287,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
     if (x < 8) x = 8;
     if (y < 8) y = 8;
     setCoords(prev => (prev?.left === x && prev.top === y ? prev : { left: x, top: y }));
-  }, [isOpen, position, showIconPanel]);
+  }, [isOpen, position, showIconPanel, confirmingDelete]);
 
   /** 方向键 / Home / End 在菜单项间移动焦点（roving focus） */
   const handleMenuKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -610,13 +617,66 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
       {!isRoot && (
         <>
           {hasChildren && <MenuSeparator />}
-          <MenuItem
-            icon={<Trash className="w-4 h-4" />}
-            label={t('actions.delete')}
-            shortcut="Del"
-            destructive
-            onClick={() => exec(() => deleteNode(nodeId))}
-          />
+          {/* 危险项内联确认：带子树的删除先原位展开确认条（无 Dialog），
+              叶子节点仍一步删除。确认态自动聚焦取消（误触安全默认）。 */}
+          <AnimatePresence mode="wait" initial={false}>
+            {confirmingDelete && hasChildren ? (
+              <motion.div
+                key="confirm-delete"
+                initial={prefersReducedMotion ? false : { opacity: 0, x: 6 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={prefersReducedMotion ? undefined : { opacity: 0, x: 6 }}
+                transition={prefersReducedMotion ? transitionInstant : tweenFast}
+                className="flex items-center gap-1.5 px-2.5 py-1.5"
+              >
+                <span className="flex-1 text-xs text-destructive" role="alert">
+                  {t('canvasV2.deleteWithChildrenQuestion', {
+                    defaultValue: '同时删除 {{count}} 个子主题？',
+                    count: node ? countAllDescendants(node) : 0,
+                  })}
+                </span>
+                <NotionButton
+                  variant="danger"
+                  size="sm"
+                  {...{ [MENU_ITEM_ATTR]: '' }}
+                  onClick={() => exec(() => deleteNode(nodeId))}
+                >
+                  {t('canvasV2.confirmDelete', { defaultValue: '删除' })}
+                </NotionButton>
+                <NotionButton
+                  variant="utility"
+                  size="sm"
+                  autoFocus
+                  {...{ [MENU_ITEM_ATTR]: '' }}
+                  onClick={() => setConfirmingDelete(false)}
+                >
+                  {t('canvasV2.cancel', { defaultValue: '取消' })}
+                </NotionButton>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="delete-item"
+                initial={prefersReducedMotion ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+                transition={prefersReducedMotion ? transitionInstant : tweenFast}
+              >
+                <MenuItem
+                  icon={<Trash className="w-4 h-4" />}
+                  label={t('actions.delete')}
+                  shortcut="Del"
+                  destructive
+                  onClick={() => {
+                    if (hasChildren) {
+                      setConfirmingDelete(true);
+                    } else {
+                      exec(() => deleteNode(nodeId));
+                    }
+                  }}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </>
       )}
     </div>,

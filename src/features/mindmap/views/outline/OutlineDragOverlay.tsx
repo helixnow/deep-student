@@ -56,7 +56,8 @@ export const OutlineDragOverlayContent: React.FC<{
   };
 
   return (
-    <div className="drag-overlay-item !items-start !flex-col !py-2 !px-3 min-w-[120px] max-w-[300px] relative">
+    // 轻微倾斜 + 抬升阴影：拖起时的「拿起来了」质感（motion-reduce 回正）
+    <div className="drag-overlay-item !items-start !flex-col !py-2 !px-3 min-w-[120px] max-w-[300px] relative rotate-1 motion-reduce:rotate-0 shadow-lg will-change-transform">
       {dragCount > 1 && (
         <span className="outline-drag-count-badge">{dragCount}</span>
       )}

@@ -8,6 +8,7 @@
  * - .mm-drop-insert-line          拖拽中 ghost 插槽指示线（ViewportPortal，flow 坐标），
  *                                 变体 --h（水平）/--v（垂直）/--child-link（成为子节点短虚线）；
  * - .mm-edge-ancestor-path        焦点节点到根的祖先链树边高亮；
+ * - .mm-edge-hover-path           悬停节点到根的路径高亮（比焦点路径弱一档）；
  * - .mm-canvas-drag-count-badge   多选拖拽 ghost 数量角标（与大纲 outline-drag-count-badge 对齐）；
  * - .mm-association-preview-line  关联线模式下源节点到指针的跟手虚线。
  */
@@ -108,8 +109,17 @@
   transition: stroke 0.15s ease, stroke-width 0.15s ease;
 }
 
+/* 悬停路径：主色与主题边色混合（弱一档），扫视时看清「这条枝属于谁」，
+   不与焦点祖先链争抢视觉权重 */
+.mindmap-container .react-flow__edge.mm-edge-hover-path .react-flow__edge-path {
+  stroke: color-mix(in srgb, var(--mm-primary) 60%, var(--mm-edge));
+  stroke-width: 2px;
+  transition: stroke 0.15s ease, stroke-width 0.15s ease;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .mindmap-container .react-flow__edge.mm-edge-ancestor-path .react-flow__edge-path {
+  .mindmap-container .react-flow__edge.mm-edge-ancestor-path .react-flow__edge-path,
+  .mindmap-container .react-flow__edge.mm-edge-hover-path .react-flow__edge-path {
     transition: none;
   }
 }

@@ -77,6 +77,16 @@ export function hashText(text: string): string {
 }
 
 /**
+ * 剪贴板指纹：换行统一为 LF 后再哈希。
+ * 部分平台（Windows 剪贴板 / 某些 WebView）会把写入的 \n 回读成 \r\n，
+ * 直接 hashText 会导致「自己刚复制的内容」被误判为外部内容而丢失结构化粘贴。
+ * 写入与读取比对均应使用本函数。
+ */
+export function fingerprintText(text: string): string {
+  return hashText(text.replace(/\r\n?/g, '\n'));
+}
+
+/**
  * 将节点森林序列化为带缩进的 Markdown 列表。
  * - 任务节点（completed 为布尔值）输出 `- [ ]` / `- [x]`；
  * - 备注与正文折行输出为 `> ` 前缀的缩进续行，粘回时由
@@ -247,7 +257,7 @@ export function encodeMindMapClipboard(
       format: MINDMAP_CLIPBOARD_FORMAT,
       version: MINDMAP_CLIPBOARD_VERSION,
       copiedAt: Date.now(),
-      fingerprint: hashText(text),
+      fingerprint: fingerprintText(text),
       nodes: sanitized,
     },
   };
@@ -400,7 +410,7 @@ export async function readMindMapClipboard(): Promise<MindMapClipboardRead> {
   if (!text?.trim()) return { kind: 'empty', text: null };
 
   const sidecar = loadSidecar();
-  if (sidecar && sidecar.fingerprint === hashText(text)) {
+  if (sidecar && sidecar.fingerprint === fingerprintText(text)) {
     return { kind: 'structured', payload: sidecar, text };
   }
 

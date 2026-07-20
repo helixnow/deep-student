@@ -42,6 +42,15 @@ describe('splitNode', () => {
     expect(result.tree.children[1].children).toHaveLength(0);
   });
 
+  it('splits blank ranges at the boundary instead of clearing them', () => {
+    const root = node('root', 'R', [
+      { ...node('a', 'HelloWorld'), blankedRanges: [{ start: 2, end: 8 }] },
+    ]);
+    const result = splitNode(root, 'a', 5)!;
+    expect(result.tree.children[0].blankedRanges).toEqual([{ start: 2, end: 5 }]);
+    expect(result.tree.children[1].blankedRanges).toEqual([{ start: 0, end: 3 }]);
+  });
+
   it('splits root by inserting right half as first child', () => {
     const root = node('root', 'hello', [node('a', 'x')]);
     const result = splitNode(root, 'root', 2)!;
@@ -79,6 +88,18 @@ describe('mergeWithPrevious', () => {
     expect(result.caretOffset).toBe(1);
     expect(result.tree.text).toBe('Rtail');
     expect(result.tree.children.map((n) => n.id)).toEqual(['c']);
+  });
+
+  it('keeps target blank ranges and shifts source ranges across the join', () => {
+    const root = node('root', 'R', [
+      { ...node('a', 'foo'), blankedRanges: [{ start: 0, end: 3 }] },
+      { ...node('b', 'bar'), blankedRanges: [{ start: 1, end: 3 }] },
+    ]);
+    const result = mergeWithPrevious(root, 'b')!;
+    expect(result.tree.children[0].blankedRanges).toEqual([
+      { start: 0, end: 3 },
+      { start: 4, end: 6 },
+    ]);
   });
 
   it('uses textOverride for unsaved local edits', () => {

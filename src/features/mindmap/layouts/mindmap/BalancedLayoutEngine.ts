@@ -9,6 +9,7 @@ import type { MindMapNode, LayoutConfig, LayoutResult, NodeStyle } from '../../t
 import type { LayoutCategory, LayoutDirection } from '../../registry/types';
 import type { LayoutBoundsWithMeta } from '../../registry/types';
 import { DEFAULT_LAYOUT_CONFIG } from '../../constants';
+import { getDepthHorizontalGap, getDepthVerticalGap } from '../../constants/layout';
 import {
   calculateSubtreeHeight,
   calculateNodeWidth,
@@ -69,9 +70,10 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
     }
 
     // 计算每个子树的实际视觉高度，并记录原始顺序
+    // （children 恒为根的直接子节点 → 绝对层级 1，供深度间距收敛）
     const childrenWithHeight = children.map((child, originalIndex) => ({
       node: child,
-      height: calculateSubtreeHeight(child, config),
+      height: calculateSubtreeHeight(child, config, false, 1),
       originalIndex,
     }));
 
@@ -200,9 +202,9 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
     ) => {
       if (children.length === 0) return;
 
-      // 计算子树高度
+      // 计算子树高度（一级节点绝对层级为 1；根级兄弟距 scale(0)=1 不收敛）
       const subtreeHeights = children.map(child =>
-        calculateSubtreeHeight(child, config)
+        calculateSubtreeHeight(child, config, false, 1)
       );
       const totalHeight = subtreeHeights.reduce(
         (sum, h, i) => sum + h + (i > 0 ? config.verticalGap : 0),
@@ -293,17 +295,21 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
         return nodeHeight;
       }
 
+      // 层距/兄弟距随本节点层级收敛（level >= 1，一级节点的子代起开始收紧）
+      const levelGap = getDepthHorizontalGap(config, level);
+      const siblingGap = getDepthVerticalGap(config, level);
+
       // 右侧：子节点左边缘；左侧：子节点右边缘锚点（各子节点再按自身宽度回退）
       const childX =
         side === 'right'
-          ? nodeX + nodeWidth + config.horizontalGap
-          : nodeX - config.horizontalGap;
+          ? nodeX + nodeWidth + levelGap
+          : nodeX - levelGap;
 
       const subtreeHeights = node.children!.map(child =>
-        calculateSubtreeHeight(child, config)
+        calculateSubtreeHeight(child, config, false, level + 1)
       );
       const totalHeight = subtreeHeights.reduce(
-        (sum, h, i) => sum + h + (i > 0 ? config.verticalGap : 0),
+        (sum, h, i) => sum + h + (i > 0 ? siblingGap : 0),
         0
       );
 
@@ -311,13 +317,14 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
 
       node.children!.forEach((child, index) => {
         layoutSubtree(child, childX, currentY, level + 1, node.id, side);
-        currentY += subtreeHeights[index] + config.verticalGap;
+        currentY += subtreeHeights[index] + siblingGap;
       });
 
       return Math.max(nodeHeight, totalHeight);
     };
 
     // 布局左侧：传入右边缘锚点（根左边缘 0 - gap），各子节点按自身宽度定位
+    // 根到一级为 scale(0)=1，层距保持基准 horizontalGap 不收敛
     if (left.length > 0) {
       const leftAnchorX = -config.horizontalGap;
       layoutSide(left, 'left', leftAnchorX);

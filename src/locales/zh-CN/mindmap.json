@@ -41,9 +41,6 @@
     "searchOptions": "搜索选项",
     "searchCaseSensitive": "区分大小写",
     "searchWholeWord": "全词匹配",
-    "searchNoResults": "无匹配结果",
-    "searchCaseSensitive": "区分大小写",
-    "searchWholeWord": "全词匹配",
     "searchNoResults": "没有匹配的节点",
     "moreActions": "更多操作",
     "save": "保存",
@@ -99,13 +96,18 @@
     "dialogExportXmind": "导出 XMind",
     "filterXmind": "XMind 文件",
     "exportPdf": "导出 PDF",
-    "pdfPrintHint": "将打开系统打印对话框，请选择「另存为 PDF」"
+    "pdfPrintHint": "将打开系统打印对话框，请选择「另存为 PDF」",
+    "pdfPrintDegradeHint": "将打开系统打印对话框，请选择「另存为 PDF」。若打印对话框未弹出，当前系统可能不支持此功能，请改用 PNG/SVG 导出",
+    "exportText": "导出纯文本",
+    "dialogExportText": "导出纯文本"
   },
   "import": {
     "title": "导入",
     "dialogTitle": "导入思维导图",
     "filterName": "思维导图",
     "success": "导图导入成功",
+    "successSummary": "已导入 {{nodes}} 个节点",
+    "successSummaryIgnored": "已导入 {{nodes}} 个节点，忽略 {{images}} 张图片、{{summaries}} 条概要",
     "failed": "导图导入失败",
     "failedTitle": "导入失败",
     "importedMap": "导入的导图",
@@ -335,7 +337,19 @@
     "batchIndent": "缩进",
     "batchOutdent": "反缩进",
     "bulletClickHint": "单击选中 · ⌘单击聚焦此节点",
-    "subtreeItemCount": "{{count}} 项"
+    "subtreeItemCount": "{{count}} 项",
+    "bulletHint": "单击选中 · 双击聚焦 · ⌘单击聚焦",
+    "batchCollapse": "折叠",
+    "ghostNewLine": "新增一行",
+    "dropLevelBadge": "L{{level}}"
+  },
+  "outlineV2": {
+    "deleteConfirm": "确认删除？",
+    "deleteConfirmCount": "删除 {{count}} 项及其子节点？",
+    "confirmDelete": "删除",
+    "cancel": "取消",
+    "collapseToggleHint": "⌥ 子树 · ⌘ 折叠到此层级",
+    "breadcrumbHome": "返回完整大纲"
   },
   "contextMenu": {
     "clearColor": "清除颜色",
@@ -372,6 +386,7 @@
   },
   "association": {
     "add": "添加关联线",
+    "menuLabel": "关联线菜单",
     "selectSource": "请先选中一个源节点",
     "pickTarget": "点击目标节点",
     "editLabel": "编辑标签",
@@ -411,6 +426,14 @@
     "dragModeSelect": "框选模式：拖拽空白框选（Space/中键/右键拖拽平移）",
     "dragModePan": "拖动画布模式：拖拽空白移动画布（Shift+拖拽框选）"
   },
+  "canvasV2": {
+    "zoomResetTooltip": "当前缩放；点击恢复 100%",
+    "zoomLevel": "缩放 {{percent}}%，点击恢复 100%",
+    "deleteWithChildrenQuestion": "同时删除 {{count}} 个子主题？",
+    "confirmDelete": "删除",
+    "cancel": "取消",
+    "tapAgainToDelete": "再点确认"
+  },
   "recite": {
     "title": "背诵模式",
     "enter": "进入背诵模式",
@@ -435,5 +458,36 @@
   "menu": {
     "groupData": "数据",
     "groupView": "视图"
+  },
+  "shellV2": {
+    "versions": {
+      "justNow": "刚刚",
+      "minutesAgo": "{{count}} 分钟前",
+      "hoursAgo": "{{count}} 小时前",
+      "daysAgo": "{{count}} 天前",
+      "nodeCount": "{{count}} 个节点",
+      "diffSummary": "较当前 +{{added}} / −{{removed}}",
+      "diffSame": "节点与当前一致",
+      "latestBadge": "最新"
+    },
+    "conflict": {
+      "keepServer": "保留服务器版"
+    },
+    "import": {
+      "errorTitle": "导入失败",
+      "retry": "重试",
+      "dismiss": "关闭"
+    },
+    "export": {
+      "group": "导出为…",
+      "xmindDone": "已导出 XMind 文件"
+    },
+    "clipboard": {
+      "copiedNodes": "已复制 {{count}} 个节点",
+      "cutNodes": "已剪切 {{count}} 个节点"
+    },
+    "embed": {
+      "retry": "重试"
+    }
   }
 }

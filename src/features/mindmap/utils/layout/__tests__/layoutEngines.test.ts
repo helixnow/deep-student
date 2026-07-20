@@ -3,10 +3,14 @@
  *
  * 覆盖：LogicBalanced 左侧右缘锚点对齐、超长文本换行高度估算、
  * 重叠消除、空树/children 缺失防御、OrgChart 语义化间距、
- * 兄弟轮廓紧凑、深度超限 truncated 信号、间距档位解析。
+ * 兄弟轮廓紧凑、深度超限 truncated 信号、间距档位解析、
+ * 深度间距收敛（depthGapScaling：层距/兄弟距随深度收紧、下限截断、
+ * 关闭开关回归旧值、timeline 豁免）。
  *
  * 注意：本套测试只依赖估算尺寸（不注入 measuredNodeHeights），
- * 断言使用相对关系而非绝对坐标，容忍估算参数微调。
+ * 断言使用相对关系而非绝对坐标，容忍估算参数微调；
+ * 深度收敛断言测量的是「间距差值」（child 边缘 − parent 边缘），
+ * 与节点宽高估算解耦，期望值均在注释中手工推导。
  */
 
 import { describe, expect, it } from 'vitest';
@@ -158,9 +162,11 @@ describe('LogicBalancedLayoutEngine left anchor', () => {
       const childEdges = result.edges.filter(e => e.source === parent.id);
       for (const edge of childEdges) {
         const child = byId(result.nodes, edge.target);
-        // 左侧子节点右缘 = 父节点左缘 - horizontalGap
+        // 左侧子节点右缘 = 父节点左缘 - 深度收敛后的层距
+        // 深度间距收敛默认开启：level-1 父节点 → level-2 子节点的层距
+        // = horizontalGap × 0.9¹ = 80 × 0.9 = 72
         expect(child.position.x + (child.width ?? 0)).toBeCloseTo(
-          parent.position.x - config.horizontalGap,
+          parent.position.x - config.horizontalGap * 0.9,
           3
         );
       }
@@ -432,6 +438,230 @@ describe('spacing tiers', () => {
     };
     expect(gapOf(compactResult)).toBeCloseTo(compactCfg.horizontalGap, 3);
     expect(gapOf(spaciousResult)).toBeCloseTo(spaciousCfg.horizontalGap, 3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 深度间距收敛（depthGapScaling）
+// ---------------------------------------------------------------------------
+//
+// 规则：scale(d) = max(min, ratio^d)，d 为拥有该间距的父节点层级（根 = 0）。
+// 默认 ratio 0.9 / min 0.6，默认开启；depthGapScaling: false 显式关闭。
+// DEFAULT_LAYOUT_CONFIG：horizontalGap 80（层距基准）、verticalGap 24（兄弟距基准）。
+
+describe('depth gap scaling', () => {
+  /** 沿单链树逐层测量父子层距（child 左缘 − parent 右缘，水平生长引擎用） */
+  function chainLevelGapsX(result: { nodes: Node[] }, root: MindMapNode): number[] {
+    const gaps: number[] = [];
+    let parent: MindMapNode = root;
+    while (parent.children.length > 0) {
+      const child = parent.children[0];
+      const p = byId(result.nodes, parent.id);
+      const c = byId(result.nodes, child.id);
+      gaps.push(c.position.x - (p.position.x + (p.width ?? 0)));
+      parent = child;
+    }
+    return gaps;
+  }
+
+  /** 沿单链树逐层测量父子层距（child 顶缘 − parent 底缘，垂直组织图用） */
+  function chainLevelGapsY(result: { nodes: Node[] }, root: MindMapNode): number[] {
+    const gaps: number[] = [];
+    let parent: MindMapNode = root;
+    while (parent.children.length > 0) {
+      const child = parent.children[0];
+      const p = byId(result.nodes, parent.id);
+      const c = byId(result.nodes, child.id);
+      gaps.push(c.position.y - (p.position.y + (p.height ?? 0)));
+      parent = child;
+    }
+    return gaps;
+  }
+
+  /** 相邻兄弟的垂直净距（second 顶缘 − first 底缘） */
+  function siblingGapY(result: { nodes: Node[] }, first: MindMapNode, second: MindMapNode): number {
+    const a = byId(result.nodes, first.id);
+    const b = byId(result.nodes, second.id);
+    return b.position.y - (a.position.y + (a.height ?? 0));
+  }
+
+  const posOf = (r: { nodes: Node[] }) =>
+    Object.fromEntries(r.nodes.map(node => [node.id, { ...node.position }]));
+
+  it('converges level gaps by depth across horizontal-growth engines', () => {
+    // 单链无兄弟 → 重叠消除/紧凑均为 no-op，层距即初排公式值。
+    // 推导（horizontalGap = 80，默认 ratio 0.9）：
+    //   depth0（根→一级）：80 × 0.9⁰ = 80（根到一级保持现值）
+    //   depth1：80 × 0.9¹ = 72
+    //   depth2：80 × 0.9² = 64.8
+    //   depth3：80 × 0.9³ = 58.32
+    for (const engine of [tree, logicTree, balanced, logicBalanced, horizontalOrg]) {
+      const root = chain(4);
+      const result = engine.calculate(root, freshConfig(), engine.defaultDirection);
+      const gaps = chainLevelGapsX(result, root);
+      expect(gaps, engine.id).toHaveLength(4);
+      expect(gaps[0], `${engine.id} depth0`).toBeCloseTo(80, 6);
+      expect(gaps[1], `${engine.id} depth1`).toBeCloseTo(72, 6);
+      expect(gaps[2], `${engine.id} depth2`).toBeCloseTo(64.8, 6);
+      expect(gaps[3], `${engine.id} depth3`).toBeCloseTo(58.32, 6);
+    }
+  });
+
+  it('converges level gaps by depth in vertical orgchart (Y axis)', () => {
+    // 垂直组织图层距沿 Y 轴，levelGap 缺省回退 horizontalGap = 80，序列同上
+    const root = chain(4);
+    const result = verticalOrg.calculate(root, freshConfig(), 'down');
+    const gaps = chainLevelGapsY(result, root);
+    // depth0: 80×1 = 80；depth1: 80×0.9 = 72；depth2: 80×0.81 = 64.8；depth3: 80×0.729 = 58.32
+    expect(gaps[0]).toBeCloseTo(80, 6);
+    expect(gaps[1]).toBeCloseTo(72, 6);
+    expect(gaps[2]).toBeCloseTo(64.8, 6);
+    expect(gaps[3]).toBeCloseTo(58.32, 6);
+  });
+
+  it('clamps the scale at the configured minimum', () => {
+    // 默认 min = 0.6：
+    //   depth4：0.9⁴ = 0.6561 ≥ 0.6 → 80 × 0.6561 = 52.488
+    //   depth5：0.9⁵ = 0.59049 < 0.6 → 截断为 80 × 0.6 = 48
+    //   depth6：0.9⁶ = 0.531441 < 0.6 → 同样 48（触底后不再收紧）
+    const root = chain(7);
+    const result = tree.calculate(root, freshConfig(), 'right');
+    const gaps = chainLevelGapsX(result, root);
+    expect(gaps[4]).toBeCloseTo(52.488, 6);
+    expect(gaps[5]).toBeCloseTo(48, 6);
+    expect(gaps[6]).toBeCloseTo(48, 6);
+  });
+
+  it('honors a custom ratio and min', () => {
+    // ratio 0.5 / min 0.25：
+    //   depth0：80 × 1 = 80
+    //   depth1：80 × 0.5 = 40
+    //   depth2：80 × 0.25 = 20
+    //   depth3：0.5³ = 0.125 < 0.25 → 80 × 0.25 = 20
+    const root = chain(4);
+    const result = tree.calculate(
+      root,
+      freshConfig({ depthGapScaling: { ratio: 0.5, min: 0.25 } }),
+      'right'
+    );
+    const gaps = chainLevelGapsX(result, root);
+    expect(gaps[0]).toBeCloseTo(80, 6);
+    expect(gaps[1]).toBeCloseTo(40, 6);
+    expect(gaps[2]).toBeCloseTo(20, 6);
+    expect(gaps[3]).toBeCloseTo(20, 6);
+  });
+
+  it('converges sibling gaps by parent depth', () => {
+    // 兄弟距基准 verticalGap = 24，随「父节点层级」收敛。
+    // 各用独立小树，保证初排间距 == 分离/紧凑目标间距（clearance == gap → 双向不动）。
+
+    // 根的直接子节点间（父层级 0）：24 × 0.9⁰ = 24
+    const t0 = n('r0', [n('x'), n('y')]);
+    const r0 = tree.calculate(t0, freshConfig(), 'right');
+    expect(siblingGapY(r0, t0.children[0], t0.children[1])).toBeCloseTo(24, 6);
+
+    // level-1 父的子节点间（父层级 1）：24 × 0.9¹ = 21.6
+    const t1 = n('r1', [n('a', [n('a1'), n('a2')])]);
+    const r1 = tree.calculate(t1, freshConfig(), 'right');
+    const aNode = t1.children[0];
+    expect(siblingGapY(r1, aNode.children[0], aNode.children[1])).toBeCloseTo(21.6, 6);
+
+    // level-2 父的子节点间（父层级 2）：24 × 0.9² = 19.44
+    const t2 = n('r2', [n('a', [n('b', [n('b1'), n('b2')])])]);
+    const r2 = tree.calculate(t2, freshConfig(), 'right');
+    const bNode = t2.children[0].children[0];
+    expect(siblingGapY(r2, bNode.children[0], bNode.children[1])).toBeCloseTo(19.44, 6);
+  });
+
+  it('converges vertical orgchart sibling gaps along X', () => {
+    // 垂直组织图兄弟距沿 X 轴，siblingGap 缺省回退 verticalGap = 24。
+    // level-1 父的子节点间（父层级 1）：24 × 0.9 = 21.6
+    const root = n('r', [n('a', [n('a1'), n('a2')])]);
+    const result = verticalOrg.calculate(root, freshConfig(), 'down');
+    const aNode = root.children[0];
+    const c1 = byId(result.nodes, aNode.children[0].id);
+    const c2 = byId(result.nodes, aNode.children[1].id);
+    expect(c2.position.x - (c1.position.x + (c1.width ?? 0))).toBeCloseTo(21.6, 6);
+  });
+
+  it('depthGapScaling: false reproduces legacy uniform gaps（关闭 = 旧值回归）', () => {
+    // 旧行为：层距恒为 horizontalGap = 80、兄弟距恒为 verticalGap = 24，与深度无关。
+    // 这是无法运行旧代码情况下的安全网：关闭开关时所有 scale 恒为 1，
+    // gap × 1 为 IEEE754 恒等运算，输出须与收敛落地前逐位一致。
+    const chainRoot = chain(5);
+    const chainResult = tree.calculate(chainRoot, freshConfig({ depthGapScaling: false }), 'right');
+    for (const gap of chainLevelGapsX(chainResult, chainRoot)) {
+      expect(gap).toBeCloseTo(80, 6); // 每层都是基准 80
+    }
+    // 旧布局的单链 Y：每个子节点垂直居中于父节点，
+    // 非根节点 y = rootNodeHeight/2 − nodeHeight/2 = 44/2 − 34/2 = 5
+    for (const node of chainResult.nodes) {
+      if (!(node.data as { isRoot?: boolean }).isRoot) {
+        expect(node.position.y).toBeCloseTo(5, 6);
+      }
+    }
+
+    // 深层兄弟距同样回到基准 24（收敛开启时该处应为 21.6）
+    const t1 = n('r1', [n('a', [n('a1'), n('a2')])]);
+    const r1 = tree.calculate(t1, freshConfig({ depthGapScaling: false }), 'right');
+    const aNode = t1.children[0];
+    expect(siblingGapY(r1, aNode.children[0], aNode.children[1])).toBeCloseTo(24, 6);
+  });
+
+  it('disabled output is identical to neutral { ratio: 1, min: 1 } scaling', () => {
+    // 两条「scale ≡ 1」路径（显式关闭 vs 中性系数）必须产出完全相同的坐标，
+    // 锁定开关本身不引入任何旁路差异（多分支复杂树覆盖 resolve/compact/recenter 全管线）
+    const root = n('root', [
+      n('长标题的一级节点甲', [n('a1', [n('a11'), n('a12')]), n('a2')]),
+      n('乙'),
+      n('丙', [n('c1'), n('c2', [n('c21')])]),
+    ]);
+    for (const engine of [tree, balanced, logicTree, logicBalanced, verticalOrg, horizontalOrg]) {
+      const off = engine.calculate(root, freshConfig({ depthGapScaling: false }), engine.defaultDirection);
+      const neutral = engine.calculate(
+        root,
+        freshConfig({ depthGapScaling: { ratio: 1, min: 1 } }),
+        engine.defaultDirection
+      );
+      expect(posOf(neutral), engine.id).toEqual(posOf(off));
+    }
+  });
+
+  it('keeps flat (depth-1) trees identical whether scaling is on or off', () => {
+    // 根→一级处 scale(0) = 1（Math.pow(ratio, 0) 精确为 1），
+    // 扁平树没有更深层级 → 收敛开启与关闭输出必须完全一致（根到一级保持现值）
+    const root = n('root', [n('一'), n('二'), n('三个字的')]);
+    for (const engine of allEngines) {
+      const on = engine.calculate(root, freshConfig(), engine.defaultDirection);
+      const off = engine.calculate(root, freshConfig({ depthGapScaling: false }), engine.defaultDirection);
+      expect(posOf(on), engine.id).toEqual(posOf(off));
+    }
+  });
+
+  it('timeline engine is exempt from depth gap scaling', () => {
+    // 时间轴的深层节点是固定缩进列表（层级由缩进表达、行距须均匀），
+    // 引擎豁免收敛 → 开关取值不影响输出
+    const root = n('root', [
+      n('2024', [n('e1', [n('e11')]), n('e2')]),
+      n('2025', [n('e3')]),
+    ]);
+    const on = timeline.calculate(root, freshConfig(), 'right');
+    const off = timeline.calculate(root, freshConfig({ depthGapScaling: false }), 'right');
+    expect(posOf(on)).toEqual(posOf(off));
+  });
+
+  it('falls back to default coefficients for invalid scaling fields', () => {
+    // 持久化数据可能带入非法值：ratio NaN / min 0 → 逐字段回退默认 0.9 / 0.6
+    // depth1 层距 = 80 × 0.9 = 72
+    const root = chain(2);
+    const result = tree.calculate(
+      root,
+      freshConfig({ depthGapScaling: { ratio: Number.NaN, min: 0 } }),
+      'right'
+    );
+    const gaps = chainLevelGapsX(result, root);
+    expect(gaps[0]).toBeCloseTo(80, 6);
+    expect(gaps[1]).toBeCloseTo(72, 6);
   });
 });
 

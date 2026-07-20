@@ -51,10 +51,13 @@ describe('BalancedLayoutEngine left X', () => {
     const wideWidth = calculateNodeWidth(wide, config);
 
     // Parent right edge sits at -horizontalGap from root
+    // （根 → 一级层距 = horizontalGap × scale(0) = 80 × 1 = 80，深度收敛不影响首层）
     expect(parent.position.x + parentWidth).toBeCloseTo(-config.horizontalGap, 5);
 
-    // Each left child: x = parentLeft - gap - ownWidth
-    const childRightEdge = parent.position.x - config.horizontalGap;
+    // Each left child: x = parentLeft - depthGap - ownWidth
+    // 深度间距收敛默认开启：level-1 父节点 → level-2 子节点的层距
+    // = horizontalGap × 0.9¹ = 80 × 0.9 = 72
+    const childRightEdge = parent.position.x - config.horizontalGap * 0.9;
     expect(shortNode.position.x).toBeCloseTo(childRightEdge - shortWidth, 5);
     expect(wideNode.position.x).toBeCloseTo(childRightEdge - wideWidth, 5);
 

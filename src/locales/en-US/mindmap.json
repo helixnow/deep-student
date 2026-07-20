@@ -41,9 +41,6 @@
     "searchOptions": "Search options",
     "searchCaseSensitive": "Match case",
     "searchWholeWord": "Whole word",
-    "searchNoResults": "No matches",
-    "searchCaseSensitive": "Match case",
-    "searchWholeWord": "Whole word",
     "searchNoResults": "No matching nodes",
     "moreActions": "More actions",
     "save": "Save",
@@ -99,13 +96,18 @@
     "dialogExportXmind": "Export XMind",
     "filterXmind": "XMind File",
     "exportPdf": "Export PDF",
-    "pdfPrintHint": "The system print dialog will open; choose \"Save as PDF\""
+    "pdfPrintHint": "The system print dialog will open; choose \"Save as PDF\"",
+    "pdfPrintDegradeHint": "The system print dialog will open; choose \"Save as PDF\". If no dialog appears, PDF export may not be supported on this system — use PNG/SVG instead",
+    "exportText": "Export Plain Text",
+    "dialogExportText": "Export Plain Text"
   },
   "import": {
     "title": "Import",
     "dialogTitle": "Import Mind Map",
     "filterName": "Mind Map",
     "success": "Mind map imported successfully",
+    "successSummary": "Imported {{nodes}} nodes",
+    "successSummaryIgnored": "Imported {{nodes}} nodes; ignored {{images}} image(s) and {{summaries}} summary item(s)",
     "failed": "Mind map import failed",
     "failedTitle": "Import Failed",
     "importedMap": "Imported Mind Map",
@@ -338,7 +340,19 @@
     "batchIndent": "Indent",
     "batchOutdent": "Outdent",
     "bulletClickHint": "Click to select · ⌘-click to zoom in",
-    "subtreeItemCount": "{{count}} items"
+    "subtreeItemCount": "{{count}} items",
+    "bulletHint": "Click to select · Double-click to zoom in · ⌘-click to zoom in",
+    "batchCollapse": "Collapse",
+    "ghostNewLine": "Add a new line",
+    "dropLevelBadge": "L{{level}}"
+  },
+  "outlineV2": {
+    "deleteConfirm": "Delete this item?",
+    "deleteConfirmCount": "Delete {{count}} items and their subtrees?",
+    "confirmDelete": "Delete",
+    "cancel": "Cancel",
+    "collapseToggleHint": "⌥ subtree · ⌘ collapse to this level",
+    "breadcrumbHome": "Back to full outline"
   },
   "contextMenu": {
     "clearColor": "Clear color",
@@ -375,6 +389,7 @@
   },
   "association": {
     "add": "Add association",
+    "menuLabel": "Association menu",
     "selectSource": "Select a source node first",
     "pickTarget": "Click a target node",
     "editLabel": "Edit label",
@@ -414,6 +429,14 @@
     "dragModeSelect": "Select mode: drag blank area to marquee-select (pan with Space / middle / right button drag)",
     "dragModePan": "Pan canvas mode: drag blank area to move the canvas (marquee-select with Shift + drag)"
   },
+  "canvasV2": {
+    "zoomResetTooltip": "Current zoom; click to reset to 100%",
+    "zoomLevel": "Zoom {{percent}}%, click to reset to 100%",
+    "deleteWithChildrenQuestion": "Also delete {{count}} subtopics?",
+    "confirmDelete": "Delete",
+    "cancel": "Cancel",
+    "tapAgainToDelete": "Tap to confirm"
+  },
   "recite": {
     "title": "Recite Mode",
     "enter": "Enter Recite Mode",
@@ -435,5 +458,39 @@
   "menu": {
     "groupData": "Data",
     "groupView": "View"
+  },
+  "shellV2": {
+    "versions": {
+      "justNow": "Just now",
+      "minutesAgo": "{{count}}m ago",
+      "hoursAgo": "{{count}}h ago",
+      "daysAgo": "{{count}}d ago",
+      "nodeCount_one": "{{count}} node",
+      "nodeCount_other": "{{count}} nodes",
+      "diffSummary": "vs current +{{added}} / −{{removed}}",
+      "diffSame": "Same nodes as current",
+      "latestBadge": "Latest"
+    },
+    "conflict": {
+      "keepServer": "Keep server version"
+    },
+    "import": {
+      "errorTitle": "Import failed",
+      "retry": "Retry",
+      "dismiss": "Dismiss"
+    },
+    "export": {
+      "group": "Export as…",
+      "xmindDone": "XMind file exported"
+    },
+    "clipboard": {
+      "copiedNodes_one": "Copied {{count}} node",
+      "copiedNodes_other": "Copied {{count}} nodes",
+      "cutNodes_one": "Cut {{count}} node",
+      "cutNodes_other": "Cut {{count}} nodes"
+    },
+    "embed": {
+      "retry": "Retry"
+    }
   }
 }

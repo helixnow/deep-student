@@ -146,7 +146,10 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
     lineHeight: MM_NODE_LINE_HEIGHT_RATIO,
     fontWeight: rootTheme?.fontWeight || 600,
     padding: rootTheme?.padding || '10px 18px',
-    boxShadow: rootTheme?.shadow || 'none',
+    // ★ 修复：不要强制内联 boxShadow: 'none'——内联样式会压过
+    //   .selected 选中轻染 / search-match 命中框 / .mm-dragging 抬起阴影
+    //   等 class 级 box-shadow 反馈；主题未定义 shadow 时干脆不写内联值
+    ...(rootTheme?.shadow ? { boxShadow: rootTheme.shadow } : {}),
     // 自定义样式优先级更高
     ...customStyle,
   };
@@ -218,8 +221,10 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
         }
       />
 
-      {/* Action Buttons Container - hidden in recite mode */}
-      {!reciteMode && (
+      {/* Action Buttons Container - hidden in recite mode.
+          ★ embed（聊天卡片只读预览）同样隐藏：节点组件共用全局 store，
+          embed 文档不在全局 store 中，hover 出的加号点击会误写当前打开的导图 */}
+      {!reciteMode && !isEmbed && (
       <div
         className={cn(
           "absolute flex items-center justify-end w-8",

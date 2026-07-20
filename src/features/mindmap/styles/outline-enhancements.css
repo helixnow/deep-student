@@ -124,6 +124,111 @@ button.collapse-toggle:focus-visible {
   contain-intrinsic-size: auto 34px;
 }
 
+/* 焦点路径：焦点节点子树的那条缩进参考线用主色提亮（E01 C2.4） */
+.outline-node-row .indent-guide.focus-path {
+  background-color: color-mix(in srgb, var(--mm-primary) 45%, transparent);
+}
+
+.mindmap-container:hover .outline-node-row .indent-guide.focus-path {
+  background-color: color-mix(in srgb, var(--mm-primary) 60%, transparent);
+}
+
+/* 拖拽落点层级徽章：贴在插入线右端，标注投影目标层级（E01 C3.2） */
+.drop-indicator .drop-indicator-level {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0 5px;
+  border-radius: var(--mm-radius-pill, 999px);
+  background: var(--mm-primary);
+  color: hsl(var(--primary-foreground));
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* Workflowy 式幽灵新行：常驻弱显示，hover/聚焦时浮现（E01 C2.7） */
+.outline-ghost-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin-top: 2px;
+  padding: 4px 8px 4px 42px;
+  border-radius: var(--mm-radius-row, 6px);
+  color: var(--mm-text-muted);
+  font-size: 13px;
+  cursor: text;
+  opacity: 0.45;
+  transition:
+    opacity var(--mm-hover-transition, 120ms ease),
+    background-color var(--mm-hover-transition, 120ms ease);
+}
+
+.outline-ghost-row:hover,
+.outline-ghost-row:focus-visible {
+  opacity: 1;
+  background: var(--mm-bg-hover);
+}
+
+.outline-ghost-row:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.outline-ghost-bullet {
+  width: var(--mm-bullet-size, 6px);
+  height: var(--mm-bullet-size, 6px);
+  border-radius: 50%;
+  border: 1px dashed var(--mm-text-muted);
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.outline-ghost-label {
+  user-select: none;
+}
+
+/* 触控设备：悬停操作栏依赖 hover 不可达——聚焦/选中行常显，
+   并把按钮撑到触控目标下限（E01 C3.6） */
+@media (pointer: coarse) {
+  .outline-node-row.focused .node-actions,
+  .outline-node-row.selected .node-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .outline-node-row .action-btn {
+    width: 28px;
+    height: 28px;
+    position: relative;
+  }
+
+  .outline-drag-handle {
+    width: 24px;
+    height: 24px;
+    position: relative;
+  }
+
+  /* ::after 扩展命中区（不改变视觉尺寸）：28px 视觉 + 8px 外扩 ≈ 44px 命中，
+     与 mindmap.css 的 .mm-action-btn::after 同一范式 */
+  .outline-node-row .action-btn::after,
+  .outline-drag-handle::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+
+  .outline-ghost-row {
+    min-height: var(--size-shell-touch-target, 36px);
+    opacity: 0.7;
+  }
+}
+
 /* mindmap.css 入场动画未覆盖大纲 reduced-motion，此处补齐 */
 @media (prefers-reduced-motion: reduce) {
   .outline-node-row.entering,
@@ -135,6 +240,7 @@ button.collapse-toggle:focus-visible {
   .outline-collapse-count,
   .outline-empty-action,
   .outline-drag-handle,
+  .outline-ghost-row,
   .indent-guide {
     transition: none;
   }

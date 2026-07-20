@@ -23,9 +23,40 @@ import {
 // 预设颜色（统一引用共享常量）
 // ============================================================================
 import { FULL_TEXT_COLORS, FULL_BG_COLORS } from '../../constants';
+import type { IStyleTheme } from '../../registry/types';
 
 const PRESET_COLORS = FULL_BG_COLORS as unknown as string[];
 const TEXT_COLORS = FULL_TEXT_COLORS as unknown as string[];
+
+// ============================================================================
+// 子组件：主题缩略预览（画布底色 + 根节点色块 + 分支色板圆点）
+// ============================================================================
+const ThemeThumbnail: React.FC<{ theme: IStyleTheme }> = ({ theme }) => {
+  const canvasBg = theme.canvas?.background || theme.canvasStyle?.background || 'var(--mm-bg)';
+  const rootBg = theme.node?.root?.background || 'var(--mm-primary)';
+  const palette = (theme.palette ?? []).slice(0, 4);
+  return (
+    <span
+      aria-hidden
+      className="inline-flex items-center gap-1 h-5 w-11 shrink-0 rounded-[4px] border border-[var(--mm-border)] px-1 overflow-hidden"
+      style={{ background: canvasBg }}
+    >
+      <span
+        className="h-2 w-3.5 shrink-0 rounded-[2px]"
+        style={{ background: rootBg }}
+      />
+      <span className="flex items-center gap-0.5 min-w-0">
+        {palette.map((color, index) => (
+          <span
+            key={`${color}-${index}`}
+            className="h-1.5 w-1.5 shrink-0 rounded-full"
+            style={{ background: color }}
+          />
+        ))}
+      </span>
+    </span>
+  );
+};
 
 // ============================================================================
 // 子组件：颜色选择器
@@ -225,9 +256,13 @@ export const StyleSettings: React.FC<{
                 "mm-theme-option",
                 styleId === theme.id && "is-active"
               )}
+              aria-pressed={styleId === theme.id}
             >
-              {t(theme.name)}
-              {styleId === theme.id && <Check className="w-3 h-3" />}
+              <span className="inline-flex items-center gap-2 min-w-0">
+                <ThemeThumbnail theme={theme} />
+                <span className="truncate">{t(theme.name)}</span>
+              </span>
+              {styleId === theme.id && <Check className="w-3 h-3 shrink-0" />}
             </NotionButton>
           ))}
         </div>

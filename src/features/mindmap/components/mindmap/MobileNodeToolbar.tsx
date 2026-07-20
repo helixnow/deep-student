@@ -9,7 +9,7 @@
  * 动作逻辑与 CanvasContextMenu 一致（同一批 store action），
  * 颜色面板直接复用其导出的 ColorPalette。
  */
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Plus,
@@ -151,10 +151,40 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
     setEditingNodeId(nodeId);
   }, [nodeId, setEditingNodeId, onPanelChange]);
 
+  // 危险项内联确认（触屏无 hover / 无 Dialog）：带子树的删除需再点一次确认，
+  // 4 秒无操作或切换节点自动复位；叶子节点仍一步删除。
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const confirmTimerRef = useRef<number | null>(null);
+
+  const clearConfirmTimer = useCallback(() => {
+    if (confirmTimerRef.current != null) {
+      window.clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    setConfirmingDelete(false);
+    clearConfirmTimer();
+  }, [nodeId, clearConfirmTimer]);
+
+  useEffect(() => () => clearConfirmTimer(), [clearConfirmTimer]);
+
   const handleDelete = useCallback(() => {
     onPanelChange(null);
+    if (hasChildren && !confirmingDelete) {
+      setConfirmingDelete(true);
+      clearConfirmTimer();
+      confirmTimerRef.current = window.setTimeout(() => {
+        confirmTimerRef.current = null;
+        setConfirmingDelete(false);
+      }, 4000);
+      return;
+    }
+    clearConfirmTimer();
+    setConfirmingDelete(false);
     deleteNode(nodeId);
-  }, [deleteNode, nodeId, onPanelChange]);
+  }, [deleteNode, nodeId, onPanelChange, hasChildren, confirmingDelete, clearConfirmTimer]);
 
   const closePanelThen = useCallback(
     (action: () => void) => () => {
@@ -327,12 +357,20 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
         </NotionButton>
         <NotionButton
           variant="ghost"
-          className="mm-mobile-toolbar-btn destructive"
+          className={cn(
+            'mm-mobile-toolbar-btn destructive',
+            confirmingDelete && 'is-confirming',
+          )}
           disabled={isRoot}
           onClick={handleDelete}
+          aria-live="polite"
         >
-          <Trash size={18} />
-          <span>{t('actions.delete')}</span>
+          <Trash size={18} weight={confirmingDelete ? 'fill' : 'regular'} />
+          <span>
+            {confirmingDelete
+              ? t('canvasV2.tapAgainToDelete', { defaultValue: '再点确认' })
+              : t('actions.delete')}
+          </span>
         </NotionButton>
         <NotionButton
           variant="ghost"

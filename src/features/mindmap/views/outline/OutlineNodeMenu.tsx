@@ -1,9 +1,9 @@
 /**
  * 大纲行「⋯」菜单：结构操作 / 文本格式 / 颜色 / 剪贴板 / 折叠 / 删除。
- * 快捷键文案随当前 keymap 与平台变化。
+ * 快捷键文案随当前 keymap 与平台变化；删除为菜单内两段式内联确认（无弹窗）。
  */
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   CaretRight,
@@ -82,8 +82,31 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
   const isCollapsed = !!node.collapsed;
   const shortcuts = getOutlineShortcutLabels(keymap);
 
+  // 受控开合：进入删除确认态时拦截 AppMenuItem 的自动关闭，菜单保持打开
+  const [open, setOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const suppressNextCloseRef = useRef(false);
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!confirmingDelete) return;
+    cancelDeleteRef.current?.focus();
+    const timer = window.setTimeout(() => setConfirmingDelete(false), 6000);
+    return () => window.clearTimeout(timer);
+  }, [confirmingDelete]);
+
   return (
-    <AppMenu>
+    <AppMenu
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && suppressNextCloseRef.current) {
+          suppressNextCloseRef.current = false;
+          return;
+        }
+        setOpen(next);
+        if (!next) setConfirmingDelete(false);
+      }}
+    >
       <AppMenuTrigger asChild>
         <NotionButton variant="ghost"
           className="action-btn"
@@ -292,14 +315,59 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
         {!isRoot && (
           <>
             <AppMenuSeparator />
-            <AppMenuItem
-              icon={<Trash size={16} />}
-              shortcut="Del"
-              destructive
-              onClick={() => deleteNode(node.id)}
-            >
-              {t('actions.delete')}
-            </AppMenuItem>
+            {confirmingDelete ? (
+              <div
+                className="flex items-center gap-1.5 px-2 py-1.5"
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    // 只收回确认条，不关整个菜单
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setConfirmingDelete(false);
+                  }
+                }}
+              >
+                <span
+                  className="flex-1 text-xs text-[color:hsl(var(--destructive))]"
+                  role="alert"
+                >
+                  {t('outlineV2.deleteConfirm', { defaultValue: '确认删除？' })}
+                </span>
+                <NotionButton
+                  variant="danger"
+                  size="sm"
+                  className="gap-1"
+                  onClick={() => {
+                    setConfirmingDelete(false);
+                    setOpen(false);
+                    deleteNode(node.id);
+                  }}
+                >
+                  <Trash size={13} />
+                  {t('outlineV2.confirmDelete', { defaultValue: '删除' })}
+                </NotionButton>
+                <NotionButton
+                  ref={cancelDeleteRef}
+                  variant="utility"
+                  size="sm"
+                  onClick={() => setConfirmingDelete(false)}
+                >
+                  {t('outlineV2.cancel', { defaultValue: '取消' })}
+                </NotionButton>
+              </div>
+            ) : (
+              <AppMenuItem
+                icon={<Trash size={16} />}
+                shortcut="Del"
+                destructive
+                onClick={() => {
+                  suppressNextCloseRef.current = true;
+                  setConfirmingDelete(true);
+                }}
+              >
+                {t('actions.delete')}
+              </AppMenuItem>
+            )}
           </>
         )}
       </AppMenuContent>

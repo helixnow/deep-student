@@ -25,8 +25,15 @@ import {
 } from './viewController';
 import { dstu } from '@/dstu';
 import { StyleRegistry } from './registry';
-import { exportToOpml, exportToMarkdown, exportToJson, exportToImage } from './utils/exporters';
-import { importFromXMind, importMindMap } from './utils/importers';
+import {
+  exportToOpml,
+  exportToMarkdown,
+  exportToJson,
+  exportToPlainText,
+  exportToImage,
+  exportToXMindFile,
+} from './utils/exporters';
+import { createXMindImportReport, importFromXMind, importMindMap } from './utils/importers';
 import { fileManager } from '@/utils/fileManager';
 import { TauriAPI } from '@/utils/tauriApi';
 import { cn } from '@/lib/utils';
@@ -58,10 +65,18 @@ import {
   ShareNetwork,
   Check,
   ClockCounterClockwise,
+  FileMd,
+  FileCode,
+  FilePng,
+  FileSvg,
+  FileZip,
+  FileTxt,
+  FilePdf,
+  TreeStructure,
 } from '@phosphor-icons/react';
+import { AnimatePresence } from 'framer-motion';
 import { Input } from '@/components/ui/shad/Input';
 import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { TextSwap } from '@/components/ui/TextSwap';
@@ -72,6 +87,7 @@ import {
   AppMenuItem,
   AppMenuCheckboxItem,
   AppMenuSeparator,
+  AppMenuGroup,
 } from '@/components/ui/app-menu/AppMenu';
 import { OutlineView, type OutlineViewHandle } from './views/OutlineView';
 import { MindMapView, type MindMapViewHandle } from './views/MindMapView';
@@ -80,12 +96,12 @@ import { StyleSettings } from './components/toolbar/StylePanel';
 // W09 契约：选中节点时的内联格式条（无必需 props，内部消费当前 store）
 import { MindMapFormatBar } from './components/toolbar/FormatBar';
 import { VersionHistoryPanel } from './components/toolbar/VersionHistoryPanel';
-// W07 契约：结构化快捷键表 getShortcutGroups(view, keymap, platform)
-import { getShortcutGroups } from './constants/shortcuts';
+// 快捷键帮助：内联面板（W07 键表消费与归一化已移入该组件）
+import { ShortcutHelpPanel } from './components/toolbar/ShortcutHelpPanel';
+import { InlineCollapse } from './components/toolbar/InlineCollapse';
 import { ReciteStatusBar } from './components/shared/ReciteStatusBar';
 import { Progress } from '@/components/ui/shad/Progress';
 import { useMindMapClipboard } from './hooks/useMindMapClipboard';
-import { useCanvasDragMode } from './hooks/useCanvasDragMode';
 import {
   captureOutlineResumePoint,
   prepareOutlineResume,
@@ -103,70 +119,6 @@ const MindMapClipboardEffects: React.FC = () => {
   useMindMapClipboard();
   return null;
 };
-
-// ============================================================================
-// 快捷键表适配（W07 契约的防御性归一化：字段名差异时降级而非崩溃）
-// ============================================================================
-
-interface NormalizedShortcutItem {
-  keys: string[];
-  label: string;
-}
-
-interface NormalizedShortcutGroup {
-  id: string;
-  title: string;
-  items: NormalizedShortcutItem[];
-}
-
-/**
- * 把 W07 getShortcutGroups 的返回值归一化为 { title, items:[{keys,label}] }。
- * 兼容 items/shortcuts 两种字段名与 label/labelKey/description 三种文案来源，
- * 结构完全不符时返回空数组（面板会退化为只显示键位方案说明与背诵组）。
- */
-function normalizeShortcutGroups(raw: unknown, t: TFunction): NormalizedShortcutGroup[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((group, groupIndex): NormalizedShortcutGroup => {
-      const g = (group ?? {}) as Record<string, unknown>;
-      const rawItems = (
-        Array.isArray(g.items) ? g.items : Array.isArray(g.shortcuts) ? g.shortcuts : []
-      ) as unknown[];
-      const title =
-        typeof g.title === 'string'
-          ? g.title
-          : typeof g.titleKey === 'string'
-            ? t(g.titleKey, { defaultValue: g.titleKey })
-            : '';
-      const items = rawItems
-        .map((item): NormalizedShortcutItem => {
-          const it = (item ?? {}) as Record<string, unknown>;
-          const keys = Array.isArray(it.keys)
-            ? it.keys.map(String)
-            : typeof it.keys === 'string'
-              ? [it.keys]
-              : Array.isArray(it.combos)
-                ? it.combos.map(String)
-                : [];
-          const label =
-            typeof it.label === 'string'
-              ? it.label
-              : typeof it.labelKey === 'string'
-                ? t(it.labelKey, { defaultValue: it.labelKey })
-                : typeof it.description === 'string'
-                  ? it.description
-                  : '';
-          return { keys, label };
-        })
-        .filter((item) => item.keys.length > 0 && item.label);
-      return {
-        id: typeof g.id === 'string' ? g.id : `group-${groupIndex}`,
-        title,
-        items,
-      };
-    })
-    .filter((group) => group.items.length > 0);
-}
 
 /** 宿主可通过 ref 调用的命令（Notes 关闭标签「丢弃修改」等场景） */
 export interface MindMapContentViewHandle {
@@ -279,12 +231,12 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   const [showMobileStyle, setShowMobileStyle] = useState(false);
   const [showMobileMore, setShowMobileMore] = useState(false);
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
-  // 画布空白拖拽模式（框选/平移）：快捷键帮助面板按当前模式展示对应操作
-  const [canvasDragMode] = useCanvasDragMode();
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoadingDoc, setIsLoadingDoc] = useState(false);
   // A6-16: 导入未保存确认为工具栏下方的内联确认条（不再使用模态对话框）
   const [showImportConfirm, setShowImportConfirm] = useState(false);
+  // 导入解析/读取失败：工具栏下方内联错误横幅（禁弹窗），支持一键重试
+  const [importError, setImportError] = useState<string | null>(null);
   const [presentationMode, setPresentationMode] = useState(false);
   const [associationModeRequest, setAssociationModeRequest] = useState(0);
 
@@ -461,19 +413,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
     }, BACK_PRIORITY.overlay);
   }, [showVersionHistory]);
 
-  // 快捷键面板无遮罩，点击面板外部关闭（面板打开的那次点击不会命中：监听在下一帧才挂上）
-  const shortcutHelpRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!showShortcutHelp) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      const panel = shortcutHelpRef.current;
-      if (panel && !panel.contains(event.target as Node)) {
-        setShowShortcutHelp(false);
-      }
-    };
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
-  }, [showShortcutHelp]);
+  // 快捷键面板已内联到工具栏下方文档流（同版本历史范式），
+  // 由 Esc / 关闭按钮 / 面板互斥收起，不再做点击外部关闭。
 
   // ★ 标签页保活：isActive 变化时 saveDraft / loadMindMap
   const prevIsActiveRef = useRef(isActive);
@@ -582,9 +523,10 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
     
     const filename = mindmapDocument.root.text || 'mindmap';
     
-    // 图片导出需要特殊处理：必须在思维导图视图才能导出。
+    // 图片/PDF 导出需要特殊处理：必须在思维导图视图才能导出。
     // 大纲态触发时自动切到导图并等待 ReactFlow 完成渲染，而不是让用户手动切换后重试。
-    if (format === 'png' || format === 'svg') {
+    // PDF 复用 PNG 光栅 → 系统打印管线（macOS WKWebView 可能不支持，见降级提示）。
+    if (format === 'png' || format === 'svg' || format === 'pdf') {
       if (currentView !== 'mindmap') {
         switchView('mindmap');
         const rendered = await new Promise<boolean>((resolve) => {
@@ -617,14 +559,18 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               .getPropertyValue('--mm-bg')
               .trim() || getComputedStyle(document.documentElement).backgroundColor
           : themeBackground || getComputedStyle(document.documentElement).backgroundColor;
+        if (format === 'pdf') {
+          // 降级提示：WKWebView 的 window.print() 可能静默失败，提前告知用户替代方案
+          showGlobalNotification('info', t('mindmap:export.pdfPrintDegradeHint'));
+        }
         const result = await exportToImage({
-          format: format as 'png' | 'svg',
+          format: format as 'png' | 'svg' | 'pdf',
           filename,
           backgroundColor,
           container: containerRef.current,
           store: storeApi,
         });
-        if (result.saved) {
+        if (result.saved && format !== 'pdf') {
           showGlobalNotification('success', t('mindmap:export.success'));
         }
       } catch (error: unknown) {
@@ -636,7 +582,21 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       }
       return;
     }
-    
+
+    // XMind：二进制 zip 包，走独立导出管线（保存对话框在工具函数内）
+    if (format === 'xmind') {
+      try {
+        const result = await exportToXMindFile(mindmapDocument, filename);
+        if (result.saved) {
+          showGlobalNotification('success', t('mindmap:shellV2.export.xmindDone'));
+        }
+      } catch (error: unknown) {
+        console.error('XMind export failed:', error);
+        showGlobalNotification('error', t('mindmap:export.failed'));
+      }
+      return;
+    }
+
     let content = '';
     let ext = '.txt';
     let filterName = t('mindmap:export.filterText');
@@ -665,6 +625,13 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         filterExt = 'json';
         dialogTitle = t('mindmap:export.dialogExportJson');
         break;
+      case 'text':
+        content = exportToPlainText(mindmapDocument);
+        ext = '.txt';
+        filterName = t('mindmap:export.filterText');
+        filterExt = 'txt';
+        dialogTitle = t('mindmap:export.dialogExportText');
+        break;
       default:
         return;
     }
@@ -677,10 +644,12 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         content,
         filters: [{ name: filterName, extensions: [filterExt] }],
       });
-      
+
       if (result.canceled) {
         return; // 用户取消导出
       }
+      // 导出成功轻量反馈（与图片导出一致）
+      showGlobalNotification('success', t('mindmap:export.success'));
     } catch (error: unknown) {
       console.error('Export failed:', error);
         showGlobalNotification(
@@ -692,25 +661,44 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
 
   // 实际执行导入（已确认或无未保存修改时调用）
   const doImport = useCallback(async () => {
+    setImportError(null);
     try {
       const filePath = await fileManager.pickSingleFile({
         title: t('mindmap:import.dialogTitle'),
         filters: [
-          { name: t('mindmap:import.filterName'), extensions: ['xmind', 'opml', 'md', 'markdown', 'json'] },
+          { name: t('mindmap:import.filterName'), extensions: ['xmind', 'opml', 'md', 'markdown', 'json', 'mm', 'txt'] },
         ],
       });
 
       if (!filePath) return;
 
+      // P3 导入报告：收集 XMind 导入时被静默丢弃的图片/概要计数
+      const report = createXMindImportReport();
       const imported = filePath.toLowerCase().endsWith('.xmind')
-        ? await importFromXMind(await TauriAPI.readFileAsBytes(filePath))
+        ? await importFromXMind(await TauriAPI.readFileAsBytes(filePath), report)
         : importMindMap(await fileManager.readTextFile(filePath), 'auto');
       setDocument(imported);
       setFocusedNodeId(imported.root.id);
-      showGlobalNotification('success', t('mindmap:import.success'));
+      type CountableNode = { children?: CountableNode[] };
+      const countNodes = (node: CountableNode): number =>
+        1 + (node.children ?? []).reduce((sum, child) => sum + countNodes(child), 0);
+      const nodeCount = countNodes(imported.root);
+      const hasDropped = report.droppedImages > 0 || report.droppedSummaries > 0;
+      showGlobalNotification(
+        'success',
+        hasDropped
+          ? t('mindmap:import.successSummaryIgnored', {
+            nodes: nodeCount,
+            images: report.droppedImages,
+            summaries: report.droppedSummaries,
+          })
+          : t('mindmap:import.successSummary', { nodes: nodeCount }),
+      );
     } catch (error: unknown) {
+      // A6-16 延伸：解析/读取失败改为工具栏下方内联错误横幅（不弹窗），支持重试
       const message = error instanceof Error ? error.message : t('mindmap:import.failed');
-      showGlobalNotification('error', message, t('mindmap:import.failedTitle'));
+      console.error('[MindMapContentView] Import failed:', error);
+      setImportError(message);
     }
   }, [setDocument, setFocusedNodeId, t]);
 
@@ -812,11 +800,18 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       const isTextInputContext =
         target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
 
-      // 内联浮层 Esc 关闭次序：演示模式 > 导入确认条 > 版本历史 > 快捷键面板 > 搜索 > 画布级联
+      // 内联浮层 Esc 关闭次序：演示模式 > 导入确认/错误条 > 版本历史 > 快捷键面板 > 搜索 > 画布级联
       if (e.key === 'Escape' && showImportConfirm) {
         e.preventDefault();
         e.stopPropagation();
         setShowImportConfirm(false);
+        return;
+      }
+
+      if (e.key === 'Escape' && importError) {
+        e.preventDefault();
+        e.stopPropagation();
+        setImportError(null);
         return;
       }
 
@@ -866,13 +861,20 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
 
       if (isMod && e.key === 'f' && !isTextInputContext) {
         e.preventDefault();
-        setShowSearch(true);
+        if (showSearch) {
+          // 已打开：重新聚焦并全选查询词，直接输入即覆盖（对齐 XMind/浏览器 Cmd+F 习惯）
+          const input = containerRef.current?.querySelector<HTMLInputElement>('.mm-search-input');
+          input?.focus();
+          input?.select();
+        } else {
+          setShowSearch(true);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [undo, redo, canUndo, canRedo, save, isDirty, isSaving, showSearch, clearSearch, currentView, isActive, presentationMode, showImportConfirm, showShortcutHelp, showVersionHistory]);
+  }, [undo, redo, canUndo, canRedo, save, isDirty, isSaving, showSearch, clearSearch, currentView, isActive, presentationMode, showImportConfirm, importError, showShortcutHelp, showVersionHistory]);
 
   // M-069: 组件卸载时同步保存草稿到 localStorage，防止异步 save 未完成导致数据丢失
   // loadMindMap 时会自动检查并恢复本地草稿
@@ -1144,11 +1146,17 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               </AppMenuItem>
               <AppMenuSeparator />
               <AppMenuItem icon={<Upload size={16} />} onClick={handleImport}>{t('mindmap:import.title')}</AppMenuItem>
-              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('markdown')}>{t('mindmap:export.exportMarkdown')}</AppMenuItem>
-              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('opml')}>{t('mindmap:export.exportOpml')}</AppMenuItem>
-              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('json')}>{t('mindmap:export.dialogExportJson')}</AppMenuItem>
-              <AppMenuItem icon={<Download size={16} />} onClick={() => handleExport('png')}>{t('mindmap:export.pngImage')}</AppMenuItem>
-              <AppMenuItem icon={<Download size={16} />} onClick={() => handleExport('svg')}>{t('mindmap:export.svgVector')}</AppMenuItem>
+              {/* 导出分组：每种格式配专属图标，一眼可辨（Markdown/OPML/JSON/XMind/PNG/SVG） */}
+              <AppMenuGroup label={t('mindmap:shellV2.export.group')}>
+                <AppMenuItem icon={<FileMd size={16} />} onClick={() => handleExport('markdown')}>{t('mindmap:export.exportMarkdown')}</AppMenuItem>
+                <AppMenuItem icon={<TreeStructure size={16} />} onClick={() => handleExport('opml')}>{t('mindmap:export.exportOpml')}</AppMenuItem>
+                <AppMenuItem icon={<FileCode size={16} />} onClick={() => handleExport('json')}>{t('mindmap:export.dialogExportJson')}</AppMenuItem>
+                <AppMenuItem icon={<FileZip size={16} />} onClick={() => handleExport('xmind')}>{t('mindmap:export.exportXmind')}</AppMenuItem>
+                <AppMenuItem icon={<FileTxt size={16} />} onClick={() => handleExport('text')}>{t('mindmap:export.exportText')}</AppMenuItem>
+                <AppMenuItem icon={<FilePng size={16} />} onClick={() => handleExport('png')}>{t('mindmap:export.pngImage')}</AppMenuItem>
+                <AppMenuItem icon={<FileSvg size={16} />} onClick={() => handleExport('svg')}>{t('mindmap:export.svgVector')}</AppMenuItem>
+                <AppMenuItem icon={<FilePdf size={16} />} onClick={() => handleExport('pdf')}>{t('mindmap:export.exportPdf')}</AppMenuItem>
+              </AppMenuGroup>
               <AppMenuSeparator />
               <AppMenuCheckboxItem
                 checked={hideCompleted}
@@ -1201,34 +1209,67 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         </div>
       )}
 
-      {/* A6-24: 保存冲突后，本地未保存编辑已暂存，提供"恢复我的修改"入口 */}
-      {conflictSnapshot && conflictSnapshot.mindmapId === resourceId && (
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)] ui-drop-in">
-          <WarningCircle size={16} className="shrink-0" />
-          <span className="text-sm flex-1 min-w-0">{t('mindmap:store.conflictBannerTitle')}</span>
-          <NotionButton
-            variant="ghost"
-            className="notion-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
-            onClick={() => restoreConflictSnapshot()}
-          >
-            <ArrowCounterClockwise size={14} />
-            <span className="text-xs">{t('mindmap:store.conflictRestoreMine')}</span>
-          </NotionButton>
-          <NotionButton
-            variant="ghost"
-            className="notion-btn shrink-0 text-[var(--mm-text-muted)]"
-            onClick={() => dismissConflictSnapshot()}
-          >
-            <span className="text-xs">{t('mindmap:store.conflictDismiss')}</span>
-          </NotionButton>
-        </div>
-      )}
+      {/* A6-24: 保存冲突后，本地未保存编辑已暂存——内联横幅（保留服务器版 / 恢复我的快照） */}
+      <AnimatePresence initial={false}>
+        {conflictSnapshot && conflictSnapshot.mindmapId === resourceId && (
+          <InlineCollapse role="alert">
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)]">
+              <WarningCircle size={16} className="shrink-0" />
+              <span className="text-sm flex-1 min-w-0">{t('mindmap:store.conflictBannerTitle')}</span>
+              <NotionButton
+                variant="ghost"
+                className="notion-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
+                onClick={() => restoreConflictSnapshot()}
+              >
+                <ArrowCounterClockwise size={14} />
+                <span className="text-xs">{t('mindmap:store.conflictRestoreMine')}</span>
+              </NotionButton>
+              <NotionButton
+                variant="ghost"
+                className="notion-btn shrink-0 text-[var(--mm-text-muted)]"
+                onClick={() => dismissConflictSnapshot()}
+              >
+                <span className="text-xs">{t('mindmap:shellV2.conflict.keepServer')}</span>
+              </NotionButton>
+            </div>
+          </InlineCollapse>
+        )}
+      </AnimatePresence>
+
+      {/* 导入解析/读取失败：内联错误横幅（禁弹窗），支持一键重试 */}
+      <AnimatePresence initial={false}>
+        {importError && (
+          <InlineCollapse role="alert">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)]">
+              <WarningCircle size={16} className="shrink-0" />
+              <span className="text-sm font-medium shrink-0">{t('mindmap:shellV2.import.errorTitle')}</span>
+              <span className="text-xs flex-1 min-w-[160px] break-words opacity-90">{importError}</span>
+              <NotionButton
+                variant="ghost"
+                className="notion-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
+                onClick={() => void doImport()}
+              >
+                <ArrowClockwise size={14} />
+                <span className="text-xs">{t('mindmap:shellV2.import.retry')}</span>
+              </NotionButton>
+              <NotionButton
+                variant="ghost"
+                className="notion-btn shrink-0 text-[var(--mm-text-muted)]"
+                onClick={() => setImportError(null)}
+              >
+                <span className="text-xs">{t('mindmap:shellV2.import.dismiss')}</span>
+              </NotionButton>
+            </div>
+          </InlineCollapse>
+        )}
+      </AnimatePresence>
 
       {/* A6-16: 导入未保存确认——工具栏下方内联确认条（复用冲突横幅的视觉模式，不再弹模态框） */}
+      <AnimatePresence initial={false}>
       {showImportConfirm && (
+        <InlineCollapse role="alert">
         <div
-          className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)] ui-drop-in"
-          role="alert"
+          className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)]"
         >
           <WarningCircle size={16} className="shrink-0" />
           <span className="text-sm flex-1 min-w-[160px]">{t('mindmap:import.unsavedWarning')}</span>
@@ -1256,11 +1297,15 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
             <span className="text-xs">{t('common:cancel')}</span>
           </NotionButton>
         </div>
+        </InlineCollapse>
       )}
+      </AnimatePresence>
 
       {/* 窄屏时允许搜索条的模式/计数区换行，避免输入框被挤压到最小宽度以下 */}
+      <AnimatePresence initial={false}>
       {showSearch && (
-        <div className="mm-search-popover ui-drop-in max-sm:flex-wrap" role="search">
+        <InlineCollapse role="search">
+        <div className="mm-search-popover max-sm:flex-wrap">
           <MagnifyingGlass size={16} className="text-[var(--mm-text-muted)]" />
           <Input
             type="search"
@@ -1409,29 +1454,49 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
             <X className="w-4 h-4" />
           </NotionButton>
         </div>
+        </InlineCollapse>
       )}
+      </AnimatePresence>
 
-      {/* 版本历史：工具栏下方文档流内联面板（时间/来源/标题 + 预览 + 一键恢复） */}
+      {/* 版本历史：工具栏下方文档流内联面板（相对时间/来源徽标/diff 摘要 + 一键恢复） */}
+      <AnimatePresence initial={false}>
       {showVersionHistory && resourceId && (
-        <VersionHistoryPanel
-          mindmapId={resourceId}
-          onClose={() => setShowVersionHistory(false)}
-        />
+        <InlineCollapse>
+          <VersionHistoryPanel
+            mindmapId={resourceId}
+            onClose={() => setShowVersionHistory(false)}
+          />
+        </InlineCollapse>
       )}
+      </AnimatePresence>
+
+      {/* 快捷键帮助：内联面板（从画布浮动卡片改为工具栏下方文档流，键盘场景桌面端展示） */}
+      <AnimatePresence initial={false}>
+      {showShortcutHelp && (
+        <InlineCollapse>
+          <ShortcutHelpPanel
+            className="hidden sm:flex"
+            view={currentView === 'outline' ? 'outline' : 'mindmap'}
+            keymap={mindMapPreferences.keymap}
+            onClose={() => setShowShortcutHelp(false)}
+          />
+        </InlineCollapse>
+      )}
+      </AnimatePresence>
 
       {/* 导出进度：工具栏下方文档流内联进度条（非阻塞，不遮画布） */}
+      <AnimatePresence initial={false}>
       {isExporting && (
-        <div
-          className="flex items-center gap-2.5 px-4 py-1.5 border-b border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] ui-drop-in"
-          role="status"
-          aria-live="polite"
-        >
-          <Download size={14} className="shrink-0 text-[var(--mm-text-muted)]" />
-          <span className="text-xs text-[var(--mm-text)] whitespace-nowrap">{t('mindmap:export.processing')}</span>
-          <Progress value={exportProgress} className="h-1 flex-1 max-w-64" />
-          <span className="text-xs text-[var(--mm-text-muted)] tabular-nums">{exportProgress}%</span>
-        </div>
+        <InlineCollapse role="status" aria-live="polite">
+          <div className="flex items-center gap-2.5 px-4 py-1.5 border-b border-[var(--mm-border)] bg-[var(--mm-bg-elevated)]">
+            <Download size={14} className="shrink-0 text-[var(--mm-text-muted)]" />
+            <span className="text-xs text-[var(--mm-text)] whitespace-nowrap">{t('mindmap:export.processing')}</span>
+            <Progress value={exportProgress} className="h-1 flex-1 max-w-64" />
+            <span className="text-xs text-[var(--mm-text-muted)] tabular-nums">{exportProgress}%</span>
+          </div>
+        </InlineCollapse>
       )}
+      </AnimatePresence>
 
       <div className="flex-1 overflow-hidden relative flex flex-col bg-[var(--mm-bg)]">
         {/* 背诵模式状态条：顶部内联占位条（两个视图共享，不再悬浮遮挡画布） */}
@@ -1484,126 +1549,6 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
           </NotionButton>
         )}
 
-        {showShortcutHelp && (() => {
-          const Kbd: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-            <kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs whitespace-nowrap">{children}</kbd>
-          );
-          const Row: React.FC<{ keys: string[]; label: string }> = ({ keys, label }) => (
-            <div className="flex items-center justify-between gap-3 py-1">
-              <span>{label}</span>
-              <span className="flex items-center gap-1 flex-shrink-0">
-                {keys.map((k, i) => <Kbd key={i}>{k}</Kbd>)}
-              </span>
-            </div>
-          );
-          const Group: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-            <div>
-              <div className="text-xs font-medium text-[var(--mm-text-muted)] uppercase tracking-wide mb-1">{title}</div>
-              {children}
-            </div>
-          );
-          // W07 契约：结构化快捷键表（按当前视图 + 键位方案 + 平台生成）
-          const platform = /mac/i.test(
-            typeof navigator !== 'undefined' ? navigator.platform ?? '' : '',
-          )
-            ? 'mac'
-            : 'windows';
-          let groups: NormalizedShortcutGroup[] = [];
-          try {
-            groups = normalizeShortcutGroups(
-              getShortcutGroups(currentView, mindMapPreferences.keymap, platform),
-              t,
-            );
-          } catch (error) {
-            console.error('[MindMapContentView] getShortcutGroups failed:', error);
-          }
-
-          // 画布手势提示（依赖运行时拖拽模式，不属于 W07 静态键表）
-          const gestureGroup: NormalizedShortcutGroup = {
-            id: 'canvas-gestures',
-            title: t('mindmap:shortcuts.groupCanvas'),
-            items: [
-              {
-                keys: [
-                  canvasDragMode === 'pan'
-                    ? t('mindmap:shortcuts.marqueeSelectKeysPanMode', { defaultValue: '⇧ + 拖拽空白处' })
-                    : t('mindmap:shortcuts.marqueeSelectKeys', { defaultValue: '拖拽空白处' }),
-                ],
-                label: t('mindmap:shortcuts.marqueeSelect', { defaultValue: '框选多选节点' }),
-              },
-              {
-                keys: [
-                  canvasDragMode === 'pan'
-                    ? t('mindmap:shortcuts.panCanvasKeysPanMode', { defaultValue: '拖拽空白处' })
-                    : t('mindmap:shortcuts.panCanvasKeys', { defaultValue: 'Space / 中键 / 右键 + 拖拽' }),
-                ],
-                label: t('mindmap:shortcuts.panCanvas', { defaultValue: '平移画布' }),
-              },
-              {
-                keys: [t('mindmap:shortcuts.associationEntryKeys', { defaultValue: '右键节点' })],
-                label: t('mindmap:shortcuts.associationAdd', { defaultValue: '添加关联线（再点目标）' }),
-              },
-            ],
-          };
-
-          // 背诵模式快捷键组：W07 表未覆盖时补齐（导航/揭示/退出）
-          const reciteTitle = t('mindmap:shortcuts.groupRecite');
-          const hasReciteGroup = groups.some(
-            (group) =>
-              group.id.toLowerCase().includes('recite') || group.title === reciteTitle,
-          );
-          const reciteGroup: NormalizedShortcutGroup = {
-            id: 'recite',
-            title: reciteTitle,
-            items: [
-              { keys: ['↑ ↓ ← →'], label: t('mindmap:shortcuts.reciteNavigate') },
-              { keys: ['Enter', 'Space'], label: t('mindmap:shortcuts.reciteReveal') },
-              { keys: ['Esc'], label: t('mindmap:shortcuts.reciteExit') },
-            ],
-          };
-
-          const allGroups = [
-            ...groups,
-            ...(currentView === 'mindmap' ? [gestureGroup] : []),
-            ...(hasReciteGroup ? [] : [reciteGroup]),
-          ];
-
-          // 无遮罩内联面板：从工具栏下方展开、右上角对齐的浮动卡片，不阻挡画布其余区域
-          return (
-          <div
-            ref={shortcutHelpRef}
-            className="absolute top-2 right-2 z-50 w-[min(26rem,calc(100%-16px))] max-h-[calc(100%-16px)] hidden sm:flex flex-col rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-[var(--notes-popover-shadow)] ui-zoom-fade-in"
-            role="complementary"
-            aria-label={t('mindmap:shortcuts.title')}
-          >
-              <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--mm-border)]">
-                <h3 className="text-sm font-medium">{t('mindmap:shortcuts.title')}</h3>
-                <NotionButton variant="ghost"
-                  className="p-1 hover:bg-[var(--mm-bg-hover)] rounded"
-                  onClick={() => setShowShortcutHelp(false)}
-                  aria-label={t('mindmap:toolbar.closeShortcuts')}
-                >
-                  <X className="w-4 h-4" />
-                </NotionButton>
-              </div>
-              <div className="p-4 text-sm text-[var(--mm-text-secondary)] space-y-4 overflow-y-auto">
-                <div className="rounded border border-[var(--mm-border)] bg-[var(--mm-bg-hover)] px-3 py-2 text-xs">
-                  {mindMapPreferences.keymap === 'mubu'
-                    ? t('mindmap:preferences.mubuKeymapActive')
-                    : t('mindmap:preferences.deepStudentKeymapActive')}
-                </div>
-                {allGroups.map((group) => (
-                  <Group key={group.id} title={group.title}>
-                    {group.items.map((item, itemIndex) => (
-                      <Row key={itemIndex} keys={item.keys} label={item.label} />
-                    ))}
-                  </Group>
-                ))}
-              </div>
-          </div>
-          );
-        })()}
-        
         {/* Mobile: Structure Panel（inline 子屏：全屏替换内容区 + 顶栏返回） */}
         {showMobileStructure && (
           <div className="absolute inset-0 z-50 sm:hidden flex flex-col bg-[var(--mm-bg)]">
@@ -1735,11 +1680,14 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                     onClick={closeThen(openVersionHistory)}
                   />
                   <MenuRow icon={<Upload size={18} />} label={t('mindmap:import.title')} onClick={closeThen(handleImport)} />
-                  <MenuRow icon={<FileText size={18} />} label={t('mindmap:export.exportMarkdown')} onClick={closeThen(() => void handleExport('markdown'))} />
-                  <MenuRow icon={<FileText size={18} />} label={t('mindmap:export.exportOpml')} onClick={closeThen(() => void handleExport('opml'))} />
-                  <MenuRow icon={<FileText size={18} />} label={t('mindmap:export.dialogExportJson')} onClick={closeThen(() => void handleExport('json'))} />
-                  <MenuRow icon={<Download size={18} />} label={t('mindmap:export.exportPng')} onClick={closeThen(() => void handleExport('png'))} />
-                  <MenuRow icon={<Download size={18} />} label={t('mindmap:export.svgVector')} onClick={closeThen(() => void handleExport('svg'))} />
+                  <MenuRow icon={<FileMd size={18} />} label={t('mindmap:export.exportMarkdown')} onClick={closeThen(() => void handleExport('markdown'))} />
+                  <MenuRow icon={<TreeStructure size={18} />} label={t('mindmap:export.exportOpml')} onClick={closeThen(() => void handleExport('opml'))} />
+                  <MenuRow icon={<FileCode size={18} />} label={t('mindmap:export.dialogExportJson')} onClick={closeThen(() => void handleExport('json'))} />
+                  <MenuRow icon={<FileZip size={18} />} label={t('mindmap:export.exportXmind')} onClick={closeThen(() => void handleExport('xmind'))} />
+                  <MenuRow icon={<FileTxt size={18} />} label={t('mindmap:export.exportText')} onClick={closeThen(() => void handleExport('text'))} />
+                  <MenuRow icon={<FilePng size={18} />} label={t('mindmap:export.exportPng')} onClick={closeThen(() => void handleExport('png'))} />
+                  <MenuRow icon={<FileSvg size={18} />} label={t('mindmap:export.svgVector')} onClick={closeThen(() => void handleExport('svg'))} />
+                  <MenuRow icon={<FilePdf size={18} />} label={t('mindmap:export.exportPdf')} onClick={closeThen(() => void handleExport('pdf'))} />
                 </MenuGroup>
                 {/* 快捷键帮助为键盘场景功能，移动端不提供入口（P0-4） */}
               </div>

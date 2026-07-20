@@ -13,6 +13,16 @@ export {
   calculateBaseNodeHeight,
 } from './layout';
 
+// 深度间距收敛（层距/兄弟距随深度收紧，config.depthGapScaling 控制）
+export {
+  DEFAULT_DEPTH_GAP_SCALING,
+  depthGapScale,
+  getDepthHorizontalGap,
+  getDepthVerticalGap,
+  type DepthGapScaling,
+  type DepthGapScalingConfig,
+} from './layout';
+
 // 快捷键
 export type { ShortcutAction } from './shortcuts';
 export {

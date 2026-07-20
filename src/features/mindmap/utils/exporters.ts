@@ -221,6 +221,7 @@ interface XMindTopicJson {
   title: string;
   notes?: { plain: { content: string } };
   markers?: Array<{ markerId: string }>;
+  style?: { properties: Record<string, string> };
   children?: { attached: XMindTopicJson[] };
 }
 
@@ -236,6 +237,11 @@ function nodeToXMindTopic(node: MindMapNode): XMindTopicJson {
   if (node.completed !== undefined) {
     topic.markers = [{ markerId: node.completed ? 'task-done' : 'task-start' }];
   }
+  // 最小样式映射：bgColor → XMind Zen 主题填充色（svg:fill），
+  // 让分支配色在 XMind 中保留；其余样式（字体/字号等）仍不导出。
+  if (node.style?.bgColor) {
+    topic.style = { properties: { 'svg:fill': node.style.bgColor } };
+  }
   const children = node.children || [];
   if (children.length > 0) {
     topic.children = { attached: children.map(nodeToXMindTopic) };
@@ -248,8 +254,8 @@ function nodeToXMindTopic(node: MindMapNode): XMindTopicJson {
  *
  * 导出范围（与 importFromXMind 可无损往返的最小集合）：
  * 标题树、纯文本备注、completed → task-done / task-start marker、
- * 关联线 → sheet 级 relationships。
- * 不导出：样式 / 主题、图标、挖空区间、资源引用（refs）、折叠状态。
+ * 关联线 → sheet 级 relationships、节点 bgColor → 主题填充色（svg:fill）。
+ * 不导出：其余样式 / 主题、图标、挖空区间、资源引用（refs）、折叠状态。
  */
 export function buildXMindContentJson(doc: MindMapDocument, title?: string): unknown[] {
   const relationships = (doc.associations || []).map((assoc) => ({

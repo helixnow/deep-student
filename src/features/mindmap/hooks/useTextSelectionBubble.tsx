@@ -51,7 +51,7 @@ function measureSelectionByMirror(
   el: HTMLTextAreaElement | HTMLInputElement,
   start: number,
   end: number,
-): { x: number; y: number } | null {
+): { x: number; y: number; bottom: number } | null {
   const doc = el.ownerDocument;
   const computed = window.getComputedStyle(el);
   const mirror = doc.createElement('div');
@@ -97,16 +97,29 @@ function measureSelectionByMirror(
     return {
       x: Math.min(Math.max(x, elRect.left + 4), elRect.right - 4),
       y: Math.min(Math.max(y, elRect.top), elRect.bottom),
+      bottom: Math.min(Math.max(y + markerRect.height, elRect.top), elRect.bottom),
     };
   } finally {
     doc.body.removeChild(mirror);
   }
 }
 
+/**
+ * 触屏下气泡改弹到选区下方：系统文本选择菜单/选择柄占据选区上方同一位置，
+ * 上方弹出会与之叠加竞争。BlankActionPopup 内部按 `y - 36` 定位，
+ * 因此下方锚点需补偿 36px 并留 8px 间距。
+ */
+const BELOW_ANCHOR_OFFSET = 44;
+
+function isCoarsePointerNow(): boolean {
+  return typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+}
+
 function selectionPopupPoint(
   el: HTMLTextAreaElement | HTMLInputElement,
   start: number,
   end: number,
+  preferBelow: boolean,
 ): { x: number; y: number } {
   const rect = el.getBoundingClientRect();
   // 优先用当前选区 client rect（部分浏览器可直接拿到 textarea 内部选区）
@@ -117,7 +130,7 @@ function selectionPopupPoint(
       if (el.contains(range.commonAncestorContainer) || el === range.commonAncestorContainer) {
         const r = range.getBoundingClientRect();
         if (r.width > 0 || r.height > 0) {
-          return { x: r.left + r.width / 2, y: r.top };
+          return { x: r.left + r.width / 2, y: preferBelow ? r.bottom + BELOW_ANCHOR_OFFSET : r.top };
         }
       }
     }
@@ -127,12 +140,14 @@ function selectionPopupPoint(
   // 镜像 div 测量（准确处理换行与混排）
   try {
     const measured = measureSelectionByMirror(el, start, end);
-    if (measured) return measured;
+    if (measured) {
+      return { x: measured.x, y: preferBelow ? measured.bottom + BELOW_ANCHOR_OFFSET : measured.y };
+    }
   } catch {
     /* ignore */
   }
-  // 最终兜底：控件顶部中点
-  return { x: rect.left + rect.width / 2, y: rect.top };
+  // 最终兜底：控件顶部/底部中点
+  return { x: rect.left + rect.width / 2, y: preferBelow ? rect.bottom + BELOW_ANCHOR_OFFSET : rect.top };
 }
 
 export function useTextSelectionBubble(options: {
@@ -163,7 +178,8 @@ export function useTextSelectionBubble(options: {
           return;
         }
         const overlap = findOverlappingBlank(start, end, blankedRanges);
-        const point = selectionPopupPoint(el, start, end);
+        // 触屏：弹到选区下方，避开系统文本选择菜单
+        const point = selectionPopupPoint(el, start, end, isCoarsePointerNow());
         setPopup({
           x: point.x,
           y: point.y,

@@ -32,10 +32,34 @@ import type { MindMapNode } from '../types';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { looksLikeMarkdownList, markdownListToNodes } from '../utils/pasteMarkdown';
 import {
-  hashText,
+  fingerprintText,
   readMindMapClipboard,
   writeMindMapClipboard,
 } from '../utils/clipboardCodec';
+
+/** 递归统计森林节点总数（复制/剪切微反馈的计数） */
+function countForestNodes(nodes: MindMapNode[]): number {
+  let count = 0;
+  const stack = [...nodes];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    count += 1;
+    if (node.children?.length) stack.push(...node.children);
+  }
+  return count;
+}
+
+/** 复制/剪切成功微反馈（含节点数），写系统剪贴板失败也提示成功——侧车仍可支撑应用内粘贴 */
+function notifyClipboardWrite(kind: 'copy' | 'cut', nodes: MindMapNode[]): void {
+  const count = countForestNodes(nodes);
+  showGlobalNotification(
+    'success',
+    i18next.t(
+      kind === 'copy' ? 'mindmap:shellV2.clipboard.copiedNodes' : 'mindmap:shellV2.clipboard.cutNodes',
+      { count },
+    ),
+  );
+}
 
 function resolveClipboardNodes(
   root: MindMapNode,
@@ -127,7 +151,7 @@ export function useMindMapClipboard(): void {
         clipboard.nodes.length > 0 &&
         !!written &&
         read.text !== null &&
-        hashText(read.text) === written.fingerprint;
+        fingerprintText(read.text) === written.fingerprint;
       if (internalFresh) {
         pasteNodes(targetId);
         return;
@@ -227,6 +251,7 @@ export function useMindMapClipboard(): void {
             void writeMindMapClipboard(nodes).then((written) => {
               if (written) lastWrittenRef.current = written;
             });
+            notifyClipboardWrite('copy', nodes);
           }
         } else if (key === 'x' && !e.shiftKey) {
           // 根节点不可剪切（resolveClipboardNodes excludeRoot 后为空则直接放行）
@@ -240,6 +265,7 @@ export function useMindMapClipboard(): void {
             void writeMindMapClipboard(nodes).then((written) => {
               if (written) lastWrittenRef.current = written;
             });
+            notifyClipboardWrite('cut', nodes);
           }
         } else if (key === 'v' && !e.shiftKey) {
           // 无内部剪贴板时不拦截：原生粘贴 + 行内 onPaste 的结构化解析已足够；
@@ -276,6 +302,7 @@ export function useMindMapClipboard(): void {
           void writeMindMapClipboard(nodes).then((written) => {
             if (written) lastWrittenRef.current = written;
           });
+          notifyClipboardWrite('copy', nodes);
         }
       } else if (key === 'x' && !e.shiftKey) {
         if (activeNodes.length === 0) return;
@@ -289,6 +316,7 @@ export function useMindMapClipboard(): void {
           void writeMindMapClipboard(nodes).then((written) => {
             if (written) lastWrittenRef.current = written;
           });
+          notifyClipboardWrite('cut', nodes);
         }
       } else if (key === 'v') {
         // 优先粘到焦点节点，其次选中集中的第一个
