@@ -18,7 +18,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Input } from '@/components/ui/shad/Input';
 import { Button } from '@/components/ui/shad/Button';
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
@@ -37,7 +37,8 @@ import {
   persistBrowserNetworkModeSelection,
   type BrowserNetworkMode,
 } from './browserNetworkModePersistence';
-import { importCustomWallpaper } from './customWallpaperImport';
+import { OPEN_WALLPAPER_MANAGER_EVENT } from '@/features/workbench/components/WallpaperManagerDialog';
+import { importWallpaperToLibrary } from './wallpaperLibrary';
 import { resolveWorkbenchModeEnabled } from './workbenchMode';
 
 export type PerformanceProfile = 'quality' | 'balanced' | 'performance' | 'custom';
@@ -338,23 +339,22 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
     wallpaperImportPendingRef.current = true;
     setWallpaperImportPending(true);
     try {
-      const result = await importCustomWallpaper({
+      const result = await importWallpaperToLibrary({
         pickerTitle: t('workbench:settings.wallpaper.selectTitle', '选择壁纸图片'),
-        commit: async (managedPath) => {
-          const next: WallpaperSetting = { kind: 'image', value: managedPath };
-          await tauriInvoke('save_setting', {
-            key: WORKBENCH_SETTING_KEYS.wallpaper,
-            value: JSON.stringify(next),
-          });
-          setWallpaper(next);
-          dispatchSettingsChanged(WORKBENCH_SETTING_KEYS.wallpaper, next);
-        },
       });
 
       if (result.status === 'success') {
-        if (result.cleanupErrors.length > 0) {
-          console.warn('[WorkbenchSettings] custom wallpaper cleanup failed:', result.cleanupErrors);
-        }
+        const next: WallpaperSetting = { kind: 'image', value: result.entry.path };
+        setWallpaper(next);
+        await persist(WORKBENCH_SETTING_KEYS.wallpaper, JSON.stringify(next), next);
+      } else if (result.status === 'limit-exceeded') {
+        showGlobalNotification(
+          'warning',
+          t('workbench:settings.wallpaper.limitReached', {
+            limit: result.limit,
+            defaultValue: '壁纸库已满（{{limit}} 张），请先删除部分壁纸',
+          }),
+        );
       } else if (result.status === 'error') {
         showGlobalNotification('error', getErrorMessage(result.error));
       }
@@ -362,7 +362,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       wallpaperImportPendingRef.current = false;
       setWallpaperImportPending(false);
     }
-  }, [loaded, t]);
+  }, [loaded, persist, t]);
 
   const saveTileMargins = useCallback(
     (next: TileMarginsSetting) => {
@@ -557,6 +557,21 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
                 : t('workbench:settings.wallpaper.changeImage', '更换图片')}
             </Button>
           )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              try {
+                window.dispatchEvent(new CustomEvent(OPEN_WALLPAPER_MANAGER_EVENT));
+              } catch {
+                // noop
+              }
+            }}
+            className="h-8 gap-1.5 text-xs"
+          >
+            {t('workbench:settings.wallpaper.manage', '管理壁纸')}
+          </Button>
         </div>
       </SettingRow>
 
@@ -880,7 +895,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         )}
       </div>
 
-      <NotionAlertDialog
+      <DsAlertDialog
         open={browserFullNetworkConfirmOpen}
         onOpenChange={setBrowserFullNetworkConfirmOpen}
         title={t('workbench:settings.browserNetworkMode.fullConfirmTitle')}

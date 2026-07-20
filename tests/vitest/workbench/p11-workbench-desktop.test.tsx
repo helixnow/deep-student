@@ -26,6 +26,11 @@ vi.mock('@tauri-apps/api/window', () => ({
 vi.mock('@/features/chat/core/session/createSessionWithDefaults', () => ({
   createSessionWithDefaults: vi.fn(async () => ({ id: 'sess_test' })),
 }));
+// 壁纸管理面板由并行任务实现：总装冒烟只依赖事件常量契约，用最小 mock 隔离其内部实现
+vi.mock('@/features/workbench/components/WallpaperManagerDialog', () => ({
+  OPEN_WALLPAPER_MANAGER_EVENT: 'workbench:open-wallpaper-manager',
+  WallpaperManagerDialog: () => null,
+}));
 
 import {
   WorkbenchDesktop,

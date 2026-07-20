@@ -65,8 +65,8 @@ vi.mock('@/components/layout/MacTopSafeDragZone', () => ({
   MacTopSafeDragZone: () => null,
 }));
 
-vi.mock('@/components/ui/NotionDialog', () => ({
-  NotionAlertDialog: () => null,
+vi.mock('@/components/ui/DsDialog', () => ({
+  DsAlertDialog: () => null,
 }));
 
 vi.mock('@/hooks/useEventRegistry', () => ({

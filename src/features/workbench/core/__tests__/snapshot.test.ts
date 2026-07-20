@@ -191,6 +191,76 @@ describe('sanitizeSnapshot — 白名单剥离', () => {
     expect(bad!.wallpaper).toBeUndefined();
     expect(bad!.materialTier).toBeUndefined();
   });
+
+  it('wallpaper 图片适配字段（imageBlur/imageDim/imageVignette）往返保留', () => {
+    const result = sanitizeSnapshot({
+      version: 1,
+      windows: [],
+      dockPinned: [],
+      tilingRatios: {},
+      wallpaper: {
+        kind: 'image',
+        value: '/path/a.jpg',
+        imageBlur: 12,
+        imageDim: 0.3,
+        imageVignette: false,
+      },
+    });
+    expect(result!.wallpaper).toEqual({
+      kind: 'image',
+      value: '/path/a.jpg',
+      imageBlur: 12,
+      imageDim: 0.3,
+      imageVignette: false,
+    });
+    // 再过一遍 sanitizer（模拟 save→load 往返）内容不变
+    expect(sanitizeSnapshot(result)!.wallpaper).toEqual(result!.wallpaper);
+  });
+
+  it('wallpaper 适配字段坏值：超界钳制、非有限数/非布尔丢字段但保留 wallpaper', () => {
+    const clamped = sanitizeSnapshot({
+      version: 1,
+      windows: [],
+      dockPinned: [],
+      tilingRatios: {},
+      wallpaper: { kind: 'image', value: '/p.jpg', imageBlur: 999, imageDim: -0.5 },
+    });
+    expect(clamped!.wallpaper).toEqual({
+      kind: 'image',
+      value: '/p.jpg',
+      imageBlur: 40,
+      imageDim: 0,
+    });
+
+    const dropped = sanitizeSnapshot({
+      version: 1,
+      windows: [],
+      dockPinned: [],
+      tilingRatios: {},
+      wallpaper: {
+        kind: 'image',
+        value: '/p.jpg',
+        imageBlur: Number.NaN,
+        imageDim: 'dark',
+        imageVignette: 1,
+        injected: 'x',
+      },
+    });
+    expect(dropped!.wallpaper).toEqual({ kind: 'image', value: '/p.jpg' });
+    expect('imageBlur' in dropped!.wallpaper!).toBe(false);
+    expect('injected' in dropped!.wallpaper!).toBe(false);
+  });
+
+  it('wallpaper 未带适配字段（旧快照）→ 不注入任何适配字段', () => {
+    const result = sanitizeSnapshot({
+      version: 1,
+      windows: [],
+      dockPinned: [],
+      tilingRatios: {},
+      wallpaper: { kind: 'theme', value: 'aurora' },
+    });
+    expect(result!.wallpaper).toEqual({ kind: 'theme', value: 'aurora' });
+  });
 });
 
 describe('loadSnapshot — 坏数据恢复', () => {

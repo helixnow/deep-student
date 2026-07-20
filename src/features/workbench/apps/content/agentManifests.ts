@@ -385,10 +385,12 @@ export function createResourceContentManifest(
   const hasContentSurface = typeId === 'translation' || typeId === 'essay' || typeId === 'image';
   const canSetZoom = typeId === 'image';
 
-  // essay 为 single 资源工作区：instanceKey 缺省时回退到工作区当前资源
+  // essay / translation 为 single 资源工作区：instanceKey 缺省时回退到工作区当前资源
   const resolveResourceId = (instanceKey: string | null): string | null =>
     normalizeResourceInstanceKey(instanceKey)
-      ?? (typeId === 'essay' ? getResourceWorkspaceActive('essay') : null);
+      ?? (typeId === 'essay' || typeId === 'translation'
+        ? getResourceWorkspaceActive(typeId)
+        : null);
 
   // A45-5（docs/dev/acr/ACR-4.5.md）：image 视图态能力 = 缩放 + 旋转。
   // UI 还有拖拽平移（无程序化落点表面）与「保存到本地」（走 OS 保存对话框，

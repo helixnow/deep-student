@@ -20,7 +20,7 @@ import {
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
@@ -149,7 +149,7 @@ export function AgentCapabilitySummary({
           )}
         </div>
         {variant === 'popover' && (
-          <NotionButton
+          <DsButton
             type="button"
             variant="ghost"
             size="sm"
@@ -163,7 +163,7 @@ export function AgentCapabilitySummary({
                 : t('agentControlCenter.expandCapabilities')}
             </span>
             <CaretDown size={13} weight="bold" aria-hidden="true" />
-          </NotionButton>
+          </DsButton>
         )}
       </div>
 
@@ -598,7 +598,7 @@ export function AgentControlDockEntry({
                       ) : null}
                       <div className="wb-agent-kill-banner-actions">
                         {automationState === 'tripped' ? (
-                          <NotionButton
+                          <DsButton
                             type="button"
                             size="sm"
                             variant="shell"
@@ -607,10 +607,10 @@ export function AgentControlDockEntry({
                             onClick={() => void runResumeAgents()}
                           >
                             {t('agentControlCenter.killSwitch.resumeAgents')}
-                          </NotionButton>
+                          </DsButton>
                         ) : confirmResumeAutomations ? (
                           <>
-                            <NotionButton
+                            <DsButton
                               type="button"
                               size="sm"
                               variant="shell"
@@ -621,8 +621,8 @@ export function AgentControlDockEntry({
                               {killSwitchBusy
                                 ? t('agentControlCenter.automationCard.resuming')
                                 : t('agentControlCenter.killSwitch.confirmResumeAutomations')}
-                            </NotionButton>
-                            <NotionButton
+                            </DsButton>
+                            <DsButton
                               type="button"
                               size="sm"
                               variant="ghost"
@@ -630,10 +630,10 @@ export function AgentControlDockEntry({
                               onClick={() => setConfirmResumeAutomations(false)}
                             >
                               {t('agentControlCenter.killSwitch.cancelConfirm')}
-                            </NotionButton>
+                            </DsButton>
                           </>
                         ) : (
-                          <NotionButton
+                          <DsButton
                             type="button"
                             size="sm"
                             variant="ghost"
@@ -642,7 +642,7 @@ export function AgentControlDockEntry({
                             onClick={() => setConfirmResumeAutomations(true)}
                           >
                             {t('agentControlCenter.killSwitch.resumeAutomations')}
-                          </NotionButton>
+                          </DsButton>
                         )}
                       </div>
                       {confirmResumeAutomations && automationState === 'paused' ? (
@@ -668,7 +668,7 @@ export function AgentControlDockEntry({
                     <div className="wb-agent-kill-confirm">
                       <p>{t('agentControlCenter.killSwitch.emergencyStopConfirm')}</p>
                       <div className="wb-agent-kill-banner-actions">
-                        <NotionButton
+                        <DsButton
                           type="button"
                           size="sm"
                           className="wb-agent-emergency-stop"
@@ -678,8 +678,8 @@ export function AgentControlDockEntry({
                         >
                           <Stop size={14} weight="fill" aria-hidden="true" />
                           {t('agentControlCenter.killSwitch.confirmStop')}
-                        </NotionButton>
-                        <NotionButton
+                        </DsButton>
+                        <DsButton
                           type="button"
                           size="sm"
                           variant="ghost"
@@ -687,11 +687,11 @@ export function AgentControlDockEntry({
                           onClick={() => setConfirmStop(false)}
                         >
                           {t('agentControlCenter.killSwitch.cancelConfirm')}
-                        </NotionButton>
+                        </DsButton>
                       </div>
                     </div>
                   ) : (
-                    <NotionButton
+                    <DsButton
                       type="button"
                       size="sm"
                       className="wb-agent-emergency-stop"
@@ -701,7 +701,7 @@ export function AgentControlDockEntry({
                     >
                       <Stop size={14} weight="fill" aria-hidden="true" />
                       {t('agentControlCenter.killSwitch.emergencyStop')}
-                    </NotionButton>
+                    </DsButton>
                   )}
                   {killSwitchError ? (
                     <p className="wb-agent-control-error" role="alert">
@@ -714,7 +714,7 @@ export function AgentControlDockEntry({
               </div>
 
               <div className="wb-agent-control-actions">
-                <NotionButton
+                <DsButton
                   size="sm"
                   variant="shell"
                   className="wb-agent-control-open-chat"
@@ -722,8 +722,8 @@ export function AgentControlDockEntry({
                 >
                   <ChatCircleDots size={16} weight="duotone" aria-hidden="true" />
                   {t('agentControlCenter.openChat')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   size="icon"
                   variant="ghost"
                   iconOnly
@@ -732,7 +732,7 @@ export function AgentControlDockEntry({
                   onClick={openControlSettings}
                 >
                   <GearSix size={16} weight="duotone" aria-hidden="true" />
-                </NotionButton>
+                </DsButton>
               </div>
             </PopoverContent>
           </Popover>

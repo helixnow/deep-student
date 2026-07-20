@@ -206,6 +206,8 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
+  /* 截断超出内容，让子项（如 .wb-resource-workspace-main）的 height:100% 有确定参照 */
+  overflow: hidden;
 }
 
 /* ---- 左缘抽屉把手（窄窗唯一导航入口） ---- */

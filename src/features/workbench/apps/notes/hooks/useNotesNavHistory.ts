@@ -191,7 +191,7 @@ export interface UseNotesNavHistoryResult {
 }
 
 /**
- * In-memory Obsidian-style navigation history for one Notes workspace instance.
+ * In-memory compatible navigation history for one Notes workspace instance.
  * Not persisted across reloads.
  */
 export function useNotesNavHistory(): UseNotesNavHistoryResult {

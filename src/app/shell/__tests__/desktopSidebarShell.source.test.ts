@@ -1,0 +1,52 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+const shellCssSource = readFileSync(resolve(process.cwd(), 'src/shared/styles/app.css'), 'utf8');
+
+describe('desktop sidebar shell wiring', () => {
+  it('slides an intact sidebar surface while its layout track closes', () => {
+    expect(appSource).toContain("'--shell-sidebar-translate-x': `${desktopSidebarTranslateX}px`");
+    expect(appSource).toContain('className="desktop-shell-sidebar-track t-resize"');
+    expect(appSource).toContain('className="desktop-shell-sidebar-motion-surface"');
+    expect(appSource).toContain('className="desktop-shell-sidebar-titlebar-surface"');
+    expect(shellCssSource).toContain('transform: translateX(var(--shell-sidebar-translate-x));');
+    expect(appSource).toContain('<DesktopSidebarResizeHandle');
+  });
+
+  it('moves the expanded top controls with the panel and reveals separate collapsed controls', () => {
+    expect(appSource).toContain('const desktopSidebarExpandedAccessoryContent = (');
+    expect(appSource).toContain('const desktopSidebarCollapsedAccessoryContent = (');
+    expect(appSource).toContain('className="desktop-shell-sidebar-expanded-accessory"');
+    expect(appSource).toContain('className="desktop-shell-sidebar-collapsed-accessory"');
+  });
+
+  it('uses one motion rhythm and disables it during live resizing', () => {
+    expect(shellCssSource).toContain('.t-resize');
+    expect(shellCssSource).toContain('transform var(--resize-dur) var(--resize-ease)');
+    expect(shellCssSource).toContain('[data-sidebar-resizing="true"]');
+    expect(shellCssSource).toContain('@media (prefers-reduced-motion: reduce)');
+  });
+
+  it('re-enables motion before a threshold crossing starts the close animation', () => {
+    expect(appSource).toContain('requestedWidth <= DESKTOP_SHELL.navigationCloseSnapWidth');
+    expect(appSource).toContain('const [desktopSidebarMotionWidth, setDesktopSidebarMotionWidth]');
+    expect(appSource).toContain('desktopSidebarMotionWidth ?? shellSidebarWidth');
+    expect(appSource).toContain('setDesktopSidebarMotionWidth(DESKTOP_SHELL.navigationMinWidth)');
+    expect(appSource).toContain("'--shell-navigation-width'");
+    expect(appSource).toContain('`${DESKTOP_SHELL.navigationMinWidth}px`');
+    expect(appSource).toContain('setIsDesktopSidebarResizing(false);\n      requestAnimationFrame(() => {');
+    expect(appSource).toContain('leftPanelCollapsed: true,');
+  });
+
+  it('uses a centered invisible hit area with a compact resize affordance', () => {
+    expect(shellCssSource).toContain('left: calc(var(--shell-navigation-width) - 6px);');
+    expect(shellCssSource).toContain('width: 12px;');
+    expect(shellCssSource).toContain('top: 50%;');
+    expect(shellCssSource).toContain('height: 40px;');
+    expect(shellCssSource).toContain('border-radius: 999px;');
+    expect(shellCssSource).toContain('translate(-50%, -50%) scaleY(0.72)');
+    expect(shellCssSource).toContain('translate(-50%, -50%) scaleY(1)');
+  });
+});

@@ -168,15 +168,16 @@ describe('渲染与 aria', () => {
     expect(document.querySelector('[data-wb-expose-root]')).toBeNull();
   });
 
-  it('无窗口时显示空状态卡（主文案 + Esc 提示，role=status）', () => {
+  it('无窗口时显示空状态文字（主文案 + Esc 提示，role=status，无卡片包裹）', () => {
     render(<ExposeOverlay />);
     openExpose();
 
-    const card = document.querySelector('.wb-expose-empty-card');
-    expect(card).not.toBeNull();
-    expect(card).toHaveAttribute('role', 'status');
-    expect(card!.textContent).toContain('没有打开的窗口');
-    expect(card!.textContent).toContain('按 Esc 或点击任意处返回桌面');
+    const empty = document.querySelector('.wb-expose-empty-text');
+    expect(empty).not.toBeNull();
+    expect(empty).toHaveAttribute('role', 'status');
+    expect(empty).not.toHaveClass('wb-glass');
+    expect(empty!.textContent).toContain('没有打开的窗口');
+    expect(empty!.textContent).toContain('按 Esc 或点击任意处返回桌面');
   });
 
   it('命中层为 aria-modal 对话框并带可读名称', () => {
@@ -296,9 +297,9 @@ describe('App Exposé（应用过滤，P2）', () => {
     render(<ExposeOverlay />);
     openExpose('note');
 
-    const card = document.querySelector('.wb-expose-empty-card');
-    expect(card).not.toBeNull();
-    expect(card!.textContent).toContain('该应用没有可俯瞰的窗口');
+    const empty = document.querySelector('.wb-expose-empty-text');
+    expect(empty).not.toBeNull();
+    expect(empty!.textContent).toContain('该应用没有可俯瞰的窗口');
   });
 
   it('会话内目标应用新开窗即时进入网格', () => {

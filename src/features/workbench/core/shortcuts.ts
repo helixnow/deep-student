@@ -198,7 +198,7 @@ export const WORKBENCH_SHORTCUT_DEFINITIONS: readonly WorkbenchShortcutDefinitio
     group: 'management',
     configurable: true,
   },
-  // ---- O12 补齐：四分屏平铺（对标 Rectangle 的 Ctrl+Opt+U/I/J/K） ----
+  // ---- O12 补齐：四分屏平铺（Ctrl+Opt+U/I/J/K） ----
   {
     id: 'tile-tl',
     binding: { code: 'KeyU', ctrl: true, alt: true, shift: false },
@@ -350,7 +350,7 @@ export interface ResolvedShortcutModifiers {
  * - ctrl-only 组合 → ⌘（meta）：⌘W 关窗、⌘Tab 切换器、⌘` 同应用循环，
  *   对齐 macOS 系统级肌肉记忆；
  * - Ctrl+Alt 组合 → ⌘⌥（而非 ⌃⌥）。决策理由：⌃⌥ 前缀被系统全局与第三方
- *   窗口管理工具（Rectangle、输入法/输入源切换等）大量占用，映射到 ⌃⌥ 会在
+ *   第三方窗口管理工具与输入法/输入源切换等大量占用，映射到 ⌃⌥ 会在
  *   相当一部分用户机器上根本到不了 WKWebView；⌘⌥ 与 ctrl→⌘ 的基底映射一致
  *   （Alt 原样保留为 ⌥），让全部 WM 级快捷键统一挂在 ⌘ 锚点下；
  * - Ctrl+Alt+Shift 同理 → ⌘⌥⇧。

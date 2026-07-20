@@ -101,7 +101,7 @@ export type TypeaheadInput = {
 };
 
 /**
- * Type-ahead resolution over visible rows (Obsidian-like):
+ * Type-ahead resolution over visible rows (-like):
  * - single char cycles to the next matching row after the current one (wraps);
  * - multi-char buffer keeps matching from the current row so the focus stays
  *   put while the user refines the prefix.

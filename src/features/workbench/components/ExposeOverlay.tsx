@@ -825,7 +825,7 @@ const ExposeOverlayComponent: React.FC = () => {
       >
         {targets.length === 0 && !fading && (
           <div className="wb-expose-empty">
-            <div className="wb-expose-empty-card wb-glass" role="status">
+            <div className="wb-expose-empty-text" role="status">
               {/* App Exposé 空态：目标应用没有可俯瞰的窗口（如全部已最小化） */}
               <span>
                 {t(exposeAppTypeId != null ? 'workbench:expose.emptyApp' : 'workbench:expose.empty')}

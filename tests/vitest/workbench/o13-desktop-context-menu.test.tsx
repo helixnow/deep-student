@@ -14,6 +14,11 @@ vi.mock('@tauri-apps/api/core', () => ({
 vi.mock('@/features/chat/core/session/createSessionWithDefaults', () => ({
   createSessionWithDefaults: vi.fn(async () => ({ id: 'sess_test' })),
 }));
+// 壁纸管理面板由并行任务实现：本冒烟只依赖事件常量契约，用最小 mock 隔离其内部实现
+vi.mock('@/features/workbench/components/WallpaperManagerDialog', () => ({
+  OPEN_WALLPAPER_MANAGER_EVENT: 'workbench:open-wallpaper-manager',
+  WallpaperManagerDialog: () => null,
+}));
 
 import { WorkbenchDesktop } from '@/features/workbench/components/WorkbenchDesktop';
 import { setDockPinned } from '@/features/workbench/components/Dock';
@@ -187,16 +192,68 @@ describe('O13 桌面右键菜单 / 手势', () => {
     openDesktopMenu(root);
     // 打开壁纸子菜单（无 i18n 资源时预设名回退为 id）
     fireEvent.click(screen.getByText('桌面壁纸'));
-    fireEvent.click(await screen.findByText('horizon'));
+    fireEvent.click(await screen.findByText('aurora'));
 
     await waitFor(() => {
       expect(
         document.querySelector('.wb-wallpaper-pane')?.getAttribute('data-wb-wallpaper-preset'),
-      ).toBe('horizon');
+      ).toBe('aurora');
     });
     expect(localStorage.getItem('desktop.workbenchWallpaper')).toBe(
-      JSON.stringify({ kind: 'theme', value: 'horizon' }),
+      JSON.stringify({ kind: 'theme', value: 'aurora' }),
     );
+  });
+
+  it('壁纸子菜单只展示前 5 个预设；截断区外的当前选中项追加显示', async () => {
+    const root = await mountDesktop();
+
+    openDesktopMenu(root);
+    fireEvent.click(screen.getByText('桌面壁纸'));
+    let submenu = await screen.findByRole('menu', { name: '桌面壁纸' });
+    expect(within(submenu).getAllByRole('menuitemradio')).toHaveLength(5);
+    expect(within(submenu).queryByText('horizon')).toBeNull();
+
+    // 选中截断区之外的预设（经由设置事件热更新）后，子菜单追加该项并保持选中态
+    act(() => {
+      localStorage.setItem(
+        'desktop.workbenchWallpaper',
+        JSON.stringify({ kind: 'theme', value: 'horizon' }),
+      );
+      window.dispatchEvent(
+        new CustomEvent('workbench:settings-changed', {
+          detail: { key: 'desktop.workbenchWallpaper', value: { kind: 'theme', value: 'horizon' } },
+        }),
+      );
+    });
+
+    openDesktopMenu(root);
+    fireEvent.click(screen.getByText('桌面壁纸'));
+    submenu = await screen.findByRole('menu', { name: '桌面壁纸' });
+    const items = within(submenu).getAllByRole('menuitemradio');
+    expect(items).toHaveLength(6);
+    expect(within(submenu).getByText('horizon').closest('[role="menuitemradio"]')).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+
+  it('壁纸子菜单「管理壁纸…」派发打开事件并关闭菜单', async () => {
+    const root = await mountDesktop();
+    const openHandler = vi.fn();
+    window.addEventListener('workbench:open-wallpaper-manager', openHandler);
+
+    try {
+      openDesktopMenu(root);
+      fireEvent.click(screen.getByText('桌面壁纸'));
+      fireEvent.click(await screen.findByText('管理壁纸…'));
+
+      expect(openHandler).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(document.querySelector('[data-wb-desk-menu]')).toBeNull();
+      });
+    } finally {
+      window.removeEventListener('workbench:open-wallpaper-manager', openHandler);
+    }
   });
 
   it('二级菜单脱离一级 backdrop root，并复用同款玻璃材质', async () => {

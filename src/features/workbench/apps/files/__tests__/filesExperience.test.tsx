@@ -101,6 +101,9 @@ function dispatchPointer(
     clientY: init.clientY,
   });
   Object.defineProperty(event, 'pointerId', { value: init.pointerId });
+  // 拖出手势仅响应鼠标主指针（触屏/笔保留长按与滚动语义），补齐指针元数据
+  Object.defineProperty(event, 'pointerType', { value: 'mouse' });
+  Object.defineProperty(event, 'isPrimary', { value: true });
   target.dispatchEvent(event);
 }
 

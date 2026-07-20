@@ -83,8 +83,19 @@
   border-radius: 10px;
 }
 
-.wb-files-host [data-finder-item][class]:not([aria-selected='true']) > .group:hover {
-  background: var(--interactive-hover, hsl(var(--muted) / 0.5));
+@media (hover: hover) {
+  .wb-files-host [data-finder-item][class]:not([aria-selected='true']) > .group:hover {
+    background: var(--interactive-hover, hsl(var(--muted) / 0.5));
+  }
+}
+
+@media (pointer: coarse) {
+  .wb-files-host .wb-sys-drawer-handle {
+    width: 44px;
+    height: 64px;
+    transform: translateY(-50%);
+    opacity: 1;
+  }
 }
 
 /* 网格选中：图标盒垫一层主题色浅底（macOS 双层高亮：图标底 + 名称药丸） */

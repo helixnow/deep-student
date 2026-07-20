@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { WarningCircle } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 
 export interface ContentCloseConfirmationRequest {
   description: string;
@@ -78,7 +78,7 @@ export const ContentCloseConfirmationHost: React.FC = () => {
   }, []);
 
   return (
-    <NotionAlertDialog
+    <DsAlertDialog
       open={pending !== null}
       onOpenChange={(open) => {
         if (!open) settle(false);

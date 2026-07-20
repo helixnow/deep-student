@@ -15,7 +15,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SidebarSimple, X } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { WbSysSizeClass } from './useWbSysSize';
 import './SystemWindowShared.css';
@@ -210,10 +210,13 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
   /*
    * 抽屉内点中导航项（button / a / [role=button]）后自动收起。
    * 让侧栏先处理选中，再在下一帧收抽屉，避免打断其事件流。
+   * 📱 例外：祖先带 data-wb-drawer-stay 的操作（列表过滤/清空搜索/刷新等，
+   * 其结果就显示在抽屉内）不自动收起，否则窄窗下这些功能等于不可用。
    */
   const handleDrawerClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement | null;
-    if (target?.closest('button, a, [role="button"]')) {
+    const actionable = target?.closest('button, a, [role="button"]');
+    if (actionable && !actionable.closest('[data-wb-drawer-stay]')) {
       window.setTimeout(() => setDrawerOpen(false), 0);
     }
   }, [setDrawerOpen]);
@@ -233,7 +236,7 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
       {compact && (
         <>
           {/* 左缘玻璃把手：窄窗唯一的导航入口 */}
-          <NotionButton
+          <DsButton
             ref={handleRef}
             variant="ghost"
             size="icon"
@@ -246,7 +249,7 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
             data-wb-sys-drawer-handle
           >
             <SidebarSimple size={14} weight="bold" aria-hidden />
-          </NotionButton>
+          </DsButton>
 
           {/* 遮罩 */}
           <div
@@ -271,7 +274,7 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
           >
             <div className="wb-sys-drawer-head">
               <span className="wb-sys-drawer-title">{navLabel}</span>
-              <NotionButton
+              <DsButton
                 type="button"
                 variant="ghost"
                 size="icon"
@@ -282,7 +285,7 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
                 title={closeLabel}
               >
                 <X size={13} weight="bold" aria-hidden />
-              </NotionButton>
+              </DsButton>
             </div>
             <div className="wb-sys-drawer-body">{sidebar}</div>
           </div>

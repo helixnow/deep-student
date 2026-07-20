@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Monitor, Moon, Sun, CircleNotch } from '@phosphor-icons/react';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { AppSelect, type AppSelectGroup } from '@/components/ui/app-menu';
 import { SettingSection } from './SettingsCommon';
@@ -11,6 +11,7 @@ import { AccentPicker } from './AccentPicker';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { isMacOS } from '@/utils/platform';
+import { applySidebarTranslucency } from '@/utils/sidebarTranslucency';
 import type { ThemeMode, ThemePalette } from '@/hooks/useTheme';
 import {
   DEFAULT_UI_FONT,
@@ -108,7 +109,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
         if (cancelled) return;
         const enabled = String(val ?? '').trim() === 'true';
         setSidebarTranslucent(enabled);
-        document.documentElement.setAttribute('data-sidebar-translucent', String(enabled));
+        void applySidebarTranslucency(enabled);
       } catch {
         if (cancelled) return;
         setSidebarTranslucent(false);
@@ -276,7 +277,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
     if (sidebarTranslucent === null) return;
     const previousValue = sidebarTranslucent;
     setSidebarTranslucent(checked);
-    document.documentElement.setAttribute('data-sidebar-translucent', String(checked));
+    void applySidebarTranslucency(checked);
 
     if (!invoke) return;
 
@@ -287,7 +288,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
       });
     } catch (error: unknown) {
       setSidebarTranslucent(previousValue);
-      document.documentElement.setAttribute('data-sidebar-translucent', String(previousValue));
+      void applySidebarTranslucency(previousValue);
       showGlobalNotification('error', getErrorMessage(error));
     }
   }, [invoke, sidebarTranslucent]);
@@ -390,6 +391,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                 value={themeMode}
                 onValueChange={(nextMode) => { void handleThemeModeChange(nextMode); }}
                 stretch
+                className="w-full md:w-auto"
                 options={themeModeOptions.map(({ mode, label, icon: Icon, title }) => ({
                   value: mode,
                   title,
@@ -450,7 +452,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               description={zoomLoading ? t('settings:zoom.loading') : t('settings:zoom.status_current', { value: formatZoomLabel(uiZoom) })}
             >
               {isTauriEnvironment ? (
-                <div className="flex items-center gap-2">
+                <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
                   <AppSelect
                     value={uiZoom.toString()}
                     onValueChange={val => { void handleZoomChange(parseFloat(val)); }}
@@ -459,19 +461,20 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                     options={UI_ZOOM_PRESETS.map(option => ({ value: option.value.toString(), label: option.label }))}
                     size="sm"
                     variant="ghost"
-                    className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+                    className="h-11 bg-transparent text-xs transition-colors hover:bg-[var(--interactive-hover)] md:h-8"
                     width={90}
                   />
-                  <NotionButton
+                  <DsButton
                     type="button"
                     variant="ghost"
                     size="sm"
                     disabled={zoomSaving || Math.abs(uiZoom - DEFAULT_UI_ZOOM) < 0.0001}
                     onClick={handleZoomReset}
+                    className="min-h-11 md:min-h-0"
                   >
                     {zoomSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                     {t('settings:zoom.reset')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               ) : (
                 <div className="text-xs text-muted-foreground/70">
@@ -484,17 +487,18 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               title={t('settings:font.title')}
               description={fontLoading ? t('settings:font.loading') : t('settings:font.status_current', { font: t(`settings:font.presets.${uiFont.replace(/-/g, '_')}`) })}
             >
-              <div className="flex items-center gap-2">
-                <NotionButton
+              <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
+                <DsButton
                   type="button"
                   variant="ghost"
                   size="sm"
                   disabled={fontSaving || uiFont === DEFAULT_UI_FONT}
                   onClick={handleFontReset}
+                  className="min-h-11 md:min-h-0"
                 >
                   {fontSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                   {t('settings:font.reset')}
-                </NotionButton>
+                </DsButton>
                 <AppSelect
                   value={uiFont}
                   onValueChange={val => { void handleFontChange(val); }}
@@ -503,7 +507,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   disabled={fontSaving || fontLoading}
                   width={180}
                   variant="outline"
-                  className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+                  className="h-11 max-w-full bg-transparent text-xs transition-colors hover:bg-[var(--interactive-hover)] md:h-8"
                 />
               </div>
             </SettingRow>
@@ -512,7 +516,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               title={t('settings:font.size_title')}
               description={fontSizeLoading ? t('settings:font.size_loading') : t('settings:font.size_status_current', { value: formatFontSizeLabel(uiFontSize) })}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
                 <AppSelect
                   value={uiFontSize.toString()}
                   onValueChange={val => { void handleFontSizeChange(parseFloat(val)); }}
@@ -521,19 +525,20 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   options={UI_FONT_SIZE_PRESETS.map(option => ({ value: option.value.toString(), label: option.label }))}
                   size="sm"
                   variant="ghost"
-                  className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+                  className="h-11 bg-transparent text-xs transition-colors hover:bg-[var(--interactive-hover)] md:h-8"
                   width={90}
                 />
-                <NotionButton
+                <DsButton
                   type="button"
                   variant="ghost"
                   size="sm"
                   disabled={fontSizeSaving || Math.abs(uiFontSize - DEFAULT_UI_FONT_SIZE) < 0.0001}
                   onClick={handleFontSizeReset}
+                  className="min-h-11 md:min-h-0"
                 >
                   {fontSizeSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                   {t('settings:font.size_reset')}
-                </NotionButton>
+                </DsButton>
               </div>
             </SettingRow>
 

@@ -13,7 +13,7 @@
  * 不新增 store 字段；设置持久化复用 P10 的 save_setting + 'workbench:settings-changed'
  * 事件契约（非 Tauri 环境回退 localStorage，与 WorkbenchDesktop.readSetting 对称）。
  */
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
@@ -44,6 +44,7 @@ import { setMaterialTier, type MaterialTierSetting } from '../core/materialTier'
 import { useLiquidGlassLens } from '../core/liquidGlassLens';
 import { toggleShowDesktop as toggleShowDesktopShared } from '../hooks/showDesktop';
 import { WALLPAPER_PRESETS, type WallpaperConfig } from './WallpaperLayer';
+import { OPEN_WALLPAPER_MANAGER_EVENT } from './WallpaperManagerDialog';
 import { openAppsPanel } from './appsPanelStore';
 import './DesktopContextMenu.css';
 
@@ -53,6 +54,8 @@ import './DesktopContextMenu.css';
 
 const WALLPAPER_SETTING_KEY = 'desktop.workbenchWallpaper';
 const MATERIAL_TIER_SETTING_KEY = 'desktop.workbenchMaterialTier';
+/** 桌面右键子菜单展示的壁纸预设数量（完整清单进壁纸管理面板） */
+const MENU_WALLPAPER_PRESET_COUNT = 5;
 
 function isTauriRuntime(): boolean {
   return (
@@ -275,6 +278,8 @@ interface ActionItemProps {
   icon: React.ReactNode;
   label: string;
   disabled?: boolean;
+  /** 危险操作（删除/移除等）：红字 + 红色 hover 高亮 */
+  danger?: boolean;
   /** 有值 = 子菜单父项（渲染 caret + aria-haspopup） */
   subId?: SubMenuId;
   subOpen?: boolean;
@@ -293,6 +298,7 @@ export const ActionItem: React.FC<ActionItemProps> = ({
   icon,
   label,
   disabled,
+  danger,
   subId,
   subOpen,
   checked,
@@ -303,7 +309,7 @@ export const ActionItem: React.FC<ActionItemProps> = ({
 }) => (
   <button
     type="button"
-    className="wb-desk-menu-item"
+    className={danger ? 'wb-desk-menu-item wb-desk-menu-item--danger' : 'wb-desk-menu-item'}
     data-wb-desk-item=""
     data-wb-desk-sub={subId}
     data-wb-desk-active={subOpen ? 'true' : undefined}
@@ -550,6 +556,29 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
     [onClose],
   );
 
+  // 子菜单只放前 N 个预设防止过长，完整清单进壁纸管理面板；
+  // 当前选中项若在截断区之外，追加显示以免丢失选中态。
+  const menuWallpaperPresets = useMemo(() => {
+    const shown = WALLPAPER_PRESETS.slice(0, MENU_WALLPAPER_PRESET_COUNT);
+    if (
+      wallpaper.kind === 'theme' &&
+      !shown.some((preset) => preset.id === wallpaper.value)
+    ) {
+      const current = WALLPAPER_PRESETS.find((preset) => preset.id === wallpaper.value);
+      if (current) return [...shown, current];
+    }
+    return shown;
+  }, [wallpaper]);
+
+  const openWallpaperManager = useCallback(() => {
+    onClose();
+    try {
+      window.dispatchEvent(new CustomEvent(OPEN_WALLPAPER_MANAGER_EVENT));
+    } catch {
+      // noop
+    }
+  }, [onClose]);
+
   const selectTier = useCallback(
     (next: MaterialTierSetting) => {
       setTierSetting(next);
@@ -778,18 +807,16 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
               {openSub === 'wallpaper'
                 ? (
                     <>
-                      {/* 自定义图片壁纸：显示为选中态的只读项，避免用户以为"没选任何壁纸" */}
+                      {/* 自定义图片壁纸：显示为选中态项，点击进壁纸管理面板更换 */}
                       {wallpaper.kind === 'image' ? (
                         <RadioItem
                           value="__custom-image__"
                           label={t('workbench:desktopMenu.customWallpaper', '自定义图片')}
                           checked
-                          onSelect={() => {
-                            /* 保持当前自定义图片；更换请进设置页 */
-                          }}
+                          onSelect={openWallpaperManager}
                         />
                       ) : null}
-                      {WALLPAPER_PRESETS.map((preset) => (
+                      {menuWallpaperPresets.map((preset) => (
                         <RadioItem
                           key={preset.id}
                           value={preset.id}
@@ -798,6 +825,13 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
                           onSelect={() => selectWallpaper(preset.id)}
                         />
                       ))}
+                      <div className="wb-desk-menu-sep" role="separator" />
+                      <ActionItem
+                        icon={<Image size={15} weight="duotone" />}
+                        label={t('workbench:desktopMenu.manageWallpaper', '管理壁纸…')}
+                        testId="wb-desk-menu-manage-wallpaper"
+                        onClick={openWallpaperManager}
+                      />
                     </>
                   )
                 : (

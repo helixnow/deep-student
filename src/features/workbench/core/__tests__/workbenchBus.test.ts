@@ -46,6 +46,17 @@ appRegistry.register({
   render: null as unknown as AppDefinition['render'],
 });
 
+appRegistry.register({
+  typeId: 'translation',
+  nameKey: 'workbench:apps.translation',
+  icon: null,
+  instanceMode: 'single',
+  memoryWeight: 2,
+  defaultFrame: { w: 800, h: 600 },
+  minSize: { w: 360, h: 280 },
+  render: null as unknown as AppDefinition['render'],
+});
+
 function openTarget(): string {
   return useWindowStore.getState().openWindow({ typeId: TYPE_ID, instanceKey: 'target' });
 }
@@ -62,7 +73,7 @@ afterEach(() => {
 });
 
 describe('workbenchBus async activation', () => {
-  it.each(['exam', 'essay'] as const)('%s 资源请求复用同一个工作区并发送内部定位事件', (typeId) => {
+  it.each(['exam', 'essay', 'translation'] as const)('%s 资源请求复用同一个工作区并发送内部定位事件', (typeId) => {
     const events: unknown[] = [];
     const unregister = registerResourceWorkspace(typeId, (resourceId) => {
       events.push({ type: typeId, resourceId });

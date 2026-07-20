@@ -192,7 +192,7 @@ describe('NotesWorkspaceApp', () => {
     vi.unstubAllGlobals();
   });
 
-  it('opens the cold-launch resource and exposes the Obsidian workspace selectors', async () => {
+  it('opens the cold-launch resource and exposes the  workspace selectors', async () => {
     render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
 
     expect(document.querySelector('[data-wb-notes-workspace]')).not.toBeNull();

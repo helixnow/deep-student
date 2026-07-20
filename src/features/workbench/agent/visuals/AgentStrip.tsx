@@ -19,7 +19,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { readCssTimeMs } from '@/shared/utils/cssTime';
 import { announceWorkbench } from '@/features/workbench/hooks/useWorkbenchA11y';
 import { useWindowPresence } from '../presenceStore';
@@ -324,7 +324,7 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
           <span className="acr-agent-strip-actions" role="group" aria-label={t('agent.core.actions')}>
             {canResume ? (
               // ACR 4.0：显式暂停可续放 → 「继续」占用暂停按钮位（同尺寸，不引起布局跳动）
-              <NotionButton
+              <DsButton
                 type="button"
                 size="sm"
                 variant="ghost"
@@ -333,9 +333,9 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
                 aria-label={t('agent.core.resume')}
               >
                 {t('agent.core.resume')}
-              </NotionButton>
+              </DsButton>
             ) : (
-              <NotionButton
+              <DsButton
                 type="button"
                 size="sm"
                 variant="ghost"
@@ -347,9 +347,9 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
                 {isPaused
                   ? t('agent.core.paused')
                   : t('agent.core.pause')}
-              </NotionButton>
+              </DsButton>
             )}
-            <NotionButton
+            <DsButton
               type="button"
               size="sm"
               variant="ghost"
@@ -359,8 +359,8 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
               aria-label={t('agent.core.stop')}
             >
               {t('agent.core.stop')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               type="button"
               size="sm"
               variant="ghost"
@@ -372,7 +372,7 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
               {reverting
                 ? t('agent.core.reverting')
                 : t('agent.core.revert')}
-            </NotionButton>
+            </DsButton>
           </span>
         </div>
       </div>

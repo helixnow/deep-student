@@ -1,0 +1,116 @@
+/**
+ * DesktopShortcuts.css — 学习桌面快捷方式图标层
+ * ---------------------------------------------------------------------------
+ * - 层本身指针穿透（pointer-events: none），图标自身恢复 auto，
+ *   保证桌面空白区手势（右键菜单 / 双击 show desktop）的
+ *   e.target === e.currentTarget 判定不被破坏；
+ * - z 落在 --wb-z-desktop-ui（壁纸之上、窗口层之下），与议程小组件同档；
+ * - 图标数据与资源库「桌面」视图共用 learning-hub desktopStore，两端实时同步。
+ */
+
+.wb-desk-icons {
+  position: absolute;
+  inset: 0;
+  z-index: var(--wb-z-desktop-ui, 1);
+  pointer-events: none;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(auto-fill, 106px);
+  grid-auto-columns: 92px;
+  gap: 6px 4px;
+  justify-content: start;
+  align-content: start;
+  /* 底部让出 Dock 悬浮区；右侧让出议程小组件（340px 宽 + 24px 边距） */
+  padding: 16px 380px 96px 16px;
+}
+
+.wb-desk-icon {
+  pointer-events: auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px 6px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+}
+
+.wb-desk-icon:hover {
+  background: hsl(var(--foreground) / 0.08);
+}
+
+/* 选中态（点击聚焦即选中，点击桌面空白自然失焦取消） */
+.wb-desk-icon:focus,
+.wb-desk-icon[data-menu-open='true'] {
+  background: hsl(var(--foreground) / 0.14);
+}
+
+.wb-desk-icon__art {
+  position: relative;
+  display: inline-flex;
+  transition: transform 160ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-desk-icon:active .wb-desk-icon__art {
+  transform: scale(0.94);
+}
+
+/* app 新建类快捷方式的加号角标（与资源库桌面一致） */
+.wb-desk-icon__badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 壁纸上的图标文字：白字 + 投影（macOS 桌面惯例），不随主题切换 */
+.wb-desk-icon__label {
+  max-width: 84px;
+  font-size: 12px;
+  line-height: 1.25;
+  font-weight: 500;
+  text-align: center;
+  color: #fff;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.65),
+    0 0 6px rgba(0, 0, 0, 0.35);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+}
+
+.wb-desk-icon:focus .wb-desk-icon__label,
+.wb-desk-icon[data-menu-open='true'] .wb-desk-icon__label {
+  background: hsl(var(--primary) / 0.92);
+  border-radius: 5px;
+  padding: 0 4px;
+  text-shadow: none;
+}
+
+/* 重命名输入框 */
+.wb-desk-icon__input {
+  width: 84px;
+  padding: 2px 4px;
+  border-radius: 5px;
+  border: 1px solid hsl(var(--primary) / 0.7);
+  background: hsl(var(--card) / 0.95);
+  color: hsl(var(--foreground));
+  font-size: 12px;
+  text-align: center;
+  outline: none;
+}

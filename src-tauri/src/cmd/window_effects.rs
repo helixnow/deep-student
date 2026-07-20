@@ -1,0 +1,188 @@
+//! 窗口视觉效果命令
+//!
+//! macOS 原生窗口毛玻璃（NSVisualEffectView vibrancy），
+//! 用于「侧边栏半透明」设置的桌面透视效果。
+
+use crate::models::AppError;
+
+type Result<T> = std::result::Result<T, AppError>;
+
+#[cfg(target_os = "macos")]
+const TITLEBAR_SIDEBAR_VIEW_TAG: i64 = 0x44535455;
+
+#[cfg(target_os = "macos")]
+unsafe fn find_tagged_subview(container: cocoa::base::id, tag: i64) -> cocoa::base::id {
+    use cocoa::base::nil;
+    use objc::{msg_send, sel, sel_impl};
+
+    let subviews: cocoa::base::id = msg_send![container, subviews];
+    if subviews == nil {
+        return nil;
+    }
+
+    let count: usize = msg_send![subviews, count];
+    for index in 0..count {
+        let view: cocoa::base::id = msg_send![subviews, objectAtIndex: index];
+        let view_tag: i64 = msg_send![view, tag];
+        if view_tag == tag {
+            return view;
+        }
+    }
+
+    nil
+}
+
+#[cfg(target_os = "macos")]
+unsafe fn sync_titlebar_sidebar_material_impl(
+    ns_window: cocoa::base::id,
+    enabled: bool,
+    width: f64,
+) -> std::result::Result<(), String> {
+    use cocoa::appkit::{
+        NSView, NSViewHeightSizable, NSVisualEffectBlendingMode, NSVisualEffectMaterial,
+        NSVisualEffectState, NSVisualEffectView, NSWindow, NSWindowButton, NSWindowOrderingMode,
+    };
+    use cocoa::base::{id, nil};
+    use cocoa::foundation::{NSPoint, NSRect, NSSize};
+    use objc::{msg_send, sel, sel_impl};
+
+    let close_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowCloseButton);
+    if close_button == nil {
+        return Err("找不到 macOS 标题栏关闭按钮".into());
+    }
+
+    let titlebar_container = {
+        let first_superview = NSView::superview(close_button);
+        if first_superview == nil {
+            return Err("关闭按钮缺少 superview".into());
+        }
+        let second_superview = NSView::superview(first_superview);
+        if second_superview == nil {
+            return Err("标题栏容器 superview 缺失".into());
+        }
+        second_superview
+    };
+
+    let existing = find_tagged_subview(titlebar_container, TITLEBAR_SIDEBAR_VIEW_TAG);
+    if existing != nil {
+        let _: () = msg_send![existing, removeFromSuperview];
+    }
+
+    if !enabled || width <= 0.0 {
+        return Ok(());
+    }
+
+    let bounds: NSRect = msg_send![titlebar_container, bounds];
+    let frame = NSRect::new(
+        NSPoint::new(0.0, 0.0),
+        NSSize::new(width.min(bounds.size.width), bounds.size.height),
+    );
+
+    let view: id = NSVisualEffectView::initWithFrame_(NSVisualEffectView::alloc(nil), frame);
+    if view == nil {
+        return Err("创建 NSVisualEffectView 失败".into());
+    }
+
+    let _: () = msg_send![view, setTag: TITLEBAR_SIDEBAR_VIEW_TAG];
+    let _: () = msg_send![view, setAutoresizingMask: NSViewHeightSizable];
+    let _: () = msg_send![view, setWantsLayer: true];
+    let _: () = msg_send![view, setHidden: false];
+    view.setMaterial_(NSVisualEffectMaterial::Sidebar);
+    view.setBlendingMode_(NSVisualEffectBlendingMode::BehindWindow);
+    view.setState_(NSVisualEffectState::FollowsWindowActiveState);
+
+    let _: () = msg_send![
+        titlebar_container,
+        addSubview: view
+        positioned: NSWindowOrderingMode::NSWindowBelow
+        relativeTo: nil
+    ];
+
+    Ok(())
+}
+
+/// 切换 macOS 原生窗口 vibrancy（侧边栏半透明毛玻璃）。
+///
+/// 返回 `true` 表示原生 vibrancy 已生效（仅 macOS）；其他平台返回 `false`，
+/// 前端应退回纯 CSS 半透明方案。
+#[tauri::command]
+pub async fn set_sidebar_vibrancy(window: tauri::WebviewWindow, enabled: bool) -> Result<bool> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::sync::mpsc;
+        use window_vibrancy::{apply_vibrancy, clear_vibrancy, NSVisualEffectMaterial};
+
+        // NSVisualEffectView 只能在主线程操作；命令跑在异步运行时，需调度回主线程
+        let (tx, rx) = mpsc::channel::<std::result::Result<bool, String>>();
+        let win = window.clone();
+        window
+            .run_on_main_thread(move || {
+                let result = if enabled {
+                    // Sidebar 材质 + state=None（FollowsWindowActiveState）：
+                    // 与系统原生侧边栏一致，窗口失焦时自动退化为不透明底色
+                    apply_vibrancy(&win, NSVisualEffectMaterial::Sidebar, None, None)
+                        .map(|_| true)
+                        .map_err(|e| e.to_string())
+                } else {
+                    clear_vibrancy(&win)
+                        .map(|_| false)
+                        .map_err(|e| e.to_string())
+                };
+                let _ = tx.send(result);
+            })
+            .map_err(|e| AppError::internal(format!("调度主线程失败: {e}")))?;
+
+        rx.recv_timeout(std::time::Duration::from_secs(3))
+            .map_err(|e| AppError::internal(format!("等待 vibrancy 结果失败: {e}")))?
+            .map_err(AppError::internal)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, enabled);
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+pub async fn sync_titlebar_sidebar_material(
+    window: tauri::WebviewWindow,
+    enabled: bool,
+    width: f64,
+) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::sync::mpsc;
+
+        let (tx, rx) = mpsc::channel::<std::result::Result<(), String>>();
+        let win = window.clone();
+        window
+            .run_on_main_thread(move || {
+                let result = if let Ok(ns_window_raw) = win.ns_window() {
+                    unsafe {
+                        sync_titlebar_sidebar_material_impl(
+                            ns_window_raw as cocoa::base::id,
+                            enabled,
+                            width,
+                        )
+                    }
+                } else {
+                    Err("获取 NSWindow 失败".into())
+                };
+                let _ = tx.send(result);
+            })
+            .map_err(|e| AppError::internal(format!("调度主线程失败: {e}")))?;
+
+        rx.recv_timeout(std::time::Duration::from_secs(3))
+            .map_err(|e| AppError::internal(format!("等待标题栏材质同步结果失败: {e}")))?
+            .map_err(AppError::internal)?;
+
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, enabled, width);
+        Ok(())
+    }
+}

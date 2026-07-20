@@ -16,7 +16,7 @@
  *   .wb-expose-root                 overlay 定位层
  *     .wb-expose-backdrop           暗化背景（契约类，z=expose-backdrop）
  *     .wb-expose-hitlayer           命中/键盘层（z=overlay）
- *       .wb-expose-empty            空态玻璃提示
+ *       .wb-expose-empty            空态提示（裸文字，无卡片）
  *       .wb-expose-cell             缩略命中格（含标题 + 关闭）
  */
 
@@ -79,17 +79,16 @@
   justify-content: center;
 }
 
-.wb-expose-empty-card {
+/* 空态提示：裸文字直接浮在暗化 backdrop 上（无卡片包裹） */
+.wb-expose-empty-text {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  border-radius: var(--wb-menu-radius, 14px);
-  padding: 1rem 1.5rem;
   font-size: 0.875rem;
   text-align: center;
-  box-shadow: var(--wb-shadow-popover, 0 14px 44px hsl(var(--shadow-base, 0 0% 0%) / 0.22));
   color: var(--text-primary, hsl(var(--foreground)));
+  text-shadow: 0 1px 8px hsl(var(--shadow-base, 0 0% 0%) / 18%);
 }
 
 /* 空态副行提示（Esc 返回桌面） */

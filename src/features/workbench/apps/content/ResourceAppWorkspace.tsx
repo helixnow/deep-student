@@ -7,12 +7,13 @@ import {
   PenNib,
   Plus,
   Rows,
+  Translate,
   WarningCircle,
   X,
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { DsButton } from '@/components/ui/DsButton';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { createEmpty, dstu, type DstuNode } from '@/dstu';
 import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -72,13 +73,13 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
   selectedIdRef.current = selectedId;
 
   const isExam = type === 'exam';
-  const title = isExam
-    ? t('workbench:apps.exam')
-    : t('workbench:apps.essay');
-  const ResourceIcon = isExam ? ClipboardText : PenNib;
+  const title = t(`workbench:apps.${type}`);
+  const ResourceIcon = isExam ? ClipboardText : type === 'translation' ? Translate : PenNib;
   const newLabel = isExam
     ? t('workbench:resourceHome.newExam')
-    : t('workbench:resourceHome.newEssay');
+    : type === 'translation'
+      ? t('workbench:resourceHome.newTranslation')
+      : t('workbench:resourceHome.newEssay');
 
   useEffect(() => onTitleChange(title), [onTitleChange, title]);
 
@@ -102,7 +103,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
           && reviewSession.currentIndex < reviewSession.queue.length
         )
           ? 'review'
-          : ((type === 'essay' || type === 'exam') && isContentDirty(type, activeId))
+          : isContentDirty(type, activeId)
             ? 'unsaved'
             : null;
 
@@ -158,7 +159,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
     ) {
       return 'review';
     }
-    if ((type === 'essay' || type === 'exam') && isContentDirty(type, resourceId)) {
+    if (isContentDirty(type, resourceId)) {
       return 'unsaved';
     }
     return null;
@@ -278,7 +279,13 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
 
   useEffect(() => {
     const host = hostRef.current;
-    if (!host || typeof ResizeObserver === 'undefined') return;
+    if (!host) return;
+    // 首帧同步分级：ResizeObserver 首次回调是异步的，窄窗打开时会先按
+    // wide 渲染并排侧栏再塌缩成抽屉（一帧闪变）。jsdom 下测量为 0，保持
+    // wide 兜底不影响测试。
+    const initialWidth = host.getBoundingClientRect().width || host.clientWidth;
+    if (initialWidth > 0) setSizeClass(classifyWbSysWidth(initialWidth));
+    if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(([entry]) => setSizeClass(classifyWbSysWidth(entry.contentRect.width)));
     observer.observe(host);
     return () => observer.disconnect();
@@ -322,7 +329,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             <ResourceIcon size={18} weight="duotone" aria-hidden="true" />
           </span>
           <strong>{title}</strong>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -332,10 +339,12 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             aria-label={newLabel}
           >
             {creating ? <ArrowClockwise size={14} className="animate-spin" /> : <Plus size={14} />}
-          </NotionButton>
+          </DsButton>
         </header>
 
-        <div className="wb-resource-workspace-search">
+        {/* data-wb-drawer-stay：搜索/过滤/刷新的结果就显示在抽屉列表里，
+            紧凑窗抽屉不因这些操作自动收起（见 WorkbenchSidebarLayout） */}
+        <div className="wb-resource-workspace-search" data-wb-drawer-stay>
           <MagnifyingGlass size={14} aria-hidden="true" />
           <input
             ref={searchInputRef}
@@ -352,7 +361,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             aria-label={t('workbench:resourceHome.search')}
           />
           {query && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -364,11 +373,11 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
               aria-label={t('workbench:resourceWorkspace.clearSearch')}
             >
               <X size={12} />
-            </NotionButton>
+            </DsButton>
           )}
         </div>
 
-        <nav className="wb-resource-workspace-nav" aria-label={title}>
+        <nav className="wb-resource-workspace-nav" aria-label={title} data-wb-drawer-stay>
           <WorkbenchSidebarRow
             isActive={libraryView === 'all'}
             onClick={() => setLibraryView('all')}
@@ -402,9 +411,9 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             <div className="wb-resource-workspace-message" role="alert">
               <WarningCircle size={22} />
               <span>{error}</span>
-              <NotionButton variant="outline" size="sm" onClick={() => void loadItems()}>
+              <DsButton variant="outline" size="sm" onClick={() => void loadItems()}>
                 {t('resourceHome.retry')}
-              </NotionButton>
+              </DsButton>
             </div>
           ) : visibleItems.length === 0 ? (
             <div className="wb-resource-workspace-message">
@@ -429,9 +438,9 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
           ))}
         </div>
 
-        <footer className="wb-resource-workspace-sidebar-footer">
+        <footer className="wb-resource-workspace-sidebar-footer" data-wb-drawer-stay>
           <span>{t('workbench:resourceHome.itemCount', { count: visibleItems.length })}</span>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -441,7 +450,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             aria-label={t('resourceWorkspace.refresh')}
           >
             <ArrowClockwise size={13} className={cn(loading && 'animate-spin')} />
-          </NotionButton>
+          </DsButton>
         </footer>
       </WorkbenchSidebarSurface>}
       >
@@ -463,15 +472,15 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             <ResourceIcon size={38} weight="thin" />
             <strong>{t('workbench:resourceWorkspace.selectTitle')}</strong>
             <span>{t('workbench:resourceWorkspace.selectHint')}</span>
-            <NotionButton size="sm" onClick={createResource} disabled={creating}>
+            <DsButton size="sm" onClick={createResource} disabled={creating}>
               <Plus size={15} />
               {newLabel}
-            </NotionButton>
+            </DsButton>
           </div>
         )}
       </main>
       </WorkbenchSidebarLayout>
-      <NotionAlertDialog
+      <DsAlertDialog
         open={pendingNavigation !== null}
         onOpenChange={(open) => {
           if (!open) setPendingNavigation(null);

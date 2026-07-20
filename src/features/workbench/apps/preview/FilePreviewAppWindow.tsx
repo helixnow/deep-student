@@ -17,7 +17,7 @@ import {
 import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
 import { useReferenceToChat, type SourceType } from '@/features/learning-hub/useReferenceToChat';
 import type { DstuNode } from '@/dstu/types';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import {
   AppMenu,
@@ -265,7 +265,7 @@ const ToolbarAction: React.FC<ToolbarActionProps> = ({
 }) => (
   <Tooltip>
     <TooltipTrigger className="wb-file-preview-tip-anchor">
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="icon"
         iconOnly
@@ -276,7 +276,7 @@ const ToolbarAction: React.FC<ToolbarActionProps> = ({
         className={active ? 'wb-file-preview-btn-active' : undefined}
       >
         {busy ? <span className="wb-file-preview-spinner" aria-hidden="true" /> : children}
-      </NotionButton>
+      </DsButton>
     </TooltipTrigger>
     <TooltipContent side="bottom">
       {label}
@@ -729,7 +729,7 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
               >
                 {countLabel}
               </span>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -740,8 +740,8 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
                 aria-label={t('filePreview.previous')}
               >
                 <ArrowUp size={14} />
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -752,8 +752,8 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
                 aria-label={t('filePreview.next')}
               >
                 <ArrowDown size={14} />
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -763,21 +763,21 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
                 aria-label={t('filePreview.closeSearch')}
               >
                 <X size={14} />
-              </NotionButton>
+              </DsButton>
             </motion.div>
           )}
         </AnimatePresence>
         {collapseActions && (
           <AppMenu className={searchOpen ? undefined : 'ml-auto'}>
             <AppMenuTrigger asChild>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
                 aria-label={t('filePreview.moreActions')}
               >
                 <DotsThree size={16} weight="bold" />
-              </NotionButton>
+              </DsButton>
             </AppMenuTrigger>
             <AppMenuContent align="end" width={240}>
               <AppMenuItem

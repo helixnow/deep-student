@@ -7,7 +7,7 @@
  * Ctrl+Alt+Shift→⌘⌥⇧，原 Ctrl 通道在 macOS 上仍作为兜底保留）：
  *
  * - Ctrl+Alt+←/→        平铺左/右半屏
- * - Ctrl+Alt+U/I/J/K    平铺到四角（对标 Rectangle）
+ * - Ctrl+Alt+U/I/J/K    平铺到四角
  * - Ctrl+Alt+↑          最大化
  * - Ctrl+Alt+↓          恢复原尺寸（非 floating 时）/ 最小化（floating 时）
  * - Ctrl+Alt+C          居中

@@ -22,7 +22,7 @@
 import React, { useCallback, useRef } from 'react';
 import { SidebarSimple } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { ChatContainer } from '@/features/chat/components/ChatContainer';
 import { StreamPreferencesProvider } from '@/features/chat/components/renderers/StreamPreferencesContext';
 import { SandboxWorkbenchSurface } from '@/features/sandbox/components/SandboxWorkbenchSurface';
@@ -110,7 +110,7 @@ export const ChatSessionSurface: React.FC<ChatSessionSurfaceProps> = ({
             />
           </div>
         ) : sandboxActiveSession ? (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -120,7 +120,7 @@ export const ChatSessionSurface: React.FC<ChatSessionSurfaceProps> = ({
             title="展开沙箱工作台"
           >
             <SidebarSimple size={18} />
-          </NotionButton>
+          </DsButton>
         ) : null}
       </div>
     </StreamPreferencesProvider>

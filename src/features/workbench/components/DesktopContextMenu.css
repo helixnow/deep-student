@@ -114,6 +114,18 @@
   opacity: 0.45;
 }
 
+/* 危险操作行（删除 / 清空回收站等）：红字，hover 反转为红底 */
+.wb-desk-menu-item--danger:not(:disabled) {
+  color: hsl(var(--destructive));
+}
+
+.wb-desk-menu-item--danger:not(:disabled):hover,
+.wb-desk-menu-item--danger:not(:disabled):focus,
+.wb-desk-menu-item--danger[data-wb-desk-active='true']:not(:disabled) {
+  background: hsl(var(--destructive) / 0.92);
+  color: hsl(var(--destructive-foreground));
+}
+
 /* 禁用项的图标再压一档，与文字形成同步弱化 */
 .wb-desk-menu-item:disabled .wb-desk-menu-item-icon {
   opacity: 0.7;

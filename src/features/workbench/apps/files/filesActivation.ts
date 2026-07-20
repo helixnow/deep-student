@@ -1,6 +1,7 @@
 /** Files 应用 ACR 语义导航。文件数据写入仍归 DSTU 领域工具。 */
 
 import { pathApi } from '@/dstu/api/pathApi';
+import { resolveQuickAccessType } from '@/features/learning-hub/learningHubContracts';
 import type { SortBy, SortOrder, ViewMode } from '@/features/learning-hub/stores/finderStore';
 import type { ActivationContext, ActivationResult } from '../../core/types';
 import { agentFlash } from '../../agent/visuals/agentFlash';
@@ -101,6 +102,14 @@ export async function handleFilesActivation(ctx: ActivationContext): Promise<Act
         handled: true,
         message: '已进入所在目录并选中该资源，但目标行当前不在可视区/当前页，未执行定位高亮',
       };
+    }
+    case 'openQuickAccess': {
+      // 桌面快捷方式（全部笔记/收藏/最近等智能入口）→ 定位到对应视图
+      const type = resolveQuickAccessType(payloadString(ctx.payload, 'type'));
+      if (!type) return invalid('openQuickAccess 需要合法的 payload.type');
+      store.quickAccessNavigate(type);
+      await flashNavigationAnchor('path');
+      return { handled: true };
     }
     case 'goBack':
       if (store.historyIndex <= 0) return unavailable('当前没有可返回的浏览位置');

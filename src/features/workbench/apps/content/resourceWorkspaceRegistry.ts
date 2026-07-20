@@ -1,4 +1,4 @@
-export type ResourceWorkspaceType = 'exam' | 'essay';
+export type ResourceWorkspaceType = 'exam' | 'essay' | 'translation';
 
 const activeResources = new Map<ResourceWorkspaceType, string | null>();
 const openHandlers = new Map<ResourceWorkspaceType, Set<(resourceId: string) => void>>();

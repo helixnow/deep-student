@@ -49,9 +49,11 @@ import type { SnapZone, WorkbenchWindow } from '../core/types';
 import { setActiveSnapZone } from '../core/snapZoneStore';
 import { WallpaperLayer, DEFAULT_WALLPAPER, type WallpaperConfig } from './WallpaperLayer';
 import { DesktopContextMenu, useDesktopGestures } from './DesktopContextMenu';
+import { WallpaperManagerDialog, OPEN_WALLPAPER_MANAGER_EVENT } from './WallpaperManagerDialog';
 import { useWallpaperCoveragePause } from '../hooks/useWallpaperCoveragePause';
 import { EmptyDesktop } from './EmptyDesktop';
 import { DesktopAgendaWidget } from './DesktopAgendaWidget';
+import { DesktopShortcutsLayer } from './DesktopShortcuts';
 import { WindowShell } from './WindowShell';
 import { SnapPreview } from './SnapPreview';
 import { installInteractionTraceBridge } from '../core/interactionTrace';
@@ -266,6 +268,16 @@ export const WorkbenchDesktop: React.FC = () => {
   const [dockSize, setDockSize] = useState(DOCK_SIZE_DEFAULT);
   const [dockAutohide, setDockAutohide] = useState(false);
   const [devPanel, setDevPanel] = useState(false);
+  // 壁纸管理面板：入口方（桌面右键菜单 / 设置页）派发事件，这里统一打开
+  const [wallpaperManagerOpen, setWallpaperManagerOpen] = useState(false);
+
+  useEffect(() => {
+    const onOpenWallpaperManager = () => setWallpaperManagerOpen(true);
+    window.addEventListener(OPEN_WALLPAPER_MANAGER_EVENT, onOpenWallpaperManager);
+    return () => {
+      window.removeEventListener(OPEN_WALLPAPER_MANAGER_EVENT, onOpenWallpaperManager);
+    };
+  }, []);
 
   const tileMargin = tileMargins.enabled ? tileMargins.px : 0;
 
@@ -518,6 +530,8 @@ export const WorkbenchDesktop: React.FC = () => {
         onDoubleClick={gestures.onDesktopDoubleClick}
       >
         {hydrated && <DesktopAgendaWidget />}
+        {/* 桌面快捷方式图标层：与资源库「桌面」视图共用 desktopStore，双向同步 */}
+        {hydrated && <DesktopShortcutsLayer />}
         {hydrated && orderedWindows.length === 0 && <EmptyDesktop />}
 
         {/* 窗口层：自成 stacking context（COORDINATION 裁决），内部 zIndex 与 overlay 定值互不干扰。
@@ -559,6 +573,13 @@ export const WorkbenchDesktop: React.FC = () => {
           wallpaper={wallpaper}
           onClose={gestures.closeMenu}
           onShowDesktop={gestures.toggleShowDesktop}
+        />
+
+        {/* 壁纸管理面板（入口事件见 OPEN_WALLPAPER_MANAGER_EVENT，改壁纸走 settings-changed 热更新） */}
+        <WallpaperManagerDialog
+          open={wallpaperManagerOpen}
+          wallpaper={wallpaper}
+          onClose={() => setWallpaperManagerOpen(false)}
         />
 
         <WorkbenchEventBridge />

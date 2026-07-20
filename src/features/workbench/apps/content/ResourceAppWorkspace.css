@@ -136,8 +136,15 @@
   position: relative;
   min-width: 0;
   min-height: 0;
-  height: auto;
-  max-height: none;
+
+  /*
+   * 撑满 WorkbenchSidebarLayout 的 .wb-sys-content（flex 拉伸，有确定高度）。
+   * 旧 grid 布局时代高度为 auto（行由 minmax(0,1fr) 拉伸），换成 flex 宿主
+   * 后 auto 会塌缩成内容高度，工作台整体挤在窗口顶部（翻译/作文同源）。
+   * 同时压制 app.css 全局 main 元素的 100dvh 视口高度。
+   */
+  height: 100%;
+  max-height: 100%;
   overflow: hidden;
   background: hsl(var(--background));
 }
@@ -196,6 +203,47 @@
 @keyframes wb-resource-workspace-loading {
   from { opacity: 0.5; }
   to { opacity: 0.92; }
+}
+
+/* Touch-primary windows preserve the compact visual density while exposing
+   standard 44px hit targets for every resource-list action. */
+@media (pointer: coarse) {
+  .wb-resource-workspace .wb-sys-drawer-handle {
+    width: 44px;
+    height: 64px;
+    transform: translateY(-50%);
+    opacity: 1;
+  }
+
+  .wb-resource-workspace-sidebar-title {
+    height: auto;
+    min-height: 52px;
+  }
+
+  .wb-resource-workspace-sidebar-title button,
+  .wb-resource-workspace-search button,
+  .wb-resource-workspace-sidebar-footer button {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    flex: 0 0 44px;
+  }
+
+  .wb-resource-workspace-search {
+    height: 44px;
+  }
+
+  .wb-resource-workspace-search input,
+  .wb-resource-workspace [data-workbench-sidebar-row] {
+    min-height: 44px;
+  }
+
+  .wb-resource-workspace-sidebar-footer {
+    height: auto;
+    min-height: 52px;
+    padding-bottom: var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+    flex: 0 0 auto;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -492,7 +492,20 @@ export interface WorkbenchSnapshotV1 {
   dockPinned: string[];
   /** key: `${leftWindowId}:${rightWindowId}`，value: 左侧占比 0–1 */
   tilingRatios: Record<string, number>;
-  wallpaper?: { kind: 'theme' | 'image'; value: string };
+  /**
+   * 壁纸配置；imageBlur/imageDim/imageVignette 为图片壁纸的可选适配字段
+   * （新增可选扩展，向后兼容），语义与 WallpaperLayer 的 WallpaperConfig 一致。
+   */
+  wallpaper?: {
+    kind: 'theme' | 'image';
+    value: string;
+    /** 高斯模糊半径 px，sanitize 钳制 0–40 */
+    imageBlur?: number;
+    /** 额外压暗，sanitize 钳制 0–0.6 */
+    imageDim?: number;
+    /** 边缘暗角开关 */
+    imageVignette?: boolean;
+  };
   materialTier?: MaterialTier;
   /**
    * O11 追加（可选）：快照保存时的桌面尺寸。

@@ -58,7 +58,7 @@ export function createContentWindowComponent(type: ResourceType): React.FC<AppWi
             : null,
         )
       : null;
-    const isResourceWorkspace = type === 'exam' || type === 'essay';
+    const isResourceWorkspace = type === 'exam' || type === 'essay' || type === 'translation';
     const hasResource = Boolean(resourceId) && !isResourceWorkspace;
     const { phase, markReady } = useContentLoadPhase({
       hostRef,

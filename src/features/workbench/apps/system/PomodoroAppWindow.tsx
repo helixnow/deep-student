@@ -43,7 +43,7 @@ import {
   Timer,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { getPomodoroTodayStats, type PomodoroTodayStats } from '@/features/pomodoro/api';
 import { PomodoroStatsContent } from '@/features/pomodoro/components/PomodoroStatsPopover';
@@ -534,7 +534,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
           {/* 传输控制行 */}
           <div className="wb-sys-pomo-controls">
             <div className="wb-sys-pomo-controls-side">
-              <NotionButton
+              <DsButton
                 ref={settingsBtnRef}
                 variant="ghost"
                 size="icon"
@@ -545,7 +545,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                 className="!h-7 !w-7 transition-colors duration-150 ease-standard"
               >
                 <GearSix size={15} />
-              </NotionButton>
+              </DsButton>
             </div>
 
             <div className="wb-sys-pomo-controls-main">
@@ -559,7 +559,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                       defaultValue: '放弃本次专注？',
                     })}
                   >
-                    <NotionButton
+                    <DsButton
                       variant="utility"
                       size="sm"
                       onClick={handleStop}
@@ -568,8 +568,8 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                       className="h-7 !px-2.5 text-xs font-medium text-[color:hsl(var(--destructive))] transition-colors duration-150 ease-standard"
                     >
                       {t('pomodoro.controls.abandon', { ns: 'todo', defaultValue: '放弃' })}
-                    </NotionButton>
-                    <NotionButton
+                    </DsButton>
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       onClick={cancelStopConfirm}
@@ -578,10 +578,10 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                       className="h-7 !px-2 text-xs transition-colors duration-150 ease-standard"
                     >
                       {t('pomodoro.controls.keepGoing', { ns: 'todo', defaultValue: '继续专注' })}
-                    </NotionButton>
+                    </DsButton>
                   </span>
                 ) : (
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="icon"
                     iconOnly
@@ -591,7 +591,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                     className="!h-7 !w-7 transition-colors duration-150 ease-standard"
                   >
                     <Square size={14} />
-                  </NotionButton>
+                  </DsButton>
                 ))}
 
               {/* 严格模式专注中：暂停位换成严格提示（store 同样拦截，双保险） */}
@@ -605,7 +605,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                 </span>
               ) : (
                 !(strictLocked && isRunning) && (
-                  <NotionButton
+                  <DsButton
                     variant={isRunning ? 'utility' : 'primary'}
                     size="sm"
                     onClick={handleTogglePlay}
@@ -633,13 +633,13 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                           ? t('pomodoro.controls.startFocus')
                           : t('pomodoro.controls.resume')}
                     </span>
-                  </NotionButton>
+                  </DsButton>
                 )
               )}
 
               {/* 正计时专注中：手动「完成」收尾 */}
               {isCountUpWork && isRunning && (
-                <NotionButton
+                <DsButton
                   variant="primary"
                   size="sm"
                   onClick={() => completeCurrentSession()}
@@ -649,11 +649,11 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                 >
                   <CheckCircle size={14} />
                   <span>{t('pomodoro.controls.finish')}</span>
-                </NotionButton>
+                </DsButton>
               )}
 
               {(mode === 'short_break' || mode === 'long_break') && (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
@@ -663,7 +663,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                   className="!h-7 !w-7 transition-colors duration-150 ease-standard"
                 >
                   <SkipForward size={14} />
-                </NotionButton>
+                </DsButton>
               )}
 
               {/* 延长阶段：休息中常显；专注倒计时剩余 <2min 时也给机会 */}
@@ -671,7 +671,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                 mode === 'long_break' ||
                 (mode === 'work' && !isCountUpWork && timeLeft > 0 && timeLeft <= 120)) &&
                 [1, 5].map((minutes) => (
-                  <NotionButton
+                  <DsButton
                     key={minutes}
                     variant="utility"
                     size="sm"
@@ -681,13 +681,13 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                     className="h-7 gap-0 !px-2 text-xs font-medium tabular-nums transition-colors duration-150 ease-standard"
                   >
                     {t('pomodoro.controls.extendMinutes', { ns: 'todo', count: minutes })}
-                  </NotionButton>
+                  </DsButton>
                 ))}
             </div>
 
             <div className="wb-sys-pomo-controls-side is-right">
               {mode !== 'idle' && (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
@@ -697,9 +697,9 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                   className="!h-7 !w-7 transition-colors duration-150 ease-standard"
                 >
                   <ArrowsOut size={14} />
-                </NotionButton>
+                </DsButton>
               )}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -713,7 +713,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                 )}
               >
                 {noiseEnabled ? <SpeakerHigh size={15} /> : <SpeakerSlash size={15} />}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         </div>

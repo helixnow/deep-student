@@ -54,7 +54,9 @@ export function createContentApp(options: CreateContentAppOptions): AppDefinitio
   const canClose = options.confirmUnsavedOnClose
     ? async (instanceKey: string | null): Promise<boolean> => {
         const dirtyResourceId = instanceKey ?? (
-          typeId === 'essay' ? getResourceWorkspaceActive('essay') : null
+          typeId === 'essay' || typeId === 'translation'
+            ? getResourceWorkspaceActive(typeId)
+            : null
         );
         if (!isContentDirty(typeId, dirtyResourceId)) return true;
         return requestContentCloseConfirmation({

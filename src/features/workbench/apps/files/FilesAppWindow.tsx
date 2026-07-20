@@ -33,6 +33,7 @@ import { useResourceDragOut } from './useResourceDragOut';
 import './FilesAppWindow.css';
 import { WorkbenchSidebarLayout } from '../system/SystemWindowShared';
 import { useWbSysSize } from '../system/useWbSysSize';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 /**
  * ResourceListItem → workbenchBus.launch 请求。
@@ -63,6 +64,7 @@ const FilesAppWindow: React.FC<AppWindowProps> = ({
   renderThrottleMs = 0,
 }) => {
   const { t } = useTranslation(['workbench']);
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
   const hostRef = useRef<HTMLDivElement>(null);
   const { ref: sizeRef, sizeClass } = useWbSysSize();
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -71,6 +73,7 @@ const FilesAppWindow: React.FC<AppWindowProps> = ({
   const [gesturePaused, setGesturePaused] = useState(() => shouldPauseHeavyContent());
   const [titlebarTarget, setTitlebarTarget] = useState<HTMLElement | null>(null);
   const interactionEnabled = renderThrottleMs <= 0 && !gesturePaused;
+  const desktopPointerEffectsEnabled = interactionEnabled && !isTouchPrimary;
 
   useEffect(() => {
     onTitleChange(t('workbench:apps.files'));
@@ -136,8 +139,8 @@ const FilesAppWindow: React.FC<AppWindowProps> = ({
 
   useDragRenderPause(hostRef, renderThrottleMs);
   useFilesViewTransition(viewportRef, interactionEnabled);
-  useFilesHoverPreview({ hostRef, enabled: interactionEnabled });
-  useResourceDragOut({ hostRef, windowId, enabled: interactionEnabled });
+  useFilesHoverPreview({ hostRef, enabled: desktopPointerEffectsEnabled });
+  useResourceDragOut({ hostRef, windowId, enabled: desktopPointerEffectsEnabled });
 
   const handleOpenApp = useCallback((item: ResourceListItem) => {
     launchResourceItem(item);

@@ -142,7 +142,7 @@ describe('createContentWindowComponent', () => {
     expect(container.textContent).toContain('缺少资源标识');
   });
 
-  it.each(['exam', 'essay'] as const)('%s 始终渲染同一套资源工作区', (type) => {
+  it.each(['exam', 'essay', 'translation'] as const)('%s 始终渲染同一套资源工作区', (type) => {
     const ResourceWindow = createContentWindowComponent(type);
     render(<ResourceWindow {...makeWindowProps({ instanceKey: null })} />);
     expect(screen.getByTestId(`${type}-resource-workspace`)).toBeTruthy();
@@ -207,7 +207,7 @@ describe('createContentApp', () => {
     await expect(def.canClose?.('essay_1')).resolves.toBe(true);
   });
 
-  it('ContentCloseConfirmationHost 通过 NotionAlertDialog 解析确认请求', async () => {
+  it('ContentCloseConfirmationHost 通过 DsAlertDialog 解析确认请求', async () => {
     render(<ContentCloseConfirmationHost />);
     const decision = requestContentCloseConfirmation({ description: 'Unsaved content' });
 

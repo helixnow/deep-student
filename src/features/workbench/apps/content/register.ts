@@ -4,7 +4,7 @@
  * textbook / exam / translation / essay / image / file
  * （note / mindmap 资源不在此注册：由 notes 单例知识工作区承载，见 apps/notes）
  * - weight：textbook=3，exam/translation/essay=2，image/file=1（设计文档 §9.1）
- * - exam / essay 为 single 工作区，资源 ID 只用于工作区内导航
+ * - exam / essay / translation 为 single 工作区，资源 ID 只用于工作区内导航
  * - 其余资源应用为 multi，instanceKey = resourceId
  * - translation/essay 接未保存关窗拦截（脏状态挂点见 contentDirtyRegistry）
  *
@@ -571,10 +571,10 @@ const CONTENT_APP_OPTIONS: CreateContentAppOptions[] = [
     typeId: 'translation',
     nameKey: 'workbench:apps.translation',
     icon: icon(TranslationAppIcon),
-    showInLauncher: false,
     memoryWeight: 2,
     defaultFrame: { w: 880, h: 620 },
     confirmUnsavedOnClose: true,
+    instanceMode: 'single',
   },
   {
     typeId: 'essay',

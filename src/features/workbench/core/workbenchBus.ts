@@ -55,7 +55,7 @@ interface ActivationWaiter {
 const activationWaiters = new Map<string, Set<ActivationWaiter>>();
 const ACTIVATION_READY_TIMEOUT_MS = 10_000;
 const NOTES_WORKSPACE_TYPE_ID = 'notes';
-const RESOURCE_WORKSPACE_TYPE_IDS = new Set(['exam', 'essay']);
+const RESOURCE_WORKSPACE_TYPE_IDS = new Set(['exam', 'essay', 'translation']);
 
 function toWorkspaceResource(typeId: string, resourceId?: string): NotesWorkspaceResourceRef | null {
   if ((typeId !== 'note' && typeId !== 'mindmap') || !resourceId?.trim()) return null;

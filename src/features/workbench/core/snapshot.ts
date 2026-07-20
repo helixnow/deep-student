@@ -226,7 +226,21 @@ export function sanitizeSnapshot(input: unknown): WorkbenchSnapshotV1 | null {
     (source.wallpaper.kind === 'theme' || source.wallpaper.kind === 'image') &&
     typeof source.wallpaper.value === 'string'
   ) {
-    snapshot.wallpaper = { kind: source.wallpaper.kind, value: source.wallpaper.value };
+    const wallpaper: NonNullable<WorkbenchSnapshotV1['wallpaper']> = {
+      kind: source.wallpaper.kind,
+      value: source.wallpaper.value,
+    };
+    // 图片适配字段（可选）：有限数钳制进合法区间，坏值只丢字段不丢整个 wallpaper
+    if (isFiniteNumber(source.wallpaper.imageBlur)) {
+      wallpaper.imageBlur = Math.min(40, Math.max(0, source.wallpaper.imageBlur));
+    }
+    if (isFiniteNumber(source.wallpaper.imageDim)) {
+      wallpaper.imageDim = Math.min(0.6, Math.max(0, source.wallpaper.imageDim));
+    }
+    if (typeof source.wallpaper.imageVignette === 'boolean') {
+      wallpaper.imageVignette = source.wallpaper.imageVignette;
+    }
+    snapshot.wallpaper = wallpaper;
   }
   if (MATERIAL_TIERS.has(source.materialTier as MaterialTier)) {
     snapshot.materialTier = source.materialTier as MaterialTier;

@@ -56,4 +56,18 @@ describe('Workbench sidebar architecture', () => {
     expect(notesCss).not.toContain('border-right: 1px solid var(--wb-sidebar-seam');
     expect(finder).toContain('WorkbenchSidebarRow');
   });
+
+  it('keeps resource workspace main filling the flex content host (stats/translation/essay scroll)', () => {
+    const resourceCss = read('src/features/workbench/apps/content/ResourceAppWorkspace.css');
+    const sysCss = read('src/features/workbench/apps/system/SystemWindowShared.css');
+    const mainRule = resourceCss.match(/\.wb-resource-workspace-main\s*\{[^}]+\}/)?.[0] ?? '';
+    const contentRule = sysCss.match(/\.wb-sys-content\s*\{[^}]+\}/)?.[0] ?? '';
+
+    // flex 宿主下 height:auto 会塌成内容高，统计页 overflow-y-auto 永不触发
+    expect(mainRule).toMatch(/height:\s*100%/);
+    expect(mainRule).toMatch(/max-height:\s*100%/);
+    expect(mainRule).not.toMatch(/height:\s*auto/);
+    expect(mainRule).not.toMatch(/max-height:\s*none/);
+    expect(contentRule).toMatch(/overflow:\s*hidden/);
+  });
 });

@@ -6,7 +6,7 @@ import { WorkbenchSettingsSection } from '@/features/settings/components/Workben
 // 深路径导入与被测组件保持一致（workbench index 聚合了 chat 等重量级 re-export）
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 
-const { importCustomWallpaperMock, invokeMock, settingsStore, showGlobalNotificationMock } = vi.hoisted(() => {
+const { importWallpaperToLibraryMock, invokeMock, settingsStore, showGlobalNotificationMock } = vi.hoisted(() => {
   const settingsStore = new Map<string, string>();
   const invokeMock = vi.fn(async (command: string, args?: Record<string, unknown>) => {
     if (command === 'get_setting') {
@@ -19,7 +19,7 @@ const { importCustomWallpaperMock, invokeMock, settingsStore, showGlobalNotifica
     return null;
   });
   return {
-    importCustomWallpaperMock: vi.fn(),
+    importWallpaperToLibraryMock: vi.fn(),
     invokeMock,
     settingsStore,
     showGlobalNotificationMock: vi.fn(),
@@ -34,16 +34,22 @@ vi.mock('@/components/UnifiedNotification', () => ({
   showGlobalNotification: showGlobalNotificationMock,
 }));
 
-vi.mock('@/features/settings/components/customWallpaperImport', () => ({
-  importCustomWallpaper: importCustomWallpaperMock,
+vi.mock('@/features/settings/components/wallpaperLibrary', () => ({
+  importWallpaperToLibrary: importWallpaperToLibraryMock,
+}));
+
+// 面板由代理 B 实现，本测试只依赖事件常量契约
+vi.mock('@/features/workbench/components/WallpaperManagerDialog', () => ({
+  OPEN_WALLPAPER_MANAGER_EVENT: 'workbench:open-wallpaper-manager',
+  WallpaperManagerDialog: () => null,
 }));
 
 describe('WorkbenchSettingsSection', () => {
   beforeEach(() => {
     settingsStore.clear();
     invokeMock.mockClear();
-    importCustomWallpaperMock.mockReset();
-    importCustomWallpaperMock.mockResolvedValue({ status: 'cancelled' });
+    importWallpaperToLibraryMock.mockReset();
+    importWallpaperToLibraryMock.mockResolvedValue({ status: 'cancelled' });
     showGlobalNotificationMock.mockReset();
     workbenchBus.setEnabled(false);
     document.documentElement.removeAttribute('data-wb-material');
@@ -236,9 +242,9 @@ describe('WorkbenchSettingsSection', () => {
     expect(screen.queryByRole('textbox', { name: '图片路径' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: '自定义图片' }));
 
-    await waitFor(() => expect(importCustomWallpaperMock).toHaveBeenCalledTimes(1));
-    expect(importCustomWallpaperMock).toHaveBeenCalledWith(
-      expect.objectContaining({ pickerTitle: '选择壁纸图片', commit: expect.any(Function) }),
+    await waitFor(() => expect(importWallpaperToLibraryMock).toHaveBeenCalledTimes(1));
+    expect(importWallpaperToLibraryMock).toHaveBeenCalledWith(
+      expect.objectContaining({ pickerTitle: '选择壁纸图片' }),
     );
     expect(screen.getByRole('radio', { name: '内置壁纸' })).toHaveAttribute(
       'aria-checked',
@@ -246,11 +252,11 @@ describe('WorkbenchSettingsSection', () => {
     );
   });
 
-  it('commits a selected managed wallpaper before updating state and dispatching the event', async () => {
+  it('persists the imported library wallpaper and dispatches the settings event', async () => {
     const managedPath = 'C:/AppData/DeepStudent/workbench-wallpapers/wallpaper-new.png';
-    importCustomWallpaperMock.mockImplementation(async ({ commit }) => {
-      await commit(managedPath);
-      return { status: 'success', value: managedPath, cleanupErrors: [] };
+    importWallpaperToLibraryMock.mockResolvedValue({
+      status: 'success',
+      entry: { path: managedPath, fileName: 'wallpaper-new.png' },
     });
     const changedEvents: Array<{ key: string; value: unknown }> = [];
     const onChanged = (event: Event) => {
@@ -283,7 +289,7 @@ describe('WorkbenchSettingsSection', () => {
 
   it('blocks concurrent custom wallpaper imports', async () => {
     let resolveImport!: (value: { status: 'cancelled' }) => void;
-    importCustomWallpaperMock.mockImplementation(
+    importWallpaperToLibraryMock.mockImplementation(
       () => new Promise((resolve) => {
         resolveImport = resolve;
       }),
@@ -295,7 +301,7 @@ describe('WorkbenchSettingsSection', () => {
     fireEvent.click(customOption);
     fireEvent.click(customOption);
 
-    await waitFor(() => expect(importCustomWallpaperMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(importWallpaperToLibraryMock).toHaveBeenCalledTimes(1));
     expect(screen.getByText('正在导入…')).toBeInTheDocument();
     resolveImport({ status: 'cancelled' });
     await waitFor(() => expect(screen.queryByText('正在导入…')).not.toBeInTheDocument());
@@ -308,7 +314,7 @@ describe('WorkbenchSettingsSection', () => {
     };
     settingsStore.set('desktop.workbenchWallpaper', JSON.stringify(current));
     const error = new Error('copy failed');
-    importCustomWallpaperMock.mockResolvedValue({ status: 'error', error });
+    importWallpaperToLibraryMock.mockResolvedValue({ status: 'error', error });
     render(<WorkbenchSettingsSection />);
 
     const changeButton = await screen.findByRole('button', { name: '更换图片' });
@@ -322,6 +328,38 @@ describe('WorkbenchSettingsSection', () => {
       'aria-checked',
       'true',
     );
+  });
+
+  it('notifies without persisting when the wallpaper library is full', async () => {
+    importWallpaperToLibraryMock.mockResolvedValue({ status: 'limit-exceeded', limit: 24 });
+    render(<WorkbenchSettingsSection />);
+    await screen.findByRole('switch', { name: '学习桌面（默认）' });
+
+    fireEvent.click(screen.getByRole('radio', { name: '自定义图片' }));
+
+    await waitFor(() => {
+      expect(showGlobalNotificationMock).toHaveBeenCalledWith(
+        'warning',
+        expect.stringContaining('24'),
+      );
+    });
+    expect(settingsStore.get('desktop.workbenchWallpaper')).toBeUndefined();
+  });
+
+  it('dispatches the wallpaper manager open event from the manage button', async () => {
+    const openHandler = vi.fn();
+    window.addEventListener('workbench:open-wallpaper-manager', openHandler);
+
+    try {
+      render(<WorkbenchSettingsSection />);
+      await screen.findByRole('switch', { name: '学习桌面（默认）' });
+
+      fireEvent.click(screen.getByRole('button', { name: '管理壁纸' }));
+
+      expect(openHandler).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener('workbench:open-wallpaper-manager', openHandler);
+    }
   });
 
   it('explains the assistant capability surface and its explicit learning safeguards', async () => {

@@ -105,7 +105,9 @@ export function useResourceDragOut(options: UseResourceDragOutOptions): void {
 
     const resolveResource = (itemId: string): WorkbenchResourceDragData | null => {
       const item = useFinderStore.getState().items.find((n) => n.id === itemId);
-      if (!item || item.type === 'folder') return null;
+      // 文件夹也允许拖出：桌面图标层的 drop handler 会创建文件夹快捷方式；
+      // 未注册 handler 时 bridge 对 folder 无法开窗，安全 no-op
+      if (!item) return null;
       return normalizeWorkbenchResourceDragData({
         resourceId: item.id,
         resourceType: item.type,
@@ -114,7 +116,9 @@ export function useResourceDragOut(options: UseResourceDragOutOptions): void {
     };
 
     const onPointerDown = (event: PointerEvent) => {
-      if (event.button !== 0) return;
+      // Native desktop drag-out has no touch drop target. Let touch/pen keep
+      // their long-press, selection and vertical-scroll semantics.
+      if (event.pointerType !== 'mouse' || event.button !== 0 || !event.isPrimary) return;
       const target = event.target;
       if (!(target instanceof Element)) return;
       const itemEl = target.closest('[data-finder-item]') as HTMLElement | null;

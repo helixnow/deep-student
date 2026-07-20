@@ -1,5 +1,5 @@
 /*
- * 笔记工作区搜索 —— 顶部居中悬浮命令条（对标 Obsidian Quick Switcher）。
+ * 笔记工作区搜索 —— 顶部居中悬浮命令条（对标 Quick Switcher）。
  * 无遮罩、无 focus trap：面板悬浮于工作区顶部，点击外部 / Esc / 关闭按钮均可退出。
  * 入场动效来自共享 .ui-drop-in（ui-motion.css，自带 prefers-reduced-motion 降级）。
  */
