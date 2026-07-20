@@ -15,6 +15,7 @@ import type { ParsedMarkerType, ErrorType } from './markerTypes';
 import {
   parseScoreFromText,
   removeScoreTag as streamingRemoveScoreTag,
+  stripNestedMarkerTags,
 } from './streamingMarkerParser';
 import type { ParsedScore } from './streamingMarkerParser';
 
@@ -141,10 +142,10 @@ export function parseMarkers(text: string): ParsedMarker[] {
       switch (pattern.type) {
         case 'del':
           marker.reason = extractAttributeValue(match[1] || '', 'reason');
-          marker.content = match[2];
+          marker.content = stripNestedMarkerTags(match[2]);
           break;
         case 'ins':
-          marker.content = match[1];
+          marker.content = stripNestedMarkerTags(match[1]);
           break;
         case 'replace': {
           const built = buildReplaceMarker(match[1] || '');
@@ -153,17 +154,17 @@ export function parseMarkers(text: string): ParsedMarker[] {
         }
         case 'note':
           marker.comment = extractAttributeValue(match[1] || '', 'text');
-          marker.content = match[2];
+          marker.content = stripNestedMarkerTags(match[2]);
           break;
         case 'good':
-          marker.content = match[1];
+          marker.content = stripNestedMarkerTags(match[1]);
           break;
         case 'err': {
           const attrs = match[1] || '';
           const extractedType = extractAttributeValue(attrs, 'type');
           marker.errorType = (extractedType || 'grammar') as ParsedMarker['errorType'];
           marker.explanation = extractAttributeValue(attrs, 'explanation');
-          marker.content = match[2];
+          marker.content = stripNestedMarkerTags(match[2]);
           break;
         }
       }

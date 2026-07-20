@@ -129,3 +129,78 @@ pub struct TranslationStreamCancelled {
     #[serde(rename = "type")]
     pub event_type: String, // "cancelled"
 }
+
+/// 单条备选译文（多候选翻译，供 ComparisonView / 候选切换 UI 使用）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranslationCandidate {
+    /// 候选序号（0 起）
+    pub index: u32,
+
+    /// 候选风格标签："precise" | "natural" | "concise"
+    pub label: String,
+
+    /// 候选译文全文（失败时为空串）
+    pub text: String,
+
+    /// 该候选的失败原因（成功时为 None）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// 多候选翻译命令的返回值
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranslationCandidatesResponse {
+    /// 会话 ID（与请求一致）
+    pub session_id: String,
+
+    /// 全部候选（按 index 升序；含失败候选，text 为空且 error 有值）
+    pub candidates: Vec<TranslationCandidate>,
+
+    /// 检测到的源语言（仅 src_lang == "auto" 且启发式检测成功时携带）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detected_lang: Option<String>,
+
+    /// 是否被用户取消（true 时 candidates 可能不完整）
+    pub cancelled: bool,
+
+    /// 创建时间（RFC3339）
+    pub created_at: String,
+}
+
+/// 多候选翻译 SSE 事件（事件名：`translation_candidates_{session_id}`）
+///
+/// serde tag = "type"，与既有翻译事件族一致：
+/// - candidate_data / candidate_complete / candidate_error：单候选粒度
+/// - complete / cancelled / error：整次调用终态
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum TranslationCandidatesEvent {
+    CandidateData {
+        candidate_index: u32,
+        label: String,
+        delta: String,
+    },
+    CandidateComplete {
+        candidate_index: u32,
+        label: String,
+        text: String,
+    },
+    CandidateError {
+        candidate_index: u32,
+        label: String,
+        message: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        code: Option<String>,
+    },
+    Complete {
+        candidates: Vec<TranslationCandidate>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detected_lang: Option<String>,
+    },
+    Cancelled,
+    Error {
+        message: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        code: Option<String>,
+    },
+}

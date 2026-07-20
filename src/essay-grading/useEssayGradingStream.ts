@@ -28,11 +28,12 @@
  *   即使后端 cancelled 事件丢失/迟到，调用方 await 也不会挂起。
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { getErrorMessage } from '../utils/errorUtils';
+import { classifyGradingError, type GradingErrorKind } from './essayGradingApi';
 
 /** 批改滑动超时（毫秒）——距上一次收到流事件超过该时长判定为超时 */
 const GRADING_TIMEOUT_MS = 120000;
@@ -79,6 +80,10 @@ export interface GradingStreamState {
   finalScore?: number | null;
   /** 后端解析后的评分 JSON 字符串（complete 事件的 parsed_score） */
   finalParsedScore?: string | null;
+  /** 错误分类（网络/鉴权/限流/超时等），无错误时为 null；供 UI 分别呈现 */
+  errorKind?: GradingErrorKind | null;
+  /** 分类建议是否可重试（配置类错误重试无意义）；无错误时为 null */
+  errorRetryable?: boolean | null;
 }
 
 /**
@@ -94,6 +99,8 @@ interface GradingStreamEvent {
   parsed_score?: string | null;
   created_at?: string;
   message?: string;
+  /** error 事件可选附加：错误前已流出的字符数（后端向后兼容扩展字段） */
+  partial_chars?: number;
 }
 
 /**
@@ -132,7 +139,16 @@ export function useEssayGradingStream() {
     isPartialResult: false,
     finalScore: null,
     finalParsedScore: null,
+    errorKind: null,
+    errorRetryable: null,
   });
+
+  // 卸载后 setState 防护：所有异步路径统一走 safeSetState
+  const isMountedRef = useRef<boolean>(true);
+  const safeSetState = useCallback((updater: SetStateAction<GradingStreamState>) => {
+    if (!isMountedRef.current) return;
+    setState(updater);
+  }, []);
 
   // 保存最后一次请求，用于重试
   const lastRequestRef = useRef<GradingRequest | null>(null);
@@ -196,7 +212,7 @@ export function useEssayGradingStream() {
       lastRequestRef.current = request;
 
       // 重置状态
-      setState({
+      safeSetState({
         isGrading: true,
         gradingResult: '',
         error: null,
@@ -207,6 +223,8 @@ export function useEssayGradingStream() {
         isPartialResult: false,
         finalScore: null,
         finalParsedScore: null,
+        errorKind: null,
+        errorRetryable: null,
       });
 
       // ── 结算原语：settle/fail 共享同一道"恰好一次"屏障 ──
@@ -251,13 +269,15 @@ export function useEssayGradingStream() {
           console.warn(`[EssayGrading] 批改超时，${GRADING_TIMEOUT_MS / 1000}秒内无流事件`);
           // 先结算（reject），再更新 UI、卸 listener、通知后端停流
           fail(new Error(t('essay_grading:errors.timeout')));
-          setState((prev) => ({
+          safeSetState((prev) => ({
             ...prev,
             isGrading: false,
             error: t('essay_grading:errors.timeout'),
             streamSessionId: null,
             canRetry: true,
             isPartialResult: prev.gradingResult.length > 0,
+            errorKind: 'timeout',
+            errorRetryable: true,
           }));
           cleanup();
           currentStreamSessionIdRef.current = null;
@@ -281,11 +301,24 @@ export function useEssayGradingStream() {
               // 收到数据重置滑动超时
               resetTimeout();
               // A6-11: 后端只回传增量 chunk，前端自行累加（startGrading 已把 gradingResult 重置为空）
-              setState((prev) => ({
-                ...prev,
-                gradingResult: prev.gradingResult + (payload.chunk ?? ''),
-                charCount: payload.char_count ?? prev.charCount,
-              }));
+              safeSetState((prev) => {
+                const chunk = payload.chunk ?? '';
+                // 重复事件防御：char_count 为累计值且严格递增；
+                // 累计值未前进且尾部与 chunk 一致时判定为重复投递，直接丢弃
+                if (
+                  chunk &&
+                  typeof payload.char_count === 'number' &&
+                  payload.char_count === prev.charCount &&
+                  prev.gradingResult.endsWith(chunk)
+                ) {
+                  return prev;
+                }
+                return {
+                  ...prev,
+                  gradingResult: prev.gradingResult + chunk,
+                  charCount: payload.char_count ?? prev.charCount,
+                };
+              });
               return;
             }
 
@@ -296,7 +329,7 @@ export function useEssayGradingStream() {
               }
 
               settle('completed');
-              setState((prev) => ({
+              safeSetState((prev) => ({
                 ...prev,
                 isGrading: false,
                 gradingResult: payload.grading_result || prev.gradingResult,
@@ -305,6 +338,8 @@ export function useEssayGradingStream() {
                 isPartialResult: false,
                 finalScore: payload.overall_score ?? null,
                 finalParsedScore: payload.parsed_score ?? null,
+                errorKind: null,
+                errorRetryable: null,
               }));
               cleanup();
               currentStreamSessionIdRef.current = null;
@@ -317,14 +352,17 @@ export function useEssayGradingStream() {
                 return;
               }
               const message = payload.message || t('essay_grading:errors.grading_failed');
+              const classification = classifyGradingError(message);
               fail(new Error(message));
-              setState((prev) => ({
+              safeSetState((prev) => ({
                 ...prev,
                 isGrading: false,
                 error: message,
                 streamSessionId: null,
                 canRetry: true, // 错误后允许重试
                 isPartialResult: prev.gradingResult.length > 0, // ★ M-048: 标记部分结果
+                errorKind: classification.kind,
+                errorRetryable: classification.retryable,
               }));
               cleanup();
               currentStreamSessionIdRef.current = null;
@@ -335,7 +373,7 @@ export function useEssayGradingStream() {
               // 本地取消路径已提前结算时，后端 cancelled 事件在此被守卫忽略
               if (!isActiveRef.current || settledRef.current) return;
               settle('cancelled');
-              setState((prev) => ({
+              safeSetState((prev) => ({
                 ...prev,
                 isGrading: false,
                 streamSessionId: null,
@@ -370,7 +408,7 @@ export function useEssayGradingStream() {
         if (!settled && !settledRef.current) {
           if (response) {
             settle('completed');
-            setState((prev) => ({
+            safeSetState((prev) => ({
               ...prev,
               isGrading: false,
               gradingResult: response.grading_result || prev.gradingResult,
@@ -379,11 +417,13 @@ export function useEssayGradingStream() {
               isPartialResult: false,
               finalScore: response.overall_score ?? null,
               finalParsedScore: response.dimension_scores_json ?? null,
+              errorKind: null,
+              errorRetryable: null,
             }));
           } else {
             // 后端返回 null 表示流被取消
             settle('cancelled');
-            setState((prev) => ({
+            safeSetState((prev) => ({
               ...prev,
               isGrading: false,
               streamSessionId: null,
@@ -400,21 +440,24 @@ export function useEssayGradingStream() {
           console.warn('[EssayGrading] 批改已结算，忽略迟到的命令错误:', error);
           return;
         }
+        const classification = classifyGradingError(error);
         fail(error);
-        setState((prev) => ({
+        safeSetState((prev) => ({
           ...prev,
           isGrading: false,
           error: getErrorMessage(error),
           streamSessionId: null,
           canRetry: true, // 错误后允许重试
           isPartialResult: prev.gradingResult.length > 0, // ★ M-048: 标记部分结果
+          errorKind: classification.kind,
+          errorRetryable: classification.retryable,
         }));
         cleanup();
         currentStreamSessionIdRef.current = null;
       }
       })().catch(reject);
     });
-  }, [cleanup, t]);
+  }, [cleanup, t, safeSetState]);
 
   /**
    * 取消批改
@@ -437,7 +480,7 @@ export function useEssayGradingStream() {
     activeRunRef.current?.settle('cancelled');
 
     // 2. 更新 UI 状态
-    setState((prev) => ({
+    safeSetState((prev) => ({
       ...prev,
       isGrading: false,
       streamSessionId: null,
@@ -454,17 +497,17 @@ export function useEssayGradingStream() {
     } catch (error: unknown) {
       console.warn('[EssayGrading] 取消流失败:', error);
     }
-  }, [cleanup]);
+  }, [cleanup, safeSetState]);
 
   /**
    * 手动设置批改结果
    */
   const setGradingResult = useCallback((text: string) => {
-    setState((prev) => ({
+    safeSetState((prev) => ({
       ...prev,
       gradingResult: text,
     }));
-  }, []);
+  }, [safeSetState]);
 
   /**
    * 重试批改（使用上次的请求参数，但生成新的 stream_session_id）
@@ -501,7 +544,7 @@ export function useEssayGradingStream() {
     currentStreamSessionIdRef.current = null;
     cleanup();
     lastRequestRef.current = null;
-    setState({
+    safeSetState({
       isGrading: false,
       gradingResult: '',
       error: null,
@@ -512,12 +555,16 @@ export function useEssayGradingStream() {
       isPartialResult: false,
       finalScore: null,
       finalParsedScore: null,
+      errorKind: null,
+      errorRetryable: null,
     });
-  }, [cleanup]);
+  }, [cleanup, safeSetState]);
 
   // 组件卸载时清理
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       const streamSessionId = currentStreamSessionIdRef.current;
       if (streamSessionId && isActiveRef.current) {
         // 先本地结算，保证外部 await 不悬挂（卸载后不再 setState）

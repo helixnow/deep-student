@@ -1,15 +1,14 @@
 /**
- * SettingsDrawer - 作文批改内联设置面板
+ * InlineSettingsPanel - 作文批改内联设置面板（无抽屉 / 无遮罩 / 无模态，纯文档流内联渲染）
  *
  * 信息架构（高频在上，低频折叠）：
- * 1. 批阅模式：快速切换芯片 + 当前模式摘要卡（满分/维度）
- * 2. 模型选择
- * 3. 文体/年级（父级透传 essayType/gradeLevel 时渲染）
+ * 1. 评分标准：批阅模式（含分制/维度摘要卡）+ 文体 + 学段，一屏尽览；批改中锁定
+ * 2. 批改模型
+ * 3. [折叠] 自定义提示词：保存后就地成功反馈
  * 4. [折叠] 模式管理：编辑/复制/新建/重置/删除（内联二段式确认）+ 内联编辑表单
- *    - sticky 表单头、维度拖拽排序、维度/总分内联校验
- * 5. [折叠] 自定义提示词：保存后就地成功反馈，不再强制关闭面板
  *
- * 定位/显隐由父级 GradingMain 负责，本组件只渲染可滚动的内联面板内容。
+ * 定位/显隐由父级 GradingMain 负责（移动端顶部高度过渡区块、桌面端右侧宽度过渡内联列），
+ * 本组件只渲染可滚动的面板内容；折叠区采用 grid-template-rows 过渡实现顺滑展开/收起。
  */
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -50,7 +49,7 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/shad/Badge';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
-interface SettingsDrawerProps {
+interface InlineSettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
   // 批阅模式
@@ -69,8 +68,6 @@ interface SettingsDrawerProps {
   // 状态
   isGrading?: boolean;
   onModesChange?: () => void;
-  // 布局变体
-  variant?: 'drawer' | 'panel';
   // 文体/年级（父级透传时渲染选择 UI）
   essayType?: string;
   setEssayType?: (v: string) => void;
@@ -112,7 +109,7 @@ const choiceChipClassName = (active: boolean) =>
       : 'bg-muted/50 text-foreground/70 border border-transparent hover:bg-[var(--interactive-hover)] hover:text-foreground'
   );
 
-/** 内联折叠区（chevron 旋转，内容 rise-in） */
+/** 内联折叠区：chevron 旋转 + grid-template-rows 高度过渡（motion-reduce 降级为直接切换） */
 const CollapsibleSection: React.FC<{
   title: string;
   isOpen: boolean;
@@ -139,11 +136,27 @@ const CollapsibleSection: React.FC<{
         )}
       />
     </button>
-    {isOpen && <div className="pb-4">{children}</div>}
+    <div
+      className={cn(
+        'grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none',
+        isOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+      )}
+      aria-hidden={!isOpen}
+    >
+      {/* 折叠后延迟置为 invisible：既保留收起动画，又让隐藏内容退出焦点链与无障碍树 */}
+      <div
+        className={cn(
+          'min-h-0 overflow-hidden transition-[visibility] motion-reduce:transition-none',
+          isOpen ? 'visible' : 'invisible [transition-delay:200ms]'
+        )}
+      >
+        <div className="pb-4">{children}</div>
+      </div>
+    </div>
   </section>
 );
 
-export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
+export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
   isOpen,
   onClose,
   modeId,
@@ -158,7 +171,6 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
   onRestoreDefaultPrompt,
   isGrading = false,
   onModesChange,
-  variant = 'drawer',
   essayType,
   setEssayType,
   gradeLevel,
@@ -501,8 +513,6 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
     }, 2000);
   }, [onSavePrompt]);
 
-  const showEssayProfile = Boolean(setEssayType || setGradeLevel);
-
   const errorBanner = error ? (
     <div
       role="alert"
@@ -514,10 +524,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
   ) : null;
 
   return (
-    <div className={cn(
-      "h-full flex flex-col bg-background",
-      variant === 'drawer' && "border-l border-border/40"
-    )}>
+    <div className="h-full flex flex-col bg-background">
       {/* 头部 */}
       <div className="flex h-[41px] flex-shrink-0 items-center justify-between border-b border-border/30 px-4">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground/80">
@@ -541,63 +548,129 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
       <CustomScrollArea className="flex-1" viewportClassName="pb-4">
         <div className="divide-y divide-border/30">
 
-          {/* ====== 1. 批阅模式（高频） ====== */}
+          {/* ====== 1. 评分标准：批阅模式 + 文体 + 学段（高频，一屏尽览） ====== */}
           <section className="px-4 pb-4 pt-4">
-            <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
-              {t('essay_grading:settings_panel.section_mode')}
-            </h3>
-            <div className="flex flex-wrap gap-1.5">
-              {modes.map((mode) => (
-                <NotionButton
-                  key={mode.id}
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleModeSwitch(mode.id)}
-                  aria-pressed={mode.id === modeId}
-                  className={choiceChipClassName(mode.id === modeId)}
-                >
-                  {mode.name}
-                </NotionButton>
-              ))}
+            <div className="mb-3 flex items-baseline justify-between gap-2">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
+                {t('essay_grading:workbench.settings.section_criteria')}
+              </h3>
+              {isGrading && (
+                <span className="text-[10px] text-muted-foreground/60">
+                  {t('essay_grading:workbench.settings.locked_while_grading')}
+                </span>
+              )}
             </div>
 
-            {/* 当前模式摘要卡 */}
-            {currentMode && (
-              <div className="ui-state-colors mt-3 space-y-2 rounded-md border border-primary/30 bg-primary/10 p-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium text-foreground/90">{currentMode.name}</span>
-                  {currentMode.is_builtin && (
-                    <Badge variant="secondary" className="h-4 bg-muted/80 px-1 text-[10px] font-normal text-muted-foreground">
-                      {t('settings:gradingMode.badgeBuiltin')}
-                    </Badge>
-                  )}
-                  <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-                    {t('settings:gradingMode.maxScore', { score: currentMode.total_max_score })}
-                  </span>
+            <div className="space-y-4">
+              {/* 批阅模式 */}
+              <div className="space-y-1.5">
+                <div className="text-xs text-muted-foreground/60">
+                  {t('essay_grading:settings_panel.section_mode')}
                 </div>
-                {currentMode.description && (
-                  <div className="text-xs leading-relaxed text-muted-foreground/80">
-                    {currentMode.description}
-                  </div>
-                )}
-                {currentMode.score_dimensions.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {currentMode.score_dimensions.map((dim, idx) => (
-                      <span
-                        key={idx}
-                        className="inline-flex items-center rounded border border-border/40 bg-background/60 px-1.5 py-0.5 text-[11px] text-foreground/70"
-                      >
-                        {dim.name}
-                        <span className="ml-1 tabular-nums text-muted-foreground/60">{dim.max_score}</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {modes.map((mode) => (
+                    <NotionButton
+                      key={mode.id}
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleModeSwitch(mode.id)}
+                      disabled={isGrading}
+                      aria-pressed={mode.id === modeId}
+                      title={t('essay_grading:mode.max_score', { score: mode.total_max_score })}
+                      className={choiceChipClassName(mode.id === modeId)}
+                    >
+                      {mode.name}
+                    </NotionButton>
+                  ))}
+                </div>
+
+                {/* 当前模式摘要卡（分制 + 维度） */}
+                {currentMode && (
+                  <div className="ui-state-colors mt-1.5 space-y-2 rounded-md border border-primary/30 bg-primary/10 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium text-foreground/90">{currentMode.name}</span>
+                      {currentMode.is_builtin && (
+                        <Badge variant="secondary" className="h-4 bg-muted/80 px-1 text-[10px] font-normal text-muted-foreground">
+                          {t('settings:gradingMode.badgeBuiltin')}
+                        </Badge>
+                      )}
+                      <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                        {t('settings:gradingMode.maxScore', { score: currentMode.total_max_score })}
                       </span>
-                    ))}
+                    </div>
+                    {currentMode.description && (
+                      <div className="text-xs leading-relaxed text-muted-foreground/80">
+                        {currentMode.description}
+                      </div>
+                    )}
+                    {currentMode.score_dimensions.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {currentMode.score_dimensions.map((dim, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center rounded border border-border/40 bg-background/60 px-1.5 py-0.5 text-[11px] text-foreground/70"
+                          >
+                            {dim.name}
+                            <span className="ml-1 tabular-nums text-muted-foreground/60">{dim.max_score}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
+
+              {/* 文体 */}
+              {setEssayType && (
+                <div className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground/60">
+                    {t('essay_grading:essay_type.label')}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ESSAY_TYPE_OPTIONS.map(option => (
+                      <NotionButton
+                        key={option}
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEssayType(option)}
+                        disabled={isGrading}
+                        aria-pressed={essayType === option}
+                        className={choiceChipClassName(essayType === option)}
+                      >
+                        {t(`essay_grading:essay_type.${option}`)}
+                      </NotionButton>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 学段 */}
+              {setGradeLevel && (
+                <div className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground/60">
+                    {t('essay_grading:grade_level.label')}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {GRADE_LEVEL_OPTIONS.map(option => (
+                      <NotionButton
+                        key={option}
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setGradeLevel(option)}
+                        disabled={isGrading}
+                        aria-pressed={gradeLevel === option}
+                        className={choiceChipClassName(gradeLevel === option)}
+                      >
+                        {t(`essay_grading:grade_level.${option}`)}
+                      </NotionButton>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </section>
 
-          {/* ====== 2. 模型选择（高频） ====== */}
+          {/* ====== 2. 批改模型（高频） ====== */}
           {models.length > 0 && (
             <section className="px-4 pb-4 pt-4">
               <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
@@ -613,56 +686,49 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
             </section>
           )}
 
-          {/* ====== 3. 文体 / 年级（高频，父级透传时渲染） ====== */}
-          {showEssayProfile && (
-            <section className="space-y-3 px-4 pb-4 pt-4">
-              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
-                {t('essay_grading:settings_panel.section_essay_info')}
-              </h3>
-              {setEssayType && (
-                <div className="space-y-1.5">
-                  <div className="text-xs text-muted-foreground/60">
-                    {t('essay_grading:essay_type.label')}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {ESSAY_TYPE_OPTIONS.map(option => (
-                      <NotionButton
-                        key={option}
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setEssayType(option)}
-                        aria-pressed={essayType === option}
-                        className={choiceChipClassName(essayType === option)}
-                      >
-                        {t(`essay_grading:essay_type.${option}`)}
-                      </NotionButton>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {setGradeLevel && (
-                <div className="space-y-1.5">
-                  <div className="text-xs text-muted-foreground/60">
-                    {t('essay_grading:grade_level.label')}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {GRADE_LEVEL_OPTIONS.map(option => (
-                      <NotionButton
-                        key={option}
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setGradeLevel(option)}
-                        aria-pressed={gradeLevel === option}
-                        className={choiceChipClassName(gradeLevel === option)}
-                      >
-                        {t(`essay_grading:grade_level.${option}`)}
-                      </NotionButton>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </section>
-          )}
+          {/* ====== 3. 自定义提示词（低频，折叠） ====== */}
+          <CollapsibleSection
+            title={t('essay_grading:prompt_editor.title')}
+            isOpen={promptExpanded}
+            onToggle={() => setPromptExpanded(prev => !prev)}
+          >
+            <div className="space-y-3 px-4">
+              <Textarea
+                value={customPrompt}
+                onChange={(e) => setCustomPrompt(e.target.value)}
+                placeholder={t('essay_grading:prompt_editor.placeholder')}
+                className="min-h-[200px] w-full resize-none border-border/40 text-sm focus:border-border/60"
+              />
+              <div className="flex items-center justify-end gap-2">
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={onRestoreDefaultPrompt}
+                  className="text-xs text-muted-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                >
+                  <ArrowCounterClockwise size={14} />
+                  {t('essay_grading:prompt_editor.restore_default')}
+                </NotionButton>
+                {/* 保存后就地反馈：勾选图标 + 文案短暂切换，不关闭面板 */}
+                <NotionButton
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSavePrompt}
+                  className={cn(
+                    "ui-state-colors text-xs",
+                    promptJustSaved
+                      ? "bg-success/10 text-success hover:bg-success/10"
+                      : "bg-primary/10 text-primary hover:bg-primary/20"
+                  )}
+                >
+                  {promptJustSaved ? <Check size={14} /> : <FloppyDisk size={14} />}
+                  {promptJustSaved
+                    ? t('essay_grading:settings_panel.prompt_saved_short')
+                    : t('essay_grading:prompt_editor.save')}
+                </NotionButton>
+              </div>
+            </div>
+          </CollapsibleSection>
 
           {/* ====== 4. 模式管理（低频，折叠） ====== */}
           <CollapsibleSection
@@ -678,8 +744,8 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
             {isEditing ? (
               /* ---------- 内联编辑表单 ---------- */
               <div>
-                {/* sticky 表单头：标题 + 取消/完成 + 校验与错误反馈 */}
-                <div className="sticky top-0 z-10 border-b border-border/30 bg-background px-4 py-2">
+                {/* 表单头：标题 + 取消/完成 + 校验与错误反馈 */}
+                <div className="border-b border-border/30 bg-background px-4 py-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-xs font-medium text-foreground/80">
                       {viewMode === 'create'
@@ -793,6 +859,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                               type="button"
                               onPointerDown={() => setDragArmedIndex(index)}
                               onPointerUp={() => setDragArmedIndex(null)}
+                              onPointerCancel={() => setDragArmedIndex(null)}
                               aria-label={t('essay_grading:settings_panel.drag_reorder')}
                               title={t('essay_grading:settings_panel.drag_reorder')}
                               className="flex-shrink-0 cursor-grab text-muted-foreground/30 opacity-0 transition-opacity duration-150 hover:text-muted-foreground active:cursor-grabbing group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none [@media(pointer:coarse)]:opacity-70"
@@ -929,7 +996,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
               </div>
             ) : (
               /* ---------- CRUD 操作入口 ---------- */
-              <div className="ui-rise-in space-y-1 px-4">
+              <div className="space-y-1 px-4">
                 {errorBanner}
                 <NotionButton
                   variant="ghost"
@@ -997,90 +1064,8 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
               </div>
             )}
           </CollapsibleSection>
-
-          {/* ====== 5. 自定义提示词（低频，折叠） ====== */}
-          <CollapsibleSection
-            title={t('essay_grading:prompt_editor.title')}
-            isOpen={promptExpanded}
-            onToggle={() => setPromptExpanded(prev => !prev)}
-          >
-            <div className="ui-rise-in space-y-3 px-4">
-              <Textarea
-                value={customPrompt}
-                onChange={(e) => setCustomPrompt(e.target.value)}
-                placeholder={t('essay_grading:prompt_editor.placeholder')}
-                className="min-h-[200px] w-full resize-none border-border/40 text-sm focus:border-border/60"
-              />
-              <div className="flex items-center justify-end gap-2">
-                <NotionButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={onRestoreDefaultPrompt}
-                  className="text-xs text-muted-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground"
-                >
-                  <ArrowCounterClockwise size={14} />
-                  {t('essay_grading:prompt_editor.restore_default')}
-                </NotionButton>
-                {/* 保存后就地反馈：勾选图标 + 文案短暂切换，不关闭面板 */}
-                <NotionButton
-                  variant="primary"
-                  size="sm"
-                  onClick={handleSavePrompt}
-                  className={cn(
-                    "ui-state-colors text-xs",
-                    promptJustSaved
-                      ? "bg-success/10 text-success hover:bg-success/10"
-                      : "bg-primary/10 text-primary hover:bg-primary/20"
-                  )}
-                >
-                  {promptJustSaved ? <Check size={14} /> : <FloppyDisk size={14} />}
-                  {promptJustSaved
-                    ? t('essay_grading:settings_panel.prompt_saved_short')
-                    : t('essay_grading:prompt_editor.save')}
-                </NotionButton>
-              </div>
-            </div>
-          </CollapsibleSection>
         </div>
       </CustomScrollArea>
     </div>
-  );
-};
-
-/**
- * 设置按钮触发器
- */
-interface SettingsButtonProps {
-  onClick: () => void;
-  isOpen: boolean;
-  className?: string;
-}
-
-export const SettingsButton: React.FC<SettingsButtonProps> = ({
-  onClick,
-  isOpen,
-  className,
-}) => {
-  const { t } = useTranslation(['essay_grading']);
-
-  return (
-    <NotionButton
-      variant="ghost" size="sm"
-      onClick={onClick}
-      className={cn(
-        "h-8 px-3 text-sm",
-        isOpen
-          ? "bg-primary/10 text-primary"
-          : "text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)]",
-        className
-      )}
-    >
-      <GearSix size={16} />
-      <span className="hidden md:inline">{t('essay_grading:settings.title')}</span>
-      <CaretRight className={cn(
-        "w-3.5 h-3.5 transition-transform",
-        isOpen && "rotate-180"
-      )} />
-    </NotionButton>
   );
 };

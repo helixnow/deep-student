@@ -367,7 +367,7 @@ export const translationDstuAdapter = {
   ): Promise<Result<TranslationSession | null, VfsError>> {
     const result = await translationDstuAdapter.getTranslation(translationId);
     if (!result.ok) {
-      return result;
+      return err(result.error);
     }
     return ok(result.value ? dstuNodeToTranslationSession(result.value) : null);
   },

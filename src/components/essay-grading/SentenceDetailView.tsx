@@ -11,6 +11,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { StreamingMarker } from '@/essay-grading/streamingMarkerParser';
+import { isSuggestionErr } from './StreamingAnnotatedText';
 import { Warning, ArrowRight, Trash, Pen, Sparkle, Copy, Check, ListChecks } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -26,43 +27,49 @@ interface SentenceDetailViewProps {
   markerIndexOffset?: never;
 }
 
-/** 语义色徽章 — 与行内批注色系一致：错误 destructive、建议 primary、亮点 warning/amber */
-const BADGE_DESTRUCTIVE = 'bg-destructive/10 text-destructive border-destructive/20';
-const BADGE_PRIMARY = 'bg-primary/10 text-primary border-primary/20';
-const BADGE_HIGHLIGHT = 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
+/** 语义色徽章 — 与行内批注色系一致：错误红系、建议琥珀系、亮点绿系 */
+const BADGE_ERROR = 'bg-destructive/10 text-destructive border-destructive/20';
+const BADGE_SUGGESTION = 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20';
+const BADGE_HIGHLIGHT = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
 
-/** err 子类型全部归入错误色系（destructive），含解析器新增的中文类型 */
-const ERROR_TYPES_AS_SUGGESTION = new Set(['word_choice', 'expression', 'rhetoric']);
-
-const getErrBadgeStyle = (errorType?: string): string =>
-  errorType && ERROR_TYPES_AS_SUGGESTION.has(errorType) ? BADGE_PRIMARY : BADGE_DESTRUCTIVE;
+const getErrBadgeStyle = (marker: StreamingMarker): string =>
+  isSuggestionErr(marker) ? BADGE_SUGGESTION : BADGE_ERROR;
 
 /** 非 err 标记类型 → badge 配置 */
 const MARKER_BADGE_CONFIG: Partial<Record<StreamingMarker['type'], { icon: Icon; i18nKey: string; style: string }>> = {
-  del: { icon: Trash, i18nKey: 'essay_grading:markers.delete', style: BADGE_DESTRUCTIVE },
-  replace: { icon: Pen, i18nKey: 'essay_grading:markers.replace', style: BADGE_PRIMARY },
-  ins: { icon: Sparkle, i18nKey: 'essay_grading:markers.insert', style: BADGE_PRIMARY },
-  note: { icon: Warning, i18nKey: 'essay_grading:markers.note', style: BADGE_PRIMARY },
+  del: { icon: Trash, i18nKey: 'essay_grading:markers.delete', style: BADGE_ERROR },
+  replace: { icon: Pen, i18nKey: 'essay_grading:markers.replace', style: BADGE_SUGGESTION },
+  ins: { icon: Sparkle, i18nKey: 'essay_grading:markers.insert', style: BADGE_SUGGESTION },
+  note: { icon: Warning, i18nKey: 'essay_grading:markers.note', style: BADGE_SUGGESTION },
   good: { icon: Sparkle, i18nKey: 'essay_grading:markers.good', style: BADGE_HIGHLIGHT },
 };
 
 type GroupId = 'errors' | 'suggestions' | 'highlights';
 
-const GROUP_OF_TYPE: Partial<Record<StreamingMarker['type'], GroupId>> = {
-  del: 'errors',
-  err: 'errors',
-  replace: 'suggestions',
-  ins: 'suggestions',
-  note: 'suggestions',
-  good: 'highlights',
+/** 与 StreamingAnnotatedText 筛选语义一致：偏建议的 err 子类型归入建议组 */
+const groupOfMarker = (marker: StreamingMarker): GroupId | null => {
+  switch (marker.type) {
+    case 'del':
+      return 'errors';
+    case 'err':
+      return isSuggestionErr(marker) ? 'suggestions' : 'errors';
+    case 'replace':
+    case 'ins':
+    case 'note':
+      return 'suggestions';
+    case 'good':
+      return 'highlights';
+    default:
+      return null;
+  }
 };
 
 const GROUP_ORDER: GroupId[] = ['errors', 'suggestions', 'highlights'];
 
 const GROUP_DOT_CLASS: Record<GroupId, string> = {
   errors: 'bg-destructive',
-  suggestions: 'bg-primary',
-  highlights: 'bg-amber-500',
+  suggestions: 'bg-amber-500',
+  highlights: 'bg-emerald-500',
 };
 
 interface IndexedMarker {
@@ -123,7 +130,7 @@ const MarkerContent: React.FC<{ marker: StreamingMarker }> = ({ marker }) => {
         <div className="flex items-start gap-2 text-sm">
           <span className="text-red-500/80 line-through">{marker.oldText}</span>
           <ArrowRight size={16} className="text-muted-foreground/40 shrink-0 mt-0.5" />
-          <span className="text-emerald-600 dark:text-emerald-400 font-medium">{marker.newText}</span>
+          <span className="text-amber-700 dark:text-amber-400 font-medium">{marker.newText}</span>
           {marker.newText && (
             <InlineCopyButton text={marker.newText} label={copyLabel} copiedLabel={copiedLabel} />
           )}
@@ -134,28 +141,35 @@ const MarkerContent: React.FC<{ marker: StreamingMarker }> = ({ marker }) => {
     case 'ins':
       return (
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-emerald-600 dark:text-emerald-400">{marker.content}</span>
+          <span className="text-amber-700 dark:text-amber-400">{marker.content}</span>
           <InlineCopyButton text={marker.content} label={copyLabel} copiedLabel={copiedLabel} />
         </div>
       );
     case 'err':
       return (
         <div className="text-sm">
-          <span className="text-red-500/80 underline decoration-wavy decoration-red-400/50 underline-offset-4">
+          <span
+            className={cn(
+              'underline decoration-wavy underline-offset-4',
+              isSuggestionErr(marker)
+                ? 'text-amber-700 dark:text-amber-400 decoration-amber-400/60'
+                : 'text-red-500/80 decoration-red-400/50'
+            )}
+          >
             {marker.content}
           </span>
         </div>
       );
     case 'note':
       return (
-        <div className="text-sm text-blue-600 dark:text-blue-400 border-b border-dashed border-blue-400/60 inline">
+        <div className="text-sm text-amber-700 dark:text-amber-400 border-b border-dashed border-amber-400/70 inline">
           {marker.content}
         </div>
       );
     case 'good':
       return (
         <div className="text-sm">
-          <span className="text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20 rounded-sm px-0.5">
+          <span className="text-emerald-700 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-sm px-0.5">
             {marker.content}
           </span>
         </div>
@@ -183,7 +197,7 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
 
     const byGroup = new Map<GroupId, IndexedMarker[]>();
     for (const item of indexed) {
-      const group = GROUP_OF_TYPE[item.marker.type];
+      const group = groupOfMarker(item.marker);
       if (!group) continue;
       const list = byGroup.get(group) ?? [];
       list.push(item);
@@ -195,7 +209,8 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
   // 选中项变化时滚动到可见区域
   useEffect(() => {
     if (activeMarkerIndex == null) return;
-    cardRefs.current.get(activeMarkerIndex)?.scrollIntoView({ block: 'nearest' });
+    const reduceMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    cardRefs.current.get(activeMarkerIndex)?.scrollIntoView({ block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' });
   }, [activeMarkerIndex]);
 
   if (grouped.indexed.length === 0) {
@@ -310,7 +325,7 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
                     {marker.type === 'err' ? (
                       <span className={cn(
                         'px-2 py-0.5 text-xs font-medium rounded border',
-                        getErrBadgeStyle(marker.errorType)
+                        getErrBadgeStyle(marker)
                       )}>
                         {t(`essay_grading:markers.error.${marker.errorType ?? 'grammar'}`, {
                           defaultValue: marker.errorType ?? 'grammar',

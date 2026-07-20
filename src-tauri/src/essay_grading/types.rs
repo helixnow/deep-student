@@ -209,6 +209,23 @@ pub struct GradingStreamComplete {
     pub created_at: String,
 }
 
+/// SSE 事件负载 - 阶段进度（2026-07 新增，纯增量事件；旧前端未监听该 type 时自动忽略）
+///
+/// stage 取值（按典型出现顺序）：
+/// preparing / annotating / polishing / model_essay / scoring / saving
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GradingStreamProgress {
+    /// 事件类型
+    #[serde(rename = "type")]
+    pub event_type: String, // "progress"
+
+    /// 阶段代码
+    pub stage: String,
+
+    /// 已流出的字符数
+    pub char_count: usize,
+}
+
 /// SSE 事件负载 - 错误
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GradingStreamError {
@@ -281,6 +298,8 @@ agreement: 主谓一致错误    word_form: 词性错误
 2. <replace> 是自闭合标签，直接放在原文被替换片段的位置上，old 属性即该片段——正文中不得再重复出现这段原文。
 3. 标记之间不得嵌套或交叉（例如 <err> 内不要再套 <good>）。
 4. 属性值一律用英文双引号 "" 包裹。属性值内部如需引用词句，改用中文引号「」或单引号 ''；不要在属性值内写英文双引号，也不要写 \" 或 &quot;（解析器不做反转义，会原样显示给学生）。
+5. 属性值内部不得出现换行符，整个标记（含属性）必须写在同一段落内；单个标记不得跨越段落或包裹整段以上的文本。
+6. 只允许使用上面定义的标记名（del/ins/replace/note/good/err），不得自造其他标记（如 <fix>、<comment>、<highlight> 等，解析器不识别会原样显示给学生）。
 
 微型示例（正误对照，务必模仿正确写法）：
 示例一 <replace>：
@@ -386,6 +405,7 @@ total 与各维度分的关系必须符合本模式的计分规则：默认模�
 【重要规范】：
 只输出一个评分，放在回复的最后。
 建议按 total、max 的顺序书写 <score> 属性，按 name、score、max 的顺序书写 <dim> 属性（解析已兼容 total/max 乱序，但请保持规范顺序）。
+total、score、max 属性值必须是纯数字（如 score="8" 或 score="8.5"），不得带单位、汉字或斜杠（禁止 score="8分"、score="8/10"、total="约45"）。
 维度 name 必须与系统给出的维度名逐字一致，不得翻译、缩写或增删维度。
 不要用代码块包裹评分标签。
 如果需要描述"修改后可能的分数"，用文字说明，不要再输出第二个 <score> 标签。
@@ -971,7 +991,7 @@ pub fn get_default_grading_mode() -> GradingMode {
     get_builtin_grading_modes()
         .into_iter()
         .find(|m| m.id == "practice")
-        .unwrap()
+        .expect("builtin grading modes must contain the 'practice' default mode")
 }
 
 /// 归一化预置模式 ID，兼容历史或外部调用别名

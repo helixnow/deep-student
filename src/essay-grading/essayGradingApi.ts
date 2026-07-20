@@ -461,7 +461,10 @@ export async function getModels(): Promise<ModelInfo[]> {
 /** 批改错误类别 */
 export type GradingErrorKind =
   | 'api_key_missing'
+  | 'auth'
+  | 'rate_limit'
   | 'network'
+  | 'timeout'
   | 'model_not_found'
   | 'unknown';
 
@@ -476,6 +479,8 @@ export interface GradingErrorClassification {
 }
 
 const API_KEY_PATTERNS = /api[\s_-]?key|api\s*密钥|密钥未|密钥不能为空|no api key|missing key|unauthorized|invalid[\s_-]?key|401/i;
+const RATE_LIMIT_PATTERNS = /rate[\s_-]?limit|too many requests|quota\s?(exceeded|limit)|insufficient[\s_-]?quota|429|限流|限速|请求过于频繁|配额(不足|已用完|超限)|额度不足/i;
+const AUTH_PATTERNS = /forbidden|permission denied|access denied|403|无权限|权限不足|鉴权失败|认证失败|账户被(禁用|封禁)/i;
 const NETWORK_PATTERNS = /network|timed?\s?out|timeout|connection|connect|dns|socket|unreachable|fetch failed|网络|连接|超时|离线|offline/i;
 const MODEL_NOT_FOUND_PATTERNS = /model.*(not.?found|does not exist|not exist|unavailable|invalid)|(not.?found|invalid).*model|模型不存在|模型未找到|找不到模型|模型配置(不存在|无效)|未找到模型配置|404/i;
 
@@ -500,6 +505,24 @@ export function classifyGradingError(error: unknown): GradingErrorClassification
       kind: 'api_key_missing',
       retryable: false,
       messageKey: 'essay_grading:errors.api_key_missing',
+      rawMessage,
+    };
+  }
+
+  if (RATE_LIMIT_PATTERNS.test(haystack)) {
+    return {
+      kind: 'rate_limit',
+      retryable: true,
+      messageKey: 'essay_grading:data_layer.errors.rate_limited',
+      rawMessage,
+    };
+  }
+
+  if (AUTH_PATTERNS.test(haystack)) {
+    return {
+      kind: 'auth',
+      retryable: false,
+      messageKey: 'essay_grading:data_layer.errors.auth_failed',
       rawMessage,
     };
   }

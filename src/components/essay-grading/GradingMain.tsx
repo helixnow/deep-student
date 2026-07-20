@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { InputPanel } from './InputPanel';
 import { ResultPanel } from './ResultPanel';
-import { SettingsDrawer } from './SettingsDrawer';
+import { InlineSettingsPanel } from './InlineSettingsPanel';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
@@ -85,6 +85,17 @@ interface GradingMainProps {
 const SETTINGS_WIDTH_LG = 340;
 const SETTINGS_WIDTH_MD = 320;
 
+export type GradingPhase = 'preparing' | 'annotating' | 'scoring' | 'polishing' | 'model_essay';
+
+/** 根据已生成内容推断当前批改阶段（与 ResultPanel 的推断口径一致：批注 → 评分 → 润色 → 范文） */
+function inferGradingPhase(content: string): GradingPhase {
+  if (!content) return 'preparing';
+  if (/<section-model-essay/i.test(content)) return 'model_essay';
+  if (/<section-polish/i.test(content)) return 'polishing';
+  if (/<score\b/i.test(content)) return 'scoring';
+  return 'annotating';
+}
+
 export const GradingMain: React.FC<GradingMainProps> = ({
   inputText,
   setInputText,
@@ -136,6 +147,12 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const resultRef = React.useRef<HTMLDivElement>(null);
 
+  // 批改中阶段推断（供 InputPanel 锁定提示条显示阶段进度）
+  const gradingPhase = React.useMemo<GradingPhase | undefined>(
+    () => (isGrading ? inferGradingPhase(gradingResult) : undefined),
+    [isGrading, gradingResult]
+  );
+
   // 移动端设置区展开时注册 Android 返回键（返回 = 收起内联设置区块）。
   // 桌面端设置列是普通文档流列，不属于 overlay，不劫持返回键。
   useEffect(() => {
@@ -163,6 +180,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       gradeLevel={gradeLevel}
       setGradeLevel={setGradeLevel}
       isGrading={isGrading}
+      gradingPhase={gradingPhase}
       onFilesDropped={onFilesDropped}
       ocrMaxFiles={ocrMaxFiles}
       customPrompt={customPrompt}
@@ -208,7 +226,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   );
 
   const settingsPanel = (
-    <SettingsDrawer
+    <InlineSettingsPanel
       isOpen={showPromptEditor}
       onClose={() => setShowPromptEditor(false)}
       modeId={modeId}
@@ -227,7 +245,6 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       setEssayType={setEssayType}
       gradeLevel={gradeLevel}
       setGradeLevel={setGradeLevel}
-      variant="panel"
     />
   );
 

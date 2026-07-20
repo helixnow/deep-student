@@ -41,13 +41,13 @@ interface TargetPanelProps {
     isSpeaking: boolean;
     onCopyResult: () => void;
     onExportTranslation: () => void;
-    /** @deprecated 组件内部基于译文自行统计，此 prop 仅为兼容保留 */
-    charCount?: number;
-    /** @deprecated 组件内部基于译文自行统计，此 prop 仅为兼容保留 */
-    wordCount?: number;
 }
 
 const COPY_FEEDBACK_MS = 1500;
+
+/** 触屏命中区扩展：32px 图标钮扩到 ≥44px，视觉不变（与 InputBarUI.coarseHitAreaClass 同款范式） */
+const COARSE_HIT =
+    "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']";
 
 /** 同步滚动契约：把实际滚动元素标记为 data-translation-scroll="target" */
 const SCROLL_ROLE_ATTR = 'data-translation-scroll';
@@ -135,8 +135,8 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                 </span>
 
                 <div className="flex items-center gap-1 shrink-0">
-                    {/* 对照切换 */}
-                    <CommonTooltip content={t('translation:comparison.toggle')}>
+                    {/* 对照切换（tooltip 带用途说明，帮助首次用户理解该视图） */}
+                    <CommonTooltip content={`${t('translation:comparison.toggle')} · ${t('translation:tabs.comparison_description')}`}>
                         <NotionButton
                             variant="ghost"
                             size="icon"
@@ -145,6 +145,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             aria-pressed={showComparison}
                             aria-label={t('translation:comparison.toggle')}
                             className={cn(
+                                COARSE_HIT,
                                 'h-8 w-8 transition-colors',
                                 showComparison
                                     ? 'text-primary bg-primary/10'
@@ -178,7 +179,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     onClick={onEditTranslation}
                                     disabled={isEditingTranslation || isTranslating}
                                     aria-label={t('translation:target_section.edit')}
-                                    className="w-8 h-8 text-muted-foreground hover:text-foreground"
+                                    className={cn(COARSE_HIT, "w-8 h-8 text-muted-foreground hover:text-foreground")}
                                 >
                                     <PencilSimple size={16} />
                                 </NotionButton>
@@ -188,9 +189,10 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     variant="ghost"
                                     size="icon"
                                     onClick={onSpeak}
-                                    disabled={!translatedText || isEditingTranslation}
+                                    disabled={!translatedText || isEditingTranslation || isTranslating}
                                     aria-label={isSpeaking ? t('translation:target_section.stop_listen') : t('translation:target_section.listen')}
                                     className={cn(
+                                        COARSE_HIT,
                                         'h-8 w-8 transition-colors',
                                         isSpeaking ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground'
                                     )}
@@ -205,7 +207,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     onClick={handleCopy}
                                     disabled={isTranslating}
                                     aria-label={t('translation:target_section.copy')}
-                                    className="w-8 h-8 text-muted-foreground hover:text-foreground"
+                                    className={cn(COARSE_HIT, "w-8 h-8 text-muted-foreground hover:text-foreground")}
                                 >
                                     {copyIcon}
                                 </NotionButton>
@@ -217,7 +219,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     onClick={onExportTranslation}
                                     disabled={isTranslating}
                                     aria-label={t('translation:target_section.export')}
-                                    className="w-8 h-8 text-muted-foreground hover:text-foreground"
+                                    className={cn(COARSE_HIT, "w-8 h-8 text-muted-foreground hover:text-foreground")}
                                 >
                                     <Download size={16} />
                                 </NotionButton>
@@ -240,7 +242,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             variant="ghost"
                             size="icon"
                             onClick={() => setShowComparison(!showComparison)}
-                            className={cn('h-8 w-8', showComparison ? 'text-primary bg-primary/10' : 'text-muted-foreground')}
+                            className={cn(COARSE_HIT, 'h-8 w-8', showComparison ? 'text-primary bg-primary/10' : 'text-muted-foreground')}
                             aria-pressed={showComparison}
                             aria-label={t('translation:comparison.toggle')}
                         >
@@ -251,7 +253,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             size="icon"
                             onClick={onEditTranslation}
                             disabled={isTranslating}
-                            className="h-8 w-8 text-muted-foreground"
+                            className={cn(COARSE_HIT, 'h-8 w-8 text-muted-foreground')}
                             aria-label={t('translation:target_section.edit')}
                         >
                             <PencilSimple size={16} />
@@ -260,7 +262,8 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             variant="ghost"
                             size="icon"
                             onClick={onSpeak}
-                            className={cn('h-8 w-8', isSpeaking ? 'text-primary bg-primary/10' : 'text-muted-foreground')}
+                            disabled={isTranslating}
+                            className={cn(COARSE_HIT, 'h-8 w-8', isSpeaking ? 'text-primary bg-primary/10' : 'text-muted-foreground')}
                             aria-label={isSpeaking ? t('translation:target_section.stop_listen') : t('translation:target_section.listen')}
                         >
                             <SpeakerHigh size={16} className={isSpeaking ? 'animate-pulse motion-reduce:animate-none' : ''} />
@@ -270,7 +273,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             size="icon"
                             onClick={handleCopy}
                             disabled={isTranslating}
-                            className="h-8 w-8 text-muted-foreground"
+                            className={cn(COARSE_HIT, 'h-8 w-8 text-muted-foreground')}
                             aria-label={t('translation:target_section.copy')}
                         >
                             {copyIcon}
@@ -280,7 +283,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             size="icon"
                             onClick={onExportTranslation}
                             disabled={isTranslating}
-                            className="h-8 w-8 text-muted-foreground"
+                            className={cn(COARSE_HIT, 'h-8 w-8 text-muted-foreground')}
                             aria-label={t('translation:target_section.export')}
                         >
                             <Download size={16} />
@@ -292,7 +295,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
             {/* 内容区（编辑 / 对照 / 默认流式，三态互斥） */}
             <div className="flex-1 min-h-0 flex flex-col relative">
                 {isEditingTranslation ? (
-                    <div className="flex-1 min-h-0 flex flex-col p-4 [animation:fade-in_0.15s_ease-out] motion-reduce:[animation:none]">
+                    <div className="flex-1 min-h-0 flex flex-col p-4 ui-rise-in">
                         <Textarea
                             value={editedTranslation}
                             onChange={(e) => setEditedTranslation(e.target.value)}
@@ -316,7 +319,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                         </div>
                     </div>
                 ) : showComparison ? (
-                    <div className="flex-1 min-h-0 flex flex-col [animation:fade-in_0.15s_ease-out] motion-reduce:[animation:none]" ref={setContentWrap}>
+                    <div className="flex-1 min-h-0 flex flex-col ui-rise-in" ref={setContentWrap}>
                         <ComparisonView
                             sourceText={sourceText}
                             translatedText={translatedText}

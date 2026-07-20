@@ -191,20 +191,28 @@ export const LanguageSelect: React.FC<LanguageSelectProps> = ({
     [],
   );
 
-  const renderLanguageItem = (lang: { code: string; label: string }, keyPrefix = '') => (
-    <AppMenuItem
-      key={`${keyPrefix}${lang.code}`}
-      checked={value === lang.code}
-      onClick={() => handleSelect(lang.code)}
-    >
-      <span className="flex items-baseline gap-2 min-w-0">
-        <span className="truncate">{lang.label}</span>
-        <span className="text-xs text-[var(--menu-shell-muted-foreground)] uppercase shrink-0">
-          {lang.code}
+  const renderLanguageItem = (lang: { code: string; label: string }, keyPrefix = '') => {
+    const isDetected = includeAuto && detectedLanguage === lang.code;
+    return (
+      <AppMenuItem
+        key={`${keyPrefix}${lang.code}`}
+        checked={value === lang.code}
+        onClick={() => handleSelect(lang.code)}
+      >
+        <span className="flex items-baseline gap-2 min-w-0">
+          <span className={cn('truncate', isDetected && 'text-primary font-medium')}>{lang.label}</span>
+          <span className="text-xs text-[var(--menu-shell-muted-foreground)] uppercase shrink-0">
+            {lang.code}
+          </span>
+          {isDetected && (
+            <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-px text-[10px] leading-tight text-primary">
+              {t('translation:workbench_core.detected_badge')}
+            </span>
+          )}
         </span>
-      </span>
-    </AppMenuItem>
-  );
+      </AppMenuItem>
+    );
+  };
 
   const autoItem = (
     <AppMenuItem

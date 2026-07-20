@@ -210,8 +210,6 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
 
   const [isSyncScroll, setIsSyncScrollState] = useState(prefs.syncScroll ?? true);
   const [isAutoTranslate, setIsAutoTranslateState] = useState(prefs.autoTranslate ?? false);
-  // 清空确认：内联确认条（不使用模态框）
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // 错误状态管理
   const [translationError, setTranslationError] = useState<string | null>(null);
@@ -270,12 +268,15 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   const streamError = translationStream.error;
   const isPartialResult = translationStream.isPartialResult;
 
-  // 检测语言回显：优先后端事件（协议扩展点），否则前端启发式
+  // 检测语言回显：优先后端事件（协议扩展点），否则前端启发式。
+  // 原文清空后一律视为「未检测」，避免残留上一轮流式检测结果误导交换语向
   const heuristicDetectedLang = useMemo(
     () => (srcLang === 'auto' ? detectLanguageHeuristic(sourceText) : null),
     [srcLang, sourceText]
   );
-  const detectedLang = translationStream.detectedLang ?? heuristicDetectedLang;
+  const detectedLang = sourceText.trim()
+    ? (translationStream.detectedLang ?? heuristicDetectedLang)
+    : null;
 
   const persistedDirtySnapshotRef = useRef(translationDirtySnapshot(initialSession ?? {}));
   const currentDirtySnapshotRef = useRef(persistedDirtySnapshotRef.current);
@@ -395,14 +396,12 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
 
   // 字符统计
   const sourceCharCount = sourceText.length;
-  const sourceWordCount = sourceText.trim() ? sourceText.trim().split(/\s+/).length : 0;
   const isSourceOverLimit = sourceCharCount > TRANSLATION_MAX_CHARS;
 
   // Guarded setter: warn & truncate when source text exceeds limit
-  // 编辑原文同时清除旧错误（恢复自动翻译）并收起清空确认条
+  // 编辑原文同时清除旧错误（恢复自动翻译）
   const handleSetSourceText = useCallback((text: string) => {
     setTranslationError(null);
-    setShowClearConfirm(false);
     if (text.length > TRANSLATION_MAX_CHARS) {
       showGlobalNotification('warning', t('translation:errors.text_too_long', {
         max: TRANSLATION_MAX_CHARS.toLocaleString(),
@@ -632,7 +631,10 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   }, [translatedText, t]);
 
   // 交换源语言和目标语言（auto 模式下若已有检测结果，用检测语言交换 —— 对齐 DeepL）
+  // 流式进行中 / 编辑译文时禁止交换：交换会改写 translatedText，
+  // 与流式累计缓冲或未保存的编辑内容互相踩踏
   const handleSwapLanguages = useCallback(() => {
+    if (isTranslating || isEditingTranslation) return;
     const effectiveSrcLang = srcLang === 'auto' ? detectedLang : srcLang;
     if (!effectiveSrcLang) {
       showGlobalNotification('warning', t('translation:errors.cannot_swap_auto'));
@@ -640,11 +642,12 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     }
     setSrcLang(tgtLang);
     setTgtLang(effectiveSrcLang);
-    // 同时交换文本
+    // 同时交换文本（清除旧错误，让自动翻译对交换后的内容重新生效）
     const tempText = sourceText;
     setSourceText(translatedText);
     setTranslatedText(tempText);
-  }, [srcLang, tgtLang, sourceText, translatedText, detectedLang, t, setTranslatedText]);
+    setTranslationError(null);
+  }, [srcLang, tgtLang, sourceText, translatedText, detectedLang, t, setTranslatedText, isTranslating, isEditingTranslation]);
 
   // 自动翻译逻辑（智能 debounce：短文本快速触发，长文本延迟触发）
   // deps 包含所有影响翻译结果的参数，修改设置时也会重新触发
@@ -868,20 +871,15 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
         return;
       }
       // Ctrl/Cmd + Shift + S: 交换语言（auto 模式下用检测结果交换，handleSwapLanguages 自守卫）
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S') {
+      // key 大小写随 CapsLock / 输入法状态浮动，统一小写比较
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 's') {
         e.preventDefault();
         e.stopPropagation();
         handleSwapLanguages();
         return;
       }
-      // Esc: 依次处理 —— 收起清空确认 → 取消流式翻译 → 取消编辑
+      // Esc: 依次处理 —— 取消流式翻译 → 取消编辑
       if (e.key === 'Escape') {
-        if (showClearConfirm) {
-          e.preventDefault();
-          e.stopPropagation();
-          setShowClearConfirm(false);
-          return;
-        }
         if (isTranslating) {
           e.preventDefault();
           e.stopPropagation();
@@ -902,9 +900,9 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sourceText, isTranslating, isEditingTranslation, showClearConfirm, handleTranslate, handleSwapLanguages, handleCancelEdit, handleCancelTranslation, isActive]);
+  }, [sourceText, isTranslating, isEditingTranslation, handleTranslate, handleSwapLanguages, handleCancelEdit, handleCancelTranslation, isActive]);
 
-  // 清空逻辑：有内容时展开内联确认条，否则直接清空
+  // 清空逻辑：内联确认由 SourcePanel 承载（单次确认），此处执行真正的清空
   // 清空同时重置错误/编辑/评分/自动翻译签名，避免「清空后粘贴相同文本不再自动翻译」
   const doClear = useCallback(() => {
     setSourceText('');
@@ -916,19 +914,6 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     lastTranslatedSigRef.current = null;
     restoredSigPendingPromptRef.current = false;
   }, [setTranslatedText]);
-
-  const handleClearRequest = useCallback(() => {
-    if (sourceText || translatedText) {
-      setShowClearConfirm(true);
-    } else {
-      doClear();
-    }
-  }, [sourceText, translatedText, doClear]);
-
-  const handleConfirmClear = useCallback(() => {
-    setShowClearConfirm(false);
-    doClear();
-  }, [doClear]);
 
   // 取消残留的部分译文：清除文本（保留原文），或仅关闭提示
   const handleDiscardPartial = useCallback(() => {
@@ -951,7 +936,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
 
         {/* 离线状态提示 */}
         {!isOnline && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-warning/10 border-b border-warning/20 text-warning">
+          <div className="flex items-center gap-2 px-4 py-2 bg-warning/10 border-b border-warning/20 text-warning ui-drop-in">
             <WifiSlash size={16} className="shrink-0" />
             <span className="text-sm">{t('translation:errors.offline')}</span>
           </div>
@@ -959,7 +944,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
 
         {/* 翻译错误提示（内联错误条 + 重试） */}
         {translationError && !isTranslating && (
-          <div className="flex items-center justify-between gap-2 px-4 py-2 bg-destructive/10 border-b border-destructive/20">
+          <div className="flex items-center justify-between gap-2 px-4 py-2 bg-destructive/10 border-b border-destructive/20 ui-drop-in">
             <div className="flex items-center gap-2 text-destructive min-w-0">
               <WarningCircle size={16} className="shrink-0" />
               <span className="text-sm truncate">{translationError}</span>
@@ -979,7 +964,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
 
         {/* 取消翻译后的部分结果提示（内联信息条） */}
         {isPartialResult && !isTranslating && !translationError && (
-          <div className="flex items-center justify-between gap-2 px-4 py-2 bg-info/10 border-b border-info/20">
+          <div className="flex items-center justify-between gap-2 px-4 py-2 bg-info/10 border-b border-info/20 ui-drop-in">
             <div className="flex items-center gap-2 text-info min-w-0">
               <Info size={16} className="shrink-0" />
               <span className="text-sm truncate">{t('translation:workbench_ui.cancelled_partial')}</span>
@@ -1000,24 +985,6 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
                 className="text-muted-foreground"
               >
                 {t('translation:workbench_ui.dismiss')}
-              </NotionButton>
-            </div>
-          </div>
-        )}
-
-        {/* 清空确认（内联确认条，替换模态框） */}
-        {showClearConfirm && (
-          <div className="flex items-center justify-between gap-2 px-4 py-2 bg-destructive/10 border-b border-destructive/20">
-            <div className="flex items-center gap-2 text-destructive min-w-0">
-              <WarningCircle size={16} className="shrink-0" />
-              <span className="text-sm truncate">{t('translation:confirm.clear')}</span>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <NotionButton variant="ghost" size="sm" onClick={() => setShowClearConfirm(false)}>
-                {t('common:cancel')}
-              </NotionButton>
-              <NotionButton variant="danger" size="sm" onClick={handleConfirmClear}>
-                {t('common:clear')}
               </NotionButton>
             </div>
           </div>
@@ -1051,8 +1018,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               setEditedTranslation={setEditedTranslation}
               translationQuality={translationQuality}
               isSpeaking={isSpeaking}
-              charCount={sourceCharCount}
-              wordCount={sourceWordCount}
+              detectedLang={detectedLang}
+              autoFocusSource={isActive !== false}
               isAutoTranslate={isAutoTranslate}
               setIsAutoTranslate={setIsAutoTranslate}
               isSyncScroll={isSyncScroll}
@@ -1063,7 +1030,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               onRestoreDefaultPrompt={handleRestoreDefaultPrompt}
               onTranslate={handleTranslate}
               onCancelTranslation={handleCancelTranslation}
-              onClear={handleClearRequest}
+              onClear={doClear}
               onEditTranslation={handleEditTranslation}
               onSaveEditedTranslation={handleSaveEditedTranslation}
               onCancelEdit={handleCancelEdit}

@@ -18,6 +18,7 @@ import {
   CaretDown,
   ClipboardText,
   UploadSimple,
+  Sparkle,
 } from '@phosphor-icons/react';
 import UnifiedDragDropZone, { FILE_TYPES } from '../shared/UnifiedDragDropZone';
 import { UnifiedModelSelector } from '../shared/UnifiedModelSelector';
@@ -28,10 +29,22 @@ import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '../UnifiedNotification';
 
 /** ★ F-2: 作文最大字符数限制（约 5 万字符） */
-const ESSAY_MAX_CHARS = 50000;
+export const ESSAY_MAX_CHARS = 50000;
+
+/** 批改阶段顺序（与 GradingMain 推断口径一致），用于锁定提示条的阶段进度点 */
+const GRADING_PHASES = ['preparing', 'annotating', 'scoring', 'polishing', 'model_essay'] as const;
+export type GradingPhaseId = (typeof GRADING_PHASES)[number];
 
 /** 内联二段确认的自动复位时间 */
 const INLINE_CONFIRM_TIMEOUT_MS = 3000;
+
+/** 触屏命中区扩展：28px 图标钮扩到 ≥44px，视觉不变（与 InputBarUI.coarseHitAreaClass 同款范式） */
+const COARSE_HIT =
+  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']";
+
+/** 缩略图角标删除钮（16px、absolute 定位）：命中区扩到 ~40px */
+const COARSE_HIT_BADGE =
+  "[@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']";
 
 /** Unicode 字符计数（避免 UTF-16 length 偏差，与父级统计口径一致） */
 const getUnicodeCharCount = (text: string): number => Array.from(text).length;
@@ -53,6 +66,8 @@ interface InputPanelProps {
   gradeLevel: string;
   setGradeLevel: (level: string) => void;
   isGrading: boolean;
+  /** 批改中的阶段（仅 isGrading 时提供），驱动锁定提示条的阶段进度显示 */
+  gradingPhase?: GradingPhaseId;
   onFilesDropped: (files: File[]) => void;
   ocrMaxFiles: number;
   customPrompt: string;
@@ -186,6 +201,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
   gradeLevel,
   setGradeLevel,
   isGrading,
+  gradingPhase,
   onFilesDropped,
   ocrMaxFiles,
   customPrompt,
@@ -299,6 +315,14 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
     onFilesDropped(named);
   }, [isGrading, onFilesDropped]);
 
+  // ── 空状态引导：示例作文一键填入（题目 + 正文），便于新用户零门槛体验批改 ──
+  const handleFillSample = useCallback(() => {
+    if (isGrading) return;
+    setInputText(t('essay_grading:workbench.sample.content'));
+    if (setTopicText) setTopicText(t('essay_grading:workbench.sample.topic'));
+    showGlobalNotification('success', t('essay_grading:workbench.sample.filled_toast'));
+  }, [isGrading, setInputText, setTopicText, t]);
+
   // ── UX#6：轮次圆点点击跳转。父级提供 onSelect 时直接跳转；
   // 否则回退为按差值经 prev/next 逐步推进（每次父级重渲染推进一步直至到达）。 ──
   const [pendingRoundTarget, setPendingRoundTarget] = useState<number | null>(null);
@@ -368,7 +392,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         {/* 右侧：操作按钮组 - 桌面端不收缩；移动端允许收缩以防溢出（统计文本可截断） */}
         <div className="flex min-w-0 items-center gap-1 sm:shrink-0">
           <CommonTooltip content={t('essay_grading:import_images.hint', { max: ocrMaxFiles })}>
-            <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isGrading} aria-label={t('common:aria.upload_image')} className="flex shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-40 transition-colors duration-150">
+            <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isGrading} aria-label={t('common:aria.upload_image')} className={cn(COARSE_HIT, "flex shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-40 transition-colors duration-150")}>
               <Image size={14} />
               <span className="text-xs hidden xl:inline">{t('essay_grading:import_images.button')}</span>
             </NotionButton>
@@ -377,7 +401,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           {/* 设置按钮（始终显示图标，大屏显示文字） */}
           {onOpenSettings && (
             <CommonTooltip content={t('essay_grading:settings.title')}>
-              <NotionButton variant="ghost" size="sm" onClick={onOpenSettings} className="shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150">
+              <NotionButton variant="ghost" size="sm" onClick={onOpenSettings} className={cn(COARSE_HIT, "shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150")}>
                 <PenNib size={14} />
                 <span className="text-xs hidden xl:inline">{t('essay_grading:settings.title')}</span>
               </NotionButton>
@@ -448,7 +472,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   {t('essay_grading:confirm.clear')}
                 </NotionButton>
               ) : (
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={mobileClearConfirm.handleClick} aria-label={t('common:aria.clear_content')} className="!h-7 !w-7 shrink-0 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150">
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={mobileClearConfirm.handleClick} aria-label={t('common:aria.clear_content')} className={cn(COARSE_HIT, "!h-7 !w-7 shrink-0 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150")}>
                   <Trash size={14} />
                 </NotionButton>
               )
@@ -459,7 +483,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   {t('essay_grading:confirm.cancel')}
                 </NotionButton>
               ) : (
-                <NotionButton variant="ghost" size="sm" onClick={mobileCancelConfirm.handleClick} aria-label={t('common:aria.cancel_grading')} className="h-7 px-2 shrink-0 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150">
+                <NotionButton variant="ghost" size="sm" onClick={mobileCancelConfirm.handleClick} aria-label={t('common:aria.cancel_grading')} className={cn(COARSE_HIT, "h-7 px-2 shrink-0 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150")}>
                   <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" />
                 </NotionButton>
               )
@@ -505,7 +529,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   <button
                     type="button"
                     onClick={() => onRemoveImage(img.id)}
-                    className="w-4 h-4 absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover/thumb:opacity-100 focus-visible:opacity-100 transition-opacity duration-150 motion-reduce:transition-none"
+                    className={cn(COARSE_HIT_BADGE, "w-4 h-4 absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover/thumb:opacity-100 focus-visible:opacity-100 transition-opacity duration-150 motion-reduce:transition-none")}
                     aria-label={t('common:delete')}
                   >
                     <X size={10} />
@@ -580,7 +604,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                           <button
                             type="button"
                             onClick={() => onRemoveTopicImage(img.id)}
-                            className="w-4 h-4 absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover/thumb:opacity-100 focus-visible:opacity-100 transition-opacity duration-150 motion-reduce:transition-none"
+                            className={cn(COARSE_HIT_BADGE, "w-4 h-4 absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover/thumb:opacity-100 focus-visible:opacity-100 transition-opacity duration-150 motion-reduce:transition-none")}
                             aria-label={t('common:delete')}
                           >
                             <X size={10} />
@@ -617,7 +641,33 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         <div className="overflow-hidden min-h-0">
           <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-muted-foreground bg-primary/5 border-b border-border/30" role="status">
             <CircleNotch size={12} className="text-primary animate-spin motion-reduce:animate-none shrink-0" />
-            <span className="truncate">{t('essay_grading:grading_lock.hint')}</span>
+            <span className="min-w-0 flex-1 truncate">{t('essay_grading:grading_lock.hint')}</span>
+            {/* 阶段进度：当前阶段文案 + 五阶段进度点（分析 → 批注 → 评分 → 润色 → 范文） */}
+            {gradingPhase && (
+              <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                <span className="text-primary/80 tabular-nums whitespace-nowrap">
+                  {t(`essay_grading:progress.phase_${gradingPhase}`)}
+                </span>
+                <span className="hidden sm:flex items-center gap-1" aria-hidden="true">
+                  {GRADING_PHASES.map((phase, idx) => {
+                    const currentIdx = GRADING_PHASES.indexOf(gradingPhase);
+                    return (
+                      <span
+                        key={phase}
+                        className={cn(
+                          'h-1 w-1 rounded-full transition-colors duration-300 motion-reduce:transition-none',
+                          idx < currentIdx
+                            ? 'bg-primary/50'
+                            : idx === currentIdx
+                              ? 'bg-primary scale-125'
+                              : 'bg-muted-foreground/25'
+                        )}
+                      />
+                    );
+                  })}
+                </span>
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -651,10 +701,16 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                     {t('essay_grading:empty_state.drop_hint')}
                   </span>
                 </div>
-                <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="pointer-events-auto text-xs text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)] border border-border/30 transition-colors duration-150">
-                  <Image size={14} />
-                  {t('essay_grading:empty_state.ocr_hint')}
-                </NotionButton>
+                <div className="flex items-center justify-center gap-2 flex-wrap">
+                  <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="pointer-events-auto text-xs text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)] border border-border/30 transition-colors duration-150">
+                    <Image size={14} />
+                    {t('essay_grading:empty_state.ocr_hint')}
+                  </NotionButton>
+                  <NotionButton variant="ghost" size="sm" onClick={handleFillSample} className="pointer-events-auto text-xs text-primary/80 hover:text-primary hover:bg-primary/10 border border-primary/25 transition-colors duration-150">
+                    <Sparkle size={14} />
+                    {t('essay_grading:workbench.sample.fill_button')}
+                  </NotionButton>
+                </div>
               </div>
             </div>
           )}
@@ -683,6 +739,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               {t('essay_grading:stats.han_chars')}: {textStats.hanChars.toLocaleString()}
               {' · '}
               {t('essay_grading:stats.english_words')}: {textStats.englishWords.toLocaleString()}
+              {' · '}
+              {t('essay_grading:workbench.stats.paragraphs')}: {textStats.paragraphCount.toLocaleString()}
               {' · '}
               {t('essay_grading:stats.punctuation_total')}: {textStats.punctuationTotal.toLocaleString()}
               {' · '}

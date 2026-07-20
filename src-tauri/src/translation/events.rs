@@ -64,12 +64,14 @@ impl TranslationEventEmitter {
     ///   `delta` 为新协议字段，`chunk` 为兼容保留）
     /// - `stats`: 增量维护的字符/单词统计（A6-11：不再回传全量 accumulated）
     /// - `detected_lang`: 检测到的源语言（仅 auto 模式且检测成功时携带）
+    /// - `segment`: 长文本分段时的 (当前段序号从 1 起, 总段数)；未分段为 None
     pub fn emit_data(
         &self,
         session_id: &str,
         chunk: String,
         stats: &StreamStats,
         detected_lang: Option<String>,
+        segment: Option<(usize, usize)>,
     ) {
         let payload = TranslationStreamData {
             event_type: "data".to_string(),
@@ -78,8 +80,8 @@ impl TranslationEventEmitter {
             char_count: stats.char_count,
             word_count: stats.word_count,
             detected_lang,
-            segment_index: None,
-            segment_total: None,
+            segment_index: segment.map(|(index, _)| index),
+            segment_total: segment.map(|(_, total)| total),
         };
 
         if let Err(e) = self.window.emit(&Self::event_name(session_id), payload) {

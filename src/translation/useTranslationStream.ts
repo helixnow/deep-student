@@ -128,6 +128,9 @@ export function useTranslationStream() {
   const rafRef = useRef<number | null>(null);
   // 最近一次事件携带的统计与检测语言（flush 时一并写入 state）
   const latestCountsRef = useRef<{ charCount: number; wordCount: number }>({ charCount: 0, wordCount: 0 });
+  // 重复/乱序 chunk 防御：后端 char_count 为累计值、严格单调递增，
+  // 收到不增反降（或持平）的 data 事件即为重复投递，丢弃防止译文重复拼接
+  const lastSeenCharCountRef = useRef<number>(-1);
   const detectedLangRef = useRef<string | null>(null);
   // 滑动超时：单一定时器 + 最后活动时间戳，避免每个 chunk 重建定时器
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -235,6 +238,7 @@ export function useTranslationStream() {
           currentSessionIdRef.current = sessionId;
           accumulatedTextRef.current = '';
           latestCountsRef.current = { charCount: 0, wordCount: 0 };
+          lastSeenCharCountRef.current = -1;
           detectedLangRef.current = null;
           lastActivityAtRef.current = Date.now();
 
@@ -302,8 +306,15 @@ export function useTranslationStream() {
 
                 if (payload.type === 'data') {
                   // A6-11: 后端只回传增量 chunk，前端自行累加；rAF 批处理写入 state
+                  if (payload.char_count != null) {
+                    if (payload.char_count <= lastSeenCharCountRef.current) {
+                      console.warn('[TranslationStream] Dropping duplicate/out-of-order chunk (char_count regressed)');
+                      return;
+                    }
+                    lastSeenCharCountRef.current = payload.char_count;
+                    latestCountsRef.current.charCount = payload.char_count;
+                  }
                   accumulatedTextRef.current += payload.chunk ?? '';
-                  if (payload.char_count != null) latestCountsRef.current.charCount = payload.char_count;
                   if (payload.word_count != null) latestCountsRef.current.wordCount = payload.word_count;
                   hasPendingChunkRef.current = true;
                   scheduleFlush();
@@ -388,23 +399,32 @@ export function useTranslationStream() {
             });
 
             // invoke 正常返回但终态事件尚未到达（事件投递与 invoke 返回可能乱序）：
-            // 宽限期后以累计文本作为完成结果兜底，保证 Promise 必定 settle
+            // 宽限期后以累计文本作为完成结果兜底，保证 Promise 必定 settle。
+            // 宽限期内仍有 chunk 到达说明流尚未排空，顺延而非中途误判完成
             if (!settled && isActiveRef.current && currentSessionIdRef.current === sessionId) {
-              graceTimerRef.current = setTimeout(() => {
-                graceTimerRef.current = null;
-                if (settled || !isActiveRef.current || currentSessionIdRef.current !== sessionId) return;
-                console.warn('[TranslationStream] invoke resolved without terminal event, settling with accumulated text');
-                const finalText = accumulatedTextRef.current;
-                finishSession();
-                safeSetState((prev) => ({
-                  ...prev,
-                  isTranslating: false,
-                  translatedText: finalText,
-                  sessionId: null,
-                  isPartialResult: false,
-                }));
-                settle({ outcome: 'completed', translatedText: finalText, translationId: null });
-              }, POST_INVOKE_GRACE_MS);
+              const armGraceTimer = (delay: number) => {
+                graceTimerRef.current = setTimeout(() => {
+                  graceTimerRef.current = null;
+                  if (settled || !isActiveRef.current || currentSessionIdRef.current !== sessionId) return;
+                  const sinceLastEvent = Date.now() - lastActivityAtRef.current;
+                  if (sinceLastEvent < POST_INVOKE_GRACE_MS) {
+                    armGraceTimer(POST_INVOKE_GRACE_MS - sinceLastEvent);
+                    return;
+                  }
+                  console.warn('[TranslationStream] invoke resolved without terminal event, settling with accumulated text');
+                  const finalText = accumulatedTextRef.current;
+                  finishSession();
+                  safeSetState((prev) => ({
+                    ...prev,
+                    isTranslating: false,
+                    translatedText: finalText,
+                    sessionId: null,
+                    isPartialResult: false,
+                  }));
+                  settle({ outcome: 'completed', translatedText: finalText, translationId: null });
+                }, delay);
+              };
+              armGraceTimer(POST_INVOKE_GRACE_MS);
             }
           } catch (error: unknown) {
             // invoke reject（当前后端错误主通道）或 listen 失败
@@ -481,11 +501,22 @@ export function useTranslationStream() {
 
   /**
    * 重置状态
+   *
+   * 若重置时仍有活跃会话，同时通知后端停止流：
+   * 监听器已卸载，放任后端继续生成只会白耗资源
    */
   const resetState = useCallback(() => {
+    const sessionId = currentSessionIdRef.current;
+    const wasActive = isActiveRef.current;
     const settleFn = settleRef.current?.settle;
     finishSession();
     settleFn?.({ outcome: 'cancelled', translatedText: accumulatedTextRef.current });
+    if (sessionId && wasActive) {
+      invoke('cancel_stream', { streamEventName: `translation_stream_${sessionId}` }).catch((err) => {
+        console.warn('[TranslationStream] Failed to cancel stream on reset:', err);
+      });
+    }
+    currentSessionIdRef.current = null;
     accumulatedTextRef.current = '';
     latestCountsRef.current = { charCount: 0, wordCount: 0 };
     detectedLangRef.current = null;

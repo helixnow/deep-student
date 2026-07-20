@@ -11,6 +11,9 @@
     "toggle": "Paragraph Comparison",
     "empty": "Enter text and translate to see paragraph-level comparison here"
   },
+  "comparison_ux": {
+    "copy_segment": "Copy this segment"
+  },
   "tabs": {
     "translate": "Text Translation",
     "history": "History",
@@ -309,6 +312,13 @@
       "technical": "You are a technical documentation translator. Translate the given text accurately and consistently. Keep code snippets, commands, API names, file paths, and placeholders unchanged. Use standard technical terminology for the target language. Only output the translated text.",
       "literary": "You are a literary translator. Translate the given text while preserving its style, rhythm, imagery, and emotional tone. Prefer expressive, faithful renderings over word-for-word literalism. Only output the translated text."
     }
+  },
+  "workbench_core": {
+    "samples_label": "Try an example",
+    "sample_en": "The best way to predict the future is to invent it.",
+    "sample_zh": "学而不思则罔，思而不学则殆。",
+    "drop_hint_inline": "or drop an image / PDF / DOCX / TXT / MD file",
+    "detected_badge": "Detected"
   },
   "workbench_ui": {
     "detected_language": "Detected: {{language}}",

@@ -10,10 +10,31 @@
  * - 独立的容器逻辑，不依赖聊天消息结构
  */
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from '../components/custom-scroll-area';
 import { CircleNotch } from '@phosphor-icons/react';
+
+/**
+ * 稳定文本片段：流式期间 content 只在尾部追加，
+ * 按段落边界切片后，除最后一片外全部命中 memo，
+ * 每帧只有尾片的文本节点真正更新
+ */
+const StaticSegment = React.memo<{ text: string }>(({ text }) => <span>{text}</span>);
+StaticSegment.displayName = 'StaticSegment';
+
+/** 按段落边界（连续空行，含分隔符本身）切片，保证拼接结果与原文严格一致 */
+function splitStableSegments(content: string): string[] {
+  const parts: string[] = [];
+  const re = /\n{2,}/g;
+  let idx = 0;
+  while (re.exec(content) !== null) {
+    parts.push(content.slice(idx, re.lastIndex));
+    idx = re.lastIndex;
+  }
+  parts.push(content.slice(idx));
+  return parts;
+}
 
 interface TranslationStreamRendererProps {
   content: string;
@@ -49,6 +70,8 @@ export const TranslationStreamRenderer: React.FC<TranslationStreamRendererProps 
   const wordCount = providedWordCount ?? (content.trim() ? content.trim().split(/\s+/).length : 0);
   // CJK 文本按空白分词无意义，隐藏词数
   const showWordCount = !CJK_PATTERN.test(content);
+
+  const segments = useMemo(() => splitStableSegments(content), [content]);
 
   // 贴底跟随滚动：用户主动上滚后暂停跟随，滚回底部附近恢复
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -109,7 +132,13 @@ export const TranslationStreamRenderer: React.FC<TranslationStreamRendererProps 
       >
         {content || isStreaming ? (
           <div className="px-4 pt-6 pb-16 text-base leading-relaxed whitespace-pre-wrap break-words">
-            {content}
+            {segments.map((segment, i) =>
+              i < segments.length - 1 ? (
+                <StaticSegment key={i} text={segment} />
+              ) : (
+                <span key={i}>{segment}</span>
+              )
+            )}
             {isStreaming && (
               <span
                 aria-hidden="true"

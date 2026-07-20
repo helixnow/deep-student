@@ -243,6 +243,13 @@
     "copied": "已复制",
     "click_hint": "点击查看详情"
   },
+  "result_ui": {
+    "annotation_prev": "上一条批注",
+    "annotation_next": "下一条批注",
+    "annotation_close": "收起批注详情",
+    "polish_show_diff": "显示修改痕迹",
+    "polish_hide_diff": "隐藏修改痕迹"
+  },
   "legend": {
     "title": "批注说明",
     "collapse": "收起",
@@ -252,10 +259,10 @@
     "filter_suggestions": "建议",
     "filter_highlights": "亮点",
     "del_desc": "红色删除线：建议删除的内容",
-    "ins_desc": "绿色下划线：建议增加的内容",
-    "replace_desc": "橙色箭头：建议替换的内容",
-    "note_desc": "蓝色虚线：批注说明",
-    "good_desc": "金色高亮：写得好的亮点",
+    "ins_desc": "琥珀色下划线：建议增加的内容",
+    "replace_desc": "琥珀色箭头：建议替换的内容",
+    "note_desc": "琥珀色虚线：批注说明",
+    "good_desc": "绿色高亮：写得好的亮点",
     "err_desc": "红色波浪线：语法/拼写等错误",
     "example": "示例",
     "example_old": "旧",
@@ -325,6 +332,21 @@
   "images": {
     "essay_images": "作文原图 ({{count}})"
   },
+  "workbench": {
+    "settings": {
+      "section_criteria": "评分标准",
+      "locked_while_grading": "批改中已锁定"
+    },
+    "stats": {
+      "paragraphs": "段落"
+    },
+    "sample": {
+      "fill_button": "填入示例作文",
+      "filled_toast": "已填入示例作文，点击「开始批改」即可体验",
+      "topic": "请以「坚持」为话题，写一篇不少于 600 字的议论文，题目自拟。",
+      "content": "坚持，是通往远方的阶梯\n\n古人云：“不积跬步，无以至千里；不积小流，无以成江海。”任何伟大的成就，都不是一蹴而就的，而是由无数个平凡日子里的坚持累积而成。\n\n王羲之临池学书，池水尽墨，方有《兰亭集序》的飘逸俊秀；李时珍跋涉千山，遍尝百草，历时二十七载，方成《本草纲目》的鸿篇巨制。可见，坚持是理想与现实之间最坚实的桥梁。\n\n然而，坚持并非固执。真正的坚持，是在认清方向之后的笃定前行，是在遭遇挫折之时的及时调整。方向错了，停下来便是进步；方向对了，慢一点也终会抵达。\n\n作为新时代的青年，我们更应懂得：星光不问赶路人，时光不负有心人。愿我们都能以坚持为帆，以信念为桨，在人生的长河中破浪前行。"
+    }
+  },
   "topic": {
     "toggle_label": "题目/参考材料",
     "placeholder": "输入作文题目、要求或参考内容...",
@@ -384,6 +406,16 @@
       "total_positive": "总分需大于 0",
       "total_mismatch": "总分 {{total}} 与维度之和 {{sum}} 不一致",
       "sync_total": "同步为 {{sum}}"
+    }
+  },
+  "data_layer": {
+    "errors": {
+      "rate_limited": "请求过于频繁或额度不足，请稍后重试",
+      "auth_failed": "鉴权失败，请检查 API 密钥或账户权限"
+    },
+    "export": {
+      "corrections_title": "### 逐句修改对照",
+      "empty_result": "（暂无批改内容）"
     }
   }
 }

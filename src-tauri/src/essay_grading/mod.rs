@@ -151,7 +151,9 @@ pub async fn essay_grading_stream(
         custom_modes,
     };
 
-    let result = pipeline::run_grading(request.clone(), deps).await?;
+    // 不整体 clone request（image_base64_list 可能高达数十 MB），仅保留日志所需字段
+    let session_id_for_log = request.session_id.clone();
+    let result = pipeline::run_grading(request, deps).await?;
 
     if let Some(ref response) = result {
         println!(
@@ -162,7 +164,7 @@ pub async fn essay_grading_stream(
     } else {
         println!(
             "🛑 [EssayGrading] 用户取消批改：session={}",
-            request.session_id
+            session_id_for_log
         );
     }
 
@@ -344,16 +346,15 @@ pub async fn essay_grading_get_round(
     }
     let vfs_db = get_vfs_db(&state)?;
 
-    let essay = VfsEssayRepo::get_round(vfs_db, &session_id, round_number)
-        .map_err(|e| {
-            map_vfs_err(
-                format!(
-                    "获取批改轮次失败 (session_id={}, round={})",
-                    session_id, round_number
-                ),
-                e,
-            )
-        })?;
+    let essay = VfsEssayRepo::get_round(vfs_db, &session_id, round_number).map_err(|e| {
+        map_vfs_err(
+            format!(
+                "获取批改轮次失败 (session_id={}, round={})",
+                session_id, round_number
+            ),
+            e,
+        )
+    })?;
 
     essay
         .map(|essay| round_response_from_essay(vfs_db, essay))
@@ -477,9 +478,12 @@ pub async fn essay_grading_update_custom_mode(
     let mode_id = input.id.clone();
     let manager = get_mode_manager(&state)?;
 
-    manager
-        .update_mode(input)
-        .map_err(|e| AppError::internal(format!("更新自定义批阅模式失败 (mode_id={}): {}", mode_id, e)))
+    manager.update_mode(input).map_err(|e| {
+        AppError::internal(format!(
+            "更新自定义批阅模式失败 (mode_id={}): {}",
+            mode_id, e
+        ))
+    })
 }
 
 /// 删除自定义批阅模式
@@ -490,9 +494,12 @@ pub async fn essay_grading_delete_custom_mode(
 ) -> Result<(), AppError> {
     let manager = get_mode_manager(&state)?;
 
-    manager
-        .delete_mode(&mode_id)
-        .map_err(|e| AppError::internal(format!("删除自定义批阅模式失败 (mode_id={}): {}", mode_id, e)))
+    manager.delete_mode(&mode_id).map_err(|e| {
+        AppError::internal(format!(
+            "删除自定义批阅模式失败 (mode_id={}): {}",
+            mode_id, e
+        ))
+    })
 }
 
 /// 获取所有自定义批阅模式
@@ -541,10 +548,11 @@ pub async fn essay_grading_reset_builtin_mode(
         ))
     })?;
 
-    // 返回原始预置模式
+    // 返回原始预置模式（兼容历史别名 ID）
+    let canonical_id = types::canonical_mode_id(&builtin_id).to_string();
     types::get_builtin_grading_modes()
         .into_iter()
-        .find(|m| m.id == builtin_id)
+        .find(|m| m.id == canonical_id)
         .ok_or_else(|| AppError::not_found(format!("预置模式不存在: {}", builtin_id)))
 }
 

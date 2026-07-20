@@ -243,6 +243,13 @@
     "copied": "Copied",
     "click_hint": "Click for details"
   },
+  "result_ui": {
+    "annotation_prev": "Previous annotation",
+    "annotation_next": "Next annotation",
+    "annotation_close": "Close annotation details",
+    "polish_show_diff": "Show edits",
+    "polish_hide_diff": "Hide edits"
+  },
   "legend": {
     "title": "Annotation Guide",
     "collapse": "Collapse",
@@ -252,10 +259,10 @@
     "filter_suggestions": "Suggestions",
     "filter_highlights": "Highlights",
     "del_desc": "Red strikethrough: suggested deletions",
-    "ins_desc": "Green underline: suggested insertions",
-    "replace_desc": "Orange arrow: suggested replacements",
-    "note_desc": "Blue dashed: annotation notes",
-    "good_desc": "Gold highlight: well-written highlights",
+    "ins_desc": "Amber underline: suggested insertions",
+    "replace_desc": "Amber arrow: suggested replacements",
+    "note_desc": "Amber dashed: annotation notes",
+    "good_desc": "Green highlight: well-written highlights",
     "err_desc": "Red wavy: grammar/spelling errors",
     "example": "Example",
     "example_old": "Old",
@@ -325,6 +332,21 @@
   "images": {
     "essay_images": "Essay images ({{count}})"
   },
+  "workbench": {
+    "settings": {
+      "section_criteria": "Grading Criteria",
+      "locked_while_grading": "Locked while grading"
+    },
+    "stats": {
+      "paragraphs": "Paragraphs"
+    },
+    "sample": {
+      "fill_button": "Fill with sample essay",
+      "filled_toast": "Sample essay filled in — click \"Start Grading\" to try it out",
+      "topic": "Write an argumentative essay of at least 300 words on the topic of \"Perseverance\".",
+      "content": "The Power of Perseverance\n\nGreat achievements are rarely born of sudden inspiration. More often, they grow from countless ordinary days of quiet, stubborn effort. Perseverance is the bridge between what we dream of and what we actually accomplish.\n\nHistory offers abundant proof. Thomas Edison tested thousands of materials before finding a workable filament for the light bulb. Marie Curie spent years processing tons of ore to isolate a fraction of a gram of radium. Neither talent alone nor luck alone carried them forward; it was their refusal to stop.\n\nYet perseverance is not the same as stubbornness. True persistence means holding firmly to a worthy goal while remaining willing to adjust the path. When the direction is wrong, pausing to reflect is itself progress; when the direction is right, even slow steps will arrive.\n\nFor young people today, the lesson is simple: time rewards those who keep going. May we all treat perseverance as our sail and conviction as our oar, and press forward steadily through the long river of life."
+    }
+  },
   "topic": {
     "toggle_label": "Topic / Reference",
     "placeholder": "Enter essay topic, requirements, or reference content...",
@@ -384,6 +406,16 @@
       "total_positive": "Total score must be greater than 0",
       "total_mismatch": "Total {{total}} does not match the sum of dimensions ({{sum}})",
       "sync_total": "Use {{sum}}"
+    }
+  },
+  "data_layer": {
+    "errors": {
+      "rate_limited": "Too many requests or quota exceeded. Please try again later.",
+      "auth_failed": "Authentication failed. Please check your API key or account permissions."
+    },
+    "export": {
+      "corrections_title": "### Corrections",
+      "empty_result": "(No grading content yet)"
     }
   }
 }

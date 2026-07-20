@@ -389,7 +389,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className }) => {
                           'h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none',
                           GRADE_BAR_CLASS[dimGrade]
                         )}
-                        style={{ width: mounted ? `${dimPct}%` : '0%' }}
+                        style={{ width: mounted ? `${dimPct}%` : '0%', transitionDelay: `${index * 60}ms` }}
                       />
                     </div>
                     {dim.comment && (

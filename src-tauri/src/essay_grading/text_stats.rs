@@ -23,6 +23,9 @@ pub struct EssayTextStats {
     pub line_count: usize,
     /// 段落数（按空行分段）
     pub paragraph_count: usize,
+    /// 句子数（中英文句末标点 + 换行/文末兜底）
+    #[serde(default)]
+    pub sentence_count: usize,
 }
 
 const CN_PUNCTUATION: &[char] = &[
@@ -39,20 +42,22 @@ const CN_PUNCTUATION: &[char] = &[
 fn is_frontend_whitespace(c: char) -> bool {
     matches!(
         c,
-        '\t' | '\n'
-            | '\u{000B}'
-            | '\u{000C}'
-            | '\r'
-            | ' '
-            | '\u{00A0}'
-            | '\u{1680}'
-            | '\u{2000}'..='\u{200A}'
-            | '\u{2028}'
-            | '\u{2029}'
-            | '\u{202F}'
-            | '\u{205F}'
-            | '\u{3000}'
-            | '\u{FEFF}'
+        '\t' | '\n' | '\u{000B}' | '\u{000C}' | '\r' | ' ' | '\u{00A0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200A}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202F}'
+                | '\u{205F}'
+                | '\u{3000}'
+                | '\u{FEFF}'
+    )
+}
+
+/// 无歧义的句末终结符（'.' 单独用启发式处理，避免小数/缩写误计）
+fn is_sentence_terminator(c: char) -> bool {
+    matches!(
+        c,
+        '。' | '！' | '？' | '!' | '?' | '…' | '．' | '‽' | '⁉' | '⁈' | '⁇'
     )
 }
 
@@ -93,8 +98,7 @@ fn is_ascii_punctuation(c: char) -> bool {
     )
 }
 
-static HAN_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\p{Han}").expect("valid han regex"));
+static HAN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\p{Han}").expect("valid han regex"));
 static EN_WORD_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"[A-Za-z]+(?:['’-][A-Za-z]+)*").expect("valid english word regex")
 });
@@ -118,6 +122,12 @@ pub fn calculate_text_stats(text: &str) -> EssayTextStats {
     let mut non_whitespace_chars = 0usize;
     let mut total_chars = 0usize;
 
+    // 句子计数状态：pending 表示自上一个句末以来出现过"实质内容"
+    // （非空白、非标点字符）；句末标点连用（！！、……）只计一句。
+    let mut sentence_count = 0usize;
+    let mut pending_sentence = false;
+    let mut prev_char: Option<char> = None;
+
     for ch in text.chars() {
         total_chars += 1;
         if !is_frontend_whitespace(ch) {
@@ -128,6 +138,26 @@ pub fn calculate_text_stats(text: &str) -> EssayTextStats {
         } else if is_ascii_punctuation(ch) {
             en_punctuation += 1;
         }
+
+        // '.' 仅在紧跟字母后视为句号（排除 3.14 等小数；e.g. 类缩写可接受少量误差）
+        let ends_sentence = is_sentence_terminator(ch)
+            || (ch == '.' && prev_char.is_some_and(|p| p.is_alphabetic()))
+            || ch == '\n';
+        if ends_sentence {
+            if pending_sentence {
+                sentence_count += 1;
+                pending_sentence = false;
+            }
+        } else if !is_frontend_whitespace(ch)
+            && !CN_PUNCTUATION.contains(&ch)
+            && !is_ascii_punctuation(ch)
+        {
+            pending_sentence = true;
+        }
+        prev_char = Some(ch);
+    }
+    if pending_sentence {
+        sentence_count += 1;
     }
 
     let normalized_line_text = text.replace("\r\n", "\n");
@@ -152,12 +182,13 @@ pub fn calculate_text_stats(text: &str) -> EssayTextStats {
         total_chars,
         line_count,
         paragraph_count,
+        sentence_count,
     }
 }
 
 pub fn build_stats_prompt_block(stats: &EssayTextStats) -> String {
     format!(
-        "【写作统计（系统自动计算）】\n- 中文字数（汉字）: {}\n- 英文词数: {}\n- 标点总数: {}\n- 中文标点: {}\n- 英文标点: {}\n- 非空白字符数: {}\n- 总字符数: {}\n- 段落数: {}\n- 行数: {}\n\n请在判断是否达到字数要求时，优先依据以上统计，不要依据 token 估算。\n\n",
+        "【写作统计（系统自动计算）】\n- 中文字数（汉字）: {}\n- 英文词数: {}\n- 标点总数: {}\n- 中文标点: {}\n- 英文标点: {}\n- 非空白字符数: {}\n- 总字符数: {}\n- 句子数: {}\n- 段落数: {}\n- 行数: {}\n\n请在判断是否达到字数要求时，优先依据以上统计，不要依据 token 估算。\n\n",
         stats.han_chars,
         stats.english_words,
         stats.punctuation_total,
@@ -165,6 +196,7 @@ pub fn build_stats_prompt_block(stats: &EssayTextStats) -> String {
         stats.en_punctuation,
         stats.non_whitespace_chars,
         stats.total_chars,
+        stats.sentence_count,
         stats.paragraph_count,
         stats.line_count
     )
@@ -252,5 +284,35 @@ mod tests {
         let text = "唯一段落\n\n\n";
         let stats = calculate_text_stats(text);
         assert_eq!(stats.paragraph_count, 1);
+    }
+
+    /// 中英混排句子计数：句末标点连用只计一句，文末无标点兜底计一句
+    #[test]
+    fn sentence_count_handles_mixed_zh_en() {
+        let text = "今天天气很好。我们去公园玩！！This is great. 最后一句没有标点";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.sentence_count, 4);
+    }
+
+    /// 小数点不计为句号；省略号连用只计一句
+    #[test]
+    fn sentence_count_ignores_decimal_points_and_collapses_ellipsis() {
+        let text = "圆周率约为3.14，很神奇……真的很神奇。";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.sentence_count, 2);
+    }
+
+    /// 换行视为句子边界；句末标点后的收尾引号不会多计一句
+    #[test]
+    fn sentence_count_newline_boundary_and_closing_quotes() {
+        let text = "他说：「走吧。」\n第二行没有句号";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.sentence_count, 2);
+    }
+
+    #[test]
+    fn sentence_count_empty_text_is_zero() {
+        let stats = calculate_text_stats("");
+        assert_eq!(stats.sentence_count, 0);
     }
 }

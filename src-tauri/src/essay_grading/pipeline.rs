@@ -11,11 +11,20 @@
 /// - <score>/<dim> 属性顺序无关解析；clamp 后 max_score 与模式配置对齐
 /// - 等级改为返回代码（excellent/good/pass/fail）；批改温度默认 0.3
 /// - 多模态图片数量/体积上限校验
+///
+/// ★ 2026-07 二期加固：
+/// - 阶段化进度事件（progress: preparing/annotating/polishing/model_essay/scoring/saving）
+/// - HTTP 错误分类（auth/rate_limit/content_filter/server/timeout/network）附加到 error 事件
+/// - 初始请求指数退避重试（仅限未流出任何内容的可重试错误）
+/// - 流式空闲超时（防服务端挂起导致永久悬挂）
+/// - 同一 stream_session_id 并发互斥（防重复批改互相污染事件流）
+/// - 求和制模式下 total 与维度分之和的一致性校正
 use base64::Engine;
 use futures_util::StreamExt;
 use regex::Regex;
 use serde_json::json;
-use std::sync::{Arc, OnceLock};
+use std::collections::HashSet;
+use std::sync::{Arc, LazyLock, Mutex as StdMutex, OnceLock};
 
 /// ★ PP-1: 作文输入最大字符数（与前端保持一致）
 const MAX_INPUT_CHARS: usize = 50000;
@@ -35,6 +44,46 @@ const MAX_IMAGES_PER_KIND: usize = 6;
 const MAX_IMAGE_DECODED_BYTES: usize = 10 * 1024 * 1024;
 /// 两类图片解码后合计最大字节数（40MB）
 const MAX_TOTAL_IMAGE_DECODED_BYTES: usize = 40 * 1024 * 1024;
+
+/// 流式响应空闲超时（秒）：距上一个数据块超过该时长判定为服务端/网络挂起。
+/// 略小于前端 useEssayGradingStream 的 120s 滑动超时，保证后端先给出明确错误。
+const STREAM_IDLE_TIMEOUT_SECS: u64 = 90;
+/// 初始请求最大尝试次数（含首次；仅在未流出任何内容且错误可重试时退避重试）
+const MAX_REQUEST_ATTEMPTS: u32 = 3;
+/// 重试基础退避（毫秒），按尝试次数指数增长
+const RETRY_BASE_BACKOFF_MS: u64 = 800;
+/// 单次退避上限（毫秒）
+const RETRY_MAX_BACKOFF_MS: u64 = 8_000;
+
+/// 当前活跃的批改流会话（并发互斥；跨窗口/跨调用方全局生效）
+static ACTIVE_STREAM_SESSIONS: LazyLock<StdMutex<HashSet<String>>> =
+    LazyLock::new(|| StdMutex::new(HashSet::new()));
+
+/// 流会话占用守卫：acquire 成功后独占该 stream_session_id，Drop 时释放。
+/// 仅在 Drop/acquire 内短暂持锁，绝不跨 await 持有。
+struct StreamSessionGuard(String);
+
+impl StreamSessionGuard {
+    fn acquire(stream_session_id: &str) -> Option<Self> {
+        let mut active = ACTIVE_STREAM_SESSIONS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if active.insert(stream_session_id.to_string()) {
+            Some(Self(stream_session_id.to_string()))
+        } else {
+            None
+        }
+    }
+}
+
+impl Drop for StreamSessionGuard {
+    fn drop(&mut self) {
+        let mut active = ACTIVE_STREAM_SESSIONS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        active.remove(&self.0);
+    }
+}
 
 use crate::llm_manager::{build_provider_adapter, ApiConfig, LLMManager};
 use crate::models::AppError;
@@ -68,6 +117,153 @@ enum StreamStatus {
     Incomplete,
 }
 
+/// 批改阶段（progress 事件的 stage 代码，只允许前进）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum GradingStage {
+    Preparing,
+    Annotating,
+    Polishing,
+    ModelEssay,
+    Scoring,
+    Saving,
+}
+
+impl GradingStage {
+    fn code(self) -> &'static str {
+        match self {
+            GradingStage::Preparing => "preparing",
+            GradingStage::Annotating => "annotating",
+            GradingStage::Polishing => "polishing",
+            GradingStage::ModelEssay => "model_essay",
+            GradingStage::Scoring => "scoring",
+            GradingStage::Saving => "saving",
+        }
+    }
+}
+
+/// 阶段探测器：根据流式输出中的结构标记推进阶段。
+/// 保留上一块尾部若干字符做拼接窗口，处理标记跨 chunk 边界的情况。
+struct StageTracker {
+    current: GradingStage,
+    tail: String,
+}
+
+impl StageTracker {
+    /// 拼接窗口保留的尾部字符数（须覆盖最长探测标记 `<section-model-essay>`）
+    const TAIL_KEEP_CHARS: usize = 24;
+
+    fn new() -> Self {
+        Self {
+            current: GradingStage::Preparing,
+            tail: String::new(),
+        }
+    }
+
+    fn bump(&mut self, stage: GradingStage, advanced: &mut Vec<GradingStage>) {
+        if self.current < stage {
+            self.current = stage;
+            advanced.push(stage);
+        }
+    }
+
+    /// 消费一个新 chunk，返回本次前进到的新阶段（按序，可能多个）
+    fn advance(&mut self, chunk: &str) -> Vec<GradingStage> {
+        let mut window = String::with_capacity(self.tail.len() + chunk.len());
+        window.push_str(&self.tail);
+        window.push_str(chunk);
+
+        let mut advanced = Vec::new();
+        if !chunk.trim().is_empty() {
+            self.bump(GradingStage::Annotating, &mut advanced);
+        }
+        if window.contains("<section-polish>") {
+            self.bump(GradingStage::Polishing, &mut advanced);
+        }
+        if window.contains("<section-model-essay>") {
+            self.bump(GradingStage::ModelEssay, &mut advanced);
+        }
+        if window.contains("<score") {
+            self.bump(GradingStage::Scoring, &mut advanced);
+        }
+
+        // 按字符边界安全截取窗口尾部
+        let window_chars = window.chars().count();
+        if window_chars > Self::TAIL_KEEP_CHARS {
+            self.tail = window
+                .chars()
+                .skip(window_chars - Self::TAIL_KEEP_CHARS)
+                .collect();
+        } else {
+            self.tail = window;
+        }
+        advanced
+    }
+}
+
+/// 从 AppError 的 details 中读取 retryable 标记（分类错误专用）
+fn error_is_retryable(error: &AppError) -> bool {
+    error
+        .details
+        .as_ref()
+        .and_then(|d| d.get("retryable"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// 分类 HTTP 非 2xx 响应为结构化错误
+///
+/// 消息保持历史前缀「批改 API 返回错误 {status}: ...」（前端正则依赖状态码文本），
+/// details 附加 category/retryable 供前端与 error 事件消费。
+fn classify_llm_http_error(status: reqwest::StatusCode, body: &str) -> AppError {
+    let lower = body.to_lowercase();
+    let is_content_filter = lower.contains("content_filter")
+        || lower.contains("content filter")
+        || lower.contains("content management policy")
+        || lower.contains("content policy")
+        || lower.contains("data_inspection_failed")
+        || body.contains("敏感内容")
+        || body.contains("内容安全");
+    let (category, retryable) = match status.as_u16() {
+        401 | 403 => ("auth", false),
+        408 => ("timeout", true),
+        429 => ("rate_limit", true),
+        400 | 422 if is_content_filter => ("content_filter", false),
+        500..=599 => ("server", true),
+        _ if is_content_filter => ("content_filter", false),
+        _ => ("api", false),
+    };
+    // 截断响应体，字符边界安全
+    let body_snippet: String = body.chars().take(600).collect();
+    AppError::with_details(
+        crate::models::AppErrorType::LLM,
+        format!("批改 API 返回错误 {}: {}", status, body_snippet),
+        json!({
+            "code": "ESSAY_LLM_HTTP_ERROR",
+            "category": category,
+            "http_status": status.as_u16(),
+            "retryable": retryable,
+        }),
+    )
+}
+
+/// 分类 reqwest 发送阶段错误（连接失败/超时等，均可重试）
+fn classify_llm_send_error(error: reqwest::Error) -> AppError {
+    let category = if error.is_timeout() {
+        "timeout"
+    } else {
+        "network"
+    };
+    AppError::with_details(
+        crate::models::AppErrorType::Network,
+        format!("批改请求失败: {}", error.without_url()),
+        json!({
+            "code": "ESSAY_LLM_REQUEST_FAILED",
+            "category": category,
+            "retryable": true,
+        }),
+    )
+}
+
 /// 运行批改管线
 ///
 /// 契约（chat_v2 executor 依赖）：Ok(None)=取消、Ok(Some)=完成、Err=失败。
@@ -78,6 +274,31 @@ pub async fn run_grading(
     deps: GradingDeps,
 ) -> Result<Option<GradingResponse>, AppError> {
     let stream_session_id = request.stream_session_id.clone();
+    if stream_session_id.trim().is_empty() {
+        let error = AppError::validation("stream_session_id 不能为空");
+        deps.emitter
+            .emit_error(&stream_session_id, error.to_string(), None);
+        return Err(error);
+    }
+
+    // 并发互斥：同一 stream_session_id 只允许一个批改在跑。
+    // 注意：重复调用只 reject invoke，不发 error 事件——事件通道归活跃批改所有，
+    // 向其发送 error 会误杀正在进行的那次批改的前端状态。
+    let _session_guard = match StreamSessionGuard::acquire(&stream_session_id) {
+        Some(guard) => guard,
+        None => {
+            return Err(AppError::with_details(
+                crate::models::AppErrorType::Validation,
+                format!("该批改流会话已在进行中: {}", stream_session_id),
+                json!({
+                    "code": "ESSAY_STREAM_ALREADY_ACTIVE",
+                    "stream_session_id": stream_session_id,
+                    "retryable": false,
+                }),
+            ));
+        }
+    };
+
     // 已流出的字符数：失败时附加到 error 事件，便于前端提示存在部分结果
     let partial_chars = std::sync::atomic::AtomicUsize::new(0);
 
@@ -85,8 +306,12 @@ pub async fn run_grading(
 
     if let Err(ref error) = result {
         let chars = partial_chars.load(std::sync::atomic::Ordering::Relaxed);
-        deps.emitter
-            .emit_error(&stream_session_id, error.to_string(), (chars > 0).then_some(chars));
+        deps.emitter.emit_error_classified(
+            &stream_session_id,
+            error.to_string(),
+            (chars > 0).then_some(chars),
+            error.details.as_ref(),
+        );
     }
     result
 }
@@ -137,24 +362,35 @@ async fn run_grading_inner(
     let mut accumulated = String::new();
     let stream_event = format!("essay_grading_stream_{}", request.stream_session_id);
 
-    // 收集图片数据（作文原图 + 题目参考图片），剔除空白项避免发出空 data URL
-    let essay_images: Vec<String> = request
+    // 收集图片数据（作文原图 + 题目参考图片），剔除空白项避免发出空 data URL。
+    // 只借用引用，避免把可能数十 MB 的 base64 列表整体克隆一份。
+    let essay_images: Vec<&str> = request
         .image_base64_list
-        .clone()
+        .as_deref()
         .unwrap_or_default()
-        .into_iter()
+        .iter()
+        .map(String::as_str)
         .filter(|s| !s.trim().is_empty())
         .collect();
-    let topic_images: Vec<String> = request
+    let topic_images: Vec<&str> = request
         .topic_image_base64_list
-        .clone()
+        .as_deref()
         .unwrap_or_default()
-        .into_iter()
+        .iter()
+        .map(String::as_str)
         .filter(|s| !s.trim().is_empty())
         .collect();
     validate_image_payloads(&essay_images, &topic_images)?;
 
+    // 阶段进度：准备完成，即将发起 LLM 请求
+    deps.emitter.emit_progress(
+        &request.stream_session_id,
+        GradingStage::Preparing.code(),
+        0,
+    );
+
     let mut streamed_chars: usize = 0;
+    let mut stage_tracker = StageTracker::new();
     let stream_status = stream_grade(
         &config,
         &api_key,
@@ -169,6 +405,13 @@ async fn run_grading_inner(
             accumulated.push_str(&chunk);
             streamed_chars += chunk.chars().count();
             partial_chars.store(streamed_chars, std::sync::atomic::Ordering::Relaxed);
+            for stage in stage_tracker.advance(&chunk) {
+                deps.emitter.emit_progress(
+                    &request.stream_session_id,
+                    stage.code(),
+                    streamed_chars,
+                );
+            }
             deps.emitter
                 .emit_data(&request.stream_session_id, chunk, streamed_chars);
         },
@@ -194,10 +437,18 @@ async fn run_grading_inner(
                 "[EssayGrading] 流式响应未完成，丢弃不完整结果（已累积 {} 字符）",
                 streamed_chars
             );
-            return Err(AppError::llm(format!(
-                "批改流式响应异常中断，结果不完整（已生成 {} 字符）。请检查网络连接后重试。",
-                streamed_chars
-            )));
+            return Err(AppError::with_details(
+                crate::models::AppErrorType::LLM,
+                format!(
+                    "批改流式响应异常中断，结果不完整（已生成 {} 字符）。请检查网络连接后重试。",
+                    streamed_chars
+                ),
+                json!({
+                    "code": "ESSAY_STREAM_INCOMPLETE",
+                    "category": "network",
+                    "retryable": true,
+                }),
+            ));
         }
     }
 
@@ -209,6 +460,13 @@ async fn run_grading_inner(
         deps.emitter.emit_cancelled(&request.stream_session_id);
         return Ok(None);
     }
+
+    // 阶段进度：流式输出结束，开始解析与落库
+    deps.emitter.emit_progress(
+        &request.stream_session_id,
+        GradingStage::Saving.code(),
+        streamed_chars,
+    );
 
     // 5. 解析评分
     let parsed_score = parse_score_from_result(&accumulated, &grading_mode);
@@ -381,7 +639,9 @@ fn parse_score_from_result(result: &str, mode: &GradingMode) -> Option<ParsedSco
     let dim_regex = DIM_RE
         .get_or_init(|| Regex::new(r#"<dim\b([^>]*)>([^<]*)</dim>"#).expect("static dim regex"));
 
-    let score_match = score_regex.captures(result)?;
+    // 协议规定评分在回复最末尾且只有一个；若 LLM 违规输出多个 <score>，
+    // 取最后一个（末尾的才是最终评分，前面的多为示例/中间描述）
+    let score_match = score_regex.captures_iter(result).last()?;
     let score_attrs = score_match.get(1)?.as_str();
     let dims_content = score_match.get(2)?.as_str();
 
@@ -493,6 +753,32 @@ fn parse_score_from_result(result: &str, mode: &GradingMode) -> Option<ParsedSco
         });
     }
 
+    // ★ 求和制模式一致性校正：维度满分之和等于总分满分（非 band 制）、
+    // 且全部模式维度均成功解析时，若 LLM 给的 total 与维度分之和明显不符
+    // （算术错误常见），以逐维度得分之和为准，保证总评与逐项评分一致。
+    let dims_max_sum: f32 = mode.score_dimensions.iter().map(|d| d.max_score).sum();
+    let is_sum_mode = !mode.score_dimensions.is_empty() && (dims_max_sum - mode_max).abs() < 0.01;
+    let all_mode_dims_parsed = dimensions.len() == mode.score_dimensions.len()
+        && mode
+            .score_dimensions
+            .iter()
+            .all(|md| dimensions.iter().any(|d| d.name == md.name));
+    let total = if is_sum_mode && all_mode_dims_parsed {
+        let dim_sum: f32 = dimensions.iter().map(|d| d.score).sum();
+        if (dim_sum - total).abs() > 0.5 {
+            log::warn!(
+                "[EssayGrading] 求和制模式 total ({}) 与维度分之和 ({}) 不一致，以维度分之和为准",
+                total,
+                dim_sum
+            );
+            dim_sum.clamp(0.0, mode_max)
+        } else {
+            total
+        }
+    } else {
+        total
+    };
+
     // ★ M-8: 安全计算百分比（已确保 mode_max > 0）
     // ★ M-058: 使用模式配置的 max 计算百分比
     // 等级返回代码而非本地化文案（前端 GradeCode 同为这四个英文码，由组件层翻译）
@@ -593,7 +879,7 @@ fn image_limit_error(message: String, reason: &str, kind: &str) -> AppError {
 }
 
 /// 校验多模态图片的数量与体积上限，超限返回结构化 Validation 错误
-fn validate_image_payloads(essay_images: &[String], topic_images: &[String]) -> Result<(), AppError> {
+fn validate_image_payloads(essay_images: &[&str], topic_images: &[&str]) -> Result<(), AppError> {
     let mut total_bytes: usize = 0;
     for (kind, label, images) in [
         ("essay", "作文原图", essay_images),
@@ -810,6 +1096,8 @@ fn build_grading_prompts(
 /// 流式批改（核心逻辑）
 ///
 /// ★ 多模态支持：当 `is_multimodal` 为 true 且有图片时，构造图文混合消息
+/// ★ 初始请求失败（网络/限流/5xx）在未流出内容前指数退避重试；
+///   流建立后由空闲超时兜底，不再重试（避免向前端重复发送已发过的增量）。
 async fn stream_grade<F>(
     config: &ApiConfig,
     api_key: &str,
@@ -818,8 +1106,8 @@ async fn stream_grade<F>(
     stream_event: &str,
     llm: Arc<LLMManager>,
     is_multimodal: bool,
-    essay_images: &[String],
-    topic_images: &[String],
+    essay_images: &[&str],
+    topic_images: &[&str],
     mut on_chunk: F,
 ) -> Result<StreamStatus, AppError>
 where
@@ -929,18 +1217,6 @@ where
         // 选择适配器
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(config);
 
-        // 构造 HTTP 请求，并统一合并供应商自定义请求头 / Codex OAuth 凭据。
-        let mut preq = llm
-            .prepare_provider_request(
-                adapter.as_ref(),
-                config,
-                &request_body,
-                Some(api_key),
-                Some(stream_event),
-                "批改请求构建失败",
-            )
-            .await?;
-
         // 复用 LLMManager 配置好的 HTTP 客户端
         let client = llm.get_http_client();
 
@@ -948,41 +1224,93 @@ where
         llm.consume_pending_cancel(stream_event).await;
         let mut cancel_rx = llm.subscribe_cancel_stream(stream_event).await;
 
-        // 发送流式请求
-        let response = if preq.is_codex() {
-            llm.send_codex_stream_request_with_single_refresh(
-                &mut preq,
-                Some(std::time::Duration::from_secs(300)),
-            )
-            .await?
-        } else {
-            let mut header_map = reqwest::header::HeaderMap::new();
-            for (k, v) in &preq.headers {
-                if let (Ok(name), Ok(val)) = (
-                    reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                    reqwest::header::HeaderValue::from_str(v),
-                ) {
-                    header_map.insert(name, val);
+        // 发送流式请求：可重试错误（网络/超时/限流/5xx）在未流出内容前
+        // 按指数退避重试；退避期间保持对取消信号的响应。
+        let mut attempt: u32 = 0;
+        let response = loop {
+            attempt += 1;
+
+            let attempt_result: Result<reqwest::Response, AppError> = async {
+                // 每次尝试重新构建请求（Codex OAuth 凭据可能已刷新）
+                let mut preq = llm
+                    .prepare_provider_request(
+                        adapter.as_ref(),
+                        config,
+                        &request_body,
+                        Some(api_key),
+                        Some(stream_event),
+                        "批改请求构建失败",
+                    )
+                    .await?;
+
+                let response = if preq.is_codex() {
+                    llm.send_codex_stream_request_with_single_refresh(
+                        &mut preq,
+                        Some(std::time::Duration::from_secs(300)),
+                    )
+                    .await?
+                } else {
+                    let mut header_map = reqwest::header::HeaderMap::new();
+                    for (k, v) in &preq.headers {
+                        if let (Ok(name), Ok(val)) = (
+                            reqwest::header::HeaderName::from_bytes(k.as_bytes()),
+                            reqwest::header::HeaderValue::from_str(v),
+                        ) {
+                            header_map.insert(name, val);
+                        }
+                    }
+
+                    client
+                        .post(&preq.url)
+                        .headers(header_map)
+                        .json(&preq.body)
+                        .send()
+                        .await
+                        .map_err(classify_llm_send_error)?
+                };
+
+                if !response.status().is_success() {
+                    let status = response.status();
+                    let error_text = response.text().await.unwrap_or_default();
+                    return Err(classify_llm_http_error(status, &error_text));
                 }
+                Ok(response)
             }
+            .await;
 
-            client
-                .post(&preq.url)
-                .headers(header_map)
-                .json(&preq.body)
-                .send()
-                .await
-                .map_err(|e| AppError::llm(format!("批改请求失败: {}", e)))?
+            match attempt_result {
+                Ok(response) => break response,
+                Err(error) if attempt < MAX_REQUEST_ATTEMPTS && error_is_retryable(&error) => {
+                    let backoff_ms = (RETRY_BASE_BACKOFF_MS
+                        .saturating_mul(1u64 << (attempt - 1)))
+                    .min(RETRY_MAX_BACKOFF_MS);
+                    log::warn!(
+                        "[EssayGrading] 批改请求第 {} 次尝试失败（{}），{}ms 后重试: {}",
+                        attempt,
+                        error
+                            .details
+                            .as_ref()
+                            .and_then(|d| d.get("category"))
+                            .and_then(|c| c.as_str())
+                            .unwrap_or("unknown"),
+                        backoff_ms,
+                        error.message
+                    );
+                    tokio::select! {
+                        _ = tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)) => {}
+                        changed = cancel_rx.changed() => {
+                            if changed.is_ok() && *cancel_rx.borrow() {
+                                return Ok(StreamStatus::Cancelled);
+                            }
+                        }
+                    }
+                    if llm.consume_pending_cancel(stream_event).await {
+                        return Ok(StreamStatus::Cancelled);
+                    }
+                }
+                Err(error) => return Err(error),
+            }
         };
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::llm(format!(
-                "批改 API 返回错误 {}: {}",
-                status, error_text
-            )));
-        }
 
         // 解析 SSE 流
         let mut stream = response.bytes_stream();
@@ -1003,6 +1331,9 @@ where
             false
         };
 
+        // 空闲超时：距上一次收到数据超过阈值判定为挂起。sleep 在每轮 select
+        // 重新创建，任一分支被唤醒（数据/取消信号）都会重置计时。
+        let idle_timeout = std::time::Duration::from_secs(STREAM_IDLE_TIMEOUT_SECS);
         while !stream_ended && !cancelled {
             if llm.consume_pending_cancel(stream_event).await {
                 cancelled = true;
@@ -1018,7 +1349,15 @@ where
                 chunk_result = stream.next() => {
                     match chunk_result {
                         Some(chunk) => {
-                            let bytes = chunk.map_err(|e| AppError::llm(format!("读取流失败: {}", e)))?;
+                            let bytes = chunk.map_err(|e| AppError::with_details(
+                                crate::models::AppErrorType::Network,
+                                format!("读取流失败: {}", e.without_url()),
+                                json!({
+                                    "code": "ESSAY_STREAM_READ_FAILED",
+                                    "category": "network",
+                                    "retryable": true,
+                                }),
+                            ))?;
                             for block in sse_buffer.process_bytes(&bytes) {
                                 if handle_sse_block(&block) {
                                     stream_ended = true;
@@ -1030,6 +1369,24 @@ where
                             break;
                         }
                     }
+                }
+                _ = tokio::time::sleep(idle_timeout) => {
+                    log::warn!(
+                        "[EssayGrading] 流式响应空闲超过 {} 秒，判定为挂起并中断",
+                        STREAM_IDLE_TIMEOUT_SECS
+                    );
+                    return Err(AppError::with_details(
+                        crate::models::AppErrorType::Network,
+                        format!(
+                            "批改流式响应超过 {} 秒无数据，已中断。请检查网络连接后重试。",
+                            STREAM_IDLE_TIMEOUT_SECS
+                        ),
+                        json!({
+                            "code": "ESSAY_STREAM_IDLE_TIMEOUT",
+                            "category": "timeout",
+                            "retryable": true,
+                        }),
+                    ));
                 }
             }
         }
@@ -1295,7 +1652,12 @@ mod tests {
     fn grade_code_thresholds() {
         let mode = get_default_grading_mode();
         let max = mode.total_max_score;
-        for (total, expected) in [(90.0, "excellent"), (75.0, "good"), (60.0, "pass"), (59.9, "fail")] {
+        for (total, expected) in [
+            (90.0, "excellent"),
+            (75.0, "good"),
+            (60.0, "pass"),
+            (59.9, "fail"),
+        ] {
             let result = format!(r#"<score total="{total}" max="{max}"></score>"#);
             let parsed = parse_score_from_result(&result, &mode).expect("应解析成功");
             assert_eq!(parsed.grade, expected, "total={total}");
@@ -1315,27 +1677,154 @@ mod tests {
     #[test]
     fn image_validation_enforces_limits() {
         // 数量超限
-        let too_many: Vec<String> = (0..MAX_IMAGES_PER_KIND + 1).map(|_| "aGVsbG8=".to_string()).collect();
+        let too_many: Vec<&str> = (0..MAX_IMAGES_PER_KIND + 1).map(|_| "aGVsbG8=").collect();
         let err = validate_image_payloads(&too_many, &[]).expect_err("数量超限应报错");
         assert_eq!(
-            err.details.as_ref().and_then(|d| d.get("code")).and_then(|c| c.as_str()),
+            err.details
+                .as_ref()
+                .and_then(|d| d.get("code"))
+                .and_then(|c| c.as_str()),
             Some("ESSAY_IMAGE_LIMIT_EXCEEDED")
         );
         assert_eq!(
-            err.details.as_ref().and_then(|d| d.get("reason")).and_then(|r| r.as_str()),
+            err.details
+                .as_ref()
+                .and_then(|d| d.get("reason"))
+                .and_then(|r| r.as_str()),
             Some("count")
         );
 
         // 单张体积超限（构造超过 10MB 解码体积的 base64 长度，不实际解码）
         let oversized = "A".repeat((MAX_IMAGE_DECODED_BYTES / 3 + 1) * 4);
-        let err = validate_image_payloads(&[oversized], &[]).expect_err("单张体积超限应报错");
+        let err =
+            validate_image_payloads(&[oversized.as_str()], &[]).expect_err("单张体积超限应报错");
         assert_eq!(
-            err.details.as_ref().and_then(|d| d.get("reason")).and_then(|r| r.as_str()),
+            err.details
+                .as_ref()
+                .and_then(|d| d.get("reason"))
+                .and_then(|r| r.as_str()),
             Some("single_size")
         );
 
         // 合法输入通过
-        assert!(validate_image_payloads(&["aGVsbG8=".to_string()], &["d29ybGQ=".to_string()]).is_ok());
+        assert!(validate_image_payloads(&["aGVsbG8="], &["d29ybGQ="]).is_ok());
+    }
+
+    // ★ 阶段探测器：标记跨 chunk 边界也能识别，阶段只前进不回退
+    #[test]
+    fn stage_tracker_advances_across_chunk_boundaries() {
+        let mut tracker = StageTracker::new();
+        // 首个非空 chunk → annotating
+        let stages = tracker.advance("学生原文批注中……");
+        assert_eq!(stages, vec![GradingStage::Annotating]);
+        // 标记被拆到两个 chunk
+        let stages = tracker.advance("接下来是<section-po");
+        assert!(stages.is_empty());
+        let stages = tracker.advance("lish>润色内容");
+        assert_eq!(stages, vec![GradingStage::Polishing]);
+        // score 标签
+        let stages = tracker.advance("</section-polish>\n<sco");
+        assert!(stages.is_empty());
+        let stages = tracker.advance(r#"re total="90" max="100">"#);
+        assert_eq!(stages, vec![GradingStage::Scoring]);
+        // 已到 Scoring，再次出现更早的标记不回退不重发
+        let stages = tracker.advance("<section-polish>");
+        assert!(stages.is_empty());
+    }
+
+    // ★ HTTP 错误分类：鉴权/限流/服务端/内容过滤
+    #[test]
+    fn http_error_classification_covers_categories() {
+        let cases = [
+            (401, "unauthorized", "auth", false),
+            (403, "forbidden", "auth", false),
+            (429, "too many requests", "rate_limit", true),
+            (500, "internal error", "server", true),
+            (
+                400,
+                r#"{"error":{"code":"content_filter","message":"filtered"}}"#,
+                "content_filter",
+                false,
+            ),
+            (400, "bad request", "api", false),
+        ];
+        for (status, body, expected_category, expected_retryable) in cases {
+            let error = classify_llm_http_error(
+                reqwest::StatusCode::from_u16(status).expect("valid status"),
+                body,
+            );
+            let details = error.details.as_ref().expect("details present");
+            assert_eq!(
+                details["category"].as_str(),
+                Some(expected_category),
+                "status={status}"
+            );
+            assert_eq!(
+                details["retryable"].as_bool(),
+                Some(expected_retryable),
+                "status={status}"
+            );
+            assert_eq!(error_is_retryable(&error), expected_retryable);
+            assert!(error.message.contains(&status.to_string()));
+        }
+    }
+
+    // ★ 多个 <score> 标签时取最后一个（末尾才是最终评分）
+    #[test]
+    fn parse_score_prefers_last_score_tag() {
+        let mode = get_default_grading_mode();
+        let max = mode.total_max_score;
+        let result = format!(
+            r#"违规示例 <score total="10" max="{max}"></score> 中间内容
+最终评分：<score total="88" max="{max}"></score>"#
+        );
+        let parsed = parse_score_from_result(&result, &mode).expect("应解析成功");
+        assert_eq!(parsed.total, 88.0);
+    }
+
+    // ★ 求和制模式：total 与维度分之和不一致时以维度分之和为准
+    #[test]
+    fn parse_score_corrects_total_to_dimension_sum() {
+        let mode = get_default_grading_mode(); // practice: 40+30+30 求和制
+        let max = mode.total_max_score;
+        let result = format!(
+            r#"<score total="95" max="{max}">
+<dim name="创意与表达" score="30" max="40">a</dim>
+<dim name="内容完整" score="25" max="30">b</dim>
+<dim name="语言规范" score="25" max="30">c</dim>
+</score>"#
+        );
+        let parsed = parse_score_from_result(&result, &mode).expect("应解析成功");
+        assert_eq!(parsed.total, 80.0);
+        // 一致时不改动
+        let result = format!(
+            r#"<score total="80" max="{max}">
+<dim name="创意与表达" score="30" max="40">a</dim>
+<dim name="内容完整" score="25" max="30">b</dim>
+<dim name="语言规范" score="25" max="30">c</dim>
+</score>"#
+        );
+        let parsed = parse_score_from_result(&result, &mode).expect("应解析成功");
+        assert_eq!(parsed.total, 80.0);
+        // 维度不全时不校正（无法判断缺失维度得分）
+        let result = format!(
+            r#"<score total="70" max="{max}">
+<dim name="创意与表达" score="30" max="40">a</dim>
+</score>"#
+        );
+        let parsed = parse_score_from_result(&result, &mode).expect("应解析成功");
+        assert_eq!(parsed.total, 70.0);
+    }
+
+    // ★ 并发守卫：同一 stream_session_id 二次占用失败，释放后可再占用
+    #[test]
+    fn stream_session_guard_is_exclusive_and_releases_on_drop() {
+        let id = format!("guard_test_{}", uuid::Uuid::new_v4().simple());
+        let first = StreamSessionGuard::acquire(&id);
+        assert!(first.is_some());
+        assert!(StreamSessionGuard::acquire(&id).is_none());
+        drop(first);
+        assert!(StreamSessionGuard::acquire(&id).is_some());
     }
 
     #[test]
@@ -1343,6 +1832,9 @@ mod tests {
         // "aGVsbG8=" 解码为 "hello"（5 字节）；估算 8*3/4=6，量级正确即可
         let plain = estimated_decoded_len("aGVsbG8=");
         assert!((5..=6).contains(&plain));
-        assert_eq!(estimated_decoded_len("data:image/png;base64,aGVsbG8="), plain);
+        assert_eq!(
+            estimated_decoded_len("data:image/png;base64,aGVsbG8="),
+            plain
+        );
     }
 }

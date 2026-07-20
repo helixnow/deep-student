@@ -1,7 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Check, Copy } from '@phosphor-icons/react';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { PulseDot } from '@/components/ui/PulseDot';
+import { NotionButton } from '@/components/ui/NotionButton';
+import { IconSwap } from '@/components/ui/IconSwap';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { cn } from '@/utils/cn';
 
 interface ComparisonViewProps {
@@ -99,7 +103,23 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
   isTranslating,
 }) => {
   const { t } = useTranslation(['translation']);
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+  }, []);
+
+  const handleCopySegment = useCallback(async (index: number, text: string) => {
+    try {
+      await copyTextToClipboard(text);
+      setCopiedIndex(index);
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopiedIndex(null), 2000);
+    } catch (error: unknown) {
+      console.error('[ComparisonView] Copy segment failed:', error);
+    }
+  }, []);
 
   const srcName = t(`translation:languages.${srcLang}`, { defaultValue: srcLang });
   const tgtName = t(`translation:languages.${tgtLang}`, { defaultValue: tgtLang });
@@ -148,34 +168,19 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
           </div>
         )}
 
-        {/* 逐段对照 */}
+        {/* 逐段对照：hover 联动高亮走纯 CSS（group），长文档 hover 不触发整表重渲染 */}
         {pairs.map((pair, index) => (
           <div
             key={index}
-            onMouseEnter={() => setHoverIndex(index)}
-            onMouseLeave={() => setHoverIndex((prev) => (prev === index ? null : prev))}
-            className={cn(
-              'flex gap-4 py-3 border-b border-border/40 last:border-b-0 rounded-md -mx-2 px-2 transition-colors duration-150',
-              hoverIndex === index && 'bg-[var(--interactive-hover)]'
-            )}
+            className="group relative flex gap-4 py-3 border-b border-border/40 last:border-b-0 rounded-md -mx-2 px-2 transition-colors duration-150 hover:bg-[var(--interactive-hover)]"
           >
             {/* 段落序号 */}
-            <div
-              className={cn(
-                'text-[10px] font-mono pt-0.5 w-5 shrink-0 text-right select-none transition-colors',
-                hoverIndex === index ? 'text-primary/70' : 'text-muted-foreground/30'
-              )}
-            >
+            <div className="text-[10px] font-mono pt-0.5 w-5 shrink-0 text-right select-none transition-colors text-muted-foreground/30 group-hover:text-primary/70">
               {index + 1}
             </div>
 
             {/* 原文段落 */}
-            <div
-              className={cn(
-                'flex-1 text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 transition-colors',
-                hoverIndex === index ? 'text-foreground' : 'text-foreground/90'
-              )}
-            >
+            <div className="flex-1 text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 transition-colors text-foreground/90 group-hover:text-foreground">
               {pair.src || (
                 <span className="text-muted-foreground/30 italic text-xs">—</span>
               )}
@@ -185,14 +190,9 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
             <div className="w-px bg-border/60 shrink-0 self-stretch" />
 
             {/* 译文段落 */}
-            <div
-              className={cn(
-                'flex-1 text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 transition-colors',
-                hoverIndex === index ? 'text-foreground' : 'text-foreground/90'
-              )}
-            >
+            <div className="flex-1 text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 transition-colors text-foreground/90 group-hover:text-foreground pr-6">
               {pair.tgt ? (
-                <span className={cn(isTranslating && index === pairs.length - 1 && '[animation:fade-in_0.3s_ease-out] motion-reduce:[animation:none]')}>
+                <span className={cn(isTranslating && index === pairs.length - 1 && 'ui-fade-in')}>
                   {pair.tgt}
                 </span>
               ) : isTranslating ? (
@@ -204,6 +204,33 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                 <span className="text-muted-foreground/30 italic text-xs">—</span>
               )}
             </div>
+
+            {/* 逐段复制（复制该段译文；hover / 键盘聚焦 / 触屏可见） */}
+            {pair.tgt && (
+              <NotionButton
+                variant="ghost"
+                size="icon"
+                onClick={() => void handleCopySegment(index, pair.tgt)}
+                aria-label={t('translation:comparison_ux.copy_segment')}
+                title={
+                  copiedIndex === index
+                    ? t('translation:popover.copied')
+                    : t('translation:comparison_ux.copy_segment')
+                }
+                className={cn(
+                  'absolute right-1 top-2.5 w-6 h-6 shrink-0 transition-opacity',
+                  copiedIndex === index
+                    ? 'opacity-100 text-success hover:text-success'
+                    : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-60 text-muted-foreground/60 hover:text-foreground',
+                )}
+              >
+                <IconSwap
+                  active={copiedIndex === index}
+                  a={<Copy size={13} aria-hidden="true" />}
+                  b={<Check size={13} aria-hidden="true" />}
+                />
+              </NotionButton>
+            )}
           </div>
         ))}
       </div>

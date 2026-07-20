@@ -33,7 +33,6 @@ import {
   type TranslationContentMeta,
 } from '../adapters/translationDstuAdapter';
 import { cn } from '@/lib/utils';
-import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -182,9 +181,7 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
     if (isStale()) return;
 
     if (!contentResult.ok) {
-      const errMsg = contentResult.error.toUserMessage();
-      setState({ status: 'error', message: errMsg });
-      showGlobalNotification('error', errMsg);
+      setState({ status: 'error', message: contentResult.error.toUserMessage() });
       return;
     }
     if (typeof contentResult.value !== 'string') {

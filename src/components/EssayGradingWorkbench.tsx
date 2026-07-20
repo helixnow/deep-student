@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef, useDeferredValue } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   EssayGradingAPI,
@@ -25,6 +25,7 @@ import { calculateEssayTextStats } from '@/essay-grading/textStats';
 
 // 子组件
 import { GradingMain } from './essay-grading/GradingMain';
+import { ESSAY_MAX_CHARS } from './essay-grading/InputPanel';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
 // GradingHistory 已移除 - 历史由 Learning Hub 管理
@@ -270,6 +271,15 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
   const isGrading = gradingStream.isGrading ?? false;
   const isPartialResult = gradingStream.isPartialResult ?? false;
 
+  // ★ 最新状态的同步镜像：供全局事件监听器/异步回调读取，
+  // 避免监听器闭包依赖 inputText/gradingResult/isGrading 导致每次击键都重建并重挂监听
+  const inputTextRef = useRef(inputText);
+  inputTextRef.current = inputText;
+  const gradingResultRef = useRef(gradingResult);
+  gradingResultRef.current = gradingResult;
+  const isGradingRef = useRef(isGrading);
+  isGradingRef.current = isGrading;
+
   // 当前轮次
   const currentRound = rounds[currentRoundIndex];
   const currentRoundNumber = currentRound?.round_number ?? (rounds.length + 1);
@@ -345,12 +355,13 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
   }, [loadModels]);
 
   // 加载持久化的批阅模式（仅在无 initialSession.modeId 时）
+  // ★ 修复：持久化值同样需要经 canonicalizeEssayModeId 归一（旧版本可能存过别名 ID）
   useEffect(() => {
     if (initialSession?.modeId) return;
     const loadMode = async () => {
       try {
         const saved = await TauriAPI.getSetting('essay_grading.mode_id');
-        if (saved) setModeIdRaw(saved);
+        if (saved) setModeIdRaw(canonicalizeEssayModeId(saved));
       } catch {}
     };
     loadMode();
@@ -545,6 +556,11 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
   const ocrVersionRef = useRef(0);
   // ★ 活跃图片 ID 集合（同步可读，用于 async 回调中判断图片是否已被删除）
   const activeImageIdsRef = useRef(new Set<string>());
+  // ★ 正在读取（尚未入列）的图片名额预约数：与 activeImageIdsRef 联合做同步上限判定，
+  // 修复连续快速拖拽两批图片时双双读到旧 uploadedImages.length 导致超限的竞态
+  const pendingImageReadsRef = useRef(0);
+  // ★ 图片批次代数：清空时自增，使清空前拖入、清空后才读完的批次被丢弃而非"复活"
+  const imageBatchGenerationRef = useRef(0);
   // ★ OCR 重试 setTimeout 句柄集合：卸载时统一清理，防止卸载后 setState 泄漏
   const ocrRetryTimersRef = useRef(new Set<ReturnType<typeof setTimeout>>());
 
@@ -568,14 +584,16 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
       file.name.toLowerCase().match(/\.(png|jpg|jpeg|webp)$/)
     );
 
-    // 限制总图片数（已有 + 新上传）
-    const remainingSlots = OCR_MAX_FILES - uploadedImages.length;
+    // 限制总图片数（已入列 + 读取中 + 新上传），基于同步可读的 ref 判定以避免并发拖拽竞态
+    const remainingSlots = OCR_MAX_FILES - activeImageIdsRef.current.size - pendingImageReadsRef.current;
     if (remainingSlots <= 0) {
       showGlobalNotification('warning', t('essay_grading:toast.max_images_reached', { max: OCR_MAX_FILES }));
       return;
     }
     const limitedFiles = imageFiles.slice(0, remainingSlots);
     if (limitedFiles.length === 0) return;
+    pendingImageReadsRef.current += limitedFiles.length;
+    const batchGeneration = imageBatchGenerationRef.current;
 
     // ── 阶段 1：立即读取 base64 并显示缩略图（ocrStatus=pending） ──
     const readPromises = limitedFiles.map(file =>
@@ -604,12 +622,19 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
     try {
       pendingImages = await Promise.all(readPromises);
     } catch {
+      pendingImageReadsRef.current -= limitedFiles.length;
       showGlobalNotification('error', t('essay_grading:toast.ocr_failed', { error: 'File read error' }));
       return;
     }
+    // 读取期间发生清空 → 丢弃本批次，避免已清空的图片"复活"
+    if (batchGeneration !== imageBatchGenerationRef.current) {
+      pendingImageReadsRef.current -= limitedFiles.length;
+      return;
+    }
 
-    // 立即添加到状态 → 缩略图即时可见
+    // 立即添加到状态 → 缩略图即时可见（预约名额同步转正）
     pendingImages.forEach(img => activeImageIdsRef.current.add(img.id));
+    pendingImageReadsRef.current -= limitedFiles.length;
     setUploadedImages(prev => [...prev, ...pendingImages]);
     showGlobalNotification('info', t('essay_grading:toast.ocr_processing'));
 
@@ -645,7 +670,16 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
             );
           });
           if (text.trim()) {
-            setInputText(prev => prev ? `${prev}\n\n${text}` : text);
+            // ★ 修复：OCR 回填同样受作文字符上限约束（此前仅手动输入路径限流）
+            const prevChars = Array.from(inputTextRef.current ?? '').length;
+            if (prevChars + Array.from(text).length + 2 > ESSAY_MAX_CHARS) {
+              showGlobalNotification('warning', t('essay_grading:char_limit.truncated', { max: ESSAY_MAX_CHARS.toLocaleString() }));
+            }
+            setInputText(prev => {
+              const merged = prev ? `${prev}\n\n${text}` : text;
+              const chars = Array.from(merged);
+              return chars.length > ESSAY_MAX_CHARS ? chars.slice(0, ESSAY_MAX_CHARS).join('') : merged;
+            });
           }
         })
         .catch((err: unknown) => {
@@ -707,7 +741,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
     };
 
     processNext();
-  }, [t, uploadedImages.length]);
+  }, [t]);
 
   // 删除单张上传图片
   const handleRemoveImage = useCallback((imageId: string) => {
@@ -967,6 +1001,11 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
     })();
   }, [retryGrading, currentSession?.id, initialSession?.id, finalizeCompletedGrading, t]);
 
+  // ★ handleGrade 的同步镜像：全局事件监听器经由 ref 调用最新实现，
+  // 监听器自身保持稳定引用，不随 inputText 等依赖每次击键重挂
+  const handleGradeRef = useRef(handleGrade);
+  handleGradeRef.current = handleGrade;
+
   // A6-29: Ctrl/Cmd+Enter 提交批改快捷键（对齐翻译工作台）
   // ★ 标签页保活：非活跃实例不注册，避免多个作文标签页同时响应同一按键
   const handleGradeShortcut = useCallback((e: Event) => {
@@ -974,11 +1013,11 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
     if ((ke.ctrlKey || ke.metaKey) && ke.key === 'Enter') {
       ke.preventDefault();
       ke.stopPropagation();
-      if (!isGrading) {
-        handleGrade();
+      if (!isGradingRef.current) {
+        handleGradeRef.current();
       }
     }
-  }, [isGrading, handleGrade]);
+  }, []);
 
   useEventRegistry(
     isActive === false
@@ -996,8 +1035,8 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
     } else if (isActive === false) {
       return;
     }
-    handleGrade();
-  }, [handleGrade, dstuMode.resourceId, isActive]);
+    handleGradeRef.current();
+  }, [dstuMode.resourceId, isActive]);
 
   useEventRegistry(
     [{ target: 'window', type: 'LEARNING_GRADE_ESSAY', listener: handleGradeEvent }],
@@ -1008,6 +1047,8 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
   // 当用户请求改进建议时，如果已有批改结果则显示提示，否则触发批改
   // 'LEARNING_ESSAY_SUGGESTIONS' — dispatched by CommandPalette to request improvement suggestions.
   // TODO: Migrate to a centralised event hook/registry (e.g. useAppEvent or EventBus).
+  // ★ 修复：改经 ref 读取最新正文/结果，监听器不再依赖 inputText/gradingResult，
+  // 避免每次击键都卸载并重挂全局监听
   useEffect(() => {
     const handleSuggestionsEvent = (evt: Event) => {
       const detail = (evt as CustomEvent<{ targetResourceId?: string }>).detail;
@@ -1017,19 +1058,19 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
         // ★ 广播事件仅活跃标签页响应，避免非活跃实例触发批改
         return;
       }
-      const currentText = inputText ?? '';
-      const hasResultForInput = Boolean(gradingResult) && lastGradedInputRef.current === currentText;
+      const currentText = inputTextRef.current ?? '';
+      const hasResultForInput = Boolean(gradingResultRef.current) && lastGradedInputRef.current === currentText;
       if (hasResultForInput) {
         showGlobalNotification('info', t('essay_grading:toast.suggestions_in_result'));
       } else {
-        handleGrade();
+        handleGradeRef.current();
       }
     };
     window.addEventListener('LEARNING_ESSAY_SUGGESTIONS', handleSuggestionsEvent);
     return () => {
       window.removeEventListener('LEARNING_ESSAY_SUGGESTIONS', handleSuggestionsEvent);
     };
-  }, [gradingResult, handleGrade, inputText, t, dstuMode.resourceId, isActive]);
+  }, [t, dstuMode.resourceId, isActive]);
 
 
   // 保存 Prompt
@@ -1117,8 +1158,9 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
       topicImages.length > 0;
     if (!hasContent) return; // 没有内容，无需清空
 
-    // 同步失活所有图片，在途 OCR 回调据此丢弃结果
+    // 同步失活所有图片，在途 OCR 回调据此丢弃结果；代数自增使读取中的批次一并作废
     activeImageIdsRef.current.clear();
+    imageBatchGenerationRef.current++;
     setInputText('');
     setUploadedImages([]);
     setTopicText('');
@@ -1151,7 +1193,9 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
   }, [isGrading, inputText, t]);
 
   // 字符统计（统一使用 Unicode 字符口径，避免 UTF-16 length 偏差）
-  const inputTextStats = useMemo(() => calculateEssayTextStats(inputText ?? ''), [inputText]);
+  // ★ 性能：统计基于 deferred 值计算——超长文本快速键入时统计滞后渲染，不阻塞输入本身
+  const deferredInputText = useDeferredValue(inputText);
+  const inputTextStats = useMemo(() => calculateEssayTextStats(deferredInputText ?? ''), [deferredInputText]);
   const inputCharCount = inputTextStats.totalChars;
   const resultCharCount = Array.from(gradingResult ?? '').length;
 

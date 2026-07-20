@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { PolishItem } from '@/essay-grading/streamingMarkerParser';
-import { ArrowRight, Sparkle, Copy, Check } from '@phosphor-icons/react';
+import { ArrowRight, Sparkle, Copy, Check, Eye, EyeSlash } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
@@ -119,6 +119,7 @@ function buildDiff(originalText: string, polishedText: string): RenderedDiff {
 export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, className }) => {
   const { t } = useTranslation(['essay_grading', 'common']);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [showDiff, setShowDiff] = useState(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
@@ -153,9 +154,25 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
 
   return (
     <div className={cn('space-y-4', className)}>
-      <div className="flex items-center gap-2 text-xs text-muted-foreground/60 px-1">
-        <Sparkle size={14} />
-        <span>{t('essay_grading:sections.polish_desc')}</span>
+      <div className="flex items-center gap-2 px-1">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground/60 min-w-0">
+          <Sparkle size={14} className="shrink-0" />
+          <span className="truncate">{t('essay_grading:sections.polish_desc')}</span>
+        </div>
+        <div className="flex-1" />
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          aria-pressed={showDiff}
+          onClick={() => setShowDiff((v) => !v)}
+          className={cn(
+            'h-6 px-1.5 gap-1 text-xs shrink-0 transition-colors duration-150 motion-reduce:transition-none',
+            showDiff ? 'text-primary hover:text-primary' : 'text-muted-foreground/50 hover:text-foreground'
+          )}
+        >
+          {showDiff ? <Eye size={12} /> : <EyeSlash size={12} />}
+          <span>{showDiff ? t('essay_grading:result_ui.polish_hide_diff') : t('essay_grading:result_ui.polish_show_diff')}</span>
+        </NotionButton>
       </div>
       {items.map((item, index) => {
         const diff = diffs[index];
@@ -169,7 +186,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
             <div className="px-4 py-3 border-b border-border/20">
               <div className="text-xs text-muted-foreground/50 mb-1">{t('essay_grading:sections.original')}</div>
               <div className="text-sm text-foreground/70 leading-relaxed whitespace-pre-wrap">
-                {diff.original}
+                {showDiff ? diff.original : item.original}
               </div>
             </div>
             {/* 润色句（新增部分绿色下划线） */}
@@ -197,7 +214,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
                 </NotionButton>
               </div>
               <div className="text-sm text-foreground/85 leading-relaxed font-medium whitespace-pre-wrap">
-                {diff.polished}
+                {showDiff ? diff.polished : item.polished}
               </div>
             </div>
           </div>

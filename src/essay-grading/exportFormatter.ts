@@ -10,17 +10,100 @@ function et(key: string, options?: Record<string, unknown>): string {
   return i18next.t(`essay_grading:export.${key}`, options as any) as string;
 }
 
-/** 取导出文案并剥离 Markdown 装饰（### 标题、**加粗**），供纯文本/HTML 导出复用同一批 i18n key */
-function etPlain(key: string, options?: Record<string, unknown>): string {
-  return et(key, options)
+/** 剥离文案中的 Markdown 装饰（### 标题、**加粗**），供纯文本/HTML 导出复用同一批 i18n key */
+function stripMarkdownDecoration(text: string): string {
+  return text
     .replace(/^#{1,6}\s*/, '')
     .replace(/\*\*([^*]+)\*\*/g, '$1');
+}
+
+/** 取导出文案并剥离 Markdown 装饰 */
+function etPlain(key: string, options?: Record<string, unknown>): string {
+  return stripMarkdownDecoration(et(key, options));
 }
 
 /** 错误类型本地化：essay_grading:markers.error.{type}，缺失翻译时回退原始代码 */
 function errorTypeLabel(type?: string): string {
   if (!type) return '';
   return i18next.t(`essay_grading:markers.error.${type}`, { defaultValue: type }) as string;
+}
+
+/** 等级本地化：essay_grading:score.grade.{code}，缺失翻译时回退大写代码 */
+function gradeLabel(grade: string): string {
+  return i18next.t(`essay_grading:score.grade.${grade}`, { defaultValue: grade.toUpperCase() }) as string;
+}
+
+/** 数据层专属导出文案（essay_grading:data_layer.export.*） */
+function edl(key: string): string {
+  return i18next.t(`essay_grading:data_layer.export.${key}`) as string;
+}
+
+/** Markdown 表格单元格转义：竖线与换行会破坏表格结构 */
+function escapeTableCell(text: string): string {
+  return text.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+}
+
+/** 标记类型的本地化标签（复用 markers.* 既有 key） */
+function markerTypeLabel(type: StreamingMarker['type']): string {
+  const keyMap: Partial<Record<StreamingMarker['type'], string>> = {
+    del: 'essay_grading:markers.delete',
+    ins: 'essay_grading:markers.insert',
+    replace: 'essay_grading:markers.replace',
+    note: 'essay_grading:markers.note',
+    good: 'essay_grading:markers.good',
+  };
+  const key = keyMap[type];
+  return key ? (i18next.t(key) as string) : '';
+}
+
+/** 逐句对照条目（del/replace/err/ins/note/good），空数组表示无可列条目 */
+interface CorrectionItem {
+  label: string;
+  body: string;
+}
+
+function collectCorrectionItems(markers: StreamingMarker[]): CorrectionItem[] {
+  const items: CorrectionItem[] = [];
+  const oneLine = (s: string) => s.replace(/\s*\n\s*/g, ' ').trim();
+  for (const marker of markers) {
+    switch (marker.type) {
+      case 'del':
+        items.push({
+          label: markerTypeLabel('del'),
+          body: `${oneLine(marker.content)}${marker.reason ? `（${oneLine(marker.reason)}）` : ''}`,
+        });
+        break;
+      case 'ins':
+        items.push({ label: markerTypeLabel('ins'), body: oneLine(marker.content) });
+        break;
+      case 'replace':
+        items.push({
+          label: markerTypeLabel('replace'),
+          body: `${oneLine(marker.oldText ?? '')} → ${oneLine(marker.newText ?? '')}${marker.reason ? `（${oneLine(marker.reason)}）` : ''}`,
+        });
+        break;
+      case 'err': {
+        const label = errorTypeLabel(marker.errorType) || markerTypeLabel('note');
+        items.push({
+          label,
+          body: `${oneLine(marker.content)}${marker.explanation ? ` — ${oneLine(marker.explanation)}` : ''}`,
+        });
+        break;
+      }
+      case 'note':
+        items.push({
+          label: markerTypeLabel('note'),
+          body: `${oneLine(marker.content)}${marker.comment ? ` — ${oneLine(marker.comment)}` : ''}`,
+        });
+        break;
+      case 'good':
+        items.push({ label: markerTypeLabel('good'), body: oneLine(marker.content) });
+        break;
+      default:
+        break;
+    }
+  }
+  return items.filter((item) => item.body.length > 0);
 }
 
 /** 导出选项 */
@@ -41,10 +124,6 @@ export function formatGradingResultForExport(
   originalInput: string,
   options?: ExportFormatOptions
 ): string {
-  // 复用现有的解析器逻辑获取结构化数据
-  // 第二个参数 true 表示认为流式已结束，处理所有剩余文本
-  const parsed = parseStreamingContent(rawContent, true);
-  
   let markdown = '';
 
   // 0. 原文部分（可选）
@@ -54,6 +133,15 @@ export function formatGradingResultForExport(
     markdown += '\n\n---\n\n';
   }
 
+  // 空结果兜底：无批改内容时输出占位说明，不产出空章节
+  if (!rawContent.trim()) {
+    return markdown + edl('empty_result') + '\n';
+  }
+
+  // 复用现有的解析器逻辑获取结构化数据
+  // 第二个参数 true 表示认为流式已结束，处理所有剩余文本
+  const parsed = parseStreamingContent(rawContent, true);
+
   // 1. 评分部分
   if (parsed.score) {
     markdown += formatScore(parsed.score);
@@ -62,17 +150,27 @@ export function formatGradingResultForExport(
 
   // 2. 批注详情部分（将行内标记转换为可读文本）
   markdown += et('grading_details') + '\n\n';
-  markdown += formatMarkersToMarkdown(parsed.markers);
+  markdown += formatMarkersToMarkdown(parsed.markers).trim() || edl('empty_result');
   markdown += '\n\n';
 
-  // 3. 润色部分
+  // 3. 逐句修改对照（del/replace/err 等结构化条目清单）
+  const corrections = collectCorrectionItems(parsed.markers);
+  if (corrections.length > 0) {
+    markdown += '---\n\n' + edl('corrections_title') + '\n\n';
+    markdown += corrections
+      .map((item, index) => `${index + 1}. **${item.label}**：${item.body}`)
+      .join('\n');
+    markdown += '\n\n';
+  }
+
+  // 4. 润色部分
   if (parsed.polishItems.length > 0) {
     markdown += '---\n\n' + et('polish_suggestions') + '\n\n';
     markdown += formatPolishItems(parsed.polishItems);
     markdown += '\n\n';
   }
 
-  // 4. 范文部分
+  // 5. 范文部分
   if (parsed.modelEssay) {
     markdown += '---\n\n' + et('model_essay') + '\n\n';
     markdown += parsed.modelEssay;
@@ -83,14 +181,14 @@ export function formatGradingResultForExport(
 }
 
 function formatScore(score: ParsedScore): string {
-  let md = et('score_title', { total: score.total, max: score.maxTotal, grade: score.grade.toUpperCase() }) + '\n\n';
+  let md = et('score_title', { total: score.total, max: score.maxTotal, grade: gradeLabel(score.grade) }) + '\n\n';
   
   if (score.dimensions.length > 0) {
     md += et('table_header') + '\n';
-    md += '| :--- | :--- | :--- | :--- |\n';
+    md += et('table_separator') + '\n';
     score.dimensions.forEach(dim => {
-      const comment = dim.comment ? dim.comment.replace(/\n/g, ' ') : '-';
-      md += `| ${dim.name} | ${dim.score} | ${dim.maxScore} | ${comment} |\n`;
+      const comment = dim.comment ? escapeTableCell(dim.comment) : '-';
+      md += `| ${escapeTableCell(dim.name)} | ${dim.score} | ${dim.maxScore} | ${comment} |\n`;
     });
   }
   
@@ -105,8 +203,8 @@ function formatMarkersToMarkdown(markers: StreamingMarker[]): string {
       
       case 'del': {
         // 删除：~~text~~
-        const delReason = marker.reason ? `^${et('delete_reason')}${marker.reason}` : '';
-        return `~~${marker.content}~~${delReason ? `(${delReason})` : ''}`;
+        const delReason = marker.reason ? ` (${et('delete_reason')}${marker.reason})` : '';
+        return `~~${marker.content}~~${delReason}`;
       }
 
       case 'ins':
@@ -116,7 +214,7 @@ function formatMarkersToMarkdown(markers: StreamingMarker[]): string {
       case 'replace': {
         // 替换：~~old~~ -> **new**
         const replaceReason = marker.reason ? ` (${marker.reason})` : '';
-        return `~~${marker.oldText}~~ → **${marker.newText}**${replaceReason}`;
+        return `~~${marker.oldText ?? ''}~~ → **${marker.newText ?? ''}**${replaceReason}`;
       }
 
       case 'err': {
@@ -130,7 +228,7 @@ function formatMarkersToMarkdown(markers: StreamingMarker[]): string {
       
       case 'note':
         // 批注：text (注: comment)
-        return `${marker.content} (📝 ${marker.comment})`;
+        return marker.comment ? `${marker.content} (📝 ${marker.comment})` : marker.content;
       
       case 'good':
         // 优秀：**text** (✨)
@@ -165,7 +263,6 @@ export function formatGradingResultAsPlainText(
   originalInput: string,
   options?: ExportFormatOptions
 ): string {
-  const parsed = parseStreamingContent(rawContent, true);
   const divider = '----------------------------------------';
   const sections: string[] = [];
 
@@ -173,11 +270,26 @@ export function formatGradingResultAsPlainText(
     sections.push(`${etPlain('original_text')}\n\n${originalInput.trim()}`);
   }
 
+  if (!rawContent.trim()) {
+    sections.push(edl('empty_result'));
+    return sections.join(`\n\n${divider}\n\n`) + '\n';
+  }
+
+  const parsed = parseStreamingContent(rawContent, true);
+
   if (parsed.score) {
     sections.push(formatScoreAsPlainText(parsed.score));
   }
 
-  sections.push(`${etPlain('grading_details')}\n\n${formatMarkersToPlainText(parsed.markers)}`);
+  sections.push(`${etPlain('grading_details')}\n\n${formatMarkersToPlainText(parsed.markers).trim() || edl('empty_result')}`);
+
+  const corrections = collectCorrectionItems(parsed.markers);
+  if (corrections.length > 0) {
+    const lines = corrections
+      .map((item, index) => `${index + 1}. [${item.label}] ${item.body}`)
+      .join('\n');
+    sections.push(`${stripMarkdownDecoration(edl('corrections_title'))}\n\n${lines}`);
+  }
 
   if (parsed.polishItems.length > 0) {
     const items = parsed.polishItems.map((item, index) =>
@@ -194,7 +306,7 @@ export function formatGradingResultAsPlainText(
 }
 
 function formatScoreAsPlainText(score: ParsedScore): string {
-  const lines = [etPlain('score_title', { total: score.total, max: score.maxTotal, grade: score.grade.toUpperCase() })];
+  const lines = [etPlain('score_title', { total: score.total, max: score.maxTotal, grade: gradeLabel(score.grade) })];
   score.dimensions.forEach(dim => {
     const comment = dim.comment ? ` — ${dim.comment.replace(/\n/g, ' ')}` : '';
     lines.push(`${dim.name}: ${dim.score}/${dim.maxScore}${comment}`);
@@ -271,13 +383,19 @@ export function formatGradingResultAsHtml(
   originalInput: string,
   options?: ExportFormatOptions
 ): string {
-  const parsed = parseStreamingContent(rawContent, true);
   const body: string[] = [];
 
   if (options?.includeOriginal && originalInput.trim()) {
     body.push(htmlHeading(etPlain('original_text')));
     body.push(`<p style="white-space:pre-wrap;">${escapeHtml(originalInput.trim())}</p>`);
   }
+
+  if (!rawContent.trim()) {
+    body.push(`<p style="color:#6b7280;">${escapeHtml(edl('empty_result'))}</p>`);
+    return wrapHtmlDocument(body);
+  }
+
+  const parsed = parseStreamingContent(rawContent, true);
 
   if (parsed.score) {
     body.push(formatScoreAsHtml(parsed.score));
@@ -296,6 +414,10 @@ export function formatGradingResultAsHtml(
     body.push(`<p style="white-space:pre-wrap;">${escapeHtml(parsed.modelEssay)}</p>`);
   }
 
+  return wrapHtmlDocument(body);
+}
+
+function wrapHtmlDocument(body: string[]): string {
   const title = escapeHtml(i18next.t('essay_grading:page_title') as string);
   return [
     '<!DOCTYPE html>',
@@ -314,7 +436,7 @@ function htmlHeading(text: string): string {
 
 function formatScoreAsHtml(score: ParsedScore): string {
   const parts: string[] = [];
-  parts.push(htmlHeading(etPlain('score_title', { total: score.total, max: score.maxTotal, grade: score.grade.toUpperCase() })));
+  parts.push(htmlHeading(etPlain('score_title', { total: score.total, max: score.maxTotal, grade: gradeLabel(score.grade) })));
 
   if (score.dimensions.length > 0) {
     // 复用 Markdown 表头 i18n key（"| 维度 | 得分 | 满分 | 评语 |"）拆出列名

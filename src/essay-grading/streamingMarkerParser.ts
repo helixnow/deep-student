@@ -81,6 +81,17 @@ function extractAttributeValue(attrs: string, attrName: string): string | undefi
 }
 
 /**
+ * 剥离嵌套在标记内容中的其他标记标签（保留内层文本）。
+ * LLM 违反"标记不嵌套"约定时，避免原始 XML 标签泄漏到 UI/导出文本。
+ */
+const NESTED_MARKER_TAG_REGEX = /<\/?(?:del|ins|note|good|err)\b[^>]*>|<replace\b[^>]*\/?>/gi;
+
+export function stripNestedMarkerTags(content: string): string {
+  if (!content || !content.includes('<')) return content;
+  return content.replace(NESTED_MARKER_TAG_REGEX, '');
+}
+
+/**
  * 流式解析结果
  */
 export interface StreamingParseResult {
@@ -142,6 +153,23 @@ function couldBeMarkerStart(fragment: string): boolean {
 const MAX_PENDING_LOOKBEHIND = 3000;
 
 /**
+ * 在 before 之前查找 tagName 的开始标签位置，要求标签名后是合法边界字符，
+ * 避免 `</err>` 误与正文中的 `<errata` 等同前缀词配对。
+ */
+function findPairedOpenTagBefore(lower: string, tagName: string, before: number): number {
+  const token = `<${tagName}`;
+  let searchFrom = before;
+  while (searchFrom >= 0) {
+    const pos = lower.lastIndexOf(token, searchFrom);
+    if (pos === -1) return -1;
+    const boundary = lower.charAt(pos + token.length);
+    if (boundary === '' || /[\s>/]/.test(boundary)) return pos;
+    searchFrom = pos - 1;
+  }
+  return -1;
+}
+
+/**
  * 检查文本末尾是否有不完整的标记，返回 pending 起始位置（-1 表示无）。
  *
  * 从尾部向前扫描 '<'：
@@ -184,7 +212,7 @@ function findIncompleteMarkerStart(text: string): number {
       // 完整的结束标签：跳到其配对的开始标签之前（协议无同名嵌套，取最近的同名开始标签）
       const closeNameMatch = head.match(/^<\/([a-zA-Z][a-zA-Z-]*)/);
       const tagName = closeNameMatch ? closeNameMatch[1].toLowerCase() : '';
-      const pairedOpen = tagName ? lower.lastIndexOf(`<${tagName}`, openPos) : -1;
+      const pairedOpen = tagName ? findPairedOpenTagBefore(lower, tagName, openPos) : -1;
       if (pairedOpen === -1) break; // 孤儿结束标签，此前内容视为已稳定
       searchEnd = pairedOpen;
       continue;
@@ -259,7 +287,7 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
       length: match[0].length,
       marker: {
         type: 'del',
-        content: match[2],
+        content: stripNestedMarkerTags(match[2]),
         reason: extractAttributeValue(match[1] || '', 'reason'),
         isComplete: true,
       },
@@ -274,7 +302,7 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
       length: match[0].length,
       marker: {
         type: 'ins',
-        content: match[1],
+        content: stripNestedMarkerTags(match[1]),
         isComplete: true,
       },
     });
@@ -320,7 +348,7 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
       length: match[0].length,
       marker: {
         type: 'note',
-        content: match[2],
+        content: stripNestedMarkerTags(match[2]),
         comment: extractAttributeValue(match[1] || '', 'text'),
         isComplete: true,
       },
@@ -335,7 +363,7 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
       length: match[0].length,
       marker: {
         type: 'good',
-        content: match[1],
+        content: stripNestedMarkerTags(match[1]),
         isComplete: true,
       },
     });
@@ -351,7 +379,7 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
       length: match[0].length,
       marker: {
         type: 'err',
-        content: match[2],
+        content: stripNestedMarkerTags(match[2]),
         errorType: (extractedType || 'grammar') as StreamingMarker['errorType'],
         explanation: extractAttributeValue(attrs, 'explanation'),
         isComplete: true,
@@ -387,6 +415,55 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
   // 剩余文本
   const remaining = text.slice(processedTo);
   
+  return { markers, remaining };
+}
+
+/**
+ * 确认区增量解析缓存。
+ *
+ * 流式过程中确认区（pending 之前的文本）只会向前增长且已消费的前缀不可变
+ * （未闭合的已知标签被 pending 屏蔽在确认区之外），因此可以缓存
+ * "已消费前缀 → 已解析标记"，每个 chunk 只对新增后缀跑正则，
+ * 避免全文 O(n²) 重扫。前缀不匹配（score/section 移除导致文本回缩、
+ * 切换会话等）时自动回退全量解析并重建缓存。
+ */
+interface ConfirmedParseCache {
+  consumedPrefix: string;
+  markers: StreamingMarker[];
+}
+
+let confirmedParseCache: ConfirmedParseCache | null = null;
+
+function parseConfirmedMarkers(
+  text: string,
+  allowIncremental: boolean
+): { markers: StreamingMarker[]; remaining: string } {
+  if (!allowIncremental) {
+    confirmedParseCache = null;
+    return parseCompleteMarkers(text);
+  }
+
+  const cache = confirmedParseCache;
+  if (cache && cache.consumedPrefix.length > 0 && text.startsWith(cache.consumedPrefix)) {
+    const suffix = text.slice(cache.consumedPrefix.length);
+    const { markers: suffixMarkers, remaining } = parseCompleteMarkers(suffix);
+    const consumed = suffix.length - remaining.length;
+    const merged = cache.markers.concat(suffixMarkers);
+    if (consumed > 0) {
+      confirmedParseCache = {
+        consumedPrefix: text.slice(0, cache.consumedPrefix.length + consumed),
+        markers: merged.slice(),
+      };
+    }
+    return { markers: merged, remaining };
+  }
+
+  const { markers, remaining } = parseCompleteMarkers(text);
+  const consumed = text.length - remaining.length;
+  confirmedParseCache = {
+    consumedPrefix: text.slice(0, consumed),
+    markers: markers.slice(),
+  };
   return { markers, remaining };
 }
 
@@ -491,21 +568,16 @@ function extractCodeBlocks(text: string): { cleanText: string; codeBlocks: Map<s
 }
 
 /**
- * 恢复代码块内容
+ * 恢复单段文本中的代码块占位符。
+ * 用函数形式替换，避免代码块内的 $&、$' 等被当作特殊替换模式。
  */
-function restoreCodeBlocks(markers: StreamingMarker[], codeBlocks: Map<string, string>): StreamingMarker[] {
-  if (codeBlocks.size === 0) return markers;
-  return markers.map(marker => {
-    if (marker.type === 'text' && marker.content) {
-      let content = marker.content;
-      for (const [placeholder, original] of codeBlocks) {
-        // 用函数形式替换，避免代码块内的 $&、$' 等被当作特殊替换模式
-        content = content.replace(placeholder, () => original);
-      }
-      return { ...marker, content };
-    }
-    return marker;
-  });
+function restorePlaceholdersInText(content: string, codeBlocks: Map<string, string>): string {
+  if (codeBlocks.size === 0 || !content.includes('__CODE_BLOCK_')) return content;
+  let restored = content;
+  for (const [placeholder, original] of codeBlocks) {
+    restored = restored.replace(placeholder, () => original);
+  }
+  return restored;
 }
 
 /**
@@ -531,6 +603,28 @@ function cleanMarkdownSyntax(text: string): string {
     .replace(/^[\t ]*[-*+]\s+/gm, '')
     // 移除有序列表标记 (1. item, 2. item)
     .replace(/^[\t ]*\d+\.\s+/gm, '');
+}
+
+/**
+ * 后处理单个标记：恢复代码块占位符（所有类型的 content），
+ * 并对普通文本清理 Markdown 语法。
+ * 以标记对象身份做 WeakMap 记忆化——增量解析缓存复用的旧标记
+ * 无需每个 chunk 重复跑正则（同一对象 ⇒ 同一源文本 ⇒ 同一结果）。
+ */
+const decoratedMarkerCache = new WeakMap<StreamingMarker, StreamingMarker>();
+
+function decorateMarker(marker: StreamingMarker, codeBlocks: Map<string, string>): StreamingMarker {
+  if (!marker.content) return marker;
+  const cached = decoratedMarkerCache.get(marker);
+  if (cached) return cached;
+
+  let content = restorePlaceholdersInText(marker.content, codeBlocks);
+  if (marker.type === 'text') {
+    content = cleanMarkdownSyntax(content);
+  }
+  const decorated = content === marker.content ? marker : { ...marker, content };
+  decoratedMarkerCache.set(marker, decorated);
+  return decorated;
 }
 
 // ============================================================================
@@ -569,8 +663,14 @@ function doParseStreamingContent(text: string, isComplete: boolean): StreamingPa
   // 2. 先尝试解析评分（只解析第一个，忽略代码块内的）
   const score = parseScoreFromText(cleanText);
   
-  // 3. 移除评分标签和 section 标签后处理剩余内容
-  const contentWithoutScore = removeSectionTags(removeScoreTag(cleanText));
+  // 3. 移除评分标签和 section 标签后处理剩余内容。
+  //    孤儿 </score> 直接清除；流已结束时未闭合的 <score 块（流被截断）
+  //    也整体剥离，避免原始标签泄漏进正文
+  let contentWithoutScore = removeSectionTags(removeScoreTag(cleanText))
+    .replace(/<\/score>/gi, '');
+  if (isComplete) {
+    contentWithoutScore = contentWithoutScore.replace(/<score\b[\s\S]*$/i, '').trimEnd();
+  }
   
   // 4. 查找不完整标记的起始位置
   const incompleteStart = isComplete ? -1 : findIncompleteMarkerStart(contentWithoutScore);
@@ -587,31 +687,24 @@ function doParseStreamingContent(text: string, isComplete: boolean): StreamingPa
     pendingText = contentWithoutScore.slice(incompleteStart);
   }
   
-  // 6. 解析确定部分的标记
-  const { markers, remaining } = parseCompleteMarkers(confirmedText);
+  // 6. 解析确定部分的标记（流式期间走增量缓存，完成态走确定性全量解析）
+  const { markers, remaining } = parseConfirmedMarkers(confirmedText, !isComplete);
   
-  // 7. 如果有剩余的确定文本，添加为普通文本（step 10 统一清理 Markdown）
+  // 7. 如果有剩余的确定文本，添加为普通文本（step 9 统一清理 Markdown）
   if (remaining) {
     markers.push({ type: 'text', content: remaining, isComplete: true });
   }
   
   // 8. 如果有待定文本，添加为 pending 类型
   if (pendingText) {
+    pendingText = restorePlaceholdersInText(pendingText, codeBlocks);
     markers.push({ type: 'pending', content: pendingText, isComplete: false });
   }
   
-  // 9. 恢复代码块内容（作为普通文本显示）
-  const finalMarkers = restoreCodeBlocks(markers, codeBlocks);
+  // 9. 恢复代码块占位符（所有标记的 content）并清理文本标记中的 Markdown 语法
+  const cleanedMarkers = markers.map(marker => decorateMarker(marker, codeBlocks));
   
-  // 10. 清理所有文本标记中的 Markdown 语法
-  const cleanedMarkers = finalMarkers.map(marker => {
-    if (marker.type === 'text' && marker.content) {
-      return { ...marker, content: cleanMarkdownSyntax(marker.content) };
-    }
-    return marker;
-  });
-  
-  // 11. 提取润色提升和参考范文 sections（使用 cleanText 以排除代码块内的误匹配）
+  // 10. 提取润色提升和参考范文 sections（使用 cleanText 以排除代码块内的误匹配）
   const polishItems = extractPolishItems(cleanText);
   const modelEssay = extractModelEssay(cleanText);
 

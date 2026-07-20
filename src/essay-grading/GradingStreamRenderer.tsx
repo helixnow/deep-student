@@ -12,7 +12,7 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StreamingMarkdownRenderer } from '../features/chat/components/renderers';
-import { StreamingAnnotatedText } from '../components/essay-grading/StreamingAnnotatedText';
+import { StreamingAnnotatedText, isSuggestionErr } from '../components/essay-grading/StreamingAnnotatedText';
 import { hasInlineMarkers, hasScoreMarker, parseStreamingContent, removeScoreTag, removeSectionTags } from './streamingMarkerParser';
 import { ScoreCard } from '../components/essay-grading/ScoreCard';
 import { SentenceDetailView } from '../components/essay-grading/SentenceDetailView';
@@ -155,8 +155,8 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
     let suggestions = 0;
     let highlights = 0;
     for (const m of parseResult.markers) {
-      if (m.type === 'del' || m.type === 'err') errors += 1;
-      else if (m.type === 'ins' || m.type === 'replace' || m.type === 'note') suggestions += 1;
+      if (m.type === 'del' || (m.type === 'err' && !isSuggestionErr(m))) errors += 1;
+      else if (m.type === 'ins' || m.type === 'replace' || m.type === 'note' || isSuggestionErr(m)) suggestions += 1;
       else if (m.type === 'good') highlights += 1;
     }
     return { all: errors + suggestions + highlights, errors, suggestions, highlights };
@@ -210,6 +210,16 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
     if (!isStreaming || !viewportEl || !stickToBottomRef.current) return;
     viewportEl.scrollTop = viewportEl.scrollHeight;
   }, [content, isStreaming, viewportEl, activeTab]);
+
+  // 非流式下切换分段时回到顶部，避免停留在超出新内容高度的滚动位置
+  // （仅响应 tab 实际变化，流式结束等其他依赖变化不重置滚动）
+  const prevTabRef = useRef(activeTab);
+  useEffect(() => {
+    const tabChanged = prevTabRef.current !== activeTab;
+    prevTabRef.current = activeTab;
+    if (!tabChanged || isStreaming || !viewportEl) return;
+    viewportEl.scrollTop = 0;
+  }, [activeTab, isStreaming, viewportEl]);
 
   return (
     <div className={`grading-stream-renderer flex flex-col h-full ${className || ''}`}>
@@ -290,19 +300,19 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
             <span className="text-muted-foreground">{t('essay_grading:legend.del_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="shrink-0 whitespace-nowrap text-emerald-500 underline">{t('essay_grading:legend.example')}</span>
+            <span className="shrink-0 whitespace-nowrap text-amber-600 dark:text-amber-400 underline decoration-amber-400/70">{t('essay_grading:legend.example')}</span>
             <span className="text-muted-foreground">{t('essay_grading:legend.ins_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="shrink-0 whitespace-nowrap"><span className="text-muted-foreground/70 line-through">{t('essay_grading:legend.example_old')}</span><span className="text-muted-foreground/50 mx-0.5">→</span><span className="text-primary">{t('essay_grading:legend.example_new')}</span></span>
+            <span className="shrink-0 whitespace-nowrap"><span className="text-muted-foreground/70 line-through">{t('essay_grading:legend.example_old')}</span><span className="text-muted-foreground/50 mx-0.5">→</span><span className="text-amber-600 dark:text-amber-400">{t('essay_grading:legend.example_new')}</span></span>
             <span className="text-muted-foreground">{t('essay_grading:legend.replace_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="shrink-0 whitespace-nowrap text-blue-500 border-b border-dashed border-blue-400">{t('essay_grading:legend.example')}</span>
+            <span className="shrink-0 whitespace-nowrap text-amber-600 dark:text-amber-400 border-b border-dashed border-amber-400/70">{t('essay_grading:legend.example')}</span>
             <span className="text-muted-foreground">{t('essay_grading:legend.note_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="shrink-0 whitespace-nowrap text-amber-600 dark:text-amber-300 bg-amber-100/60 dark:bg-amber-400/10 border-l-2 border-amber-400/80 pl-1 pr-0.5 rounded-r-sm">{t('essay_grading:legend.example')}</span>
+            <span className="shrink-0 whitespace-nowrap text-emerald-700 dark:text-emerald-300 bg-emerald-100/60 dark:bg-emerald-400/10 border-l-2 border-emerald-400/80 pl-1 pr-0.5 rounded-r-sm">{t('essay_grading:legend.example')}</span>
             <span className="text-muted-foreground">{t('essay_grading:legend.good_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
@@ -320,6 +330,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
           viewportRef={viewportRefCallback}
           hideTrackWhenIdle={true}
         >
+          <div key={activeTab} className="motion-safe:animate-chat-fade-in">
           {activeTab === 'overview' ? (
             shouldShowAnnotated ? (
               <StreamingAnnotatedText
@@ -367,6 +378,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
               <ModelEssayView essay={parseResult.modelEssay ?? ''} />
             )
           ) : null}
+          </div>
         </CustomScrollArea>
       ) : (
         <div className="flex-1 min-h-0 flex items-center justify-center text-muted-foreground/40 text-sm select-none px-5">

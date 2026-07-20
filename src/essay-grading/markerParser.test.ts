@@ -258,3 +258,207 @@ describe('essay marker parser', () => {
     expect(types).toEqual(['idiom_misuse', 'redundancy']);
   });
 });
+
+describe('nested marker tag stripping', () => {
+  it('strips raw nested tags from note content (offline parser)', () => {
+    const markers = parseMarkers('<note text="批注">外层<good>内层亮点</good>文本</note>');
+    const note = markers.find((m) => m.type === 'note');
+    expect(note?.content).toBe('外层内层亮点文本');
+    expect(note?.content).not.toContain('<good');
+  });
+
+  it('strips raw nested tags from marker content (streaming parser)', () => {
+    const parsed = parseStreamingContent(
+      '<err type="logic" explanation="e">前<ins>补充</ins>后</err>',
+      true
+    );
+    const err = parsed.markers.find((m) => m.type === 'err');
+    expect(err?.content).toBe('前补充后');
+    expect(err?.content).not.toContain('<ins');
+  });
+
+  it('strips self-closing replace tags nested inside del content', () => {
+    const parsed = parseStreamingContent(
+      '<del reason="r">冗词<replace old="a" new="b"/>结尾</del>',
+      true
+    );
+    const del = parsed.markers.find((m) => m.type === 'del');
+    expect(del?.content).toBe('冗词结尾');
+  });
+});
+
+describe('code block placeholder restoration', () => {
+  it('restores code blocks inside non-text marker content', () => {
+    const parsed = parseStreamingContent(
+      '前文<del reason="r">删除 ```js\nconst a = 1;\n``` 之后</del>尾部',
+      true
+    );
+    const del = parsed.markers.find((m) => m.type === 'del');
+    expect(del?.content).toContain('const a = 1;');
+    expect(del?.content).not.toContain('__CODE_BLOCK_');
+  });
+
+  it('restores code blocks inside pending text during streaming', () => {
+    const parsed = parseStreamingContent('<del>片段```py\nx = 2\n```未闭合', false);
+    expect(parsed.pendingText).toContain('x = 2');
+    expect(parsed.pendingText).not.toContain('__CODE_BLOCK_');
+    const pending = parsed.markers.find((m) => m.type === 'pending');
+    expect(pending?.content).toContain('x = 2');
+    expect(pending?.content).not.toContain('__CODE_BLOCK_');
+  });
+});
+
+describe('truncated stream finalization', () => {
+  it('strips an unclosed score block when the stream ends mid-score', () => {
+    const parsed = parseStreamingContent(
+      '正文<score total="8" max="10"><dim name="内容" score="4" max="5">好',
+      true
+    );
+    expect(parsed.score).toBeNull();
+    const joined = parsed.markers.map((m) => m.content).join('');
+    expect(joined).toBe('正文');
+    expect(joined).not.toContain('<score');
+  });
+
+  it('cleans orphan score close tags in both streaming and complete modes', () => {
+    for (const isComplete of [true, false]) {
+      const parsed = parseStreamingContent('正文</score>尾部', isComplete);
+      const joined = parsed.markers.map((m) => m.content).join('');
+      expect(joined).toContain('正文');
+      expect(joined).toContain('尾部');
+      expect(joined).not.toContain('</score>');
+    }
+  });
+});
+
+describe('incremental streaming parse', () => {
+  const fullText =
+    '开篇正文<good>亮点句子</good>过渡' +
+    '<err type="grammar" explanation="主谓不一致">病句内容</err>中段' +
+    '<replace old="旧词" new="新词" reason="搭配"/>后段' +
+    '<del reason="冗余">多余的词</del>' +
+    '<note text="结构紧凑">收束句</note>结尾文字';
+
+  const splitPoints = [3, 10, 18, 25, 40, 55, 70, 90, 110, 130];
+
+  function chunksOf(text: string): string[] {
+    const chunks: string[] = [];
+    let prev = 0;
+    for (const p of splitPoints) {
+      if (p >= text.length) break;
+      chunks.push(text.slice(prev, p));
+      prev = p;
+    }
+    chunks.push(text.slice(prev));
+    return chunks;
+  }
+
+  it('produces the same intermediate results as cold full re-parse at every chunk boundary', () => {
+    const chunks = chunksOf(fullText);
+
+    // 完成态解析会清空增量缓存，确保热路径从确定状态开始
+    parseStreamingContent('', true);
+
+    // 热路径：按 chunk 递进，增量缓存生效
+    let acc = '';
+    const warmResults = chunks.map((chunk) => {
+      acc += chunk;
+      return parseStreamingContent(acc, false);
+    });
+
+    // 冷路径：每个前缀前先用完成态解析清空增量缓存，再全量解析对比
+    let acc2 = '';
+    chunks.forEach((chunk, i) => {
+      acc2 += chunk;
+      parseStreamingContent('', true);
+      const cold = parseStreamingContent(acc2, false);
+      expect(warmResults[i].markers).toEqual(cold.markers);
+      expect(warmResults[i].pendingText).toBe(cold.pendingText);
+    });
+  });
+
+  it('reuses stable marker objects across streaming chunks (incremental cache engaged)', () => {
+    parseStreamingContent('', true);
+    const first = parseStreamingContent('<good>亮点</good>之后', false);
+    const second = parseStreamingContent('<good>亮点</good>之后继续<err type="a">x</err>', false);
+    const firstGood = first.markers.find((m) => m.type === 'good');
+    const secondGood = second.markers.find((m) => m.type === 'good');
+    expect(firstGood).toBeDefined();
+    expect(secondGood).toBe(firstGood);
+  });
+
+  it('final complete parse equals a one-shot complete parse after chunked streaming', () => {
+    parseStreamingContent('', true);
+    const oneShot = parseStreamingContent(fullText, true);
+    const expected = {
+      markers: oneShot.markers,
+      pendingText: oneShot.pendingText,
+      score: oneShot.score,
+    };
+
+    parseStreamingContent('', true);
+    let acc = '';
+    for (const chunk of chunksOf(fullText)) {
+      acc += chunk;
+      parseStreamingContent(acc, false);
+    }
+    const finalParse = parseStreamingContent(fullText, true);
+    expect(finalParse.markers).toEqual(expected.markers);
+    expect(finalParse.pendingText).toBe(expected.pendingText);
+    expect(finalParse.score).toEqual(expected.score);
+  });
+});
+
+describe('malicious / adversarial input resilience', () => {
+  it('does not crash or pend on a flood of bare "<" characters', () => {
+    const text = '开头' + '<'.repeat(2000) + '结尾';
+    const parsed = parseStreamingContent(text, false);
+    const joined = parsed.markers.map((m) => m.content).join('');
+    expect(joined).toContain('开头');
+    expect(joined).toContain('结尾');
+  });
+
+  it('bounds pending lookbehind for a pathologically long unclosed tag', () => {
+    const text = '<del reason="x">' + '内'.repeat(4000);
+    const parsed = parseStreamingContent(text, false);
+    // 超过回溯窗口的未闭合标签按模型输出错误处理，降级为原样文本而非无限 pending
+    expect(parsed.pendingText).toBe('');
+    const joined = parsed.markers.map((m) => m.content).join('');
+    expect(joined).toContain('内');
+  });
+
+  it('ignores unknown tag-like tokens in prose and still parses later markers', () => {
+    const parsed = parseStreamingContent('词条<errata 是词>之后<good>亮点</good>', false);
+    expect(parsed.pendingText).toBe('');
+    const good = parsed.markers.find((m) => m.type === 'good');
+    expect(good?.content).toBe('亮点');
+  });
+
+  it('does not pair close tags with prose tokens sharing a tag-name prefix', () => {
+    const text = '<err type="a">壹</err>中间<errno 变量>说明<good>好</good>';
+    const parsed = parseStreamingContent(text, false);
+    const err = parsed.markers.find((m) => m.type === 'err');
+    const good = parsed.markers.find((m) => m.type === 'good');
+    expect(err?.content).toBe('壹');
+    expect(good?.content).toBe('好');
+    expect(parsed.pendingText).toBe('');
+  });
+
+  it('survives attribute values stuffed with quote characters', () => {
+    const parsed = parseStreamingContent(
+      '<note text="包含 "引号" 的批注">被批注</note>后文',
+      true
+    );
+    const note = parsed.markers.find((m) => m.type === 'note');
+    expect(note?.content).toBe('被批注');
+    expect(note?.comment).toContain('引号');
+  });
+
+  it('degrades gracefully (no crash, no content loss) when attribute values contain ">"', () => {
+    const raw = '<note text="内含 <尖括号> 的批注">被批注</note>后文';
+    const parsed = parseStreamingContent(raw, true);
+    const joined = parsed.markers.map((m) => m.content).join('');
+    expect(joined).toContain('被批注');
+    expect(joined).toContain('后文');
+  });
+});

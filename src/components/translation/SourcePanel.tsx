@@ -3,28 +3,23 @@ import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Textarea } from '../ui/shad/Textarea';
 import { CommonTooltip } from '../shared/CommonTooltip';
-import { TextAa, Trash, X } from '@phosphor-icons/react';
+import { FileArrowUp, Lightning, TextAa, Trash, X } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import UnifiedDragDropZone, { FILE_TYPES } from '../shared/UnifiedDragDropZone';
 
 interface SourcePanelProps {
-    srcLang: string;
-    setSrcLang: (lang: string) => void;
-    tgtLang: string;
-    setTgtLang: (lang: string) => void;
     sourceText: string;
     setSourceText: (text: string) => void;
     sourceMaxChars?: number;
     isSourceOverLimit?: boolean;
     isTranslating: boolean;
-    onSwapLanguages: () => void;
     onFilesDropped: (files: File[]) => void;
-    setShowPromptEditor: (show: boolean) => void;
     onClear: () => void;
     onTranslate: () => void;
     onCancelTranslation: () => void;
     sourceCharCount: number;
-    LANGUAGES: { code: string; label: string }[];
+    /** 挂载时是否自动聚焦输入框（触屏设备自动跳过，避免弹出键盘） */
+    autoFocus?: boolean;
 }
 
 const isMacLike = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
@@ -32,6 +27,11 @@ const TRANSLATE_SHORTCUT = isMacLike ? '⌘ + Enter' : 'Ctrl + Enter';
 
 const PASTE_HINT_DURATION_MS = 4000;
 const CLEAR_CONFIRM_TIMEOUT_MS = 4000;
+
+const isCoarsePointer = () =>
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(pointer: coarse)').matches;
 
 /**
  * 原文输入面板
@@ -51,12 +51,35 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
     onTranslate,
     onCancelTranslation,
     sourceCharCount,
+    autoFocus = false,
 }, ref) => {
     const { t } = useTranslation(['translation', 'common']);
 
     const isNearLimit = Boolean(
         sourceMaxChars && !isSourceOverLimit && sourceCharCount > sourceMaxChars * 0.9
     );
+
+    // ===== 自动聚焦（合并转发 ref，触屏跳过避免键盘弹出） =====
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const setTextareaRef = useCallback((node: HTMLTextAreaElement | null) => {
+        textareaRef.current = node;
+        if (typeof ref === 'function') ref(node);
+        else if (ref) (ref as React.MutableRefObject<HTMLTextAreaElement | null>).current = node;
+    }, [ref]);
+
+    useEffect(() => {
+        if (!autoFocus || isCoarsePointer()) return;
+        const el = textareaRef.current;
+        if (!el || document.activeElement === el) return;
+        el.focus({ preventScroll: true });
+        const end = el.value.length;
+        try {
+            el.setSelectionRange(end, end);
+        } catch {
+            // 某些 webview 对 setSelectionRange 抛错，忽略即可
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoFocus]);
 
     // ===== 内联清空确认（替代模态确认框） =====
     const [confirmingClear, setConfirmingClear] = useState(false);
@@ -105,6 +128,20 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
         if (confirmTimerRef.current !== null) window.clearTimeout(confirmTimerRef.current);
         if (pasteTimerRef.current !== null) window.clearTimeout(pasteTimerRef.current);
     }, []);
+
+    // ===== 空状态：示例快捷入口 =====
+    const sampleTexts = [
+        t('translation:workbench_core.sample_en'),
+        t('translation:workbench_core.sample_zh'),
+    ];
+
+    const handleSampleClick = useCallback((sample: string) => {
+        setSourceText(sample);
+        const el = textareaRef.current;
+        if (el && !isCoarsePointer()) {
+            el.focus({ preventScroll: true });
+        }
+    }, [setSourceText]);
 
     const charCounter = (
         <span
@@ -220,20 +257,47 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                     className="flex-1 min-h-0 flex flex-col"
                 >
                     <Textarea
-                        ref={ref}
+                        ref={setTextareaRef}
                         value={sourceText}
                         onChange={(e) => setSourceText(e.target.value)}
                         onPaste={handlePaste}
                         placeholder={t('translation:source_section.placeholder')}
                         maxLength={sourceMaxChars}
                         data-translation-scroll="source"
+                        aria-label={t('translation:source_section.title')}
                         className="flex-1 min-h-0 resize-none px-4 pt-5 pb-10 text-base leading-relaxed !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/20"
                     />
                 </UnifiedDragDropZone>
 
+                {/* 空状态引导：示例快捷入口 + 拖拽提示（不拦截输入区点击） */}
+                {!sourceText && !isTranslating && (
+                    <div className="pointer-events-none absolute inset-x-4 bottom-4 flex flex-col gap-2 ui-fade-in">
+                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground/70 select-none">
+                            <Lightning size={12} className="shrink-0" />
+                            {t('translation:workbench_core.samples_label')}
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                            {sampleTexts.map((sample) => (
+                                <button
+                                    key={sample}
+                                    type="button"
+                                    onClick={() => handleSampleClick(sample)}
+                                    className="pointer-events-auto max-w-full truncate rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs text-muted-foreground transition-colors duration-150 hover:border-border hover:bg-[var(--interactive-hover)] hover:text-foreground active:scale-[0.98] motion-reduce:transition-none"
+                                >
+                                    {sample}
+                                </button>
+                            ))}
+                        </div>
+                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground/50 select-none">
+                            <FileArrowUp size={12} className="shrink-0" />
+                            {t('translation:workbench_core.drop_hint_inline')}
+                        </span>
+                    </div>
+                )}
+
                 {/* 粘贴即翻提示 */}
                 {showPasteHint && !isTranslating && sourceText.trim() && (
-                    <div data-wb-blur-surface className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full border bg-background/90 backdrop-blur px-3 py-1 text-xs text-muted-foreground shadow-sm whitespace-nowrap">
+                    <div data-wb-blur-surface className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full border bg-background/90 backdrop-blur px-3 py-1 text-xs text-muted-foreground shadow-sm whitespace-nowrap ui-fade-in">
                         {t('translation:panel_ux.paste_hint', { shortcut: TRANSLATE_SHORTCUT })}
                     </div>
                 )}
