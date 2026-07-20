@@ -11,7 +11,7 @@
 
 Study materials, note-taking, mind maps, quizzes, translation, and flashcard review — all in one unified learning workbench.
 
-> Think of it as: **NotebookLM + Notion + XMind + Quizlet + DeepL**
+> Think of it as: **research notebook + knowledge workspace + mind mapping + practice + translation**
 > but they all share the same learning data and workflow.
 
 [![Release](https://img.shields.io/github/v/release/helixnow/deep-student?color=blue&label=release)](https://github.com/helixnow/deep-student/releases/latest)
@@ -36,45 +36,45 @@ Study materials, note-taking, mind maps, quizzes, translation, and flashcard rev
 ## Why DeepStudent
 
 Learning workflows are spread across too many tools — read here, take notes there, build mind maps elsewhere, review in yet another app.
-PDF readers, XMind, translation apps, Notion, LMS platforms, arXiv, Anki, DeepSeek/ChatGPT… every tool is its own silo. Once your learning data is scattered, you spend more energy shuttling between tools than actually learning.
+PDF readers, mind-mapping tools, translation apps, note-taking tools, LMS platforms, arXiv, flashcard apps, AI assistants… every tool is its own silo. Once your learning data is scattered, you spend more energy shuttling between tools than actually learning.
 
 DeepStudent's answer: **give AI native read-write access to all your learning data.** One sentence from you, and it generates a mind map from your textbook, creates questions from your materials, turns key points into flashcards, searches and downloads papers, or researches the web and writes conclusions into your notes — all without leaving the workbench.
 
 ---
 
-## Understand It Through Products You Know
+## What You Get
 
-| Capability | **DeepStudent** | NotebookLM | Open Notebook | DeepTutor | Notion/Obsidian |
-|---|:---:|:---:|:---:|:---:|:---:|
-| AI Q&A over materials | **✓ 12 providers** | ✓ Gemini only | ✓ multi-model | ✓ multi-agent | △ Notion AI |
-| Cross-platform out-of-box | **✓ Win/Mac/Linux/Android** | ✓ all platforms | △ Docker | △ Docker | ✓ all platforms |
-| Smart memory system | **✓ AI-driven persistent** | ✗ | ✗ | △ session memory | ✗ |
-| Note-taking system | **✓ rich text+tags+AI** | △ simple notes | △ AI notes | △ notebook | ✓ core feature |
-| AI-generated mind maps | **✓** | ✓ | ✗ | △ visualization | ✗ |
-| AI quiz + practice modes | **✓** | ✓ | ✗ | ✓ exam-style | ✗ |
-| Flashcards + SRS | **✓ Anki ecosystem** | △ no SRS | ✗ | ✗ | ✗ |
-| Translation + close reading | **✓ 7 domain presets** | ✗ | ✗ | ✓ PDF translation | ✗ |
-| Cross-module data flow | **✓** | △ | △ | △ | △ |
+| Capability | DeepStudent |
+|---|---|
+| AI Q&A over materials | ✓ 12 providers |
+| Cross-platform out-of-box | ✓ Win/Mac/Linux/Android |
+| Smart memory system | ✓ AI-driven persistent |
+| Note-taking system | ✓ rich text + tags + AI |
+| AI-generated mind maps | ✓ |
+| AI quiz + practice modes | ✓ |
+| Flashcards + SRS | ✓ APKG / FSRS |
+| Translation + close reading | ✓ 7 domain presets |
+| Cross-module data flow | ✓ unified data layer |
 
-> **The core difference isn't "more features" — it's the unified data layer.**
+> **The core idea isn't "more features" — it's the unified data layer.**
 > The same material can be read, queried, turned into a mind map, used to generate quizzes, made into flashcards, researched, and written back — no data shuttling between apps.
 
 <details>
-<summary><b>📊 More comparison dimensions (infrastructure · ecosystem · collaboration)</b></summary>
+<summary><b>📊 More dimensions (infrastructure · ecosystem · collaboration)</b></summary>
 
-| Capability | **DeepStudent** | NotebookLM | Open Notebook | DeepTutor | Notion/Obsidian |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Local-first storage | **✓** | ✗ cloud | ✓ Docker | ✓ Docker | △ |
-| Cloud sync | **△ experimental** (backup-style, not real-time collab) | ✓ native | ✗ | ✗ | ✓ |
-| Open source / self-host | **✓ AGPL-3.0** | ✗ | ✓ | ✓ AGPL-3.0 | ✗ |
-| Unified data layer (VFS) | **✓** | ✗ | ✗ | ✗ | ✗ |
-| Auto-index on import | **✓ incl. OCR** | ✓ | ✓ | ✓ | △ |
-| Mind map ↔ outline mode | **✓** | ✗ | ✗ | ✗ | △ |
-| Deep research + papers | **✓ multi-engine+arXiv** | △ Discover | ✗ | ✓ | ✗ |
-| AI essay correction | **✓ multi-scenario** | ✗ | ✗ | ✗ | △ Notion AI |
-| MCP ecosystem / skills | **✓ native+presets**<sup>1</sup> | ✗ | ✗ | ✓ MCP registry | ✗ |
-| Real-time collaboration | **✗** | △ sharing | ✗ | ✗ | ✓ |
-| Community & ecosystem | **△ new project** | ✓ | △ new project | △ new project | ✓ rich plugins |
+| Capability | DeepStudent |
+|---|---|
+| Local-first storage | ✓ |
+| Cloud sync | △ experimental (backup-style, not real-time collab) |
+| Open source / self-host | ✓ AGPL-3.0 |
+| Unified data layer (VFS) | ✓ |
+| Auto-index on import | ✓ incl. OCR |
+| Mind map ↔ outline mode | ✓ |
+| Deep research + papers | ✓ multi-engine + arXiv |
+| AI essay correction | ✓ multi-scenario |
+| MCP ecosystem / skills | ✓ native + presets<sup>1</sup> |
+| Real-time collaboration | ✗ |
+| Community & ecosystem | △ new project |
 
 <sup>1</sup> agent browser automation: Windows + macOS only（Linux has WebKitGTK eval bridge code, but Agent tool surface remains closed）
 
@@ -300,7 +300,7 @@ An extensible workbench, not a closed feature set.
 
 - Skills load AI capabilities on demand — tools only loaded when activated, saving tokens
 - 40+ built-in skills/tool groups: Cards · Research · Paper · Tutor · Literature Review · Exam Analysis · Mind Map · Q-Bank · Memory · Session Manager · Office Suite · Todo · Canvas Notes · Image Generation · Web Fetch · Subagent Workspace, and more
-- ClawHub skill marketplace: browse / verify / install community skills with risk scan
+- community skill marketplace skill marketplace: browse / verify / install community skills with risk scan
 - Three-tier loading (Built-in → Global → Project-level), custom skills via SKILL.md
 - MCP protocol compatible (OAuth for supported presets), connecting external tools like Arxiv, Context7
 - 12 built-in provider templates (incl. Gemini), plus custom multi-protocol endpoints (Anthropic / Grok / Ollama, etc.)
