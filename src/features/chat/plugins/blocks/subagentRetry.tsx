@@ -57,12 +57,12 @@ const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     <div
       className={cn(
         'rounded-lg border p-3 my-2',
-        'transition-all duration-200',
+        'transition-colors duration-200',
         isFailed
-          ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800'
+          ? 'bg-destructive/5 border-destructive/30'
           : isResolved
-            ? 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800'
-            : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800'
+            ? 'bg-success/5 border-success/30'
+            : 'bg-warning/5 border-warning/30'
       )}
     >
       <div className="flex items-start gap-3">
@@ -71,10 +71,10 @@ const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
           className={cn(
             'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center',
             isFailed
-              ? 'bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400'
+              ? 'bg-destructive/10 text-destructive'
               : isResolved
-                ? 'bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400'
-                : 'bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400'
+                ? 'bg-success/10 text-success'
+                : 'bg-warning/10 text-warning'
           )}
         >
           {isFailed ? (
@@ -95,10 +95,10 @@ const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
               className={cn(
                 'text-sm font-medium',
                 isFailed
-                  ? 'text-red-700 dark:text-red-300'
+                  ? 'text-destructive'
                   : isResolved
-                    ? 'text-green-700 dark:text-green-300'
-                    : 'text-amber-700 dark:text-amber-300'
+                    ? 'text-success'
+                    : 'text-warning'
               )}
             >
               {isFailed
@@ -109,17 +109,17 @@ const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                   ? t('chatV2:workspace.subagentRetryResolved')
                   : t('chatV2:workspace.subagentRetryTitle')}
             </span>
-            <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+            <span className="text-xs text-muted-foreground font-mono">
               {shortAgentId}
             </span>
           </div>
 
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <p className="text-sm text-muted-foreground">
             {message}
           </p>
 
           {output?.timestamp && (
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+            <p className="text-xs text-muted-foreground/70 mt-1">
               {new Date(output.timestamp).toLocaleString()}
             </p>
           )}
@@ -135,6 +135,8 @@ const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
 
 blockRegistry.register('subagent_retry', {
   type: 'subagent_retry',
+  // 🔧 P1 修复：显式声明中断行为，与其它多 Agent 状态块（sleep/subagent_embed）一致
+  onAbort: 'keep-content',
   component: SubagentRetryBlockComponent,
 });
 

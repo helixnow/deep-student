@@ -21,19 +21,33 @@ import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { CaretDown, CaretRight, Archive } from '@phosphor-icons/react';
+import { CaretDown, CaretRight, Archive, Copy, Check } from '@phosphor-icons/react';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { StreamingMarkdownRenderer } from '../../components/renderers';
 
 const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => {
   const { t } = useTranslation('chatV2');
   const [isExpanded, setIsExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const toggleExpanded = useCallback(() => {
     setIsExpanded((prev) => !prev);
   }, []);
 
   const content = block.content || '';
+
+  const handleCopy = useCallback(async () => {
+    if (!content) return;
+    try {
+      await copyTextToClipboard(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (error) {
+      console.error('[CompactionSummaryBlock] Copy failed:', error);
+    }
+  }, [content]);
+
   if (!content.trim()) return null;
 
   const contentId = `compaction-summary-${block.id}`;
@@ -42,8 +56,7 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
     <div
       className={cn(
         'rounded-lg border',
-        'bg-amber-50/40 border-amber-200/60',
-        'dark:bg-amber-900/10 dark:border-amber-800/40',
+        'bg-warning/5 border-warning/30',
         'transition-colors'
       )}
     >
@@ -53,13 +66,13 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
         onClick={toggleExpanded}
         aria-expanded={isExpanded}
         aria-controls={contentId}
-        className="w-full !justify-start gap-2 !px-3 !py-2 !rounded-lg text-amber-800 dark:text-amber-200"
+        className="w-full !justify-start gap-2 !px-3 !py-2 !rounded-lg text-warning"
       >
         {isExpanded ? <CaretDown size={16} /> : <CaretRight size={16} />}
         <Archive size={16} />
         <span className="font-medium">{t('blocks.compactionSummary.title')}</span>
         {!isExpanded && (
-          <span className="ml-auto text-xs text-amber-700 dark:text-amber-300">
+          <span className="ml-auto text-xs text-warning/80">
             {t('blocks.compactionSummary.expandHint')}
           </span>
         )}
@@ -70,7 +83,7 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
           id={contentId}
           className={cn(
             'px-3 pb-3 thinking-content',
-            'border-t border-amber-200/50 dark:border-amber-800/30',
+            'border-t border-warning/20',
             'text-foreground/90'
           )}
         >
@@ -82,8 +95,24 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
               messageId={block.messageId}
             />
           </div>
-          <div className="mt-3 text-xs text-muted-foreground italic">
-            {t('blocks.compactionSummary.footnote')}
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <div className="text-xs text-muted-foreground italic">
+              {t('blocks.compactionSummary.footnote')}
+            </div>
+            {/* 内联复制摘要（P1-5） */}
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              onClick={handleCopy}
+              className="flex-shrink-0 text-muted-foreground hover:text-foreground"
+              aria-label={t('blocks.compactionSummary.copy')}
+              title={t('blocks.compactionSummary.copy')}
+            >
+              {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
+              <span className="text-xs">
+                {copied ? t('blocks.compactionSummary.copied') : t('blocks.compactionSummary.copy')}
+              </span>
+            </NotionButton>
           </div>
         </div>
       )}

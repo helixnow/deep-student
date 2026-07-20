@@ -518,11 +518,9 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
           className={
             isError
               ? 'text-destructive text-sm'
-              : isCancelled
-                ? 'text-amber-600 text-sm'
-                : isReadyButEmpty
-                  ? 'text-amber-600 text-sm'
-                  : 'text-muted-foreground text-sm'
+              : isCancelled || isReadyButEmpty
+                ? 'text-amber-600 dark:text-amber-400 text-sm'
+                : 'text-muted-foreground text-sm'
           }
         >
           {isError
@@ -544,7 +542,7 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
           className={
             isError
               ? 'text-destructive text-sm mb-2 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1'
-              : 'text-amber-700 text-sm mb-2 rounded-md border border-amber-400/40 bg-amber-100/60 px-2 py-1'
+              : 'text-amber-700 dark:text-amber-300 text-sm mb-2 rounded-md border border-amber-400/40 bg-amber-100/60 dark:bg-amber-500/10 px-2 py-1'
           }
         >
           {bannerMessage}
@@ -555,7 +553,7 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
         <FullWidthCardWrapper className="chat-card3d-compact">
           <Card3DPreview
             cards={cards}
-            template={template as any}
+            template={template ?? undefined}
             templateMap={templateMap}
             debugContext={debugContext}
             onCardClick={onCardClick}
@@ -605,7 +603,7 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
         <div className="text-xs text-muted-foreground truncate min-w-0">
           {cards.length > 0 && t('chatV2.totalCards', { count: cards.length })}
           {status === 'stored' && (
-            <span className="text-green-600 ml-1 sm:ml-2">{t('chatV2.saved')}</span>
+            <span className="text-green-600 dark:text-green-400 ml-1 sm:ml-2">{t('chatV2.saved')}</span>
           )}
         </div>
         {cards.length > 0 && !disabled && (

@@ -1,12 +1,26 @@
+/**
+ * @deprecated 2026-07（分区 M 评估）：全仓无生产挂载点的工作区面板视图。
+ *
+ * 现状：
+ * - 工作区数据层（workspaceStore / events / useWorkspaceRestore）在 ChatContainer 中正常运转；
+ * - 主聊天页的工作区「前端视图」由 `AgentTaskPanel`（贴在输入栏上方的内联条）承担；
+ * - 本组件仅被 `components/index.ts` re-export，没有任何页面/布局引用。
+ *
+ * 决策：本轮不接线进页面骨架，避免与 AgentTaskPanel 形成两套并行的工作区视图。
+ * 若后续要恢复独立工作区视图，建议挂到 ChatV2Page 桌面次级面板
+ * （DesktopSecondaryPanelMode）作为新模式，并与 AgentTaskPanel 收敛为一套入口。
+ * 在此之前请勿在新代码中引用本组件。
+ */
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { cn } from '@/lib/utils';
 import { Plus, CircleNotch, WarningCircle, ArrowClockwise, WifiSlash } from '@phosphor-icons/react';
 import { AgentCard } from './AgentCard';
 import { AgentOutputDrawer } from './AgentOutputDrawer';
 import { WorkspaceTimeline } from './WorkspaceTimeline';
-import { CreateAgentDialog } from './CreateAgentDialog';
+import { CreateAgentCard } from './CreateAgentCard';
 import { useShallow } from 'zustand/react/shallow';
 import { useWorkspaceStore } from '../workspaceStore';
 import { refreshWorkspaceSnapshot } from '../api';
@@ -229,7 +243,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
           </div>
           <div className="flex items-center gap-2">
             {!isOnline && (
-              <span className="inline-flex items-center gap-1 text-xs text-amber-600">
+              <span className="inline-flex items-center gap-1 text-xs text-warning">
                 <WifiSlash size={12} />
                 {t('chatV2:workspace.offlineTag', '离线')}
               </span>
@@ -289,12 +303,28 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
             variant="ghost"
             size="sm"
             className="h-6 px-2 text-xs"
-            onClick={() => setShowCreateAgent(true)}
+            aria-expanded={showCreateAgent}
+            onClick={() => setShowCreateAgent((prev) => !prev)}
           >
-            <Plus size={12} className="mr-1" />
+            <Plus
+              size={12}
+              className={cn(
+                'mr-1 transition-transform duration-150',
+                showCreateAgent && 'rotate-45'
+              )}
+            />
             {t('chatV2:workspace.addAgent', '添加')}
           </NotionButton>
         </div>
+        {/* 内联展开的创建 Worker 卡片（原 CreateAgentDialog 模态框） */}
+        {showCreateAgent && (
+          <CreateAgentCard
+            className="mb-2"
+            workspaceId={workspace.id}
+            currentSessionId={currentAgentId}
+            onClose={() => setShowCreateAgent(false)}
+          />
+        )}
         <CustomScrollArea className="max-h-[400px]">
           <div className="flex flex-col gap-2">
             {workerAgents.map((agent) => (
@@ -311,10 +341,21 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
                 isOnline={isOnline}
               />
             ))}
-            {workerAgents.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-2">
-                {t('chatV2:workspace.noWorkers', '暂无 Worker')}
-              </p>
+            {workerAgents.length === 0 && !showCreateAgent && (
+              <div className="rounded-[var(--chat-radius-sm,8px)] border border-dashed border-border/70 px-3 py-4 text-center">
+                <p className="text-xs text-muted-foreground">
+                  {t('chatV2:workspace.noWorkers', '暂无 Worker')}
+                </p>
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  className="mt-1.5 h-6 px-2 text-xs text-primary"
+                  onClick={() => setShowCreateAgent(true)}
+                >
+                  <Plus size={12} className="mr-1" />
+                  {t('chatV2:workspace.addAgent', '添加')}
+                </NotionButton>
+              </div>
             )}
           </div>
         </CustomScrollArea>
@@ -337,12 +378,6 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
         </div>
       </div>
 
-      <CreateAgentDialog
-        open={showCreateAgent}
-        onOpenChange={setShowCreateAgent}
-        workspaceId={workspace.id}
-        currentSessionId={currentAgentId}
-      />
     </div>
   );
 };

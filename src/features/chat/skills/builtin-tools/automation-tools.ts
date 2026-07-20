@@ -7,6 +7,9 @@
  * headless runner 真正跑一轮完整 agent turn（工具受 headless 白名单约束，
  * 无 MCP/ask_user/shell/子代理），完成后发系统通知；运行历史提供会话入口，
  * 支持 isolated / named 两种会话模式与 interval（每 N 分钟）调度。
+ * v4.1（定时任务改造）：新增 once 单次调度（kind=once + date=YYYY-MM-DD，
+ * 触发一次后自动完成）；list 输出附带人话调度/相对时间/上次运行状态/容量；
+ * runs 支持按状态过滤。
  */
 
 import type { SkillDefinition } from '../types';
@@ -15,8 +18,8 @@ export const automationToolsSkill: SkillDefinition = {
   id: 'automation-tools',
   name: 'automation-tools',
   description:
-    '周期自动化：创建、查看、完整修改、启停、立即运行、查询历史、重试、取消或删除每日/工作日/每周/每月/间隔调度。notify 类型到点=系统通知+待办；agent_turn 类型到点由后端 headless 跑完整 Agent 任务并推送结果摘要。',
-  version: '4.0.0',
+    '定时自动化：创建、查看、完整修改、启停、立即运行、查询历史、重试、取消或删除每日/工作日/每周/每月/间隔/单次（once）调度。notify 类型到点=系统通知+待办；agent_turn 类型到点由后端 headless 跑完整 Agent 任务并推送结果摘要。',
+  version: '4.1.0',
   author: 'Deep Student',
   priority: 8,
   location: 'builtin',
@@ -43,35 +46,37 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
 ## 何时使用
 
 - 用户希望「每晚 21:00 提醒我做错题总结」→ notify
+- 用户希望「明天 09:00 提醒我复习」→ notify + schedule.kind=once（单次，触发后自动完成）
 - 用户希望「每天 21:00 自动检查到期复习卡并生成今日复习简报」→ agent_turn + agent_prompt
 - 用户希望「每周一 8:00 生成学情周报，且每周在同一会话里递进」→ agent_turn + session_mode=named
 - 需要先 **load_skills** 加载本技能后再调用工具
 
 ## 创建自动化
 
-1. 向用户确认名称、周期（daily/weekdays/weekly/monthly/interval）、时区、动作类型与任务提示词
-2. 调用 **builtin-automation_propose**（**High 审批**，不可记住授权）
-3. 审批通过后写入持久化自动化定义；返回 id 与下次预计触发时间
+1. 向用户确认名称、周期（daily/weekdays/weekly/monthly/interval/once）、时区、动作类型与任务提示词
+2. **确认前先给用户一个预览**：用人话复述调度（如「每天 21:00」「仅 2026-07-20 09:00 一次」）和首次运行时间，确认无歧义再提案
+3. 调用 **builtin-automation_propose**（**High 审批**，不可记住授权）
+4. 审批通过后写入持久化自动化定义；返回 id、schedule_description（人话调度）、next_trigger_at 与 next_trigger_relative（相对描述，如「约 2 小时后」），向用户转述首次运行时间
 
 ## 管理
 
-- **builtin-automation_list**（Low）：查看全部自动化（version、enabled、action_type、last_run_at、next_trigger_at、agent_session_id 等）
+- **builtin-automation_list**（Low）：查看全部自动化（version、enabled、action_type、last_run_at、next_trigger_at、agent_session_id 等），并附带 schedule_description（人话调度）、next_trigger_relative（下次运行相对描述）、last_run_status/last_run_summary（上次运行结果）、once_completed（单次任务是否已完成）与 capacity（容量占用）。用户问"我有哪些定时任务"时直接调用本工具并转述这些字段
 - **builtin-automation_set_enabled**（Medium）：按 id 启用/停用；必须把 list 返回的 version 传为 expected_version
 - **builtin-automation_update**（Medium）：修改名称、调度、动作、提示词、会话、补偿、重试或超时；先 list 确认目标并把当前 version 原样传为 expected_version。版本冲突时必须重新 list 和规划，禁止用猜测版本覆盖
 - **builtin-automation_run_now**（Medium）：绕过下次调度时间立即运行一次；必须携带 expected_version，避免运行已被改写的任务
-- **builtin-automation_runs**（Low）：查询运行历史、状态、摘要和错误
+- **builtin-automation_runs**（Low）：查询运行历史、状态、摘要和错误；支持 page/page_size 分页与 status 过滤（过滤在当前页内进行）
 - **builtin-automation_retry_run**（Medium）：重试失败、超时、启动失败或已取消的运行
 - **builtin-automation_cancel_run**（Medium）：取消排队、重试等待或正在执行的运行
 - **builtin-automation_delete**（High，不可恢复）：必须先用 builtin-ask_user 列明名称与周期并取得确认，不得记住授权；确认前读取的 version 必须原样传为 expected_version。内置心跳不可删除，只能停用
 
 ## 限制
 
-- 最多 **20** 条自动化；name ≤ 100 字符；prompt / agent_prompt ≤ 4000 字符
-- schedule.time 必须为 **24 小时制 HH:MM**（如 \`21:00\`）；weekly 必须提供 **weekday**（0=周日 … 6=周六）；monthly 必须提供 **day_of_month**（1–31，短月份落到月末）；interval 必须提供 **interval_minutes**（5–1440）
+- 最多 **20** 条自动化（list 返回 count/max/capacity）；name ≤ 100 字符；prompt / agent_prompt ≤ 4000 字符
+- schedule.time 必须为 **24 小时制 HH:MM**（如 \`21:00\`）；weekly 必须提供 **weekday**（0=周日 … 6=周六）；monthly 必须提供 **day_of_month**（1–31，短月份落到月末）；interval 必须提供 **interval_minutes**（5–1440）；once 必须提供 **date**（YYYY-MM-DD，不能是过去时点），触发一次后自动完成、不再重复
 - 非 interval 调度可提供 IANA \`timezone\`（如 \`Asia/Shanghai\`）；不支持 cron 表达式
 - 补偿策略：skip=错过后跳过，run_once=恢复后补跑一次，catch_up_all=按历史时点逐次追赶
 - agent_turn 失败/超时也会通知并记录运行历史（心跳类静默）
-- set_enabled/update/delete/run_now 缺少 expected_version 时稳定返回 \`AUTOMATION_OCC_REQUIRED\`；版本冲突返回 \`AUTOMATION_VERSION_CONFLICT\` 与 current，必须重新 list
+- set_enabled/update/delete/run_now 缺少 expected_version 时稳定返回 \`AUTOMATION_OCC_REQUIRED\`；版本冲突返回 \`AUTOMATION_VERSION_CONFLICT\` 与 current，必须重新 list；同一自动化已有运行在执行时返回 \`AUTOMATION_RUN_ALREADY_ACTIVE\`，先用 automation_runs 查看或 cancel 后再试。错误 JSON 中的 hint 字段是给你的下一步建议，直接照做并向用户解释
 `,
   allowedTools: [
     'builtin-automation_propose',
@@ -88,7 +93,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
     {
       name: 'builtin-automation_propose',
       description:
-        '提案创建一条周期自动化（High 审批，不可记住授权）。action_type=notify（默认）：到点发系统通知并创建待办；action_type=agent_turn：到点由后端 headless 跑完整 Agent 任务，完成后推送结果摘要。最多 20 条；支持 daily/weekdays/weekly/monthly/interval、IANA 时区、补偿策略和失败重试。',
+        '提案创建一条定时自动化（High 审批，不可记住授权）。调用前先向用户给出人话预览：调度描述 + 首次运行时间（如「每天 21:00，首次约 2 小时后」），确认无歧义再提案。action_type=notify（默认）：到点发系统通知并创建待办；action_type=agent_turn：到点由后端 headless 跑完整 Agent 任务，完成后推送结果摘要。支持 daily/weekdays/weekly/monthly/interval/once、IANA 时区、补偿策略和失败重试；「明天 09:00 提醒我复习」→ kind=once + date=明天日期。最多 20 条。返回 schedule_description 与 next_trigger_relative，用于向用户转述首次运行时间。',
       inputSchema: {
         type: 'object',
         required: ['name', 'schedule', 'prompt'],
@@ -105,13 +110,18 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
             properties: {
               kind: {
                 type: 'string',
-                enum: ['daily', 'weekdays', 'weekly', 'monthly', 'interval'],
+                enum: ['daily', 'weekdays', 'weekly', 'monthly', 'interval', 'once'],
                 description:
-                  'daily=每日；weekdays=工作日；weekly=每周；monthly=每月；interval=每 N 分钟',
+                  'daily=每日；weekdays=工作日；weekly=每周；monthly=每月；interval=每 N 分钟；once=指定日期单次（触发后自动完成，不再重复）',
               },
               time: {
                 type: 'string',
-                description: '24 小时制 HH:MM，如 21:00（daily/weekly 必填，interval 忽略）',
+                description: '24 小时制 HH:MM，如 21:00（interval 以外均必填，interval 忽略）',
+              },
+              date: {
+                type: 'string',
+                description:
+                  'once 必填：目标日期 YYYY-MM-DD（不能是过去时点），如"明天 09:00 提醒我复习"→ time=09:00 + date=明天日期',
               },
               weekday: {
                 type: 'integer',
@@ -222,7 +232,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
     {
       name: 'builtin-automation_list',
       description:
-        '列出全部周期自动化（Low）。含 enabled、action_type、session_mode、last_run_at、next_trigger_at、agent_session_id；无参数。',
+        '列出全部定时自动化（Low，无参数）。每条含 id、version、enabled、action_type、session_mode、schedule、schedule_description（人话调度，如"每天 21:00"）、next_trigger_at、next_trigger_relative（如"约 2 小时后"）、last_run_at、last_run_status/last_run_summary/last_run_error（上次运行结果）、once_completed（单次任务是否已完成）、agent_session_id；顶层含 count/max/capacity（容量占用）。回答"我有哪些定时任务"时转述 schedule_description + next_trigger_relative + 上次运行状态即可。',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -273,6 +283,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
           { required: ['max_retries'] },
           { required: ['retry_backoff_seconds'] },
           { required: ['timeout_seconds'] },
+          { required: ['trusted_profile'] },
         ],
         additionalProperties: false,
         properties: {
@@ -284,8 +295,9 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
             required: ['kind'],
             additionalProperties: false,
             properties: {
-              kind: { type: 'string', enum: ['daily', 'weekdays', 'weekly', 'monthly', 'interval'] },
+              kind: { type: 'string', enum: ['daily', 'weekdays', 'weekly', 'monthly', 'interval', 'once'] },
               time: { type: 'string', description: '非 interval 必填：24 小时制 HH:MM' },
+              date: { type: 'string', description: 'once 必填：目标日期 YYYY-MM-DD（不能是过去时点）' },
               weekday: { type: 'integer', minimum: 0, maximum: 6, description: 'weekly 必填：0=周日…6=周六' },
               day_of_month: { type: 'integer', minimum: 1, maximum: 31, description: 'monthly 必填' },
               interval_minutes: { type: 'integer', minimum: 5, maximum: 1440, description: 'interval 必填：间隔分钟数' },
@@ -336,14 +348,19 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
     {
       name: 'builtin-automation_runs',
       description:
-        '查询自动化运行历史（Low）。可按 automation_id 筛选，返回状态、触发类型、尝试次数、摘要、错误和会话 ID。',
+        '查询自动化运行历史（Low，只读）。可按 automation_id 与 status 筛选，支持分页；返回状态、触发类型、尝试次数、摘要、错误和会话 ID。注意：status 过滤在当前页内进行（total/hasMore 按未过滤计），需要更多匹配时递增 page 继续翻页。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          automation_id: { type: 'string', minLength: 1, description: '可选的自动化 ID' },
-          page: { type: 'integer', minimum: 1, default: 1 },
-          page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20 },
+          automation_id: { type: 'string', minLength: 1, description: '可选：只看某条自动化的运行记录' },
+          status: {
+            type: 'string',
+            enum: ['queued', 'running', 'retrying', 'success', 'error', 'timeout', 'spawn_error', 'cancelled', 'heartbeat_ok'],
+            description: '可选：按运行状态过滤（在当前页内过滤），如 error=失败、running=执行中',
+          },
+          page: { type: 'integer', minimum: 1, default: 1, description: '页码，从 1 开始' },
+          page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '每页条数（≤20）' },
         },
       },
     },

@@ -36,8 +36,8 @@ export const BlockingToolLimitBar: React.FC<BlockingToolLimitBarProps> = React.m
   return (
     <div className="flex items-center gap-3 py-2">
       <div className="flex items-center gap-2 flex-1 min-w-0">
-        <Warning size={18} className="text-amber-500 flex-shrink-0" />
-        <span className="text-sm text-amber-700 dark:text-amber-300 truncate">
+        <Warning size={18} className="text-warning flex-shrink-0" />
+        <span className="text-sm text-warning truncate">
           {interaction.content || t('tool_limit.title')}
         </span>
       </div>
@@ -47,7 +47,7 @@ export const BlockingToolLimitBar: React.FC<BlockingToolLimitBarProps> = React.m
           size="sm"
           onClick={handleContinue}
           disabled={isContinuing}
-          className="flex-shrink-0 bg-amber-500 hover:bg-amber-600 text-white"
+          className="flex-shrink-0 bg-warning hover:bg-warning/90 text-warning-foreground"
         >
           {isContinuing ? (
             <>

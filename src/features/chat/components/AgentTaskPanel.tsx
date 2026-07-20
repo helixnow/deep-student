@@ -1202,6 +1202,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -4, scale: 0.98 }}
               transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+              data-wb-blur-surface
               className={cn(
                 'mt-1',
                 'w-full overflow-hidden',

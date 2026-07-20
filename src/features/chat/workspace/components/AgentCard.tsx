@@ -18,15 +18,16 @@ interface AgentCardProps {
   showViewButton?: boolean;
 }
 
+// 状态指示点（语义 token；与 AgentOutputDrawer 状态文字色保持同一语义映射）
 const statusColors: Record<AgentStatus, string> = {
-  idle: 'bg-gray-400',
-  queued: 'bg-blue-400',
-  running: 'bg-green-500 animate-pulse',
-  completed: 'bg-blue-500',
-  failed: 'bg-red-500',
-  cancelled: 'bg-gray-500',
-  interrupted: 'bg-amber-500',
-  closed: 'bg-gray-600',
+  idle: 'bg-muted-foreground/40',
+  queued: 'bg-info/60',
+  running: 'bg-info animate-pulse',
+  completed: 'bg-success',
+  failed: 'bg-destructive',
+  cancelled: 'bg-muted-foreground/60',
+  interrupted: 'bg-warning',
+  closed: 'bg-muted-foreground/70',
 };
 
 // ============================================================================
@@ -172,9 +173,9 @@ export const AgentCard: React.FC<AgentCardProps> = ({
           )}
           <span className={cn(
             'text-xs',
-            status === 'running' ? 'text-green-600' :
-            status === 'completed' ? 'text-blue-600' :
-            status === 'failed' ? 'text-red-600' :
+            status === 'running' ? 'text-info' :
+            status === 'completed' ? 'text-success' :
+            status === 'failed' ? 'text-destructive' :
             'text-muted-foreground'
           )}>
             {statusLabel}

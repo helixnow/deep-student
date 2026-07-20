@@ -223,16 +223,16 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   const statusIcon = useMemo(() => {
     switch (status) {
       case 'running':
-        return <CircleNotch size={16} className="text-blue-500 animate-spin" />;
+        return <CircleNotch size={16} className="text-primary animate-spin" />;
       case 'queued':
-        return <Clock size={16} className="text-blue-500" />;
+        return <Clock size={16} className="text-primary" />;
       case 'completed':
-        return <CheckCircle size={16} className="text-green-500" />;
+        return <CheckCircle size={16} className="text-success" />;
       case 'failed':
-        return <WarningCircle size={16} className="text-red-500" />;
+        return <WarningCircle size={16} className="text-destructive" />;
       case 'cancelled':
       case 'interrupted':
-        return <XCircle size={16} className="text-amber-500" />;
+        return <XCircle size={16} className="text-warning" />;
       case 'closed':
         return <XCircle size={16} className="text-muted-foreground" />;
       default:
@@ -285,7 +285,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         <div className="flex items-center gap-2 p-3 rounded-lg border border-border/50 bg-card">
           <Robot size={16} className="text-primary flex-shrink-0" />
           <span className="text-sm font-medium flex-1 truncate">{cardTitle}</span>
-          <CircleNotch size={16} className="text-blue-500 animate-spin flex-shrink-0" />
+          <CircleNotch size={16} className="text-primary animate-spin flex-shrink-0" />
           <span className="text-xs text-muted-foreground flex-shrink-0">
             {t('subagent.status.running')}
           </span>
@@ -294,9 +294,9 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     }
     // 已结束但仍无 sessionId：数据确实缺失
     return (
-      <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-        <WarningCircle size={16} className="text-red-500" />
-        <span className="text-sm text-red-700 dark:text-red-300">
+      <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/5 border border-destructive/30">
+        <WarningCircle size={16} className="text-destructive" />
+        <span className="text-sm text-destructive">
           {t('subagent.noSessionId')}
         </span>
       </div>
@@ -306,7 +306,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   return (
     <div className={cn(
       "rounded-lg border border-border/50 bg-card overflow-hidden",
-      status === 'running' && "ring-2 ring-blue-500/30"
+      status === 'running' && "ring-2 ring-primary/30"
     )}>
       {/* 头部：可点击折叠 */}
       <NotionButton
@@ -353,7 +353,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
 
       {/* 结果摘要（折叠且完成时显示） */}
       {isCollapsed && status === 'completed' && resultSummary && (
-        <div className="px-3 pb-2 text-xs text-green-700 dark:text-green-400 line-clamp-2">
+        <div className="px-3 pb-2 text-xs text-success line-clamp-2">
           {resultSummary}
         </div>
       )}
@@ -390,7 +390,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         )}
         {completedAt && (
           <div className="flex items-center gap-1">
-            <CheckCircle size={12} className="text-green-500" />
+            <CheckCircle size={12} className="text-success" />
             <span>{new Date(completedAt).toLocaleTimeString()}</span>
           </div>
         )}

@@ -137,12 +137,14 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
           't-dropdown',
           isClosing && 'is-closing',
           open && 'is-open',
-          'absolute w-72 rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
+          // P2-1: 窄屏时收窄到视口内（固定 w-72 会在小屏溢出）
+          'absolute w-[min(18rem,calc(100vw-2rem))] rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
           'bottom-full mb-3 left-0',
           className
         )}
         style={{ zIndex: Z_INDEX.inputBarPopover }}
         data-origin="bottom-left"
+        data-wb-blur-surface
         role="listbox"
         aria-label={t('chatV2:modelMention.suggestions')}
       >
@@ -172,14 +174,15 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
         't-dropdown',
         isClosing && 'is-closing',
         open && 'is-open',
-        // 基础样式
-        'absolute w-72 rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
+        // 基础样式（P2-1: 窄屏时收窄到视口内，键盘上方仍完整可见）
+        'absolute w-[min(18rem,calc(100vw-2rem))] rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
         // 定位：在输入框上方
         'bottom-full mb-3 left-0',
         className
       )}
       style={{ zIndex: Z_INDEX.inputBarPopover }}
       data-origin="bottom-left"
+      data-wb-blur-surface
       role="listbox"
       aria-label={t('chatV2:modelMention.suggestions')}
       aria-activedescendant={activeDescendantId}

@@ -89,7 +89,7 @@ export interface ModelPickerProps {
   onClose: () => void;
   /** 流式生成中禁用交互 */
   disabled?: boolean;
-  /** 移动端底部抽屉模式可隐藏头部 */
+  /** 外部宿主（命令面板等）复用时可隐藏内置头部；移动端为 composer 内联面板，默认保留头部 */
   hideHeader?: boolean;
   /** 紧凑模式：用于 app menu 子菜单，收窄宽度和高度 */
   compact?: boolean;
@@ -125,7 +125,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   const { t } = useTranslation(['chatV2', 'chat_host', 'common']);
   const mobileLayout = useMobileLayoutSafe();
   const isMobile = mobileLayout?.isMobile ?? false;
-  // 📱 移动端也默认显示头部：面板现以锚定 popover 呈现（无外层抽屉标题栏），
+  // 📱 移动端也默认显示头部：面板在 composer 内联展开（无外层抽屉标题栏），
   // 隐藏头部会一并丢失可见的关闭按钮（移动端契约：面板须可见关闭 + 返回键）
   const shouldHideHeader = hideHeader ?? false;
 
@@ -543,7 +543,8 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               size="icon"
               iconOnly
               onClick={onClose}
-              className="h-7 w-7 rounded-[var(--menu-shell-row-radius)]"
+              // P1-3: 28px 视觉尺寸保留，触屏用伪元素把命中区扩到 ≥44px
+              className="relative h-7 w-7 rounded-[var(--menu-shell-row-radius)] [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']"
               aria-label={t('common:actions.cancel')}
               title={t('common:actions.cancel')}
             >

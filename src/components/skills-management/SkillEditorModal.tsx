@@ -670,6 +670,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
 
       {/* 底部按钮 */}
       <div
+        data-wb-blur-surface
         className="flex-none px-4 pt-3 border-t border-border/40 flex items-center justify-end gap-2 bg-gradient-to-t from-background via-background/95 to-background/80 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md"
         style={{
           paddingBottom: embeddedMode

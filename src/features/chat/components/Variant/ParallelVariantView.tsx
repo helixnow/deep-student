@@ -181,6 +181,12 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
   const [isOperating, setIsOperating] = useState(false);
   const [iconLoadFailed, setIconLoadFailed] = useState(false);
 
+  // P1-5: 复制反馈定时器卸载时清理，避免卸载后 setState
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+  }, []);
+
   const isStreaming = variant.status === 'streaming';
   const canCancel = variant.status === 'streaming' || variant.status === 'pending';
   const canRetry = variant.status === 'error' || variant.status === 'cancelled';
@@ -218,7 +224,8 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
     try {
       await copyTextToClipboard(text);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000);
       showGlobalNotification('success', t('messageItem.actions.copySuccess'));
     } catch (error: unknown) {
       console.error('[VariantCard] Copy failed:', error);
@@ -439,11 +446,13 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
       </div>
 
       {/* 🚀 P0修复：来源面板不传 blocks，让它自己订阅 */}
+      {/* P0-3: 按当前变体的 blockIds 过滤，避免把其他变体的来源串进本卡片 */}
       {hasSources && (
         <div className="px-4 pb-3">
           <SourcePanelV2
             store={store}
             messageId={messageId}
+            blockIds={blockIds}
             className="text-left"
           />
         </div>
@@ -555,6 +564,12 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // P1-5: 复制反馈定时器卸载时清理，避免卸载后 setState
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+  }, []);
+
   // 检查是否有正在流式的变体
   const hasStreamingVariant = variants.some(
     (v) => v.status === 'streaming' || v.status === 'pending'
@@ -595,7 +610,8 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
     try {
       await onCopy();
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000);
     } catch (error: unknown) {
       console.error('[MessageLevelActions] Copy failed:', error);
     }
@@ -817,6 +833,9 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
                     }}
                     className={cn(
                       '!rounded-full flex-shrink-0 !p-0',
+                      // P1-9: 圆点视觉 10px，用透明伪元素扩大命中区（纵向 ≥40px；
+                      // 横向受相邻圆点 18px 间距限制，不外扩避免误触相邻点）
+                      'relative after:absolute after:content-[\'\'] after:-inset-x-1 after:-inset-y-4',
                       isActive
                         ? 'variant-indicator-dot-active bg-primary'
                         : 'variant-indicator-dot bg-muted-foreground/30 hover:bg-muted-foreground/50'

@@ -51,15 +51,19 @@
   --chat-md-compact-line-height: 1.6;
   --chat-thinking-font-size: var(--chat-md-compact-font-size);
 
-  /* 边框圆角 */
-  --chat-radius-sm: 8px;
-  --chat-radius-md: 12px;
-  --chat-radius-lg: 16px;
+  /* 边框圆角 —— 2026-07 二轮收敛：映射到全局 shell 半径阶梯（单一来源
+     src/styles/shadcn-variables.css），chat 不再维护平行像素体系。
+     xs 6px / sm 8px / md 12px / lg 16px / pill 24px / full 999px */
+  --chat-radius-xs: calc(var(--radius, 0.5rem) - 2px);
+  --chat-radius-sm: var(--radius, 0.5rem);
+  --chat-radius-md: var(--radius-shell-control, 12px);
+  --chat-radius-lg: var(--radius-shell-toolbar, 16px);
   --chat-radius-pill: 24px;
+  --chat-radius-full: 999px;
 
-  /* 动画 */
-  --chat-transition-speed: var(--page-slide-dur, 200ms);
-  --chat-transition-timing: var(--ease-material);
+  /* 动画 —— 别名指向 motion.css 的 chat 动效令牌（150/200ms + 标准出口曲线） */
+  --chat-transition-speed: var(--chat-motion-base, 200ms);
+  --chat-transition-timing: var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
 
   /* 触摸目标最小尺寸 */
   --chat-touch-target: 44px;
@@ -96,11 +100,13 @@ html.dark .chat-v2,
   color: inherit;
 }
 
-:root.dark .chat-v2 .message-selectable-area ::selection {
+:root.dark .chat-v2 .message-selectable-area ::selection,
+.dark .chat-v2 .message-selectable-area ::selection {
   background: hsl(var(--primary) / 24%);
 }
 
-:root.dark .chat-v2 .message-selectable-area ::-moz-selection {
+:root.dark .chat-v2 .message-selectable-area ::-moz-selection,
+.dark .chat-v2 .message-selectable-area ::-moz-selection {
   background: hsl(var(--primary) / 24%);
 }
 
@@ -228,10 +234,11 @@ html.dark .chat-v2,
    "assistant 阅读宽度由 chat.css 单一来源控制"。在契约调整前保留。
    ============================================================================ */
 
+/* 2026-07 二轮清理：旧版 primary 渐变用户气泡 token（--app-user-message-bg/fg）
+   已删除——现行用户气泡为 chat-beautify.css 的 .user-message-bubble（muted 圆角块），
+   grep 验证渐变 token 零消费，避免双套气泡叙事。 */
 .chat-v2 .chat-container {
   --app-message-content-bg: transparent;
-  --app-user-message-bg: linear-gradient(135deg, var(--chat-primary-color) 0%, var(--chat-primary-hover) 100%);
-  --app-user-message-fg: var(--chat-text-inverse);
   --chat-assistant-surface: transparent;
   --chat-assistant-border: transparent;
   --chat-assistant-shadow: none;
@@ -280,13 +287,7 @@ html.dark .chat-v2,
 
 /* ============================================================================
    性能优化 - Performance Optimizations
+   ----------------------------------------------------------------------------
+   prefers-reduced-motion 兜底扫射已收敛到 motion.css（单一来源，
+   无 !important，靠源序与特异性被各文件点名规则覆盖），此处不再重复。
    ============================================================================ */
-
-/* 优化动画性能：尊重系统"减少动态效果"偏好（仅作用于聊天作用域） */
-@media (prefers-reduced-motion: reduce) {
-  .chat-v2 * {
-    animation-duration: 0.01ms;
-    animation-iteration-count: 1;
-    transition-duration: 0.01ms;
-  }
-}

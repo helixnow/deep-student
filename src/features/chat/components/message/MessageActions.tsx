@@ -2,12 +2,11 @@
  * MessageActions - 消息操作按钮组件
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CopySimple, Check, ArrowCounterClockwise, Trash, PencilSimple, BookmarkSimple, GitBranch, DotsThree } from '@phosphor-icons/react';
+import { CopySimple, Check, ArrowCounterClockwise, Trash, PencilSimple, BookmarkSimple, GitBranch, DotsThree, FileArrowDown } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem, AppMenuSeparator } from '@/components/ui/app-menu/AppMenu';
 import { formatTokenCount } from '../TokenUsageDisplay';
@@ -28,6 +27,8 @@ export interface MessageActionsProps {
   onDelete: () => Promise<void>;
   /** 🆕 保存为 VFS 笔记 */
   onSaveAsNote?: () => Promise<void>;
+  /** 🆕 导出为 Markdown 文件 */
+  onExportMarkdown?: () => Promise<void>;
   /** 🆕 会话分支 */
   onBranchSession?: () => Promise<void>;
   /** 移动端紧凑模式：仅展示主操作，其余进入更多菜单 */
@@ -51,6 +52,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   onEdit,
   onDelete,
   onSaveAsNote,
+  onExportMarkdown,
   onBranchSession,
   compactMobile = false,
   tokenUsage,
@@ -61,9 +63,39 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   const [isRetrying, setIsRetrying] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [isBranching, setIsBranching] = useState(false);
+
+  // P1-1 内联两步删除确认（无模态框）：
+  // 第一次点击「删除」将菜单项切换为红色「确认删除」，3.5s 内未确认自动复原；
+  // 菜单为受控模式，arming 那一次点击不关闭菜单，其余交互保持原生关闭行为
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const suppressMenuCloseRef = useRef(false);
+  const deleteArmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const disarmDelete = useCallback(() => {
+    if (deleteArmTimerRef.current) {
+      clearTimeout(deleteArmTimerRef.current);
+      deleteArmTimerRef.current = null;
+    }
+    setDeleteArmed(false);
+  }, []);
+
+  useEffect(() => () => {
+    if (deleteArmTimerRef.current) clearTimeout(deleteArmTimerRef.current);
+  }, []);
+
+  const handleMenuOpenChange = useCallback((next: boolean) => {
+    if (!next && suppressMenuCloseRef.current) {
+      // arming 点击触发的内部关闭：忽略，保持菜单展开等待二次确认
+      suppressMenuCloseRef.current = false;
+      return;
+    }
+    setMenuOpen(next);
+    if (!next) disarmDelete();
+  }, [disarmDelete]);
 
   // 🔧 修复：复制反馈定时器在卸载时清理，避免卸载后 setState / 定时器泄漏
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -93,6 +125,17 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       setIsSavingNote(false);
     }
   }, [onSaveAsNote, isSavingNote]);
+
+  // 🆕 导出为 Markdown
+  const handleExportMarkdown = useCallback(async () => {
+    if (!onExportMarkdown || isExporting) return;
+    setIsExporting(true);
+    try {
+      await onExportMarkdown();
+    } finally {
+      setIsExporting(false);
+    }
+  }, [onExportMarkdown, isExporting]);
 
   // 🆕 会话分支
   const handleBranch = useCallback(async () => {
@@ -135,6 +178,21 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
     }
   }, [canDelete, isDeleting, onDelete]);
 
+  // 两步删除：第一次 arming（保持菜单打开），第二次真正执行
+  const handleDeleteMenuItemClick = useCallback(() => {
+    if (!deleteArmed) {
+      suppressMenuCloseRef.current = true;
+      setDeleteArmed(true);
+      deleteArmTimerRef.current = setTimeout(() => {
+        deleteArmTimerRef.current = null;
+        setDeleteArmed(false);
+      }, 3500);
+      return;
+    }
+    disarmDelete();
+    handleDelete();
+  }, [deleteArmed, disarmDelete, handleDelete]);
+
   // 视觉保持 36px（!h-9 !w-9），用透明伪元素把命中区扩大到 ≥44px（触控目标契约）
   const compactButtonClassName = compactMobile
     ? '!h-9 !w-9 rounded-full [&_svg]:h-[14px] [&_svg]:w-[14px] relative after:absolute after:-inset-1 after:rounded-full after:content-[\'\']'
@@ -146,6 +204,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   const hasSecondaryActions = Boolean(
     canDelete ||
     onSaveAsNote ||
+    onExportMarkdown ||
     onBranchSession ||
     (isUser && onResend) ||
     (!isUser && onRetry && !showInlineRetry)
@@ -169,7 +228,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   ) : null;
 
   const actionsMenu = (
-    <AppMenu>
+    <AppMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
       <AppMenuTrigger asChild>
         <NotionButton
           variant="ghost"
@@ -187,6 +246,12 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
         width={compactMobile ? 168 : 188}
         className={compactMobile ? '[&_.app-menu-item]:text-[12px] [&_.app-menu-item]:min-h-10 [&_.app-menu-item-icon_svg]:h-3.5 [&_.app-menu-item-icon_svg]:w-3.5' : undefined}
       >
+        {/* P0-1: 紧凑移动模式下没有内联编辑按钮，编辑入口进入溢出菜单 */}
+        {compactMobile && isUser && onEdit && (
+          <AppMenuItem onClick={onEdit} disabled={!canEdit} icon={<PencilSimple size={16} />}>
+            {t('messageItem.actions.edit')}
+          </AppMenuItem>
+        )}
         {!isUser && onRetry && !showInlineRetry && (
           <AppMenuItem onClick={handleRetry} disabled={isLocked || isRetrying} icon={<ArrowCounterClockwise size={16} />}>
             {t('messageItem.actions.retry')}
@@ -202,19 +267,27 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
             {t('messageItem.actions.saveAsNote')}
           </AppMenuItem>
         )}
+        {onExportMarkdown && (
+          <AppMenuItem onClick={handleExportMarkdown} disabled={isExporting} icon={<FileArrowDown size={16} />}>
+            {t('messageItem.actions.exportMarkdown')}
+          </AppMenuItem>
+        )}
         {onBranchSession && (
           <AppMenuItem onClick={handleBranch} disabled={isBranching || isLocked} icon={<GitBranch size={16} />}>
             {t('messageItem.actions.branch')}
           </AppMenuItem>
         )}
         <AppMenuSeparator />
+        {/* P1-1: 内联两步确认——「删除」→ 红色高亮「确认删除」，超时自动复原 */}
         <AppMenuItem
-          onClick={() => setDeleteConfirmOpen(true)}
+          onClick={handleDeleteMenuItemClick}
           disabled={!canDelete || isDeleting}
           destructive
           icon={<Trash size={16} />}
+          aria-live="polite"
+          className={deleteArmed ? 'bg-destructive/10 font-medium' : undefined}
         >
-          {t('messageItem.actions.delete')}
+          {deleteArmed ? t('messageItem.actions.deleteConfirmTitle') : t('messageItem.actions.delete')}
         </AppMenuItem>
         {/* M-1: 移动端 Token 用量只读入口（桌面在操作行有内联展示，无需重复） */}
         {compactMobile && tokenUsage && tokenUsage.totalTokens > 0 && (
@@ -236,37 +309,24 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
 
   if (compactMobile) {
     return (
-      <>
-        <div className={cn('flex items-center gap-0.5', className)}>
-          <NotionButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            className={compactButtonClassName}
-            onClick={handleCopy}
-            aria-label={t('messageItem.actions.copy')}
-            title={t('messageItem.actions.copy')}
-          >
-            <IconSwap
-              active={copied}
-              a={<CopySimple className="w-4 h-4" />}
-              b={<Check className="w-4 h-4 text-green-500" />}
-            />
-          </NotionButton>
-          {actionsMenu}
-        </div>
-        <NotionAlertDialog
-          open={deleteConfirmOpen}
-          onOpenChange={setDeleteConfirmOpen}
-          title={t('messageItem.actions.deleteConfirmTitle')}
-          description={t('messageItem.actions.deleteConfirmDesc')}
-          icon={<Trash className="h-5 w-5 text-destructive" />}
-          confirmText={t('messageItem.actions.delete')}
-          cancelText={t('common.cancel')}
-          confirmVariant="danger"
-          onConfirm={() => { setDeleteConfirmOpen(false); handleDelete(); }}
-        />
-      </>
+      <div className={cn('flex items-center gap-0.5', className)}>
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          className={compactButtonClassName}
+          onClick={handleCopy}
+          aria-label={t('messageItem.actions.copy')}
+          title={t('messageItem.actions.copy')}
+        >
+          <IconSwap
+            active={copied}
+            a={<CopySimple className="w-4 h-4" />}
+            b={<Check className="w-4 h-4 text-green-500" />}
+          />
+        </NotionButton>
+        {actionsMenu}
+      </div>
     );
   }
 
@@ -290,17 +350,6 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
         {showOverflowMenu && actionsMenu}
       </div>
       {anchorCopyToEnd && desktopCopyButton}
-      <NotionAlertDialog
-        open={deleteConfirmOpen}
-        onOpenChange={setDeleteConfirmOpen}
-        title={t('messageItem.actions.deleteConfirmTitle')}
-        description={t('messageItem.actions.deleteConfirmDesc')}
-        icon={<Trash className="h-5 w-5 text-destructive" />}
-        confirmText={t('messageItem.actions.delete')}
-        cancelText={t('common.cancel')}
-        confirmVariant="danger"
-        onConfirm={() => { setDeleteConfirmOpen(false); handleDelete(); }}
-      />
     </div>
   );
 };

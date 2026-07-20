@@ -86,17 +86,15 @@ export const UserMessageBubble: React.FC<UserMessageBubbleProps> = ({
           onClick={toggleExpand}
           aria-expanded={isExpanded}
         >
-          {/* 🔧 i18n 修复：messageItem.bubble.* 键在语言包中缺失，
-              回退到已存在的 activityTimeline.* 键，避免英文界面显示中文兜底文案 */}
           {isExpanded ? (
             <>
               <CaretUp size={14} />
-              <span>{t('messageItem.bubble.collapse', t('activityTimeline.collapse'))}</span>
+              <span>{t('messageItem.bubble.collapse')}</span>
             </>
           ) : (
             <>
               <CaretDown size={14} />
-              <span>{t('messageItem.bubble.expand', t('activityTimeline.expand'))}</span>
+              <span>{t('messageItem.bubble.expand')}</span>
             </>
           )}
         </button>

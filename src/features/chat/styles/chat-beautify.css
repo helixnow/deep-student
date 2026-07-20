@@ -16,11 +16,11 @@
    增强的CSS变量定义 - Enhanced Design Tokens
    ============================================================================ */
 :root {
-  /* 动画时长 — 别名指向 transitions-dev token（单一来源见 src/styles/transitions-dev.css） */
-  --chat-animation-fast: var(--dropdown-close-dur); /* 150ms（原 0.15s） */
-
-  /* 动画缓动函数 — 统一 transitions-dev 缓动族 */
-  --chat-ease-smooth: var(--resize-ease); /* cubic-bezier(0.22, 1, 0.36, 1)（原 0.4, 0, 0.2, 1） */
+  /* 动画时长/缓动 — 历史别名，统一指向 motion.css 的 chat 动效令牌
+     （--chat-motion-* → transitions-dev token，单一来源）。新代码请直接
+     使用 --chat-motion-fast / --chat-motion-base / --chat-motion-ease。 */
+  --chat-animation-fast: var(--chat-motion-fast, 150ms);
+  --chat-ease-smooth: var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
 
   /* 美观的字体系统 - 使用全局字体变量 */
   --chat-font-family: var(--font-family);
@@ -28,8 +28,8 @@
   /* 空会话 composer 的黄金分割视觉轴 */
   --chat-empty-composer-top-space: 0.382fr;
   --chat-empty-composer-bottom-space: 0.618fr;
-  --chat-composer-motion-duration: var(--page-slide-dur); /* 200ms（原 210ms） */
-  --chat-composer-motion-ease: var(--page-slide-ease); /* cubic-bezier(0.22, 1, 0.36, 1)（原 0.2, 0.8, 0.2, 1） */
+  --chat-composer-motion-duration: var(--chat-motion-base, 200ms); /* 200ms */
+  --chat-composer-motion-ease: var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
 /* ============================================================================
@@ -101,7 +101,7 @@
 .chat-v2 .chat-loading-shell-defer,
 .chat-loading-shell-defer {
   opacity: 0;
-  animation: chat-loading-shell-in var(--text-swap-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1)) 150ms forwards;
+  animation: chat-loading-shell-in var(--chat-motion-base, 200ms) var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)) 150ms forwards;
 }
 
 @keyframes chat-loading-shell-in {
@@ -120,13 +120,13 @@
  * 由 ChatContainer threadShellRef 在 sessionId 变化时重播，不 remount MessageList。
  */
 .chat-v2 .chat-thread-enter {
-  animation: chat-thread-enter var(--dropdown-close-dur, 150ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  animation: chat-thread-enter var(--chat-motion-fast, 150ms) var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
 @keyframes chat-thread-enter {
   from {
     opacity: 0;
-    translate: 0 4px;
+    translate: 0 var(--chat-motion-rise-distance, 4px);
   }
 
   to {
@@ -219,7 +219,7 @@
   --unified-input-shell-surface: var(--surface-root);
   --composer-panel-surface: var(--surface-root);
   --composer-panel-border: color-mix(in hsl, var(--border-default) 62%, transparent 38%);
-  --composer-panel-shadow: 0 10px 24px hsl(var(--shadow-base) / 5%);
+  --composer-panel-shadow: var(--shadow-shell-soft); /* 2026-07 二轮：改用 shell 阴影 token，暗色随 --shadow-base 自适应 */
 
   background: var(--surface-root);
 }
@@ -288,14 +288,14 @@
 
 .chat-v2 .message.assistant .message-content .markdown-content code:not(pre code) {
   background: hsl(var(--muted) / 60%);
-  border-radius: 6px;
+  border-radius: var(--chat-radius-xs, 6px);
   padding: 0.2em 0.4em;
 }
 
 .chat-v2 .message.assistant .message-content .markdown-content pre {
   background: transparent; /* 透明背景 */
   color: hsl(var(--card-foreground));
-  border-radius: 10px;
+  border-radius: var(--chat-block-radius, 12px); /* 对齐内容块半径 token（原裸 10px） */
   box-shadow: none; /* 移除内部阴影 */
   border: none; /* 移除内部边框 */
 }
@@ -337,7 +337,7 @@
 .chat-v2 .user-message-bubble__content {
   position: relative;
   overflow: hidden;
-  transition: max-height 0.3s var(--chat-ease-smooth);
+  transition: max-height var(--chat-motion-slow, 300ms) var(--chat-ease-smooth);
 }
 
 .chat-v2 .user-message-bubble__content--truncated {
@@ -349,7 +349,7 @@
 .chat-v2 .user-message-bubble__toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--chat-spacing-xs, 4px);
   margin-top: 0.5rem;
   padding: 0;
   border: none;
@@ -369,7 +369,7 @@
 .chat-v2 .user-message-bubble__toggle:focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: calc(var(--radius, 0.5rem) - 4px);
 }
 
 /* 暗色模式微调 */
@@ -381,18 +381,11 @@
 /* ============================================================================
    减少动态效果 - Reduced Motion
    ----------------------------------------------------------------------------
-   ★ 2026-07 修复：原规则作用于全局 `*`，从聊天模块泄漏到整个应用；
-   现收敛到 .chat-v2 作用域内（全局降级由 ui-motion.css 等各自模块负责）。
+   ★ 2026-07 二轮：原 `0.01ms !important` 扫射会误伤需要"立刻到位"的
+   状态类，且与 ui-motion.css 的无 !important 策略冲突——已移除。
+   兜底扫射（无 !important）统一由 motion.css 提供；本文件的动画
+   （loading shell / thread-enter / composer frame）已在上方各自点名关闭。
    ============================================================================ */
-@media (prefers-reduced-motion: reduce) {
-  .chat-v2 *,
-  .chat-v2 *::before,
-  .chat-v2 *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
 
 /* ============================================================================
    深色模式支持 - Dark Mode Support

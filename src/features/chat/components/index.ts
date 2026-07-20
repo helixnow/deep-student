@@ -30,16 +30,6 @@ export type { AttachmentUploaderProps } from './AttachmentUploader';
 export { AttachmentPreview } from './AttachmentPreview';
 export type { AttachmentPreviewProps } from './AttachmentPreview';
 
-export { ChatParamsPanel } from './ChatParamsPanel';
-export type { ChatParamsPanelProps, ModelConfig } from './ChatParamsPanel';
-
-export { SystemPromptEditor } from './SystemPromptEditor';
-export type {
-  SystemPromptEditorProps,
-  SystemPromptTemplate,
-  PromptVariable,
-} from './SystemPromptEditor';
-
 // 变体组件（多模型并行）
 export {
   VariantStatusIcon,

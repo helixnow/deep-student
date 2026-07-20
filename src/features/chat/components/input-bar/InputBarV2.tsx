@@ -24,7 +24,8 @@ import { parseLeadingSkillCommands } from '../../skills/slashCommands';
 import { ThreadContentShell } from '../ui/ThreadContentShell';
 import { reloadSkills } from '../../skills/loader';
 import { useLoadedSkills } from '../../skills/hooks/useLoadedSkills';
-import type { InputBarV2Props, ModelMentionState, ModelMentionActions } from './types';
+import type { InputBarV2Props } from './types';
+import { useModelMentionAutocomplete } from './useModelMentionAutocomplete';
 import { COMPOSER_PANEL_KEYS } from '../../core/types/common';
 import { QUEUE_HARD_CAP } from '../../core/types/queue';
 import { usePdfPageRefs } from './usePdfPageRefs';
@@ -411,6 +412,44 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         setSessionSwitchKey((k) => k + 1);
       }
     }, [sessionId]);
+
+    // ★ 会话级 composer 草稿：sessionStorage keyed by sessionId。
+    // 切换会话/视图后回到本会话时恢复未发送草稿；发送后 inputValue 置空 → 自动清除。
+    // 只存文本，不存附件二进制（附件由 Store/VFS 管理）。
+    const draftStorageKey = sessionId ? `dstu.chatv2.draft.${sessionId}` : null;
+    const draftRestoredKeyRef = useRef<string | null>(null);
+
+    useEffect(() => {
+      if (!draftStorageKey) return;
+      if (draftRestoredKeyRef.current === draftStorageKey) return;
+      draftRestoredKeyRef.current = draftStorageKey;
+      try {
+        const draft = sessionStorage.getItem(draftStorageKey);
+        if (draft && store.getState().inputValue === '') {
+          store.getState().setInputValue(draft);
+        }
+      } catch {
+        // sessionStorage 不可用（隐私模式等）时静默跳过
+      }
+    }, [draftStorageKey, store]);
+
+    useEffect(() => {
+      if (!draftStorageKey) return;
+      // 恢复动作尚未执行前不要用空值覆盖已存草稿
+      if (draftRestoredKeyRef.current !== draftStorageKey) return;
+      const timer = window.setTimeout(() => {
+        try {
+          if (inputValue) {
+            sessionStorage.setItem(draftStorageKey, inputValue);
+          } else {
+            sessionStorage.removeItem(draftStorageKey);
+          }
+        } catch {
+          // 静默：草稿只是增强能力
+        }
+      }, 300);
+      return () => window.clearTimeout(timer);
+    }, [draftStorageKey, inputValue]);
 
     const handleContextRefCreated = useCallback((payload: { contextRef: { resourceId: string; hash: string; typeId: string }; attachmentId: string }) => {
       const state = store.getState();
@@ -917,40 +956,24 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       }
     }, [panelStates.model, modelRetryTarget, store, clearSelectedModels]);
 
-    // 🔧 构建模型状态和操作（使用外部面板，不再显示 @mention 弹窗）
-    // 🚩 Feature Flag：当 enableMultiModelSelect 为 false 时，不显示多选 chips
-    const modelMentionState: ModelMentionState | undefined = useMemo(() => {
-      if (!availableModels || availableModels.length === 0) return undefined;
-      return {
-        showAutoComplete: false, // 🔧 禁用 @mention 弹窗
-        query: '',
-        suggestions: [],
-        selectedIndex: 0,
-        // 🔧 重试模式下不显示 chips（选中的模型仅在面板内显示）
-        // 🚩 Feature Flag：当 enableMultiModelSelect 为 false 时，不显示 chips
-        selectedModels: (!multiModelSelectEnabled || modelRetryTarget) ? [] : selectedModels,
-      };
-    }, [availableModels, selectedModels, modelRetryTarget, multiModelSelectEnabled]);
+    // 🔧 模型 @mention 内联补全（原为硬禁用死开关，现由安全实现接管：
+    // 光标处精确删除 `@query`，不再复用旧 useModelMentions 的空白折叠逻辑）
+    const handleRemoveLastSelectedModel = useCallback(() => {
+      setSelectedModels(prev => prev.slice(0, -1));
+    }, []);
 
-    const modelMentionActions: ModelMentionActions | undefined = useMemo(() => {
-      if (!availableModels || availableModels.length === 0) return undefined;
-      return {
-        selectSuggestion: (model: ModelInfo) => {
-          handleSelectModel(model);
-          return inputValue; // 不修改输入值
-        },
-        removeSelectedModel: handleDeselectModel,
-        setSelectedIndex: () => {},
-        moveSelectionUp: () => {},
-        moveSelectionDown: () => {},
-        confirmSelection: () => null,
-        closeAutoComplete: () => {},
-        updateCursorPosition: () => {},
-        removeLastSelectedModel: () => {
-          setSelectedModels(prev => prev.slice(0, -1));
-        },
-      };
-    }, [availableModels, handleSelectModel, handleDeselectModel, inputValue]);
+    const { state: modelMentionState, actions: modelMentionActions } = useModelMentionAutocomplete({
+      availableModels,
+      inputValue,
+      // 重试模式下模型选择走 ModelPicker 面板，避免两套选择心智叠加
+      enabled: !modelRetryTarget,
+      selectedModels,
+      // 🔧 重试模式下不显示 chips（选中的模型仅在面板内显示）
+      displaySelectedModels: modelRetryTarget ? [] : selectedModels,
+      onSelectModel: handleSelectModel,
+      onDeselectModel: handleDeselectModel,
+      onRemoveLastModel: handleRemoveLastSelectedModel,
+    });
 
     // 合并模式插件的扩展组件
     const ModeLeftAccessory = modePlugin?.renderInputBarLeft;
@@ -978,7 +1001,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     }, [modePlugin?.renderRagPanel, store, setPanelState]);
 
     // 🔧 模型选择面板渲染函数（统一 ModelPicker：单选/对比/重试）
-    // hideHeader 参数用于移动端底部抽屉模式
+    // hideHeader 供外部宿主（如命令面板）复用时隐藏内置头部；
+    // 移动端面板已改为 composer 内联展开（P0-1），不存在底部抽屉形态
     const renderModelPanel = useMemo(() => {
       const RuntimeModelPanel = modePlugin?.renderModelPanel;
       if (!RuntimeModelPanel && (!availableModels || availableModels.length === 0)) {

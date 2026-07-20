@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { 
@@ -639,21 +638,65 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
               </div>
             ) : null}
 
-            {/* Add from browse — primary action */}
+            {/* Add from browse — primary action（桌面端切换内联资源选择区，不再用侧滑抽屉） */}
             <button
               type="button"
+              aria-expanded={!onMobileBrowse ? pickerOpen : undefined}
               onClick={() => {
                 if (onMobileBrowse) {
                   onMobileBrowse(togglePinnedResource, pinnedResourceIds);
                 } else {
-                  setPickerOpen(true);
+                  setPickerOpen((open) => !open);
                 }
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border/60 text-sm text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground hover:border-border transition-colors cursor-pointer"
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2 rounded-md border border-dashed text-sm transition-colors cursor-pointer',
+                !onMobileBrowse && pickerOpen
+                  ? 'border-primary/40 bg-primary/5 text-foreground'
+                  : 'border-border/60 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground hover:border-border'
+              )}
             >
-              <Plus size={16} />
-              <span>{t('page.groupPinnedBrowse')}</span>
+              {!onMobileBrowse && pickerOpen ? <X size={16} /> : <Plus size={16} />}
+              <span>
+                {!onMobileBrowse && pickerOpen
+                  ? t('common:close')
+                  : t('page.groupPinnedBrowse')}
+              </span>
+              {!onMobileBrowse && pickerOpen && pinnedResourceIds.length > 0 && (
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {t('page.groupPinnedSelectedCount', { count: pinnedResourceIds.length })}
+                </span>
+              )}
             </button>
+
+            {/* 内联资源选择区（原 Portal 右侧抽屉内联化；grid-rows 展开动画，遵循 D 报告动效基线） */}
+            {!onMobileBrowse && (
+              <div
+                className={cn(
+                  'grid transition-[grid-template-rows,opacity] duration-200 ease-[var(--dropdown-ease)] motion-reduce:transition-none',
+                  pickerOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                )}
+              >
+                <div className={cn('min-h-0 overflow-hidden', !pickerOpen && 'pointer-events-none')}>
+                  <div className="h-[380px] overflow-hidden rounded-[var(--radius-shell-control)] border border-border/50 bg-card">
+                    {pickerOpen && (
+                      <LearningHubSidebar
+                        mode="canvas"
+                        hostId="group-picker"
+                        sessionActive={pickerOpen}
+                        commandsEnabled={false}
+                        onClose={() => setPickerOpen(false)}
+                        onOpenApp={(item: ResourceListItem) => {
+                          togglePinnedResource(item.id);
+                        }}
+                        className="h-full"
+                        highlightedIds={pinnedHighlightSet}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {resolvedPinnedRefs.length > 0 && (
               <p className="text-xs text-muted-foreground/60">
@@ -676,54 +719,6 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           )}
         </div>
       </CustomScrollArea>
-
-      {/* Resource Picker — 桌面端使用 Portal 右侧面板；移动端由父级 MobileSlidingLayout 右面板处理 */}
-      {pickerOpen && !onMobileBrowse && createPortal(
-        <div
-          className="fixed inset-0 z-[200] flex justify-end"
-          onClick={() => setPickerOpen(false)}
-        >
-          <div
-            className="h-full w-[380px] max-w-[85vw] bg-card shadow-xl flex flex-col border-l border-border/40 ui-slide-in-right"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 shrink-0">
-              <div className="flex items-center gap-2">
-                <NotionButton
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  onClick={() => setPickerOpen(false)}
-                  className="!h-7 !w-7"
-                >
-                  <X size={16} />
-                </NotionButton>
-                <span className="text-sm font-medium">{t('page.groupPinnedBrowse')}</span>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                {pinnedResourceIds.length > 0
-                  ? t('page.groupPinnedSelectedCount', { count: pinnedResourceIds.length })
-                  : ''}
-              </span>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <LearningHubSidebar
-                mode="canvas"
-                hostId="group-picker"
-                sessionActive={pickerOpen}
-                commandsEnabled={false}
-                onClose={() => setPickerOpen(false)}
-                onOpenApp={(item: ResourceListItem) => {
-                  togglePinnedResource(item.id);
-                }}
-                className="h-full"
-                highlightedIds={pinnedHighlightSet}
-              />
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
     </div>
   );
 };

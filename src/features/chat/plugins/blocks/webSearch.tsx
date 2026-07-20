@@ -124,7 +124,7 @@ const WebSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
         )}
 
         {isError && (
-          <span className="flex items-center gap-1 ml-auto text-xs text-red-600 dark:text-red-400">
+          <span className="flex items-center gap-1 ml-auto text-xs text-destructive">
             <WarningCircle size={12} />
             <span>{t('blocks.webSearch.error')}</span>
           </span>
@@ -162,7 +162,7 @@ const WebSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
         {/* 错误状态 */}
         {isError && (
           <div className="flex items-center justify-center py-6">
-            <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+            <div className="flex items-center gap-2 text-destructive">
               <WarningCircle size={20} />
               <span className="text-sm">
                 {block.error || t('blocks.webSearch.errorMessage')}

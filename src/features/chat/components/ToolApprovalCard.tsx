@@ -1,7 +1,14 @@
 /**
- * 工具审批卡片组件
+ * 工具审批卡片组件（遗留）
  *
- * 显示敏感工具的审批请求，让用户决定是否允许执行。
+ * @deprecated 生产审批路径已收敛到 `input-bar/BlockingApprovalBar`（输入栏内联审批栏）。
+ * 本组件不再挂载于任何生产渲染路径，仅因类型复用（`ApprovalRequestData` 被
+ * `input-bar/types.ts` 引用）与既有测试保留。新特性请只加在 BlockingApprovalBar；
+ * 待类型迁移到 core/types 后可整体删除本文件（需消息渲染/输入栏分区配合改
+ * `components/index.ts` 与测试）。
+ *
+ * 超时语义已与 BlockingApprovalBar 对齐：后端是超时权威（emit approval_timeout），
+ * 前端倒计时归零只进入禁用等待态，不再代发 reject。
  *
  * 设计文档：src/features/chat/docs/29-ChatV2-Agent能力增强改造方案.md 第 4.6 节
  */
@@ -109,10 +116,10 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
   // 同步互斥锁：state 更新是异步的，快速双击会让两次点击都读到 isResponding=false，
   // 用 ref 在同一事件循环内立即拦截第二次提交
   const respondingRef = useRef(false);
-  // 超时自动拒绝只触发一次（即使发送失败也不无限重试）
-  const timeoutFiredRef = useRef(false);
   const resolvedStatus = request.resolvedStatus;
   const isResolved = Boolean(resolvedStatus);
+  // 倒计时归零：后端权威超时已（或即将）触发，前端只展示等待态
+  const isTimedOutLocally = !isResolved && request.timeoutSeconds > 0 && remainingSeconds <= 0;
 
   // 获取工具的国际化显示名称
   const displayToolName = useMemo(
@@ -147,12 +154,11 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
     setIsReasonOpen(false);
     setRejectReason('');
     respondingRef.current = false;
-    timeoutFiredRef.current = false;
   }, [request.toolCallId, request.timeoutSeconds]);
 
   const handleResponse = useCallback(
     async (approved: boolean, reason?: string, remember: boolean = false, rememberSession: boolean = false) => {
-      if (respondingRef.current || hasResponded || isResponding || isResolved) return;
+      if (respondingRef.current || hasResponded || isResponding || isResolved || isTimedOutLocally) return;
 
       respondingRef.current = true;
       setIsResponding(true);
@@ -191,7 +197,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
         setIsResponding(false);
       }
     },
-    [sessionId, request.toolCallId, request.toolName, request.arguments, hasResponded, isResponding, isResolved, t]
+    [sessionId, request.toolCallId, request.toolName, request.arguments, hasResponded, isResponding, isResolved, isTimedOutLocally, t]
   );
 
   // 带理由拒绝（Enter/「发送」按钮）；'user_rejected' 为无理由哨兵值
@@ -213,25 +219,17 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
     return reason;
   }, [resolvedStatus, request.resolvedReason]);
 
-  // 倒计时逻辑（每秒递减；归零后在 effect 体内触发超时自动拒绝，
-  // 避免在 setState updater 内执行副作用——StrictMode 下 updater 可能被调用两次）
+  // 倒计时逻辑（每秒递减；归零后不代发 reject——后端超时权威会 emit approval_timeout，
+  // 由事件处理器解析成 resolvedStatus='timeout'，与 BlockingApprovalBar 语义一致）
   useEffect(() => {
-    if (hasResponded || isResolved || request.timeoutSeconds <= 0) return;
-
-    if (remainingSeconds <= 0) {
-      if (!timeoutFiredRef.current) {
-        timeoutFiredRef.current = true;
-        handleResponse(false, 'timeout');
-      }
-      return;
-    }
+    if (hasResponded || isResolved || request.timeoutSeconds <= 0 || remainingSeconds <= 0) return;
 
     const timer = setTimeout(() => {
       setRemainingSeconds((prev) => Math.max(0, prev - 1));
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [remainingSeconds, hasResponded, handleResponse, isResolved, request.timeoutSeconds]);
+  }, [remainingSeconds, hasResponded, isResolved, request.timeoutSeconds]);
 
   const resolution = useMemo(() => {
     if (!resolvedStatus) return null;
@@ -282,6 +280,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
 
   return (
     <Card
+      data-wb-blur-surface
       className={cn(
         'border-2 backdrop-blur-md supports-[backdrop-filter]:backdrop-blur-md',
         // 高风险操作用醒目的红色边框区分（低/中风险保持黄色警示）
@@ -301,14 +300,21 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               {t(`approval.sensitivity.${request.sensitivity}`)}
             </Badge>
             {isAwaitingDecision && request.timeoutSeconds > 0 && (
-              <div
-                className="flex items-center gap-1 text-sm text-muted-foreground"
-                role="timer"
-                aria-label={t('approval.aria.autoRejectCountdown', { seconds: remainingSeconds })}
-              >
-                <Clock size={16} />
-                <span>{remainingSeconds}s</span>
-              </div>
+              isTimedOutLocally ? (
+                <div className="flex items-center gap-1 text-sm text-warning" role="status">
+                  <Clock size={16} />
+                  <span>{t('approval.timedOutWaiting')}</span>
+                </div>
+              ) : (
+                <div
+                  className="flex items-center gap-1 text-sm text-muted-foreground"
+                  role="timer"
+                  aria-label={t('approval.aria.autoRejectCountdown', { seconds: remainingSeconds })}
+                >
+                  <Clock size={16} />
+                  <span>{remainingSeconds}s</span>
+                </div>
+              )
             )}
           </div>
         </div>
@@ -399,7 +405,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               variant="outline"
               size="sm"
               onClick={() => setIsReasonOpen((prev) => !prev)}
-              disabled={isResponding}
+              disabled={isResponding || isTimedOutLocally}
               className="text-red-600 hover:text-red-700 dark:text-red-400"
             >
               <X size={16} className="mr-1" />
@@ -412,7 +418,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={() => handleResponse(true, undefined, false, true)}
-                disabled={isResponding}
+                disabled={isResponding || isTimedOutLocally}
                 className="text-success hover:text-success/80"
               >
                 {t('approval.allowSession')}
@@ -423,7 +429,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
             <NotionButton
               size="sm"
               onClick={() => handleResponse(true)}
-              disabled={isResponding}
+              disabled={isResponding || isTimedOutLocally}
               autoFocus
               className="bg-success text-success-foreground"
             >
@@ -449,7 +455,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
                   }}
                   placeholder={t('approval.rejectReasonPlaceholder')}
                   autoFocus
-                  disabled={isResponding}
+                  disabled={isResponding || isTimedOutLocally}
                   className={cn(
                     'flex-1 min-w-0 px-2 py-1 text-xs rounded-md border border-border/50',
                     'bg-background placeholder:text-muted-foreground/50',
@@ -461,7 +467,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={handleRejectImmediately}
-                  disabled={isResponding}
+                  disabled={isResponding || isTimedOutLocally}
                   className="shrink-0 text-xs text-muted-foreground hover:text-red-600 dark:hover:text-red-400"
                 >
                   {t('approval.rejectDirectly')}
@@ -470,7 +476,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
                   variant="outline"
                   size="sm"
                   onClick={handleRejectWithReason}
-                  disabled={isResponding}
+                  disabled={isResponding || isTimedOutLocally}
                   className="shrink-0 text-xs text-red-600 hover:text-red-700 dark:text-red-400"
                 >
                   {t('approval.rejectSend')}

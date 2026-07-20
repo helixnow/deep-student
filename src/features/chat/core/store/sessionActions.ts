@@ -47,6 +47,28 @@ function ensurePlanGateEventHandlerRegistered(): void {
   eventRegistry.register('plan_gate', planGateEventHandler);
 }
 
+/**
+ * 🔧 阻塞交互双轨收敛（SSOT）：
+ * `pendingBlockingInteraction` 是唯一事实源；旧字段 `pendingApprovalRequest`
+ * 保留仅为兼容仍在读取它的外部消费方（如 workbench agentManifest）。
+ * 所有阻塞交互写入都必须经由本 helper，保证旧字段是新字段的严格派生镜像：
+ * - tool_approval 交互 → 镜像为旧字段形状（剥离 kind / runtimeScope）
+ * - 其他交互或 null → 旧字段为 null
+ * 禁止在其他位置单独写 pendingApprovalRequest。
+ */
+function blockingInteractionPatch(interaction: BlockingInteraction | null): {
+  pendingBlockingInteraction: BlockingInteraction | null;
+  pendingApprovalRequest: ChatStore['pendingApprovalRequest'];
+} {
+  if (interaction && interaction.kind === 'tool_approval') {
+    const { kind: _kind, runtimeScope: _runtimeScope, ...legacy } = interaction;
+    void _kind;
+    void _runtimeScope;
+    return { pendingBlockingInteraction: interaction, pendingApprovalRequest: legacy };
+  }
+  return { pendingBlockingInteraction: interaction, pendingApprovalRequest: null };
+}
+
 export function createSessionActions(
   set: SetState,
   getState: GetState,
@@ -296,14 +318,14 @@ export function createSessionActions(
         // ========== 阻塞交互 Actions ==========
 
         setBlockingInteraction: (interaction: BlockingInteraction | null): void => {
-          set({ pendingBlockingInteraction: interaction });
+          set(blockingInteractionPatch(interaction));
           if (interaction) {
             console.log('[ChatStore] setBlockingInteraction:', interaction.kind, 'toolCallId' in interaction ? interaction.toolCallId : interaction.blockId);
           }
         },
 
         clearBlockingInteraction: (): void => {
-          set({ pendingBlockingInteraction: null });
+          set(blockingInteractionPatch(null));
           console.log('[ChatStore] clearBlockingInteraction');
         },
 
@@ -319,14 +341,14 @@ export function createSessionActions(
           resolvedReason?: string;
         } | null): void => {
           if (!request) {
-            set({ pendingBlockingInteraction: null });
+            set(blockingInteractionPatch(null));
             return;
           }
-          set({ pendingBlockingInteraction: { kind: 'tool_approval', ...request } });
+          set(blockingInteractionPatch({ kind: 'tool_approval', ...request }));
         },
 
         clearPendingApproval: (): void => {
-          set({ pendingBlockingInteraction: null });
+          set(blockingInteractionPatch(null));
         },
 
         setAuthorityMode: async (mode: AuthorityMode): Promise<void> => {
@@ -372,23 +394,21 @@ export function createSessionActions(
           timeoutSeconds: number;
           arguments?: Record<string, unknown>;
         }): void => {
-          set({
-            pendingBlockingInteraction: {
-              kind: 'plan_gate',
-              planId: payload.planId,
-              toolCallId: payload.toolCallId,
-              toolName: payload.toolName,
-              summary: payload.summary,
-              timeoutSeconds: payload.timeoutSeconds,
-              arguments: payload.arguments,
-            },
-          });
+          set(blockingInteractionPatch({
+            kind: 'plan_gate',
+            planId: payload.planId,
+            toolCallId: payload.toolCallId,
+            toolName: payload.toolName,
+            summary: payload.summary,
+            timeoutSeconds: payload.timeoutSeconds,
+            arguments: payload.arguments,
+          }));
         },
 
         clearPlanGate: (): void => {
           const pending = getState().pendingBlockingInteraction;
           if (pending?.kind === 'plan_gate') {
-            set({ pendingBlockingInteraction: null });
+            set(blockingInteractionPatch(null));
           }
         },
 

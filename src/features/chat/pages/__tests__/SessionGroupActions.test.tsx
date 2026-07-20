@@ -78,10 +78,6 @@ describe('SessionGroupActions', () => {
     const newSessionButton = source.match(
       /aria-label=\{newSessionInGroupLabel\}[\s\S]*?<\/NotionButton>/
     )?.[0] ?? '';
-    const sortableGroupItemSource = readFileSync(
-      resolve(process.cwd(), 'src/features/chat/components/SortableGroupItem.tsx'),
-      'utf-8'
-    );
 
     expect(source).toContain("import { CommonTooltip } from '@/components/shared/CommonTooltip';");
     expect(source).toContain('const newSessionInGroupLabel = labels.newSessionInGroup.replace(/\\{\\{\\s*groupName\\s*\\}\\}/g, group.name);');
@@ -90,9 +86,6 @@ describe('SessionGroupActions', () => {
     expect(newSessionButton).toContain('<StudyComposeIcon className="w-3.5 h-3.5" />');
     expect(newSessionButton).not.toContain('<Plus className="w-3.5 h-3.5" />');
     expect(newSessionButton).not.toContain('title={labels.newSession}');
-    expect(sortableGroupItemSource).toContain("newSessionInGroup: t('page.newSessionInGroup', {");
-    expect(sortableGroupItemSource).toContain('groupName: group.name');
-    expect(sortableGroupItemSource).not.toContain("defaultValue: '在 {{groupName}} 中新建会话'");
   });
 
   it('uses the group-aware new session label for accessibility without native title', () => {

@@ -40,6 +40,11 @@ interface BufferedChunk {
 /**
  * 🔧 P1修复：按会话分组的缓冲结构
  * 每个会话维护独立的 store 引用、缓冲区和定时器
+ *
+ * 注意：store 字段持有的是 ChatStore 状态快照（含 actions）。
+ * eventBridge 在每次 push 前都会调用 setStore 刷新此引用，且
+ * updateBlockContent / batchUpdateBlockContent 是绑定到 zustand set 的
+ * 稳定闭包，因此即使 flush 时快照字段已过期，写入仍作用于当前 store。
  */
 interface SessionBuffer {
   store: ChatStore;

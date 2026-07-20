@@ -1,20 +1,17 @@
 /**
- * 🆕 2026-01-20: AgentOutputDrawer
- * 
- * Worker Agent 输出预览抽屉组件
- * 在 WorkspacePanel 中点击 Worker 时，可以展开显示该 Worker 的对话输出预览
- * 
- * 🔧 2026-01-21 P1 修复：
- * - 使用 ChatContainer 替代简化消息列表
- * - 子代理渲染与主代理完全相同
+ * AgentOutputDrawer — Worker Agent 输出预览内联折叠卡片（名称沿用历史，非侧滑抽屉）。
+ *
+ * 在 WorkspacePanel 中点击 Worker 时，展开显示该 Worker 的对话输出预览：
+ * - 会话输出复用 ChatContainer，子代理渲染与主代理完全相同
+ * - 派发任务为卡片内的内联展开条（原 NotionDialog 模态框已内联化）
+ * - 状态色走语义 token（info/success/warning/destructive）
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretDown, CaretRight, ArrowSquareOut, CircleNotch, Robot, ArrowsOut, ArrowsIn, PaperPlaneRight, Timer, WarningCircle } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Label } from '@/components/ui/shad/Label';
 import type { AgentStatus } from '../types';
@@ -70,11 +67,21 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
   const { t } = useTranslation(['chatV2', 'skills']);
   // 🆕 高度切换状态
   const [isFullHeight, setIsFullHeight] = useState(false);
-  // 🆕 派发任务对话框
+  // 派发任务内联展开条（原 NotionDialog 内联化）
   const [isDispatchOpen, setIsDispatchOpen] = useState(false);
   const [dispatchContent, setDispatchContent] = useState('');
   const [dispatching, setDispatching] = useState(false);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const dispatchTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // 展开派发条时聚焦输入框（非模态，不做焦点陷阱）
+  useEffect(() => {
+    if (!isDispatchOpen) return;
+    const raf = window.requestAnimationFrame(() => {
+      dispatchTextareaRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [isDispatchOpen]);
 
   const coordinatorSessionId = useWorkspaceStore((state) =>
     state.agents.find((a) => a.workspaceId === workspaceId && a.role === 'coordinator')?.sessionId
@@ -114,16 +121,16 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
         ? formatElapsedDuration(finalElapsedMs)
         : null;
 
-  // 状态颜色
+  // 状态颜色（语义 token，与主题/暗色自动对齐）
   const statusColors: Record<AgentStatus, string> = {
-    idle: 'text-gray-500',
-    queued: 'text-blue-400',
-    running: 'text-blue-500',
-    completed: 'text-green-500',
-    failed: 'text-red-500',
-    cancelled: 'text-gray-400',
-    interrupted: 'text-amber-500',
-    closed: 'text-gray-500',
+    idle: 'text-muted-foreground',
+    queued: 'text-info/80',
+    running: 'text-info',
+    completed: 'text-success',
+    failed: 'text-destructive',
+    cancelled: 'text-muted-foreground/70',
+    interrupted: 'text-warning',
+    closed: 'text-muted-foreground',
   };
 
   // 状态文本
@@ -230,8 +237,8 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
 
   return (
     <div className={cn(
-      "border rounded-lg overflow-hidden bg-card",
-      status === 'running' && "ring-2 ring-blue-500/30"
+      "border rounded-[var(--chat-radius-md,12px)] overflow-hidden bg-card transition-shadow duration-200",
+      status === 'running' && "ring-2 ring-primary/25"
     )}>
       {/* 头部（可点击展开/收起；用 div 而非 button，避免内部操作按钮形成非法的 button 嵌套） */}
       <div
@@ -268,7 +275,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             </span>
           )}
           {status === 'running' && (
-            <CircleNotch size={12} className="animate-spin text-blue-500" />
+            <CircleNotch size={12} className="animate-spin text-info" />
           )}
         </div>
         <div className="flex items-center gap-1.5">
@@ -288,14 +295,15 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
           )}
           <span className={cn('text-xs', statusColors[status])}>{statusText}</span>
           
-          {/* 派发任务按钮 */}
+          {/* 派发任务按钮（切换内联派发条） */}
           <NotionButton
             variant="ghost"
             size="sm"
-            className="h-6 px-2 text-xs"
+            className={cn('h-6 px-2 text-xs', isDispatchOpen && 'bg-primary/10 text-primary')}
+            aria-expanded={isDispatchOpen}
             onClick={(e) => {
               e.stopPropagation();
-              setIsDispatchOpen(true);
+              setIsDispatchOpen((prev) => !prev);
             }}
             disabled={!isOnline}
             title={
@@ -346,9 +354,9 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
 
       {/* 🆕 失败提示行：store 无错误详情字段，显示通用失败文案并引导查看会话输出 */}
       {status === 'failed' && (
-        <div className="flex items-start gap-1.5 px-2.5 py-1.5 border-t border-red-200/60 dark:border-red-900/40 bg-red-50/60 dark:bg-red-900/15">
-          <WarningCircle size={13} className="text-red-500 flex-shrink-0 mt-px" />
-          <span className="text-xs text-red-600 dark:text-red-400">
+        <div className="flex items-start gap-1.5 px-2.5 py-1.5 border-t border-destructive/25 bg-destructive/10">
+          <WarningCircle size={13} className="text-destructive flex-shrink-0 mt-px" />
+          <span className="text-xs text-destructive">
             {t('chatV2:workspace.failedHint', {
               defaultValue: '该代理执行失败。展开下方会话输出或点击"查看完整会话"了解失败原因。',
             })}
@@ -356,71 +364,55 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
         </div>
       )}
 
-      {/* 🔧 核心修复：使用 ChatContainer 渲染完整聊天视图（与主代理完全相同） */}
-      {isExpanded && (
+      {/* 派发任务内联展开条（原 NotionDialog 模态框内联化；关闭时保留已输入内容，仅清除错误提示） */}
+      {isDispatchOpen && (
         <div
-          className={cn(
-            "border-t border-border/50 overflow-hidden",
-            isFullHeight ? "h-[500px]" : "h-[280px]"
-          )}
+          className="ui-rise-in border-t border-border/50 bg-muted/30 px-2.5 py-2.5 space-y-2"
+          role="group"
+          aria-label={t('chatV2:workspace.dispatch.title')}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && !dispatching) {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDispatchOpen(false);
+              setDispatchError(null);
+            }
+          }}
+          data-testid="agent-dispatch-inline"
         >
-          <ChatContainer
-            key={agentSessionId}
-            sessionId={agentSessionId}
-            showInputBar={false}
-            className="h-full"
-          />
-        </div>
-      )}
-
-      {/* 底部元信息 */}
-      <div className="flex items-center gap-2 px-2.5 py-1 border-t border-border/30 bg-muted/20 text-[10px] text-muted-foreground">
-        <span className="font-mono">{agentSessionId.slice(-12)}</span>
-      </div>
-
-      {/* 派发任务对话框（关闭时保留已输入内容，避免误触遮罩/Escape 丢失输入；仅清除错误提示） */}
-      <NotionDialog
-        open={isDispatchOpen}
-        onOpenChange={(open) => {
-          if (dispatching) return;
-          setIsDispatchOpen(open);
-          if (!open) {
-            setDispatchError(null);
-          }
-        }}
-        maxWidth="max-w-[520px]"
-      >
-        <NotionDialogHeader>
-          <NotionDialogTitle>{t('chatV2:workspace.dispatch.title')}</NotionDialogTitle>
-          <NotionDialogDescription>
-            {t('chatV2:workspace.dispatch.desc')}
-          </NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogBody>
-          <div className="grid gap-3 py-2">
-            <div className="text-sm text-muted-foreground">
+          <div className="flex items-center justify-between gap-2">
+            <Label
+              htmlFor={`dispatch-task-${agentSessionId}`}
+              className="text-xs font-medium"
+            >
+              {t('chatV2:workspace.dispatch.task')}
+            </Label>
+            <span className="text-[11px] text-muted-foreground truncate">
               {t('chatV2:workspace.dispatch.target')}:
               <span className="ml-1 text-foreground">{skillName || agentSessionId.slice(-8)}</span>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor={`dispatch-task-${agentSessionId}`}>
-                {t('chatV2:workspace.dispatch.task')}
-              </Label>
-              <Textarea
-                id={`dispatch-task-${agentSessionId}`}
-                value={dispatchContent}
-                onChange={(e) => setDispatchContent(e.target.value)}
-                rows={4}
-                disabled={dispatching}
-                placeholder={t('chatV2:workspace.dispatch.placeholder')}
-              />
-              {dispatchError && (
-                <p className="text-xs text-destructive">{dispatchError}</p>
-              )}
-            </div>
+            </span>
           </div>
-          </NotionDialogBody>
-          <NotionDialogFooter>
+          <Textarea
+            ref={dispatchTextareaRef}
+            id={`dispatch-task-${agentSessionId}`}
+            value={dispatchContent}
+            onChange={(e) => setDispatchContent(e.target.value)}
+            rows={3}
+            disabled={dispatching}
+            placeholder={t('chatV2:workspace.dispatch.placeholder')}
+            className="resize-none text-sm bg-background"
+            onKeyDown={(e) => {
+              // Cmd/Ctrl+Enter 快捷派发
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                void handleDispatch();
+              }
+            }}
+          />
+          {dispatchError && (
+            <p role="alert" className="text-xs text-destructive">{dispatchError}</p>
+          )}
+          <div className="flex items-center justify-end gap-2">
             <NotionButton
               variant="ghost"
               size="sm"
@@ -446,8 +438,31 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
               )}
               {t('chatV2:workspace.dispatch.send')}
             </NotionButton>
-          </NotionDialogFooter>
-      </NotionDialog>
+          </div>
+        </div>
+      )}
+
+      {/* 🔧 核心修复：使用 ChatContainer 渲染完整聊天视图（与主代理完全相同） */}
+      {isExpanded && (
+        <div
+          className={cn(
+            "ui-fade-in border-t border-border/50 overflow-hidden transition-[height] duration-200",
+            isFullHeight ? "h-[500px]" : "h-[280px]"
+          )}
+        >
+          <ChatContainer
+            key={agentSessionId}
+            sessionId={agentSessionId}
+            showInputBar={false}
+            className="h-full"
+          />
+        </div>
+      )}
+
+      {/* 底部元信息 */}
+      <div className="flex items-center gap-2 px-2.5 py-1 border-t border-border/30 bg-muted/20 text-[10px] text-muted-foreground">
+        <span className="font-mono">{agentSessionId.slice(-12)}</span>
+      </div>
     </div>
   );
 };

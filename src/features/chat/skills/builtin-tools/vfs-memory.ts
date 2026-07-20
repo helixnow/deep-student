@@ -70,6 +70,7 @@ export const vfsMemorySkill: SkillDefinition = {
 
 ### 查询记忆
 - **builtin-unified_search**: 搜索记忆内容（推荐首选，同时搜索知识库和记忆）
+- **builtin-memory_search**: 仅搜索记忆库（语义 + 关键词混合），用于精准检索用户记忆/学习日志
 - **builtin-memory_read**: 读取指定记忆的完整内容
 - **builtin-memory_list**: 列出记忆目录结构
 
@@ -91,7 +92,7 @@ export const vfsMemorySkill: SkillDefinition = {
 
 画像与普通记忆的分工：画像是**策展的长期层**（随会话自动注入，总量 ≤4000 字符，宁精勿滥）；
 普通记忆是可检索的事实库。发现**反复出现**的错误模式、明确的偏好/目标变化时才更新画像；
-单次做题流水不要写画像（系统会自动记入每日学习日志，可用 memory_search 检索"学习日志"）。
+单次做题流水不要写画像（系统会自动记入每日学习日志，可用 builtin-memory_search 检索"学习日志"）。
 
 ## 记忆分类
 
@@ -130,6 +131,7 @@ export const vfsMemorySkill: SkillDefinition = {
 9. 写操作成功后后端发出 \`memory://changed\`，打开中的记忆视图应据此刷新
 `,
   allowedTools: [
+    'builtin-memory_search',
     'builtin-memory_read',
     'builtin-memory_write',
     'builtin-memory_update_by_id',
@@ -146,6 +148,27 @@ export const vfsMemorySkill: SkillDefinition = {
     'builtin-learner_profile_update',
   ],
   embeddedTools: [
+    {
+      name: 'builtin-memory_search',
+      description: '仅在记忆库内做语义 + 关键词混合检索（含时间衰减加权）。当只需要检索用户记忆/学习日志而不需要知识库结果时使用；跨库检索请用 builtin-unified_search。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: '【必填】检索关键词或自然语言描述，如"数学 弱项"、"学习日志 昨天"',
+          },
+          top_k: {
+            type: 'integer',
+            description: '返回条数，默认 5',
+            default: 5,
+            minimum: 1,
+            maximum: 20,
+          },
+        },
+        required: ['query'],
+      },
+    },
     {
       name: 'builtin-memory_read',
       description: '读取指定记忆的完整内容与真实当前位置、标签、双向关联 ID、updated_at。当 unified_search 返回记忆摘要不够详细，或关系/标签/移动写入需要 OCC 基线时使用；note_id 从 unified_search 或 memory_list 获取。',

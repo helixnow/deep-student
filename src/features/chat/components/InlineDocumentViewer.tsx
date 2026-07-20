@@ -263,6 +263,7 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
 
   const overlay = (
     <div
+      data-wb-blur-surface
       className={cn(
         'bg-background/95 dark:bg-background/98 backdrop-blur-sm',
         'flex flex-col',

@@ -21,6 +21,9 @@ import {
   CloudArrowDown,
   Storefront,
   UploadSimple,
+  DotsThree,
+  Trash,
+  Warning,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -28,6 +31,12 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
 import { NotionAlertDialog } from '../ui/NotionDialog';
+import {
+  AppMenu,
+  AppMenuTrigger,
+  AppMenuContent,
+  AppMenuItem,
+} from '@/components/ui/app-menu/AppMenu';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { useMobileHeader, MobileSlidingLayout, ScreenPosition } from '@/components/layout';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -146,6 +155,8 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   // 删除确认状态
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [skillToDelete, setSkillToDelete] = useState<SkillDefinition | null>(null);
+  // 移动端行内删除确认进行中标记（桌面端由 SkillDeleteConfirm 自管理）
+  const [inlineDeleting, setInlineDeleting] = useState(false);
 
   // 导入覆盖确认状态
   const [importOverwriteOpen, setImportOverwriteOpen] = useState(false);
@@ -946,6 +957,40 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     setZipOverwriteOpen(false);
   }, []);
 
+  // 移动端行内删除确认（桌面端由 SkillDeleteConfirm 模态自管理加载态）
+  const handleInlineConfirmDelete = useCallback(async () => {
+    setInlineDeleting(true);
+    try {
+      await handleConfirmDelete();
+      setDeleteConfirmOpen(false);
+      setSkillToDelete(null);
+    } catch (error) {
+      console.error('[SkillsManagement] 删除失败:', error);
+      showGlobalNotification(
+        'error',
+        t('skills:management.delete_failed'),
+        String(error),
+      );
+    } finally {
+      setInlineDeleting(false);
+    }
+  }, [handleConfirmDelete, t]);
+
+  const handleCancelInlineDelete = useCallback(() => {
+    setDeleteConfirmOpen(false);
+    setSkillToDelete(null);
+  }, []);
+
+  // 移动端行内确认横幅渲染在列表顶部：打开时把列表滚回顶部保证可见
+  const listViewportRef = useRef<HTMLDivElement>(null);
+  const anyInlineConfirmOpen =
+    updateConfirmOpen || zipConfirmOpen ||
+    (isSmallScreen && (deleteConfirmOpen || importOverwriteOpen || zipOverwriteOpen));
+  useEffect(() => {
+    if (!anyInlineConfirmOpen) return;
+    listViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [anyInlineConfirmOpen]);
+
   // ========== 移动端统一顶栏配置 ==========
   const headerTitle = useMemo(() => {
     if (isSmallScreen && !(screenPosition === 'right' && (editorOpen || rightPanelOpen))) {
@@ -1094,85 +1139,147 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               </>
             )}
 
-            <NotionButton
-              variant="ghost"
-              size="sm"
-              onClick={() => void handleRefresh()}
-              disabled={isLoading}
-              className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
-              aria-label={t('skills:selector.refresh')}
-            >
-              <ArrowCounterClockwise size={14} className={cn('mr-1', isLoading && 'animate-spin')} />
-              {t('skills:management.refresh')}
-            </NotionButton>
+            {!isSmallScreen ? (
+              <>
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void handleRefresh()}
+                  disabled={isLoading}
+                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                  aria-label={t('skills:selector.refresh')}
+                >
+                  <ArrowCounterClockwise size={14} className={cn('mr-1', isLoading && 'animate-spin')} />
+                  {t('skills:management.refresh')}
+                </NotionButton>
 
-            <NotionButton
-              variant="ghost"
-              size="sm"
-              onClick={() => setTapBrowserOpen((v) => !v)}
-              aria-expanded={tapBrowserOpen}
-              className={cn(
-                'max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground',
-                tapBrowserOpen && 'bg-[color:var(--interactive-hover)] text-foreground',
-              )}
-            >
-              <Storefront size={14} className="mr-1" />
-              {t('skills:tap.entry')}
-            </NotionButton>
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setTapBrowserOpen((v) => !v)}
+                  aria-expanded={tapBrowserOpen}
+                  className={cn(
+                    'max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground',
+                    tapBrowserOpen && 'bg-[color:var(--interactive-hover)] text-foreground',
+                  )}
+                >
+                  <Storefront size={14} className="mr-1" />
+                  {t('skills:tap.entry')}
+                </NotionButton>
 
-            <NotionButton
-              variant="ghost"
-              size="sm"
-              onClick={() => void handleCheckUpdates()}
-              disabled={updateChecking}
-              className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
-            >
-              <CloudArrowDown size={14} className={cn('mr-1', updateChecking && 'animate-pulse')} />
-              {t('skills:management.check_updates')}
-            </NotionButton>
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void handleCheckUpdates()}
+                  disabled={updateChecking}
+                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                >
+                  <CloudArrowDown size={14} className={cn('mr-1', updateChecking && 'animate-pulse')} />
+                  {t('skills:management.check_updates')}
+                </NotionButton>
 
-            <NotionButton
-              variant="ghost"
-              size="sm"
-              onClick={handleImportZipClick}
-              className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
-            >
-              <Package size={14} className="mr-1" />
-              {t('skills:management.import_zip')}
-            </NotionButton>
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleImportZipClick}
+                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                >
+                  <Package size={14} className="mr-1" />
+                  {t('skills:management.import_zip')}
+                </NotionButton>
 
-            <NotionButton
-              variant="ghost"
-              size="sm"
-              onClick={handleImportClick}
-              className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
-            >
-              <Upload size={14} className="mr-1" />
-              {t('skills:management.import')}
-            </NotionButton>
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleImportClick}
+                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                >
+                  <Upload size={14} className="mr-1" />
+                  {t('skills:management.import')}
+                </NotionButton>
 
-            <NotionButton
-              variant="ghost"
-              size="sm"
-              onClick={handleExportAll}
-              disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
-              className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
-            >
-              <Download size={14} className="mr-1" />
-              {t('skills:management.export_all_short')}
-            </NotionButton>
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleExportAll}
+                  disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
+                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                >
+                  <Download size={14} className="mr-1" />
+                  {t('skills:management.export_all_short')}
+                </NotionButton>
 
-            <NotionButton
-              variant="ghost"
-              size="sm"
-              onClick={() => void handleExportTap()}
-              disabled={allSkills.filter(s => !s.isBuiltin && s.location === 'global').length === 0}
-              className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
-            >
-              <UploadSimple size={14} className="mr-1" />
-              {t('skills:management.export_tap')}
-            </NotionButton>
-
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void handleExportTap()}
+                  disabled={allSkills.filter(s => !s.isBuiltin && s.location === 'global').length === 0}
+                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                >
+                  <UploadSimple size={14} className="mr-1" />
+                  {t('skills:management.export_tap')}
+                </NotionButton>
+              </>
+            ) : (
+              /* 移动端：七个次级操作横排必溢出 → 收进「⋯」溢出菜单，
+                 主操作（搜索/筛选在下一行，新建在应用顶栏）保持直达 */
+              <AppMenu>
+                <AppMenuTrigger asChild>
+                  <NotionButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    className="!h-11 !w-11 text-muted-foreground"
+                    aria-label={t('common:more')}
+                    title={t('common:more')}
+                  >
+                    <DotsThree size={22} weight="bold" />
+                  </NotionButton>
+                </AppMenuTrigger>
+                <AppMenuContent align="end" width={224}>
+                  <AppMenuItem
+                    icon={<ArrowCounterClockwise size={16} className={cn(isLoading && 'animate-spin')} />}
+                    disabled={isLoading}
+                    onClick={() => void handleRefresh()}
+                  >
+                    {t('skills:management.refresh')}
+                  </AppMenuItem>
+                  <AppMenuItem
+                    icon={<Storefront size={16} />}
+                    onClick={() => setTapBrowserOpen((v) => !v)}
+                  >
+                    {t('skills:tap.entry')}
+                  </AppMenuItem>
+                  <AppMenuItem
+                    icon={<CloudArrowDown size={16} className={cn(updateChecking && 'animate-pulse')} />}
+                    disabled={updateChecking}
+                    onClick={() => void handleCheckUpdates()}
+                  >
+                    {t('skills:management.check_updates')}
+                  </AppMenuItem>
+                  <AppMenuItem icon={<Package size={16} />} onClick={handleImportZipClick}>
+                    {t('skills:management.import_zip')}
+                  </AppMenuItem>
+                  <AppMenuItem icon={<Upload size={16} />} onClick={handleImportClick}>
+                    {t('skills:management.import')}
+                  </AppMenuItem>
+                  <AppMenuItem
+                    icon={<Download size={16} />}
+                    disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
+                    onClick={handleExportAll}
+                  >
+                    {t('skills:management.export_all_short')}
+                  </AppMenuItem>
+                  <AppMenuItem
+                    icon={<UploadSimple size={16} />}
+                    disabled={allSkills.filter(s => !s.isBuiltin && s.location === 'global').length === 0}
+                    onClick={() => void handleExportTap()}
+                  >
+                    {t('skills:management.export_tap')}
+                  </AppMenuItem>
+                </AppMenuContent>
+              </AppMenu>
+            )}
           </div>
         </div>
 
@@ -1229,6 +1336,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 
       <CustomScrollArea
         className="flex-1 min-h-0"
+        viewportRef={listViewportRef}
         viewportClassName="p-4 sm:p-6 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))] sm:pb-[calc(1.5rem+var(--mobile-safe-area-bottom,0px))]"
       >
         {/* 技能源浏览器 / 上游更新确认：列表顶部内联展开（非模态，不遮挡页面） */}
@@ -1237,6 +1345,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         )}
         {renderUpdateConfirm()}
         {renderZipImportConfirm()}
+        {renderMobileInlineConfirms()}
         <SkillsList
           skills={filteredSkills}
           selectedSkillId={selectedSkillId}
@@ -1501,6 +1610,122 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     );
   };
 
+  // ========== 移动端行内二次确认（替代模态 AlertDialog；列表顶部内联横幅） ==========
+  const renderMobileInlineConfirms = () => {
+    if (!isSmallScreen) return null;
+    return (
+      <>
+        {deleteConfirmOpen && skillToDelete && (
+          <section
+            aria-label={t('skills:management.delete')}
+            className="mb-4 space-y-2.5 rounded-lg border border-red-300/50 bg-red-50/50 p-3 dark:border-red-700/40 dark:bg-red-900/10"
+          >
+            <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+              <Warning size={16} className="text-destructive" />
+              {t('skills:management.delete')}
+            </div>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              {t('skills:management.delete_confirm', {
+                name: getLocalizedSkillName(skillToDelete.id, skillToDelete.name, t),
+              })}
+            </p>
+            <div className="flex items-center gap-2 rounded-md bg-muted/50 p-2 text-xs">
+              <Trash size={14} className="flex-shrink-0 text-muted-foreground" />
+              <span className="min-w-0 truncate font-medium">
+                {getLocalizedSkillName(skillToDelete.id, skillToDelete.name, t)}
+              </span>
+              <span className="flex-shrink-0 text-[10px] text-muted-foreground">({skillToDelete.id})</span>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={handleCancelInlineDelete}
+                disabled={inlineDeleting}
+                className="!h-9 px-3 text-xs"
+              >
+                {t('common:actions.cancel')}
+              </NotionButton>
+              <NotionButton
+                variant="danger"
+                size="sm"
+                onClick={() => void handleInlineConfirmDelete()}
+                disabled={inlineDeleting}
+                className="!h-9 px-3 text-xs"
+              >
+                {inlineDeleting ? t('common:actions.deleting') : t('common:actions.delete')}
+              </NotionButton>
+            </div>
+          </section>
+        )}
+
+        {importOverwriteOpen && pendingImport && (
+          <section
+            aria-label={t('skills:management.import_overwrite_title')}
+            className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
+          >
+            <div className="text-[13px] font-medium text-foreground">
+              {t('skills:management.import_overwrite_title')}
+            </div>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              {t('skills:management.import_overwrite_confirm', { name: pendingImport.skill.name })}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={handleCancelOverwrite}
+                className="!h-9 px-3 text-xs"
+              >
+                {t('common:actions.cancel')}
+              </NotionButton>
+              <NotionButton
+                variant="primary"
+                size="sm"
+                onClick={() => void handleConfirmOverwrite()}
+                className="!h-9 px-3 text-xs"
+              >
+                {t('skills:management.import_overwrite')}
+              </NotionButton>
+            </div>
+          </section>
+        )}
+
+        {zipOverwriteOpen && pendingZipImport && (
+          <section
+            aria-label={t('skills:management.import_zip_overwrite_title')}
+            className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
+          >
+            <div className="text-[13px] font-medium text-foreground">
+              {t('skills:management.import_zip_overwrite_title')}
+            </div>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              {t('skills:management.import_zip_overwrite_confirm', { name: pendingZipImport.name })}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={handleCancelZipOverwrite}
+                className="!h-9 px-3 text-xs"
+              >
+                {t('common:actions.cancel')}
+              </NotionButton>
+              <NotionButton
+                variant="primary"
+                size="sm"
+                onClick={() => void handleConfirmZipOverwrite()}
+                className="!h-9 px-3 text-xs"
+              >
+                {t('skills:management.import_overwrite')}
+              </NotionButton>
+            </div>
+          </section>
+        )}
+      </>
+    );
+  };
+
   // ========== 移动端布局 ==========
   if (isSmallScreen) {
     return (
@@ -1539,43 +1764,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           {renderMainContent()}
         </MobileSlidingLayout>
 
-        <SkillDeleteConfirm
-          skill={skillToDelete}
-          open={deleteConfirmOpen}
-          onOpenChange={setDeleteConfirmOpen}
-          onConfirm={handleConfirmDelete}
-/>
-
-        <NotionAlertDialog
-          open={importOverwriteOpen}
-          onOpenChange={setImportOverwriteOpen}
-          title={t('skills:management.import_overwrite_title')}
-          description={t(
-            'skills:management.import_overwrite_confirm',
-            { name: pendingImport?.skill.name }
-          )}
-          confirmText={t('skills:management.import_overwrite')}
-          cancelText={t('common:actions.cancel')}
-          confirmVariant="warning"
-          onConfirm={handleConfirmOverwrite}
-          onCancel={handleCancelOverwrite}
-/>
-
-        <NotionAlertDialog
-          open={zipOverwriteOpen}
-          onOpenChange={setZipOverwriteOpen}
-          title={t('skills:management.import_zip_overwrite_title')}
-          description={t(
-            'skills:management.import_zip_overwrite_confirm',
-            { name: pendingZipImport?.name }
-          )}
-          confirmText={t('skills:management.import_overwrite')}
-          cancelText={t('common:actions.cancel')}
-          confirmVariant="warning"
-          onConfirm={handleConfirmZipOverwrite}
-          onCancel={handleCancelZipOverwrite}
-/>
-
+        {/* 删除/覆盖确认已改为列表顶部行内横幅（renderMobileInlineConfirms），
+            移动端不再挂载模态 AlertDialog */}
       </div>
     );
   }

@@ -42,8 +42,12 @@ export interface ModelMentionState {
  * 由 useModelMentions Hook 返回，传递给 InputBarUI
  */
 export interface ModelMentionActions {
-  /** 选择建议（添加到 chip 列表，返回清理后的输入值） */
-  selectSuggestion: (model: ModelInfo) => string;
+  /**
+   * 选择建议（添加到 chip 列表）。
+   * 返回移除 `@query` 片段后的输入值与光标位置（光标精确回到 mention 起点，
+   * 多行草稿不受影响）。
+   */
+  selectSuggestion: (model: ModelInfo) => { value: string; caret: number };
   /** 移除已选中的模型 */
   removeSelectedModel: (modelId: string) => void;
   /** 设置选中索引 */
@@ -52,8 +56,8 @@ export interface ModelMentionActions {
   moveSelectionUp: () => void;
   /** 向下移动选择 */
   moveSelectionDown: () => void;
-  /** 确认选择（添加到 chip 列表，返回清理后的输入值，无选中项返回 null） */
-  confirmSelection: () => string | null;
+  /** 确认选择（同 selectSuggestion；无选中项返回 null，调用方应放行原按键语义） */
+  confirmSelection: () => { value: string; caret: number } | null;
   /** 关闭自动完成 */
   closeAutoComplete: () => void;
   /** 更新光标位置 */

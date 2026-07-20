@@ -1,15 +1,30 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, CircleNotch, X, ArrowClockwise } from '@phosphor-icons/react';
+import { Check, CircleNotch, X, ArrowClockwise, CaretDown } from '@phosphor-icons/react';
 
 import { cn } from '@/utils/cn';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Badge } from '@/components/ui/shad/Badge';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { AnkiCardsBlockData } from '../ankiCardsBlock';
+import { parseAnkiSegmentCounts } from './ankiSegmentCounts';
+import './chat-anki-cards.css';
 
 type StepId = 'routing' | 'importing' | 'generating' | 'completed' | 'failed' | 'cancelled';
 type StepStatus = 'pending' | 'active' | 'done';
+
+/** 动态 i18n key 改为显式映射，消灭 `t(... as any)` */
+const ANKI_CONNECT_LABEL_KEYS = {
+  connected: 'blocks.ankiCards.progress.ankiConnect.connected',
+  notConnected: 'blocks.ankiCards.progress.ankiConnect.notConnected',
+  checking: 'blocks.ankiCards.progress.ankiConnect.checking',
+} as const;
+
+const ROUTE_VALUE_KEYS: Record<string, string> = {
+  simple_text: 'blocks.ankiCards.progress.routeValues.simple_text',
+  vlm_light: 'blocks.ankiCards.progress.routeValues.vlm_light',
+  vlm_full: 'blocks.ankiCards.progress.routeValues.vlm_full',
+};
 
 function clampRatioToPercent(ratio: unknown): number | null {
   if (typeof ratio !== 'number' || Number.isNaN(ratio)) return null;
@@ -118,6 +133,9 @@ export const ChatAnkiProgressCompact: React.FC<{
   onRefreshAnkiConnect,
 }) => {
   const { t } = useTranslation('chatV2');
+  const { t: tAnki } = useTranslation('anki');
+  // 次要指标（分段徽标/路线）可折叠；默认展开保持既有信息密度
+  const [showDetails, setShowDetails] = useState(true);
 
   const percent = useMemo(() => clampRatioToPercent(progress?.completedRatio), [progress?.completedRatio]);
   const stage = progress?.stage;
@@ -204,28 +222,17 @@ export const ChatAnkiProgressCompact: React.FC<{
 
   const ankiConnectMeta = useMemo(() => getAnkiConnectState(ankiConnect), [ankiConnect]);
   const cardsGenerated = typeof progress?.cardsGenerated === 'number' ? progress.cardsGenerated : cardsCount;
-  const segTotal = typeof progress?.counts === 'object' && progress?.counts ? (progress.counts as any).total : undefined;
-  const segCompleted = typeof progress?.counts === 'object' && progress?.counts ? (progress.counts as any).completed : undefined;
+  const parsedCounts = useMemo(() => parseAnkiSegmentCounts(progress?.counts), [progress?.counts]);
+  const segTotal = parsedCounts?.total;
+  const segCompleted = parsedCounts?.completed;
   const segCounts = useMemo(() => {
-    if (!progress?.counts || typeof progress.counts !== 'object') return null;
-    const c = progress.counts as any;
-    const read = (key: string): number | undefined => (typeof c[key] === 'number' ? c[key] : undefined);
-    const total = read('total');
-    if (typeof total !== 'number') return null;
-
-    const processing = (read('processing') ?? 0) + (read('streaming') ?? 0);
-
+    if (!parsedCounts || typeof parsedCounts.total !== 'number') return null;
     return {
-      total,
-      pending: read('pending'),
-      processing,
-      paused: read('paused'),
-      completed: read('completed'),
-      failed: read('failed'),
-      truncated: read('truncated'),
-      cancelled: read('cancelled'),
+      ...parsedCounts,
+      total: parsedCounts.total,
+      processing: (parsedCounts.processing ?? 0) + (parsedCounts.streaming ?? 0),
     };
-  }, [progress?.counts]);
+  }, [parsedCounts]);
 
   const metricsText = useMemo(() => {
     const parts: string[] = [];
@@ -252,9 +259,8 @@ export const ChatAnkiProgressCompact: React.FC<{
     if (!route) return '';
     const normalized = route.trim().toLowerCase();
     if (!normalized) return '';
-    return t(`blocks.ankiCards.progress.routeValues.${normalized}` as any, {
-      defaultValue: route,
-    });
+    const key = ROUTE_VALUE_KEYS[normalized];
+    return key ? t(key, { defaultValue: route }) : route;
   }, [route, t]);
   const warningMessages = useMemo(() => {
     if (!warnings || warnings.length === 0) return [];
@@ -278,7 +284,21 @@ export const ChatAnkiProgressCompact: React.FC<{
     warning => warning !== message && warning !== errorMessage,
   );
 
-  let progressValue: number | null = percent;
+  // 运行期进度条单调不回退：后台分段完成率可能抖动，
+  // 视觉上只前进不倒退，终态/重新路由时重置。
+  const monotonicPercentRef = useRef(0);
+  const smoothedPercent = useMemo(() => {
+    if (typeof percent !== 'number') return percent;
+    const isRestarting = normalizedStage === 'routing' || normalizedStage === 'queued';
+    if (blockStatus !== 'running' || isError || isCancelled || isCompleted || isRestarting) {
+      monotonicPercentRef.current = percent;
+      return percent;
+    }
+    monotonicPercentRef.current = Math.max(monotonicPercentRef.current, percent);
+    return monotonicPercentRef.current;
+  }, [percent, blockStatus, normalizedStage, isError, isCancelled, isCompleted]);
+
+  let progressValue: number | null = smoothedPercent;
   if (progressValue == null) {
     if (isCompleted) {
       progressValue = 100;
@@ -290,6 +310,16 @@ export const ChatAnkiProgressCompact: React.FC<{
       progressValue = 0;
     }
   }
+
+  const isLimitReached = messageKey.endsWith('limitReached');
+  // 生成阶段无后端文案时，给出"生成第 N 张"实时提示（key 变化触发轻微入场动画）
+  const showGeneratingTicker =
+    blockStatus === 'running' &&
+    !isError &&
+    !isCancelled &&
+    !isCompleted &&
+    !message &&
+    step === 'generating';
 
   return (
     <section
@@ -370,7 +400,7 @@ export const ChatAnkiProgressCompact: React.FC<{
             title={ankiConnect?.error ?? undefined}
           >
             {t('blocks.ankiCards.progress.ankiConnect.label', { defaultValue: 'AnkiConnect' })}:{' '}
-            {t(`blocks.ankiCards.progress.ankiConnect.${ankiConnectMeta.label}` as any, {
+            {t(ANKI_CONNECT_LABEL_KEYS[ankiConnectMeta.label], {
               defaultValue:
                 ankiConnectMeta.label === 'connected'
                   ? 'connected'
@@ -393,32 +423,63 @@ export const ChatAnkiProgressCompact: React.FC<{
               {percent}%
             </span>
           )}
+          <NotionButton
+            type="button"
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={() => setShowDetails(prev => !prev)}
+            className="!h-8 !w-8 rounded-full"
+            aria-expanded={showDetails}
+            aria-label={tAnki(showDetails ? 'chatBlock.detailsCollapse' : 'chatBlock.detailsExpand')}
+            title={tAnki(showDetails ? 'chatBlock.detailsCollapse' : 'chatBlock.detailsExpand')}
+          >
+            <CaretDown
+              className={cn(
+                'h-3.5 w-3.5 text-muted-foreground transition-transform duration-200',
+                showDetails && 'rotate-180'
+              )}
+            />
+          </NotionButton>
         </div>
       </div>
 
-      {/* 进度条 */}
+      {/* 进度条（宽度平滑过渡，杜绝跳变） */}
       <div className="mt-2">
         <Progress
           value={progressValue}
           className={cn(
-            'h-1.5',
+            'h-1.5 [&>div]:duration-500 [&>div]:ease-out',
             isError && '[&>div]:bg-destructive',
             isCancelled && '[&>div]:bg-amber-500'
           )}
         />
       </div>
 
-      {/* 指标信息 */}
-      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground sm:gap-2">
-        <span data-testid="chatanki-progress-metrics">{metricsText}</span>
-        {route && (
-          <Badge variant="outline" className="rounded-full px-2 py-0.5 text-xs" data-testid="chatanki-progress-route">
-            {t('blocks.ankiCards.progress.route', { defaultValue: 'route' })}: {routeLabel || route}
-          </Badge>
-        )}
-      </div>
+      {/* 生成阶段实时提示：生成第 N 张（cardsGenerated 变化触发入场动画） */}
+      {showGeneratingTicker && (
+        <div
+          key={cardsGenerated}
+          className="ui-rise-in mt-1.5 text-xs text-muted-foreground"
+          data-testid="chatanki-progress-ticker"
+        >
+          {tAnki('chatBlock.generatingNth', { count: cardsGenerated + 1 })}
+        </div>
+      )}
 
-      {(segCounts || isCompletedWithErrors) && (
+      {/* 指标信息（可折叠详情） */}
+      {showDetails && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground sm:gap-2">
+          <span data-testid="chatanki-progress-metrics">{metricsText}</span>
+          {route && (
+            <Badge variant="outline" className="rounded-full px-2 py-0.5 text-xs" data-testid="chatanki-progress-route">
+              {t('blocks.ankiCards.progress.route', { defaultValue: 'route' })}: {routeLabel || route}
+            </Badge>
+          )}
+        </div>
+      )}
+
+      {showDetails && (segCounts || isCompletedWithErrors) && (
         <div className="mt-1 flex flex-wrap items-center gap-1" data-testid="chatanki-progress-segment-badges">
           {isCompletedWithErrors && (
             <Badge
@@ -473,12 +534,27 @@ export const ChatAnkiProgressCompact: React.FC<{
       )}
 
       {message && message !== errorMessage && (
-        <div
-          className={cn('mt-1 line-clamp-2 text-xs text-muted-foreground', isError && 'text-destructive/80')}
-          data-testid="chatanki-progress-message"
-        >
-          {message}
-        </div>
+        isLimitReached ? (
+          // limitReached 是正常完成而非失败：绿色信息条 + 标题，避免被误读为错误
+          <div
+            className="mt-1.5 flex items-start gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5 text-xs leading-snug text-emerald-700 dark:text-emerald-400"
+            data-testid="chatanki-progress-message"
+          >
+            <Check className="mt-0.5 h-3 w-3 flex-shrink-0" />
+            <span>
+              <span className="font-medium">{tAnki('chatBlock.limitReachedTitle')}</span>
+              {' · '}
+              {message}
+            </span>
+          </div>
+        ) : (
+          <div
+            className={cn('mt-1 line-clamp-2 text-xs text-muted-foreground', isError && 'text-destructive/80')}
+            data-testid="chatanki-progress-message"
+          >
+            {message}
+          </div>
+        )
       )}
 
       {visibleWarningMessages.length > 0 && (

@@ -10,7 +10,7 @@ import React, { useCallback, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { Stack, X, Image } from '@phosphor-icons/react';
+import { Stack, X, Image, Info } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Switch } from '@/components/ui/shad/Switch';
@@ -29,6 +29,11 @@ const DEFAULT_RAG_TOPK = 10;
 const DEFAULT_RAG_ENABLE_RERANKING = true;
 /** 多模态检索默认值 */
 const DEFAULT_MULTIMODAL_RAG_ENABLED = false;
+/** 多模态 Top-K（chatParams.multimodalTopK，后端默认 10） */
+const MULTIMODAL_TOPK_MIN = 1;
+const MULTIMODAL_TOPK_MAX = 20;
+const MULTIMODAL_TOPK_SNAP_POINTS = [1, 2, 3, 5, 8, 10, 15, 20];
+const DEFAULT_MULTIMODAL_TOPK = 10;
 
 // ============================================================================
 // 类型
@@ -48,11 +53,17 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
 
   // 从 Store 获取状态
   const sessionStatus = useStore(store, (s) => s.sessionStatus);
-  // 🚀 P0-2 性能优化：仅订阅实际使用的 3 个字段，避免其他 chatParams 字段变化时重渲染
-  const { ragTopK: storeRagTopK, ragEnableReranking: storeRagEnableReranking, multimodalRagEnabled: storeMultimodalRagEnabled } = useStore(store, useShallow((s) => ({
+  // 🚀 P0-2 性能优化：仅订阅实际使用的字段，避免其他 chatParams 字段变化时重渲染
+  const {
+    ragTopK: storeRagTopK,
+    ragEnableReranking: storeRagEnableReranking,
+    multimodalRagEnabled: storeMultimodalRagEnabled,
+    multimodalTopK: storeMultimodalTopK,
+  } = useStore(store, useShallow((s) => ({
     ragTopK: s.chatParams.ragTopK,
     ragEnableReranking: s.chatParams.ragEnableReranking,
     multimodalRagEnabled: s.chatParams.multimodalRagEnabled,
+    multimodalTopK: s.chatParams.multimodalTopK,
   })));
   const isStreaming = sessionStatus === 'streaming';
 
@@ -62,8 +73,10 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
   const ragTopK = storeRagTopK ?? DEFAULT_RAG_TOPK;
   const enableReranking = storeRagEnableReranking ?? DEFAULT_RAG_ENABLE_RERANKING;
   const multimodalEnabled = storeMultimodalRagEnabled ?? DEFAULT_MULTIMODAL_RAG_ENABLED;
+  const multimodalTopK = storeMultimodalTopK ?? DEFAULT_MULTIMODAL_TOPK;
 
   const ragTopKFieldId = useId();
+  const multimodalTopKFieldId = useId();
   const ragControlsDisabled = isStreaming;
 
   const setRagTopK = useCallback(
@@ -89,6 +102,14 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
     const current = store.getState().chatParams.multimodalRagEnabled ?? DEFAULT_MULTIMODAL_RAG_ENABLED;
     store.getState().setChatParams({ multimodalRagEnabled: !current });
   }, [store]);
+
+  // 设置多模态 Top-K（chatParams 已有字段，随每轮请求快照发往后端）
+  const setMultimodalTopK = useCallback(
+    (next: number) => {
+      store.getState().setChatParams({ multimodalTopK: next });
+    },
+    [store]
+  );
 
   return (
     <div className="space-y-3">
@@ -132,7 +153,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
           />
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-muted-foreground">
-              {t('chat_host:rag.panel.topk_helper_short')}
+              {t('chatV2:ragPanel.topkHelper', { value: ragTopK })}
             </span>
             <NotionButton
               type="button"
@@ -185,8 +206,55 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
           <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
             {t('chat_host:rag.panel.multimodal_helper')}
           </p>
+
+          {/* 多模态 Top-K：开关开启时内联展开（grid-rows 动画，禁模态） */}
+          <div
+            aria-hidden={!multimodalEnabled}
+            className={cn(
+              'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
+              multimodalEnabled ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+            )}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="mt-2 border-t border-border/50 pt-2">
+                <SnappySlider
+                  className={cn('pb-1', ragControlsDisabled && 'pointer-events-none opacity-60')}
+                  values={MULTIMODAL_TOPK_SNAP_POINTS}
+                  defaultValue={DEFAULT_MULTIMODAL_TOPK}
+                  value={Math.min(MULTIMODAL_TOPK_MAX, Math.max(MULTIMODAL_TOPK_MIN, multimodalTopK))}
+                  min={MULTIMODAL_TOPK_MIN}
+                  max={MULTIMODAL_TOPK_MAX}
+                  step={1}
+                  inputId={multimodalTopKFieldId}
+                  onChange={(next: number) => {
+                    if (ragControlsDisabled || !multimodalEnabled) return;
+                    setMultimodalTopK(next);
+                  }}
+                  config={{
+                    snappingThreshold: 0.35,
+                    labelFormatter: (next: number) => Math.round(next).toString(),
+                  }}
+                  label={t('chatV2:ragPanel.multimodalTopkLabel')}
+                  disabled={ragControlsDisabled || !multimodalEnabled}
+                />
+                <p className="text-[11px] leading-4 text-muted-foreground">
+                  {t('chatV2:ragPanel.multimodalTopkHelper')}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* 轻提示：参数下一次检索生效；streaming 时说明为何锁定 */}
+      <p className="flex items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
+        <Info size={12} className="shrink-0" aria-hidden="true" />
+        <span>
+          {ragControlsDisabled
+            ? t('chatV2:ragPanel.streamingLocked')
+            : t('chatV2:ragPanel.nextRunHint')}
+        </span>
+      </p>
     </div>
   );
 };

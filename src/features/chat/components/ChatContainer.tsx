@@ -24,17 +24,15 @@ import { InputBarV2 } from './input-bar';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { ThreadContentShell } from './ui/ThreadContentShell';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 // 🔧 严重修复：使用 useConnectedSession 确保后端连接
 import { useConnectedSession } from '../hooks/useConnectedSession';
-import { useSessionStatus } from '../hooks/useChatStore';
 // 🔧 多变体支持：获取可用模型列表
 import { useAvailableModels } from '../hooks/useAvailableModels';
 // 🆕 Canvas 上下文引用管理 - 白板功能已移除
 import { modeRegistry } from '../registry';
 // 🗑️ Anki 面板已从 Chat V2 移除
 // 🔧 TextbookContext 已废弃，教材功能通过 DSTU + Learning Hub 实现
-// 🆕 工作区状态恢复
-import { useWorkspaceStore } from '../workspace/workspaceStore';
 // 🆕 2026-01-20: 工作区状态恢复
 import { useWorkspaceRestore } from '../workspace/hooks';
 import { AgentTaskPanel } from './AgentTaskPanel';
@@ -141,7 +139,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 }) => {
   const { t } = useTranslation(['chatV2', 'common']);
   const mobileLayout = useMobileLayoutSafe();
-  const isMobile = mobileLayout?.isMobile ?? (typeof window !== 'undefined' && window.innerWidth < 768);
+  // MobileLayoutProvider 缺失时回退到 useBreakpoint（订阅 resize，
+  // 避免只读一次 window.innerWidth 导致空态布局分支在窗口变化后粘死）
+  const { isSmallScreen } = useBreakpoint();
+  const isMobile = mobileLayout?.isMobile ?? isSmallScreen;
 
   // ★ 文梣28清理：移除 currentSubject，记忆提取功能内部获取 subject
 
@@ -174,9 +175,6 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   const store = targetCanRender
     ? targetStore
     : (lastRenderableRef.current?.store ?? targetStore);
-
-  // 获取会话状态（展示用 store）
-  const sessionStatus = useSessionStatus(store);
 
   const messageCount = useStore(store, (s) => s.messageOrder.length);
   const sessionGroupId = useStore(store, (s) => s.groupId);
@@ -301,9 +299,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       )}
     >
       {isSwitchingToUnloaded ? (
+        // 纯色蒙层（不用 backdrop-blur：大面积 backdrop-filter 在弱机上掉帧）
         <div
           aria-hidden
-          className="absolute inset-0 z-20 bg-[color:var(--shell-workspace-panel)]/40 backdrop-blur-[1px]"
+          className="absolute inset-0 z-20 bg-[color:var(--shell-workspace-panel)]/60"
         />
       ) : null}
       <MessageList

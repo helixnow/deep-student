@@ -36,35 +36,36 @@ import { copyTextToClipboard } from '@/utils/clipboardUtils';
 // 消息类型配置
 // ============================================================================
 
+// 消息类型徽章（语义 token，与 WorkspaceMessageItem.typeColors 同一语义映射）
 const messageTypeConfig: Record<MessageType, { i18nKey: string; className: string; icon: string }> = {
   task: { 
     i18nKey: 'workspace.messageType.task', 
-    className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300',
+    className: 'bg-info/10 text-info',
     icon: '📋',
   },
   progress: { 
     i18nKey: 'workspace.messageType.progress', 
-    className: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300',
+    className: 'bg-warning/10 text-warning',
     icon: '⏳',
   },
   result: { 
     i18nKey: 'workspace.messageType.result', 
-    className: 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300',
+    className: 'bg-success/10 text-success',
     icon: '✅',
   },
   query: { 
     i18nKey: 'workspace.messageType.query', 
-    className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300',
+    className: 'bg-primary/10 text-primary',
     icon: '❓',
   },
   correction: { 
     i18nKey: 'workspace.messageType.correction', 
-    className: 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300',
+    className: 'bg-destructive/10 text-destructive',
     icon: '🔧',
   },
   broadcast: { 
     i18nKey: 'workspace.messageType.broadcast', 
-    className: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+    className: 'bg-muted text-muted-foreground',
     icon: '📢',
   },
 };
@@ -310,12 +311,12 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
           {/* 🆕 复制完整调试信息按钮 */}
           {store && (
             <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyDebugInfo(); }} aria-label={t('debug.copyDebugInfo')} title={t('debug.copyDebugInfo')}>
-              {debugCopied ? <Check size={14} className="text-green-500" /> : <Bug size={14} />}
+              {debugCopied ? <Check size={14} className="text-success" /> : <Bug size={14} />}
             </NotionButton>
           )}
           {/* 复制日志按钮 */}
           <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyLog(); }} aria-label={t('workspace.log.copy')} title={t('workspace.log.copy')}>
-            {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+            {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
           </NotionButton>
           {isExpanded ? (
             <CaretUp size={16} className="text-muted-foreground" />

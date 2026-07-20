@@ -13,6 +13,9 @@ export type {
   UnifiedSourceGroup,
   UnifiedSourceItem,
   RagSourceInfo,
+  // 引用契约类型
+  SourceCitationType,
+  SourceRetrievalError,
   // 多模态类型
   MultimodalSourceType,
   MultimodalRetrievalSource,
@@ -49,7 +52,11 @@ export {
   blocksToSourceBundle,
   extractSourcesFromMessageBlocks,
   extractSourcesFromSharedContext,
+  extractRetrievalErrors,
+  hasActiveRetrievalInBlocks,
   hasSourcesInBlocks,
+  // 按"引用类型 + 类型内序号"查来源（与 citation `[类型-N]` 契约一致）
+  resolveCitationSource,
 } from './sourceAdapter';
 
 // V2 封装组件
@@ -59,6 +66,4 @@ export {
   useOcrImages,
   useOcrStatus,
   useOcrData,
-  PREVIEW_IMAGE_EVENT,
-  type PreviewImageEventDetail,
 } from './OcrResultCardV2';

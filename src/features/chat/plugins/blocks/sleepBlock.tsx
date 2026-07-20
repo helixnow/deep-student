@@ -136,11 +136,11 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
   const statusIcon = useMemo(() => {
     switch (agent.status) {
       case 'running':
-        return <CircleNotch size={14} className="text-blue-500 animate-spin" />;
+        return <CircleNotch size={14} className="text-primary animate-spin" />;
       case 'completed':
-        return <CheckCircle size={14} className="text-green-500" />;
+        return <CheckCircle size={14} className="text-success" />;
       case 'failed':
-        return <WarningCircle size={14} className="text-red-500" />;
+        return <WarningCircle size={14} className="text-destructive" />;
       default:
         return <Clock size={14} className="text-muted-foreground" />;
     }

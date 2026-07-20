@@ -27,7 +27,7 @@ import {
   CaretDown,
 } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
-import type { BlockComponentProps } from '../../registry';
+import { blockRegistry, type BlockComponentProps } from '../../registry';
 
 // ============================================================================
 // 类型
@@ -407,6 +407,18 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
       )}
     </div>
   );
+});
+
+// ============================================================================
+// 自动注册
+// ============================================================================
+
+// 🔧 P0 修复：正式注册 paper_save 块类型，防止历史/异常 type=paper_save 块
+// 落到 GenericBlock（此前仅由 mcpTool 按 toolName 委托渲染）
+blockRegistry.register('paper_save', {
+  type: 'paper_save',
+  component: PaperSaveBlock,
+  onAbort: 'mark-error',
 });
 
 export { PaperSaveBlock };

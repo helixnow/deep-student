@@ -1,0 +1,240 @@
+/**
+ * Chat Motion Foundation — 聊天模块共享动效基建（2026-07 二轮改造 · 分区 D）
+ *
+ * 单一来源：所有 chat 动效时长 / 缓动统一从这里取值；数值本身指向
+ * src/styles/transitions-dev.css 的全局 token（本文件只消费，不覆写）。
+ *
+ * 供其他分区使用的资产一览（用法详见 .cursor/tmp/chatv2-audit/D-changes.md）：
+ *
+ * Token（:root，可在任意 CSS / 内联样式中引用）：
+ * - --chat-motion-fast   150ms —— 入场、hover、状态色切换
+ * - --chat-motion-base   200ms —— 位移、composer、折叠展开
+ * - --chat-motion-slow   300ms —— 卡片尺寸 / 大区域折叠
+ * - --chat-motion-ease   cubic-bezier(0.22, 1, 0.36, 1) —— 标准出口曲线（首选）
+ * - --chat-motion-ease-material  cubic-bezier(0.4, 0, 0.2, 1) —— 仅退场兜底
+ * - --chat-motion-rise-distance  4px —— 入场位移幅度
+ * - --chat-motion-shimmer-dur    1.6s —— 骨架 / 文字 shimmer 循环周期（统一
+ *                                StreamingSkeleton 1.6s 与 TextShimmer 1.5s 的分裂）
+ *
+ * 工具类（.chat-v2 作用域内挂 className 即用）：
+ * - .chat-msg-enter   消息入场：fade + 4px 上移，150ms（用户/助手消息通用，
+ *                     替代 Framer spring scale；虚拟列表 transform 父级下安全）
+ * - .chat-fade-in     纯 opacity 淡入，200ms（大面积内容区，无位移）
+ * - .chat-collapse    卡片折叠过渡容器：grid-template-rows 0fr↔1fr，200ms；
+ *                     通过 data-open="true|false" 驱动；直接子元素自动
+ *                     overflow:hidden（无需 JS 量高度，无 max-height 魔法数）
+ * - .chat-shimmer     骨架 shimmer 块：muted 底 + ::after translateX 扫光
+ *                     （合成器动画，无重绘）；多条线错峰用 inline
+ *                     animation-delay，::after 自动继承
+ * - .chat-wait-text   统一"等待中"文案样式（色 / 字号），收敛
+ *                     ThinkingIndicator / TextShimmer 两套并行视觉
+ * - .chat-wait-dots   3 点 opacity 呼吸循环（纯 CSS，配 .chat-wait-text 用；
+ *                     结构 <span class="chat-wait-dots"><i/><i/><i/></span>）
+ *
+ * 性能约定：keyframes 只碰 opacity 与独立 translate / scale 属性，
+ * 与 inline transform（虚拟列表定位、拖拽）互不冲突；消息区禁 filter/blur。
+ *
+ * Reduced-motion 策略（对齐 ui-motion.css，不用 !important）：
+ * 1) 文件末尾点名关闭本文件的工具类；
+ * 2) 保留一条低特异性兜底扫射（.chat-v2 *）承接未点名的装饰动画——
+ *    任何类选择器级别的 animation/transition 声明特异性更高，天然不受影响，
+ *    需要精确降级的类请像本文件一样自行点名。
+ */
+
+/* ============ 动效令牌（别名指向 transitions-dev 单一来源） ============ */
+
+:root {
+  --chat-motion-fast: var(--dropdown-close-dur, 150ms);
+  --chat-motion-base: var(--page-slide-dur, 200ms);
+  --chat-motion-slow: var(--resize-dur, 300ms);
+  --chat-motion-ease: var(--ease-standard, cubic-bezier(0.22, 1, 0.36, 1));
+  --chat-motion-ease-material: var(--ease-material, cubic-bezier(0.4, 0, 0.2, 1));
+  --chat-motion-rise-distance: 4px;
+  --chat-motion-shimmer-dur: 1.6s;
+}
+
+/* ============ 共享 keyframes（仅 opacity / 独立 translate） ============ */
+
+@keyframes chat-kf-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes chat-kf-rise-in {
+  from {
+    opacity: 0;
+    translate: 0 var(--chat-motion-rise-distance, 4px);
+  }
+
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+/* 骨架扫光：transform-only（合成器动画），避免 background-position 逐帧重绘 */
+@keyframes chat-kf-shimmer-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* 等待点阵：仅 opacity 呼吸 */
+@keyframes chat-kf-dot-breathe {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+
+  40% {
+    opacity: 1;
+  }
+}
+
+/* ============ 工具类 ============ */
+
+/* 消息入场：用户 / 助手消息统一的轻入场（fade + 4px rise，150ms）。 */
+.chat-v2 .chat-msg-enter {
+  animation: chat-kf-rise-in var(--chat-motion-fast, 150ms) var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+/* 大面积内容区淡入：无位移，200ms。 */
+.chat-v2 .chat-fade-in {
+  animation: chat-kf-fade-in var(--chat-motion-base, 200ms) var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+/*
+ * 卡片折叠过渡：现代 grid 行高插值方案，替代 max-height 魔法数。
+ * 结构：<div class="chat-collapse" data-open="true|false"><div>内容</div></div>
+ * 注意：grid-template-rows 插值会触发布局，但范围限定在折叠容器自身，
+ * 且是当前无 JS 测高方案中开销最低的通用做法；内容极大时慎用。
+ */
+.chat-v2 .chat-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--chat-motion-base, 200ms) var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.chat-v2 .chat-collapse[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+
+.chat-v2 .chat-collapse > * {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/*
+ * 骨架 shimmer 块：挂在任意占位条 / 占位块上即得「muted 底 + 高光扫过」。
+ * 高度 / 宽度 / 圆角由使用方决定（默认圆角对齐 --radius sm 阶梯）；
+ * 多条线错峰：在元素上写 inline style="animation-delay: 0.15s"，::after 继承。
+ */
+.chat-v2 .chat-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: hsl(var(--muted) / 25%);
+  border-radius: calc(var(--radius, 0.5rem) - 4px);
+}
+
+.chat-v2 .chat-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted) / 0%) 0%,
+    hsl(var(--muted) / 55%) 50%,
+    hsl(var(--muted) / 0%) 100%
+  );
+  transform: translateX(-100%);
+  animation: chat-kf-shimmer-sweep var(--chat-motion-shimmer-dur, 1.6s) ease-in-out infinite;
+  animation-delay: inherit;
+}
+
+/*
+ * 统一等待态文案：「正在思考…」「生成中…」等提示共用一套字号 / 字色，
+ * 收敛 ThinkingIndicator（muted-foreground/60%）与 TextShimmer（text-foreground）
+ * 两套并行视觉。暗色自动随 --muted-foreground 适配。
+ */
+.chat-v2 .chat-wait-text {
+  color: hsl(var(--muted-foreground));
+  font-size: 0.875rem;
+  line-height: 1.4;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 3 点呼吸：<span class="chat-wait-dots" aria-hidden="true"><i></i><i></i><i></i></span> */
+.chat-v2 .chat-wait-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-inline-start: 0.25em;
+  vertical-align: baseline;
+}
+
+.chat-v2 .chat-wait-dots > i {
+  width: 4px;
+  height: 4px;
+  border-radius: var(--chat-radius-full, 999px);
+  background: currentcolor;
+  animation: chat-kf-dot-breathe 1.2s ease-in-out infinite;
+}
+
+.chat-v2 .chat-wait-dots > i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.chat-v2 .chat-wait-dots > i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* ============ Reduced motion ============ */
+
+@media (prefers-reduced-motion: reduce) {
+  /*
+   * 兜底扫射（低特异性、无 !important）：只影响未被类选择器显式声明
+   * 动画的元素；各文件的点名降级 / 显式动画声明按特异性正常覆盖。
+   * 原先分散在 chat.css / chat-beautify.css 的两套扫射已合并到这里。
+   */
+  .chat-v2 *,
+  .chat-v2 *::before,
+  .chat-v2 *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+  }
+
+  .chat-v2 .chat-msg-enter,
+  .chat-v2 .chat-fade-in {
+    animation: none;
+  }
+
+  .chat-v2 .chat-collapse {
+    transition: none;
+  }
+
+  .chat-v2 .chat-shimmer::after {
+    animation: none;
+  }
+
+  /* 静态半透明占位，保留"仍在等待"的语义 */
+  .chat-v2 .chat-shimmer {
+    opacity: 0.5;
+  }
+
+  .chat-v2 .chat-wait-dots > i {
+    animation: none;
+    opacity: 0.6;
+  }
+}

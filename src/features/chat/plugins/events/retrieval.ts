@@ -36,6 +36,38 @@ const RETRIEVAL_TYPES = ['rag', 'memory', 'web_search', 'multimodal_rag'] as con
 type RetrievalType = (typeof RETRIEVAL_TYPES)[number];
 
 // ============================================================================
+// 工具函数
+// ============================================================================
+
+/**
+ * 从 end 事件的 result payload 中提取错误信息
+ *
+ * 部分后端实现不发独立的 error 事件，而是在 end 事件的 result 里携带
+ * error / success:false 字段。此时块必须落到 error 状态，
+ * 否则统一来源面板和块渲染会把失败当成"成功但无结果"。
+ *
+ * @returns 错误文案；undefined 表示无错误。
+ *          返回空字符串表示"有错误但无文案"，由 UI 层用 i18n 默认文案兜底。
+ */
+function extractRetrievalError(result: unknown): string | undefined {
+  if (!result || typeof result !== 'object') return undefined;
+
+  const output = result as Record<string, unknown>;
+  const { error } = output;
+  if (typeof error === 'string' && error.trim()) return error;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (error != null) return String(error);
+
+  if (output.success === false) {
+    const message = output.message ?? output.reason;
+    if (typeof message === 'string' && message.trim()) return message;
+    return '';
+  }
+
+  return undefined;
+}
+
+// ============================================================================
 // 检索事件处理器工厂
 // ============================================================================
 
@@ -70,12 +102,17 @@ function createRetrievalHandler(type: RetrievalType): EventHandler {
       backendBlockId?: string
     ): string => {
       // 如果后端传了 blockId，使用它；否则由前端生成
-      if (backendBlockId) {
-        return store.createBlockWithId(messageId, type, backendBlockId);
-      }
-      // 创建检索块
       // Store 内部会自动添加到 activeBlockIds
-      return store.createBlock(messageId, type);
+      const blockId = backendBlockId
+        ? store.createBlockWithId(messageId, type, backendBlockId)
+        : store.createBlock(messageId, type);
+
+      // 检索没有流式 chunk（不会经由 updateBlockContent 推进状态），
+      // start 事件到达即表示检索已在执行，立即置为 running，
+      // 避免块停留在 pending 直到 end 事件才有状态变化
+      store.updateBlockStatus(blockId, 'running');
+
+      return blockId;
     },
 
     /**
@@ -116,6 +153,15 @@ function createRetrievalHandler(type: RetrievalType): EventHandler {
       store.updateBlock(blockId, {
         toolOutput: result,
       });
+
+      // 🛡️ end 事件的 result 里可能携带错误（error / success:false）。
+      // 此时落到 error 状态（setBlockError 会设置 status/error/endedAt
+      // 并从 activeBlockIds 移除），让块渲染与统一来源面板能显示失败态
+      const errorMessage = extractRetrievalError(result);
+      if (errorMessage !== undefined) {
+        store.setBlockError(blockId, errorMessage);
+        return;
+      }
 
       // 设置状态为成功（会自动设置 endedAt 并从 activeBlockIds 移除）
       store.updateBlockStatus(blockId, 'success');

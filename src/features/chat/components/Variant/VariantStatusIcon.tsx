@@ -63,7 +63,7 @@ const STATUS_CONFIG: Record<
   },
   success: {
     Icon: CheckCircle,
-    colorClass: 'text-green-500 dark:text-green-400',
+    colorClass: 'text-success',
   },
   error: {
     Icon: XCircle,
@@ -71,12 +71,22 @@ const STATUS_CONFIG: Record<
   },
   cancelled: {
     Icon: Prohibit,
-    colorClass: 'text-yellow-500 dark:text-yellow-400',
+    colorClass: 'text-warning',
   },
   interrupted: {
     Icon: Prohibit,
-    colorClass: 'text-amber-500 dark:text-amber-400',
+    colorClass: 'text-warning',
   },
+};
+
+/** 未知/旧持久化 status 的安全兜底，避免解构 undefined 崩溃 */
+const FALLBACK_CONFIG: {
+  Icon: Icon;
+  colorClass: string;
+  animate?: boolean;
+} = {
+  Icon: Clock,
+  colorClass: 'text-muted-foreground',
 };
 
 // ============================================================================
@@ -91,7 +101,7 @@ export const VariantStatusIcon: React.FC<VariantStatusIconProps> = ({
   size = 'md',
   className,
 }) => {
-  const config = STATUS_CONFIG[status];
+  const config = STATUS_CONFIG[status] ?? FALLBACK_CONFIG;
   const { Icon, colorClass, animate } = config;
   const iconSize = SIZE_MAP[size];
 

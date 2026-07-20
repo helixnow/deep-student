@@ -103,6 +103,37 @@ function parseAnkiCardsChunk(chunk: string): AnkiCardsChunk | null {
   }
 }
 
+function readOptionalString(
+  record: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = record?.[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function readOptionalStringArray(
+  record: Record<string, unknown> | undefined,
+  key: string,
+): string[] | undefined {
+  const value = record?.[key];
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((item): item is string => typeof item === 'string');
+}
+
+const SYNC_STATUSES: ReadonlyArray<NonNullable<AnkiCardsBlockData['syncStatus']>> = [
+  'pending',
+  'syncing',
+  'synced',
+  'error',
+];
+
+function readSyncStatus(value: unknown): AnkiCardsBlockData['syncStatus'] | undefined {
+  return typeof value === 'string' &&
+    (SYNC_STATUSES as readonly string[]).includes(value)
+    ? (value as AnkiCardsBlockData['syncStatus'])
+    : undefined;
+}
+
 function classifyGenerationIssue(error: string): { code: string; retryable: boolean } {
   const normalized = error.toLowerCase();
   if (normalized.includes('balance is insufficient') || normalized.includes('余额不足') || normalized.includes('额度不足')) {
@@ -557,10 +588,10 @@ const ankiCardsEventHandler: EventHandler = {
         ...restPatch,
         cards: updatedCards,
         deletedCardIds: Array.from(deletedIds),
-        templateId: (restPatch as any)?.templateId ?? currentData?.templateId ?? null,
-        templateIds: (restPatch as any)?.templateIds ?? currentData?.templateIds,
-        templateMode: (restPatch as any)?.templateMode ?? currentData?.templateMode,
-        syncStatus: (restPatch as any)?.syncStatus ?? currentData?.syncStatus ?? 'pending',
+        templateId: restPatch.templateId ?? currentData?.templateId ?? null,
+        templateIds: restPatch.templateIds ?? currentData?.templateIds,
+        templateMode: restPatch.templateMode ?? currentData?.templateMode,
+        syncStatus: restPatch.syncStatus ?? currentData?.syncStatus ?? 'pending',
       } as AnkiCardsBlockData,
       status: authoritativeStatus ?? (terminal ? block.status : 'running'),
       ...(authoritativeStatus ? { error: _blockError ?? undefined } : {}),
@@ -568,9 +599,7 @@ const ankiCardsEventHandler: EventHandler = {
     if (authoritativeStatus) {
       store.updateBlockStatus(blockId, authoritativeStatus);
     }
-    const docIdForLog =
-      ((restPatch as unknown as Record<string, unknown>)?.documentId as string | undefined) ??
-      currentData?.documentId;
+    const docIdForLog = restPatch.documentId ?? currentData?.documentId;
     recordCardsSourceSnapshot(
       blockId,
       'chunk-patch',
@@ -631,7 +660,7 @@ const ankiCardsEventHandler: EventHandler = {
         ? mergeCardsUnique(filteredResultCards, currentCards)
         : mergeCardsUnique([], currentCards);
 
-      const { cards: _cardsIgnored, status, error, ...rest } = resultObj as any;
+      const { cards: _cardsIgnored, status, error, ...rest } = resultObj;
       resultStatus = typeof status === 'string' ? status : undefined;
       resultError = typeof error === 'string' ? error : undefined;
       normalizedStatus = hasPartialCompletion
@@ -644,17 +673,15 @@ const ankiCardsEventHandler: EventHandler = {
           ...rest,
           cards: finalCards,
           deletedCardIds: Array.from(deletedCardIds),
-          templateId: (rest as any)?.templateId ?? currentData?.templateId ?? null,
-          templateIds: (rest as any)?.templateIds ?? currentData?.templateIds,
-          templateMode: (rest as any)?.templateMode ?? currentData?.templateMode,
-          syncStatus: (rest as any)?.syncStatus ?? currentData?.syncStatus ?? 'pending',
+          templateId: readOptionalString(rest, 'templateId') ?? currentData?.templateId ?? null,
+          templateIds: readOptionalStringArray(rest, 'templateIds') ?? currentData?.templateIds,
+          templateMode: readOptionalString(rest, 'templateMode') ?? currentData?.templateMode,
+          syncStatus: readSyncStatus(rest.syncStatus) ?? currentData?.syncStatus ?? 'pending',
           finalStatus: normalizedStatus ?? currentData?.finalStatus,
           finalError: resultError ?? currentData?.finalError,
         } as AnkiCardsBlockData,
       });
-      const docIdForLog =
-        ((rest as unknown as Record<string, unknown>)?.documentId as string | undefined) ??
-        currentData?.documentId;
+      const docIdForLog = readOptionalString(rest, 'documentId') ?? currentData?.documentId;
       recordCardsSourceSnapshot(
         blockId,
         'end-result',

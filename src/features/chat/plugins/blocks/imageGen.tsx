@@ -13,12 +13,11 @@
  * 6. 暗色/亮色主题支持
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
-  CircleNotch,
   WarningCircle,
   ArrowCounterClockwise,
   Image as ImageIcon,
@@ -180,12 +179,15 @@ interface ImageGenErrorProps {
   error: string;
   prompt?: string;
   onRetry?: () => void;
+  /** 无法重试时的提示文案（与重试按钮互斥） */
+  retryUnavailableHint?: string;
 }
 
 const ImageGenError: React.FC<ImageGenErrorProps> = ({
   error,
   prompt,
   onRetry,
+  retryUnavailableHint,
 }) => {
   const { t } = useTranslation('chatV2');
 
@@ -226,6 +228,11 @@ const ImageGenError: React.FC<ImageGenErrorProps> = ({
           <span>{t('blocks.imageGen.retry')}</span>
         </NotionButton>
       )}
+      {!onRetry && retryUnavailableHint && (
+        <div className="mt-3 text-xs text-muted-foreground">
+          {retryUnavailableHint}
+        </div>
+      )}
     </div>
   );
 };
@@ -259,10 +266,21 @@ const ImageGenBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   const resourceId = outputData?.resourceId;
   const resourceHash = outputData?.resourceHash;
 
-  // 重试回调（TODO: 实际实现）
+  // 重试：与 mcp_tool 一致，通过 store.retryMessage 重试所属消息
+  const canRetry = useMemo(() => {
+    if (!store || !block.messageId) return false;
+    return Boolean(store.getState()?.retryMessage);
+  }, [store, block.messageId]);
+
   const handleRetry = useCallback(() => {
-    console.log('[ImageGenBlock] Retry generation:', prompt);
-  }, [prompt]);
+    if (!store || !block.messageId) return;
+    const state = store.getState();
+    if (state.retryMessage) {
+      state.retryMessage(block.messageId).catch((error) => {
+        console.error('[ImageGenBlock] Retry failed:', error);
+      });
+    }
+  }, [store, block.messageId]);
 
   const handleUseForFollowup = useCallback(() => {
     if (!store || !resourceId || !resourceHash) return;
@@ -320,7 +338,8 @@ const ImageGenBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         <ImageGenError
           error={block.error || t('blocks.imageGen.unknownError')}
           prompt={prompt}
-          onRetry={handleRetry}
+          onRetry={canRetry ? handleRetry : undefined}
+          retryUnavailableHint={t('blocks.imageGen.retryUnavailable')}
         />
       </div>
     );

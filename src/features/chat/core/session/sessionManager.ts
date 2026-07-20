@@ -644,38 +644,47 @@ export class SessionManagerImpl implements ISessionManager {
 
   /**
    * 订阅会话的流式状态变化
+   *
+   * 🚀 P1：使用 subscribeWithSelector 的选择器订阅替代全量 subscribe。
+   * 流式期间每帧 chunk flush 都会触发一次 set，全量监听让每个会话的
+   * 运行时订阅都在热路径上空转；选择器订阅只在派生布尔值翻转时进入回调。
+   * createChatStore 创建的 Store 均带 subscribeWithSelector 中间件。
    */
   private subscribeToRuntimeState(
     sessionId: string,
     store: StoreApi<ChatStore>
   ): void {
-    let prevStreaming = store.getState().sessionStatus === 'streaming';
-    let prevHasBlockingInteraction = store.getState().pendingBlockingInteraction !== null;
+    const selectorStore = store as unknown as {
+      subscribe<U>(
+        selector: (state: ChatStore) => U,
+        listener: (selected: U, previous: U) => void
+      ): () => void;
+    };
 
-    const unsubscribe = store.subscribe((state) => {
-      const isStreaming = state.sessionStatus === 'streaming';
-      if (isStreaming !== prevStreaming) {
-        prevStreaming = isStreaming;
+    const unsubscribeStreaming = selectorStore.subscribe(
+      (state) => state.sessionStatus === 'streaming',
+      (isStreaming) => {
         this.emit({
           type: 'streaming-change',
           sessionId,
           isStreaming,
         });
       }
+    );
 
-      const hasBlockingInteraction = state.pendingBlockingInteraction !== null;
-      if (hasBlockingInteraction !== prevHasBlockingInteraction) {
-        prevHasBlockingInteraction = hasBlockingInteraction;
+    const unsubscribeBlocking = selectorStore.subscribe(
+      (state) => state.pendingBlockingInteraction !== null,
+      (hasBlockingInteraction) => {
         this.emit({
           type: 'blocking-interaction-change',
           sessionId,
           hasBlockingInteraction,
         });
       }
-    });
+    );
 
-    this.streamingUnsubscribers.set(sessionId, unsubscribe);
-    this.blockingInteractionUnsubscribers.set(sessionId, unsubscribe);
+    this.streamingUnsubscribers.set(sessionId, unsubscribeStreaming);
+    this.blockingInteractionUnsubscribers.set(sessionId, unsubscribeBlocking);
   }
 
   /**

@@ -7,7 +7,7 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { Warning, Play, CircleNotch } from '@phosphor-icons/react';
+import { Warning, Play, CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -29,6 +29,7 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
   const { t } = useTranslation('chatV2');
   const content = block.content || '';
   const [isContinuing, setIsContinuing] = useState(false);
+  const [continueError, setContinueError] = useState<string | null>(null);
 
   // 🔧 竞态修复：同时检查本地 isContinuing 和 store 的 isStreaming，双重保护
   const isDisabled = isContinuing || !!isStreaming;
@@ -39,12 +40,21 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
   // 🆕 处理继续执行
   const handleContinue = useCallback(async () => {
     if (isDisabled || !onContinue) return;
-    
+
     setIsContinuing(true);
+    setContinueError(null);
     try {
       await onContinue();
     } catch (error: unknown) {
       console.error('[ToolLimitBlock] Continue failed:', error);
+      // 🔧 P3-4：继续执行失败要给用户可见的内联错误，而非仅 console
+      const detail =
+        typeof error === 'string'
+          ? error
+          : error instanceof Error
+            ? error.message
+            : '';
+      setContinueError(detail);
     } finally {
       setIsContinuing(false);
     }
@@ -92,6 +102,17 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
           );
         })}
       </div>
+
+      {/* 🆕 继续执行失败的内联错误 */}
+      {continueError !== null && (
+        <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs">
+          <WarningCircle size={14} className="mt-0.5 flex-shrink-0 text-destructive" />
+          <span className="min-w-0 flex-1 break-words text-destructive">
+            {t('chatV2:tool_limit.continueFailed')}
+            {continueError && <span className="ml-1 text-destructive/80">{continueError}</span>}
+          </span>
+        </div>
+      )}
 
       {/* 🆕 继续执行按钮 + 快捷操作提示 */}
       <div className="mt-4 pt-3 border-t border-amber-300/30 dark:border-amber-700/30 flex items-center justify-between">

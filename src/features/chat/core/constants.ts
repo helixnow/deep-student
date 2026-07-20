@@ -11,10 +11,18 @@
 
 // ==================== 流式处理配置 ====================
 
-/** Chunk 缓冲窗口时间（毫秒），约 60fps */
-export const CHUNK_BUFFER_WINDOW_MS = 16;
+/**
+ * Chunk 缓冲窗口时间（毫秒），约 30fps。
+ *
+ * 🚀 P1 调优（16 → 32）：每次 flush 都要经历
+ * immer 复制 blocks Map → zustand 通知 → React 渲染流式块（含 Markdown 重解析），
+ * 60fps 的 store 更新对文本流式毫无感知收益，反而使高速流式时主线程占用翻倍。
+ * 32ms 在肉眼平滑度与主线程开销之间取得平衡；UI 层如有打字机平滑动画
+ * （streamingSmoothing）则与更新节奏解耦，不受此值影响。
+ */
+export const CHUNK_BUFFER_WINDOW_MS = 32;
 
-/** Chunk 最大缓冲大小（字符数），超过则立即刷新 */
+/** Chunk 最大缓冲大小（字符数），超过则立即刷新（防止单块积压过大） */
 export const CHUNK_MAX_BUFFER_SIZE = 4096;
 
 /** 自动保存节流间隔（毫秒） */

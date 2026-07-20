@@ -28,6 +28,14 @@
     "tripped": "Agents powered off",
     "resumeHint": "Resume agents from AI desktop control"
   },
+  "sourcePanel": {
+    "retrieving": "Retrieving sources…",
+    "retrievalFailed": "{{scopes}} retrieval failed",
+    "retrievalFailedGeneric": "Some sources failed to load",
+    "loadMore": "Load more ({{count}} left)",
+    "showAllCard": "View all {{count}}",
+    "thumbnailUnavailable": "Thumbnail unavailable"
+  },
   "success": {
     "listenerRetrySuccessMessage": "Event listener retry succeeded",
     "listenerRetrySuccess": "Listener recovered"
@@ -87,6 +95,7 @@
     },
     "scrollToBottom": "Scroll to bottom",
     "waiting": "Thinking...",
+    "waitingLabel": "Thinking",
     "srNewMessages": "New messages received, total {{count}} messages"
   },
   "messageItem": {
@@ -114,6 +123,7 @@
       "contentUnchanged": "Content unchanged",
       "retryDeleteConfirm": "Retrying will delete {{count}} subsequent message(s). Continue?",
       "retryDeletingSubsequent": "{{count}} subsequent message(s) removed due to retry",
+      "retryConfirmAction": "Retry anyway",
       "saveAsNote": "Save as Note",
       "saveAsNoteSuccess": "Saved as note: {{title}}",
       "saveAsNoteFailed": "Failed to save note",
@@ -124,6 +134,9 @@
       "branch": "Branch from here",
       "branchSuccess": "Branch session created",
       "branchFailed": "Branch failed"
+    },
+    "touchBar": {
+      "ariaLabel": "Message quick actions"
     },
     "failure": {
       "retry": "Retry",
@@ -339,7 +352,23 @@
       "pdf": "PDF",
       "image": "Image"
     },
-    "processingTimeout": "Processing timed out, please retry"
+    "processingTimeout": "Processing timed out, please retry",
+    "sendMessage": "Send message",
+    "stopping": "Stopping...",
+    "sendGuard": {
+      "streaming": "A reply is in progress. Wait for it to finish or click Stop",
+      "notReady": "This session can't send right now, please try again shortly"
+    },
+    "longPaste": {
+      "notice": "Pasted long text ({{chars}} characters)",
+      "convert": "Convert to attachment",
+      "dismiss": "Keep as text",
+      "autoConverted": "Text too long ({{chars}} characters), converted to an attachment"
+    },
+    "slashCommand": {
+      "title": "Skill commands",
+      "active": "Active"
+    }
   },
   "queue": {
     "settings": {
@@ -380,14 +409,44 @@
     "compactionSummary": {
       "title": "Context compacted · learning state summary",
       "expandHint": "click to expand",
-      "footnote": "This summary replaces earlier turns in the model's view. The original messages remain in the database."
+      "footnote": "This summary replaces earlier turns in the model's view. The original messages remain in the database.",
+      "copy": "Copy summary",
+      "copied": "Copied"
     },
     "generic": {
       "type": "Type",
       "input": "Input",
       "output": "Output",
       "error": "Error",
-      "unknownType": "Unknown block type"
+      "unknownType": "Unknown block type",
+      "copy": "Copy",
+      "status": {
+        "pending": "Pending",
+        "running": "Running",
+        "success": "Done",
+        "error": "Failed"
+      }
+    },
+    "templatePreview": {
+      "loading": "Generating template preview...",
+      "error": "Template preview failed",
+      "nonVisualFallback": "Template tool output (non-visual)",
+      "noOutput": "(no output)"
+    },
+    "todoList": {
+      "blockError": "Failed to update the task list",
+      "emptyRunning": "Preparing task list..."
+    },
+    "multimodalRag": {
+      "title": "Multimodal Retrieval",
+      "searching": "Searching...",
+      "loading": "Retrieving multimodal sources...",
+      "error": "Retrieval failed",
+      "errorMessage": "Multimodal retrieval failed, please retry",
+      "noResults": "No related sources found",
+      "statsSimple": "{{count}} results",
+      "statsSimple_one": "{{count}} result",
+      "statsSimple_other": "{{count}} results"
     },
     "retrieval": {
       "sourcesCount": "sources",
@@ -399,7 +458,9 @@
       "sourceTypes": {
         "rag": "Document RAG",
         "memory": "User Memory",
-        "web_search": "Web Search"
+        "web_search": "Web Search",
+        "multimodal": "Multimodal",
+        "academic": "Academic Paper"
       }
     },
     "paperSave": {
@@ -491,6 +552,7 @@
       "unknownTool": "Unknown Tool",
       "input": "Input Parameters",
       "output": "Output Result",
+      "copyOutput": "Copy output",
       "noOutput": "No output",
       "showFullJson": "Show full JSON",
       "executing": "Executing...",
@@ -566,7 +628,10 @@
       "generationFailed": "Generation Failed",
       "unknownError": "Unknown error",
       "retry": "Retry",
+      "retryUnavailable": "Automatic retry unavailable, please resend the message",
       "fullscreen": "Fullscreen",
+      "expandInline": "Zoom in",
+      "collapse": "Collapse",
       "download": "Download",
       "openInNewTab": "Open in new tab",
       "close": "Close"
@@ -1013,6 +1078,9 @@
     "moveToGroup": "Move to group",
     "untitled": "Untitled Session",
     "deleteSession": "Delete Session",
+    "deleteSessionConfirm": "Delete this session permanently? This cannot be undone",
+    "archiveGroupConfirmInline": "Archive \"{{name}}\"? Its sessions will not be deleted",
+    "clearSearch": "Clear search",
     "renameSession": "Rename Thread",
     "pinSession": "Pin Thread",
     "unpinSession": "Unpin Thread",
@@ -1063,7 +1131,11 @@
     "openNoteFailed": "Failed to open note",
     "openInLearningHub": "Open in Learning Hub",
     "collapseSandboxWorkbench": "Collapse Sandbox Workbench",
-    "expandSandboxWorkbench": "Expand Sandbox Workbench"
+    "expandSandboxWorkbench": "Expand Sandbox Workbench",
+    "emptyPage": {
+      "subtitle": "Start a new conversation to explore your materials, organize notes, and ask anything",
+      "hint": "Tip: press Ctrl / ⌘ + N anytime to start a new chat"
+    }
   },
   "pdfRef": {
     "openFailedTitle": "Cannot Open PDF Reference",
@@ -1226,6 +1298,7 @@
       "input": "Input",
       "output": "Output",
       "noOutput": "No output",
+      "liveOutput": "Live output",
       "contentLabel": "Tool details",
       "moreParams": "{{count}} more params...",
       "arrayResult": "Array ({{count}} items)",
@@ -1466,6 +1539,7 @@
       "fallbackSummary": "The model is ready to run write tools",
       "tool": "Tool",
       "countdown": "Auto-reject in {{seconds}}s",
+      "timedOut": "Timed out — plan auto-rejected",
       "approve": "Confirm & run",
       "reject": "Reject"
     }
@@ -1488,6 +1562,7 @@
     "alwaysAllow": "Always Allow",
     "alwaysDeny": "Always Deny",
     "timeout": "Approval Timeout",
+    "timedOutWaiting": "Timed out — auto-rejecting",
     "resolution": {
       "approved": "Approved",
       "rejected": "Rejected",
@@ -1540,6 +1615,7 @@
   },
   "renderer": {
     "aiThinkingProcess": "AI Thinking Process",
+    "imageLoadFailed": "Image failed to load",
     "incompleteMathFormula": "Incomplete math formula detected, rendering temporarily disabled",
     "uncertain": "Uncertain"
   },
@@ -1557,11 +1633,19 @@
     "web_search": "Web Search",
     "multimodal": "Multimodal"
   },
+  "ragPanel": {
+    "topkHelper": "Return the {{value}} most relevant snippets; higher is broader but slightly slower",
+    "multimodalTopkLabel": "Multimodal Top-K",
+    "multimodalTopkHelper": "Number of image/figure snippets to return",
+    "nextRunHint": "Changes take effect on the next retrieval",
+    "streamingLocked": "Retrieval settings are locked while a reply is streaming"
+  },
   "tool_limit": {
     "title": "Tool Call Limit",
     "hint": "Tip: Click continue button or send \"continue\" in the input box to let AI continue the task",
     "continue": "Continue",
-    "continuing": "Running..."
+    "continuing": "Running...",
+    "continueFailed": "Failed to continue. Please try again."
   },
   "chat": {
     "operation_in_progress": "Operation in progress, please try again later",
@@ -1945,7 +2029,9 @@
     "customPlaceholder": "Or enter a custom answer...",
     "ignore": "Ignore",
     "responded": "Answered",
-    "submit": "Submit"
+    "submit": "Submit",
+    "submitFailed": "Failed to submit response",
+    "submitRetryHint": "Please choose or submit again."
   },
   "pageRef": {
     "clearAll": "Clear all page references",

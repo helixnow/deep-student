@@ -254,6 +254,65 @@ export async function exportAnkiCards(options: {
 }
 
 // ==================== 教材库（兼容壳，建议迁移到 textbookDstuAdapter） ====================
+
+/** 教材多模态自动索引的最大并发数，避免批量导入时索引风暴。 */
+const TEXTBOOK_AUTO_INDEX_CONCURRENCY = 2;
+
+/** 单本教材的自动索引结果（供调用方/日志观测，不抛错以免影响导入主流程）。 */
+export interface TextbookAutoIndexFailure {
+  id: string;
+  name: string;
+  error: string;
+}
+
+/**
+ * 后台批量索引教材（并发上限 {@link TEXTBOOK_AUTO_INDEX_CONCURRENCY}）。
+ *
+ * 失败不会中断队列：逐本收集失败项，结束后统一弹出一条 warning 通知并打日志。
+ */
+async function autoIndexTextbooksInBackground(
+  textbooks: Array<{ id: string; name: string }>
+): Promise<TextbookAutoIndexFailure[]> {
+  if (textbooks.length === 0) return [];
+
+  const failures: TextbookAutoIndexFailure[] = [];
+  try {
+    const { multimodalRagService } = await import('@/services/multimodalRagService');
+    const capability = await multimodalRagService.getCapabilityStatus();
+    if (!capability.available) return [];
+
+    const queue = [...textbooks];
+    const worker = async () => {
+      for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
+        try {
+          await multimodalRagService.indexTextbook(item.id);
+        } catch (indexError) {
+          failures.push({
+            id: item.id,
+            name: item.name,
+            error: getErrorMessage(indexError),
+          });
+        }
+      }
+    };
+    const workerCount = Math.min(TEXTBOOK_AUTO_INDEX_CONCURRENCY, queue.length);
+    await Promise.all(Array.from({ length: workerCount }, worker));
+
+    if (failures.length > 0) {
+      console.warn('[chatApi] Textbook auto-indexing failed:', failures);
+      const { showGlobalNotification } = await import('@/components/UnifiedNotification');
+      showGlobalNotification(
+        'warning',
+        `${failures.length}/${textbooks.length} textbook(s) failed multimodal indexing: ${failures.map((f) => f.name).join(', ')}`
+      );
+    }
+  } catch (error) {
+    // 能力探测/动态导入失败：跳过自动索引，不影响导入主流程。
+    console.warn('[chatApi] Textbook auto-indexing skipped:', error);
+  }
+  return failures;
+}
+
 /**
  * @deprecated 请改用 `textbookDstuAdapter.addTextbooks()`。
  * 该兼容壳不支持传入 `folderId`，仅为历史调用保留。
@@ -270,19 +329,8 @@ const results = list.map((r: any) => ({
   addedAt: r.created_at || r.updated_at || new Date().toISOString(),
 }));
 
-// 教材导入后按运行时能力异步补充多模态索引，不阻塞导入主流程。
-for (const textbook of results) {
-  void (async () => {
-    try {
-      const { multimodalRagService } = await import('@/services/multimodalRagService');
-      const capability = await multimodalRagService.getCapabilityStatus();
-      if (!capability.available) return;
-      await multimodalRagService.indexTextbook(textbook.id);
-    } catch (indexError) {
-      console.warn('[TauriApi] Auto-indexing textbook failed:', indexError);
-    }
-  })();
-}
+// 教材导入后按运行时能力异步补充多模态索引（并发受限），不阻塞导入主流程。
+void autoIndexTextbooksInBackground(results.map((r) => ({ id: r.id, name: r.name })));
 
 return results;
 }
@@ -302,18 +350,19 @@ export async function rebuildChatFts(): Promise<number> {
 
 /**
  * 回填用户消息嵌入向量
- * TODO: 需要在后端实现 backfill_user_message_embeddings 命令
+ *
+ * @deprecated 后端 `backfill_user_message_embeddings` 命令尚未实现。
+ * 此前该函数恒返回 0 造成"假成功"（UI 显示维护完成但什么都没发生）；
+ * 现在改为显式抛出 not-implemented 错误，调用方可通过 `code === 'NOT_IMPLEMENTED'` 识别。
+ * 后端实现后请恢复为真实 invoke 调用。
  */
 export async function backfillUserMessageEmbeddings(_params: Record<string, unknown>): Promise<number> {
-  try {
-    console.info('[TauriAPI] backfillUserMessageEmbeddings start');
-    // 暂时返回 0，后端命令尚未实现
-    console.warn('[TauriAPI] backfillUserMessageEmbeddings: backend command not yet implemented');
-    return 0;
-  } catch (e) {
-    console.error('[TauriAPI] backfillUserMessageEmbeddings error', e);
-    throw e;
-  }
+  console.warn('[TauriAPI] backfillUserMessageEmbeddings rejected: backend command not implemented');
+  const error = new Error(
+    'backfillUserMessageEmbeddings is not implemented: backend command "backfill_user_message_embeddings" does not exist yet'
+  ) as Error & { code: string };
+  error.code = 'NOT_IMPLEMENTED';
+  throw error;
 }
 
 export async function searchChatFulltext(params: { query: string; role?: 'user'|'assistant'; limit?: number }): Promise<Array<{message_id:number; mistake_id:string; role:string; timestamp:string; text:string; score:number}>> {

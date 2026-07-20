@@ -28,6 +28,8 @@ export { AuthorityModeSegment } from './AuthorityModeSegment';
 export type { AuthorityMode, AuthorityModeSegmentProps } from './AuthorityModeSegment';
 export { ComposerPlusMenu } from './ComposerPlusMenu';
 export type { ComposerPlusMenuProps } from './ComposerPlusMenu';
+export { ComposerInlinePanel } from './ComposerInlinePanel';
+export type { ComposerInlinePanelProps } from './ComposerInlinePanel';
 
 // V2 Hook
 export { useInputBarV2, useTogglePanelExclusive } from './useInputBarV2';
@@ -46,5 +48,17 @@ export type {
 // 模型 @mention 自动完成组件
 export { ModelMentionPopover, shouldHandleModelMentionKey } from './ModelMentionPopover';
 export type { ModelMentionPopoverProps } from './ModelMentionPopover';
+export { useModelMentionAutocomplete } from './useModelMentionAutocomplete';
+
+// 技能斜杠命令内联补全
+export {
+  SkillSlashPopover,
+  useSkillSlashCommands,
+  shouldHandleSkillSlashKey,
+} from './SkillSlashPopover';
+export type {
+  SkillSlashPopoverProps,
+  SkillSlashSuggestion,
+} from './SkillSlashPopover';
 
 // ★ Legacy 组件已移除（2026-01 清理）：UnifiedSmartInputBar.legacy

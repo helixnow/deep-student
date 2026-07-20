@@ -1,5 +1,6 @@
 import React from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { DragDropContext, Draggable, Droppable, type DropResult } from '@hello-pangea/dnd';
 import {
   Archive,
   CaretRight,
@@ -8,12 +9,15 @@ import {
   DotsThree,
   Folder,
   Gear,
+  MagnifyingGlass,
   PencilSimple,
   Plus,
   SquaresFour,
+  X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Input } from '@/components/ui/shad/Input';
 import {
   AppMenu,
   AppMenuContent,
@@ -33,6 +37,7 @@ import {
 import { openArchivedSessionsSettings } from '@/utils/pendingSettingsTab';
 import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
 import { compareSessionsForSidebar, isSessionPinned } from '../utils/sessionPin';
+import { getSessionTitleText } from '../utils/sessionTitle';
 import type { SessionDragState } from './SessionItemRenderer';
 import type { SessionGroup } from '../types/group';
 import type { ChatSession } from '../types/session';
@@ -56,18 +61,21 @@ function readPersistedExpandedFolders(): Set<string> {
   return new Set();
 }
 
+/** 「最近」扁平列表条数（跨分组、排除置顶，对齐 ChatGPT/Cursor 的最近会话语义） */
+const RECENT_FLAT_SESSION_LIMIT = 5;
+
 export interface UseSessionSidebarContentDeps {
   searchQuery: string;
   setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
   viewMode: 'sidebar' | 'browser';
   setViewMode: React.Dispatch<React.SetStateAction<'sidebar' | 'browser'>>;
   setSessionSheetOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  setPendingDeleteSessionId: React.Dispatch<React.SetStateAction<string | null>>;
   /** 可编辑（active）分组 ID 集合：仅这些分组显示重命名/编辑/归档菜单 */
   editableGroupIds: Set<string>;
   onCreateGroup: () => void;
   onRenameGroup: (group: SessionGroup) => void;
   onEditGroup: (group: SessionGroup) => void;
+  /** 归档分组（本组件先做行内二次确认，确认后才调用） */
   onArchiveGroup: (group: SessionGroup) => void;
   isInitialLoading: boolean;
   sessions: ChatSession[];
@@ -75,45 +83,72 @@ export interface UseSessionSidebarContentDeps {
   sessionsByGroup: Map<string, ChatSession[]>;
   ungroupedSessions: ChatSession[];
   currentSessionId: string | null;
-  totalSessionCount: number | null;
   hasMoreSessions: boolean;
   isLoadingMore: boolean;
-  pendingDeleteSessionId: string | null;
   t: TFunction<any, any>;
   resetDeleteConfirmation: () => void;
-  clearDeleteConfirmTimeout: () => void;
-  deleteConfirmTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
   createSession: (groupId?: string) => Promise<void>;
   loadMoreSessions: () => Promise<void>;
   renderSessionItem: (session: ChatSession, drag?: SessionDragState) => React.ReactNode;
+  /** 会话拖入分组：提供后启用 hello-pangea DnD（droppableId: session-group:<id> / session-ungrouped） */
+  onSessionDragEnd?: (result: DropResult) => void;
 }
 
 export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   const {
     searchQuery, setSearchQuery, viewMode, setViewMode, setSessionSheetOpen,
-    setPendingDeleteSessionId,
     editableGroupIds, onCreateGroup, onRenameGroup, onEditGroup, onArchiveGroup,
     isInitialLoading, sessions, visibleGroups, sessionsByGroup, ungroupedSessions,
-    currentSessionId, totalSessionCount,
-    hasMoreSessions, isLoadingMore, pendingDeleteSessionId,
+    currentSessionId,
+    hasMoreSessions, isLoadingMore,
     t,
-    resetDeleteConfirmation, clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
+    resetDeleteConfirmation,
     createSession, loadMoreSessions,
     renderSessionItem,
+    onSessionDragEnd,
   } = deps;
-  void searchQuery;
-  void setSearchQuery;
-  void setPendingDeleteSessionId;
-  void totalSessionCount;
-  void pendingDeleteSessionId;
-  void resetDeleteConfirmation;
-  void clearDeleteConfirmTimeout;
-  void deleteConfirmTimeoutRef;
 
   const prefersReducedMotion = useReducedMotion();
 
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const isSearching = normalizedSearchQuery.length > 0;
+
+  // 分组归档行内确认（替代 NotionAlertDialog），6s 无操作自动复位
+  const [pendingArchiveGroupId, setPendingArchiveGroupId] = React.useState<string | null>(null);
+  const archiveConfirmTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearArchiveConfirm = React.useCallback(() => {
+    if (archiveConfirmTimeoutRef.current) {
+      clearTimeout(archiveConfirmTimeoutRef.current);
+      archiveConfirmTimeoutRef.current = null;
+    }
+    setPendingArchiveGroupId(null);
+  }, []);
+  const requestArchiveConfirm = React.useCallback((groupId: string) => {
+    if (archiveConfirmTimeoutRef.current) {
+      clearTimeout(archiveConfirmTimeoutRef.current);
+    }
+    setPendingArchiveGroupId(groupId);
+    archiveConfirmTimeoutRef.current = setTimeout(() => {
+      archiveConfirmTimeoutRef.current = null;
+      setPendingArchiveGroupId(null);
+    }, 6000);
+  }, []);
+  React.useEffect(() => () => {
+    if (archiveConfirmTimeoutRef.current) {
+      clearTimeout(archiveConfirmTimeoutRef.current);
+    }
+  }, []);
+
+  const handleSearchChange = React.useCallback((value: string) => {
+    // 开始输入时复位待确认的删除/归档，避免过滤后确认条挂在错误的行上
+    resetDeleteConfirmation();
+    clearArchiveConfirm();
+    setSearchQuery(value);
+  }, [clearArchiveConfirm, resetDeleteConfirmation, setSearchQuery]);
+
   // 会话行进出场（transitions-dev 观感）：新建 fade+4px 上升，删除/归档 fade+轻缩，
   // 兄弟行经 layout 平滑补位；列表首挂载不动画（AnimatePresence initial={false}）
+  // 流式/未读/阻塞指示由 SessionItemRenderer 行尾槽渲染（与桌面 ModernSidebar 同一数据源），此处不再叠加
   const renderAnimatedSessionRow = React.useCallback(
     (session: ChatSession) => (
       <motion.div
@@ -135,9 +170,27 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     [sessions]
   );
 
+  // 标题匹配（与 ChatV2Page 的 filteredSessions 同一规则；deps.sessions 是未过滤全量列表）
+  const matchesSearchQuery = React.useCallback(
+    (session: ChatSession) =>
+      !normalizedSearchQuery
+      || getSessionTitleText(session.title, '').toLowerCase().includes(normalizedSearchQuery),
+    [normalizedSearchQuery]
+  );
+
   const pinnedSessions = React.useMemo(
-    () => sortedSessions.filter(isSessionPinned),
-    [sortedSessions]
+    () => sortedSessions.filter(isSessionPinned).filter(matchesSearchQuery),
+    [matchesSearchQuery, sortedSessions]
+  );
+
+  // 「最近」= 跨分组按 updatedAt 的扁平最近会话（排除置顶），修正原先"最近=未分组"的名实不符
+  const recentFlatSessions = React.useMemo(
+    () => sessions
+      .filter((session) => !isSessionPinned(session))
+      .filter(matchesSearchQuery)
+      .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
+      .slice(0, RECENT_FLAT_SESSION_LIMIT),
+    [matchesSearchQuery, sessions]
   );
 
   const currentSession = React.useMemo(
@@ -268,7 +321,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     trailing?: React.ReactNode,
     group?: SessionGroup,
   ) => {
-    const isExpanded = expandedGroupIds.has(id);
+    // 搜索时强制展开，保证命中结果可见（不污染持久化的展开状态）
+    const isExpanded = isSearching || expandedGroupIds.has(id);
     const nonPinnedSessions = sessionsForFolder.filter((session) => !isSessionPinned(session));
     const createSessionLabel = id === 'ungrouped'
       ? t('page.newSession')
@@ -372,7 +426,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                   <AppMenuSeparator />
                   <AppMenuItem
                     icon={<Archive size={16} />}
-                    onClick={() => onArchiveGroup(group)}
+                    onClick={() => requestArchiveConfirm(group.id)}
                   >
                     {t('page.archiveGroup')}
                   </AppMenuItem>
@@ -383,6 +437,42 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         )}
         </div>
 
+        {/* 分组归档行内确认条（替代模态确认框） */}
+        {group && pendingArchiveGroupId === group.id && (
+          <div
+            role="alertdialog"
+            aria-label={t('page.archiveGroupTitle', '归档分组')}
+            className="mx-1 flex items-center gap-2 rounded-2xl border border-warning/40 bg-warning/10 px-3 py-2"
+          >
+            <span className="min-w-0 flex-1 text-[13px] leading-4 text-foreground/90">
+              {t('page.archiveGroupConfirmInline', { name: group.name, defaultValue: '归档「{{name}}」？其中的会话不会被删除' })}
+            </span>
+            <div className="flex shrink-0 items-center gap-1">
+              <NotionButton
+                variant="warning"
+                size="sm"
+                className="!h-7 !px-2 text-[12px]"
+                onClick={() => {
+                  clearArchiveConfirm();
+                  onArchiveGroup(group);
+                }}
+              >
+                {t('page.archiveGroupConfirm', '确认归档')}
+              </NotionButton>
+              <NotionButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                className="!h-7 !w-7"
+                aria-label={t('common:cancel', '取消')}
+                onClick={clearArchiveConfirm}
+              >
+                <X size={13} />
+              </NotionButton>
+            </div>
+          </div>
+        )}
+
         <div
           className={cn(
             'grid transition-[grid-template-rows,opacity] duration-200 ease-[var(--panel-ease)]',
@@ -390,9 +480,40 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           )}
         >
           <div className={cn('space-y-0.5 overflow-hidden pl-4', !isExpanded && 'pointer-events-none')}>
-            <AnimatePresence initial={false} mode="popLayout">
-              {nonPinnedSessions.map(renderAnimatedSessionRow)}
-            </AnimatePresence>
+            {onSessionDragEnd ? (
+              <Droppable
+                droppableId={id === 'ungrouped' ? 'session-ungrouped' : `session-group:${id}`}
+                type="SESSION"
+              >
+                {(dropProvided, dropSnapshot) => (
+                  <div
+                    ref={dropProvided.innerRef}
+                    {...dropProvided.droppableProps}
+                    className={cn(
+                      'space-y-0.5 rounded-2xl transition-colors duration-150',
+                      dropSnapshot.isDraggingOver && 'bg-[color:var(--interactive-hover)] ring-1 ring-primary/25'
+                    )}
+                  >
+                    {nonPinnedSessions.map((session, index) => (
+                      <Draggable
+                        key={`session:${session.id}`}
+                        draggableId={`session:${session.id}`}
+                        index={index}
+                      >
+                        {(dragProvided, dragSnapshot) =>
+                          renderSessionItem(session, { provided: dragProvided, snapshot: dragSnapshot })
+                        }
+                      </Draggable>
+                    ))}
+                    {dropProvided.placeholder}
+                  </div>
+                )}
+              </Droppable>
+            ) : (
+              <AnimatePresence initial={false} mode="popLayout">
+                {nonPinnedSessions.map(renderAnimatedSessionRow)}
+              </AnimatePresence>
+            )}
             {trailing}
           </div>
         </div>
@@ -409,12 +530,24 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     const activeGroupId = currentSession?.groupId && visibleGroups.some((group) => group.id === currentSession.groupId)
       ? currentSession.groupId
       : (!currentSession?.groupId && currentSession ? 'ungrouped' : null);
+    const hasAnySearchResult = pinnedSessions.length > 0
+      || visibleGroups.length > 0
+      || recentFlatSessions.length > 0
+      || ungroupedNonPinned.length > 0;
+
+    if (isSearching && !hasAnySearchResult) {
+      return (
+        <div className="px-3 py-6 text-center text-[13px] text-muted-foreground">
+          {t('browser.noResults', '未找到匹配的会话')}
+        </div>
+      );
+    }
 
     return (
       <div className={cn('space-y-3', unified ? 'pb-0' : 'pb-2 pt-1')}>
         {pinnedSessions.length > 0 && (
           <section className="space-y-0.5">
-            <div className="space-y-0.5" role="list" aria-label={t('page.pinnedSessions')}>
+            <div className="space-y-0.5" role="list" aria-label={t('page.pinnedSessions', '置顶会话')}>
               <AnimatePresence initial={false} mode="popLayout">
                 {pinnedSessions.map(renderAnimatedSessionRow)}
               </AnimatePresence>
@@ -422,10 +555,10 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           </section>
         )}
 
-        <section className="space-y-0.5" aria-label={t('page.studySessions')}>
+        <section className="space-y-0.5" aria-label={t('page.studySessions', '课题')}>
           <div className="flex items-center justify-between gap-2 pr-0.5">
             <div className="min-w-0 flex-1">
-              {renderSectionLabel(t('page.studySessions'), unified)}
+              {renderSectionLabel(t('page.studySessions', '课题'), unified)}
             </div>
             <NotionButton
               variant="ghost"
@@ -452,21 +585,32 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                   group,
                 )
               )
-            ) : (
+            ) : !isSearching ? (
               <div className="px-3 py-2 text-[13px] text-muted-foreground opacity-80">
-                {t('page.studySessionsEmpty')}
+                {t('page.studySessionsEmpty', '暂无课题')}
               </div>
-            )}
+            ) : null}
           </div>
         </section>
 
-        {(visibleGroups.length > 0 || ungroupedNonPinned.length > 0) && (
-          <section className="space-y-0.5" aria-label={t('page.recentSessions')}>
-            {renderSectionLabel(t('page.recentSessions'), unified)}
+        {/* 「最近」：跨分组扁平最近会话（排除置顶），与下方「未分组」折叠区分离 */}
+        {recentFlatSessions.length > 0 && (
+          <section className="space-y-0.5" aria-label={t('page.recentSessions', '最近')}>
+            {renderSectionLabel(t('page.recentSessions', '最近'), unified)}
+            <div className="space-y-0.5" role="list">
+              <AnimatePresence initial={false} mode="popLayout">
+                {recentFlatSessions.map(renderAnimatedSessionRow)}
+              </AnimatePresence>
+            </div>
+          </section>
+        )}
+
+        {ungroupedNonPinned.length > 0 && (
+          <section className="space-y-0.5" aria-label={t('page.ungrouped', '未分组')}>
             <div className="space-y-0.5">
-              {ungroupedNonPinned.length > 0 && renderFolderRow(
+              {renderFolderRow(
                 'ungrouped',
-                t('page.ungrouped'),
+                t('page.ungrouped', '未分组'),
                 ungroupedNonPinned,
                 activeGroupId === 'ungrouped',
                 unified,
@@ -508,20 +652,75 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     );
   };
 
-  const buildSessionSidebarBody = (unified: boolean) => (
-    <div className="space-y-3 pb-1 pt-1">
-      {unified && (
-        <span className={mobileDrawerSectionLabelClassName}>
-          {t('sidebar:mobile_drawer.section_chat')}
-        </span>
+  // 侧栏内联搜索框（接通 ChatV2Page 的 searchQuery 过滤链路，替代原先被 void 的死状态）
+  const renderSearchInput = () => (
+    <div className="relative px-1">
+      <MagnifyingGlass
+        size={15}
+        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[color:var(--sidebar-muted)]"
+        aria-hidden="true"
+      />
+      <Input
+        type="search"
+        value={searchQuery}
+        onChange={(event) => handleSearchChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && searchQuery) {
+            event.stopPropagation();
+            handleSearchChange('');
+          }
+        }}
+        placeholder={t('page.searchPlaceholder', '搜索会话...')}
+        aria-label={t('page.searchPlaceholder', '搜索会话...')}
+        className={cn(
+          'h-9 min-h-0 w-full rounded-2xl border-transparent bg-[color:var(--interactive-hover)] pl-8 pr-8 text-[14px]',
+          'text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted)]',
+          'transition-colors duration-150 focus:border-primary/40 focus:bg-background'
+        )}
+      />
+      {searchQuery && (
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          className="absolute right-2 top-1/2 !h-6 !w-6 -translate-y-1/2"
+          aria-label={t('page.clearSearch', '清除搜索')}
+          onClick={() => handleSearchChange('')}
+        >
+          <X size={12} />
+        </NotionButton>
       )}
-      <nav aria-label={t('page.primaryNavigation')} className="space-y-0.5">
-        {renderPrimaryItem('new-chat', t('page.newChat'), ChatCenteredText, !currentSessionId, handleCreateSession, unified)}
-        {renderPrimaryItem('session-browser', t('browser.allSessions'), SquaresFour, viewMode === 'browser', handleOpenBrowser, unified)}
-      </nav>
-      {renderStudySidebarContent(unified)}
     </div>
   );
+
+  const buildSessionSidebarBody = (unified: boolean) => {
+    const body = (
+      <div className="space-y-3 pb-1 pt-1">
+        {unified && (
+          <span className={mobileDrawerSectionLabelClassName}>
+            {t('sidebar:mobile_drawer.section_chat')}
+          </span>
+        )}
+        <nav aria-label={t('page.primaryNavigation')} className="space-y-0.5">
+          {renderPrimaryItem('new-chat', t('page.newChat'), ChatCenteredText, !currentSessionId, handleCreateSession, unified)}
+          {renderPrimaryItem('session-browser', t('browser.allSessions'), SquaresFour, viewMode === 'browser', handleOpenBrowser, unified)}
+        </nav>
+        {!isInitialLoading && renderSearchInput()}
+        {renderStudySidebarContent(unified)}
+      </div>
+    );
+
+    return onSessionDragEnd ? (
+      <DragDropContext
+        onDragEnd={(result) => {
+          clearArchiveConfirm();
+          onSessionDragEnd(result);
+        }}
+      >
+        {body}
+      </DragDropContext>
+    ) : body;
+  };
 
   // 渲染会话侧边栏内容（复用于移动端推拉布局和桌面端面板）
   const renderSessionSidebarContent = (options?: { unifiedMobileDrawer?: boolean }) => {

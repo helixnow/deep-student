@@ -12,6 +12,7 @@ import {
   FileText,
   Globe,
   Brain,
+  GraduationCap,
   Image as ImageIcon,
   ArrowSquareOut,
   CaretRight,
@@ -71,8 +72,17 @@ export const SourceCard: React.FC<SourceCardProps> = ({
 }) => {
   const { t } = useTranslation('chatV2');
 
-  const Icon = sourceTypeIcons[source.type] || FileText;
+  // 学术搜索来源基础 type 仍为 web_search（联合类型约束），
+  // 通过 metadata._sourceKind 细分显示图标与标签
+  const sourceKind = source.metadata?._sourceKind as string | undefined;
+  const isAcademic = sourceKind === 'academic';
+  const Icon = isAcademic ? GraduationCap : (sourceTypeIcons[source.type] || FileText);
+  const typeLabel = isAcademic
+    ? t('blocks.retrieval.sourceTypes.academic')
+    : t(`blocks.retrieval.sourceTypes.${source.type}`);
   const hasUrl = !!source.url;
+  // 无 URL 且无回调的卡片是纯展示，不应表现为可点（避免误导的手型光标 + 无效 Tab 停留）
+  const isInteractive = !!onClick || hasUrl;
 
   // 如果标题为空，使用 i18n 默认标题
   const displayTitle = source.title || t('blocks.retrieval.defaultSourceTitle', {
@@ -105,16 +115,19 @@ export const SourceCard: React.FC<SourceCardProps> = ({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={handleClick}
-      onKeyDown={handleKeyDown}
+      role={isInteractive ? 'button' : undefined}
+      tabIndex={isInteractive ? 0 : undefined}
+      onClick={isInteractive ? handleClick : undefined}
+      onKeyDown={isInteractive ? handleKeyDown : undefined}
       className={cn(
-        'group relative rounded-lg border transition-all',
-        'bg-card hover:bg-[var(--interactive-hover)]',
-        'border-border/50 hover:border-border',
-        'dark:bg-card/50 dark:hover:bg-[var(--interactive-hover)]',
-        'cursor-pointer',
+        // 与统一来源面板（usp-item）对齐：圆角、边框透明度、hover 用 primary 着色
+        'group relative rounded-xl border border-border/50 bg-card dark:bg-card/50',
+        'transition-[border-color,background-color,box-shadow] duration-200 motion-reduce:transition-none',
+        isInteractive && [
+          'cursor-pointer',
+          'hover:border-primary/35 hover:bg-primary/5 dark:hover:bg-muted/40',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+        ],
         compact ? 'p-2' : 'p-3',
         className
       )}
@@ -124,15 +137,16 @@ export const SourceCard: React.FC<SourceCardProps> = ({
         {/* 序号或图标 */}
         <div
           className={cn(
-            'flex-shrink-0 flex items-center justify-center rounded',
+            'flex-shrink-0 flex items-center justify-center rounded-md',
             'bg-muted/50 text-muted-foreground',
             compact ? 'w-5 h-5 text-xs' : 'w-6 h-6 text-sm'
           )}
+          aria-hidden="true"
         >
           {index !== undefined ? (
-            <span className="font-medium">{index + 1}</span>
+            <span className="font-medium tabular-nums">{index + 1}</span>
           ) : (
-            <Icon className={compact ? 'w-3 h-3' : 'w-4 h-4'} />
+            <Icon size={compact ? 12 : 16} />
           )}
         </div>
 
@@ -149,13 +163,12 @@ export const SourceCard: React.FC<SourceCardProps> = ({
               {displayTitle}
             </h4>
 
-            {/* 相关度分数 */}
+            {/* 相关度分数（与统一来源面板 usp-item-score 同款：描边 pill + 弱化文字） */}
             {scoreDisplay && (
               <span
                 className={cn(
-                  'flex-shrink-0 px-1.5 py-0.5 rounded text-xs',
-                  'bg-primary/10 text-primary',
-                  'dark:bg-primary/20'
+                  'flex-shrink-0 rounded-md border border-border/40 px-1.5 py-0.5',
+                  'text-[11px] leading-none tabular-nums text-muted-foreground'
                 )}
               >
                 {scoreDisplay}
@@ -167,7 +180,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
           <div className="flex items-center gap-1 mt-0.5">
             <Icon size={12} className="text-muted-foreground" />
             <span className="text-xs text-muted-foreground">
-              {t(`blocks.retrieval.sourceTypes.${source.type}`)}
+              {typeLabel}
             </span>
           </div>
         </div>
@@ -175,11 +188,15 @@ export const SourceCard: React.FC<SourceCardProps> = ({
         {/* 跳转指示器 */}
         {hasUrl && (
           <CaretRight
+            size={compact ? 12 : 16}
+            aria-hidden="true"
             className={cn(
-              'flex-shrink-0 text-muted-foreground',
-              // 触屏无 hover：coarse 指针下常显，保留"可点开"的视觉线索
-              'opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-60 transition-opacity',
-              compact ? 'w-3 h-3' : 'w-4 h-4'
+              'flex-shrink-0 self-center text-muted-foreground',
+              // 触屏无 hover：coarse 指针下常显，保留"可点开"的视觉线索；
+              // 键盘聚焦时同样显示，与 hover 对等
+              'opacity-0 transition-opacity duration-200 motion-reduce:transition-none',
+              'group-hover:opacity-100 group-focus-visible:opacity-100',
+              '[@media(pointer:coarse)]:opacity-60'
             )}
           />
         )}

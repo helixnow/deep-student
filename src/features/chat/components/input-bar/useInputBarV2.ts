@@ -128,16 +128,28 @@ export function useInputBarV2(
     const state = store.getState();
 
     // 守卫检查
+    // ★ B5 修复：所有 early-return 路径统一给出可见反馈（与注入模式守卫一致），
+    // 竞态下用户点发送不再「无声失败」
     // 队列模式：sessionStatus 为 streaming 时也允许（会走 enqueue 分支）
     const willEnqueue = state.sessionStatus !== 'idle';
     if (willEnqueue) {
       // 队列守卫：必须启用且未满
       if (!queueEnabled || (state.queuedMessages?.length ?? 0) >= QUEUE_HARD_CAP) {
         console.warn('[useInputBarV2] Cannot enqueue: queue disabled or full');
+        showGlobalNotification(
+          'warning',
+          !queueEnabled
+            ? i18n.t('chatV2:inputBar.sendGuard.streaming', '正在回复中，请等待完成或点击停止')
+            : i18n.t('chatV2:queue.fullTooltip', '队列已满，请稍候')
+        );
         return;
       }
     } else if (!state.canSend()) {
       console.warn('[useInputBarV2] Cannot send: guard check failed');
+      showGlobalNotification(
+        'warning',
+        i18n.t('chatV2:inputBar.sendGuard.notReady', '当前会话暂时无法发送，请稍后再试')
+      );
       return;
     }
 
@@ -259,6 +271,10 @@ export function useInputBarV2(
     );
     if (hasUploadingAttachments) {
       console.warn('[useInputBarV2] Cannot send: attachments still uploading');
+      showGlobalNotification(
+        'warning',
+        i18n.t('chatV2:inputBar.attachmentsUploading', '附件上传中，请稍候')
+      );
       return;
     }
 
@@ -324,6 +340,10 @@ export function useInputBarV2(
     // 内容检查
     if (!finalContent && allAttachments.length === 0) {
       console.warn('[useInputBarV2] Cannot send: no content');
+      showGlobalNotification(
+        'warning',
+        i18n.t('common:messages.error.empty_input', '请输入内容')
+      );
       return;
     }
 

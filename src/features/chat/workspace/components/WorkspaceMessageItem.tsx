@@ -30,13 +30,14 @@ interface WorkspaceMessageItemProps {
   agentMap?: Map<string, { role: 'coordinator' | 'worker'; skillId?: string }>;
 }
 
+// 消息类型徽章（语义 token，暗色自动跟随主题）
 const typeColors: Record<MessageType, string> = {
-  task: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  progress: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  result: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  query: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-  correction: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  broadcast: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
+  task: 'bg-info/10 text-info',
+  progress: 'bg-warning/10 text-warning',
+  result: 'bg-success/10 text-success',
+  query: 'bg-primary/10 text-primary',
+  correction: 'bg-destructive/10 text-destructive',
+  broadcast: 'bg-muted text-muted-foreground',
 };
 
 export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
@@ -132,16 +133,16 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
   const subagentStatusIcon = useMemo(() => {
     switch (subagentStatus) {
       case 'running':
-        return <CircleNotch size={16} className="text-blue-500 animate-spin" />;
+        return <CircleNotch size={16} className="text-info animate-spin" />;
       case 'queued':
-        return <Clock size={16} className="text-blue-500" />;
+        return <Clock size={16} className="text-info/80" />;
       case 'completed':
-        return <CheckCircle size={16} className="text-green-500" />;
+        return <CheckCircle size={16} className="text-success" />;
       case 'failed':
-        return <WarningCircle size={16} className="text-red-500" />;
+        return <WarningCircle size={16} className="text-destructive" />;
       case 'cancelled':
       case 'interrupted':
-        return <XCircle size={16} className="text-amber-500" />;
+        return <XCircle size={16} className="text-warning" />;
       case 'closed':
         return <XCircle size={16} className="text-muted-foreground" />;
       default:
@@ -211,7 +212,7 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
       {isSubagentTask && subagentSessionId && (
         <div className={cn(
           "mt-2 rounded-lg border border-border/50 bg-card overflow-hidden",
-          subagentStatus === 'running' && "ring-2 ring-blue-500/30"
+          subagentStatus === 'running' && "ring-2 ring-primary/25"
         )}>
           {/* 头部：可点击折叠（用 div 而非 button，避免内部操作按钮形成非法的 button 嵌套） */}
           <div

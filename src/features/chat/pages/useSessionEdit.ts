@@ -8,7 +8,6 @@ import { buildPinnedSessionMetadata } from '../utils/sessionPin';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../types/group';
 import type { ChatSession } from '../types/session';
 import type { DropResult } from '@hello-pangea/dnd';
-import type { DragEndEvent } from '@dnd-kit/core';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { showArchiveSessionToast } from '../utils/archiveSessionToast';
 import type { TFunction } from 'i18next';
@@ -64,6 +63,10 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     updateGroup, createGroup, archiveGroup, reorderGroups,
     loadUngroupedCount, getOrCreateHiddenDraftSession, groupDragDisabled, visibleGroups,
   } = deps;
+  // 分组拖拽排序已收敛到桌面 ModernSidebar 的 HTML5 DnD（dnd-kit 路径随 SortableGroupItem 移除）
+  void reorderGroups;
+  void groupDragDisabled;
+  void visibleGroups;
 
   // 开始编辑会话名称
   const startEditSession = useCallback((session: ChatSession, e: React.MouseEvent) => {
@@ -302,6 +305,15 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     }
   }, [archiveGroup, pendingArchiveGroup, setPendingArchiveGroup]);
 
+  // 归档分组（直接执行版）：供侧栏等已自带行内二次确认的表面使用
+  const archiveGroupDirect = useCallback(async (group: SessionGroup) => {
+    try {
+      await archiveGroup(group.id);
+    } catch (error) {
+      console.error('[ChatV2Page] Failed to archive group:', getErrorMessage(error));
+    }
+  }, [archiveGroup]);
+
   const moveSessionToGroup = useCallback(async (sessionId: string, groupId?: string) => {
     try {
       await invoke('chat_v2_move_session_to_group', {
@@ -315,26 +327,11 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     }
   }, [applySessionGroupUpdate, loadUngroupedCount]);
 
-  const handleGroupReorder = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    if (groupDragDisabled) return;
-
-    const oldIndex = visibleGroups.findIndex((g) => g.id === active.id);
-    const newIndex = visibleGroups.findIndex((g) => g.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    const reordered = [...visibleGroups];
-    const [moved] = reordered.splice(oldIndex, 1);
-    reordered.splice(newIndex, 0, moved);
-    reorderGroups(reordered.map((group) => group.id));
-  }, [groupDragDisabled, reorderGroups, visibleGroups]);
-
   const handleDragEnd = useCallback((result: DropResult) => {
     const { destination, source, draggableId } = result;
     if (!destination) return;
 
-    // SESSION-level drag only (group drag handled by @dnd-kit)
+    // SESSION-level drag only（分组排序走桌面 ModernSidebar 的 HTML5 拖拽）
     if (destination.droppableId === source.droppableId) return;
     const sessionId = draggableId.replace(/^session:/, '');
     if (destination.droppableId === 'session-ungrouped') {
@@ -376,8 +373,8 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     handleSubmitGroup,
     applySessionGroupUpdate,
     confirmArchiveGroup,
+    archiveGroupDirect,
     moveSessionToGroup,
-    handleGroupReorder,
     handleDragEnd,
     formatTime,
   };

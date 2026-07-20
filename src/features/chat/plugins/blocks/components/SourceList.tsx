@@ -5,11 +5,11 @@
  * 支持展开/折叠、暗色/亮色主题
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { CaretDown, CaretRight, Stack } from '@phosphor-icons/react';
+import { CaretDown, Stack } from '@phosphor-icons/react';
 import { SourceCard } from './SourceCard';
 import type { RetrievalSource } from './types';
 
@@ -59,14 +59,11 @@ export const SourceList: React.FC<SourceListProps> = ({
 }) => {
   const { t } = useTranslation('chatV2');
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const collapsibleId = useId();
 
   const hasMore = sources.length > maxVisible;
-  const visibleSources = useMemo(() => {
-    if (isExpanded || !hasMore) {
-      return sources;
-    }
-    return sources.slice(0, maxVisible);
-  }, [sources, isExpanded, hasMore, maxVisible]);
+  const visibleSources = hasMore ? sources.slice(0, maxVisible) : sources;
+  const hiddenSources = hasMore ? sources.slice(maxVisible) : [];
 
   const hiddenCount = sources.length - maxVisible;
 
@@ -92,34 +89,72 @@ export const SourceList: React.FC<SourceListProps> = ({
       )}
 
       {/* 来源卡片列表 */}
-      <div className={cn('space-y-2', compact && 'space-y-1')}>
-        {visibleSources.map((source, index) => (
-          <SourceCard
-            key={source.id}
-            source={source}
-            index={index}
-            compact={compact}
-            onClick={onSourceClick}
-          />
-        ))}
+      <div>
+        <div className={cn('space-y-2', compact && 'space-y-1')}>
+          {visibleSources.map((source, index) => (
+            <SourceCard
+              key={source.id}
+              source={source}
+              index={index}
+              compact={compact}
+              onClick={onSourceClick}
+            />
+          ))}
+        </div>
+
+        {/* 折叠部分：内联 grid-rows 展开动画（禁模态/侧滑，遵循 motion-reduce） */}
+        {hiddenSources.length > 0 && (
+          <div
+            id={collapsibleId}
+            aria-hidden={!isExpanded}
+            // inert：折叠时阻止内部卡片被 Tab 聚焦（React 18 类型未收录该属性，需绕过）
+            {...(!isExpanded
+              ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>)
+              : {})}
+            className={cn(
+              'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
+              isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+            )}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className={cn('space-y-2 pt-2', compact && 'space-y-1 pt-1')}>
+                {hiddenSources.map((source, index) => (
+                  <SourceCard
+                    key={source.id}
+                    source={source}
+                    index={maxVisible + index}
+                    compact={compact}
+                    onClick={onSourceClick}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 展开/折叠按钮 */}
       {hasMore && (
-        <NotionButton variant="ghost" size="sm" onClick={toggleExpanded} className="w-full !justify-center">
-          {isExpanded ? (
-            <>
-              <CaretDown size={16} />
-              <span>{t('blocks.retrieval.showLess')}</span>
-            </>
-          ) : (
-            <>
-              <CaretRight size={16} />
-              <span>
-                {t('blocks.retrieval.showMore', { count: hiddenCount })}
-              </span>
-            </>
-          )}
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          onClick={toggleExpanded}
+          aria-expanded={isExpanded}
+          aria-controls={collapsibleId}
+          className="w-full !justify-center text-muted-foreground hover:text-foreground"
+        >
+          <CaretDown
+            size={16}
+            className={cn(
+              'transition-transform duration-200 motion-reduce:transition-none',
+              !isExpanded && '-rotate-90'
+            )}
+          />
+          <span>
+            {isExpanded
+              ? t('blocks.retrieval.showLess')
+              : t('blocks.retrieval.showMore', { count: hiddenCount })}
+          </span>
         </NotionButton>
       )}
     </div>

@@ -485,12 +485,18 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
     setOffset({ x: 0, y: 0 });
   };
 
-  const onMouseDown = (e: React.MouseEvent) => {
+  // P1-11: 平移改用 Pointer Events —— 鼠标 / 触摸 / 触控笔统一处理。
+  // 触屏依赖 CSS touch-action: none（见 markdown.css .mermaid-preview），
+  // 否则浏览器会把单指拖动当作页面滚动而不派发 pointermove。
+  const onPanPointerDown = (e: React.PointerEvent) => {
     if (!showRendered) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // 捕获指针：拖出预览区域时 move/up 事件不丢失（替代原 onMouseLeave 兜底）
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     setPanning(true);
     setLastMouse({ x: e.clientX, y: e.clientY });
   };
-  const onMouseMove = (e: React.MouseEvent) => {
+  const onPanPointerMove = (e: React.PointerEvent) => {
     if (!panning || !lastMouse) return;
     const dx = e.clientX - lastMouse.x;
     const dy = e.clientY - lastMouse.y;
@@ -498,6 +504,12 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
     setLastMouse({ x: e.clientX, y: e.clientY });
   };
   const endPan = () => { setPanning(false); setLastMouse(null); };
+  const onPanPointerUp = (e: React.PointerEvent) => {
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+    }
+    endPan();
+  };
 
   // React 17+ 在根容器以 passive 模式绑定 wheel 事件，onWheel 里的
   // preventDefault() 会被忽略：ctrl+滚轮缩放预览时页面/WebView 仍会同步缩放滚动，
@@ -782,10 +794,10 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
           <div
             className={`mermaid-preview ${panning ? 'panning' : ''} ${mermaidError ? 'has-error' : ''}`}
             ref={previewRef}
-            onMouseDown={onMouseDown}
-            onMouseMove={onMouseMove}
-            onMouseUp={endPan}
-            onMouseLeave={endPan}
+            onPointerDown={onPanPointerDown}
+            onPointerMove={onPanPointerMove}
+            onPointerUp={onPanPointerUp}
+            onPointerCancel={onPanPointerUp}
             onDoubleClick={handleFitView}
           >
             <div className="mermaid-canvas">

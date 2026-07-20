@@ -1,10 +1,12 @@
 /**
  * Chat V2 - 图片预览组件
  *
- * 用于展示生成的图片，支持全屏预览
+ * 用于展示生成的图片。
+ * 2026-07 改造：移除全屏 Modal，放大改为消息流内联展开
+ * （原图尺寸 + 可滚动查看 + 下载/外部打开操作，禁模态框）。
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import './image-preview.css';
@@ -14,7 +16,7 @@ import { fileManager } from '@/utils/fileManager';
 import {
   CircleNotch,
   ArrowsOut,
-  X,
+  ArrowsIn,
   Download,
   ArrowSquareOut,
   WarningCircle,
@@ -33,7 +35,7 @@ export interface ImagePreviewProps {
   width?: number;
   /** 图片高度 */
   height?: number;
-  /** 点击事件（如打开全屏） */
+  /** 点击事件（覆盖默认的内联展开行为） */
   onClick?: () => void;
   /** 自定义类名 */
   className?: string;
@@ -42,21 +44,62 @@ export interface ImagePreviewProps {
 }
 
 // ============================================================================
-// 全屏预览模态框
+// 主组件
 // ============================================================================
 
-interface FullscreenModalProps {
-  src: string;
-  alt?: string;
-  onClose: () => void;
-}
-
-const FullscreenModal: React.FC<FullscreenModalProps> = ({
+/**
+ * ImagePreview - 图片预览组件
+ *
+ * 默认显示适配容器宽度的预览；点击后在消息流内联展开为
+ * 原始尺寸（可滚动）视图，并提供下载/外部打开/收起操作。
+ */
+export const ImagePreview: React.FC<ImagePreviewProps> = ({
   src,
   alt,
-  onClose,
+  width,
+  height,
+  onClick,
+  className,
+  showActions = true,
 }) => {
   const { t } = useTranslation('chatV2');
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const handleLoad = useCallback(() => {
+    setIsLoading(false);
+    setHasError(false);
+  }, []);
+
+  const handleError = useCallback(() => {
+    setIsLoading(false);
+    setHasError(true);
+  }, []);
+
+  const handleClick = useCallback(() => {
+    if (onClick) {
+      onClick();
+    } else {
+      setIsExpanded(true);
+    }
+  }, [onClick]);
+
+  const handleCollapse = useCallback(() => {
+    setIsExpanded(false);
+  }, []);
+
+  // 展开态支持 Escape 收起（无焦点陷阱的内联展开，仅监听 Escape）
+  useEffect(() => {
+    if (!isExpanded) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsExpanded(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isExpanded]);
 
   const handleDownload = useCallback(async () => {
     try {
@@ -80,112 +123,15 @@ const FullscreenModal: React.FC<FullscreenModalProps> = ({
     openUrl(src);
   }, [src]);
 
-  // 点击背景关闭
-  const handleBackdropClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.target === e.currentTarget) {
-        onClose();
-      }
-    },
-    [onClose]
-  );
-
-  // ESC 键关闭
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
-
-  return (
-    <div
-      className={cn(
-        'fixed inset-0 z-50',
-        'bg-black/80 backdrop-blur-sm',
-        'flex items-center justify-center',
-        'p-4'
-      )}
-      onClick={handleBackdropClick}
-    >
-      {/* 操作按钮 */}
-      <div className="absolute top-4 right-4 flex gap-2">
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="!rounded-full bg-white/10 hover:bg-[var(--overlay-control-hover)] text-white" aria-label={t('blocks.imageGen.download')} title={t('blocks.imageGen.download')}>
-          <Download size={20} />
-        </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInNewTab} className="!rounded-full bg-white/10 hover:bg-[var(--overlay-control-hover)] text-white" aria-label={t('blocks.imageGen.openInNewTab')} title={t('blocks.imageGen.openInNewTab')}>
-          <ArrowSquareOut size={20} />
-        </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="!rounded-full bg-white/10 hover:bg-[var(--overlay-control-hover)] text-white" aria-label={t('blocks.imageGen.close')} title={t('blocks.imageGen.close')}>
-          <X size={20} />
-        </NotionButton>
-      </div>
-
-      {/* 图片 */}
-      <img
-        src={src}
-        alt={alt || 'Fullscreen preview'}
-        className="max-w-full max-h-full object-contain rounded-lg shadow-lg ring-1 ring-border/40"
-      />
-    </div>
-  );
-};
-
-// ============================================================================
-// 主组件
-// ============================================================================
-
-/**
- * ImagePreview - 图片预览组件
- */
-export const ImagePreview: React.FC<ImagePreviewProps> = ({
-  src,
-  alt,
-  width,
-  height,
-  onClick,
-  className,
-  showActions = true,
-}) => {
-  const { t } = useTranslation('chatV2');
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
-  const handleLoad = useCallback(() => {
-    setIsLoading(false);
-    setHasError(false);
-  }, []);
-
-  const handleError = useCallback(() => {
-    setIsLoading(false);
-    setHasError(true);
-  }, []);
-
-  const handleClick = useCallback(() => {
-    if (onClick) {
-      onClick();
-    } else {
-      setIsFullscreen(true);
-    }
-  }, [onClick]);
-
-  const handleCloseFullscreen = useCallback(() => {
-    setIsFullscreen(false);
-  }, []);
-
   // 计算容器样式
   const containerStyle = React.useMemo(() => {
     const style: React.CSSProperties = {};
-    if (width && height) {
+    if (width && height && !isExpanded) {
       const aspectRatio = width / height;
       style.aspectRatio = `${aspectRatio}`;
     }
     return style;
-  }, [width, height]);
+  }, [width, height, isExpanded]);
 
   if (hasError) {
     return (
@@ -204,77 +150,128 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
     );
   }
 
-  return (
-    <>
-      <div
-        className={cn('image-preview relative group', className)}
-        style={containerStyle}
-      >
-        {/* 加载状态 */}
-        {isLoading && (
-          <div
-            className={cn(
-              'absolute inset-0 flex items-center justify-center',
-              'bg-muted/30 dark:bg-muted/20 rounded-lg'
-            )}
-          >
-            <CircleNotch size={24} className="animate-spin text-muted-foreground" />
+  // ========== 内联展开视图：原始尺寸 + 滚动查看 ==========
+  if (isExpanded) {
+    return (
+      <div className={cn('rounded-lg border border-border/50 overflow-hidden bg-muted/20', className)}>
+        {/* 操作栏 */}
+        <div className="flex items-center justify-between gap-2 px-2 py-1.5 border-b border-border/30 bg-muted/30">
+          <span className="text-xs text-muted-foreground truncate" title={alt}>
+            {width && height ? `${width} × ${height}` : alt || ''}
+          </span>
+          <div className="flex items-center gap-1">
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={handleDownload}
+              aria-label={t('blocks.imageGen.download')}
+              title={t('blocks.imageGen.download')}
+            >
+              <Download size={16} />
+            </NotionButton>
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={handleOpenInNewTab}
+              aria-label={t('blocks.imageGen.openInNewTab')}
+              title={t('blocks.imageGen.openInNewTab')}
+            >
+              <ArrowSquareOut size={16} />
+            </NotionButton>
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={handleCollapse}
+              aria-label={t('blocks.imageGen.collapse')}
+              title={t('blocks.imageGen.collapse')}
+            >
+              <ArrowsIn size={16} />
+            </NotionButton>
           </div>
-        )}
+        </div>
 
-        {/* 图片 */}
-        <img
-          src={src}
-          alt={alt || 'Generated image'}
-          className={cn(
-            'w-full h-auto rounded-lg object-contain',
-            'cursor-pointer transition-transform hover:scale-[1.02]',
-            isLoading && 'opacity-0'
-          )}
-          onLoad={handleLoad}
-          onError={handleError}
-          onClick={handleClick}
-          loading="lazy"
-        />
-
-        {/* 操作按钮覆盖层 */}
-        {showActions && !isLoading && (
-          <div
-            className={cn(
-              'absolute inset-0 flex items-center justify-center',
-              'bg-black/40 opacity-0 group-hover:opacity-100',
-              'transition-opacity rounded-lg',
-              'pointer-events-none'
-            )}
-          >
-            <div className="flex items-center gap-2 text-white pointer-events-auto">
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClick} className="!rounded-full bg-white/20 hover:bg-[var(--overlay-control-hover)] text-white" aria-label={t('blocks.imageGen.fullscreen')} title={t('blocks.imageGen.fullscreen')}>
-                <ArrowsOut size={20} />
-              </NotionButton>
-            </div>
-          </div>
-        )}
-
-        {/* 尺寸信息 */}
-        {width && height && !isLoading && (
-          <div
-            className={cn(
-              'absolute bottom-2 right-2',
-              'px-1.5 py-0.5 rounded',
-              'bg-black/50 text-white text-xs',
-              'opacity-0 group-hover:opacity-100 transition-opacity'
-            )}
-          >
-            {width} × {height}
-          </div>
-        )}
+        {/* 原始尺寸滚动区（内联展开，非模态） */}
+        <div className="max-h-[70vh] overflow-auto">
+          <img
+            src={src}
+            alt={alt || 'Generated image'}
+            className="max-w-none cursor-zoom-out"
+            onClick={handleCollapse}
+            draggable={false}
+          />
+        </div>
       </div>
+    );
+  }
 
-      {/* 全屏模态框 */}
-      {isFullscreen && (
-        <FullscreenModal src={src} alt={alt} onClose={handleCloseFullscreen} />
+  // ========== 默认视图：适配宽度预览 ==========
+  return (
+    <div
+      className={cn('image-preview relative group', className)}
+      style={containerStyle}
+    >
+      {/* 加载状态 */}
+      {isLoading && (
+        <div
+          className={cn(
+            'absolute inset-0 flex items-center justify-center',
+            'bg-muted/30 dark:bg-muted/20 rounded-lg'
+          )}
+        >
+          <CircleNotch size={24} className="animate-spin text-muted-foreground" />
+        </div>
       )}
-    </>
+
+      {/* 图片 */}
+      <img
+        src={src}
+        alt={alt || 'Generated image'}
+        className={cn(
+          'w-full h-auto rounded-lg object-contain',
+          'cursor-zoom-in transition-transform hover:scale-[1.02]',
+          isLoading && 'opacity-0'
+        )}
+        onLoad={handleLoad}
+        onError={handleError}
+        onClick={handleClick}
+        loading="lazy"
+      />
+
+      {/* 操作按钮覆盖层 */}
+      {showActions && !isLoading && (
+        <div
+          className={cn(
+            'absolute inset-0 flex items-center justify-center',
+            'bg-black/40 opacity-0 group-hover:opacity-100',
+            'transition-opacity rounded-lg',
+            'pointer-events-none'
+          )}
+        >
+          <div className="flex items-center gap-2 text-white pointer-events-auto">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClick} className="!rounded-full bg-white/20 hover:bg-[var(--overlay-control-hover)] text-white" aria-label={t('blocks.imageGen.expandInline')} title={t('blocks.imageGen.expandInline')}>
+              <ArrowsOut size={20} />
+            </NotionButton>
+          </div>
+        </div>
+      )}
+
+      {/* 尺寸信息 */}
+      {width && height && !isLoading && (
+        <div
+          className={cn(
+            'absolute bottom-2 right-2',
+            'px-1.5 py-0.5 rounded',
+            'bg-black/50 text-white text-xs',
+            'opacity-0 group-hover:opacity-100 transition-opacity'
+          )}
+        >
+          {width} × {height}
+        </div>
+      )}
+    </div>
   );
 };
 

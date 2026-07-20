@@ -19,6 +19,8 @@ import type {
   RagSourceInfo,
   MultimodalSourceType,
   MultimodalRetrievalSource,
+  SourceCitationType,
+  SourceRetrievalError,
 } from './sourceTypes';
 
 // ============================================================================
@@ -48,6 +50,60 @@ const KNOWLEDGE_RETRIEVAL_BLOCK_TYPES = ['rag', 'memory', 'web_search', 'multimo
  */
 function isKnowledgeRetrievalBlock(blockType: string): boolean {
   return KNOWLEDGE_RETRIEVAL_BLOCK_TYPES.includes(blockType as typeof KNOWLEDGE_RETRIEVAL_BLOCK_TYPES[number]);
+}
+
+/**
+ * origin → citation 契约类型映射
+ * tool/graph 等来源不参与 `[类型-N]` 引用契约，映射为 undefined
+ */
+const ORIGIN_TO_CITATION_TYPE: Record<string, SourceCitationType> = {
+  rag: 'rag',
+  memory: 'memory',
+  web_search: 'web_search',
+  multimodal: 'multimodal',
+};
+
+/**
+ * 检索块类型 → 归一化来源分组（用于错误态展示）
+ */
+const RETRIEVAL_BLOCK_TYPE_TO_ORIGIN: Record<string, string> = {
+  rag: 'rag',
+  memory: 'memory',
+  web_search: 'web_search',
+  multimodal_rag: 'multimodal',
+  academic_search: 'web_search',
+};
+
+/**
+ * 收尾处理：保证跨块/跨 provider 的 id 全局唯一，
+ * 并按全局顺序为每个 item 分配"类型内序号"（typeIndex，1-based）。
+ *
+ * typeIndex 与后端 citation `[类型-N]` 契约一致：
+ * 同一 citation 类型的来源按出现顺序从 1 开始计数。
+ */
+function finalizeSourceItems(items: UnifiedSourceItem[]): UnifiedSourceItem[] {
+  const seenIds = new Set<string>();
+  const typeCounters = new Map<SourceCitationType, number>();
+
+  return items.map((item) => {
+    let id = item.id;
+    if (seenIds.has(id)) {
+      let suffix = 2;
+      while (seenIds.has(`${id}~${suffix}`)) suffix++;
+      id = `${id}~${suffix}`;
+    }
+    seenIds.add(id);
+
+    const citationType = ORIGIN_TO_CITATION_TYPE[item.origin];
+    let typeIndex: number | undefined;
+    if (citationType) {
+      const next = (typeCounters.get(citationType) ?? 0) + 1;
+      typeCounters.set(citationType, next);
+      typeIndex = next;
+    }
+
+    return { ...item, id, citationType, typeIndex };
+  });
 }
 
 /**
@@ -102,11 +158,14 @@ export function blocksToSourceBundle(blocks: Block[]): UnifiedSourceBundle | nul
     return null;
   }
 
+  // 收尾：全局唯一 id + 类型内序号
+  const finalized = finalizeSourceItems(allItems);
+
   // 按来源类型分组
-  const groups = groupSourceItems(allItems);
+  const groups = groupSourceItems(finalized);
 
   return {
-    total: allItems.length,
+    total: finalized.length,
     groups,
   };
 }
@@ -546,7 +605,41 @@ function getDefaultTitleKey(blockType: string, index: number): string {
 // ============================================================================
 
 /**
+ * 从块数组中提取检索失败信息（error 状态的知识检索块）
+ *
+ * @param blocks - 消息关联的所有块
+ * @returns 检索失败信息数组（可为空）
+ */
+export function extractRetrievalErrors(blocks: Block[]): SourceRetrievalError[] {
+  return blocks
+    .filter((block) => isKnowledgeRetrievalBlock(block.type) && block.status === 'error')
+    .map((block) => ({
+      blockId: block.id,
+      blockType: block.type,
+      origin: RETRIEVAL_BLOCK_TYPE_TO_ORIGIN[block.type] ?? block.type,
+      message: block.error,
+    }));
+}
+
+/**
+ * 检查是否存在进行中的知识检索块（pending/running）
+ *
+ * 用于驱动来源面板的"正在检索"内联态
+ */
+export function hasActiveRetrievalInBlocks(blocks: Block[]): boolean {
+  return blocks.some(
+    (block) =>
+      isKnowledgeRetrievalBlock(block.type) &&
+      (block.status === 'running' || block.status === 'pending')
+  );
+}
+
+/**
  * 从单条消息的块中提取来源（便捷函数）
+ *
+ * - 来源项只从 success 状态的块提取
+ * - error 状态的检索块信息附加在 bundle.errors 上（驱动内联错误态）
+ * - 无来源但有检索失败时，返回空 groups + errors 的 bundle
  *
  * @param messageBlocks - 消息关联的所有块
  * @returns UnifiedSourceBundle 或 null
@@ -556,7 +649,42 @@ export function extractSourcesFromMessageBlocks(
 ): UnifiedSourceBundle | null {
   // 只处理成功状态的块
   const successBlocks = messageBlocks.filter((block) => block.status === 'success');
-  return blocksToSourceBundle(successBlocks);
+  const bundle = blocksToSourceBundle(successBlocks);
+  const errors = extractRetrievalErrors(messageBlocks);
+
+  if (!bundle) {
+    return errors.length > 0 ? { total: 0, groups: [], errors } : null;
+  }
+  return errors.length > 0 ? { ...bundle, errors } : bundle;
+}
+
+/**
+ * 按"引用类型 + 类型内序号"查找来源项（纯函数）
+ *
+ * 与 citation `[类型-N]` 契约对应：type 为引用类型，index 为 1-based 的类型内序号。
+ * 供 citation 徽章 / CitationPopover 等消费方解析引用指向的来源。
+ *
+ * @param bundle - 来源包（可为 null/undefined）
+ * @param type - 引用类型（rag/memory/web_search/multimodal）
+ * @param index - 类型内序号（从 1 开始）
+ * @returns 匹配的来源项或 null
+ */
+export function resolveCitationSource(
+  bundle: UnifiedSourceBundle | null | undefined,
+  type: string,
+  index: number
+): UnifiedSourceItem | null {
+  if (!bundle || !Number.isFinite(index) || index < 1) {
+    return null;
+  }
+  for (const group of bundle.groups) {
+    for (const item of group.items) {
+      if (item.citationType === type && item.typeIndex === index) {
+        return item;
+      }
+    }
+  }
+  return null;
 }
 
 /**
@@ -796,24 +924,39 @@ export function extractSourcesFromSharedContext(
     return null;
   }
 
-  const groups = groupSourceItems(allItems);
+  const finalized = finalizeSourceItems(allItems);
+  const groups = groupSourceItems(finalized);
   return {
-    total: allItems.length,
+    total: finalized.length,
     groups,
   };
 }
 
 /**
- * 检查消息是否有来源（只检查 success 状态的块）
+ * 检查消息是否需要挂载来源面板
  *
  * @param messageBlocks - 消息关联的所有块
- * @returns 是否有来源
+ * @returns 是否有来源（或有需要面板呈现的检索状态）
  *
- * 注意：只检查 success 状态的块，与 extractSourcesFromMessageBlocks 保持一致
- * 流式进行中的块不计入，避免 UI 闪烁
+ * 判定规则：
+ * - 知识检索块处于 pending/running/error 时也返回 true，
+ *   以便面板能够渲染"正在检索"内联条与检索失败内联态
+ * - success 块按来源数据判定（citations / toolOutput）
  */
 export function hasSourcesInBlocks(messageBlocks: Block[]): boolean {
   return messageBlocks.some((block) => {
+    // 知识检索块：进行中/失败也需要挂载面板（检索中 shimmer / 错误内联态）
+    if (isKnowledgeRetrievalBlock(block.type)) {
+      if (block.status !== 'success') {
+        return true;
+      }
+      // success：有输出即视为有来源
+      if (block.toolOutput) {
+        return true;
+      }
+      return !!(block.citations && block.citations.length > 0);
+    }
+
     if (block.status !== 'success') {
       return false;
     }
@@ -823,12 +966,7 @@ export function hasSourcesInBlocks(messageBlocks: Block[]): boolean {
       return true;
     }
 
-    // 2. 检查知识检索块的 toolOutput（当前实现方式）
-    if (isKnowledgeRetrievalBlock(block.type) && block.toolOutput) {
-      return true;
-    }
-
-    // 3. 检查 MCP 工具块
+    // 2. 检查 MCP 工具块
     if (block.type === 'mcp_tool' && block.toolOutput) {
       return true;
     }

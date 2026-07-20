@@ -304,6 +304,9 @@
   padding: 0 !important; /* 占满边框可视区域 */
   width: 100%;
   display: block;
+
+  /* P1-11: 触屏单指平移预览（Pointer Events 需要禁用浏览器默认滚动手势） */
+  touch-action: none;
 }
 
 .chat-v2 .markdown-content .mermaid-preview.panning {
@@ -399,6 +402,15 @@
 
 .chat-v2 .markdown-content .code-block-copy:active {
   background: hsl(var(--muted) / 80%);
+}
+
+/* P1-11: 触屏设备上代码块头部按钮（复制/运行/缩放）触控目标放大到 ≥40px */
+@media (pointer: coarse) {
+  .chat-v2 .markdown-content .code-block-copy {
+    min-height: 40px;
+    min-width: 40px;
+    padding: 8px 12px;
+  }
 }
 
 /* 让 pre 与头部连为一个整体 */
@@ -584,8 +596,7 @@
    ============================================================================ */
 .chat-v2 .markdown-content .code-block-wrapper,
 .chat-v2 .markdown-content .table-wrapper,
-.chat-v2 .markdown-content .chain-of-thought,
-.chat-v2 .markdown-content .rag-sources-container {
+.chat-v2 .markdown-content .chain-of-thought {
   display: block;
   box-sizing: border-box;
   width: 100%;
@@ -737,8 +748,11 @@
   background: var(--chat-block-surface-muted);
 }
 
+/* 思维链头部图标（Phosphor Brain SVG；原 🧠 emoji 已移除，对齐设计语言"无装饰 emoji"） */
 .chat-v2 .chain-icon {
-  font-size: 1rem;
+  display: inline-flex;
+  align-items: center;
+  color: hsl(var(--muted-foreground));
   opacity: 0.85;
 }
 
@@ -760,100 +774,8 @@
   color: hsl(var(--muted-foreground));
 }
 
-/* ============================================================================
-   RAG来源样式 - RAG Sources Styles  
-   ============================================================================ */
-
-.chat-v2 .rag-sources-container {
-  margin: var(--chat-md-block-gap) 0;
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-  background: var(--chat-block-surface-muted);
-  overflow: hidden;
-}
-
-.chat-v2 .rag-sources-header {
-  padding: 8px 12px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  color: hsl(var(--brand-primary));
-  background: var(--chat-block-surface-muted);
-  border-bottom: 1px solid hsl(var(--border));
-  transition: background-color 0.2s;
-  user-select: none;
-}
-
-.chat-v2 .rag-sources-header:hover {
-  background: hsl(var(--accent));
-}
-
-.chat-v2 .rag-sources-content {
-  padding: var(--chat-md-compact-gap);
-  background: hsl(var(--card));
-}
-
-.chat-v2 .rag-source-item {
-  margin-bottom: 12px;
-  padding: var(--chat-md-compact-gap);
-  background: hsl(var(--card));
-  border-radius: 6px;
-  border: 1px solid hsl(var(--border));
-  box-shadow: none;
-}
-
-.chat-v2 .rag-source-item:last-child {
-  margin-bottom: 0;
-}
-
-.chat-v2 .rag-source-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-}
-
-.chat-v2 .rag-source-title {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: hsl(var(--foreground));
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.chat-v2 .rag-source-title span:first-child {
-  font-size: 14px;
-}
-
-.chat-v2 .rag-source-meta {
-  color: hsl(var(--muted-foreground));
-  font-weight: normal;
-  font-size: 0.75rem;
-}
-
-.chat-v2 .rag-source-score {
-  font-size: 11px;
-  color: hsl(var(--muted-foreground));
-  background: var(--chat-block-surface-muted);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 500;
-}
-
-.chat-v2 .rag-source-content {
-  font-size: var(--chat-md-compact-font-size);
-  color: hsl(var(--foreground));
-  line-height: var(--chat-md-compact-line-height);
-  font-style: normal;
-  background: var(--chat-block-surface-muted);
-  padding: var(--chat-md-compact-gap);
-  border-radius: 4px;
-  border: 1px solid hsl(var(--border));
-}
+/* RAG 来源样式已删除：`.rag-sources-*` 全仓无任何组件渲染对应 DOM（孤儿选择器），
+ * 来源展示统一走 SourcePanelV2（panels 分区）。 */
 
 /* ============================================================================
    响应式设计 - Responsive Design
@@ -881,29 +803,6 @@
   
   .chat-v2 .table-wrapper {
     margin: calc(var(--chat-md-table-gap) * 0.39) 0;
-  }
-  
-  .chat-v2 .rag-sources-header {
-    padding: 6px 8px;
-    font-size: 11px;
-  }
-  
-  .chat-v2 .rag-sources-content {
-    padding: 6px 10px;
-  }
-  
-  .chat-v2 .rag-source-item {
-    padding: 8px;
-    margin-bottom: 8px;
-  }
-  
-  .chat-v2 .rag-source-title {
-    font-size: 11px;
-  }
-  
-  .chat-v2 .rag-source-content {
-    font-size: 11px;
-    padding: 6px;
   }
 }
 
@@ -951,16 +850,6 @@
     background: hsl(var(--muted));
     color: hsl(var(--foreground));
     border: 1px solid hsl(var(--border));
-  }
-  
-  .rag-sources-container {
-    border: 1px solid hsl(var(--border));
-    background: hsl(var(--card));
-  }
-  
-  .rag-sources-header {
-    background: hsl(var(--muted));
-    border-bottom: 1px solid hsl(var(--border));
   }
   
   .chain-of-thought {
@@ -1279,4 +1168,31 @@
 @keyframes citation-image-loading {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* ============================================================================
+   图片加载失败占位 - Broken Image Fallback
+   （MarkdownRenderer.MarkdownImage：替代 display:none 静默消失）
+   ============================================================================ */
+
+.chat-v2 .markdown-img-fallback {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  max-width: 100%;
+  padding: 0.25em 0.6em;
+  border: 1px dashed hsl(var(--border));
+  border-radius: var(--chat-radius-xs, 6px);
+  background: hsl(var(--muted) / 30%);
+  color: hsl(var(--muted-foreground));
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  vertical-align: middle;
+  word-break: break-all;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.chat-v2 .markdown-img-fallback svg {
+  flex-shrink: 0;
 }

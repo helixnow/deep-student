@@ -63,6 +63,25 @@ export interface MultimodalSourceInfo {
 // ============================================================================
 
 /**
+ * 引用契约类型（与 citationParser 的 `[类型-N]` 契约一致）
+ */
+export type SourceCitationType = 'rag' | 'memory' | 'web_search' | 'multimodal';
+
+/**
+ * 检索失败信息（由 adapter 从 error 状态的检索块提取）
+ */
+export interface SourceRetrievalError {
+  /** 失败的块 ID */
+  blockId: string;
+  /** 块类型（rag/memory/web_search/multimodal_rag/academic_search） */
+  blockType: string;
+  /** 归一化后的来源分组（rag/memory/web_search/multimodal） */
+  origin: string;
+  /** 错误描述（可选） */
+  message?: string;
+}
+
+/**
  * 单个来源项
  */
 export interface UnifiedSourceItem {
@@ -90,6 +109,16 @@ export interface UnifiedSourceItem {
   pageIndex?: number;
   /** 资源类型（textbook/attachment/exam 等） */
   resourceType?: string;
+  /**
+   * 引用契约类型（与 citation `[类型-N]` 契约一致）
+   * tool/graph 等无引用契约的来源为 undefined
+   */
+  citationType?: SourceCitationType;
+  /**
+   * 类型内序号（1-based，对应 citation `[类型-N]` 中的 N）
+   * 由 sourceAdapter 按跨块全局顺序统一分配
+   */
+  typeIndex?: number;
   /** 多模态扩展信息（可选） */
   multimodal?: {
     /** 来源类型 */
@@ -126,4 +155,6 @@ export interface UnifiedSourceBundle {
   total: number;
   groups: UnifiedSourceGroup[];
   stage?: string;
+  /** 检索失败的块信息（可为空；用于面板内联错误态） */
+  errors?: SourceRetrievalError[];
 }

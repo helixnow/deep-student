@@ -59,6 +59,20 @@ const POPOVER_WIDTH = 380;
 const POPOVER_GAP = 8;
 const VIEWPORT_PADDING = 12;
 
+/**
+ * P1-10: 可视视口度量——移动端软键盘弹出时 window.innerHeight 不缩小，
+ * 用 visualViewport 才能避免 popover 被键盘遮住；桌面端两者一致。
+ */
+function getVisualViewportBox(): { top: number; left: number; width: number; height: number } {
+  const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+  if (vv) {
+    return { top: vv.offsetTop, left: vv.offsetLeft, width: vv.width, height: vv.height };
+  }
+  return { top: 0, left: 0, width: window.innerWidth, height: window.innerHeight };
+}
+/** 打开后的滚动宽限期：触控选词后的惯性滚动不应立刻误关弹层 */
+const SCROLL_CLOSE_GRACE_MS = 350;
+
 // ============================================================================
 // 加载动画组件
 // ============================================================================
@@ -120,11 +134,13 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
 
     if (height === 0) return; // 还未渲染完成，等下一帧
 
-    const viewportH = window.innerHeight;
-    const viewportW = window.innerWidth;
+    // P1-10: 用 visualViewport 度量，键盘弹出/页面缩放时定位仍然正确
+    const viewport = getVisualViewportBox();
+    const viewportTop = viewport.top;
+    const viewportBottom = viewport.top + viewport.height;
 
-    const spaceAbove = selectionRect.top - VIEWPORT_PADDING;
-    const spaceBelow = viewportH - selectionRect.bottom - VIEWPORT_PADDING;
+    const spaceAbove = selectionRect.top - viewportTop - VIEWPORT_PADDING;
+    const spaceBelow = viewportBottom - selectionRect.bottom - VIEWPORT_PADDING;
     const needed = height + POPOVER_GAP;
 
     let top: number;
@@ -138,13 +154,13 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
       // 上下都放不下：选较大一侧贴边
       top =
         spaceAbove >= spaceBelow
-          ? VIEWPORT_PADDING
-          : Math.max(VIEWPORT_PADDING, viewportH - height - VIEWPORT_PADDING);
+          ? viewportTop + VIEWPORT_PADDING
+          : Math.max(viewportTop + VIEWPORT_PADDING, viewportBottom - height - VIEWPORT_PADDING);
     }
 
     let left = selectionRect.left + selectionRect.width / 2 - width / 2;
-    const maxLeft = viewportW - width - VIEWPORT_PADDING;
-    left = Math.max(VIEWPORT_PADDING, Math.min(left, maxLeft));
+    const maxLeft = viewport.left + viewport.width - width - VIEWPORT_PADDING;
+    left = Math.max(viewport.left + VIEWPORT_PADDING, Math.min(left, maxLeft));
 
     setPosition((prev) => {
       // 避免无意义的状态写入引起额外渲染
@@ -167,13 +183,16 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
 
     const ro = new ResizeObserver(() => computePosition());
     ro.observe(el);
-    // 视口尺寸变化也重算
+    // 视口尺寸变化也重算；软键盘弹出/收起只反映在 visualViewport 上
     const onResize = () => computePosition();
     window.addEventListener('resize', onResize);
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', onResize);
 
     return () => {
       ro.disconnect();
       window.removeEventListener('resize', onResize);
+      vv?.removeEventListener('resize', onResize);
     };
   }, [isVisible, computePosition]);
 
@@ -228,6 +247,26 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
     }
   }, [isVisible, currentView, onClose]);
 
+  // ===== 焦点管理：打开时聚焦弹层（读屏/键盘可达），关闭时还原焦点 =====
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const openedAtRef = useRef(0);
+  useEffect(() => {
+    if (isVisible) {
+      openedAtRef.current = Date.now();
+      previouslyFocusedRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const raf = requestAnimationFrame(() => {
+        popoverRef.current?.focus({ preventScroll: true });
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+    const prev = previouslyFocusedRef.current;
+    previouslyFocusedRef.current = null;
+    if (prev && document.contains(prev)) {
+      prev.focus({ preventScroll: true });
+    }
+  }, [isVisible]);
+
   // ===== 关闭事件 =====
 
   // Escape 关闭
@@ -264,13 +303,14 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
     return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, [isVisible, onClose]);
 
-  // 滚动关闭（忽略 popover 内部滚动）
+  // 滚动关闭（忽略 popover 内部滚动；打开初期的惯性滚动有宽限期，避免触控误关）
   useEffect(() => {
     if (!isVisible) return;
     const handleScroll = (e: Event) => {
       const target = e.target as Node | null;
       // 内容区域自身可滚动（max-h-[240px] overflow-y-auto），不应触发关闭
       if (target && popoverRef.current?.contains(target)) return;
+      if (Date.now() - openedAtRef.current < SCROLL_CLOSE_GRACE_MS) return;
       onClose();
     };
     window.addEventListener('scroll', handleScroll, { capture: true, passive: true });
@@ -311,6 +351,10 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
         <motion.div
           ref={popoverRef}
           data-explain-popover
+          data-wb-blur-surface
+          role="dialog"
+          aria-label={t('selectionToolbar.explain')}
+          tabIndex={-1}
           initial={{ opacity: 0, scale: 0.96, y: -4 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.1 } }}
@@ -320,7 +364,7 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
             'rounded-2xl border border-border/50',
             'bg-popover/80 backdrop-blur-xl backdrop-saturate-150',
             'shadow-lg ring-1 ring-border/40',
-            'overflow-hidden',
+            'overflow-hidden outline-none',
           )}
           style={{
             // 测量未完成前用大负偏移避免视觉闪烁；visibility 隐藏交互

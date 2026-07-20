@@ -11,6 +11,10 @@
  * 3. 暗色模式使用 :root.dark .chat-v2 或 .dark .chat-v2 选择器
  */
 
+/* 共享动效基建（token / keyframes / 工具类 / reduced-motion 兜底）
+   必须最先引入：其兜底扫射靠后续文件的源序与特异性覆盖 */
+@import './motion.css';
+
 /* 基础聊天样式 */
 @import './chat.css';
 

@@ -202,12 +202,28 @@ export function useTextSelection(
     }
   }, [clear]);
 
-  // 滚动/窗口尺寸变化时隐藏（选区 rect 已失效）
+  // 滚动/窗口尺寸变化时隐藏（选区 rect 已失效）。
+  // P1-10 触屏优化：触屏上系统选区在滚动后依然存在，"一滚就永久消失"会让
+  // 工具栏很难点到——先隐藏，滚动停稳后重新评估选区并按新 rect 重新定位。
+  const scrollSettleTimerRef = useRef<number | null>(null);
   const handleScroll = useCallback(() => {
+    if (isTouchPrimaryPointer()) {
+      if (isVisibleRef.current) {
+        clear();
+      }
+      if (scrollSettleTimerRef.current !== null) {
+        window.clearTimeout(scrollSettleTimerRef.current);
+      }
+      scrollSettleTimerRef.current = window.setTimeout(() => {
+        scrollSettleTimerRef.current = null;
+        evaluateSelection();
+      }, 250);
+      return;
+    }
     if (isVisibleRef.current) {
       clear();
     }
-  }, [clear]);
+  }, [clear, evaluateSelection]);
 
   // Escape 键关闭
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -270,6 +286,10 @@ export function useTextSelection(
       }
       document.removeEventListener('scroll', handleScroll, { capture: true });
       window.removeEventListener('resize', handleScroll);
+      if (scrollSettleTimerRef.current !== null) {
+        window.clearTimeout(scrollSettleTimerRef.current);
+        scrollSettleTimerRef.current = null;
+      }
       if (pendingRafRef.current !== null) {
         cancelAnimationFrame(pendingRafRef.current);
         pendingRafRef.current = null;

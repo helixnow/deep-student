@@ -5,10 +5,10 @@
  * 无外边框/阴影，继承 inputContainerRef 外壳样式。
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { ShieldCheck, Clock, CaretDown, CaretUp, ChatCircleText } from '@phosphor-icons/react';
+import { ShieldCheck, Clock, CaretDown, CaretUp, ChatCircleText, Check, X, Warning } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import { cn } from '@/lib/utils';
@@ -37,9 +37,9 @@ const ARGS_TRUNCATE_THRESHOLD = 120;
 const HASH_PREVIEW_LENGTH = 8;
 
 const SENSITIVITY_COLORS: Record<string, string> = {
-  low: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-  high: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  low: 'bg-success/10 text-success',
+  medium: 'bg-warning/10 text-warning',
+  high: 'bg-destructive/10 text-destructive',
 };
 
 // ============================================================================
@@ -63,9 +63,16 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
   const [interactPaused, setInteractPaused] = useState(false);
   // a11y：sr-only live region 播报内容（出现/临近超时/暂停）
   const [liveMessage, setLiveMessage] = useState('');
+  // 同步互斥锁：state 更新是异步的，快速双击会让两次点击都读到 isResponding=false，
+  // 用 ref 在同一事件循环内立即拦截第二次提交（从遗留 ToolApprovalCard 收敛而来）
+  const respondingRef = useRef(false);
   const isCountdownPaused = hoverPaused || interactPaused;
 
   const isResolved = Boolean(interaction.resolvedStatus);
+  // 倒计时归零 = 后端权威超时已经（或即将）触发。前端不代发拒绝（否则超时会被
+  // 误报为「用户拒绝」），只进入禁用等待态，由 tool_approval_request 的
+  // onEnd/onError（reason=timeout / approval_timeout）解析出已决态并出队。
+  const isTimedOutLocally = !isResolved && interaction.timeoutSeconds > 0 && remainingSeconds <= 0;
   const shellScope = interaction.runtimeScope?.kind === 'shell' ? interaction.runtimeScope : null;
   const skillApprovalScope =
     interaction.runtimeScope?.kind === 'skill_install' ||
@@ -121,6 +128,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
     setRejectReason('');
     setHoverPaused(false);
     setInteractPaused(false);
+    respondingRef.current = false;
   }, [interaction.toolCallId, interaction.timeoutSeconds]);
 
   // 发送审批响应
@@ -131,8 +139,9 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
       decision: 'approve' | 'allow_session' | 'reject' | 'always_allow' | 'always_deny',
       customReason?: string
     ) => {
-      if (hasResponded || isResponding || isResolved) return;
+      if (respondingRef.current || hasResponded || isResponding || isResolved) return;
 
+      respondingRef.current = true;
       setIsResponding(true);
       try {
         const approved = decision === 'approve' || decision === 'allow_session' || decision === 'always_allow';
@@ -163,6 +172,8 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
         setHasResponded(true);
         setIsReasonOpen(false);
       } catch (error: unknown) {
+        // 发送失败允许用户重试
+        respondingRef.current = false;
         const errorMessage = getErrorMessage(error);
         console.error('[BlockingApprovalBar] Failed to send response:', errorMessage);
         if (errorMessage.toLowerCase().includes('approval_expired')) {
@@ -196,21 +207,17 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
   }, [handleResponse]);
 
   // 倒计时（用户与审批栏交互时暂停，见 isCountdownPaused）
-  // 自动拒绝不放在 setState updater 里：updater 需保持纯函数（StrictMode 下会被双调用）
+  // 归零后不在前端发送拒绝——后端 tokio timeout 是超时权威，会 emit
+  // approval_timeout，前端只负责展示「已超时」等待态（语义收敛，避免双通道竞态）
   useEffect(() => {
     if (hasResponded || isResolved || isCountdownPaused || remainingSeconds <= 0) return;
 
     const timer = setTimeout(() => {
-      if (remainingSeconds <= 1) {
-        setRemainingSeconds(0);
-        handleResponse('reject');
-      } else {
-        setRemainingSeconds(remainingSeconds - 1);
-      }
+      setRemainingSeconds(remainingSeconds - 1);
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [hasResponded, isResolved, isCountdownPaused, handleResponse, remainingSeconds]);
+  }, [hasResponded, isResolved, isCountdownPaused, remainingSeconds]);
 
   // a11y 播报：审批请求出现时
   useEffect(() => {
@@ -238,7 +245,41 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
     }
   }, [interactPaused, t]);
 
-  const disabled = isResponding || hasResponded || isResolved;
+  // a11y 播报：本地倒计时归零，等待后端超时判定
+  useEffect(() => {
+    if (isTimedOutLocally) {
+      setLiveMessage(t('approval.timedOutWaiting'));
+    }
+  }, [isTimedOutLocally, t]);
+
+  const disabled = isResponding || hasResponded || isResolved || isTimedOutLocally;
+
+  // 已决态反馈（收敛自遗留 ToolApprovalCard）：出队前的 1s 窗口内明确告知结果，
+  // 避免审批栏「无声消失」
+  const resolution = useMemo(() => {
+    const status = interaction.resolvedStatus;
+    if (!status) return null;
+    switch (status) {
+      case 'approved':
+        return { label: t('approval.resolution.approved'), Icon: Check, className: 'text-success' };
+      case 'rejected':
+        return { label: t('approval.resolution.rejected'), Icon: X, className: 'text-destructive' };
+      case 'timeout':
+        return { label: t('approval.resolution.timeout'), Icon: Clock, className: 'text-warning' };
+      case 'expired':
+        return { label: t('approval.resolution.expired'), Icon: Warning, className: 'text-warning' };
+      default:
+        return { label: t('approval.resolution.error'), Icon: Warning, className: 'text-destructive' };
+    }
+  }, [interaction.resolvedStatus, t]);
+
+  // 已决态展示用户填写的拒绝理由（过滤哨兵值）
+  const resolvedUserReason = useMemo(() => {
+    if (interaction.resolvedStatus !== 'rejected') return null;
+    const reason = interaction.resolvedReason?.trim();
+    if (!reason || reason === 'user_rejected' || reason === 'timeout') return null;
+    return reason;
+  }, [interaction.resolvedStatus, interaction.resolvedReason]);
 
   return (
     <div
@@ -259,35 +300,52 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
 
       {/* Row 1: 工具名 + 敏感度 + 倒计时 */}
       <div className="flex flex-wrap items-center gap-2">
-        <ShieldCheck size={16} className="shrink-0 text-amber-600 dark:text-amber-400" />
+        <ShieldCheck size={16} className="shrink-0 text-warning" />
         <span className="text-sm font-medium truncate">{displayToolName}</span>
         <Badge className={cn('text-[10px] px-1.5 py-0', SENSITIVITY_COLORS[interaction.sensitivity])}>
           {t(`approval.sensitivity.${interaction.sensitivity}`, interaction.sensitivity)}
         </Badge>
-        <div
-          role="timer"
-          className="ml-auto flex items-center gap-1 text-xs text-muted-foreground shrink-0"
-          aria-label={
-            isCountdownPaused
-              ? t('approval.aria.countdownPaused')
-              : t('approval.aria.autoRejectCountdown', { seconds: remainingSeconds })
-          }
-        >
-          <Clock size={14} aria-hidden="true" />
-          <span aria-hidden="true">{remainingSeconds}s</span>
-          {isCountdownPaused && (
-            <span aria-hidden="true" className="text-[10px]">
-              {t('approval.countdownPaused')}
-            </span>
-          )}
-        </div>
+        {resolution ? (
+          <div className={cn('ml-auto flex items-center gap-1 text-xs font-medium shrink-0', resolution.className)}>
+            <resolution.Icon size={14} aria-hidden="true" />
+            <span>{resolution.label}</span>
+          </div>
+        ) : isTimedOutLocally ? (
+          <div className="ml-auto flex items-center gap-1 text-xs text-warning shrink-0" role="status">
+            <Clock size={14} aria-hidden="true" />
+            <span>{t('approval.timedOutWaiting')}</span>
+          </div>
+        ) : (
+          <div
+            role="timer"
+            className={cn(
+              'ml-auto flex items-center gap-1 text-xs shrink-0 transition-colors duration-150',
+              remainingSeconds <= 10 && !isCountdownPaused
+                ? 'font-medium text-warning'
+                : 'text-muted-foreground',
+            )}
+            aria-label={
+              isCountdownPaused
+                ? t('approval.aria.countdownPaused')
+                : t('approval.aria.autoRejectCountdown', { seconds: remainingSeconds })
+            }
+          >
+            <Clock size={14} aria-hidden="true" />
+            <span aria-hidden="true" className="tabular-nums">{remainingSeconds}s</span>
+            {isCountdownPaused && (
+              <span aria-hidden="true" className="text-[10px]">
+                {t('approval.countdownPaused')}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Row 2: Runtime scope 摘要（内联 chip，不新增审批面板） */}
       {shellScope && (
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
           {isExternalMcpExecution ? (
-            <span className="rounded bg-red-100 px-1.5 py-0.5 font-mono text-red-700 dark:bg-red-900/30 dark:text-red-300">
+            <span className="rounded bg-destructive/10 px-1.5 py-0.5 font-mono text-destructive">
               external MCP / local sandbox not enforced
             </span>
           ) : (
@@ -303,7 +361,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
                     'rounded px-1.5 py-0.5 font-mono',
                     shellScope.sandboxEnforced
                       ? 'bg-muted text-muted-foreground'
-                      : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+                      : 'bg-destructive/10 text-destructive',
                   )}
                 >
                   sandbox:{shellScope.sandboxEnforced ? 'enforced' : 'unenforced'}
@@ -339,7 +397,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             {shellCommandLabel}
           </span>
           {shellFlags.map((flag) => (
-            <span key={flag} className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+            <span key={flag} className="rounded bg-warning/10 px-1.5 py-0.5 text-warning">
               {flag}
             </span>
           ))}
@@ -359,12 +417,12 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             </span>
           )}
           {shellScope.containsPotentialSecret && (
-            <span className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+            <span className="rounded bg-warning/10 px-1.5 py-0.5 font-mono text-warning">
               command:redacted
             </span>
           )}
           {!isExternalMcpExecution && shellScope.inheritEnv === true && (
-            <span className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+            <span className="rounded bg-warning/10 px-1.5 py-0.5 font-mono text-warning">
               parent-env
             </span>
           )}
@@ -419,7 +477,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             <span className="rounded bg-muted px-1.5 py-0.5 font-mono">{skillApprovalScope.skillId}</span>
           )}
           {skillApprovalScope.overwriteExisting && (
-            <span className="rounded bg-red-100 px-1.5 py-0.5 font-mono text-red-700 dark:bg-red-900/30 dark:text-red-300">
+            <span className="rounded bg-destructive/10 px-1.5 py-0.5 font-mono text-destructive">
               overwrite
             </span>
           )}
@@ -473,7 +531,19 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
         </div>
       )}
 
-      {/* Row 3: 操作按钮 */}
+      {/* Row 3: 操作按钮 / 已决态反馈 */}
+      {resolution ? (
+        resolvedUserReason && (
+          <p className="truncate text-xs text-muted-foreground" title={resolvedUserReason}>
+            {t('approval.userReasonLabel')}: {resolvedUserReason}
+          </p>
+        )
+      ) : hasResponded ? (
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
+          <Clock size={13} aria-hidden="true" />
+          <span>{t('approval.resolution.pending')}</span>
+        </div>
+      ) : (
       <div className="flex items-center gap-2">
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {/* 拒绝：首次点击展开理由输入行，不立即发送 */}
@@ -482,7 +552,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             size="sm"
             onClick={() => setIsReasonOpen((prev) => !prev)}
             disabled={disabled}
-            className="text-red-600 hover:text-red-700 dark:text-red-400"
+            className="text-destructive hover:text-destructive/80"
           >
             {t('approval.reject')}
           </NotionButton>
@@ -514,6 +584,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
           </NotionButton>
         </div>
       </div>
+      )}
 
       {/* Row 4: 拒绝理由输入（内联展开，非模态） */}
       {isReasonOpen && !disabled && (
@@ -545,7 +616,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             size="sm"
             onClick={handleRejectImmediately}
             disabled={disabled}
-            className="shrink-0 text-xs text-muted-foreground hover:text-red-600 dark:hover:text-red-400"
+            className="shrink-0 text-xs text-muted-foreground hover:text-destructive"
           >
             {t('approval.rejectDirectly')}
           </NotionButton>
@@ -554,7 +625,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             size="sm"
             onClick={handleRejectWithReason}
             disabled={disabled}
-            className="shrink-0 text-xs text-red-600 hover:text-red-700 dark:text-red-400"
+            className="shrink-0 text-xs text-destructive hover:text-destructive/80"
           >
             {t('approval.rejectSend')}
           </NotionButton>

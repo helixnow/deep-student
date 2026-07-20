@@ -1,6 +1,9 @@
 /**
  * Chat V2 - AttachmentPreview 附件预览组件
  *
+ * @deprecated 仅被 Legacy `InputBar` 使用；主聊天路径的待发附件展示在
+ * `input-bar/AttachmentPreviewChips` + 附件面板。新功能勿双改。
+ *
  * 职责：显示附件列表，支持预览、删除操作
  *
  * 功能：
@@ -242,7 +245,7 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
 
       {/* 状态遮罩 */}
       {(isPending || isUploading) && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-[1px] z-10">
+        <div data-wb-blur-surface className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-[1px] z-10">
           <CircleNotch size={24} className="animate-spin text-primary" />
         </div>
       )}
@@ -278,6 +281,7 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
           size="icon"
           iconOnly
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          data-wb-blur-surface
           className={cn(
             'absolute top-0.5 right-0.5 z-20 !rounded-full !p-0.5',
             'bg-black/40 hover:bg-destructive text-white',

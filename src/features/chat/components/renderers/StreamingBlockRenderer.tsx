@@ -1,9 +1,11 @@
 import React, { useMemo, memo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Brain } from '@phosphor-icons/react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
 import { canUseDirectFlowTokenMarkdown, containsHtmlTagLikeContent } from './flowTokenEligibility';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
+import { useSuspendedStreamContent } from './StreamPreferencesContext';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import { splitMarkdownBlocks, type MarkdownBlock } from './splitMarkdownBlocks';
 import './streamingBlocks.css';
@@ -126,11 +128,15 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
   );
 }, (prev, next) => {
   // 已完成块：只要 raw 不变就跳过
+  // 🔧 B4: 回调 props（引用点击/图片解析）也纳入比较，
+  // 父组件换新回调时不再让子树继续持有过期闭包
   if (prev.block.isComplete && next.block.isComplete && prev.block.raw === next.block.raw) {
     return (
       prev.isNew === next.isNew &&
       prev.onLinkClick === next.onLinkClick &&
-      prev.extraRemarkPlugins === next.extraRemarkPlugins
+      prev.extraRemarkPlugins === next.extraRemarkPlugins &&
+      prev.onCitationClick === next.onCitationClick &&
+      prev.resolveCitationImage === next.resolveCitationImage
     );
   }
   // 活跃块或状态变化：重渲染
@@ -196,7 +202,9 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
   // 行业最优解：不再裁剪未闭合数学。remark-math 自然降级为原文，
   // KaTeX 在闭合时无缝接管。原始 content 直通渲染器，
   // 由 flowtoken 的 AnimatedMarkdown / SplitText sep="diff" 负责增量动画。
-  const processedContent = content ?? '';
+  // OS 模式 background 窗（壳层已停绘）：冻结提交内容，避免不可见窗每个
+  // token 重跑 markdown 管线；token 留在 store，回可见立即整段补渲。
+  const processedContent = useSuspendedStreamContent(content ?? '', isStreaming);
 
   // 解析思维链
   const parsedContent = useMemo(() => parseChainOfThought(processedContent), [processedContent]);
@@ -269,7 +277,7 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
       {parsedContent?.thinkingContent && (
         <div className="chain-of-thought">
           <div className="chain-header">
-            <span className="chain-icon">🧠</span>
+            <span className="chain-icon" aria-hidden="true"><Brain size={15} weight="duotone" /></span>
             <span className="chain-title">{t('renderer.aiThinkingProcess')}</span>
           </div>
           <div className="thinking-content">
@@ -316,12 +324,17 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
     </div>
   );
 }, (prevProps, nextProps) => {
+  // 🔧 B4: 补齐回调 props 比较（onLinkClick / onCitationClick / resolveCitationImage），
+  // 避免父组件更新回调后子树仍引用指向过期 messageId / sourceBundle 的旧闭包
   return (
     prevProps.content === nextProps.content &&
     prevProps.isStreaming === nextProps.isStreaming &&
     shallowEqualSpans(prevProps.highlightSpans, nextProps.highlightSpans) &&
     prevProps.extraRemarkPlugins === nextProps.extraRemarkPlugins &&
     prevProps.blockId === nextProps.blockId &&
-    prevProps.messageId === nextProps.messageId
+    prevProps.messageId === nextProps.messageId &&
+    prevProps.onLinkClick === nextProps.onLinkClick &&
+    prevProps.onCitationClick === nextProps.onCitationClick &&
+    prevProps.resolveCitationImage === nextProps.resolveCitationImage
   );
 });

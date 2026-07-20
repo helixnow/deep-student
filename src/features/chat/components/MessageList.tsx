@@ -15,11 +15,12 @@ import React, { useRef, useEffect, useLayoutEffect, useCallback, memo, useState 
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useTranslation } from 'react-i18next';
 import type { StoreApi } from 'zustand';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { cn } from '@/utils/cn';
 import { newMessageVariants } from '@/styles/motion-variants';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MessageItem } from './MessageItem';
+import { clearPdfPageCache } from './renderers/MarkdownRenderer';
 import { useMessageOrder, useSessionStatus, useIsDataLoaded } from '../hooks/useChatStore';
 import type { ChatStore } from '../core/types';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
@@ -46,6 +47,45 @@ const DEFAULT_ESTIMATED_ITEM_SIZE = 120;
 const VIRTUALIZATION_THRESHOLD = 80;
 /** 保证最后一条消息可以滚动到 28px 底部渐隐层之上。 */
 const MESSAGE_BOTTOM_SAFE_AREA_PX = 32;
+
+/**
+ * 助手消息轻量入场：复用 motion.css 共享类 .chat-msg-enter（fade + 4px 上移，
+ * 150ms 标准出口曲线，自带 prefers-reduced-motion 降级）。
+ * 用户消息保持 newMessageVariants 的气泡弹出感；仅挂载后新追加的消息播放。
+ */
+const ASSISTANT_ENTER_CLASS = 'chat-msg-enter';
+
+/**
+ * P0-4: 计算输入栏对消息视口的实际遮挡像素。
+ *
+ * 当前布局中输入栏（.unified-input-docked）是消息列表的流内 flex 兄弟，
+ * 矩形不重叠时返回 0（底部 padding 退回固定安全区）。当键盘 inset /
+ * 浮动式输入栏使其矩形盖到视口上时，以重叠像素动态抬高底部 padding，
+ * 并用输入栏写入的 CSS 变量 --unified-input-docked-height 作为上限
+ * （变量缺失时以视口高度 60% 兜底），避免动画中间态的异常矩形放大 padding。
+ */
+function measureInputBarOverlapPx(viewport: HTMLElement): number {
+  const chatRoot = viewport.closest('.chat-v2') ?? document;
+  const inputBar = chatRoot.querySelector<HTMLElement>('.unified-input-docked');
+  if (!inputBar) return 0;
+
+  const viewportRect = viewport.getBoundingClientRect();
+  const inputRect = inputBar.getBoundingClientRect();
+  // 未布局/隐藏（display:none 的矩形全 0）视为不遮挡
+  if (viewportRect.height === 0 || (inputRect.width === 0 && inputRect.height === 0)) {
+    return 0;
+  }
+
+  const overlap = Math.max(0, Math.round(viewportRect.bottom - inputRect.top));
+  if (overlap === 0) return 0;
+
+  const dockedHeightRaw = getComputedStyle(inputBar).getPropertyValue('--unified-input-docked-height');
+  const dockedHeight = Number.parseFloat(dockedHeightRaw);
+  const cap = Number.isFinite(dockedHeight) && dockedHeight > 0
+    ? dockedHeight
+    : viewportRect.height * 0.6;
+  return Math.min(overlap, Math.round(cap));
+}
 
 interface PendingScrollCompensation {
   scrollHeight: number;
@@ -145,6 +185,9 @@ const MessageListInner: React.FC<MessageListProps> = ({
   const { t } = useTranslation('chatV2');
   const scrollToBottomLabel = t('messageList.scrollToBottom');
 
+  // 用户偏好减少动效时跳过消息入场动画（framer variants 无法被 CSS 媒体查询覆盖）
+  const prefersReducedMotion = useReducedMotion();
+
   // 📱 移动端适配：检测屏幕尺寸
   const { isSmallScreen } = useBreakpoint();
 
@@ -203,6 +246,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
   // 📊 性能打点：追踪首次渲染完成
   const hasMarkedFirstRenderRef = useRef(false);
   const hasMarkedFirstRenderScheduledRef = useRef(false);
+  // 虚拟化初始化耗时记录（会话切换时重置，避免打点只在首个会话生效）
+  const hasLoggedVirtualizerRef = useRef(false);
   const lastStoreRef = useRef<StoreApi<ChatStore> | null>(null);
 
   // 🚀 渐进渲染：会话打开首帧只同步渲染尾部 INITIAL_RENDER_COUNT 条，
@@ -230,6 +275,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
   if (storeChanged) {
     hasMarkedFirstRenderRef.current = false;
     hasMarkedFirstRenderScheduledRef.current = false;
+    hasLoggedVirtualizerRef.current = false;
     lastStoreRef.current = store;
     hasAnchoredRef.current = false;
     pendingScrollCompensationRef.current = null;
@@ -300,7 +346,6 @@ const MessageListInner: React.FC<MessageListProps> = ({
   }, [viewportElement, virtualizerReady]);
 
   // 虚拟化初始化耗时记录
-  const hasLoggedVirtualizerRef = useRef(false);
   const virtualizerInitStart = performance.now();
 
   // 虚拟滚动配置
@@ -416,14 +461,66 @@ const MessageListInner: React.FC<MessageListProps> = ({
   // 🔧 用户滚动意图检测：根据实际滚动位置决定是否保持吸底跟随
   const userHasScrolledRef = useRef(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  // P1-8: 用户滚离底部期间有新消息追加时，回到底部按钮上显示小圆点提示
+  const [hasUnseenNewMessages, setHasUnseenNewMessages] = useState(false);
+  // P0-4: 输入栏（键盘 inset / 浮动态）盖到消息视口上的像素数，动态抬高底部安全区
+  const [inputOverlapPx, setInputOverlapPx] = useState(0);
   // 由下方 scroll 监听 effect 填充：状态同步器 / 方向检测基准重置
   const syncScrollStateRef = useRef<() => void>(() => {});
   const resetScrollBaselineRef = useRef<() => void>(() => {});
+  // 由流式吸底 effect 填充：用户回到底部时重新启动 rAF 跟随循环
+  // （用户上滚阅读时循环彻底退出，不再每帧空转）
+  const resumeAutoScrollRef = useRef<() => void>(() => {});
 
   // 切换会话（不 remount）：清除上一会话的滚动意图，从底部锚定的吸底状态重新开始
   useEffect(() => {
     userHasScrolledRef.current = false;
     setShowScrollToBottom(false);
+    setHasUnseenNewMessages(false);
+  }, [store]);
+
+  // P0-4: 观察输入栏矩形对消息视口的实际遮挡（键盘 inset / 输入栏长高 / 浮动态），
+  // 动态抬高底部安全区。输入栏与列表是流内兄弟，常态下 overlap 为 0，无额外开销
+  useEffect(() => {
+    if (!viewportElement) return;
+    const chatRoot = viewportElement.closest('.chat-v2');
+    const inputBar = chatRoot?.querySelector<HTMLElement>('.unified-input-docked');
+    if (!inputBar) return;
+
+    let rafId: number | null = null;
+    const sync = () => {
+      rafId = null;
+      setInputOverlapPx((prev) => {
+        const next = measureInputBarOverlapPx(viewportElement);
+        return next === prev ? prev : next;
+      });
+    };
+    const schedule = () => {
+      if (rafId === null) rafId = requestAnimationFrame(sync);
+    };
+
+    schedule();
+    const resizeObserver = new ResizeObserver(schedule);
+    resizeObserver.observe(inputBar);
+    resizeObserver.observe(viewportElement);
+    // 键盘 inset 走 inline style（padding/CSS 变量），高度不变时也要重测
+    const mutationObserver = new MutationObserver(schedule);
+    mutationObserver.observe(inputBar, { attributes: true, attributeFilter: ['style', 'class'] });
+    window.visualViewport?.addEventListener('resize', schedule);
+
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      window.visualViewport?.removeEventListener('resize', schedule);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [viewportElement]);
+
+  // 🔧 P0：会话切换时清空 PDF 页图模块缓存，释放跨会话滞留的 dataUrl 堆内存
+  useEffect(() => {
+    return () => {
+      clearPdfPageCache();
+    };
   }, [store]);
 
   const scheduleProgrammaticScrollUnlock = useCallback((delayMs: number) => {
@@ -469,12 +566,23 @@ const MessageListInner: React.FC<MessageListProps> = ({
     return () => cancelAnimationFrame(rafId);
   }, [virtualizerReady, useDirectRender, scrollToBottom]);
 
+  // P0-4: 遮挡出现/增大时，吸底状态下保持末条消息贴底可见（不打断用户上滚阅读）
+  useEffect(() => {
+    if (inputOverlapPx === 0 || !viewportElement) return;
+    if (userHasScrolledRef.current) return;
+    const rafId = requestAnimationFrame(() => { scrollToBottom(); });
+    return () => cancelAnimationFrame(rafId);
+  }, [inputOverlapPx, viewportElement, scrollToBottom]);
+
   /** 点击"回到底部"按钮 */
   const handleScrollToBottomClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
     event.currentTarget.blur();
     userHasScrolledRef.current = false;
     setShowScrollToBottom(false);
+    setHasUnseenNewMessages(false);
     scrollToBottom('smooth');
+    // 流式期间：重新启动吸底跟随循环（用户上滚时已退出）
+    resumeAutoScrollRef.current();
   }, [scrollToBottom]);
 
   // 基于真实滚动位置同步吸底状态与按钮可见性
@@ -522,6 +630,14 @@ const MessageListInner: React.FC<MessageListProps> = ({
       const awayFromBottom = followingBottom ? scrolledUp : !nearBottom;
       userHasScrolledRef.current = awayFromBottom;
       setShowScrollToBottom(awayFromBottom);
+      // P1-8: 回到底部即视为"已读"，清除新消息圆点
+      if (!awayFromBottom) {
+        setHasUnseenNewMessages(false);
+      }
+      // 用户手动滚回底部：流式期间恢复吸底跟随循环（循环内部有防重入保护）
+      if (!awayFromBottom && isAutoScrollingRef.current) {
+        resumeAutoScrollRef.current();
+      }
     };
 
     syncScrollStateRef.current = syncScrollState;
@@ -574,13 +690,13 @@ const MessageListInner: React.FC<MessageListProps> = ({
     // 使用 rAF 循环，仅在流式时执行
     // 大块内容（代码块/图片）出现时用 easing 平滑追赶，逐行文本用 instant 紧跟
     const scrollLoop = () => {
+      // 本帧已被消费：先清空 id，让 resumeAutoScroll 的防重入判断保持准确
+      rafIdRef.current = null;
       if (!isAutoScrollingRef.current) return;
 
-      // 用户已主动滚离底部 → 停止自动滚动，尊重用户意图
-      if (userHasScrolledRef.current) {
-        rafIdRef.current = requestAnimationFrame(scrollLoop);
-        return;
-      }
+      // 用户已主动滚离底部 → 彻底退出循环（不再每帧空转）；
+      // 用户滚回底部 / 点击"回到底部"时由 resumeAutoScrollRef 重启
+      if (userHasScrolledRef.current) return;
 
       const maxScroll = viewportElement.scrollHeight - viewportElement.clientHeight;
       const currentBottom = viewportElement.scrollTop + viewportElement.clientHeight;
@@ -603,10 +719,18 @@ const MessageListInner: React.FC<MessageListProps> = ({
       rafIdRef.current = requestAnimationFrame(scrollLoop);
     };
 
-    rafIdRef.current = requestAnimationFrame(scrollLoop);
+    // 重启入口（防重入：循环仍在运行时调用为 no-op）
+    const startLoop = () => {
+      if (!isAutoScrollingRef.current || rafIdRef.current !== null) return;
+      rafIdRef.current = requestAnimationFrame(scrollLoop);
+    };
+    resumeAutoScrollRef.current = startLoop;
+
+    startLoop();
 
     return () => {
       isAutoScrollingRef.current = false;
+      resumeAutoScrollRef.current = () => {};
       if (rafIdRef.current) {
         cancelAnimationFrame(rafIdRef.current);
         rafIdRef.current = null;
@@ -677,7 +801,10 @@ const MessageListInner: React.FC<MessageListProps> = ({
         return () => cancelAnimationFrame(rafId);
       }
     }
-  }, [isStreaming, viewportElement, scrollToBottom]);
+    // 依赖补全（B10）：闭包引用 useDirectRender / messageOrder.length / virtualizer /
+    // scheduleProgrammaticScrollUnlock；仅 isStreaming 边沿触发定位（wasStreaming ref 守卫），
+    // 其余依赖变化重跑 effect 是安全的 no-op
+  }, [isStreaming, viewportElement, scrollToBottom, useDirectRender, messageOrder.length, virtualizer, scheduleProgrammaticScrollUnlock]);
 
   // 非流式期间新消息到达时滚动到底部（如加载历史记录）
   useEffect(() => {
@@ -687,7 +814,13 @@ const MessageListInner: React.FC<MessageListProps> = ({
       historyInsertionRef.current = false;
       return;
     }
-    if (!appended || isStreaming || userHasScrolledRef.current) return;
+    if (!appended) return;
+    // P1-8: 用户滚离底部期间尾部有新消息追加 → 回到底部按钮显示未读圆点
+    if (userHasScrolledRef.current) {
+      setHasUnseenNewMessages(true);
+      return;
+    }
+    if (isStreaming) return;
     const rafId = requestAnimationFrame(() => { scrollToBottom(); });
     return () => cancelAnimationFrame(rafId);
   }, [messageOrder.length, isStreaming, scrollToBottom]);
@@ -701,8 +834,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
     if (hasMarkedFirstRenderRef.current) return;
     if (!isDataLoaded) return; // 等待数据加载完成
 
-    // 使用 requestAnimationFrame 确保 DOM 已经渲染
-    requestAnimationFrame(() => {
+    // 使用 requestAnimationFrame 确保 DOM 已经渲染；卸载时取消，避免向已卸载实例的 ref 写入
+    const rafId = requestAnimationFrame(() => {
       if (hasMarkedFirstRenderRef.current) return; // 双重检查
 
       sessionSwitchPerf.mark('first_render', {
@@ -712,6 +845,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
       sessionSwitchPerf.endTrace(); // 结束追踪
       hasMarkedFirstRenderRef.current = true;
     });
+    return () => cancelAnimationFrame(rafId);
   }, [isDataLoaded, messageOrder.length]);
 
   // 📊 细粒度打点：render 开始
@@ -766,7 +900,38 @@ const MessageListInner: React.FC<MessageListProps> = ({
           <ThreadEmptyStateShell
             title={emptyStatePrimaryAction}
             contentClassName={isSmallScreen ? 'py-10' : 'py-16'}
-          />
+          >
+            {/* P2-15: 移动端空态建议 chip——点按填入输入框（不自动发送），降低首条消息门槛 */}
+            {isSmallScreen && (
+              <div className="flex w-full max-w-md flex-col gap-2" data-slot="thread-empty-suggestions">
+                {(['suggestion1', 'suggestion2', 'suggestion5'] as const).map((suggestionKey) => {
+                  const suggestionText = t(`messageList.empty.${suggestionKey}`);
+                  return (
+                    // eslint-disable-next-line ds-components/no-native-button -- 空态建议 chip：整行可点、文本左对齐两行截断，共享按钮组件的居中单行排版不适配
+                    <button
+                      key={suggestionKey}
+                      type="button"
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent('CHAT_V2_SET_INPUT', {
+                          detail: { content: suggestionText, autoSend: false },
+                        }));
+                      }}
+                      className={cn(
+                        'min-h-11 w-full rounded-2xl border border-[color:var(--composer-panel-border,hsl(var(--border)))]',
+                        'bg-[color:var(--surface-root,hsl(var(--background)))] px-4 py-2.5 text-left',
+                        'text-[13px] leading-relaxed text-muted-foreground',
+                        'transition-colors duration-150 hover:text-foreground',
+                        'active:bg-[var(--interactive-hover)]',
+                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
+                      )}
+                    >
+                      <span className="line-clamp-2">{suggestionText}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </ThreadEmptyStateShell>
         </div>
       </div>
     );
@@ -791,12 +956,13 @@ const MessageListInner: React.FC<MessageListProps> = ({
     >
       {showDirectFlow ? (
         // 直接渲染模式（禁用虚拟化）+ 虚拟化就绪前的尾部窗口兜底（不再渲染空白）
+        // P0-4: 底部安全区随输入栏遮挡（键盘 inset 等）动态抬高
         <div
           key={`direct-${listEpochRef.current}`}
           role="log"
           aria-live="polite"
           aria-relevant="additions"
-          style={{ width: '100%', paddingBottom: MESSAGE_BOTTOM_SAFE_AREA_PX }}
+          style={{ width: '100%', paddingBottom: MESSAGE_BOTTOM_SAFE_AREA_PX + inputOverlapPx }}
         >
           <AnimatePresence>
             {messageOrder.slice(directRenderStart).map((messageId, sliceIndex) => {
@@ -818,7 +984,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
                     key={messageId}
                     data-chat-message-id={messageId}
                     variants={newMessageVariants}
-                    initial={isNewlyAppended ? 'initial' : false}
+                    initial={isNewlyAppended && !prefersReducedMotion ? 'initial' : false}
                     animate="animate"
                     exit="exit"
                   >
@@ -826,7 +992,18 @@ const MessageListInner: React.FC<MessageListProps> = ({
                   </motion.div>
                 );
               }
-              return <div key={messageId} data-chat-message-id={messageId}>{content}</div>;
+              // P1-7: 新追加的助手消息轻量入场——复用 motion.css 共享类
+              // .chat-msg-enter（fade + 4px 上移，150ms，自带 reduced-motion 降级）；
+              // 一次性 CSS 动画，流式内容更新不重播，历史消息保持静态
+              return (
+                <div
+                  key={messageId}
+                  data-chat-message-id={messageId}
+                  className={cn(isNewlyAppended && ASSISTANT_ENTER_CLASS)}
+                >
+                  {content}
+                </div>
+              );
             })}
           </AnimatePresence>
         </div>
@@ -840,7 +1017,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
           role="log"
           aria-live="off"
           style={{
-            height: `${virtualizer.getTotalSize() + MESSAGE_BOTTOM_SAFE_AREA_PX}px`,
+            height: `${virtualizer.getTotalSize() + MESSAGE_BOTTOM_SAFE_AREA_PX + inputOverlapPx}px`,
             width: '100%',
             position: 'relative',
           }}
@@ -850,6 +1027,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
             if (!messageId) return null;
 
             const isUserMessage = store.getState().getMessage(messageId)?.role === 'user';
+            const isNewlyAppended = virtualRow.index >= initialMessageCountRef.current;
 
             return (
               <div
@@ -868,7 +1046,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
                 {isUserMessage ? (
                   <motion.div
                     variants={newMessageVariants}
-                    initial={virtualRow.index >= initialMessageCountRef.current ? 'initial' : false}
+                    initial={isNewlyAppended && !prefersReducedMotion ? 'initial' : false}
                     animate="animate"
                   >
                     <MessageItem
@@ -879,12 +1057,17 @@ const MessageListInner: React.FC<MessageListProps> = ({
                     />
                   </motion.div>
                 ) : (
-                  <MessageItem
-                    messageId={messageId}
-                    store={store}
-                    isFirst={virtualRow.index === 0}
-                    isLatest={virtualRow.index === messageOrder.length - 1}
-                  />
+                  // P1-7: 新追加的助手消息轻量入场（与直渲模式一致，复用 chat-msg-enter）；
+                  // keyframes 只碰 opacity + 独立 translate，与外层虚拟行的
+                  // inline transform 定位互不冲突
+                  <div className={cn(isNewlyAppended && ASSISTANT_ENTER_CLASS)}>
+                    <MessageItem
+                      messageId={messageId}
+                      store={store}
+                      isFirst={virtualRow.index === 0}
+                      isLatest={virtualRow.index === messageOrder.length - 1}
+                    />
+                  </div>
                 )}
               </div>
             );
@@ -892,10 +1075,13 @@ const MessageListInner: React.FC<MessageListProps> = ({
         </div>
       )}
     </CustomScrollArea>
-    {/* 回到底部浮动按钮 */}
+    {/* 回到底部浮动按钮（P0-4: 键盘/输入栏遮挡时整体上抬，始终锚定在输入栏上沿） */}
     <div
       className="pointer-events-none absolute inset-x-0 bottom-2 px-4 md:bottom-3 md:px-8"
-      style={{ zIndex: Z_INDEX.inputBar - 10 }}
+      style={{
+        zIndex: Z_INDEX.inputBar - 10,
+        transform: inputOverlapPx > 0 ? `translateY(-${inputOverlapPx}px)` : undefined,
+      }}
     >
       <ThreadContentShell className="pointer-events-none overflow-visible">
         <div
@@ -908,6 +1094,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
             ['--panel-close-dur' as string]: '220ms',
           }}
         >
+          {/* P1-8: 视觉 40px、透明伪元素扩大命中区到 ≥44px 触控目标 */}
           <button
             type="button"
             onClick={handleScrollToBottomClick}
@@ -916,6 +1103,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
             tabIndex={showScrollToBottom ? 0 : -1}
             className={cn(
               'pointer-events-auto ml-auto flex h-10 w-10 items-center justify-center rounded-full',
+              'relative after:absolute after:-inset-1 after:rounded-full after:content-[\'\']',
               'border border-[color:var(--button-utility-border)] bg-[color:var(--button-utility-surface)]',
               'text-[color:var(--button-utility-foreground)] transition-colors duration-150',
               'hover:border-[color:var(--button-utility-border)] hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--button-utility-foreground)]',
@@ -926,6 +1114,14 @@ const MessageListInner: React.FC<MessageListProps> = ({
             aria-label={scrollToBottomLabel}
           >
             <ArrowDown size={16} weight="bold" />
+            {/* P1-8: 滚离底部期间到达新消息的未读圆点 */}
+            {hasUnseenNewMessages && (
+              <span
+                aria-hidden="true"
+                data-slot="message-list-unseen-dot"
+                className="absolute -right-px -top-px h-2.5 w-2.5 rounded-full border-2 border-[color:var(--button-utility-surface)] bg-primary"
+              />
+            )}
           </button>
         </div>
       </ThreadContentShell>

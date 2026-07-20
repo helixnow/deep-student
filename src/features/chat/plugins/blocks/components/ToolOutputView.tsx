@@ -5,10 +5,12 @@
  * 支持多种输出格式（JSON、文本、图片、表格等）
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { CheckCircle, FileJs, FileText, Table, Image as ImageIcon } from '@phosphor-icons/react';
+import { CheckCircle, FileJs, FileText, Table, Image as ImageIcon, Copy, Check } from '@phosphor-icons/react';
+import { NotionButton } from '@/components/ui/NotionButton';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
 // 类型定义
@@ -325,6 +327,30 @@ export const ToolOutputView: React.FC<ToolOutputViewProps> = ({
   const { t } = useTranslation('chatV2');
   const outputType = useMemo(() => detectOutputType(output), [output]);
   const loadSkillsSummary = useMemo(() => extractLoadSkillsSummary(output), [output]);
+  const [copied, setCopied] = useState(false);
+
+  // 内联复制输出（文本原样，其余序列化为 JSON）
+  const copyableText = useMemo(() => {
+    if (output === null || output === undefined) return null;
+    if (typeof output === 'string') return output;
+    if (outputType === 'image') return null;
+    try {
+      return JSON.stringify(output, null, 2) ?? String(output);
+    } catch {
+      return String(output);
+    }
+  }, [output, outputType]);
+
+  const handleCopy = useCallback(async () => {
+    if (!copyableText) return;
+    try {
+      await copyTextToClipboard(copyableText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (error) {
+      console.error('[ToolOutputView] Copy failed:', error);
+    }
+  }, [copyableText]);
 
   // 获取类型图标
   const TypeIcon = useMemo(() => {
@@ -356,6 +382,19 @@ export const ToolOutputView: React.FC<ToolOutputViewProps> = ({
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
         <TypeIcon size={12} />
         <span>{t('blocks.mcpTool.output')}</span>
+        {copyableText && (
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={handleCopy}
+            className="!h-5 !w-5 ml-auto text-muted-foreground hover:text-foreground"
+            aria-label={t('blocks.mcpTool.copyOutput')}
+            title={t('blocks.mcpTool.copyOutput')}
+          >
+            {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
+          </NotionButton>
+        )}
       </div>
 
       {/* 内容 */}

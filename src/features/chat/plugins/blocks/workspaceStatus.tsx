@@ -89,11 +89,11 @@ interface AgentStatusIconProps {
 const AgentStatusIcon: React.FC<AgentStatusIconProps> = ({ status }) => {
   switch (status) {
     case 'running':
-      return <CircleNotch size={14} className="text-blue-500 animate-spin" />;
+      return <CircleNotch size={14} className="text-primary animate-spin" />;
     case 'completed':
-      return <CheckCircle size={14} className="text-green-500" />;
+      return <CheckCircle size={14} className="text-success" />;
     case 'failed':
-      return <XCircle className="w-3.5 h-3.5 text-red-500" />;
+      return <XCircle className="w-3.5 h-3.5 text-destructive" />;
     default: // idle
       return <Circle className="w-3.5 h-3.5 text-muted-foreground" />;
   }

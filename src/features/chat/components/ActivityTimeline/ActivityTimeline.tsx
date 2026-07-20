@@ -19,10 +19,8 @@ import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
 import { useLiveDurationSeconds } from '../../hooks/useLiveDurationSeconds';
 import {
   Brain,
-  CaretDown,
   CaretRight,
   CircleNotch,
-  Wrench,
   CheckCircle,
   WarningCircle,
   Warning,
@@ -42,6 +40,7 @@ import { isTemplateVisualOutput, TemplateToolOutput } from '../../plugins/blocks
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
 import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { TextShimmer } from '../ui/TextShimmer';
+import { CompletionCard, extractCompletionData, isAttemptCompletionTool } from '../CompletionCard';
 import {
   getShellCommandDescriptor,
   isShellTimelineTool,
@@ -853,13 +852,19 @@ interface ToolNodeContentProps {
   isStreaming?: boolean;
 }
 
+/** 运行中自动展开的延迟：亚秒级完成的工具不闪烁展开/收起 */
+const RUNNING_AUTO_EXPAND_DELAY_MS = 400;
+
 const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast, isStreaming = false }) => {
   const { t } = useTranslation(['chatV2', 'common']);
   const disclosureMotion = useDisclosureMotion();
   const contentId = useId();
   const [isExpanded, setIsExpanded] = useState(false);
+  // 用户手动展开/收起后不再自动接管（与 ThinkingNodeContent 一致的心智）
+  const isManuallyControlled = useRef(false);
 
   const toggleExpanded = useCallback(() => {
+    isManuallyControlled.current = true;
     setIsExpanded((prev) => !prev);
   }, []);
 
@@ -868,6 +873,27 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
   // 避免数据恢复后（activeBlockIds 为空）工具块错误显示加载状态
   const isRunning = node.toolStatus === 'running' && isStreaming;
   const isError = node.toolStatus === 'error';
+  // 本会话内确实运行过（区别于历史数据恢复），用于「失败后保持展开」判定
+  const wasRunningRef = useRef(false);
+
+  // 🆕 F-P1：运行中的工具自动展开细节区（流式输出/参数可见），完成后自动收起；
+  // 延迟 400ms 触发，避免快速完成的工具闪烁。
+  // 本会话运行过且以失败结束的工具保持展开，错误信息不被自动折叠吞掉
+  // （历史恢复的错误节点不受影响，仍默认折叠）。
+  useEffect(() => {
+    if (isPreparing || isRunning) wasRunningRef.current = true;
+    if (isManuallyControlled.current) return;
+    if (isPreparing || isRunning) {
+      const timer = setTimeout(() => {
+        if (!isManuallyControlled.current) setIsExpanded(true);
+      }, RUNNING_AUTO_EXPAND_DELAY_MS);
+      return () => clearTimeout(timer);
+    }
+    if (!(isError && wasRunningRef.current)) {
+      setIsExpanded(false);
+    }
+    return undefined;
+  }, [isPreparing, isRunning, isError]);
   const isSuccess = node.toolStatus === 'success';
   const isShellCommand = isShellTimelineTool(node.toolName);
   const shellDescriptor = useMemo(() => getShellCommandDescriptor({
@@ -918,11 +944,19 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
     return formatToolDurationShort(durationMs);
   }, [durationMs, isSuccess]);
 
-  // 获取状态图标 - 只在错误状态显示图标
+  // 🆕 F-P1：运行中的实时耗时（与 thinking 节点「正在思考 N 秒」同一心智）
+  const liveRunningSeconds = useLiveDurationSeconds(
+    node.block.startedAt,
+    node.block.endedAt,
+    isRunning,
+  );
+
+  // 获取状态图标 - 错误显示警示，成功显示轻量对勾
   const StatusIcon = useMemo(() => {
     if (isError) return WarningCircle;
+    if (isSuccess) return CheckCircle;
     return null;
-  }, [isError]);
+  }, [isError, isSuccess]);
 
   // 获取状态颜色
   const statusColor = useMemo(() => {
@@ -935,10 +969,11 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
     return 'text-muted-foreground';
   }, [shellDescriptor?.tone, isPreparing, isRunning, isError, isSuccess]);
 
-  // 是否有详细信息可展开
+  // 是否有详细信息可展开（运行中有流式内容时也可展开查看实时输出）
   const hasDetails = !!(node.toolInput && Object.keys(node.toolInput).length > 0) ||
                      node.toolOutput !== undefined ||
-                     !!node.toolError;
+                     !!node.toolError ||
+                     ((isPreparing || isRunning) && !!node.block.content);
 
   return (
     <TimelineNode
@@ -983,13 +1018,20 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
           )}
 
           {!shellDescriptor && (isPreparing || isRunning) ? (
-            <TextShimmer
-              className={cn('text-xs', statusColor)}
-              duration={1.5}
-              spread={3}
-            >
-              {statusText}
-            </TextShimmer>
+            <>
+              <TextShimmer
+                className={cn('text-xs', statusColor)}
+                duration={1.5}
+                spread={3}
+              >
+                {statusText}
+              </TextShimmer>
+              {isRunning && liveRunningSeconds > 0 && (
+                <span className="text-xs tabular-nums text-muted-foreground/70">
+                  {liveRunningSeconds}s
+                </span>
+              )}
+            </>
           ) : !shellDescriptor ? (
             <>
               {StatusIcon && (
@@ -1009,6 +1051,10 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
             </>
           ) : durationText ? (
             <span className="ml-auto shrink-0 text-xs text-muted-foreground/70">{durationText}</span>
+          ) : isRunning && liveRunningSeconds > 0 ? (
+            <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground/70">
+              {liveRunningSeconds}s
+            </span>
           ) : null}
         </NotionButton>
 
@@ -1056,7 +1102,7 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
                     <div className="pl-4 space-y-0.5">
                       {Object.entries(node.toolInput).slice(0, 5).map(([key, value]) => (
                         <div key={key} className="flex gap-1.5">
-                          <span className="text-amber-600 dark:text-amber-400 font-medium">
+                          <span className="text-warning font-medium">
                             {key}:
                           </span>
                           <span className="text-muted-foreground truncate max-w-[200px]">
@@ -1070,6 +1116,19 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
                         </span>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {/* 🆕 F-P1：运行中流式输出预览（最近数行，来自 block.content） */}
+                {(isPreparing || isRunning) && node.block.content && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      <CircleNotch size={12} className="animate-spin text-primary" />
+                      <span>{t('timeline.tool.liveOutput', { ns: 'chatV2' })}</span>
+                    </div>
+                    <pre className="ml-4 max-h-24 overflow-hidden whitespace-pre-wrap break-all rounded-md bg-muted/60 px-2 py-1.5 font-mono text-[11px] leading-snug text-muted-foreground">
+                      {node.block.content.split('\n').slice(-6).join('\n')}
+                    </pre>
                   </div>
                 )}
 
@@ -1202,7 +1261,7 @@ const ToolLimitNodeContentInner: React.FC<ToolLimitNodeContentProps> = ({ isFirs
         <div
           className={cn(
             'inline-flex items-center gap-1.5',
-            'text-amber-600 dark:text-amber-400'
+            'text-warning'
           )}
         >
           <Warning size={14} className="flex-shrink-0" />
@@ -1285,30 +1344,54 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
             />
           );
         } else if (node.type === 'tool') {
-          // 🆕 笔记工具使用专用预览组件
+          // 🆕 F-P0：attempt_completion 成功后在时间线主路径渲染完成卡片
+          // （此前 CompletionCard 仅在 BlockRenderer 路径可达，mcp_tool 进时间线后不可见）
+          if (isAttemptCompletionTool(node.toolName) && node.toolStatus === 'success') {
+            return (
+              <TimelineNode
+                key={node.id}
+                isFirst={isFirst}
+                isLast={isLast}
+                icon={<CheckCircle size={15} weight="fill" className="text-success" />}
+              >
+                <CompletionCard
+                  variant="inline"
+                  data={extractCompletionData(node.toolInput, node.toolOutput)}
+                  className="mb-1"
+                />
+              </TimelineNode>
+            );
+          }
+          // 🆕 笔记工具使用专用预览组件（F-P2：包进 TimelineNode，保持左轨连续）
           if (isNoteTool(node.toolName)) {
             return (
-              <NoteToolPreview
+              <TimelineNode
                 key={node.id}
-                toolName={node.toolName || ''}
-                status={(node.toolStatus || 'pending') as 'pending' | 'running' | 'success' | 'error'}
-                isStreaming={isStreaming}
-                input={node.toolInput}
-                output={node.toolOutput as NoteToolPreviewProps['output']}
-                error={node.toolError}
-                durationMs={node.block.endedAt && node.block.startedAt ? node.block.endedAt - node.block.startedAt : undefined}
-                noteId={(
-                  // 优先从 output 中提取（note_create 返回的 noteId）
-                  (node.toolOutput as Record<string, unknown> | undefined)?.note_id ||
-                  (node.toolOutput as Record<string, unknown> | undefined)?.noteId ||
-                  (node.toolOutput as Record<string, unknown> | undefined)?.id ||
-                  // 回退到 input 中的 noteId（note_read/append/replace/set 等）
-                  node.toolInput?.noteId ||
-                  node.toolInput?.note_id
-                ) as string | undefined}
-                onOpenNote={onOpenNote}
-                className="my-1"
-              />
+                isFirst={isFirst}
+                isLast={isLast}
+                isActive={node.toolStatus === 'running' && isStreaming}
+              >
+                <NoteToolPreview
+                  toolName={node.toolName || ''}
+                  status={(node.toolStatus || 'pending') as 'pending' | 'running' | 'success' | 'error'}
+                  isStreaming={isStreaming}
+                  input={node.toolInput}
+                  output={node.toolOutput as NoteToolPreviewProps['output']}
+                  error={node.toolError}
+                  durationMs={node.block.endedAt && node.block.startedAt ? node.block.endedAt - node.block.startedAt : undefined}
+                  noteId={(
+                    // 优先从 output 中提取（note_create 返回的 noteId）
+                    (node.toolOutput as Record<string, unknown> | undefined)?.note_id ||
+                    (node.toolOutput as Record<string, unknown> | undefined)?.noteId ||
+                    (node.toolOutput as Record<string, unknown> | undefined)?.id ||
+                    // 回退到 input 中的 noteId（note_read/append/replace/set 等）
+                    node.toolInput?.noteId ||
+                    node.toolInput?.note_id
+                  ) as string | undefined}
+                  onOpenNote={onOpenNote}
+                  className="mb-1"
+                />
+              </TimelineNode>
             );
           }
           return (

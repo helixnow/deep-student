@@ -54,7 +54,6 @@ function SidebarHarness() {
     viewMode: 'sidebar',
     setViewMode: vi.fn(),
     setSessionSheetOpen: vi.fn(),
-    setPendingDeleteSessionId: vi.fn(),
     editableGroupIds: new Set(groups.map((group) => group.id)),
     onCreateGroup: vi.fn(),
     onRenameGroup: vi.fn(),
@@ -66,14 +65,10 @@ function SidebarHarness() {
     sessionsByGroup: new Map([[groups[0].id, [groupedSession]]]),
     ungroupedSessions: [ungroupedSession],
     currentSessionId: groupedSession.id,
-    totalSessionCount: 2,
     hasMoreSessions: false,
     isLoadingMore: false,
-    pendingDeleteSessionId: null,
-    t: ((_: string, fallback?: string) => fallback ?? '') as any,
+    t: ((_: string, fallback?: string) => (typeof fallback === 'string' ? fallback : '')) as any,
     resetDeleteConfirmation: vi.fn(),
-    clearDeleteConfirmTimeout: vi.fn(),
-    deleteConfirmTimeoutRef: { current: null },
     createSession: vi.fn(async () => undefined),
     loadMoreSessions: vi.fn(async () => undefined),
     renderSessionItem: (session: ChatSession) => <div key={session.id}>{session.title}</div>,
@@ -98,7 +93,6 @@ function EmptyTopicsSidebarHarness() {
     viewMode: 'sidebar',
     setViewMode: vi.fn(),
     setSessionSheetOpen: vi.fn(),
-    setPendingDeleteSessionId: vi.fn(),
     editableGroupIds: new Set<string>(),
     onCreateGroup: vi.fn(),
     onRenameGroup: vi.fn(),
@@ -110,14 +104,10 @@ function EmptyTopicsSidebarHarness() {
     sessionsByGroup: new Map(),
     ungroupedSessions: [ungroupedSession],
     currentSessionId: ungroupedSession.id,
-    totalSessionCount: 1,
     hasMoreSessions: false,
     isLoadingMore: false,
-    pendingDeleteSessionId: null,
-    t: ((_: string, fallback?: string) => fallback ?? '') as any,
+    t: ((_: string, fallback?: string) => (typeof fallback === 'string' ? fallback : '')) as any,
     resetDeleteConfirmation: vi.fn(),
-    clearDeleteConfirmTimeout: vi.fn(),
-    deleteConfirmTimeoutRef: { current: null },
     createSession: vi.fn(async () => undefined),
     loadMoreSessions: vi.fn(async () => undefined),
     renderSessionItem: (session: ChatSession) => <div key={session.id}>{session.title}</div>,
@@ -127,14 +117,21 @@ function EmptyTopicsSidebarHarness() {
 }
 
 describe('useSessionSidebarContent', () => {
-  it('separates topic groups from recent ungrouped sessions on mobile', () => {
+  it('separates topic groups, flat recents, and the ungrouped folder on mobile', () => {
     render(<SidebarHarness />);
 
     expect(screen.getByText('课题')).toBeInTheDocument();
     expect(screen.getByText('最近')).toBeInTheDocument();
     expect(screen.getByText('未分组')).toBeInTheDocument();
     expect(screen.getAllByText('四级备考待办').length).toBeGreaterThan(0);
-    expect(screen.getByText('社会工作简介')).toBeInTheDocument();
+    // 「最近」为跨分组扁平列表，未分组会话会同时出现在最近与「未分组」折叠区
+    expect(screen.getAllByText('社会工作简介').length).toBeGreaterThan(0);
+  });
+
+  it('renders an inline search box wired to the sidebar filter chain', () => {
+    render(<SidebarHarness />);
+
+    expect(screen.getByRole('searchbox', { name: '搜索会话...' })).toBeInTheDocument();
   });
 
   it('keeps the topics section visible even when there are no topic groups yet', () => {

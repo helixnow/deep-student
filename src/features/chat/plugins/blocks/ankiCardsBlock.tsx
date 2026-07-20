@@ -34,6 +34,8 @@ import {
   Stack,
   ArrowClockwise,
   DotsThree,
+  Rows,
+  SquaresFour,
 } from '@phosphor-icons/react';
 import {
   AppMenu,
@@ -62,9 +64,16 @@ import type { AnkiCard, AnkiGenerationOptions, CustomAnkiTemplate } from '@/type
 import type { SaveAnkiCardIdMapping } from '@/services/ankiApiAdapter';
 import { ChatAnkiProgressCompact } from './components/ChatAnkiProgressCompact';
 import { RenderedAnkiCard } from './components/RenderedAnkiCard';
-import { useTemplateLoader } from '../../hooks/useTemplateLoader';
+import { ClozeText, hasClozeMarkers } from './components/AnkiClozeText';
+import {
+  AnkiCardSkeleton,
+  AnkiCompletionSummary,
+  AnkiInlineUndoBar,
+} from './components/ChatAnkiCardExtras';
+import { parseAnkiSegmentCounts } from './components/ankiSegmentCounts';
 import { useMultiTemplateLoader } from '../../hooks/useMultiTemplateLoader';
 import { invoke } from '@tauri-apps/api/core';
+import './components/chat-anki-cards.css';
 
 // ============================================================================
 // 类型定义
@@ -140,6 +149,8 @@ export interface AnkiCardsBlockData {
   generationStatus?: 'running' | 'paused' | 'completed' | 'partial' | 'failed' | 'cancelled';
   deliveryStatus?: 'empty' | 'incomplete' | 'ready';
   recoveryStatus?: 'none' | 'manual' | 'existing_cards' | 'retry';
+  /** 生成失败时是否建议自动重试（onError 兜底写入） */
+  shouldRetry?: boolean;
   availableCards?: number;
   recoveredCards?: number;
   issues?: AnkiCardsIssue[];
@@ -395,7 +406,16 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
   const [editFieldOrder, setEditFieldOrder] = useState<string[]>([]);
   const [editFieldValues, setEditFieldValues] = useState<Record<string, string>>({});
   const [editTags, setEditTags] = useState((card.tags ?? []).join(', '));
+  const [savePending, setSavePending] = useState(false);
   const firstFieldRef = useRef<HTMLTextAreaElement>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // 当进入编辑模式时重置编辑值并聚焦
   useEffect(() => {
@@ -410,6 +430,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
   }, [isEditing, card, resolvedTemplate]);
 
   const handleSave = useCallback(() => {
+    if (savePending) return;
     const tags = editTags
       .split(',')
       .map((t) => t.trim())
@@ -430,7 +451,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
       setCaseInsensitiveValue(nextExtraFields, field, value);
     });
 
-    onSave(index, {
+    const result = onSave(index, {
       ...card,
       front: nextFront,
       back: nextBack,
@@ -439,13 +460,23 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
       extra_fields: nextExtraFields,
       tags,
     });
-  }, [card, editFieldOrder, editFieldValues, editTags, index, onSave]);
+    // 异步保存（DB 回写）期间给出即时 pending 反馈
+    if (result instanceof Promise) {
+      setSavePending(true);
+      void result.finally(() => {
+        if (mountedRef.current) setSavePending(false);
+      });
+    }
+  }, [card, editFieldOrder, editFieldValues, editTags, index, onSave, savePending]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      // Enter 保存（Shift+Enter 换行）；输入法组合中不触发
+      const isComposing = (e.nativeEvent as KeyboardEvent).isComposing;
+      if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
         e.preventDefault();
         handleSave();
+        return;
       }
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -470,7 +501,9 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
     return field;
   }, [t]);
 
-  const front = card.front ?? card.fields?.Front ?? '';
+  const rawFront = card.front ?? card.fields?.Front ?? '';
+  // 纯 cloze 卡（正面为空但 text 含挖空标记）回退展示 text，避免"无内容"
+  const front = rawFront || (hasClozeMarkers(card.text) ? card.text ?? '' : '');
   const back = card.back ?? card.fields?.Back ?? '';
 
   if (isEditing) {
@@ -528,13 +561,14 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
           {/* 操作按钮 */}
           <div className="flex items-center justify-end gap-2 pt-1">
             <span className="text-xs text-muted-foreground mr-auto">
-              ⌘+Enter {t('chatV2.saveEdit')} · Esc {t('chatV2.cancelEdit')}
+              {t('chatBlock.editHint')}
             </span>
             <NotionButton
               type="button"
               size="sm"
               variant="ghost"
               onClick={() => onToggleEdit(index)}
+              disabled={savePending}
             >
               {t('chatV2.cancelEdit')}
             </NotionButton>
@@ -543,8 +577,14 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               size="sm"
               variant="primary"
               onClick={handleSave}
+              disabled={savePending}
+              aria-busy={savePending}
             >
-              <Check size={14} />
+              {savePending ? (
+                <CircleNotch size={14} className="animate-spin" />
+              ) : (
+                <Check size={14} />
+              )}
               {t('chatV2.saveEdit')}
             </NotionButton>
           </div>
@@ -568,26 +608,47 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
           .join(' ')}
       >
         {/* 序号标签 */}
-        <div className="absolute top-2 left-2 z-10 w-5 h-5 rounded-full bg-background/80 backdrop-blur flex items-center justify-center text-[10px] font-medium text-muted-foreground border">
+        <div data-wb-blur-surface className="absolute top-2 left-2 z-10 w-5 h-5 rounded-full bg-background/80 backdrop-blur flex items-center justify-center text-[10px] font-medium text-muted-foreground border">
           {index + 1}
         </div>
-        {/* 编辑按钮(触屏常显:卡片本体点击是翻面,编辑只能走此按钮) */}
+        {/* 编辑/删除按钮(触屏常显:卡片本体点击是翻面,编辑只能走此按钮) */}
         {!disabled && (
-          <NotionButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={(e) => { e.stopPropagation(); onToggleEdit(index); }}
-            className={cn(
-              'absolute top-2 right-2 z-10 bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)]',
-              isTouchPrimary
-                ? '!h-10 !w-10 opacity-100'
-                : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
-            )}
-            aria-label="edit"
-          >
-            <Pencil size={isTouchPrimary ? 14 : 12} className="text-muted-foreground" />
-          </NotionButton>
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={(e) => { e.stopPropagation(); onToggleEdit(index); }}
+              data-wb-blur-surface
+              className={cn(
+                'bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)]',
+                isTouchPrimary
+                  ? '!h-10 !w-10 opacity-100'
+                  : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+              )}
+              aria-label={t('chatV2.editCard', { index: index + 1 })}
+              title={t('chatV2.editInline')}
+            >
+              <Pencil size={isTouchPrimary ? 14 : 12} className="text-muted-foreground" />
+            </NotionButton>
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={(e) => { e.stopPropagation(); onDelete(index); }}
+              data-wb-blur-surface
+              className={cn(
+                'bg-background/80 backdrop-blur border hover:bg-destructive/10',
+                isTouchPrimary
+                  ? '!h-10 !w-10 opacity-100'
+                  : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+              )}
+              aria-label={t('chatV2.deleteCard')}
+              title={t('chatV2.deleteCard')}
+            >
+              <Trash size={isTouchPrimary ? 14 : 12} className="text-destructive/80" />
+            </NotionButton>
+          </div>
         )}
         {/* 模板渲染预览 */}
         <RenderedAnkiCard
@@ -639,13 +700,17 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
         <span className="flex-shrink-0 w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground mt-0.5">
           {index + 1}
         </span>
-        {/* 内容 */}
+        {/* 内容（cloze 挖空高亮：正面隐藏、背面显示答案） */}
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium truncate">
-            {front || <span className="text-muted-foreground italic">{t('chatV2.noContent')}</span>}
+            {front
+              ? <ClozeText text={front} revealed={false} />
+              : <span className="text-muted-foreground italic">{t('chatV2.noContent')}</span>}
           </div>
           <div className="text-xs text-muted-foreground truncate mt-0.5">
-            {back || <span className="italic">{t('chatV2.noContent')}</span>}
+            {back
+              ? <ClozeText text={back} revealed />
+              : <span className="italic">{t('chatV2.noContent')}</span>}
           </div>
           {card.tags && card.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1.5">
@@ -712,6 +777,8 @@ const ActionButtons: React.FC<{
   const [exportStatus, setExportStatus] = useState<ActionStatus>('idle');
   const [syncStatus, setSyncStatus] = useState<ActionStatus>('idle');
   const [taskControlStatus, setTaskControlStatus] = useState<ActionStatus>('idle');
+  /** 记录当前点击的是哪个任务控制按钮，pending/结果反馈只落在该按钮上 */
+  const [pendingTaskAction, setPendingTaskAction] = useState<'pause' | 'resume' | 'cancel' | null>(null);
 
   // 同步互斥锁：防止同一事件循环 tick 内的快速双击导致重复调用
   const actionLockRef = useRef<Set<string>>(new Set());
@@ -761,6 +828,7 @@ const ActionButtons: React.FC<{
         return;
       }
       actionLockRef.current.add('taskControl');
+      setPendingTaskAction(action);
       setTaskControlStatus('loading');
       try {
         await controlDocumentTask({ documentId, action });
@@ -1099,7 +1167,8 @@ const ActionButtons: React.FC<{
     <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border/50 pt-3 sm:flex sm:flex-wrap">
       {retryAction}
 
-      {/* 运行中：暂停 / 继续 / 取消（有 documentId 时） */}
+      {/* 运行中：暂停 / 继续 / 取消（有 documentId 时）。
+          pending/成功/失败反馈只落在被点击的按钮上，其余按钮仅禁用。 */}
       {showTaskControls && (
         <>
           {isPaused ? (
@@ -1107,14 +1176,13 @@ const ActionButtons: React.FC<{
               type="button"
               onClick={() => void handleTaskControl('resume')}
               disabled={taskControlStatus === 'loading'}
+              aria-busy={taskControlStatus === 'loading' && pendingTaskAction === 'resume'}
               variant="primary"
               className="min-h-10 text-xs sm:text-sm"
             >
-              {taskControlStatus === 'loading' ? (
-                <CircleNotch size={14} className="animate-spin" />
-              ) : (
-                <Play size={14} />
-              )}
+              {taskControlStatus !== 'idle' && pendingTaskAction === 'resume'
+                ? renderIcon(taskControlStatus, Play)
+                : <Play size={14} />}
               {t('blocks.ankiCards.resume')}
             </NotionButton>
           ) : (
@@ -1122,14 +1190,13 @@ const ActionButtons: React.FC<{
               type="button"
               onClick={() => void handleTaskControl('pause')}
               disabled={taskControlStatus === 'loading'}
+              aria-busy={taskControlStatus === 'loading' && pendingTaskAction === 'pause'}
               variant="default"
               className="min-h-10 text-xs sm:text-sm"
             >
-              {taskControlStatus === 'loading' ? (
-                <CircleNotch size={14} className="animate-spin" />
-              ) : (
-                <Pause size={14} />
-              )}
+              {taskControlStatus !== 'idle' && pendingTaskAction === 'pause'
+                ? renderIcon(taskControlStatus, Pause)
+                : <Pause size={14} />}
               {t('blocks.ankiCards.pause')}
             </NotionButton>
           )}
@@ -1137,14 +1204,13 @@ const ActionButtons: React.FC<{
             type="button"
             onClick={() => void handleTaskControl('cancel')}
             disabled={taskControlStatus === 'loading'}
+            aria-busy={taskControlStatus === 'loading' && pendingTaskAction === 'cancel'}
             variant="danger"
             className="min-h-10 text-xs sm:text-sm"
           >
-            {taskControlStatus === 'loading' ? (
-              <CircleNotch size={14} className="animate-spin" />
-            ) : (
-              <Stop size={14} />
-            )}
+            {taskControlStatus !== 'idle' && pendingTaskAction === 'cancel'
+              ? renderIcon(taskControlStatus, Stop)
+              : <Stop size={14} />}
             {t('blocks.ankiCards.cancel')}
           </NotionButton>
         </>
@@ -1241,6 +1307,9 @@ const ActionButtons: React.FC<{
 /** Zombie block watchdog 阈值：running 状态超过该时长无更新则做后端核实/标错 */
 const ZOMBIE_TIMEOUT_MS = 5 * 60 * 1000;
 
+/** 单卡删除的撤销窗口：窗口结束才真正提交 DB 删除 */
+const UNDO_DELETE_WINDOW_MS = 6000;
+
 export type ZombieCompletionState =
   | {
       finalStatus: 'completed' | 'completed_with_errors';
@@ -1324,6 +1393,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
   store,
 }) => {
   const { t } = useTranslation('chatV2');
+  const { t: tAnki } = useTranslation('anki');
   const data = block.toolOutput as AnkiCardsBlockData | undefined;
   // useMemo 固定空数组引用：`data?.cards || []` 每次渲染都会生成新数组，
   // 导致依赖 cards 的 effect/memo（调试上报、模板 id 提取等）在流式期间每帧重跑
@@ -1337,14 +1407,10 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
   const retryActionLockRef = useRef(false);
   const retryScopeRef = useRef(0);
   const retryableCountHint = useMemo((): { failed: number; truncated: number } => {
-    const counts = data?.progress?.counts;
-    if (!counts || typeof counts !== 'object' || Array.isArray(counts)) {
-      return { failed: 0, truncated: 0 };
-    }
-    const record = counts as Record<string, unknown>;
+    const counts = parseAnkiSegmentCounts(data?.progress?.counts);
     return {
-      failed: typeof record.failed === 'number' ? record.failed : 0,
-      truncated: typeof record.truncated === 'number' ? record.truncated : 0,
+      failed: counts?.failed ?? 0,
+      truncated: counts?.truncated ?? 0,
     };
   }, [data?.progress?.counts]);
   const retryInspectionKey = useMemo(() => {
@@ -1583,6 +1649,8 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
 
   // 展开/折叠状态
   const [isExpanded, setIsExpanded] = useState(false);
+  // 展开态布局：紧凑列表 / 双列网格
+  const [layout, setLayout] = useState<'list' | 'grid'>('list');
   // 当前正在编辑的卡片索引（-1 表示无）
   const [editingIndex, setEditingIndex] = useState(-1);
   // 分页：限制同时渲染的卡片数量，防止大量 iframe 导致浏览器卡顿/崩溃
@@ -1837,20 +1905,6 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
     }
   }, [t]);
 
-  const syncCardDeleteToDb = useCallback(async (card: AnkiCard | undefined) => {
-    if (!card?.id) return;
-    try {
-      await invoke('delete_anki_card', { cardId: card.id });
-    } catch (err) {
-      console.warn('[AnkiCardsBlock] Failed to sync card delete to anki DB:', err);
-      showGlobalNotification(
-        'warning',
-        t('blocks.ankiCards.action.dbSyncFailed'),
-      );
-      throw err;
-    }
-  }, [t]);
-
   // 保存卡片编辑：从 store 读最新 toolOutput 再合并，避免闭包 cards 整表覆写冲掉流式新卡
   const handleSaveCard = useCallback(
     async (index: number, updated: AnkiCard) => {
@@ -1880,44 +1934,112 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
     [store, block.id, persistToolOutput, syncCardUpdateToDb]
   );
 
-  // 删除卡片：同样基于最新 store 合并，避免 stale closure 整表覆写
+  // ==========================================================================
+  // 删除 + 撤销：乐观更新（先移除 UI 投影），撤销窗口结束后才提交 DB 删除；
+  // 提交失败自动回滚（恢复卡片投影），窗口内可一键撤销。
+  // ==========================================================================
+  const [pendingDelete, setPendingDelete] = useState<{ card: AnkiCard; index: number } | null>(null);
+  const pendingDeleteRef = useRef<{ card: AnkiCard; index: number } | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 把卡片恢复到 store 投影（撤销 / DB 删除失败回滚共用）
+  const restoreDeletedCard = useCallback(
+    (pending: { card: AnkiCard; index: number }) => {
+      if (!store) return;
+      const latestBlock = store.getState().blocks.get(block.id);
+      const latestData = latestBlock?.toolOutput as AnkiCardsBlockData | undefined;
+      if (!latestData) return;
+      const latestCards = latestData.cards ?? [];
+      // 流式更新可能已重新带回同 id 卡片，避免重复插入
+      if (pending.card.id && latestCards.some((card) => card.id === pending.card.id)) return;
+      const nextCards = [...latestCards];
+      const insertAt = Math.min(Math.max(pending.index, 0), nextCards.length);
+      nextCards.splice(insertAt, 0, pending.card);
+      const newData: AnkiCardsBlockData = { ...latestData, cards: nextCards };
+      store.getState().updateBlock(block.id, { toolOutput: newData });
+      void persistToolOutput(newData);
+    },
+    [store, block.id, persistToolOutput]
+  );
+
+  // 提交待删除卡片的 DB 删除（撤销窗口结束 / 新删除到来时触发）
+  const flushPendingDelete = useCallback(() => {
+    const pending = pendingDeleteRef.current;
+    if (!pending) return;
+    pendingDeleteRef.current = null;
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    setPendingDelete(null);
+    // 无持久 ID 的卡片不存在 DB 行，无需提交
+    if (!pending.card.id) return;
+    void invoke('delete_anki_card', { cardId: pending.card.id }).catch((err: unknown) => {
+      // DB 删除失败：回滚投影并明确告知
+      console.warn('[AnkiCardsBlock] Failed to commit card delete to anki DB:', err);
+      restoreDeletedCard(pending);
+      showGlobalNotification('warning', tAnki('chatBlock.deleteCommitFailed'));
+    });
+  }, [restoreDeletedCard, tAnki]);
+
+  // 组件卸载时若还有未提交的删除，直接提交（不再可撤销），避免投影与 DB 漂移
+  useEffect(() => {
+    return () => {
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+      const pending = pendingDeleteRef.current;
+      pendingDeleteRef.current = null;
+      if (pending?.card.id) {
+        void invoke('delete_anki_card', { cardId: pending.card.id }).catch(() => undefined);
+      }
+    };
+  }, []);
+
+  // 删除卡片：基于最新 store 乐观移除，进入 6s 撤销窗口
   // 🔧 修复：删除非编辑中的卡片时，正确调整 editingIndex 避免偏移到错误卡片
   const handleDeleteCard = useCallback(
-    async (index: number) => {
+    (index: number) => {
       if (!store) return;
+      // 同一时刻只保留一个撤销窗口：先提交上一个
+      flushPendingDelete();
       const latestBlock = store.getState().blocks.get(block.id);
       const latestData = latestBlock?.toolOutput as AnkiCardsBlockData | undefined;
       if (!latestData) return;
       const latestCards = latestData.cards ?? [];
       if (index < 0 || index >= latestCards.length) return;
       const removed = latestCards[index];
-      try {
-        await syncCardDeleteToDb(removed);
-      } catch {
-        return;
-      }
-      // DB 成功后再读一次，避免 await 期间流式更新被丢弃
-      const afterBlock = store.getState().blocks.get(block.id);
-      const afterData = afterBlock?.toolOutput as AnkiCardsBlockData | undefined;
-      if (!afterData) return;
-      const afterCards = afterData.cards ?? [];
-      const removeIndex = removed?.id
-        ? afterCards.findIndex((card) => card.id === removed.id)
-        : index;
-      if (removeIndex < 0) return;
-      const newCards = afterCards.filter((_, i) => i !== removeIndex);
-      const newData = { ...afterData, cards: newCards };
+      const newCards = latestCards.filter((_, i) => i !== index);
+      const newData: AnkiCardsBlockData = { ...latestData, cards: newCards };
       store.getState().updateBlock(block.id, { toolOutput: newData });
       void persistToolOutput(newData);
       setEditingIndex((prev) => {
-        if (prev === removeIndex) return -1;
-        if (prev > removeIndex) return prev - 1;
+        if (prev === index) return -1;
+        if (prev > index) return prev - 1;
         return prev;
       });
-      logChatAnkiEvent('chat_anki_card_deleted', { index: removeIndex, blockId: block.id });
+      const pending = { card: removed, index };
+      pendingDeleteRef.current = pending;
+      setPendingDelete(pending);
+      undoTimerRef.current = setTimeout(() => {
+        flushPendingDelete();
+      }, UNDO_DELETE_WINDOW_MS);
+      logChatAnkiEvent('chat_anki_card_deleted', { index, blockId: block.id });
     },
-    [store, block.id, persistToolOutput, syncCardDeleteToDb]
+    [store, block.id, persistToolOutput, flushPendingDelete]
   );
+
+  // 撤销删除：取消提交定时器并恢复投影
+  const handleUndoDelete = useCallback(() => {
+    const pending = pendingDeleteRef.current;
+    if (!pending) return;
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    pendingDeleteRef.current = null;
+    setPendingDelete(null);
+    restoreDeletedCard(pending);
+    logChatAnkiEvent('chat_anki_card_delete_undone', { index: pending.index, blockId: block.id });
+  }, [restoreDeletedCard, block.id]);
 
   // 计算预览状态
   const previewStatus = useMemo(() => {
@@ -1944,6 +2066,75 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
     return resolveChatAnkiError(generationError || data?.syncError);
   }, [block.error, data?.syncError, data?.finalError, deliveryRecovered, resolveChatAnkiError]);
 
+  // ==========================================================================
+  // 完成态小结条：N 张卡 · 用时 · 任务中心 / 导出内联入口
+  // ==========================================================================
+  const showCompletionSummary =
+    block.status === 'success' &&
+    cards.length > 0 &&
+    (previewStatus === 'ready' || previewStatus === 'stored');
+
+  const durationText = useMemo(() => {
+    if (!block.startedAt || !block.endedAt) return null;
+    const elapsedMs = block.endedAt - block.startedAt;
+    if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) return null;
+    const totalSeconds = Math.max(1, Math.round(elapsedMs / 1000));
+    const duration =
+      totalSeconds < 60
+        ? tAnki('chatBlock.durationSeconds', { count: totalSeconds })
+        : tAnki('chatBlock.durationMinutes', {
+            minutes: Math.floor(totalSeconds / 60),
+            seconds: totalSeconds % 60,
+          });
+    return tAnki('chatBlock.summaryDuration', { duration });
+  }, [block.startedAt, block.endedAt, tAnki]);
+
+  const summaryContext = useMemo(
+    () => ({
+      documentId: data?.documentId ?? null,
+      businessSessionId: data?.businessSessionId ?? null,
+      messageStableId: data?.messageStableId ?? null,
+      blockId: block.id,
+      templateId: data?.templateId ?? null,
+      options: data?.options,
+    }),
+    [data, block.id]
+  );
+
+  const [summaryExportPending, setSummaryExportPending] = useState(false);
+  const handleSummaryExport = useCallback(async () => {
+    if (cards.length === 0 || summaryExportPending) return;
+    setSummaryExportPending(true);
+    try {
+      const result = await exportCardsAsApkg({ cards, context: summaryContext });
+      if (result.cancelled) return;
+      if (!result.success || !result.filePath) {
+        throw new Error(t('blocks.ankiCards.action.exportFailedNoPath'));
+      }
+      logChatAnkiEvent(
+        'chat_anki_action_performed',
+        { action: 'export', cardCount: cards.length, entry: 'completion_summary' },
+        summaryContext,
+      );
+      showGlobalNotification('success', t('blocks.ankiCards.action.apkgExportedWithHint'), result.filePath);
+    } catch (error: unknown) {
+      const msg = getErrorMessage(error);
+      console.error('[AnkiCardsBlock] Summary export failed:', msg);
+      showGlobalNotification('error', t('blocks.ankiCards.action.exportFailedWithHint'), msg);
+    } finally {
+      setSummaryExportPending(false);
+    }
+  }, [cards, summaryContext, summaryExportPending, t]);
+
+  const handleOpenTaskCenter = useCallback(() => {
+    workbenchBus.launch({ typeId: 'taskDashboard', reason: 'api' });
+    logChatAnkiEvent(
+      'chat_anki_action_performed',
+      { action: 'open_task_center', cardCount: cards.length },
+      summaryContext,
+    );
+  }, [cards.length, summaryContext]);
+
   return (
     <div className="chat-v2-anki-cards-block">
       {/* 折叠态：卡片预览 */}
@@ -1969,42 +2160,93 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       {/* 展开态：内联卡片编辑列表 */}
       {isExpanded && cards.length > 0 && (
         <div className="ui-drop-in">
-          {/* 头部统计 */}
-          <div className="flex items-center justify-between mb-3">
+          {/* 头部统计 + 布局切换 */}
+          <div className="flex items-center justify-between gap-2 mb-3">
             <span className="text-sm font-medium text-foreground">
               {t('blocks.ankiCards.title')} · {cards.length} {t('blocks.ankiCards.cards')}
             </span>
-            <NotionButton
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={handleToggleExpand}
-              className="min-h-10 px-2"
-            >
-              <CaretUp size={14} />
-              {t('blocks.ankiCards.collapse')}
-            </NotionButton>
+            <div className="flex items-center gap-1">
+              <NotionButton
+                type="button"
+                variant={layout === 'list' ? 'default' : 'ghost'}
+                size="icon"
+                iconOnly
+                onClick={() => setLayout('list')}
+                className="!h-8 !w-8"
+                aria-pressed={layout === 'list'}
+                aria-label={tAnki('chatBlock.layoutList')}
+                title={tAnki('chatBlock.layoutList')}
+              >
+                <Rows size={14} />
+              </NotionButton>
+              <NotionButton
+                type="button"
+                variant={layout === 'grid' ? 'default' : 'ghost'}
+                size="icon"
+                iconOnly
+                onClick={() => setLayout('grid')}
+                className="!h-8 !w-8"
+                aria-pressed={layout === 'grid'}
+                aria-label={tAnki('chatBlock.layoutGrid')}
+                title={tAnki('chatBlock.layoutGrid')}
+              >
+                <SquaresFour size={14} />
+              </NotionButton>
+              <NotionButton
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={handleToggleExpand}
+                className="min-h-10 px-2"
+              >
+                <CaretUp size={14} />
+                {t('blocks.ankiCards.collapse')}
+              </NotionButton>
+            </div>
           </div>
 
-          {/* 卡片列表（分页渲染，防止大量 iframe 崩溃） */}
-          <div className="space-y-2">
+          {/* 卡片列表（分页渲染，防止大量 iframe 崩溃；逐张 stagger 入场） */}
+          <div
+            className={cn(
+              layout === 'grid'
+                ? 'grid grid-cols-1 gap-2 sm:grid-cols-2'
+                : 'space-y-2'
+            )}
+          >
             {cards.slice(0, visibleCount).map((card, index) => (
-              <InlineCardItem
+              <div
                 key={card.id || `card-${index}`}
-                card={card}
-                index={index}
-                isEditing={editingIndex === index}
-                template={template}
-                templateMap={templateMap}
-                onToggleEdit={handleToggleEdit}
-                onSave={handleSaveCard}
-                onDelete={handleDeleteCard}
-                disabled={isActionDisabled}
-              />
+                className={cn(
+                  'canki-card-enter',
+                  layout === 'grid' && editingIndex === index && 'sm:col-span-2'
+                )}
+                style={{ '--canki-stagger': `${Math.min(index, 10) * 35}ms` } as React.CSSProperties}
+              >
+                <InlineCardItem
+                  card={card}
+                  index={index}
+                  isEditing={editingIndex === index}
+                  template={template}
+                  templateMap={templateMap}
+                  onToggleEdit={handleToggleEdit}
+                  onSave={handleSaveCard}
+                  onDelete={handleDeleteCard}
+                  disabled={isActionDisabled}
+                />
+              </div>
             ))}
+            {/* 生成仍在进行（如重试失败分段）时的骨架占位 */}
+            {isBlockBusy && visibleCount >= cards.length && (
+              <AnkiCardSkeleton hint={tAnki('chatBlock.skeletonHint')} />
+            )}
             {/* 加载更多按钮 */}
             {visibleCount < cards.length && (
-              <div className="flex items-center justify-center gap-2 py-2">
+              <div
+                className={cn(
+                  'flex items-center justify-center gap-2 py-2',
+                  layout === 'grid' && 'sm:col-span-2'
+                )}
+              >
                 <NotionButton
                   type="button"
                   size="sm"
@@ -2026,7 +2268,10 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
               </div>
             )}
             {/* 滚动锚点：新卡片到来时自动滚动到此处 */}
-            <div ref={cardsEndRef} className="scroll-mb-48" />
+            <div
+              ref={cardsEndRef}
+              className={cn('scroll-mb-48', layout === 'grid' && 'sm:col-span-2')}
+            />
           </div>
 
           {/* 错误/状态信息 */}
@@ -2042,11 +2287,25 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       {(shouldShowChatAnkiProgress ||
         cards.length > 0 ||
         retryableTaskIds.length > 0 ||
+        Boolean(pendingDelete) ||
         (Boolean(data?.documentId) &&
           (isBlockBusy ||
             data?.progress?.stage?.toLowerCase() === 'paused' ||
             data?.finalStatus?.toLowerCase() === 'paused'))) && (
         <FullWidthCardWrapper className="chatanki-bottom-actions">
+          {/* 完成态小结：张数 / 用时 / 任务中心 / 导出 */}
+          {showCompletionSummary && (
+            <AnkiCompletionSummary
+              summaryText={tAnki('chatBlock.summaryCompleted', { count: cards.length })}
+              durationText={durationText}
+              taskCenterLabel={tAnki('chatBlock.openTaskCenter')}
+              onOpenTaskCenter={handleOpenTaskCenter}
+              exportLabel={tAnki('chatBlock.exportApkg')}
+              onExport={() => void handleSummaryExport()}
+              exportPending={summaryExportPending}
+            />
+          )}
+
           {shouldShowChatAnkiProgress && (
             <ChatAnkiProgressCompact
               progress={data?.progress}
@@ -2057,6 +2316,16 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
               finalStatus={data?.finalStatus}
               errorMessage={errorMessage}
               onRefreshAnkiConnect={handleRefreshAnkiConnect}
+            />
+          )}
+
+          {/* 单卡删除撤销条（6s 窗口，倒计时结束才真正提交 DB 删除） */}
+          {pendingDelete && (
+            <AnkiInlineUndoBar
+              message={tAnki('chatBlock.deletedCard', { index: pendingDelete.index + 1 })}
+              undoLabel={tAnki('chatBlock.undo')}
+              onUndo={handleUndoDelete}
+              durationMs={UNDO_DELETE_WINDOW_MS}
             />
           )}
 

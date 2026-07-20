@@ -69,4 +69,87 @@ describe('ComposerPlusMenu', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onOpenMcpPanel).toHaveBeenCalled();
   });
+
+  // 📱 P1-1: 移动端单层扁平菜单（无 AppMenuSub 飞出层）
+  describe('mobile flat menu', () => {
+    it('renders file actions and mode switches at the top level without submenus', () => {
+      const onAddAttachment = vi.fn();
+      render(
+        <ComposerPlusMenu
+          open
+          isMobile
+          onOpenChange={() => undefined}
+          attachmentCount={0}
+          iconButtonClass=""
+          onAddAttachment={onAddAttachment}
+          onOpenResourceLibrary={() => undefined}
+          sessionId="sess_1"
+          authorityMode="craft"
+          onAuthorityModeChange={() => undefined}
+        />,
+      );
+
+      // 文件动作直出，不再有「添加文件」飞出层触发器
+      expect(screen.queryByTestId('plus-menu-add-file')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('plus-menu-mode')).not.toBeInTheDocument();
+      expect(screen.getByTestId('plus-menu-resource-library')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('plus-menu-add-attachment'));
+      expect(onAddAttachment).toHaveBeenCalled();
+
+      // 模式开关直出（无需先点开二级面板）
+      expect(screen.getByTestId('plus-menu-mode-plan')).toBeInTheDocument();
+      expect(screen.getByTestId('plus-menu-mode-ask')).toBeInTheDocument();
+      expect(screen.getByTestId('plus-menu-permission-relaxed')).toBeInTheDocument();
+    });
+
+    it('opens the inline skill panel instead of embedding it in a flyout', () => {
+      const onOpenSkillPanel = vi.fn();
+      const onOpenChange = vi.fn();
+      render(
+        <ComposerPlusMenu
+          open
+          isMobile
+          onOpenChange={onOpenChange}
+          attachmentCount={0}
+          iconButtonClass=""
+          onAddAttachment={() => undefined}
+          onOpenResourceLibrary={() => undefined}
+          renderSkillPanel={() => <div data-testid="skill-menu-body">skills</div>}
+          onOpenSkillPanel={onOpenSkillPanel}
+          activeSkillCount={2}
+        />,
+      );
+
+      // 技能面板内容不再内嵌在菜单里
+      expect(screen.queryByTestId('skill-menu-body')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('btn-toggle-skill'));
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+      expect(onOpenSkillPanel).toHaveBeenCalled();
+      expect(screen.getByText('2')).toBeInTheDocument();
+    });
+
+    it('opens connectors directly from the flat list', () => {
+      const onOpenMcpPanel = vi.fn();
+      const onOpenChange = vi.fn();
+      render(
+        <ComposerPlusMenu
+          open
+          isMobile
+          onOpenChange={onOpenChange}
+          attachmentCount={0}
+          iconButtonClass=""
+          onAddAttachment={() => undefined}
+          onOpenResourceLibrary={() => undefined}
+          renderMcpPanel={() => <div>mcp</div>}
+          onOpenMcpPanel={onOpenMcpPanel}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('plus-menu-connectors'));
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+      expect(onOpenMcpPanel).toHaveBeenCalled();
+    });
+  });
 });

@@ -79,11 +79,19 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   });
 
   // 计算工具栏位置（useLayoutEffect：在绘制前定位，避免首帧闪现在视口左上角）
+  // P1-10: 用 visualViewport 度量——移动端软键盘弹出时 window.innerHeight
+  // 不缩小，会把工具栏定位到键盘底下；桌面端两者一致
   useLayoutEffect(() => {
     if (!selectionRect || !isVisible) return;
 
     const toolbarWidth = toolbarRef.current?.offsetWidth || 200;
     const toolbarHeight = isTouchPrimary ? 48 : TOOLBAR_HEIGHT;
+
+    const vv = window.visualViewport;
+    const viewportTop = vv?.offsetTop ?? 0;
+    const viewportLeft = vv?.offsetLeft ?? 0;
+    const viewportBottom = viewportTop + (vv?.height ?? window.innerHeight);
+    const viewportRight = viewportLeft + (vv?.width ?? window.innerWidth);
 
     let top: number;
     let flipped: boolean;
@@ -92,7 +100,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
       // 触屏：默认下方（系统选择气泡通常占据选区上方）
       top = selectionRect.bottom + TOOLBAR_GAP;
       flipped = true;
-      if (top + toolbarHeight > window.innerHeight - VIEWPORT_PADDING) {
+      if (top + toolbarHeight > viewportBottom - VIEWPORT_PADDING) {
         top = selectionRect.top - toolbarHeight - TOOLBAR_GAP;
         flipped = false;
       }
@@ -101,7 +109,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
       top = selectionRect.top - toolbarHeight - TOOLBAR_GAP;
       flipped = false;
       // 如果上方空间不足，翻转到下方
-      if (top < VIEWPORT_PADDING) {
+      if (top < viewportTop + VIEWPORT_PADDING) {
         top = selectionRect.bottom + TOOLBAR_GAP;
         flipped = true;
       }
@@ -109,16 +117,16 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
 
     // 极端情况（选区几乎占满视口）翻转后仍可能越界，最终钳制回视口内
     top = Math.max(
-      VIEWPORT_PADDING,
-      Math.min(top, window.innerHeight - toolbarHeight - VIEWPORT_PADDING)
+      viewportTop + VIEWPORT_PADDING,
+      Math.min(top, viewportBottom - toolbarHeight - VIEWPORT_PADDING)
     );
 
     // 水平居中于选区
     let left = selectionRect.left + selectionRect.width / 2 - toolbarWidth / 2;
 
     // 防止超出视口左右边界
-    const maxLeft = window.innerWidth - toolbarWidth - VIEWPORT_PADDING;
-    left = Math.max(VIEWPORT_PADDING, Math.min(left, maxLeft));
+    const maxLeft = viewportRight - toolbarWidth - VIEWPORT_PADDING;
+    left = Math.max(viewportLeft + VIEWPORT_PADDING, Math.min(left, maxLeft));
 
     setPosition({ top, left, flipped });
   }, [selectionRect, isVisible, isTouchPrimary]);
@@ -130,6 +138,48 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
       onClear();
     }
   }, [isVisible, currentView, onClear]);
+
+  // 键盘可达性：工具栏可见时 Escape 直接关闭（无论焦点在何处）
+  useEffect(() => {
+    if (!isVisible) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClear();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [isVisible, onClear]);
+
+  // 键盘可达性：←/→/Home/End 在按钮间移动焦点（roving focus）
+  const handleToolbarKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+    const root = toolbarRef.current;
+    if (!root) return;
+    const buttons = Array.from(
+      root.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')
+    );
+    if (buttons.length === 0) return;
+    e.preventDefault();
+    const activeIndex = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    let nextIndex: number;
+    switch (e.key) {
+      case 'ArrowLeft':
+        nextIndex = activeIndex <= 0 ? buttons.length - 1 : activeIndex - 1;
+        break;
+      case 'ArrowRight':
+        nextIndex = activeIndex === -1 || activeIndex === buttons.length - 1 ? 0 : activeIndex + 1;
+        break;
+      case 'Home':
+        nextIndex = 0;
+        break;
+      default:
+        nextIndex = buttons.length - 1;
+        break;
+    }
+    buttons[nextIndex]?.focus();
+  }, []);
 
   // 复制操作
   const handleCopy = useCallback(async (e: React.MouseEvent) => {
@@ -203,6 +253,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
         <motion.div
           ref={toolbarRef}
           data-selection-toolbar
+          data-wb-blur-surface
           role="toolbar"
           aria-label={t('selectionToolbar.ariaLabel')}
           variants={motionVariants}
@@ -214,21 +265,22 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
             'fixed z-[9999] flex items-center',
             'rounded-lg border border-border/50',
             'bg-background/80 backdrop-blur-xl',
-            'shadow-[0_4px_12px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.06)]',
+            // 阴影走 shell token，暗色由 --shadow-base 透明度自适应
+            'shadow-[var(--shadow-shell-floating)]',
             'dark:bg-background/90 dark:border-border/30',
-            'dark:shadow-[0_4px_16px_rgba(0,0,0,0.3),0_1px_4px_rgba(0,0,0,0.2)]',
           )}
           style={{
             top: position.top,
             left: position.left,
           }}
-          // 阻止 mousedown 冒泡，防止清除选择
+          // 阻止 mousedown 默认行为，防止清除选择
           onMouseDown={(e) => e.preventDefault()}
+          onKeyDown={handleToolbarKeyDown}
         >
           {/* 复制 */}
           <ToolbarButton
             onClick={handleCopy}
-            icon={copied ? <Check size={touchTarget ? 16 : 14} className="text-green-500" /> : <Copy size={touchTarget ? 16 : 14} />}
+            icon={copied ? <Check size={touchTarget ? 16 : 14} className="text-success" /> : <Copy size={touchTarget ? 16 : 14} />}
             label={copied ? t('selectionToolbar.copied') : t('selectionToolbar.copy')}
             isFirst
             touchTarget={touchTarget}
@@ -307,6 +359,8 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
       touchTarget ? 'px-3 py-3 text-[13px]' : 'px-2.5 py-1.5 text-xs',
       'font-medium text-foreground/80',
       'hover:bg-accent/60 hover:text-foreground',
+      // 键盘 roving focus 的可见反馈（鼠标点击被容器 preventDefault 拦截，不会误触发）
+      'focus-visible:outline-none focus-visible:bg-accent/60 focus-visible:text-foreground',
       'transition-colors duration-100',
       'disabled:opacity-40 disabled:cursor-not-allowed',
       isFirst && 'rounded-l-lg',

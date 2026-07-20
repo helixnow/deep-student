@@ -148,125 +148,12 @@
   color: var(--text-muted);
 }
 
-.chat-v2 .unified-source-panel .usp-items {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-height: 360px;
-  padding-right: 6px;
-  scroll-behavior: smooth;
-}
-
-.chat-v2 .unified-source-panel .usp-items-scroll-area {
-  width: 100%;
-}
-
-.chat-v2 .unified-source-panel .usp-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  padding: 4px 2px;
-}
-
-.chat-v2 .unified-source-panel .usp-section-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.chat-v2 .unified-source-panel .usp-section-count {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.chat-v2 .unified-source-panel .usp-item {
-  border: 1px solid hsl(var(--border) / 0.25);
-  border-radius: 14px;
-  background: var(--surface-elevated);
-  padding: 12px;
-  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
-}
-
-.chat-v2 .unified-source-panel .usp-item:hover {
-  border-color: hsl(var(--primary) / 0.35);
-  background: hsl(var(--primary) / 0.05);
-  box-shadow: 0 6px 16px hsl(var(--primary) / 0.12);
-}
-
-.chat-v2 .unified-source-panel .usp-item-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 6px;
-}
-
-.chat-v2 .unified-source-panel .usp-item-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.chat-v2 .unified-source-panel .usp-item-title-text {
-  font-size: 0.9rem;
-}
-
-.chat-v2 .unified-source-panel .usp-item-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .chat-v2 .unified-source-panel .usp-item-score {
   font-size: 0.75rem;
   color: var(--text-muted);
   border: 1px solid hsl(var(--border) / 0.25);
   border-radius: 6px;
   padding: 2px 6px;
-}
-
-.chat-v2 .unified-source-panel .usp-item-link {
-  font-size: 0.75rem;
-  border: none;
-  background: none;
-  color: hsl(var(--primary));
-  cursor: pointer;
-  padding: 0 4px;
-}
-
-.chat-v2 .unified-source-panel .usp-item-link:hover {
-  text-decoration: underline;
-}
-
-.chat-v2 .unified-source-panel .usp-item-snippet {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.chat-v2 .unified-source-panel .usp-item-link-cta {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 6px;
-  padding: 0;
-  font-size: 0.78rem;
-  border: none;
-  background: none;
-  color: hsl(var(--primary));
-  cursor: pointer;
-}
-
-.chat-v2 .unified-source-panel .usp-item-link-cta:hover {
-  text-decoration: underline;
 }
 
 .chat-v2 .unified-source-panel .usp-empty {
@@ -284,18 +171,6 @@
   box-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.3);
 }
 
-[data-theme="dark"] .chat-v2 .unified-source-panel .usp-item,
-.dark .chat-v2 .unified-source-panel .usp-item {
-  background: hsl(var(--muted) / 0.3);
-  border-color: hsl(var(--border));
-}
-
-[data-theme="dark"] .chat-v2 .unified-source-panel .usp-item:hover,
-.dark .chat-v2 .unified-source-panel .usp-item:hover {
-  background: hsl(var(--muted) / 0.5);
-  border-color: hsl(var(--primary) / 0.4);
-}
-
 [data-theme="dark"] .chat-v2 .unified-source-panel .usp-category-pill,
 .dark .chat-v2 .unified-source-panel .usp-category-pill {
   background: hsl(var(--muted) / 0.4);
@@ -307,21 +182,6 @@
 .dark .chat-v2 .unified-source-panel .usp-category-pill.active {
   background: hsl(var(--primary) / 0.2);
   border-color: hsl(var(--primary) / 0.5);
-  color: hsl(var(--foreground));
-}
-
-[data-theme="dark"] .chat-v2 .unified-source-panel .usp-item-snippet,
-.dark .chat-v2 .unified-source-panel .usp-item-snippet {
-  color: hsl(var(--muted-foreground));
-}
-
-[data-theme="dark"] .chat-v2 .unified-source-panel .usp-item-link-cta,
-.dark .chat-v2 .unified-source-panel .usp-item-link-cta {
-  color: hsl(var(--primary));
-}
-
-[data-theme="dark"] .chat-v2 .unified-source-panel .usp-item-title,
-.dark .chat-v2 .unified-source-panel .usp-item-title {
   color: hsl(var(--foreground));
 }
 
@@ -367,6 +227,58 @@
 /* 展开按钮 */
 .chat-v2 .unified-source-panel .usp-expand-btn {
   flex-shrink: 0;
+}
+
+/* 检索中 shimmer 小标签（头部折叠条右侧） */
+.chat-v2 .unified-source-panel .usp-retrieving-chip {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+/* 检索失败内联条 */
+.chat-v2 .unified-source-panel .usp-error-bar {
+  min-width: 0;
+}
+
+/* provider 分组标识：轮播模式的竖排分隔条 */
+.chat-v2 .unified-source-panel .usp-provider-divider {
+  flex-shrink: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 2px;
+  border-left: 2px solid hsl(var(--border) / 0.5);
+  max-height: 132px;
+}
+
+.chat-v2 .unified-source-panel .usp-provider-divider-label {
+  writing-mode: vertical-rl;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  max-height: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* provider 分组标识：展开网格模式的整行小标题 */
+.chat-v2 .unified-source-panel .usp-provider-header {
+  min-width: 0;
+}
+
+/* 轮播溢出"查看全部"卡 */
+.chat-v2 .unified-source-panel .usp-more-card {
+  border-color: hsl(var(--border) / 0.6);
+  background: hsl(var(--muted) / 0.3);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.chat-v2 .unified-source-panel .usp-more-card:hover {
+  background: hsl(var(--muted) / 0.6);
+  border-color: hsl(var(--primary) / 0.35);
 }
 
 /* 暗色模式翻页按钮 */

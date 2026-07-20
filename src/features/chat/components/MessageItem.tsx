@@ -21,7 +21,7 @@ import { useBlocksByIds } from '../hooks/useChatStore';
 import { useImagePreviewsFromRefs } from '../hooks/useImagePreviewsFromRefs';
 import { useFilePreviewsFromRefs } from '../hooks/useFilePreviewsFromRefs';
 import { ParallelVariantView } from './Variant';
-import { MessageActions, MessageInlineEdit, UserMessageBubble } from './message';
+import { MessageActions, MessageInlineEdit, MessageTouchActionBar, UserMessageBubble } from './message';
 import { resolveSingleVariantDisplayMeta } from './message/variantMetaResolver';
 import { TokenUsageDisplay } from './TokenUsageDisplay';
 // 🔧 移除 ModelRetryDialog，改用底部面板模型选择重试
@@ -34,6 +34,7 @@ import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { getModelDisplayName, formatMessageTime } from '@/utils/formatUtils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useLongPress } from '@/hooks/mobile';
 // 🔧 编辑/重试调试日志
 import { logChatV2 } from '../debug/chatV2Logger';
 // 🆕 开发者选项：显示请求体 + 过滤配置
@@ -41,6 +42,7 @@ import { useDevShowRawRequest, useCopyFilterConfig, type CopyFilterConfig } from
 import { ThreadContentShell } from './ui/ThreadContentShell';
 import { TextShimmer } from './ui/TextShimmer';
 import { ThinkingIndicator } from './ThinkingIndicator';
+import { StreamingSkeleton } from './StreamingSkeleton';
 import { dispatchContextRefPreview } from '../utils/contextRefPreview';
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { fileManager } from '@/utils/fileManager';
@@ -566,20 +568,6 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     return message.role === 'user'; // 只有用户消息可编辑
   }, [message, isLocked]);
 
-  // 🔧 调试日志：记录 canEdit 状态变化
-  useEffect(() => {
-    if (message?.role === 'user') {
-      logChatV2('message', 'ui', 'canEdit_computed', {
-        messageId,
-        canEdit,
-        isLocked,
-        sessionStatus,
-        hasActiveBlock,
-        displayBlockIds,
-      }, canEdit ? 'info' : 'warning', { messageId });
-    }
-  }, [canEdit, isLocked, sessionStatus, hasActiveBlock, messageId, message?.role, displayBlockIds]);
-
   const canDelete = useMemo(() => {
     if (!message) return false;
     if (isLocked) return false;
@@ -611,6 +599,36 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   // 🆕 文本选择浮动工具栏
   const messageContentRef = useRef<HTMLDivElement>(null);
   const textSelection = useTextSelection(messageContentRef);
+
+  // P0-2: 移动端长按消息（~450ms）呼出消息下方的内联操作条（非 Sheet / 非 Portal）。
+  // 多变体消息有独立的卡片工具栏，不参与。
+  const [touchBarOpen, setTouchBarOpen] = useState(false);
+  const longPressEnabled = isSmallScreen && !isMultiVariant;
+  const handleMessageLongPress = useCallback(() => {
+    // 长按误起的文字选区一并清掉，避免操作条与系统选区手柄叠加
+    window.getSelection()?.removeAllRanges();
+    textSelection.clear();
+    setTouchBarOpen(true);
+  }, [textSelection]);
+  const longPress = useLongPress({
+    onLongPress: handleMessageLongPress,
+    disabled: !longPressEnabled,
+  });
+  // 交互元素（按钮/链接/输入框）上按住不算长按；桌面路径不挂任何监听
+  const longPressBind = useMemo(() => {
+    if (!longPressEnabled) return {};
+    return {
+      ...longPress.bind,
+      onPointerDown: (e: React.PointerEvent) => {
+        const target = e.target as Element | null;
+        if (target?.closest('button, a, input, textarea, select, [role="button"], [contenteditable="true"]')) {
+          return;
+        }
+        longPress.bind.onPointerDown(e);
+      },
+    };
+  }, [longPressEnabled, longPress.bind]);
+  const closeTouchBar = useCallback(() => setTouchBarOpen(false), []);
 
   // 🆕 翻译 Popover 状态
   const [translationPopoverState, setTranslationPopoverState] = useState<{
@@ -818,17 +836,31 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     }
   }, [canDelete, isDeletingMultiMessage, store, messageId, t]);
 
-  // 重试消息
-  const handleRetry = useCallback(async () => {
-    // 🔧 调试日志：记录 handleRetry 调用
-    logChatV2('message', 'ui', 'handleRetry_called', {
-      messageId,
-      isLocked,
-      hasMessage: !!message,
-    }, 'info', { messageId });
+  // 🔧 P1-4: 重试破坏性确认改为内联确认条（替代 window.confirm，禁模态）
+  // 记录待确认的"将被删除的后续消息数"；null 表示未展开确认条
+  const [retryConfirmCount, setRetryConfirmCount] = useState<number | null>(null);
 
+  // 真正执行重试（确认后 / 无后续消息时直接调用）
+  const performRetry = useCallback(async () => {
+    setRetryConfirmCount(null);
+    try {
+      await store.getState().retryMessage(messageId);
+      logChatV2('message', 'ui', 'handleRetry_completed', {
+        messageId,
+      }, 'success', { messageId });
+    } catch (error: unknown) {
+      logChatV2('message', 'ui', 'handleRetry_error', {
+        messageId,
+        error: getErrorMessage(error),
+      }, 'error', { messageId });
+      console.error('[MessageItem] Retry failed:', error);
+      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.retryFailed'));
+    }
+  }, [messageId, store, t]);
+
+  // 重试入口：有后续消息将被删除时先展开内联确认条，否则直接重试
+  const handleRetry = useCallback(async () => {
     if (!message || isLocked) {
-      // 🔧 调试日志：记录 handleRetry 被阻止
       logChatV2('message', 'ui', 'handleRetry_blocked', {
         messageId,
         reason: !message ? 'message=null' : 'isLocked=true',
@@ -837,41 +869,31 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       return;
     }
 
-    // 🔧 L-015 修复：重试前检查是否有后续消息将被删除，需用户确认
+    // 🔧 L-015: 重试会删除后续消息，需用户确认（内联确认条，非阻塞）
     const currentState = store.getState();
     const msgIndex = currentState.messageOrder.indexOf(messageId);
     const subsequentCount = msgIndex >= 0 ? currentState.messageOrder.length - msgIndex - 1 : 0;
 
     if (subsequentCount > 0) {
-      // eslint-disable-next-line no-alert -- 这是一个阻断性确认，和当前删除后续消息的破坏性操作直接绑定
-      const confirmed = window.confirm(
-        t('messageItem.actions.retryDeleteConfirm', { count: subsequentCount })
-      );
-      if (!confirmed) {
-        logChatV2('message', 'ui', 'handleRetry_cancelled_by_user', {
-          messageId,
-          subsequentCount,
-        }, 'info', { messageId });
-        return;
-      }
+      setRetryConfirmCount(subsequentCount);
+      return;
     }
 
-    try {
-      await store.getState().retryMessage(messageId);
-      // 🔧 调试日志：retryMessage 调用返回（无异常）
-      logChatV2('message', 'ui', 'handleRetry_completed', {
-        messageId,
-      }, 'success', { messageId });
-    } catch (error: unknown) {
-      // 🔧 调试日志：retryMessage 抛出异常
-      logChatV2('message', 'ui', 'handleRetry_error', {
-        messageId,
-        error: getErrorMessage(error),
-      }, 'error', { messageId });
-      console.error('[MessageItem] Retry failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.retryFailed'));
-    }
-  }, [message, messageId, isLocked, store, t]);
+    await performRetry();
+  }, [message, messageId, isLocked, store, performRetry]);
+
+  const handleRetryConfirmCancel = useCallback(() => {
+    logChatV2('message', 'ui', 'handleRetry_cancelled_by_user', {
+      messageId,
+      subsequentCount: retryConfirmCount,
+    }, 'info', { messageId });
+    setRetryConfirmCount(null);
+  }, [messageId, retryConfirmCount]);
+
+  // 会话进入锁定态（如另一条消息开始流式）时自动收起确认条，避免过期确认
+  useEffect(() => {
+    if (isLocked) setRetryConfirmCount(null);
+  }, [isLocked]);
 
   const handleRetryFromFailureBar = useCallback(async () => {
     if (isRetryingFailure || isLocked) return;
@@ -907,6 +929,13 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [isInlineEditing, setIsInlineEditing] = useState(false);
   const [editText, setEditText] = useState('');
+
+  // P0-2: 进入内联编辑时收起长按操作条（操作条在编辑态不渲染，同时复位 select-none）
+  useEffect(() => {
+    if (isInlineEditing) {
+      setTouchBarOpen(false);
+    }
+  }, [isInlineEditing]);
   
   // 🔧 上下文引用预览回调
   // 发射事件让上层组件（ChatContainer/ChatV2Page）处理跳转到 Learning Hub
@@ -1101,7 +1130,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     }
   }, [isLocked, message, store, messageId, t]);
 
-  // 🆕 导出为 Markdown 文件
+  // 🆕 导出为 Markdown 文件（入口：MessageActions 更多菜单）
   const handleExportMarkdown = useCallback(async () => {
     if (!message) return;
     const text = extractMessageContent();
@@ -1141,10 +1170,19 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   return (
     <div
+      // P0-2: 移动端长按呼出内联操作条（桌面路径 longPressBind 为空对象，零监听）
+      {...longPressBind}
       className={cn(
         // 与 InputBar/MessageList 空态/scroll 按钮共享 px-4 md:px-8，避免左右不对齐
         'group px-4 py-4 md:px-8',
+        // 🔧 P0-B1: 接通 chat.css / chat-beautify.css 的
+        // `.message.assistant .message-content` 排版选择器（此前 DOM 缺类名导致
+        // Streamdown-inspired Typography 整段失效）
+        'message',
+        isUser ? 'user' : 'assistant',
         !isUser && 'bg-background',
+        // 操作条展开期间抑制文字选择，避免误触拖选；关闭/进入编辑态自动复位
+        touchBarOpen && 'select-none',
         // 第一条消息添加顶部间距
         isFirst && 'pt-6',
         className
@@ -1153,6 +1191,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       {/* 📱 移动端多变体：使用垂直布局，不显示外层头像（卡片内已有） */}
       {isMobileMultiVariant ? (
         <ThreadContentShell className="group">
+          {/* P0-2: 多变体内容同样包进 message-selectable-area 并挂载共享 ref，
+              使选区工具栏（翻译/解释/复制）在移动端多变体下可用 */}
+          <div className="min-w-0 message-content message-selectable-area" ref={messageContentRef}>
           {/* 多变体内容：居中显示，使用全宽 */}
           <ParallelVariantView
             store={store}
@@ -1170,6 +1211,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
             onBranchSession={handleBranch}
             hideMessageLevelActions={!isSmallScreen}
           />
+          </div>
         </ThreadContentShell>
       ) : (
         /* 💻 桌面端/非多变体：消息内容布局 */
@@ -1177,8 +1219,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
           // 与输入栏 (InputBarUI: max-w-thread) 严格对齐
           width={isMultiVariant ? 'full' : 'thread'}
         >
-          {/* 消息内容 */}
-          <div className="min-w-0 message-selectable-area" ref={messageContentRef}>
+          {/* 消息内容（message-content: 接通 assistant 阅读排版选择器） */}
+          <div className="min-w-0 message-content message-selectable-area" ref={messageContentRef}>
             {/* 内联编辑模式 */}
             {isUser && isInlineEditing ? (
               <MessageInlineEdit
@@ -1270,8 +1312,13 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           </div>
                         );
                       }
+                      // 🔧 P1-6: 首 token 前的等待态 = 状态文案（呼吸点）+ shimmer 骨架，
+                      // 均复用 motion.css 共享类，自带 reduced-motion 降级
                       return (
-                        <ThinkingIndicator />
+                        <div className="chat-fade-in">
+                          <ThinkingIndicator />
+                          <StreamingSkeleton className="mt-1" />
+                        </div>
                       );
                     }
 
@@ -1485,6 +1532,37 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
             </div>
           )}
 
+          {/* 🔧 P1-4: 重试破坏性操作的内联确认条（替代 window.confirm；无模态） */}
+          {!isUser && retryConfirmCount !== null && (
+            <div
+              className={cn(
+                'chat-fade-in mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5',
+                'rounded-[var(--chat-radius-md,12px)] border border-border/60 bg-muted/40 px-3 py-2'
+              )}
+              role="alert"
+              data-slot="message-retry-inline-confirm"
+            >
+              <span className="text-[13px] leading-relaxed text-foreground/85">
+                {t('messageItem.actions.retryDeleteConfirm', { count: retryConfirmCount })}
+              </span>
+              <div className="ml-auto flex items-center gap-1">
+                <NotionButton variant="ghost" size="sm" onClick={handleRetryConfirmCancel}>
+                  {t('common:actions.cancel')}
+                </NotionButton>
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={performRetry}
+                  disabled={isLocked}
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <ArrowCounterClockwise className="w-3.5 h-3.5" />
+                  {t('messageItem.actions.retryConfirmAction')}
+                </NotionButton>
+              </div>
+            </div>
+          )}
+
           {/* Token 统计 + 操作按钮（等待状态时隐藏） */}
           {/* 🔧 统一：多变体也在底部显示汇总 Token 统计 */}
           {showActions && !isInlineEditing && !isWaitingForContent && !hasZeroOutputFailure && !shouldHideLatestAssistantFooter && (
@@ -1550,6 +1628,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onEdit={isUser ? handleEdit : undefined}
                         onDelete={handleDelete}
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
+                        onExportMarkdown={!isUser ? handleExportMarkdown : undefined}
                         onBranchSession={handleBranch}
                       />
                     )}
@@ -1629,6 +1708,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onEdit={isUser ? handleEdit : undefined}
                         onDelete={handleDelete}
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
+                        onExportMarkdown={!isUser ? handleExportMarkdown : undefined}
                         onBranchSession={handleBranch}
                         compactMobile
                         tokenUsage={!isUser ? (hasMultipleVariants ? aggregatedUsage : singleVariantUsage) : undefined}
@@ -1668,6 +1748,22 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
               rawRequests={message._meta.rawRequests as RawRequestPreviewProps['rawRequests']}
               rawRequest={message._meta.rawRequest as RawRequest}
               copyFilterConfig={copyFilterConfig}
+            />
+          )}
+
+          {/* P0-2: 长按呼出的内联操作条（DOM 流内展开，非 Sheet/Portal） */}
+          {longPressEnabled && !isInlineEditing && (
+            <MessageTouchActionBar
+              open={touchBarOpen}
+              isUser={isUser}
+              isLocked={isLocked}
+              canEdit={canEdit}
+              canDelete={canDelete}
+              onCopy={handleCopy}
+              onEdit={isUser ? handleEdit : undefined}
+              onRetry={!isUser ? handleRetry : undefined}
+              onDelete={handleDelete}
+              onClose={closeTouchBar}
             />
           )}
         </div>

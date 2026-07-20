@@ -56,7 +56,8 @@ export const BUILTIN_TOOLS: BuiltinToolSchema[] = [
       '在知识库中搜索文档。当用户询问已上传的文档、文件或特定主题时使用。返回相关文档片段和来源信息。' +
       '支持多种过滤方式：按文件夹、按资源类型、按特定文档ID。' +
       '如果检索结果被单一文档占满，可以使用 max_per_resource 参数限制每个文档的结果数。' +
-      '检索结果可能包含图片URL，你可以在回答中使用 ![描述](图片URL) 格式直接展示相关图片。',
+      '引用方式请使用 [知识库-N]/[图片-N]（N 为同类来源编号），结果中 pageIndex 不为空时可用 [知识库-N:图片]/[图片-N:图片] 渲染对应页面图片。' +
+      '禁止输出图片 URL 或 Markdown 图片语法（如 ![](url)）。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -112,7 +113,7 @@ export const BUILTIN_TOOLS: BuiltinToolSchema[] = [
   //   description:
   //     '在多模态知识库中搜索图片和扫描PDF内容。当用户询问图片中的内容、扫描文档、手写笔记、整卷识别结果等视觉内容时使用。' +
   //     '使用 VL Embedding 模型进行多模态向量检索。' +
-  //     '返回结果包含图片URL，你可以在回答中使用 ![描述](图片URL) 格式直接展示找到的图片。',
+  //     '引用方式请使用 [图片-N]，需要渲染页面图片时用 [图片-N:图片]。禁止输出图片 URL 或 Markdown 图片语法。',
   //   inputSchema: {
   //     type: 'object',
   //     properties: {

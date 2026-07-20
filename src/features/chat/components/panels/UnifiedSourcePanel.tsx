@@ -1,18 +1,33 @@
 import React, { useEffect, useMemo, useState, useId, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, BookOpen, Brain, Hammer, CaretRight, CaretLeft, ArrowSquareOut, Image, ArrowsOut, ArrowsIn } from '@phosphor-icons/react';
+import {
+  MagnifyingGlass,
+  BookOpen,
+  Brain,
+  Hammer,
+  CaretRight,
+  CaretLeft,
+  ArrowSquareOut,
+  Image,
+  ImageBroken,
+  ArrowsOut,
+  ArrowsIn,
+  WarningCircle,
+} from '@phosphor-icons/react';
 import type { UnifiedSourceBundle, UnifiedSourceGroup, UnifiedSourceItem } from './sourceTypes';
 import { cn } from '@/utils/cn';
 import { Z_INDEX } from '@/config/zIndex';
 import { openUrl } from '@/utils/urlOpener';
 import { citationEvents, type CitationHighlightEvent } from '../../utils/citationEvents';
-import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import { useIsMobile } from '@/hooks/useBreakpoint';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { Skeleton } from '@/components/ui/shad/Skeleton';
+import { TextShimmer } from '../ui/TextShimmer';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
+import { MultimodalSourceCard, resolveMultimodalImageSrc } from './MultimodalSourceCard';
 import {
   buildResourceLocator,
   canLocateResource,
@@ -21,26 +36,29 @@ import {
 } from '@/features/learning-hub/learningHubContracts';
 import './UnifiedSourcePanel.css';
 
-// 来源类型映射到引用类型（与 citationParser 保持一致）
-const ORIGIN_TO_CITATION_TYPE: Record<string, string> = {
-  rag: 'rag',
-  memory: 'memory',
-  web_search: 'web_search',
-  multimodal: 'multimodal',
-};
-
 interface UnifiedSourcePanelProps {
   data: UnifiedSourceBundle;
   className?: string;
-  /** 高亮的来源索引（从引用标记点击触发） */
-  highlightedSourceIndex?: number;
-  /** 高亮清除回调 */
-  onHighlightClear?: () => void;
+  /** 所属消息 ID（用于过滤 citationEvents，避免多条消息的面板同时响应） */
+  messageId?: string;
+  /** 检索进行中（驱动"正在检索"内联 shimmer 态） */
+  isRetrieving?: boolean;
 }
 
 type CategoryKey = 'rag' | 'memory' | 'web_search' | 'tool' | 'multimodal' | string;
+
+type FlatEntry =
+  | { type: 'header'; key: string; label: string; count?: number }
+  | { type: 'item'; key: string; item: UnifiedSourceItem; displayNumber: number };
+
 const URL_REGEX = /(https?:\/\/[^\s]+)/gi;
 const SNIPPET_MAX_LENGTH = 220;
+/** 展开网格：每页懒挂载的卡片数 */
+const EXPANDED_PAGE_SIZE = 24;
+/** 水平轮播：最多直接挂载的卡片数（超出显示"查看全部"卡） */
+const CAROUSEL_MAX_ITEMS = 30;
+/** hover 预览关闭的宽限时间（卡片 → 预览之间的鼠标移动） */
+const PREVIEW_CLOSE_DELAY_MS = 160;
 
 function groupIcon(group: CategoryKey) {
   switch (group) {
@@ -76,14 +94,54 @@ const CATEGORY_PRIORITY: Record<CategoryKey, number> = {
   web_search: 4,
 };
 
-const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({ 
-  data, 
+/**
+ * 带错误回退的缩略图（用于移动端列表项与 hover 预览）
+ */
+const SourceThumb: React.FC<{ item: UnifiedSourceItem; className?: string; iconSize?: number }> = ({
+  item,
   className,
-  highlightedSourceIndex,
-  onHighlightClear,
+  iconSize = 16,
 }) => {
-  const { t } = useTranslation(['common']);
+  const [error, setError] = useState(false);
+  const src = resolveMultimodalImageSrc(item);
+
+  useEffect(() => {
+    setError(false);
+  }, [src]);
+
+  if (!src) return null;
+
+  return (
+    <div
+      className={cn(
+        'rounded-md overflow-hidden bg-muted flex items-center justify-center text-muted-foreground',
+        className
+      )}
+    >
+      {error ? (
+        <ImageBroken size={iconSize} />
+      ) : (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          className="w-full h-full object-cover"
+          onError={() => setError(true)}
+        />
+      )}
+    </div>
+  );
+};
+
+const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
+  data,
+  className,
+  messageId,
+  isRetrieving = false,
+}) => {
+  const { t } = useTranslation(['common', 'chatV2']);
   const groups = data?.groups || [];
+  const errors = data?.errors || [];
   const [open, setOpen] = useState(false);
   const isMobile = useIsMobile();
   const bodyId = useId();
@@ -114,14 +172,80 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   }, [groups]);
 
   const [activeCategory, setActiveCategory] = useState<CategoryKey>(() => categories[0]?.group ?? '');
-  const [hoveredItem, setHoveredItem] = useState<UnifiedSourceItem | null>(null);
-  const [previewPos, setPreviewPos] = useState<DOMRect | null>(null);
-  const [localHighlight, setLocalHighlight] = useState<number | null>(null);
-  const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const [localHighlightId, setLocalHighlightId] = useState<string | null>(null);
+  const cardRefs = useRef<Map<string, HTMLElement>>(new Map());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(EXPANDED_PAGE_SIZE);
+
+  // ========== hover 预览（可交互 portal 浮层） ==========
+  const [preview, setPreview] = useState<{ item: UnifiedSourceItem; anchor: DOMRect } | null>(null);
+  const previewElRef = useRef<HTMLDivElement | null>(null);
+  const previewCloseTimer = useRef<number | null>(null);
+
+  const clearPreviewCloseTimer = useCallback(() => {
+    if (previewCloseTimer.current != null) {
+      window.clearTimeout(previewCloseTimer.current);
+      previewCloseTimer.current = null;
+    }
+  }, []);
+
+  const openPreview = useCallback((e: React.MouseEvent, item: UnifiedSourceItem) => {
+    clearPreviewCloseTimer();
+    setPreview({ item, anchor: e.currentTarget.getBoundingClientRect() });
+  }, [clearPreviewCloseTimer]);
+
+  const scheduleClosePreview = useCallback(() => {
+    clearPreviewCloseTimer();
+    previewCloseTimer.current = window.setTimeout(() => {
+      setPreview(null);
+      previewCloseTimer.current = null;
+    }, PREVIEW_CLOSE_DELAY_MS);
+  }, [clearPreviewCloseTimer]);
+
+  const cancelClosePreview = useCallback(() => {
+    clearPreviewCloseTimer();
+  }, [clearPreviewCloseTimer]);
+
+  // 滚动/窗口变化时关闭预览，避免浮层错位（预览内部的滚动除外）
+  useEffect(() => {
+    if (!preview) return;
+    const handleScroll = (e: Event) => {
+      const target = e.target;
+      if (previewElRef.current && target instanceof Node && previewElRef.current.contains(target)) {
+        return;
+      }
+      setPreview(null);
+    };
+    const handleResize = () => setPreview(null);
+    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [preview]);
+
+  // 切换分类 / 展开模式 / 折叠面板时关闭预览
+  useEffect(() => {
+    setPreview(null);
+  }, [activeCategory, isExpanded, open]);
+
+  // 卸载时清理预览定时器
+  useEffect(() => clearPreviewCloseTimer, [clearPreviewCloseTimer]);
+
+  // ========== 状态健壮性：data 变化时重置瞬时状态 ==========
+  useEffect(() => {
+    setPreview(null);
+    setLocalHighlightId(null);
+    setVisibleCount(EXPANDED_PAGE_SIZE);
+  }, [data]);
+
+  useEffect(() => {
+    setVisibleCount(EXPANDED_PAGE_SIZE);
+  }, [activeCategory]);
 
   // 检查滚动状态
   const checkScrollability = useCallback(() => {
@@ -144,17 +268,6 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     });
   }, []);
 
-  const handleItemMouseEnter = (e: React.MouseEvent, item: UnifiedSourceItem) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setHoveredItem(item);
-    setPreviewPos(rect);
-  };
-
-  const handleItemMouseLeave = () => {
-    setHoveredItem(null);
-    setPreviewPos(null);
-  };
-
   useEffect(() => {
     if (!categories.length) {
       setActiveCategory('');
@@ -166,142 +279,74 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     }
   }, [categories, activeCategory]);
 
-  // 计算所有来源的全局索引（用于引用编号）- 必须在高亮 useEffect 之前定义
-  const allSourcesWithIndex = useMemo(() => {
-    const result: Array<{ item: UnifiedSourceItem; globalIndex: number; categoryType: string }> = [];
-    let globalIdx = 0;
-    
-    // 按类别优先级排序后遍历
-    const sortedCategories = [...categories].sort((a, b) => {
-      const pa = CATEGORY_PRIORITY[a.group] ?? 10;
-      const pb = CATEGORY_PRIORITY[b.group] ?? 10;
-      return pa - pb;
-    });
-    
-    sortedCategories.forEach(category => {
+  // 所有来源的扁平列表（按分类优先级顺序）
+  const allSources = useMemo(() => {
+    const result: UnifiedSourceItem[] = [];
+    categories.forEach(category => {
       category.providers.forEach(provider => {
         (provider.items || []).forEach(item => {
-          result.push({
-            item,
-            globalIndex: globalIdx++,
-            categoryType: ORIGIN_TO_CITATION_TYPE[category.group] || category.group,
-          });
+          result.push(item);
         });
       });
     });
-    
     return result;
   }, [categories]);
 
-  // 🆕 根据来源类型和类型内索引计算全局索引
-  const calculateGlobalIndexFromCitation = useCallback((type: RetrievalSourceType, typeIndex: number): number => {
-    // 找到该类型在 allSourcesWithIndex 中的第 typeIndex 个项目
-    let count = 0;
-    for (const source of allSourcesWithIndex) {
-      if (source.categoryType === type) {
-        count++;
-        if (count === typeIndex) {
-          return source.globalIndex;
-        }
+  // 引用契约查找表：`${citationType}:${typeIndex}` → item
+  // typeIndex 由 sourceAdapter 按跨块全局顺序分配，与 `[类型-N]` 契约一致
+  const citationLookup = useMemo(() => {
+    const map = new Map<string, UnifiedSourceItem>();
+    for (const item of allSources) {
+      if (item.citationType && item.typeIndex != null) {
+        map.set(`${item.citationType}:${item.typeIndex}`, item);
       }
     }
-    return -1;
-  }, [allSourcesWithIndex]);
+    return map;
+  }, [allSources]);
 
-  // 🆕 监听引用点击事件
+  // 监听引用点击事件（按 messageId 过滤，多消息面板互不干扰）
   useEffect(() => {
-    // 🔧 P0 修复：使用 ref 存储定时器，确保组件卸载时清理
     const timers: { scroll?: ReturnType<typeof setTimeout>; clear?: ReturnType<typeof setTimeout> } = {};
-    
+
     const handleCitationEvent = (event: CitationHighlightEvent) => {
-      const globalIndex = calculateGlobalIndexFromCitation(event.type, event.index);
-      if (globalIndex >= 0) {
-        // 清理之前的定时器（防止快速点击时定时器堆积）
-        if (timers.scroll) clearTimeout(timers.scroll);
-        if (timers.clear) clearTimeout(timers.clear);
-        
-        // 触发高亮
-        setOpen(true);
-        setLocalHighlight(globalIndex);
-        
-        // 找到对应的类别并切换
-        const sourceInfo = allSourcesWithIndex.find(s => s.globalIndex === globalIndex);
-        if (sourceInfo) {
-          const categoryKey = Object.entries(ORIGIN_TO_CITATION_TYPE)
-            .find(([_, v]) => v === sourceInfo.categoryType)?.[0] || sourceInfo.item.origin;
-          
-          if (categoryKey && categories.some(c => c.group === categoryKey)) {
-            setActiveCategory(categoryKey);
-          }
-        }
-        
-        // 延迟滚动到卡片位置
-        timers.scroll = setTimeout(() => {
-          const card = cardRefs.current.get(globalIndex);
-          if (card) {
-            card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-          }
-        }, 150);
-        
-        // 2秒后清除高亮
-        timers.clear = setTimeout(() => {
-          setLocalHighlight(null);
-        }, 2000);
+      if (event.messageId && messageId && event.messageId !== messageId) {
+        return;
       }
+      const target = citationLookup.get(`${event.type}:${event.index}`);
+      if (!target) return;
+
+      // 清理之前的定时器（防止快速点击时定时器堆积）
+      if (timers.scroll) clearTimeout(timers.scroll);
+      if (timers.clear) clearTimeout(timers.clear);
+
+      setOpen(true);
+      setLocalHighlightId(target.id);
+
+      if (categories.some(c => c.group === target.origin)) {
+        setActiveCategory(target.origin);
+      }
+
+      // 延迟滚动到卡片位置（等待 DOM 更新）
+      timers.scroll = setTimeout(() => {
+        const card = cardRefs.current.get(target.id);
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+      }, 150);
+
+      // 2秒后清除高亮
+      timers.clear = setTimeout(() => {
+        setLocalHighlightId(null);
+      }, 2000);
     };
 
     const unsubscribe = citationEvents.subscribe(handleCitationEvent);
     return () => {
       unsubscribe();
-      // 🔧 清理所有定时器
       if (timers.scroll) clearTimeout(timers.scroll);
       if (timers.clear) clearTimeout(timers.clear);
     };
-  }, [calculateGlobalIndexFromCitation, allSourcesWithIndex, categories]);
-
-  // 处理外部高亮定位请求
-  useEffect(() => {
-    if (highlightedSourceIndex === undefined || highlightedSourceIndex === null) {
-      return;
-    }
-
-    // 1. 展开面板
-    setOpen(true);
-    
-    // 2. 设置本地高亮状态
-    setLocalHighlight(highlightedSourceIndex);
-
-    // 3. 找到对应的来源并切换到正确的类别
-    const sourceInfo = allSourcesWithIndex.find(s => s.globalIndex === highlightedSourceIndex);
-    if (sourceInfo) {
-      // 找到该来源所属的类别
-      const categoryKey = Object.entries(ORIGIN_TO_CITATION_TYPE)
-        .find(([_, v]) => v === sourceInfo.categoryType)?.[0] || sourceInfo.item.origin;
-      
-      if (categoryKey && categories.some(c => c.group === categoryKey)) {
-        setActiveCategory(categoryKey);
-      }
-    }
-
-    // 4. 延迟滚动到卡片位置（等待 DOM 更新）
-    const scrollTimer = setTimeout(() => {
-      const card = cardRefs.current.get(highlightedSourceIndex);
-      if (card) {
-        card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-      }
-    }, 150);
-
-    // 5. 2 秒后清除高亮
-    const clearTimer = setTimeout(() => {
-      setLocalHighlight(null);
-      onHighlightClear?.();
-    }, 2000);
-
-    return () => {
-      clearTimeout(scrollTimer);
-      clearTimeout(clearTimer);
-    };
-  }, [highlightedSourceIndex, allSourcesWithIndex, categories, onHighlightClear]);
+  }, [citationLookup, categories, messageId]);
 
   const activeCategoryProviders = useMemo(() => {
     return categories.find(c => c.group === activeCategory)?.providers ?? [];
@@ -328,22 +373,16 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     return candidate;
   }, [t]);
 
+  // 当前分类的扁平条目（provider header + item）
+  // displayNumber 使用"类型内序号"（与 citation [类型-N] 徽章一致）
   const flatEntries = useMemo(() => {
-    const entries: Array<
-      | { type: 'header'; key: string; label: string; count?: number }
-      | { type: 'item'; key: string; item: UnifiedSourceItem; globalIndex: number }
-    > = [];
-
-    // 预建 id → globalIndex 映射，避免对每个 item 做 O(n) 查找
-    const globalIndexById = new Map<string, number>();
-    for (const s of allSourcesWithIndex) {
-      globalIndexById.set(s.item.id, s.globalIndex);
-    }
+    const entries: FlatEntry[] = [];
+    const showHeaders = activeCategoryProviders.length > 1;
+    let fallbackNumber = 0;
 
     activeCategoryProviders.forEach((provider, index) => {
       const displayLabel = resolveProviderLabel(provider.providerLabel, provider.providerId);
-      const shouldShowHeader = activeCategoryProviders.length > 1 || !!displayLabel;
-      if (shouldShowHeader && displayLabel) {
+      if (showHeaders && displayLabel) {
         entries.push({
           type: 'header',
           key: `header-${provider.providerId}-${index}`,
@@ -352,45 +391,87 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
         });
       }
 
-      (provider.items || []).forEach((item, itemIndex) => {
+      (provider.items || []).forEach(item => {
+        fallbackNumber += 1;
         entries.push({
           type: 'item',
-          key: `${provider.providerId || 'provider'}-${item.id}-${itemIndex}`,
+          key: item.id,
           item,
-          globalIndex: globalIndexById.get(item.id) ?? itemIndex,
+          displayNumber: item.typeIndex ?? fallbackNumber,
         });
       });
     });
 
     return entries;
-  }, [activeCategoryProviders, allSourcesWithIndex, resolveProviderLabel]);
+  }, [activeCategoryProviders, resolveProviderLabel]);
 
-  // 监听滚动状态（必须在 flatEntries 定义之后）
+  const totalItemsInCategory = useMemo(
+    () => flatEntries.reduce((acc, e) => (e.type === 'item' ? acc + 1 : acc), 0),
+    [flatEntries]
+  );
+
+  // 水平轮播：最多挂载 CAROUSEL_MAX_ITEMS 张卡，超出以"查看全部"卡收尾
+  const carouselEntries = useMemo(() => {
+    if (totalItemsInCategory <= CAROUSEL_MAX_ITEMS) return flatEntries;
+    const out: FlatEntry[] = [];
+    let itemCount = 0;
+    for (const entry of flatEntries) {
+      if (entry.type === 'item') {
+        if (itemCount >= CAROUSEL_MAX_ITEMS) break;
+        itemCount += 1;
+      }
+      out.push(entry);
+    }
+    return out;
+  }, [flatEntries, totalItemsInCategory]);
+
+  const carouselOverflow = Math.max(0, totalItemsInCategory - CAROUSEL_MAX_ITEMS);
+
+  // 展开网格：分页式懒挂载（"加载更多"）
+  const expandedEntries = useMemo(() => {
+    if (totalItemsInCategory <= visibleCount) return flatEntries;
+    const out: FlatEntry[] = [];
+    let itemCount = 0;
+    for (const entry of flatEntries) {
+      if (entry.type === 'item') {
+        if (itemCount >= visibleCount) break;
+        itemCount += 1;
+      }
+      out.push(entry);
+    }
+    return out;
+  }, [flatEntries, totalItemsInCategory, visibleCount]);
+
+  const expandedRemaining = Math.max(0, totalItemsInCategory - visibleCount);
+
+  // 监听滚动状态
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container || isExpanded) return;
-    
+
     checkScrollability();
     container.addEventListener('scroll', checkScrollability);
     window.addEventListener('resize', checkScrollability);
-    
+
     return () => {
       container.removeEventListener('scroll', checkScrollability);
       window.removeEventListener('resize', checkScrollability);
     };
-  }, [checkScrollability, isExpanded, flatEntries]);
+  }, [checkScrollability, isExpanded, carouselEntries]);
 
   const totalLabel = useMemo(() => {
     return t('common:chat.sources.total', { count: data?.total ?? 0 });
   }, [t, data?.total]);
 
-  const handleOpenLink = (item: UnifiedSourceItem) => {
+  const hasItems = (data?.total ?? 0) > 0;
+
+  const handleOpenLink = useCallback((item: UnifiedSourceItem) => {
     if (item.link && isHttpUrl(item.link)) {
       openUrl(item.link);
     }
-  };
+  }, []);
 
-  const handleLocateGraph = (item: UnifiedSourceItem) => {
+  const handleLocateGraph = useCallback((item: UnifiedSourceItem) => {
     const cardId = item.sourceId || (item.raw as any)?.source_id || item.raw.document_id;
     if (!cardId) return;
     try {
@@ -398,7 +479,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     } catch (error: unknown) {
       console.error('[UnifiedSourcePanel] Failed to dispatch graph locate event:', error);
     }
-  };
+  }, []);
 
   const getItemResourceLocator = useCallback((item: UnifiedSourceItem): ResourceLocator => buildResourceLocator({
     sourceId: item.sourceId || item.raw?.source_id || undefined,
@@ -408,12 +489,12 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     path: item.path,
   }), []);
 
-  const getMemoryLocateId = (item: UnifiedSourceItem): string => {
+  const getMemoryLocateId = useCallback((item: UnifiedSourceItem): string => {
     const locator = getItemResourceLocator(item);
     return locator.sourceId || locator.resourceId || '';
-  };
+  }, [getItemResourceLocator]);
 
-  const handleLocateMemory = (item: UnifiedSourceItem) => {
+  const handleLocateMemory = useCallback((item: UnifiedSourceItem) => {
     const locator = getItemResourceLocator(item);
     const memoryId = locator.sourceId || locator.resourceId;
     if (!memoryId) return;
@@ -425,10 +506,10 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     } catch (error: unknown) {
       console.error('[UnifiedSourcePanel] Failed to dispatch memory navigate event:', error);
     }
-  };
+  }, [getItemResourceLocator]);
 
-  // 🔧 P1-34: 跳转到知识库文档并高亮
-  const handleLocateRagDocument = (item: UnifiedSourceItem) => {
+  // 跳转到知识库文档并高亮（rag / multimodal 共用）
+  const handleLocateResource = useCallback((item: UnifiedSourceItem) => {
     const locator = getItemResourceLocator(item);
     if (!canLocateResource(locator)) return;
     try {
@@ -438,7 +519,53 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     } catch (error: unknown) {
       console.error('[UnifiedSourcePanel] Failed to dispatch knowledge base locate event:', error);
     }
-  };
+  }, [getItemResourceLocator]);
+
+  /**
+   * 来源项操作按钮（卡片底部 / 移动端列表 / hover 预览共用）
+   */
+  const renderItemAction = useCallback((item: UnifiedSourceItem, compact: boolean) => {
+    const btnClass = compact ? 'text-primary !h-6 text-xs' : 'text-primary';
+    const iconSize = compact ? 12 : 14;
+    if (item.origin === 'graph') {
+      return (
+        <NotionButton variant="ghost" size="sm" onClick={() => handleLocateGraph(item)} className={btnClass}>
+          <ArrowSquareOut size={iconSize} />
+          {t('common:chat.sources.locateGraph')}
+        </NotionButton>
+      );
+    }
+    if (item.origin === 'memory' && getMemoryLocateId(item)) {
+      return (
+        <NotionButton variant="ghost" size="sm" onClick={() => handleLocateMemory(item)} className={btnClass}>
+          <ArrowSquareOut size={iconSize} />
+          {t('common:chat.sources.locateMemory')}
+        </NotionButton>
+      );
+    }
+    if ((item.origin === 'rag' || item.origin === 'multimodal') && canLocateResource(getItemResourceLocator(item))) {
+      return (
+        <NotionButton variant="ghost" size="sm" onClick={() => handleLocateResource(item)} className={btnClass}>
+          <ArrowSquareOut size={iconSize} />
+          {t('common:chat.sources.locateKb')}
+        </NotionButton>
+      );
+    }
+    if (item.link && isHttpUrl(item.link)) {
+      return (
+        <NotionButton variant="ghost" size="sm" onClick={() => handleOpenLink(item)} className={btnClass}>
+          <ArrowSquareOut size={iconSize} />
+          {t('common:actions.open')}
+        </NotionButton>
+      );
+    }
+    return null;
+  }, [t, handleLocateGraph, handleLocateMemory, handleLocateResource, handleOpenLink, getMemoryLocateId, getItemResourceLocator]);
+
+  const registerCardRef = useCallback((id: string) => (el: HTMLElement | null) => {
+    if (el) cardRefs.current.set(id, el);
+    else cardRefs.current.delete(id);
+  }, []);
 
   // 展开时自动滚动到面板位置（随展开过程平滑跟随）
   useEffect(() => {
@@ -503,23 +630,176 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     };
   }, [open]);
 
-  // 无来源时不渲染（early return 必须在所有 hooks 之后）
-  if (!groups.length) {
+  // 无来源、无检索中、无错误时不渲染（early return 必须在所有 hooks 之后）
+  if (!groups.length && !isRetrieving && !errors.length) {
     return null;
   }
 
-  // 移动端：渲染来源列表项（垂直布局）
-  const renderMobileSourceItem = (entry: { type: 'item'; key: string; item: UnifiedSourceItem; globalIndex: number }) => {
-    const isHighlighted = localHighlight === entry.globalIndex;
-    const displayNumber = entry.globalIndex + 1;
+  // ========== 共享渲染片段 ==========
+
+  const renderHeaderTitle = () => {
+    if (isRetrieving && !hasItems) {
+      return (
+        <TextShimmer className="usp-header-title text-sm">
+          {t('chatV2:sourcePanel.retrieving')}
+        </TextShimmer>
+      );
+    }
+    if (!hasItems && errors.length > 0) {
+      return (
+        <span className="usp-header-title text-destructive">
+          {t('chatV2:sourcePanel.retrievalFailedGeneric')}
+        </span>
+      );
+    }
+    return <span className="usp-header-title">{totalLabel}</span>;
+  };
+
+  const renderRetrievingChip = () => {
+    if (!isRetrieving || !hasItems) return null;
+    return (
+      <TextShimmer className="usp-retrieving-chip text-xs font-normal">
+        {t('chatV2:sourcePanel.retrieving')}
+      </TextShimmer>
+    );
+  };
+
+  const renderErrorBar = () => {
+    if (!errors.length) return null;
+    const scopes = Array.from(new Set(errors.map(e => e.origin)))
+      .map(origin => t(`common:chat.sources.groupLabels.${origin}`, { defaultValue: origin }))
+      .join(' / ');
+    const detail = errors.find(e => e.message)?.message;
+    return (
+      <div
+        className="usp-error-bar flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 text-destructive px-2.5 py-1.5 text-xs"
+        role="status"
+        title={detail || undefined}
+      >
+        <WarningCircle size={16} className="shrink-0" />
+        <span className="truncate">
+          {t('chatV2:sourcePanel.retrievalFailed', { scopes })}
+        </span>
+      </div>
+    );
+  };
+
+  const renderSkeletonCards = (count: number, fullWidth = false) => (
+    Array.from({ length: count }).map((_, i) => (
+      <div
+        key={`usp-skeleton-${i}`}
+        className={cn(
+          'rounded-lg border border-border/50 bg-card p-2.5',
+          fullWidth ? 'w-full' : 'w-56 flex-shrink-0'
+        )}
+        aria-hidden
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <Skeleton className="w-5 h-5 rounded-full" />
+          <Skeleton className="h-3.5 w-28" />
+        </div>
+        <Skeleton className="h-3 w-full mb-1.5" />
+        <Skeleton className="h-3 w-3/4" />
+      </div>
+    ))
+  );
+
+  /** 桌面端来源卡片（多模态走 MultimodalSourceCard，其余走通用卡） */
+  const renderSourceCard = (
+    entry: Extract<FlatEntry, { type: 'item' }>,
+    expandedMode: boolean
+  ) => {
+    const isHighlighted = localHighlightId === entry.item.id;
+
+    if (entry.item.origin === 'multimodal') {
+      const canLocate = canLocateResource(getItemResourceLocator(entry.item));
+      return (
+        <MultimodalSourceCard
+          key={entry.key}
+          ref={registerCardRef(entry.item.id)}
+          item={entry.item}
+          displayNumber={entry.displayNumber}
+          highlighted={isHighlighted}
+          expanded={expandedMode}
+          onLocate={canLocate ? handleLocateResource : undefined}
+          onMouseEnter={(e) => openPreview(e, entry.item)}
+          onMouseLeave={scheduleClosePreview}
+        />
+      );
+    }
+
+    const snippetText = sanitizeSnippet(entry.item.snippet);
+
+    return (
+      <div
+        ref={registerCardRef(entry.item.id)}
+        className={cn(
+          'usp-item-card rounded-lg border bg-card p-2.5 hover:bg-[var(--interactive-hover)] transition-all cursor-default group',
+          !expandedMode && 'w-56 flex-shrink-0',
+          isHighlighted && 'shadow-[inset_0_0_0_2px_hsl(var(--primary)),0_10px_15px_-3px_rgb(0_0_0/0.1)]'
+        )}
+        key={entry.key}
+        role="listitem"
+        onMouseEnter={(e) => openPreview(e, entry.item)}
+        onMouseLeave={scheduleClosePreview}
+      >
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-2 overflow-hidden">
+            {/* 来源编号徽章（类型内序号，与 [类型-N] 契约一致） */}
+            <span className="flex-shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-semibold">
+              {entry.displayNumber}
+            </span>
+            <span className="text-muted-foreground shrink-0">{groupIcon(entry.item.origin)}</span>
+            <span className="text-sm font-medium truncate" title={entry.item.title}>{entry.item.title}</span>
+          </div>
+          {renderScore(entry.item)}
+        </div>
+        <div className="text-xs text-muted-foreground line-clamp-2 mb-1.5 h-8">
+          {snippetText}
+        </div>
+        <div className="flex items-center justify-between mt-auto pt-1.5 border-t border-border/50">
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider opacity-70">
+            {t(`common:chat.sources.groupLabels.${entry.item.origin}`, { defaultValue: entry.item.origin })}
+          </span>
+          {renderItemAction(entry.item, true)}
+        </div>
+      </div>
+    );
+  };
+
+  /** provider 分组标识（轮播 = 竖排分隔条；展开网格 = 整行小标题） */
+  const renderProviderHeader = (
+    entry: Extract<FlatEntry, { type: 'header' }>,
+    expandedMode: boolean
+  ) => {
+    if (expandedMode) {
+      return (
+        <div
+          key={entry.key}
+          className="usp-provider-header flex items-center gap-1.5 text-xs font-medium text-muted-foreground pt-1"
+          style={{ gridColumn: '1 / -1' }}
+        >
+          <span className="truncate">{entry.label}</span>
+          {entry.count != null && <span className="opacity-70">{entry.count}</span>}
+        </div>
+      );
+    }
+    return (
+      <div key={entry.key} className="usp-provider-divider" role="presentation" title={entry.label}>
+        <span className="usp-provider-divider-label">{entry.label}</span>
+      </div>
+    );
+  };
+
+  // ========== 移动端：inline 折叠 + 垂直/水平列表 ==========
+
+  const renderMobileSourceItem = (entry: Extract<FlatEntry, { type: 'item' }>) => {
+    const isHighlighted = localHighlightId === entry.item.id;
 
     return (
       <div
         key={entry.key}
-        ref={(el) => {
-          if (el) cardRefs.current.set(entry.globalIndex, el);
-          else cardRefs.current.delete(entry.globalIndex);
-        }}
+        ref={registerCardRef(entry.item.id)}
         className={cn(
           'p-3 rounded-lg border bg-card hover:bg-[var(--interactive-hover)] transition-all',
           isHighlighted && 'ring-1 ring-primary/30'
@@ -527,46 +807,31 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       >
         <div className="flex items-center gap-2 mb-2">
           <span className="flex-shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-sm font-semibold">
-            {displayNumber}
+            {entry.displayNumber}
           </span>
           <span className="text-muted-foreground">{groupIcon(entry.item.origin)}</span>
           <span className="font-medium truncate flex-1">{entry.item.title}</span>
           {renderScore(entry.item)}
         </div>
-        <div className="text-sm text-muted-foreground mb-2 line-clamp-3">
-          {entry.item.snippet}
+        <div className="flex items-start gap-2 mb-2">
+          {entry.item.origin === 'multimodal' && (
+            <SourceThumb item={entry.item} className="w-12 h-12 flex-shrink-0" />
+          )}
+          <div className="text-sm text-muted-foreground line-clamp-3 flex-1 min-w-0">
+            {entry.item.snippet}
+          </div>
         </div>
         <div className="flex items-center justify-between pt-2 border-t border-border/50">
           <span className="text-xs text-muted-foreground uppercase tracking-wider opacity-70">
             {t(`common:chat.sources.groupLabels.${entry.item.origin}`, { defaultValue: entry.item.origin })}
           </span>
-          {entry.item.origin === 'graph' ? (
-            <NotionButton variant="ghost" size="sm" onClick={() => handleLocateGraph(entry.item)} className="text-primary">
-              <ArrowSquareOut size={14} />
-              {t('common:chat.sources.locateGraph')}
-            </NotionButton>
-          ) : entry.item.origin === 'memory' && getMemoryLocateId(entry.item) ? (
-            <NotionButton variant="ghost" size="sm" onClick={() => handleLocateMemory(entry.item)} className="text-primary">
-              <ArrowSquareOut size={14} />
-              {t('common:chat.sources.locateMemory')}
-            </NotionButton>
-          ) : entry.item.origin === 'rag' && canLocateResource(getItemResourceLocator(entry.item)) ? (
-            <NotionButton variant="ghost" size="sm" onClick={() => handleLocateRagDocument(entry.item)} className="text-primary">
-              <ArrowSquareOut size={14} />
-              {t('common:chat.sources.locateKb')}
-            </NotionButton>
-          ) : entry.item.link && isHttpUrl(entry.item.link) ? (
-            <NotionButton variant="ghost" size="sm" onClick={() => handleOpenLink(entry.item)} className="text-primary">
-              <ArrowSquareOut size={14} />
-              {t('common:actions.open')}
-            </NotionButton>
-          ) : null}
+          {renderItemAction(entry.item, false)}
         </div>
       </div>
     );
   };
 
-  // 移动端：缩略卡片 + 底部抽屉模式
+  // 移动端：缩略卡片 + inline 垂直展开模式
   if (isMobile) {
     return (
       <div
@@ -585,15 +850,16 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
             aria-expanded={open}
           >
             <MagnifyingGlass size={16} className="panel-header-icon" />
-            <span className="usp-header-title">{totalLabel}</span>
+            {renderHeaderTitle()}
             <CaretRight size={16} className={cn('usp-header-arrow', open && 'expanded')} />
           </NotionButton>
+          {renderRetrievingChip()}
         </div>
 
         {/* 可折叠的内容区 */}
         <div
           className={cn(
-            'usp-collapse-wrapper grid w-full transition-all duration-300 ease-in-out',
+            'usp-collapse-wrapper grid w-full transition-all duration-300 ease-in-out motion-reduce:transition-none',
             open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'
           )}
           aria-hidden={!open}
@@ -601,48 +867,52 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
           <div className="min-h-0 overflow-hidden">
             <div className="usp-container">
               <div className="usp-body relative">
+                {renderErrorBar()}
+
                 {/* 分类标签 */}
-                <div className="usp-category-pills" role="tablist">
-                  {categories.map(category => {
-                    const isActive = category.group === activeCategory;
-                    const label = t(`common:chat.sources.groupLabels.${category.group}`, { defaultValue: category.group });
-                    return (
+                {categories.length > 0 && (
+                  <div className="usp-category-pills" role="tablist">
+                    {categories.map(category => {
+                      const isActive = category.group === activeCategory;
+                      const label = t(`common:chat.sources.groupLabels.${category.group}`, { defaultValue: category.group });
+                      return (
+                        <NotionButton
+                          key={`category-${category.group}`}
+                          variant="ghost"
+                          size="sm"
+                          className={cn('usp-category-pill', isActive && 'active')}
+                          onClick={() => setActiveCategory(category.group)}
+                          aria-pressed={isActive}
+                        >
+                          <span className="usp-pill-icon">{groupIcon(category.group)}</span>
+                          <span className="usp-pill-label">{label}</span>
+                          <span className="usp-pill-count">{category.count}</span>
+                        </NotionButton>
+                      );
+                    })}
+                    {/* 展开/收起按钮 → 移动端契约：不用底部抽屉，改为消息流内 inline 垂直展开 */}
+                    {totalItemsInCategory > 2 && (
                       <NotionButton
-                        key={`category-${category.group}`}
                         variant="ghost"
                         size="sm"
-                        className={cn('usp-category-pill', isActive && 'active')}
-                        onClick={() => setActiveCategory(category.group)}
-                        aria-pressed={isActive}
+                        className="usp-expand-btn ml-auto"
+                        onClick={() => setIsExpanded(prev => !prev)}
+                        title={isExpanded ? t('common:actions.collapse') : t('common:actions.expandAll')}
                       >
-                        <span className="usp-pill-icon">{groupIcon(category.group)}</span>
-                        <span className="usp-pill-label">{label}</span>
-                        <span className="usp-pill-count">{category.count}</span>
+                        {isExpanded ? <ArrowsIn size={14} /> : <ArrowsOut size={14} />}
+                        <span>{isExpanded ? t('common:actions.collapse') : t('common:actions.expandAll')}</span>
                       </NotionButton>
-                    );
-                  })}
-                  {/* 展开/收起按钮 → 移动端契约：不用底部抽屉，改为消息流内 inline 垂直展开 */}
-                  {flatEntries.filter(e => e.type === 'item').length > 2 && (
-                    <NotionButton
-                      variant="ghost"
-                      size="sm"
-                      className="usp-expand-btn ml-auto"
-                      onClick={() => setIsExpanded(prev => !prev)}
-                      title={isExpanded ? t('common:actions.collapse') : t('common:actions.expandAll')}
-                    >
-                      {isExpanded ? <ArrowsIn size={14} /> : <ArrowsOut size={14} />}
-                      <span>{isExpanded ? t('common:actions.collapse') : t('common:actions.expandAll')}</span>
-                    </NotionButton>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
 
                 {isExpanded ? (
-                  /* 展开态：inline 垂直列表（含分组标题），随消息流滚动，无遮挡可随时收起 */
+                  /* 展开态：inline 垂直列表（含分组标题 + 分页懒挂载），随消息流滚动 */
                   <div className="space-y-3 py-1">
-                    {flatEntries.length === 0 && (
+                    {expandedEntries.length === 0 && !isRetrieving && (
                       <div className="usp-empty w-full text-center py-4">{t('common:chat.sources.empty')}</div>
                     )}
-                    {flatEntries.map(entry => {
+                    {expandedEntries.map(entry => {
                       if (entry.type === 'header') {
                         return (
                           <div key={entry.key} className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-2">
@@ -652,6 +922,18 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                       }
                       return renderMobileSourceItem(entry);
                     })}
+                    {isRetrieving && renderSkeletonCards(2, true)}
+                    {expandedRemaining > 0 && (
+                      <div className="flex justify-center">
+                        <NotionButton
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setVisibleCount(c => c + EXPANDED_PAGE_SIZE)}
+                        >
+                          {t('chatV2:sourcePanel.loadMore', { count: expandedRemaining })}
+                        </NotionButton>
+                      </div>
+                    )}
                   </div>
                 ) : (
                 /* 收起态：来源卡片水平滚动列表 */
@@ -691,21 +973,19 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     viewportProps={{ role: 'list' }}
                     className="w-full"
                   >
-                    {flatEntries.length === 0 && (
+                    {carouselEntries.length === 0 && !isRetrieving && (
                       <div className="usp-empty w-full text-center py-4">{t('common:chat.sources.empty')}</div>
                     )}
-                    {flatEntries.map(entry => {
-                      if (entry.type === 'header') return null;
+                    {carouselEntries.map(entry => {
+                      if (entry.type === 'header') {
+                        return renderProviderHeader(entry, false);
+                      }
                       const snippetText = sanitizeSnippet(entry.item.snippet);
-                      const isHighlighted = localHighlight === entry.globalIndex;
-                      const displayNumber = entry.globalIndex + 1;
+                      const isHighlighted = localHighlightId === entry.item.id;
 
                       return (
                         <div
-                          ref={(el) => {
-                            if (el) cardRefs.current.set(entry.globalIndex, el);
-                            else cardRefs.current.delete(entry.globalIndex);
-                          }}
+                          ref={registerCardRef(entry.item.id)}
                           className={cn(
                             'usp-item-card w-44 flex-shrink-0 rounded-lg border bg-card p-2 transition-all cursor-default',
                             isHighlighted && 'shadow-[inset_0_0_0_2px_hsl(var(--primary))]'
@@ -715,17 +995,37 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                         >
                           <div className="flex items-center gap-1.5 mb-1">
                             <span className="flex-shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary/10 text-primary text-[10px] font-semibold">
-                              {displayNumber}
+                              {entry.displayNumber}
                             </span>
                             <span className="text-muted-foreground shrink-0">{groupIcon(entry.item.origin)}</span>
                             <span className="text-xs font-medium truncate">{entry.item.title}</span>
                           </div>
-                          <div className="text-[10px] text-muted-foreground line-clamp-2 h-6">
-                            {snippetText}
-                          </div>
+                          {entry.item.origin === 'multimodal' && resolveMultimodalImageSrc(entry.item) ? (
+                            <div className="flex items-start gap-1.5">
+                              <SourceThumb item={entry.item} className="w-9 h-9 flex-shrink-0" iconSize={14} />
+                              <div className="text-[10px] text-muted-foreground line-clamp-2 h-6 flex-1 min-w-0">
+                                {snippetText}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-muted-foreground line-clamp-2 h-6">
+                              {snippetText}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
+                    {isRetrieving && renderSkeletonCards(2)}
+                    {carouselOverflow > 0 && (
+                      <NotionButton
+                        variant="ghost"
+                        size="sm"
+                        className="usp-more-card w-28 flex-shrink-0 rounded-lg border border-dashed !h-auto self-stretch text-xs text-muted-foreground"
+                        onClick={() => setIsExpanded(true)}
+                      >
+                        {t('chatV2:sourcePanel.showAllCard', { count: totalItemsInCategory })}
+                      </NotionButton>
+                    )}
                   </CustomScrollArea>
                 </div>
                 )}
@@ -737,7 +1037,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     );
   }
 
-  // 桌面端：原有折叠面板模式
+  // ========== 桌面端：折叠面板 + 轮播/展开网格 + 可交互 hover 预览 ==========
   return (
     <div
       ref={panelRef}
@@ -755,9 +1055,10 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
           aria-controls={bodyId}
         >
           <MagnifyingGlass size={16} className="panel-header-icon" />
-          <span className="usp-header-title">{totalLabel}</span>
+          {renderHeaderTitle()}
           <CaretRight size={16} className={cn('usp-header-arrow', open && 'expanded')} />
         </NotionButton>
+        {renderRetrievingChip()}
         {data.stage && (
           <span className="usp-header-stage">{data.stage}</span>
         )}
@@ -779,40 +1080,44 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
             aria-hidden={!open}
           >
             <div className="usp-body relative">
-              <div className="usp-category-pills" role="tablist">
-                {categories.map(category => {
-                  const isActive = category.group === activeCategory;
-                  const label = t(`common:chat.sources.groupLabels.${category.group}`, { defaultValue: category.group });
-                  return (
+              {renderErrorBar()}
+
+              {categories.length > 0 && (
+                <div className="usp-category-pills" role="tablist">
+                  {categories.map(category => {
+                    const isActive = category.group === activeCategory;
+                    const label = t(`common:chat.sources.groupLabels.${category.group}`, { defaultValue: category.group });
+                    return (
+                      <NotionButton
+                        key={`category-${category.group}`}
+                        data-testid={`source-category-${category.group}`}
+                        variant="ghost"
+                        size="sm"
+                        className={cn('usp-category-pill', isActive && 'active')}
+                        onClick={() => setActiveCategory(category.group)}
+                        aria-pressed={isActive}
+                      >
+                        <span className="usp-pill-icon">{groupIcon(category.group)}</span>
+                        <span className="usp-pill-label">{label}</span>
+                        <span className="usp-pill-count">{category.count}</span>
+                      </NotionButton>
+                    );
+                  })}
+                  {/* 展开/收起按钮 */}
+                  {totalItemsInCategory > 3 && (
                     <NotionButton
-                      key={`category-${category.group}`}
-                      data-testid={`source-category-${category.group}`}
                       variant="ghost"
                       size="sm"
-                      className={cn('usp-category-pill', isActive && 'active')}
-                      onClick={() => setActiveCategory(category.group)}
-                      aria-pressed={isActive}
+                      className="usp-expand-btn ml-auto"
+                      onClick={() => setIsExpanded(prev => !prev)}
+                      title={isExpanded ? t('common:actions.collapse') : t('common:actions.expand')}
                     >
-                      <span className="usp-pill-icon">{groupIcon(category.group)}</span>
-                      <span className="usp-pill-label">{label}</span>
-                      <span className="usp-pill-count">{category.count}</span>
+                      {isExpanded ? <ArrowsIn size={14} /> : <ArrowsOut size={14} />}
+                      <span>{isExpanded ? t('common:actions.collapse') : t('common:actions.expandAll')}</span>
                     </NotionButton>
-                  );
-                })}
-                {/* 展开/收起按钮 */}
-                {flatEntries.filter(e => e.type === 'item').length > 3 && (
-                  <NotionButton
-                    variant="ghost"
-                    size="sm"
-                    className="usp-expand-btn ml-auto"
-                    onClick={() => setIsExpanded(prev => !prev)}
-                    title={isExpanded ? t('common:actions.collapse') : t('common:actions.expand')}
-                  >
-                    {isExpanded ? <ArrowsIn size={14} /> : <ArrowsOut size={14} />}
-                    <span>{isExpanded ? t('common:actions.collapse') : t('common:actions.expandAll')}</span>
-                  </NotionButton>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
 
               {/* 来源列表容器 */}
               <div className="usp-sources-wrapper relative">
@@ -859,112 +1164,91 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                   }}
                   className="w-full"
                 >
-                  {flatEntries.length === 0 && (
-                    <div className="usp-empty w-full text-center py-4">{t('common:chat.sources.empty')}</div>
+                  {totalItemsInCategory === 0 && !isRetrieving && (
+                    <div className="usp-empty w-full text-center py-4" style={isExpanded ? { gridColumn: '1 / -1' } : undefined}>
+                      {t('common:chat.sources.empty')}
+                    </div>
                   )}
 
-                {flatEntries.map(entry => {
-                  if (entry.type === 'header') {
-                    return null; // Skip headers in carousel mode
-                  }
+                  {(isExpanded ? expandedEntries : carouselEntries).map(entry => {
+                    if (entry.type === 'header') {
+                      return renderProviderHeader(entry, isExpanded);
+                    }
+                    return renderSourceCard(entry, isExpanded);
+                  })}
 
-                  const snippetText = sanitizeSnippet(entry.item.snippet);
-                  const isHighlighted = localHighlight === entry.globalIndex;
-                  const displayNumber = entry.globalIndex + 1; // 1-indexed for display
+                  {isRetrieving && renderSkeletonCards(hasItems ? 2 : 3, isExpanded)}
 
-                  return (
-                    <div
-                      ref={(el) => {
-                        if (el) cardRefs.current.set(entry.globalIndex, el);
-                        else cardRefs.current.delete(entry.globalIndex);
-                      }}
-                      id={`source-card-${entry.globalIndex}`}
-                      data-source-index={entry.globalIndex}
-                      className={cn(
-                        'usp-item-card rounded-lg border bg-card p-2.5 hover:bg-[var(--interactive-hover)] transition-all cursor-default group',
-                        !isExpanded && 'w-56 flex-shrink-0',
-                        isHighlighted && 'shadow-[inset_0_0_0_2px_hsl(var(--primary)),0_10px_15px_-3px_rgb(0_0_0/0.1)]'
-                      )}
-                      key={entry.key}
-                      role="listitem"
-                      onMouseEnter={(e) => handleItemMouseEnter(e, entry.item)}
-                      onMouseLeave={handleItemMouseLeave}
+                  {/* 轮播溢出：查看全部卡 */}
+                  {!isExpanded && carouselOverflow > 0 && (
+                    <NotionButton
+                      variant="ghost"
+                      size="sm"
+                      className="usp-more-card w-32 flex-shrink-0 rounded-lg border border-dashed !h-auto self-stretch text-xs text-muted-foreground"
+                      onClick={() => setIsExpanded(true)}
                     >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          {/* 来源编号徽章 */}
-                          <span className="flex-shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-semibold">
-                            {displayNumber}
-                          </span>
-                          <span className="text-muted-foreground shrink-0">{groupIcon(entry.item.origin)}</span>
-                          <span className="text-sm font-medium truncate" title={entry.item.title}>{entry.item.title}</span>
-                        </div>
-                        {renderScore(entry.item)}
-                      </div>
-                      <div className="text-xs text-muted-foreground line-clamp-2 mb-1.5 h-8">
-                        {snippetText}
-                      </div>
-                      <div className="flex items-center justify-between mt-auto pt-1.5 border-t border-border/50">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider opacity-70">
-                          {t(`common:chat.sources.groupLabels.${entry.item.origin}`, { defaultValue: entry.item.origin })}
-                        </span>
-                        {entry.item.origin === 'graph' ? (
-                          <NotionButton variant="ghost" size="sm" onClick={() => handleLocateGraph(entry.item)} className="text-primary !h-6 text-xs">
-                            <ArrowSquareOut size={12} />
-                            {t('common:chat.sources.locateGraph')}
-                          </NotionButton>
-                        ) : entry.item.origin === 'memory' && getMemoryLocateId(entry.item) ? (
-                          <NotionButton variant="ghost" size="sm" onClick={() => handleLocateMemory(entry.item)} className="text-primary !h-6 text-xs">
-                            <ArrowSquareOut size={12} />
-                            {t('common:chat.sources.locateMemory')}
-                          </NotionButton>
-                        ) : entry.item.origin === 'rag' && canLocateResource(getItemResourceLocator(entry.item)) ? (
-                          /* 🔧 P1-34: RAG 来源添加“在知识库中打开”按钮 */
-                          <NotionButton variant="ghost" size="sm" onClick={() => handleLocateRagDocument(entry.item)} className="text-primary !h-6 text-xs">
-                            <ArrowSquareOut size={12} />
-                            {t('common:chat.sources.locateKb')}
-                          </NotionButton>
-                        ) : entry.item.link && isHttpUrl(entry.item.link) ? (
-                          <NotionButton variant="ghost" size="sm" onClick={() => handleOpenLink(entry.item)} className="text-primary !h-6 text-xs">
-                            <ArrowSquareOut size={12} />
-                            {t('common:actions.open')}
-                          </NotionButton>
-                        ) : null}
-                      </div>
+                      {t('chatV2:sourcePanel.showAllCard', { count: totalItemsInCategory })}
+                    </NotionButton>
+                  )}
+
+                  {/* 展开网格：分页加载更多 */}
+                  {isExpanded && expandedRemaining > 0 && (
+                    <div className="flex justify-center py-1" style={{ gridColumn: '1 / -1' }}>
+                      <NotionButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setVisibleCount(c => c + EXPANDED_PAGE_SIZE)}
+                      >
+                        {t('chatV2:sourcePanel.loadMore', { count: expandedRemaining })}
+                      </NotionButton>
                     </div>
-                  );
-                })}
+                  )}
                 </CustomScrollArea>
               </div>
 
-              {/* Hover Preview via Portal */}
-              {hoveredItem && previewPos && createPortal(
+              {/* 可交互 Hover 预览（portal 浮层，滚动/切分类时关闭） */}
+              {preview && createPortal(
                 (() => {
-                  const showBelow = previewPos.top < 320;
-                  const top = showBelow ? previewPos.bottom + 10 : previewPos.top - 10;
-                  const left = Math.min(window.innerWidth - 340, Math.max(10, previewPos.left));
+                  const { item, anchor } = preview;
+                  const showBelow = anchor.top < 360;
+                  const top = showBelow ? anchor.bottom + 10 : anchor.top - 10;
+                  const left = Math.min(window.innerWidth - 340, Math.max(10, anchor.left));
                   const transform = showBelow ? 'none' : 'translateY(-100%)';
+                  const isMultimodalItem = item.origin === 'multimodal';
 
                   return (
                     <div
-                      className="fixed w-80 max-h-80 p-4 bg-popover text-popover-foreground rounded-xl shadow-lg ring-1 ring-border/40 border-transparent text-sm pointer-events-none ui-zoom-fade-in flex flex-col"
+                      ref={previewElRef}
+                      className="fixed w-80 max-h-96 p-4 bg-popover text-popover-foreground rounded-xl shadow-lg ring-1 ring-border/40 border-transparent text-sm pointer-events-auto ui-zoom-fade-in flex flex-col"
                       style={{
                         zIndex: Z_INDEX.toast,
                         top,
                         left,
                         transform
                       }}
+                      role="tooltip"
+                      onMouseEnter={cancelClosePreview}
+                      onMouseLeave={scheduleClosePreview}
                     >
                       <div className="font-semibold mb-2 flex items-center gap-2 border-b pb-2 shrink-0">
-                        {groupIcon(hoveredItem.origin)}
-                        <span className="truncate">{hoveredItem.title}</span>
-                        {renderScore(hoveredItem)}
+                        {groupIcon(item.origin)}
+                        <span className="truncate">{item.title}</span>
+                        {renderScore(item)}
                       </div>
+                      {isMultimodalItem && (
+                        <SourceThumb item={item} className="w-full h-32 mb-2 shrink-0" iconSize={20} />
+                      )}
                       <CustomScrollArea className="flex-1 min-h-0" hideTrackWhenIdle={false}>
-                        <div className="text-muted-foreground text-xs leading-relaxed">
-                          {hoveredItem.snippet}
+                        <div className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
+                          {item.snippet || t('common:chat.sources.multimodal.noSnippet')}
                         </div>
                       </CustomScrollArea>
+                      <div className="flex items-center justify-between pt-2 mt-2 border-t border-border/50 shrink-0">
+                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider opacity-70">
+                          {t(`common:chat.sources.groupLabels.${item.origin}`, { defaultValue: item.origin })}
+                        </span>
+                        {renderItemAction(item, true)}
+                      </div>
                     </div>
                   );
                 })(),
@@ -979,6 +1263,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
 };
 
 export default UnifiedSourcePanel;
+
 function sanitizeSnippet(value?: string | null): string {
   const raw = (value ?? '').trim();
   if (!raw) return '';

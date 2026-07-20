@@ -124,6 +124,23 @@ const LOAD_SESSION_TAIL_LIMIT = 80;
 const FULL_HISTORY_IDLE_TIMEOUT_MS = 1_000;
 const FULL_HISTORY_MAX_RETRIES = 2;
 const FULL_HISTORY_RETRY_BASE_MS = 500;
+/**
+ * 历史补页批量：与后端 chat_v2_load_messages_page 的默认 limit 对齐。
+ * 补页阶段按窗口渐进拉取，替代旧的"idle 后全量二次拉取"反模式；
+ * 全量路径仅在分页命令 invoke 失败时作为 fallback。
+ */
+const HISTORY_BACKFILL_PAGE_SIZE = 100;
+/** 补页页数上限（100 页 = 1 万条消息），防御异常长会话拖垮主线程 */
+const HISTORY_BACKFILL_MAX_PAGES = 100;
+
+/** chat_v2_load_messages_page 响应（messages/blocks 结构与 load_session 一致） */
+interface LoadMessagesPageResponseType {
+  messages: LoadSessionResponseType['messages'];
+  blocks: LoadSessionResponseType['blocks'];
+  totalMessageCount: number;
+  offset: number;
+  limit: number;
+}
 // Block and session lifecycle events use separate Tauri channels. Keep a
 // short quiet window before success cleanup so the block-channel tail can be
 // processed and flushed first without adding perceptible completion latency.
@@ -210,6 +227,8 @@ export class ChatV2TauriAdapter {
   private cancelScheduledFullHistoryLoad: (() => void) | null = null;
   private fullHistoryLoadInFlight = false;
   private fullHistoryLoadComplete = false;
+  /** 最近一次 loadSession 返回的会话信息（分页补页构造合并响应用） */
+  private lastLoadedSessionInfo: LoadSessionResponseType['session'] | null = null;
   
   /** 🚀 性能优化：数据恢复完成回调，在 restoreFromBackend 后立即触发 */
   public onDataRestored: (() => void) | null = null;
@@ -1023,6 +1042,7 @@ export class ChatV2TauriAdapter {
     this.cancelScheduledFullHistoryLoad?.();
     this.cancelScheduledFullHistoryLoad = null;
     this.fullHistoryLoadComplete = false;
+    this.lastLoadedSessionInfo = null;
 
     // 等待监听器注册完成，确保 unlisteners 已填充
     if (this.listenersReadyPromise) {
@@ -3638,6 +3658,9 @@ export class ChatV2TauriAdapter {
         return;
       }
 
+      // 记录会话信息供第二阶段分页补页构造合并响应
+      this.lastLoadedSessionInfo = response.session;
+
       // 使用 Store 的 restoreFromBackend 方法恢复状态
       this.store.restoreFromBackend(response, restoreBaseline);
       clearAdapterErrorFlag(this.sessionId, this.getErrorStoreApi(), ['session_load_failed']);
@@ -3669,7 +3692,8 @@ export class ChatV2TauriAdapter {
   }
 
   /**
-   * 尾部分块加载第二阶段：空闲期全量加载并把缺失历史合并到正确位置。
+   * 尾部分块加载第二阶段：空闲期分批向前补页（chat_v2_load_messages_page），
+   * 把缺失历史合并到正确位置；分页命令不可用时退回全量二次拉取 fallback。
    * 失败静默降级（首屏尾部数据已可用；下次进入会话会重试）。
    */
   private scheduleFullHistoryLoad(attempt = 0): void {
@@ -3711,6 +3735,15 @@ export class ChatV2TauriAdapter {
       if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return;
       this.fullHistoryLoadInFlight = true;
       try {
+        // 首选：分批向前补页（chat_v2_load_messages_page，每批 ~100 条）
+        const pagedResult = await this.backfillHistoryByPages(generation);
+        if (pagedResult === 'done') {
+          this.fullHistoryLoadComplete = true;
+          return;
+        }
+        if (pagedResult === 'stale') return;
+
+        // fallback：分页命令 invoke 失败（旧后端/异常）时退回全量二次拉取
         const t0 = performance.now();
         const restoreBaseline = this.captureRestoreBaseline();
         const fullResponse = await invoke<LoadSessionResponseType>('chat_v2_load_session', {
@@ -3719,7 +3752,7 @@ export class ChatV2TauriAdapter {
         if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return;
         this.store.prependHistoryFromBackend(fullResponse, restoreBaseline);
         this.fullHistoryLoadComplete = true;
-        console.log(LOG_PREFIX, 'Full history merged:', {
+        console.log(LOG_PREFIX, 'Full history merged (fallback path):', {
           sessionId: this.sessionId,
           totalMessages: fullResponse.messages?.length ?? 0,
           invokeMs: Math.round(performance.now() - t0),
@@ -3761,6 +3794,93 @@ export class ChatV2TauriAdapter {
       idleId = window.setTimeout(() => { void run(); }, 120);
     }
     this.cancelScheduledFullHistoryLoad = cancelSchedule;
+  }
+
+  /**
+   * 分批向前补齐历史：从 offset 0 起按 HISTORY_BACKFILL_PAGE_SIZE 逐窗口拉取
+   * `chat_v2_load_messages_page`，每页立即合并进 store（prepend 幂等，已存在的
+   * 消息/块会被跳过，尾部窗口重叠无副作用）。
+   *
+   * 返回值：
+   * - `'done'`：补齐完成（或达到页数上限后主动收尾）
+   * - `'stale'`：会话已切换/adapter 已过期，放弃
+   * - `'unsupported'`：分页命令 invoke 失败（旧后端未注册/后端异常），
+   *   调用方应退回全量加载 fallback
+   */
+  private async backfillHistoryByPages(
+    generation: number,
+  ): Promise<'done' | 'stale' | 'unsupported'> {
+    const session = this.lastLoadedSessionInfo;
+    if (!session || session.id !== this.sessionId) {
+      // 没有可用的会话信息（理论上 loadSession 已写入），退回全量路径
+      return 'unsupported';
+    }
+
+    const t0 = performance.now();
+    let offset = 0;
+    let total = Number.POSITIVE_INFINITY;
+    let pagesFetched = 0;
+    let mergedMessages = 0;
+
+    while (offset < total && pagesFetched < HISTORY_BACKFILL_MAX_PAGES) {
+      if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) {
+        return 'stale';
+      }
+
+      const restoreBaseline = this.captureRestoreBaseline();
+      let page: LoadMessagesPageResponseType;
+      try {
+        page = await invoke<LoadMessagesPageResponseType>('chat_v2_load_messages_page', {
+          sessionId: this.sessionId,
+          offset,
+          limit: HISTORY_BACKFILL_PAGE_SIZE,
+        });
+      } catch (error) {
+        console.warn(
+          LOG_PREFIX,
+          'Paged history load failed, will fall back to full load:',
+          getErrorMessage(error),
+        );
+        return 'unsupported';
+      }
+
+      if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) {
+        return 'stale';
+      }
+
+      if (page.messages.length > 0) {
+        this.store.prependHistoryFromBackend(
+          { session, messages: page.messages, blocks: page.blocks },
+          restoreBaseline,
+        );
+        mergedMessages += page.messages.length;
+      }
+
+      total = page.totalMessageCount;
+      pagesFetched += 1;
+      if (page.messages.length === 0) {
+        // 服务端返回空页（total 与实际行数竞态），防御死循环直接收尾
+        break;
+      }
+      offset += page.messages.length;
+    }
+
+    if (pagesFetched >= HISTORY_BACKFILL_MAX_PAGES && offset < total) {
+      console.warn(LOG_PREFIX, 'History backfill hit page cap, stopping early:', {
+        sessionId: this.sessionId,
+        offset,
+        total,
+      });
+    }
+
+    console.log(LOG_PREFIX, 'History backfilled by pages:', {
+      sessionId: this.sessionId,
+      pagesFetched,
+      mergedMessages,
+      totalMessages: total,
+      elapsedMs: Math.round(performance.now() - t0),
+    });
+    return 'done';
   }
 
   /**

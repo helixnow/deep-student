@@ -1,5 +1,6 @@
 import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Brain } from '@phosphor-icons/react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
 import { canUseDirectFlowTokenMarkdown } from './flowTokenEligibility';
@@ -267,7 +268,7 @@ export const EnhancedStreamingMarkdownRenderer: React.FC<BaseStreamingProps> = m
           {parsed.thinkingContent && (
             <div className="chain-of-thought">
               <div className="chain-header">
-                <span className="chain-icon">🧠</span>
+                <span className="chain-icon" aria-hidden="true"><Brain size={15} weight="duotone" /></span>
                 <span className="chain-title">{t('renderer.aiThinkingProcess')}</span>
               </div>
               <div className="thinking-content">

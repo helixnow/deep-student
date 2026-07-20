@@ -190,7 +190,7 @@ export function createMessageActions(
           if (state.messageOperationLock) {
             console.warn('[ChatStore] deleteMessage: Operation in progress, ignoring:', state.messageOperationLock);
             // 🔧 P2修复：显示用户友好的提示（带节流）
-            showOperationLockNotification();
+            showOperationLockNotification(state.sessionId);
             return;
           }
 
@@ -321,7 +321,7 @@ export function createMessageActions(
             }, 'warning', { messageId });
             console.warn('[ChatStore] editAndResend: Operation in progress, ignoring:', state.messageOperationLock);
             // 🔧 P2修复：显示用户友好的提示（带节流）
-            showOperationLockNotification();
+            showOperationLockNotification(state.sessionId);
             return;
           }
 
@@ -705,7 +705,7 @@ export function createMessageActions(
             }, 'warning', { messageId });
             console.warn('[ChatStore] retryMessage: Operation in progress, ignoring:', state.messageOperationLock);
             // 🔧 P2修复：显示用户友好的提示（带节流）
-            showOperationLockNotification();
+            showOperationLockNotification(state.sessionId);
             return;
           }
 
@@ -1109,6 +1109,8 @@ export function createMessageActions(
               streamingVariantIds: new Set(),
               messageOperationLock: null,
               pendingBlockingInteraction: null,
+              // 兼容旧字段与新字段保持镜像一致（见 sessionActions 阻塞交互 Actions）
+              pendingApprovalRequest: null,
               pendingParallelModelIds: null,
               modelRetryTarget: null,
             };

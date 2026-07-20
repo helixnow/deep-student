@@ -1,4 +1,6 @@
 import React, { useMemo, useEffect, useCallback, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { ImageBroken } from '@phosphor-icons/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -12,8 +14,8 @@ import { TableBlockShell } from '../ui/TableBlockShell';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
 import { sanitizeDanglingMarkdown } from './sanitizeDanglingMarkdown';
 import { openUrl } from '@/utils/urlOpener';
-import { makeCitationRemarkPlugin, CITATION_PLACEHOLDER_STYLES } from '../../utils/citationRemarkPlugin';
-import { CitationBadge } from '../../plugins/blocks/components/CitationPopover';
+import { makeCitationRemarkPlugin, ensureCitationPlaceholderStyles } from '../../utils/citationRemarkPlugin';
+import { CitationBadgeWithPopover } from '../../plugins/blocks/components/CitationPopover';
 import { MindmapCitationCard } from '../MindmapCitationCard';
 import { QbankCitationBadge } from '../QbankCitationBadge';
 
@@ -223,6 +225,46 @@ const AsyncCitationImage: React.FC<{
         console.warn('[MarkdownRenderer] Citation image load failed:', imageUrl);
         (e.target as HTMLImageElement).style.display = 'none';
       }}
+    />
+  );
+};
+
+/**
+ * 正文图片：加载失败时显示内联 broken 占位（图标 + alt/提示文案），
+ * 替代原先的 display:none 静默消失——读者能感知"这里本应有图"。
+ */
+const MarkdownImage: React.FC<{
+  src?: string;
+  alt?: string;
+  [key: string]: unknown;
+}> = ({ src, alt, ...props }) => {
+  const { t } = useTranslation('chatV2');
+  const [failed, setFailed] = useState(false);
+
+  // src 变化（如流式补全 URL）时重置失败态，给新地址一次加载机会
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (failed || !src) {
+    return (
+      <span className="markdown-img-fallback" role="img" aria-label={alt || t('renderer.imageLoadFailed')}>
+        <ImageBroken size={14} aria-hidden="true" />
+        <span>{alt || t('renderer.imageLoadFailed')}</span>
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt || 'image'}
+      style={{ maxWidth: '100%', height: 'auto', borderRadius: '8px' }}
+      onError={() => {
+        console.warn('[MarkdownRenderer] Image load failed:', src);
+        setFailed(true);
+      }}
+      {...props}
     />
   );
 };
@@ -474,18 +516,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
     ensureKatexStyles();
   }, []);
 
-  // 🆕 注入引用徽章样式（支持热更新）
+  // 注入引用徽章样式（P2-7：幂等注入，多实例共用同一 <style>，支持热更新）
   useEffect(() => {
-    const styleId = 'citation-badge-styles';
-    let style = document.getElementById(styleId) as HTMLStyleElement | null;
-    if (!style) {
-      style = document.createElement('style');
-      style.id = styleId;
-      document.head.appendChild(style);
-    }
-    if (style.textContent !== CITATION_PLACEHOLDER_STYLES) {
-      style.textContent = CITATION_PLACEHOLDER_STYLES;
-    }
+    ensureCitationPlaceholderStyles();
   }, []);
 
   // 🆕 引用标记点击处理
@@ -680,22 +713,11 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
           table: ({ children }) => (
             <TableBlockShell>{children}</TableBlockShell>
           ),
-          // 🔧 修复：自定义图片渲染，支持本地文件路径转换为 asset:// URL
-          img: ({ src, alt, node: _node, ...props }: any) => {
-            const finalSrc = resolveImageSrc(src);
-            return (
-              <img
-                src={finalSrc}
-                alt={alt || 'image'}
-                style={{ maxWidth: '100%', height: 'auto', borderRadius: '8px' }}
-                onError={(e) => {
-                  console.warn('[MarkdownRenderer] Image load failed:', finalSrc);
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-                {...props}
-              />
-            );
-          },
+          // 🔧 修复：自定义图片渲染，支持本地文件路径转换为 asset:// URL；
+          // 加载失败时显示内联 broken 占位（非静默隐藏）
+          img: ({ src, alt, node: _node, ...props }: any) => (
+            <MarkdownImage src={resolveImageSrc(src)} alt={alt} {...props} />
+          ),
           p: ({ children, node: _node, ...props }: any) => {
             const childArray = React.Children.toArray(children);
             const hasMindmapCard = childArray.some((child) =>
@@ -749,9 +771,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             const citationIndex = Number(props['data-citation-index'] || 0);
             // 🔧 P37: 只有显式使用 [知识库-1:图片] 格式时才渲染图片
             const showImage = props['data-citation-show-image'] === 'true';
-            const handleBadgeClick = (e: React.MouseEvent) => {
-              e.preventDefault();
-              e.stopPropagation();
+            const handleBadgeNavigate = () => {
               if (citationType && citationIndex > 0 && onCitationClick) {
                 onCitationClick(citationType, citationIndex);
               }
@@ -780,9 +800,10 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
                   data-citation-type={citationType}
                   data-citation-index={citationIndex}
                 >
-                  <CitationBadge
-                    index={Math.max(citationIndex - 1, 0)}
-                    onClick={handleBadgeClick}
+                  <CitationBadgeWithPopover
+                    citationType={citationType}
+                    citationIndex={citationIndex}
+                    onNavigate={handleBadgeNavigate}
                   />
                   <AsyncCitationImage
                     imageInfo={imageInfo}
@@ -793,11 +814,13 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
               );
             }
             
-            // 无图片时直接返回 CitationBadge（不再套外层 span）
+            // 无图片时直接返回带 hover 预览的徽章（不再套外层 span）
+            // 来源数据经 CitationSourceContext resolve（content.tsx 提供）
             return (
-              <CitationBadge
-                index={Math.max(citationIndex - 1, 0)}
-                onClick={handleBadgeClick}
+              <CitationBadgeWithPopover
+                citationType={citationType}
+                citationIndex={citationIndex}
+                onNavigate={handleBadgeNavigate}
               />
             );
           },

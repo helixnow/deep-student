@@ -468,6 +468,7 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
 
   const overlay = (
     <div
+      data-wb-blur-surface
       className={cn(
         'bg-black/40 dark:bg-black/50 backdrop-blur-sm',
         'relative flex flex-col',

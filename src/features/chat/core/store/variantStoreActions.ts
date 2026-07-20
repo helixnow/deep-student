@@ -1,4 +1,3 @@
-import { flushSync } from 'react-dom';
 import i18n from 'i18next';
 import type { Variant, VariantStatus } from '../types/message';
 import type { ChatStore } from '../types';
@@ -185,7 +184,7 @@ export function createVariantStoreActions(
           // 🆕 P1修复：检查操作锁（与 retryMessage 保持一致）
           if (state.messageOperationLock) {
             console.warn('[ChatStore] retryVariant: Operation in progress, ignoring:', state.messageOperationLock);
-            showOperationLockNotification();
+            showOperationLockNotification(state.sessionId);
             return;
           }
 
@@ -337,7 +336,7 @@ export function createVariantStoreActions(
           // 🆕 P1修复：检查操作锁（避免并发操作）
           if (state.messageOperationLock) {
             console.warn('[ChatStore] retryAllVariants: Operation in progress, ignoring:', state.messageOperationLock);
-            showOperationLockNotification();
+            showOperationLockNotification(state.sessionId);
             return;
           }
 
@@ -808,16 +807,9 @@ export function createVariantStoreActions(
             })(s);
           });
 
-          // 🔧 FIX: 对于 content 和 thinking 块，强制 React 同步提交更新
-          // addBlockToVariant 在变体模式下被调用，需要确保块立即在UI中可见
-          const block = getState().blocks.get(blockId);
-          if (block && (block.type === 'content' || block.type === 'thinking')) {
-            try {
-              flushSync(() => {});
-            } catch {
-              // flushSync 可能失败，忽略
-            }
-          }
+          // 性能说明（P0）：此处不再调用 flushSync。
+          // set() 已同步写入 store，后续 chunk 直接累积到 store，
+          // React 在下一次批量渲染中挂载/更新组件即可读到完整内容。
         },
 
         addBlockToMessage: (messageId: string, blockId: string): void => {

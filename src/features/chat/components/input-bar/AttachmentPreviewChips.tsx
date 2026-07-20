@@ -170,7 +170,8 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                       <Icon size={12} aria-hidden="true" />
                     )}
                   </span>
-                  {/* Hover：X 图标覆盖 */}
+                  {/* Hover：X 图标覆盖。P0-3：触屏（pointer:coarse）没有 hover，
+                      删除按钮常显，且用透明伪元素把命中区域扩到 ≥44px */}
                   {!disabled && (
                     <button
                       type="button"
@@ -180,7 +181,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                       }}
                       aria-label={`${t('analysis:input_bar.attachments.remove')} ${attachment.name}`}
                       title={`${t('analysis:input_bar.attachments.remove')} ${attachment.name}`}
-                      className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity duration-150 group-hover/attachment-chip:opacity-100 focus-visible:opacity-100"
+                      className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity duration-150 group-hover/attachment-chip:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none [@media(pointer:coarse)]:opacity-100 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']"
                     >
                       <X size={10} weight="bold" aria-hidden="true" />
                     </button>

@@ -39,7 +39,6 @@ export function createBlockActions(
         /**
          * 🔧 P3重构：抽取公共的块创建逻辑
          * createBlock 和 createBlockWithId 共享此内部实现
-         * 注意：flushSync 已移至 createBlockInternal 内部
          */
         createBlock: (messageId: string, type: BlockType): string => {
           const blockId = generateId('blk');

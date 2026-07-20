@@ -75,6 +75,9 @@ export const ComposerToolButton: React.FC<ComposerToolButtonProps> = ({
       className={cn(
         // 基础几何：与原 iconButtonClass 保持一致
         'relative inline-flex h-9 w-9 items-center justify-center',
+        // P1-3 触控目标：36px 视觉尺寸不变，触屏（pointer:coarse）用透明伪元素
+        // 把命中区域扩到 ≥44px（36 + 4×2），与 InputBarUI.coarseHitAreaClass 同款
+        "[@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']",
         'rounded-[var(--radius-shell-control)] transition-colors',
         // 状态色：active 走 --button-primary-* 强调色 token（无边框）
         active

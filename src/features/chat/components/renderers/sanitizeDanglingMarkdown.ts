@@ -11,7 +11,10 @@
  * - 代码块(fence)和行内代码(`)内部不计数
  * - 奇数个标记自动补尾闭合
  * - 半截 [link 截断（等闭合后完整显示）
+ * - 半截引用标记（[知识库-… / [PDF@… 等）保留原文不截断（P0-1 防闪烁）
  */
+
+import { isDanglingCitationStart } from '../../utils/citationRemarkPlugin';
 
 export type Range = { start: number; end: number };
 
@@ -93,6 +96,9 @@ export const sanitizeDanglingMarkdown = (content: string): { text: string; touch
   // - 旧实现 `[^\]]*` 可跨行匹配，几行之前的普通 `[`（如 arr[i）会把
   //   后续所有正文连同刚补上的 ``` 闭栏一起吞掉
   // - 代码内的 `[`（行内代码/围栏）不是链接起始，不应触发截断
+  // - P0-1：半截引用标记（[知识库-… / [PDF@… / [思维导图:… 等）不是链接。
+  //   截掉会让引用前的文本随 token 反复缩短/回涨（徽章闪烁根因），
+  //   保留原文，闭合 `]` 到达后由 citation remark 插件正常接管渲染。
   const preExcluded = computeExcludedRanges(text);
   const linkMatch = text.match(/!?\[[^\]\n]*$/);
   if (
@@ -100,8 +106,13 @@ export const sanitizeDanglingMarkdown = (content: string): { text: string; touch
     linkMatch.index !== undefined &&
     !isIndexExcluded(linkMatch.index, preExcluded)
   ) {
-    text = text.slice(0, linkMatch.index);
-    touched = true;
+    const matched = linkMatch[0];
+    const isCitationLike =
+      matched.startsWith('[') && isDanglingCitationStart(matched.slice(1));
+    if (!isCitationLike) {
+      text = text.slice(0, linkMatch.index);
+      touched = true;
+    }
   }
 
   // 3. 配对标记计数（排除代码块/行内代码/列表标记/hr 行内的标记）

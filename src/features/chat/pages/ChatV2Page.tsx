@@ -7,43 +7,34 @@
  * 3. 多种功能（RAG/图谱/记忆/网络搜索）
  */
 
-import React, { useState, useCallback, useEffect, useMemo, useDeferredValue, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Chat, PencilSimple, Check, X, SquaresFour, Books, FileText, BookOpen, ClipboardText, Image, File, CircleNotch, DotsSixVertical, List, ArrowClockwise, Folder, ArrowSquareOut } from '@phosphor-icons/react';
+import { Plus, Chat, X, FileText, BookOpen, ClipboardText, Image, File, CircleNotch, DotsSixVertical, Warning, ArrowSquareOut, SquaresFour } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
-import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ChatContainer } from '../components/ChatContainer';
 import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
+import { ThreadContentShell } from '../components/ui/ThreadContentShell';
 import { SessionBrowser } from '../components/session-browser';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { TauriAPI } from '@/utils/tauriApi';
 // Learning Hub 学习资源侧边栏
 import { LearningHubSidebar } from '@/features/learning-hub';
 import type { ResourceListItem, ResourceType } from '@/features/learning-hub/types';
 import { useFinderStore } from '@/features/learning-hub/stores/finderStore';
-import { MobileBreadcrumb } from '@/features/learning-hub/components/MobileBreadcrumb';
 import { useNotesOptional } from '@/features/notes/NotesContext';
-import { registerOpenResourceHandler } from '@/dstu/openResource';
-import type { DstuNode } from '@/dstu/types';
-import { mapDstuNodeToLearningHubItem } from './openResourceMapping';
-import { RESOURCE_ID_PREFIX_MAP } from '@/dstu/types/path';
 import { lazy, Suspense } from 'react';
 
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { GroupEditorPanel, PRESET_ICONS } from '../components/groups/GroupEditorDialog';
-import { SessionGroupActions } from './SessionGroupActions';
-import { createSessionWithDefaults } from '../core/session/createSessionWithDefaults';
 import { useGroupManagement } from '../hooks/useGroupManagement';
 import { useGroupCollapse } from '../hooks/useGroupCollapse';
-import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../types/group';
+import type { SessionGroup } from '../types/group';
 import type { ChatSession } from '../types/session';
-import { usePageMount, pageLifecycleTracker } from '@/debug-panel/hooks/usePageLifecycle';
+import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
+import { MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useViewStore } from '@/stores/viewStore';
 import { SandboxWorkbenchSurface } from '@/features/sandbox/components/SandboxWorkbenchSurface';
@@ -54,18 +45,9 @@ import {
 } from '@/features/sandbox/store/useSandboxWorkbenchStore';
 import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from '@/app/shell/DesktopShellIcons';
 import { DESKTOP_SHELL } from '@/app/shell/desktopShell';
-// P1-07: 导入命令面板事件 hook
-import { useCommandEvents, COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 // P1-07: 导入 sessionManager 以访问当前会话 store
 import { sessionManager } from '../core/session/sessionManager';
-import { groupCache } from '../core/store/groupCache';
-import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useUIStore } from '@/stores/uiStore';
-// 导入默认技能管理器（用于新会话自动激活默认技能）
-// P1-06: 导入 Tauri 文件对话框，用于创建分析会话时选择图片
-import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
-import { convertFileSrc } from '@tauri-apps/api/core';
 
 // 懒加载统一应用面板
 const UnifiedAppPanel = lazy(() => import('@/features/learning-hub/apps/UnifiedAppPanel').then(m => ({ default: m.UnifiedAppPanel })));
@@ -78,9 +60,9 @@ import { useChatPageLayout } from './useChatPageLayout';
 import { useChatPageEvents } from './useChatPageEvents';
 import { useSessionItemRenderer } from './SessionItemRenderer';
 import { useSessionSidebarContent } from './SessionSidebarContent';
-import { getSessionTitleText } from '../utils/sessionTitle';
 import { compareSessionsForSidebar } from '../utils/sessionPin';
 import { StreamPreferencesProvider } from '../components/renderers/StreamPreferencesContext';
+import type { StreamingSmoothingPreset } from '../components/renderers/streamingSmoothing';
 import {
   clearHiddenDraftSessionId,
   clearHiddenDraftSessionMetadata,
@@ -128,7 +110,23 @@ const DESKTOP_SECONDARY_PANEL_WIDTH = 'clamp(320px, 42vw, 720px)';
 // 组件实现
 // ============================================================================
 
-export const ChatV2Page: React.FC = () => {
+export interface ChatV2PageProps {
+  /**
+   * OS 模式壳层降档信号（缺省 balanced 全速，独立页面/移动端行为不变）：
+   * 窗口不可见时由 ChatAppWindow 经 useDeferredStreamPreset 降为 silky。
+   */
+  streamPreset?: StreamingSmoothingPreset;
+  /**
+   * OS 模式 background 档：壳层已停绘（visibility:hidden），流式渲染提交
+   * 应暂停（token 缓冲不丢，回可见立即补渲）。缺省 false 行为不变。
+   */
+  isSuspended?: boolean;
+}
+
+export const ChatV2Page: React.FC<ChatV2PageProps> = ({
+  streamPreset = 'balanced',
+  isSuspended = false,
+}) => {
   const { t } = useTranslation(['chatV2', 'learningHub', 'common']);
 
   // ========== 页面生命周期监控 ==========
@@ -144,7 +142,7 @@ export const ChatV2Page: React.FC = () => {
     };
   }, [sandboxOwnerKey]);
 
-  // 状态声明提前，用于 useMobileHeader
+  // 状态声明提前，供下方多个布局/事件 hook 使用
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionIdState] = useState<string | null>(null);
 
@@ -247,30 +245,8 @@ export const ChatV2Page: React.FC = () => {
   }, []);
   const [desktopSecondaryPanelSnapshot, setDesktopSecondaryPanelSnapshot] = useState<DesktopSecondaryPanelSnapshot | null>(null);
 
-  // 监听笔记工具打开事件，在右侧 DSTU 面板中打开笔记
-  const deferredSessionId = useDeferredValue(currentSessionId);
-  // 是否正在切换会话（用于显示加载指示器）
-  // 只有当从一个已存在的会话切换到另一个会话时才显示
-  // - 首次选择会话（null → A）不显示
-  // - 关闭所有会话（A → null）不显示
-  // - 会话间切换（A → B）才显示
-  const isSessionSwitching = currentSessionId !== null && deferredSessionId !== null && currentSessionId !== deferredSessionId;
-
-  // 🚀 防闪动优化：只有切换超过 500ms 才显示加载指示器
-  const [showSwitchingIndicator, setShowSwitchingIndicator] = useState(false);
-
-  useEffect(() => {
-    if (isSessionSwitching) {
-      // 切换开始，延迟 500ms 后显示指示器
-      const timer = setTimeout(() => {
-        setShowSwitchingIndicator(true);
-      }, 500);
-      return () => clearTimeout(timer);
-    } else {
-      // 切换完成，立即隐藏指示器
-      setShowSwitchingIndicator(false);
-    }
-  }, [isSessionSwitching]);
+  // 会话切换加载态统一：由 ChatContainer 负责「保留上一帧 + 轻蒙层」，
+  // 页面级不再叠加第二层全屏切换指示器（避免双指示器打架）
 
   // 会话重命名状态
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -560,8 +536,8 @@ export const ChatV2Page: React.FC = () => {
   const {
     startEditSession, saveSessionTitle, cancelEditSession, archiveSession, togglePinSession,
     openCreateGroup, openEditGroup, openRenameGroup, closeGroupEditor,
-    handleSubmitGroup, confirmArchiveGroup,
-    moveSessionToGroup, formatTime,
+    handleSubmitGroup, confirmArchiveGroup, archiveGroupDirect, applySessionGroupUpdate,
+    moveSessionToGroup, handleDragEnd, formatTime,
   } = useSessionEdit({
     resetDeleteConfirmation, currentSessionId, setCurrentSessionId, setEditingSessionId, setEditingTitle,
     setRenamingSessionId, setRenameError, setSessions,
@@ -602,7 +578,21 @@ export const ChatV2Page: React.FC = () => {
 
   useEffect(() => {
     const handler = (event: Event) => {
-      const { action, session, sessionId } = (event as CustomEvent).detail ?? {};
+      const { action, session, sessionId, groupId } = (event as CustomEvent).detail ?? {};
+
+      // 桌面 ModernSidebar 直接删除/移动会话后，同步本页 sessions 状态（避免 Browser/移动列表残留）
+      if (action === 'session-deleted' && typeof sessionId === 'string') {
+        setSessions((prev) => prev.filter((item) => item.id !== sessionId));
+        setTotalSessionCount((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
+        void loadUngroupedCount();
+        return;
+      }
+      if (action === 'session-moved' && typeof sessionId === 'string') {
+        applySessionGroupUpdate(sessionId, typeof groupId === 'string' && groupId ? groupId : null);
+        void loadUngroupedCount();
+        return;
+      }
+
       if (action !== 'rename-session') {
         return;
       }
@@ -623,7 +613,7 @@ export const ChatV2Page: React.FC = () => {
 
     window.addEventListener('modern-sidebar:session-action', handler);
     return () => window.removeEventListener('modern-sidebar:session-action', handler);
-  }, [setCurrentSessionId, setSessionSheetOpen, setViewMode, startEditSession]);
+  }, [applySessionGroupUpdate, loadUngroupedCount, setCurrentSessionId, setSessionSheetOpen, setViewMode, startEditSession]);
 
   // ===== 移动端右屏/子屏收口 =====
   // 沙箱工作台占据右屏时，顶栏返回箭头与手势/返回键统一走这里收回
@@ -704,19 +694,21 @@ export const ChatV2Page: React.FC = () => {
   // ===== 侧边栏内容 hook =====
   const { renderSessionSidebarContent } = useSessionSidebarContent({
     searchQuery, setSearchQuery, viewMode, setViewMode, setSessionSheetOpen,
-    setPendingDeleteSessionId,
     editableGroupIds: activeGroupIds,
     onCreateGroup: openCreateGroup,
     onRenameGroup: openRenameGroup,
     onEditGroup: openEditGroup,
-    onArchiveGroup: setPendingArchiveGroup,
+    // 移动侧栏自带分组归档行内确认，确认后直接执行（不再走 pendingArchiveGroup 主区确认条）
+    onArchiveGroup: (group) => { void archiveGroupDirect(group); },
     isInitialLoading, sessions, visibleGroups, sessionsByGroup, ungroupedSessions,
-    currentSessionId, totalSessionCount,
-    hasMoreSessions, isLoadingMore, pendingDeleteSessionId,
+    currentSessionId,
+    hasMoreSessions, isLoadingMore,
     t,
-    resetDeleteConfirmation, clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
+    resetDeleteConfirmation,
     createSession, loadMoreSessions,
     renderSessionItem,
+    // 会话拖入分组（hello-pangea DnD；handleDragEnd 识别 session-group:/session-ungrouped）
+    onSessionDragEnd: handleDragEnd,
   });
 
   const handleOpenApp = useCallback((item: ResourceListItem) => {
@@ -994,10 +986,6 @@ export const ChatV2Page: React.FC = () => {
     );
   }, [openApp, handleCloseApp, handleOpenInLearningHub, handleTitleChange, t]);
 
-  const desktopAttachmentPreviewFullScreen = !isSmallScreen
-    && attachmentPreviewOpen
-    && !!openApp;
-
   // ★ 处理从 openResource 触发的待打开资源
   // 简化逻辑：直接调用 handleOpenApp，不再通过事件传递
   useEffect(() => {
@@ -1009,29 +997,101 @@ export const ChatV2Page: React.FC = () => {
     }
   }, [pendingOpenResource, canvasSidebarOpen, mobileResourcePanelOpen, isSmallScreen, handleOpenApp]);
 
+  // ===== 无会话空状态 / 首屏加载态（统一在主内容槽内联渲染，不用模态） =====
+  const renderNoSessionState = () => {
+    if (isInitialLoading) {
+      // 首次加载：延迟淡入的安静指示（chat-loading-shell-defer 自带 150ms 延迟，避免闪烁）
+      return (
+        <div className="chat-loading-shell-defer flex flex-1 items-center justify-center" role="status" aria-live="polite">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <CircleNotch size={16} className="animate-spin" aria-hidden="true" />
+            <span className="text-sm">{t('page.loading')}</span>
+          </div>
+        </div>
+      );
+    }
+    // 加载完成仍无会话（自动创建失败等）：品牌空状态 + 快速开始引导
+    return (
+      <div className="flex flex-1 items-center justify-center overflow-y-auto px-6 py-8">
+        <ThreadContentShell className="chat-thread-enter">
+          <section
+            data-slot="chat-page-empty-state"
+            className="flex flex-col items-center gap-5 text-center"
+          >
+            <div
+              aria-hidden="true"
+              className="flex h-14 w-14 items-center justify-center rounded-[var(--radius-shell-panel)] border border-border/60 bg-card text-primary shadow-[var(--shadow-shell-soft)]"
+            >
+              <Chat size={26} weight="duotone" />
+            </div>
+            <div className="space-y-1.5">
+              <h2 className="text-balance text-xl font-medium text-foreground">
+                {t('page.welcome')}
+              </h2>
+              <p className="mx-auto max-w-sm text-sm leading-relaxed text-muted-foreground">
+                {t('page.emptyPage.subtitle')}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <NotionButton variant="primary" size="sm" onClick={() => void createSession()}>
+                <Plus size={14} />
+                {t('page.newChat')}
+              </NotionButton>
+              {!isSmallScreen && sessions.length > 0 && (
+                <NotionButton variant="outline" size="sm" onClick={() => setViewMode('browser')}>
+                  <SquaresFour size={14} />
+                  {t('browser.title')}
+                </NotionButton>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground/60">
+              {t('page.emptyPage.hint')}
+            </p>
+          </section>
+        </ThreadContentShell>
+      </div>
+    );
+  };
+
+  // ===== 归档分组内联确认条（替代模态确认框；Esc 取消，取消键自动聚焦） =====
+  const renderArchiveConfirmBar = () => pendingArchiveGroup ? (
+    <div
+      role="alertdialog"
+      aria-label={t('page.archiveGroupTitle')}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          setPendingArchiveGroup(null);
+        }
+      }}
+      className="chat-thread-enter z-30 mx-3 mt-3 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-[var(--radius-shell-control)] border border-warning/40 bg-warning/10 px-3 py-2 shadow-[var(--shadow-shell-soft)]"
+    >
+      <Warning size={16} weight="fill" className="shrink-0 text-warning" aria-hidden="true" />
+      <p className="min-w-0 flex-1 text-sm leading-snug text-foreground">
+        {t('page.archiveGroupDesc', { name: pendingArchiveGroup.name })}
+      </p>
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          autoFocus
+          onClick={() => setPendingArchiveGroup(null)}
+        >
+          {t('common:cancel')}
+        </NotionButton>
+        <NotionButton variant="warning" size="sm" onClick={() => void confirmArchiveGroup()}>
+          {t('page.archiveGroupConfirm')}
+        </NotionButton>
+      </div>
+    </div>
+  ) : null;
+
   // ★ 监听附件预览事件，在右侧面板打开附件
   // 使用独立的附件预览状态，不依赖于 NotesContext
   const renderMainContent = () => (
     <div className="flex h-full flex-col overflow-hidden relative">
-      {/* 🚀 会话切换加载指示器（防闪动：只有超过 500ms 才显示） */}
-      {showSwitchingIndicator && (
-        <div
-          className="absolute inset-0 z-50 flex items-center justify-center bg-background/50 backdrop-blur-[1px] transition-opacity duration-150"
-          role="status"
-          aria-live="polite"
-        >
-          <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card shadow-lg border">
-            <CircleNotch size={16} className="animate-spin text-primary" aria-hidden="true" />
-            <span className="text-sm text-muted-foreground">
-              {t('page.switchingSession')}
-            </span>
-          </div>
-        </div>
-      )}
-      {/* 🔧 修复：使用 currentSessionId 作为主要判断条件
-          deferredSessionId 可能因为 useDeferredValue 在并发模式下的行为而延迟更新
-          当 ChatContainer 渲染失败时，deferredSessionId 会一直保持旧值（null）
-          使用 currentSessionId 确保选中会话时立即显示内容 */}
+      {renderArchiveConfirmBar()}
+      {/* 使用 currentSessionId 作为主要判断条件，选中会话时立即显示内容 */}
       {viewMode === 'browser' && !isSmallScreen ? (
         <SessionBrowser
           sessions={sessionsForBrowser}
@@ -1073,14 +1133,13 @@ export const ChatV2Page: React.FC = () => {
           onViewAgentSession={handleViewAgentSession}
         />
       ) : (
-        /* 🔧 防闪烁：加载中或正在自动创建会话，显示空白 */
-        <div className="flex-1" />
+        renderNoSessionState()
       )}
     </div>
   );
 
   return (
-    <StreamPreferencesProvider preset="balanced" mode="blocked">
+    <StreamPreferencesProvider preset={streamPreset} mode="blocked" suspended={isSuspended}>
       <div className={cn(
         "study-shell-page chat-v2 absolute inset-0 flex overflow-hidden",
         isSmallScreen && "flex-col"
@@ -1090,6 +1149,9 @@ export const ChatV2Page: React.FC = () => {
         onPointerDownCapture={handleSandboxOwnerActivation}
         onFocusCapture={handleSandboxOwnerActivation}
       >
+      {/* 页面级错误隔离：SessionBrowser / GroupEditor / 次级面板等线程外区域的
+          运行时错误在此兜底，避免打穿到 App ViewLayer 白屏整页 */}
+      <ChatErrorBoundary className="flex-1">
       {/* ===== 移动端布局：DeepSeek 风格推拉式侧边栏 ===== */}
       {isSmallScreen ? (
         <MobileSlidingLayout
@@ -1176,7 +1238,8 @@ export const ChatV2Page: React.FC = () => {
           threshold={0.3}
         >
           {/* 移动端：会话浏览作为主内容区域的一部分，直接切换 */}
-          <div className="relative h-full">
+          <div className="relative flex h-full flex-col">
+            {viewMode === 'browser' && renderArchiveConfirmBar()}
             {viewMode === 'browser' ? (
               <SessionBrowser
                 sessions={sessionsForBrowser}
@@ -1189,51 +1252,47 @@ export const ChatV2Page: React.FC = () => {
                   void createSession();
                 }}
                 onRenameSession={handleBrowserRenameSession}
-                className="h-full"
+                className="min-h-0 flex-1"
                 embeddedMode={true}
               />
             ) : (
-              renderMainContent()
+              <div className="min-h-0 flex-1">
+                {renderMainContent()}
+              </div>
             )}
           </div>
         </MobileSlidingLayout>
       ) : null}
 
-      {/* 桌面端：主聊天区域 + Canvas 侧边栏 */}
+      {/* 桌面端：主聊天区域 + 次级面板（附件预览不再全屏替换聊天，统一走侧栏内联预览） */}
       {!isSmallScreen && (
-        desktopAttachmentPreviewFullScreen ? (
-          <div className="flex-1 min-w-0 h-full">
-            {renderOpenAppPanel({ fullScreen: true })}
+        <div className="flex flex-1 min-w-0 h-full overflow-hidden">
+          <div className="h-full min-w-0 flex-1">
+            {renderMainContent()}
           </div>
-        ) : (
-          <div className="flex flex-1 min-w-0 h-full overflow-hidden">
-            <div className="h-full min-w-0 flex-1">
-              {renderMainContent()}
-            </div>
-            {desktopSecondaryPanelShouldRender && (
+          {desktopSecondaryPanelShouldRender && (
+            <div
+              className="h-full shrink-0 overflow-hidden border-l border-[color:var(--shell-inspector-border)] bg-background shadow-[-12px_0_32px_hsl(var(--shadow-base)/0.08)] transition-[width] duration-200 motion-reduce:transition-none"
+              style={{
+                width: desktopSecondaryPanelOpen ? DESKTOP_SECONDARY_PANEL_WIDTH : 0,
+                transitionTimingFunction: DESKTOP_SECONDARY_PANEL_EASING,
+              }}
+            >
               <div
-                className="h-full shrink-0 overflow-hidden border-l border-[color:var(--shell-inspector-border)] bg-background shadow-[-12px_0_32px_rgba(15,23,42,0.08)] transition-[width] duration-200 motion-reduce:transition-none"
+                className={cn('h-full min-w-0', desktopSecondaryPanelShellClassName)}
                 style={{
-                  width: desktopSecondaryPanelOpen ? DESKTOP_SECONDARY_PANEL_WIDTH : 0,
+                  width: DESKTOP_SECONDARY_PANEL_WIDTH,
                   transitionTimingFunction: DESKTOP_SECONDARY_PANEL_EASING,
                 }}
               >
-                <div
-                  className={cn('h-full min-w-0', desktopSecondaryPanelShellClassName)}
-                  style={{
-                    width: DESKTOP_SECONDARY_PANEL_WIDTH,
-                    transitionTimingFunction: DESKTOP_SECONDARY_PANEL_EASING,
-                  }}
-                >
-                  {renderDesktopSecondaryPanel({
-                    mode: desktopSecondaryPanelSnapshotMode,
-                    openApp: desktopSecondaryPanelSnapshotApp,
-                  })}
-                </div>
+                {renderDesktopSecondaryPanel({
+                  mode: desktopSecondaryPanelSnapshotMode,
+                  openApp: desktopSecondaryPanelSnapshotApp,
+                })}
               </div>
-            )}
-          </div>
-        )
+            </div>
+          )}
+        </div>
       )}
 
       {!isSmallScreen && sandboxActiveSession && (
@@ -1287,18 +1346,7 @@ export const ChatV2Page: React.FC = () => {
         </div>
       )}
 
-      {/* 归档分组确认对话框 */}
-        <NotionAlertDialog
-          open={!!pendingArchiveGroup}
-          onOpenChange={(open) => !open && setPendingArchiveGroup(null)}
-          title={t('page.archiveGroupTitle')}
-          description={t('page.archiveGroupDesc', { name: pendingArchiveGroup?.name })}
-          confirmText={t('page.archiveGroupConfirm')}
-          cancelText={t('common:cancel')}
-          confirmVariant="warning"
-          onConfirm={confirmArchiveGroup}
-        />
-
+      </ChatErrorBoundary>
       </div>
     </StreamPreferencesProvider>
   );

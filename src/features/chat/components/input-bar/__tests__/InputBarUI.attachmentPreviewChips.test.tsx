@@ -164,6 +164,28 @@ describe('InputBarUI attachment preview chips', () => {
     );
   });
 
+  it('keeps the remove action always visible with an expanded hit area on coarse pointers', () => {
+    const attachments: AttachmentMeta[] = [
+      {
+        id: 'att_touch',
+        name: 'touch.png',
+        type: 'image',
+        mimeType: 'image/png',
+        size: 1024,
+        status: 'ready',
+      },
+    ];
+
+    renderInputBar({ attachments });
+
+    // P0-3: 触屏没有 hover，删除按钮常显 + 伪元素扩大命中区（≥44px）
+    expect(screen.getByRole('button', { name: 'analysis:input_bar.attachments.remove touch.png' })).toHaveClass(
+      '[@media(pointer:coarse)]:opacity-100',
+      '[@media(pointer:coarse)]:after:absolute',
+      '[@media(pointer:coarse)]:after:-inset-3'
+    );
+  });
+
   it('does not show a ready confirmation badge on attachment preview icons', () => {
     const attachments: AttachmentMeta[] = [
       {

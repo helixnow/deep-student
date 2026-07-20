@@ -52,6 +52,14 @@ vi.mock('@/components/ui/app-menu/AppMenu', () => {
     },
     AppMenuGroup: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
     AppMenuSeparator: () => <div data-testid="session-context-menu-separator" />,
+    AppMenuSub: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+    AppMenuSubTrigger: ({ children, icon }: { children?: React.ReactNode; icon?: React.ReactNode }) => (
+      <div>
+        {icon}
+        <span>{children}</span>
+      </div>
+    ),
+    AppMenuSubContent: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
     AppMenuItem: ({
       children,
       icon,

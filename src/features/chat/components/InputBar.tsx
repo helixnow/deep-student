@@ -1,6 +1,9 @@
 /**
  * Chat V2 - InputBar 输入框组件
  *
+ * @deprecated Legacy 简易输入栏，主聊天路径已由 `input-bar/InputBarV2` 接管。
+ * 仅保留给测试与迁移期外部挂载点使用；新功能请只改 InputBarV2 侧，不要双改。
+ *
  * 职责：订阅 canSend/sessionStatus，控制发送/停止按钮
  */
 

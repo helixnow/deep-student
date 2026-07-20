@@ -15,7 +15,6 @@ import { SKILL_INSTRUCTION_TYPE_ID } from '../../skills/types';
 import { skillDefaults } from '../../skills/skillDefaults';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import i18n from 'i18next';
-import { showOperationLockNotification } from './createChatStore';
 import {
   isWorkbenchToolName,
   markWorkbenchBlockRestored,

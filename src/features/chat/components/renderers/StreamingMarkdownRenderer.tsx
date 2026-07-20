@@ -1,10 +1,12 @@
 import React, { useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Brain } from '@phosphor-icons/react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
 import { BlockedMarkdownRenderer } from './BlockedMarkdownRenderer';
 import { canUseDirectFlowTokenMarkdown } from './flowTokenEligibility';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
+import { useSuspendedStreamContent } from './StreamPreferencesContext';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import './streaming.css';
 
@@ -105,9 +107,11 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
   const { t } = useTranslation('chatV2');
   // 原始 content 直通渲染器，不再经过平滑层。
   // flowtoken AnimatedMarkdown / SplitText sep="diff" 自行处理增量 diff 和动画。
+  // OS 模式 background 窗（壳层已停绘）：冻结提交内容，回可见立即补渲。
+  const suspendableContent = useSuspendedStreamContent(content, isStreaming);
   const processedContent = useMemo(
-    () => preprocessStreamingContent(content, isStreaming),
-    [content, isStreaming]
+    () => preprocessStreamingContent(suspendableContent, isStreaming),
+    [suspendableContent, isStreaming]
   );
   const displayContent = processedContent.content;
   const hasVisibleContent = displayContent.trim().length > 0;
@@ -220,7 +224,7 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
           {parsedContent.thinkingContent && (
             <div className="chain-of-thought">
               <div className="chain-header">
-                <span className="chain-icon">🧠</span>
+                <span className="chain-icon" aria-hidden="true"><Brain size={15} weight="duotone" /></span>
                 <span className="chain-title">{t('renderer.aiThinkingProcess')}</span>
               </div>
               <div className="thinking-content">
@@ -280,6 +284,7 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
     </div>
   );
 }, (prevProps: StreamingMarkdownRendererProps, nextProps: StreamingMarkdownRendererProps) => {
+  // 🔧 B4: 补齐回调 props 比较，避免子树持有过期闭包（与 StreamingBlockRenderer 一致）
   return (
     prevProps.content === nextProps.content &&
     prevProps.isStreaming === nextProps.isStreaming &&
@@ -287,6 +292,9 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
     prevProps.extraRemarkPlugins === nextProps.extraRemarkPlugins &&
     prevProps.streamRenderingMode === nextProps.streamRenderingMode &&
     prevProps.blockId === nextProps.blockId &&
-    prevProps.messageId === nextProps.messageId
+    prevProps.messageId === nextProps.messageId &&
+    prevProps.onLinkClick === nextProps.onLinkClick &&
+    prevProps.onCitationClick === nextProps.onCitationClick &&
+    prevProps.resolveCitationImage === nextProps.resolveCitationImage
   );
 });

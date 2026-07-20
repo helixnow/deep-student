@@ -29,7 +29,9 @@ export const deepScholarSkill: SkillDefinition = {
     'builtin-unified_search',
     'builtin-web_search',
     // vfs-memory
+    'builtin-memory_search',
     'builtin-memory_read',
+    'builtin-memory_write',
     'builtin-memory_update_by_id',
     'builtin-memory_delete',
     'builtin-memory_write_smart',
@@ -40,6 +42,9 @@ export const deepScholarSkill: SkillDefinition = {
     'builtin-memory_remove_relation',
     'builtin-memory_update_tags',
     'builtin-memory_export_all',
+    // learner-profile
+    'builtin-learner_profile_get',
+    'builtin-learner_profile_update',
     // ask-user
     'builtin-ask_user',
     // learning-resource (auto-loaded)

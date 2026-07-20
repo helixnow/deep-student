@@ -3,16 +3,13 @@
  *
  * 导入此文件会自动注册所有内置块渲染插件
  *
- * 内置块类型：
- * - thinking: 思维链
- * - content: 正文内容
- * - rag: 文档知识库
- * - memory: 用户记忆
- * - web_search: 网络搜索
- * - multimodal_rag: 多模态检索
- * - generic: 通用块（fallback）
- * - mcpTool: MCP 工具块
- * - imageGen: 图像生成块
+ * 内置块类型（与下方 import 即注册清单保持同步）：
+ * - thinking / content / generic（fallback）
+ * - mcp_tool / image_gen / paper_save / workbench_ops
+ * - tool_limit / todo_list / template_preview / ask_user / compaction_summary
+ * - workspace_status / sleep / subagent_embed / subagent_retry
+ * - anki_cards
+ * - rag / memory / web_search / academic_search / multimodal_rag
  */
 
 // ============================================================================
@@ -64,6 +61,10 @@ import './rag';
 import './memory';
 import './webSearch';
 import './academicSearch';
+import './multimodalRag';
+
+// 论文下载进度块（同时保留 mcpTool 按 toolName 的委托渲染）
+import './paperSave';
 
 // ============================================================================
 // 导出组件（可选，用于测试）
@@ -111,6 +112,7 @@ export { RagBlock } from './rag';
 export { MemoryBlock } from './memory';
 export { WebSearchBlock } from './webSearch';
 export { AcademicSearchBlock } from './academicSearch';
+export { MultimodalRagBlock } from './multimodalRag';
 
 // 通用组件
 export * from './components';

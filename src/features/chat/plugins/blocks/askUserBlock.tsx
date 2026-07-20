@@ -22,6 +22,7 @@ import {
   Info,
   Star,
   PaperPlaneRight,
+  WarningCircle,
 } from '@phosphor-icons/react';
 
 import type { BlockComponentProps } from '../../registry/blockRegistry';
@@ -128,6 +129,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
   const { t } = useTranslation('chatV2');
   const [hasResponded, setHasResponded] = useState(false);
   const [isResponding, setIsResponding] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [customInput, setCustomInput] = useState('');
   const [checkedIndices, setCheckedIndices] = useState<Set<number>>(new Set());
 
@@ -175,6 +177,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
       if (hasResponded || isResponding || isResolved) return;
 
       setIsResponding(true);
+      setSubmitError(null);
       setLocalSelectedTexts(selectedTexts);
       setLocalCustomText(customText);
       setLocalSource(source);
@@ -190,8 +193,17 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
         setHasResponded(true);
       } catch (error: unknown) {
         console.error('[AskUserBlock] Failed to send response:', error);
-        // 即使发送失败也标记为已回答，避免 UI 卡住
-        setHasResponded(true);
+        // 🔧 P0 修复：提交失败时不再伪装成功；回滚乐观状态并展示可重试的错误
+        setLocalSelectedTexts(null);
+        setLocalCustomText(null);
+        setLocalSource(null);
+        const detail =
+          typeof error === 'string'
+            ? error
+            : error instanceof Error
+              ? error.message
+              : '';
+        setSubmitError(detail);
       } finally {
         setIsResponding(false);
       }
@@ -253,6 +265,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
     if (block.status === 'running') {
       setHasResponded(false);
       setIsResponding(false);
+      setSubmitError(null);
       setCustomInput('');
       setCheckedIndices(new Set());
       setLocalSelectedTexts(null);
@@ -366,6 +379,24 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
       {context && (
         <div className="border-b border-[color:var(--border-soft)] px-3 py-1.5 text-xs text-[color:var(--text-muted)]">
           {context}
+        </div>
+      )}
+
+      {/* 提交失败提示（内联，可直接重新选择/提交） */}
+      {submitError !== null && (
+        <div className="mx-3 mt-2 flex items-start gap-2 rounded-[var(--radius-shell-control)] border border-destructive/30 bg-destructive/10 px-3 py-2">
+          <WarningCircle size={14} className="mt-0.5 flex-shrink-0 text-destructive" />
+          <div className="min-w-0 flex-1 text-xs">
+            <span className="font-medium text-destructive">
+              {t('askUser.submitFailed')}
+            </span>
+            {submitError && (
+              <span className="ml-1 break-words text-destructive/80">{submitError}</span>
+            )}
+            <div className="mt-0.5 text-[color:var(--text-muted)]">
+              {t('askUser.submitRetryHint')}
+            </div>
+          </div>
         </div>
       )}
 

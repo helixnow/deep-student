@@ -129,6 +129,12 @@ export interface TodoListPanelProps {
   changedStepId?: string;
   /** 🆕 工具名称（todo_init/todo_update/todo_add/todo_get） */
   toolName?: string;
+  /**
+   * 🆕 steps 为空时的占位文案。
+   * 不传时保持旧行为（返回 null），避免影响时间线聚合渲染；
+   * 独立块渲染（TodoListBlock）传入占位，防止运行中短暂空列表"闪没"。
+   */
+  emptyPlaceholder?: string;
 }
 
 /**
@@ -150,6 +156,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
   defaultExpanded = false, // 🔧 P7: 默认折叠
   changedStepId,
   toolName,
+  emptyPlaceholder,
 }) => {
   const { t } = useTranslation('chatV2');
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -174,7 +181,15 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
   }, []);
 
   if (steps.length === 0) {
-    return null;
+    if (!emptyPlaceholder) {
+      return null;
+    }
+    return (
+      <div className={cn('todo-list-panel flex items-center gap-1.5 py-0.5 text-xs text-muted-foreground', className)}>
+        <CircleNotch size={12} className="animate-spin flex-shrink-0" />
+        <span className="truncate">{emptyPlaceholder}</span>
+      </div>
+    );
   }
 
   // 🆕 生成折叠模式的摘要文本
@@ -296,14 +311,28 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
  * 实际上在 ActivityTimeline 中会被聚合渲染
  */
 const TodoListBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => {
-  const { t } = useTranslation('common');
+  const { t } = useTranslation(['common', 'chatV2']);
   // 从 toolOutput 解析数据
   const output = block.toolOutput as TodoListOutput | undefined;
+  const isRunning = block.status === 'running' || block.status === 'pending';
+
+  // 🆕 块级错误态：此前 error 状态只能显示"loading"，用户无法感知失败
+  if (block.status === 'error') {
+    return (
+      <div className="flex items-start gap-1.5 py-0.5 text-xs text-destructive">
+        <X size={12} className="mt-0.5 flex-shrink-0" strokeWidth={3} />
+        <span className="break-words">
+          {block.error || t('chatV2:blocks.todoList.blockError')}
+        </span>
+      </div>
+    );
+  }
 
   if (!output) {
     return (
-      <div className="text-sm text-muted-foreground">
-        {t('loading')}
+      <div className="flex items-center gap-1.5 py-0.5 text-xs text-muted-foreground">
+        {isRunning && <CircleNotch size={12} className="animate-spin flex-shrink-0" />}
+        <span>{t('common:loading')}</span>
       </div>
     );
   }
@@ -319,6 +348,8 @@ const TodoListBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => {
       totalCount={totalCount}
       message={message}
       defaultExpanded={true}
+      // 运行中短暂空列表不再直接消失
+      emptyPlaceholder={isRunning ? t('chatV2:blocks.todoList.emptyRunning') : undefined}
     />
   );
 });

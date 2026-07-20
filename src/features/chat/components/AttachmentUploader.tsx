@@ -1,6 +1,9 @@
 /**
  * Chat V2 - AttachmentUploader 附件上传组件
  *
+ * @deprecated 仅被 Legacy `InputBar` 使用；主聊天路径的上传逻辑在
+ * `input-bar/InputBarUI` 内联实现（含进度分段与处理状态轮询）。新功能勿双改。
+ *
  * 职责：支持拖拽、粘贴、点击三种上传方式
  *
  * 功能：

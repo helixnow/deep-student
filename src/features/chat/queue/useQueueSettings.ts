@@ -40,15 +40,22 @@ export function useQueueSettings(): QueueSettings {
     };
   }, []);
 
+  // 🔧 修复闭包陷阱：原实现依赖 [mode] 捕获 prev，快速连点两次时
+  // 第二次调用捕获的 prev 可能是过期值，保存失败回滚会回到错误状态。
+  // 改为函数式更新读取当前值，且仅当状态仍是本次乐观值时才回滚
+  // （避免覆盖用户在保存窗口内做出的更新切换）。
   const setMode = useCallback(async (v: QueueMode) => {
-    const prev = mode;
-    setModeState(v);
+    let prev: QueueMode = 'queue';
+    setModeState((current) => {
+      prev = current;
+      return v;
+    });
     try {
       await tauriInvoke('save_setting', { key: QUEUE_MODE_KEY, value: v });
     } catch {
-      setModeState(prev);
+      setModeState((current) => (current === v ? prev : current));
     }
-  }, [mode]);
+  }, []);
 
   return {
     mode,

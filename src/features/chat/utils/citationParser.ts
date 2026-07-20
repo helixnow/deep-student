@@ -47,39 +47,76 @@ export interface CitationRenderInfo {
 // ============================================================================
 
 /**
- * 引用类型文本到枚举的映射
+ * 引用类型别名 → 枚举的单一数据源
  * 与后端 prompt_builder.rs 中的 SourceType::label() 对应
- * 
+ *
+ * ★ 契约：`[类型-N]` 的 N 为"类型内 1-based 序号"，该契约不可变（后端并行任务依赖）
+ * ★ P1-3：citationRemarkPlugin 从这里派生正则，请勿在插件侧另建 alias 列表
  * ★ 2026-01 清理：移除"错题"映射（错题系统废弃）
  */
-export const CITATION_TYPE_MAP: Record<string, RetrievalSourceType> = {
-  '知识库': 'rag',
-  '记忆': 'memory',
-  '搜索': 'web_search',
-  '图片': 'multimodal',
-  // 英文支持
-  'knowledge': 'rag',
-  'Knowledge Base': 'rag',
-  'knowledge base': 'rag',
-  'memory': 'memory',
-  'Memory': 'memory',
-  'search': 'web_search',
-  'Search': 'web_search',
-  'web': 'web_search',
-  'Web': 'web_search',
-  'image': 'multimodal',
-  'Image': 'multimodal',
-};
+export const CITATION_TYPE_ALIASES: ReadonlyArray<{ alias: string; type: RetrievalSourceType }> = [
+  { alias: '知识库', type: 'rag' },
+  { alias: 'knowledge base', type: 'rag' },
+  { alias: 'knowledge', type: 'rag' },
+  { alias: '记忆', type: 'memory' },
+  { alias: 'memory', type: 'memory' },
+  { alias: '搜索', type: 'web_search' },
+  { alias: 'search', type: 'web_search' },
+  { alias: 'web', type: 'web_search' },
+  { alias: '图片', type: 'multimodal' },
+  { alias: 'image', type: 'multimodal' },
+];
+
+const ALIAS_TYPE_LOOKUP: Record<string, RetrievalSourceType> = Object.fromEntries(
+  CITATION_TYPE_ALIASES.map(({ alias, type }) => [alias.toLowerCase(), type]),
+);
 
 /**
- * 引用正则表达式
+ * 大小写不敏感地解析引用类型别名
+ * （正则用 i flag 匹配，"KNOWLEDGE"/"Web" 等任意大小写都能映射到枚举）
+ */
+export function resolveCitationTypeAlias(typeText: string): RetrievalSourceType | undefined {
+  if (!typeText) return undefined;
+  return ALIAS_TYPE_LOOKUP[typeText.trim().toLowerCase()];
+}
+
+/**
+ * 引用类型文本到枚举的映射
+ * @deprecated 仅保留兼容导出（大小写敏感）；请改用 resolveCitationTypeAlias()
+ */
+export const CITATION_TYPE_MAP: Record<string, RetrievalSourceType> = Object.fromEntries(
+  CITATION_TYPE_ALIASES.flatMap(({ alias, type }) => {
+    const capitalized = alias.charAt(0).toUpperCase() + alias.slice(1);
+    return [...new Set([alias, capitalized])].map((variant) => [variant, type] as const);
+  }),
+);
+
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// 长别名优先，避免 "knowledge" 抢先吞掉 "knowledge base"
+const ALIAS_ALTERNATION = CITATION_TYPE_ALIASES
+  .map(({ alias }) => alias)
+  .sort((a, b) => b.length - a.length)
+  .map(escapeRegExp)
+  .join('|');
+
+/**
+ * 引用正则源字符串（单一 pattern 源，供本模块与 citationRemarkPlugin 共用）
  * 匹配格式：[类型-数字] 或 [类型-数字:图片]
- * 支持中文和英文类型名称
+ * 支持中文和英文类型名称（大小写不敏感）
  * 可选的 :图片/:image 后缀用于显式请求渲染图片
- * 
+ *
  * ★ 2026-01 清理：移除"错题/graph/Knowledge Graph"匹配（错题系统废弃）
  */
-const CITATION_PATTERN = /\[(知识库|记忆|搜索|图片|knowledge|Knowledge Base|memory|Memory|search|Search|web|Web|image|Image)-(\d+)(?::(图片|image))?\]/gi;
+export const CITATION_PATTERN_SOURCE = `\\[(${ALIAS_ALTERNATION})-(\\d+)(?::(图片|image))?\\]`;
+
+/**
+ * 创建一个全新的全局引用正则。
+ * 每次调用返回独立实例，避免模块级共享 lastIndex 造成的状态污染。
+ */
+export function createCitationPattern(): RegExp {
+  return new RegExp(CITATION_PATTERN_SOURCE, 'gi');
+}
 
 // ============================================================================
 // 核心解析函数
@@ -99,12 +136,11 @@ export function parseCitations(text: string): ParsedCitation[] {
   const citations: ParsedCitation[] = [];
   let match: RegExpExecArray | null;
 
-  // 重置正则表达式状态
-  CITATION_PATTERN.lastIndex = 0;
+  const pattern = createCitationPattern();
 
-  while ((match = CITATION_PATTERN.exec(text)) !== null) {
+  while ((match = pattern.exec(text)) !== null) {
     const typeText = match[1];
-    const type = CITATION_TYPE_MAP[typeText];
+    const type = resolveCitationTypeAlias(typeText);
     const imageSuffix = match[3]; // 可选的 :图片 或 :image 后缀
 
     if (type) {
@@ -134,9 +170,7 @@ export function hasCitations(text: string): boolean {
   if (!text || typeof text !== 'string') {
     return false;
   }
-  // 重置正则表达式状态
-  CITATION_PATTERN.lastIndex = 0;
-  return CITATION_PATTERN.test(text);
+  return createCitationPattern().test(text);
 }
 
 /**

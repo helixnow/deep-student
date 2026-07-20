@@ -849,8 +849,7 @@ function handleBlockEventWithVariant(
             }, 'warning');
           }
 
-          // 🔧 FIX: flushSync 已移至 Store 层面，addBlockToVariant 也会触发强制同步
-          // addBlockToVariant 内部调用 set() 后会自动 flushSync
+          // 注：块创建通过同步 set() 立即写入 store，无需强制同步渲染
         }
       }
       break;
@@ -866,11 +865,9 @@ function handleBlockEventWithVariant(
           return;
         }
 
-        // 🔧 DEBUG: 记录收到的 chunk 事件
-        console.log(`[EventBridge] 📨 chunk event: type=${type}, blockId=${effectiveBlockId}, chunkLen=${chunk?.length ?? 0}`);
+        // ⚠️ 热路径：此分支每个 token 级 chunk 都会执行，禁止无条件日志。
 
         if ((type === 'content' || type === 'thinking') && chunk) {
-          console.log(`[EventBridge] 📦 using chunkBuffer path: type=${type}`);
           chunkBuffer.setStore(store);
           chunkBuffer.push(effectiveBlockId, chunk, store.sessionId);
 
@@ -884,12 +881,13 @@ function handleBlockEventWithVariant(
               store.sessionId
             );
           }
+          // 🚀 P1：流式内容 chunk 不再调度全量会话 autoSave。
+          // 流式期间的持久化由 streamingBlockSaver（5s 节流的块级保存）负责，
+          // 终态完整保存由 end/error 与 stream_complete 的 forceImmediateSave 保证。
         } else {
-          console.log(`[EventBridge] 📤 direct update: type=${type}`);
           handler.onChunk(store, effectiveBlockId, chunk ?? '');
+          autoSave.scheduleAutoSave(store);
         }
-
-        autoSave.scheduleAutoSave(store);
       }
       break;
     }
@@ -1022,8 +1020,7 @@ export function handleBackendEvent(store: ChatStore, event: BackendEvent): void 
           }
         }
 
-        // 🔧 FIX: flushSync 已移至 Store 层面的 createBlock 方法中
-        // Store.createBlock 在 set() 后立即调用 flushSync，确保组件立即挂载
+        // 注：块创建通过同步 set() 立即写入 store，无需强制同步渲染
       }
       break;
     }
@@ -1043,13 +1040,14 @@ export function handleBackendEvent(store: ChatStore, event: BackendEvent): void 
 
         // 🔧 性能优化：使用 chunkBuffer 批量更新
         // 对于流式内容块（content, thinking），使用缓冲器减少 Store 更新频率
+        // ⚠️ 热路径：此分支每个 token 级 chunk 都会执行，禁止无条件日志。
         if ((type === 'content' || type === 'thinking') && chunk) {
           // 确保 chunkBuffer 有 Store 引用
           chunkBuffer.setStore(store);
           chunkBuffer.push(effectiveBlockId, chunk, store.sessionId);
 
           // 🔧 防闪退：定期保存流式块内容到后端
-          // 注意：传入 chunk 而不是 block.content，因为 chunkBuffer 有 16ms 延迟
+          // 注意：传入 chunk 而不是 block.content，因为 chunkBuffer 有缓冲延迟
           // streamingBlockSaver 会自己累积 chunk
           // 🔧 P2修复：传递 sessionId 支持多会话并发清理
           if (effectiveMessageId) {
@@ -1061,14 +1059,16 @@ export function handleBackendEvent(store: ChatStore, event: BackendEvent): void 
               store.sessionId
             );
           }
+          // 🚀 P1：流式内容 chunk 不再调度全量会话 autoSave（500ms 节流下
+          // 仍会在整个流式期间反复序列化并保存全量会话）。流式期间的持久化
+          // 由 streamingBlockSaver 负责，终态完整保存由 end/error 事件与
+          // stream_complete 的 forceImmediateSave 保证。
         } else {
           // 其他类型直接更新
-          console.log(`[EventBridge:Main] 📤 direct update`);
           handler.onChunk(store, effectiveBlockId, chunk ?? '');
+          // 触发自动保存（低频路径）
+          autoSave.scheduleAutoSave(store);
         }
-
-        // 触发自动保存
-        autoSave.scheduleAutoSave(store);
       }
       break;
     }

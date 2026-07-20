@@ -48,12 +48,14 @@ export const knowledgeRetrievalSkill: SkillDefinition = {
 
 ## 读取完整文档
 
-检索结果包含 **readResourceId**（推荐）、**sourceId**、**resourceId** 字段。读取完整文档时优先使用 **readResourceId**：
+检索结果的 snippet 为片段预览（超长时会被截断）。检索结果包含 **readResourceId**（推荐）、**sourceId**、**resourceId** 字段。读取完整文档时优先使用 **readResourceId**：
 
 \`\`\`
 1. unified_search(查询) → 获得 readResourceId: "note_abc123"
 2. resource_read(resource_id: "note_abc123") → 完整文档内容
 \`\`\`
+
+记忆结果（citationTag 为 \`[记忆-N]\`）请改用 **noteId** 字段调用 \`builtin-memory_read\` 读取完整记忆。
 
 ### 按页读取（PDF/教材/文件）
 

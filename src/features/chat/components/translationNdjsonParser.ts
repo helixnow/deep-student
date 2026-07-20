@@ -1,110 +1,157 @@
 /**
- * NDJSON 流式解析器
+ * 流式 JSON 对象解析器（aligned 翻译模式）
  *
- * 处理后端流式翻译输出：每行一个 JSON 对象（aligned 模式），或纯文本（plain 模式）。
+ * 不再假设"一行一个对象"：以字符串感知的花括号配对扫描累积缓冲，
+ * 任何完整的顶层 JSON 对象一旦到齐立即切出解析。因此天然兼容：
+ * - 标准 NDJSON（一行一个对象）
+ * - pretty-printed / 跨多行的 JSON 对象
+ * - JSON 数组包裹 [{...},{...}]（数组括号与逗号被当作对象间噪声跳过）
+ * - markdown 代码围栏与前置引导文本（对象之外的一切内容忽略）
+ * - 字符串值内含 { } " \n 等字符（字符串/转义感知，不会误判边界）
  *
- * 健壮性策略（来自对真实 LLM 输出的观察）：
- * - 跳过空行
- * - 跳过 markdown 代码围栏（```json / ```）
- * - 跳过任何前置非 JSON 行（如 "Sure, here is the translation:"）
- * - 容忍尾部换行不规范
- * - {"done": true} 视为终结标记，不作为段返回
+ * 终结语义：
+ * - {"done": true} 视为终结标记，不作为段返回；
+ * - done 之后即使模型继续输出，也不再产生新段（防尾部垃圾污染）。
  */
 
 import type { AlignedSegment } from './translationTypes';
 
 export interface NdjsonLineResult {
   segments: AlignedSegment[];
+  /** 是否已经遇到 {"done": true} 终结标记（跨 push 保持） */
   done: boolean;
 }
 
 /**
- * 增量 NDJSON 解析器。维护一个 buffer，每次塞入新 chunk 后尝试切出完整行。
+ * 增量解析器。维护一个 buffer 与扫描游标（跨 push 保留，避免每个
+ * chunk 从头重扫），每次塞入新 chunk 后尝试切出所有完整对象。
  *
  * 用法：
  *   const parser = createNdjsonParser();
  *   onChunk: (chunk) => {
  *     const { segments, done } = parser.push(chunk);
  *     // segments：本次新解析出的段（可能为空）
- *     // done：是否遇到 {"done": true}
+ *     // done：是否已遇到 {"done": true}
  *   }
- *   onComplete: () => parser.flush(); // 可选：处理最后一行（无尾换行）
+ *   onComplete: () => parser.flush(); // 清理残缺缓冲（完整对象已即时解析）
  */
 export function createNdjsonParser() {
   let buffer = '';
+  // 扫描状态跨 push 保留
+  let pos = 0;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let objStart = -1; // 当前顶层对象 '{' 在 buffer 中的下标；-1 表示不在对象内
+  let sawDone = false;
 
-  function consumeLines(): NdjsonLineResult {
-    const segments: AlignedSegment[] = [];
-    let done = false;
-
-    let nl: number;
-    while ((nl = buffer.indexOf('\n')) >= 0) {
-      const line = buffer.slice(0, nl);
-      buffer = buffer.slice(nl + 1);
-      const result = parseLine(line);
-      if (result === 'done') {
-        done = true;
-      } else if (result) {
-        segments.push(result);
-      }
-    }
-
-    return { segments, done };
-  }
-
-  function parseLine(rawLine: string): AlignedSegment | 'done' | null {
-    let line = rawLine.trim();
-    if (!line) return null;
-
-    // 跳过 markdown 围栏与单纯的引导文本
-    if (line.startsWith('```')) return null;
-    if (!line.startsWith('{')) return null;
-
-    // 容忍常见的 LLM 输出瑕疵：行尾多余的逗号（NDJSON 被当成 JSON 数组元素输出）
-    if (line.endsWith(',')) {
-      line = line.slice(0, -1).trimEnd();
-    }
-
+  function parseObject(text: string): AlignedSegment | 'done' | null {
     try {
-      const obj = JSON.parse(line) as { src?: unknown; tgt?: unknown; done?: unknown };
+      const obj = JSON.parse(text) as { src?: unknown; tgt?: unknown; done?: unknown };
       if (obj && obj.done === true) return 'done';
       if (typeof obj?.src === 'string' && typeof obj?.tgt === 'string') {
         return { src: obj.src, tgt: obj.tgt };
       }
     } catch {
-      // 单行不合法 JSON：可能是 LLM 拼写错；忽略不致命
+      // 括号配对完整但不是合法 JSON（模型笔误）：忽略，不致命
     }
     return null;
+  }
+
+  function consume(): NdjsonLineResult {
+    const segments: AlignedSegment[] = [];
+
+    while (pos < buffer.length) {
+      const ch = buffer[pos];
+
+      if (objStart === -1) {
+        // 对象之外：跳过一切噪声（围栏、引导文本、数组括号、逗号、空白）
+        if (ch === '{') {
+          objStart = pos;
+          depth = 1;
+          inString = false;
+          escaped = false;
+        }
+        pos++;
+        continue;
+      }
+
+      // 对象内部：字符串/转义感知的括号配对
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch === '\\') {
+          escaped = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+      } else if (ch === '"') {
+        inString = true;
+      } else if (ch === '{') {
+        depth++;
+      } else if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          const objText = buffer.slice(objStart, pos + 1);
+          objStart = -1;
+          const result = parseObject(objText);
+          if (result === 'done') {
+            sawDone = true;
+          } else if (result && !sawDone) {
+            segments.push(result);
+          }
+        }
+      }
+      pos++;
+    }
+
+    // 压缩缓冲：已完全消费的前缀丢弃，防止长流下内存与重扫增长
+    if (objStart === -1) {
+      buffer = '';
+      pos = 0;
+    } else if (objStart > 0) {
+      buffer = buffer.slice(objStart);
+      pos -= objStart;
+      objStart = 0;
+    }
+
+    return { segments, done: sawDone };
   }
 
   return {
     push(chunk: string): NdjsonLineResult {
       buffer += chunk;
-      return consumeLines();
+      return consume();
     },
 
-    /** 流结束后调用：把 buffer 中残留的非换行内容当作最后一行处理 */
+    /**
+     * 流结束后调用。完整对象在到达时已即时解析，这里仅清理残缺缓冲
+     * （未闭合的 '{...' 无法可靠解析，丢弃；调用方应在 0 段时用
+     * parseAlignedFallback 对全量累积文本做兜底）。
+     */
     flush(): NdjsonLineResult {
-      const tail = buffer;
       buffer = '';
-      if (!tail.trim()) return { segments: [], done: false };
-      const result = parseLine(tail);
-      if (result === 'done') return { segments: [], done: true };
-      if (result) return { segments: [result], done: false };
-      return { segments: [], done: false };
+      pos = 0;
+      objStart = -1;
+      depth = 0;
+      inString = false;
+      escaped = false;
+      return { segments: [], done: sawDone };
     },
   };
 }
 
 /**
- * 解析"完整 buffer"为段数组（用于缓存的非流式回放，或解析失败时的兜底）。
+ * 解析"完整 buffer"为段数组（用于缓存的非流式回放，或流式解析 0 段时的兜底）。
  *
- * 兜底策略：先尝试当 NDJSON 解析；如果一段都没解出来，再尝试整个 buffer 作为单个 JSON
- *（{"segments": [...]}）解析；都失败则返回 null。
+ * 兜底策略：
+ * 1. 先跑一遍对象边界扫描（已覆盖 NDJSON、pretty JSON、顶层数组、围栏包裹）；
+ * 2. 再尝试旧格式 {"segments": [...]}（内层对象在 depth>1，第 1 步切不出来）；
+ * 3. 都失败返回 null，由调用方决定是否退化为单段整体译文（并向用户明示降级）。
  */
 export function parseAlignedFallback(raw: string): AlignedSegment[] | null {
   const parser = createNdjsonParser();
-  const { segments } = parser.push(raw + '\n');
+  const { segments } = parser.push(raw);
   if (segments.length > 0) return segments;
 
   const isValidSegment = (s: unknown): s is AlignedSegment => {
@@ -127,20 +174,5 @@ export function parseAlignedFallback(raw: string): AlignedSegment[] | null {
     /* ignore */
   }
 
-  // LLM 也可能直接输出 JSON 数组 [{"src":...,"tgt":...}, ...]（含 ```json 围栏时
-  // 上面的 NDJSON 路径解不出来，这里整体兜底）
-  try {
-    const start = raw.indexOf('[');
-    const end = raw.lastIndexOf(']');
-    if (start >= 0 && end > start) {
-      const arr = JSON.parse(raw.slice(start, end + 1)) as unknown[];
-      if (Array.isArray(arr)) {
-        const valid = arr.filter(isValidSegment);
-        if (valid.length > 0) return valid;
-      }
-    }
-  } catch {
-    /* ignore */
-  }
   return null;
 }

@@ -47,8 +47,10 @@ export const MAX_SESSIONS = 10;
  * }
  * ```
  *
- * @warning 会订阅整个 store，可能导致频繁重渲染。
- *          如需细粒度订阅，请使用 useChatSession + useStore。
+ * @deprecated 会订阅整个 store：流式期间每次 chunk flush 都会触发消费组件
+ *             重渲染，属于反模式。请改用 useSessionStoreSelector（带选择器）
+ *             或 useChatSession + useChatStore 系列细粒度 hooks。
+ *             保留仅为兼容既有调用方，请勿在新代码中使用。
  */
 export function useSessionStore(sessionId: string): ChatStore {
   const storeApi = useMemo(
@@ -223,7 +225,9 @@ export function useAllSessionIds(pollInterval = 1000): string[] {
  * @returns 是否正在流式
  */
 export function useIsSessionStreaming(sessionId: string): boolean {
-  const storeApi = sessionManager.get(sessionId);
+  // 🔧 使用 peek：渲染期的推测性读取不应更新 LRU 顺序（get 会 touch，
+  // 导致仅仅被列表渲染过的会话持续保鲜、干扰淘汰决策）
+  const storeApi = sessionManager.peek(sessionId);
   const [isStreaming, setIsStreaming] = useState(
     (storeApi?.getState().sessionStatus === 'streaming') || false
   );
@@ -237,7 +241,7 @@ export function useIsSessionStreaming(sessionId: string): boolean {
     // 初始状态
     setIsStreaming(storeApi.getState().sessionStatus === 'streaming');
 
-    // 订阅变化
+    // 订阅变化（setState 值未变时 React 会自动 bail out，不产生重渲染）
     const unsubscribe = storeApi.subscribe((state) => {
       setIsStreaming(state.sessionStatus === 'streaming');
     });
