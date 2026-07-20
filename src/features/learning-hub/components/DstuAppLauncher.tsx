@@ -14,7 +14,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import {
@@ -208,7 +208,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
     const Icon = item.CustomIcon;
 
     return (
-      <NotionButton
+      <DsButton
         key={item.type}
         variant="ghost"
         size="sm"
@@ -232,7 +232,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
         <span className="text-[16px] truncate flex-1 text-left">
           {item.label}
         </span>
-      </NotionButton>
+      </DsButton>
     );
   };
 
@@ -258,7 +258,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
   const toolbar = (
     <div className={cn('flex items-center gap-1.5', embedded ? 'mb-2 px-1' : 'px-3 py-3 shrink-0')}>
       {onRefresh && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -269,7 +269,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           aria-label={t('common:refresh')}
         >
           <ArrowClockwise size={embedded ? 18 : 20} className={cn(isRefreshing && 'animate-spin')} />
-        </NotionButton>
+        </DsButton>
       )}
       <div className="flex-1 relative group min-w-0">
         <MagnifyingGlass
@@ -303,20 +303,21 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           )}
         />
         {searchQuery && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
             onClick={() => onSearchChange?.('')}
-            className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 hover:bg-[var(--interactive-hover)]"
+            // 触屏：伪元素扩大命中区到 ~44px，视觉尺寸不变（对齐 TabBar 关闭钮范式）
+            className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3 [@media(pointer:coarse)]:before:content-['']"
             aria-label={t('common:clear')}
           >
             <X size={14} className="text-muted-foreground/60" />
-          </NotionButton>
+          </DsButton>
         )}
       </div>
       <div className="relative shrink-0" ref={createMenuRef}>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -331,38 +332,38 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           disabled={createDisabled}
         >
           <Plus size={embedded ? 18 : 20} />
-        </NotionButton>
+        </DsButton>
         {/* z-dropdown：走全局浮层阶梯，替换裸 z-50 */}
         {showCreateMenu && (
           <div role="menu" className="absolute right-0 top-full z-dropdown mt-1 w-48 ui-zoom-fade-in rounded-lg border border-border bg-popover py-1 shadow-lg">
             <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
               {t('learningHub:quickCreate.title')}
             </div>
-            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('folder')} className={CREATE_MENU_ITEM_CLASS}>
+            <DsButton variant="ghost" size="sm" onClick={() => handleCreate('folder')} className={CREATE_MENU_ITEM_CLASS}>
               <FolderPlus size={16} className="text-blue-500" />
               {t('learningHub:finder.toolbar.newFolder')}
-            </NotionButton>
+            </DsButton>
             <div className="mx-2 my-1 h-px bg-border/50" />
-            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('note')} className={CREATE_MENU_ITEM_CLASS}>
+            <DsButton variant="ghost" size="sm" onClick={() => handleCreate('note')} className={CREATE_MENU_ITEM_CLASS}>
               <FileText size={16} className="text-emerald-500" />
               {t('learningHub:finder.toolbar.newNote')}
-            </NotionButton>
-            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('exam')} className={CREATE_MENU_ITEM_CLASS}>
+            </DsButton>
+            <DsButton variant="ghost" size="sm" onClick={() => handleCreate('exam')} className={CREATE_MENU_ITEM_CLASS}>
               <ClipboardText size={16} className="text-purple-500" />
               {t('learningHub:finder.toolbar.newExam')}
-            </NotionButton>
-            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('essay')} className={CREATE_MENU_ITEM_CLASS}>
+            </DsButton>
+            <DsButton variant="ghost" size="sm" onClick={() => handleCreate('essay')} className={CREATE_MENU_ITEM_CLASS}>
               <PenNib size={16} className="text-pink-500" />
               {t('learningHub:finder.toolbar.newEssay')}
-            </NotionButton>
-            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('translation')} className={CREATE_MENU_ITEM_CLASS}>
+            </DsButton>
+            <DsButton variant="ghost" size="sm" onClick={() => handleCreate('translation')} className={CREATE_MENU_ITEM_CLASS}>
               <Translate size={16} className="text-indigo-500" />
               {t('learningHub:finder.toolbar.newTranslation')}
-            </NotionButton>
-            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('mindmap')} className={CREATE_MENU_ITEM_CLASS}>
+            </DsButton>
+            <DsButton variant="ghost" size="sm" onClick={() => handleCreate('mindmap')} className={CREATE_MENU_ITEM_CLASS}>
               <FlowArrow size={16} className="text-teal-500" />
               {t('learningHub:finder.toolbar.newMindMap')}
-            </NotionButton>
+            </DsButton>
           </div>
         )}
       </div>

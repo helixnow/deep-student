@@ -76,7 +76,7 @@ export const calloutSchema = $nodeSchema('callout', () => ({
       const marker = title ? `[!${type}]${suffix} ${title}` : `[!${type}]${suffix}`;
 
       // Use html (not text) so remark-stringify does not escape `[` as `\[`.
-      // Serialized form remains Obsidian-compatible: `> [!type] title`.
+ // Serialized form remains compatible: `> [!type] title`.
       state.openNode('blockquote');
       state.addNode('html', undefined, marker);
       state.next(node.content);

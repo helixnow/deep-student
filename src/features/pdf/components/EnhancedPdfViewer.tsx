@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Document, Page, Thumbnail, pdfjs, PasswordResponses } from 'react-pdf';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useTranslation } from 'react-i18next';
@@ -220,12 +220,12 @@ const PdfPasswordPrompt: React.FC<{
         </div>
       )}
       <div className="ds-pdf__password-actions">
-        <NotionButton variant="ghost" size="sm" onClick={onCancel}>
+        <DsButton variant="ghost" size="sm" onClick={onCancel}>
           {t('pdf:password.cancel')}
-        </NotionButton>
-        <NotionButton variant="primary" size="sm" onClick={submit} disabled={!password.trim()}>
+        </DsButton>
+        <DsButton variant="primary" size="sm" onClick={submit} disabled={!password.trim()}>
           {t('pdf:password.submit')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );
@@ -2487,7 +2487,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     const isActive = activeOutlinePath === path;
     return (
       <div key={path}>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           className={`ds-outline-item ${isActive ? 'active' : ''}`}
@@ -2499,7 +2499,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           }}
         >
           {item.title}
-        </NotionButton>
+        </DsButton>
         {item.items && item.items.map((child, idx) =>
           renderOutlineItem(child, depth + 1, `${path}.${idx}`, onNavigate)
         )}
@@ -2702,15 +2702,15 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               {t('pdf:toolbar.no_results')}
             </span>
           )}
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handlePrevSearchResult} disabled={searchResults.length === 0} title={t('pdf:toolbar.prev_match')} aria-label={t('pdf:toolbar.prev_match')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handlePrevSearchResult} disabled={searchResults.length === 0} title={t('pdf:toolbar.prev_match')} aria-label={t('pdf:toolbar.prev_match')}>
             <CaretUp size={16} />
-          </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleNextSearchResult} disabled={searchResults.length === 0} title={t('pdf:toolbar.next_match')} aria-label={t('pdf:toolbar.next_match')}>
+          </DsButton>
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleNextSearchResult} disabled={searchResults.length === 0} title={t('pdf:toolbar.next_match')} aria-label={t('pdf:toolbar.next_match')}>
             <CaretDown size={16} />
-          </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleCloseSearch} title={t('pdf:toolbar.close_search')} aria-label={t('pdf:toolbar.close_search')}>
+          </DsButton>
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleCloseSearch} title={t('pdf:toolbar.close_search')} aria-label={t('pdf:toolbar.close_search')}>
             <X size={16} />
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 
@@ -2726,21 +2726,21 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             transform: 'translate(-50%, -100%)',
           }}
         >
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
         </div>
       )}
 
       {showHighlightMenu && isMobileLike && (
         <div className="ds-pdf__highlight-bar ui-rise-in" role="toolbar" aria-label={t('pdf:toolbar.highlight')}>
           <span className="ds-pdf__highlight-bar-label">{t('pdf:toolbar.highlight')}</span>
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
-          <NotionButton
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -2752,7 +2752,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             aria-label={t('pdf:a11y.close')}
           >
             <X size={16} />
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 
@@ -2770,9 +2770,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               <div className="ds-pdf__outline">
                 <div className="ds-outline-header">
                   <span>{t('pdf:toolbar.outline')}</span>
-                  <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setSidebarMode('none')} aria-label={t('pdf:a11y.close')}>
+                  <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setSidebarMode('none')} aria-label={t('pdf:a11y.close')}>
                     <X size={14} />
-                  </NotionButton>
+                  </DsButton>
                 </div>
                 {outlineTip && (
                   <div className="ds-outline-tip ui-fade-in" role="status">{outlineTip}</div>
@@ -2788,9 +2788,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               <div className="ds-pdf__thumbnails-panel">
                 <div className="ds-outline-header">
                   <span>{t('pdf:toolbar.thumbnails')}</span>
-                  <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setSidebarMode('none')} aria-label={t('pdf:a11y.close')}>
+                  <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setSidebarMode('none')} aria-label={t('pdf:a11y.close')}>
                     <X size={14} />
-                  </NotionButton>
+                  </DsButton>
                 </div>
                 <CustomScrollArea className="ds-thumbnails-content" viewportRef={thumbnailsContainerRef} viewportClassName="ds-thumbnails-content-viewport">
                   <div
@@ -2842,10 +2842,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   {loadErrorHint}
                 </p>
               )}
-              <NotionButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-1.5 mt-2">
+              <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-1.5 mt-2">
                 <ArrowClockwise size={14} />
                 {t('common:retry')}
-              </NotionButton>
+              </DsButton>
             </div>
           ) : (
             <Document
@@ -2962,9 +2962,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       {isSmallViewport && sidebarMode !== 'none' && (
         <div className="ds-pdf__mobile-panel" role="region" aria-label={sidebarMode === 'outline' ? t('pdf:toolbar.outline') : t('pdf:toolbar.thumbnails')}>
           <div className="ds-pdf__mobile-panel-header">
-            <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={() => setSidebarMode('none')} aria-label={t('common:back')}>
+            <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={() => setSidebarMode('none')} aria-label={t('common:back')}>
               <CaretLeft size={18} />
-            </NotionButton>
+            </DsButton>
             <div className="ds-pdf__mobile-panel-tabs" role="tablist">
               {outline && outline.length > 0 && (
                 <button
@@ -3054,60 +3054,60 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         {!isToolbarCompact && (
           <div className="ds-pdf__toolbar-left">
             {outline && outline.length > 0 && (
-              <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${sidebarMode === 'outline' ? 'active' : ''}`} onClick={() => toggleSidebar('outline')} title={t('pdf:toolbar.outline')} aria-label={t('pdf:toolbar.outline')}>
+              <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${sidebarMode === 'outline' ? 'active' : ''}`} onClick={() => toggleSidebar('outline')} title={t('pdf:toolbar.outline')} aria-label={t('pdf:toolbar.outline')}>
                 <List size={16} />
-              </NotionButton>
+              </DsButton>
             )}
             
-            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${sidebarMode === 'thumbnails' ? 'active' : ''}`} onClick={() => toggleSidebar('thumbnails')} title={t('pdf:toolbar.thumbnails')} aria-label={t('pdf:toolbar.thumbnails')}>
+            <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${sidebarMode === 'thumbnails' ? 'active' : ''}`} onClick={() => toggleSidebar('thumbnails')} title={t('pdf:toolbar.thumbnails')} aria-label={t('pdf:toolbar.thumbnails')}>
               <GridFour size={16} />
-            </NotionButton>
+            </DsButton>
             
-            <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={() => { setShowSearch(true); setTimeout(() => searchInputRef.current?.focus(), 100); }} title={`${t('pdf:toolbar.search')} (${MOD_KEY_LABEL} F)`} aria-label={t('pdf:a11y.search')}>
+            <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={() => { setShowSearch(true); setTimeout(() => searchInputRef.current?.focus(), 100); }} title={`${t('pdf:toolbar.search')} (${MOD_KEY_LABEL} F)`} aria-label={t('pdf:a11y.search')}>
               <MagnifyingGlass size={16} />
-            </NotionButton>
+            </DsButton>
             
             <div className="ds-toolbar-divider" />
             
-            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${currentPageBookmark ? 'active' : ''}`} onClick={addBookmark} title={currentPageBookmark ? t('pdf:bookmark.editBookmark') : t('pdf:bookmark.addBookmark')} aria-label={currentPageBookmark ? t('pdf:bookmark.editBookmark') : t('pdf:bookmark.addBookmark')}>
+            <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${currentPageBookmark ? 'active' : ''}`} onClick={addBookmark} title={currentPageBookmark ? t('pdf:bookmark.editBookmark') : t('pdf:bookmark.addBookmark')} aria-label={currentPageBookmark ? t('pdf:bookmark.editBookmark') : t('pdf:bookmark.addBookmark')}>
               {currentPageBookmark ? <BookmarkCheck size={16} /> : <BookmarkSimple size={16} />}
-            </NotionButton>
+            </DsButton>
             
             {bookmarks.length > 0 && (
-              <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${showBookmarkList ? 'active' : ''}`} onClick={() => setShowBookmarkList(!showBookmarkList)} title={t('pdf:bookmark.showBookmarks')} aria-label={t('pdf:bookmark.showBookmarks')}>
+              <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${showBookmarkList ? 'active' : ''}`} onClick={() => setShowBookmarkList(!showBookmarkList)} title={t('pdf:bookmark.showBookmarks')} aria-label={t('pdf:bookmark.showBookmarks')}>
                 <Bookmark size={16} />
                 <span className="ds-bookmark-count">{bookmarks.length}</span>
-              </NotionButton>
+              </DsButton>
             )}
 
             {/* 批注模式：临时开启当前页 ±N 文本层（运行时开关，不改默认设置） */}
             {annotationToggleAvailable && (
-              <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${resolvedEnableTextSelection ? 'active' : ''}`} onClick={() => setAnnotationMode(!resolvedEnableTextSelection)} title={t('pdf:toolbar.highlight')} aria-label={t('pdf:toolbar.highlight')} aria-pressed={resolvedEnableTextSelection}>
+              <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${resolvedEnableTextSelection ? 'active' : ''}`} onClick={() => setAnnotationMode(!resolvedEnableTextSelection)} title={t('pdf:toolbar.highlight')} aria-label={t('pdf:toolbar.highlight')} aria-pressed={resolvedEnableTextSelection}>
                 <Highlighter size={16} />
-              </NotionButton>
+              </DsButton>
             )}
 
             {/* 批注列表（原右下角 FAB 收入底栏） */}
             {highlights.length > 0 && (
-              <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${showHighlightList ? 'active' : ''}`} onClick={() => setShowHighlightList(!showHighlightList)} title={t('pdf:toolbar.show_highlights')} aria-label={t('pdf:toolbar.show_highlights')}>
+              <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${showHighlightList ? 'active' : ''}`} onClick={() => setShowHighlightList(!showHighlightList)} title={t('pdf:toolbar.show_highlights')} aria-label={t('pdf:toolbar.show_highlights')}>
                 <Highlighter size={16} weight="fill" />
                 <span className="ds-bookmark-count">{highlights.length}</span>
-              </NotionButton>
+              </DsButton>
             )}
           </div>
         )}
 
         {/* 核心控制：缩放 + 页面导航（始终显示） */}
         <div className="ds-pdf__toolbar-center">
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleZoomOut} title={`${t('pdf:toolbar.zoom_out')} (${MOD_KEY_LABEL} -)`} aria-label={t('pdf:toolbar.zoom_out')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleZoomOut} title={`${t('pdf:toolbar.zoom_out')} (${MOD_KEY_LABEL} -)`} aria-label={t('pdf:toolbar.zoom_out')}>
             <MagnifyingGlassMinus size={16} />
-          </NotionButton>
+          </DsButton>
 
           <div className="ds-zoom-menu" ref={zoomMenuRef}>
-            <NotionButton variant="ghost" size="sm" className="ds-btn" onClick={() => setShowZoomMenu(!showZoomMenu)} title={t('pdf:toolbar.zoom_level')} aria-label={t('pdf:toolbar.zoom_level')} aria-expanded={showZoomMenu}>
+            <DsButton variant="ghost" size="sm" className="ds-btn" onClick={() => setShowZoomMenu(!showZoomMenu)} title={t('pdf:toolbar.zoom_level')} aria-label={t('pdf:toolbar.zoom_level')} aria-expanded={showZoomMenu}>
               <span className="ds-zoom-readout">{Math.round((pendingScale ?? scale) * 100)}%</span>
               <CaretDown size={12} />
-            </NotionButton>
+            </DsButton>
             {showZoomMenu && (
               <div className="ds-zoom-dropdown ds-zoom-dropdown--up ui-rise-in">
                 {([
@@ -3115,7 +3115,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   ['fitPage', t('pdf:toolbar.fit_page')],
                   ['actualSize', t('pdf:toolbar.actual_size')],
                 ] as const).map(([mode, label]) => (
-                  <NotionButton
+                  <DsButton
                     key={mode}
                     variant="ghost"
                     size="sm"
@@ -3123,27 +3123,27 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                     onClick={() => handleZoomModeSelect(mode)}
                   >
                     {label}
-                  </NotionButton>
+                  </DsButton>
                 ))}
                 <div className="ds-more-divider" />
                 {ZOOM_LEVELS.map(z => (
-                  <NotionButton key={z} variant="ghost" size="sm" className={`ds-zoom-option ${zoomMode === 'custom' && scale === z ? 'active' : ''}`} onClick={() => handleZoomSelect(z)}>
+                  <DsButton key={z} variant="ghost" size="sm" className={`ds-zoom-option ${zoomMode === 'custom' && scale === z ? 'active' : ''}`} onClick={() => handleZoomSelect(z)}>
                     {Math.round(z * 100)}%
-                  </NotionButton>
+                  </DsButton>
                 ))}
               </div>
             )}
           </div>
 
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleZoomIn} title={`${t('pdf:toolbar.zoom_in')} (${MOD_KEY_LABEL} +)`} aria-label={t('pdf:toolbar.zoom_in')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleZoomIn} title={`${t('pdf:toolbar.zoom_in')} (${MOD_KEY_LABEL} +)`} aria-label={t('pdf:toolbar.zoom_in')}>
             <MagnifyingGlassPlus size={16} />
-          </NotionButton>
+          </DsButton>
 
           <div className="ds-toolbar-divider" />
 
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handlePrevPage} disabled={currentPage <= 1} title={`${t('pdf:actions.previous_page')} (←)`} aria-label={t('pdf:actions.previous_page')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handlePrevPage} disabled={currentPage <= 1} title={`${t('pdf:actions.previous_page')} (←)`} aria-label={t('pdf:actions.previous_page')}>
             <CaretLeft size={16} />
-          </NotionButton>
+          </DsButton>
 
           <div className="ds-page-input">
             <Input
@@ -3164,15 +3164,15 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             <span className="ds-page-total">/ {numPages || 0}</span>
           </div>
 
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleNextPage} disabled={currentPage >= numPages} title={`${t('pdf:actions.next_page')} (→)`} aria-label={t('pdf:actions.next_page')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleNextPage} disabled={currentPage >= numPages} title={`${t('pdf:actions.next_page')} (→)`} aria-label={t('pdf:actions.next_page')}>
             <CaretRight size={16} />
-          </NotionButton>
+          </DsButton>
         </div>
 
         {/* 非紧凑模式：右侧视图控制 */}
         {!isToolbarCompact && (
           <div className="ds-pdf__toolbar-right">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -3182,22 +3182,22 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               aria-label={t('pdf:toolbar.rotate_cw')}
             >
               <ArrowClockwise size={16} />
-            </NotionButton>
+            </DsButton>
 
-            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${isDarkReading ? 'active' : ''}`} onClick={handleToggleDarkReading} title={isDarkReading ? t('pdf:toolbar.light_reading') : t('pdf:toolbar.dark_reading')} aria-label={isDarkReading ? t('pdf:toolbar.light_reading') : t('pdf:toolbar.dark_reading')}>
+            <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${isDarkReading ? 'active' : ''}`} onClick={handleToggleDarkReading} title={isDarkReading ? t('pdf:toolbar.light_reading') : t('pdf:toolbar.dark_reading')} aria-label={isDarkReading ? t('pdf:toolbar.light_reading') : t('pdf:toolbar.dark_reading')}>
               {isDarkReading ? <Sun size={16} /> : <Moon size={16} />}
-            </NotionButton>
+            </DsButton>
 
             {dualPageAvailable && (
-              <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${viewMode === 'dual' ? 'active' : ''}`} onClick={handleToggleViewMode} title={viewMode === 'single' ? t('pdf:toolbar.dual_page') : t('pdf:toolbar.single_page')} aria-label={viewMode === 'single' ? t('pdf:toolbar.dual_page') : t('pdf:toolbar.single_page')}>
+              <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${viewMode === 'dual' ? 'active' : ''}`} onClick={handleToggleViewMode} title={viewMode === 'single' ? t('pdf:toolbar.dual_page') : t('pdf:toolbar.single_page')} aria-label={viewMode === 'single' ? t('pdf:toolbar.dual_page') : t('pdf:toolbar.single_page')}>
                 {viewMode === 'single' ? <Book size={16} /> : <BookOpen size={16} />}
-              </NotionButton>
+              </DsButton>
             )}
 
             {fullscreenSupported && (
-              <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleToggleFullscreen} title={isFullscreen ? t('pdf:toolbar.exit_fullscreen') : t('pdf:toolbar.fullscreen')} aria-label={isFullscreen ? t('pdf:toolbar.exit_fullscreen') : t('pdf:toolbar.fullscreen')}>
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleToggleFullscreen} title={isFullscreen ? t('pdf:toolbar.exit_fullscreen') : t('pdf:toolbar.fullscreen')} aria-label={isFullscreen ? t('pdf:toolbar.exit_fullscreen') : t('pdf:toolbar.fullscreen')}>
                 {isFullscreen ? <ArrowsIn size={16} /> : <ArrowsOut size={16} />}
-              </NotionButton>
+              </DsButton>
             )}
           </div>
         )}
@@ -3205,78 +3205,78 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         {/* 紧凑模式：更多菜单 */}
         {isToolbarCompact && (
           <div className="ds-pdf__toolbar-more" ref={moreMenuRef}>
-            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${showMoreMenu ? 'active' : ''}`} onClick={() => setShowMoreMenu(!showMoreMenu)} title={t('pdf:toolbar.more')} aria-label={t('pdf:toolbar.more')}>
+            <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${showMoreMenu ? 'active' : ''}`} onClick={() => setShowMoreMenu(!showMoreMenu)} title={t('pdf:toolbar.more')} aria-label={t('pdf:toolbar.more')}>
               <DotsThree size={16} />
-            </NotionButton>
+            </DsButton>
             {showMoreMenu && (
               <div className="ds-more-dropdown ds-more-dropdown--up ui-rise-in">
                 {outline && outline.length > 0 && (
-                  <NotionButton variant="ghost" size="sm" className={`ds-more-item ${sidebarMode === 'outline' ? 'active' : ''}`} onClick={() => { toggleSidebar('outline'); setShowMoreMenu(false); }}>
+                  <DsButton variant="ghost" size="sm" className={`ds-more-item ${sidebarMode === 'outline' ? 'active' : ''}`} onClick={() => { toggleSidebar('outline'); setShowMoreMenu(false); }}>
                     <List size={14} />
                     <span>{t('pdf:toolbar.outline')}</span>
-                  </NotionButton>
+                  </DsButton>
                 )}
-                <NotionButton variant="ghost" size="sm" className={`ds-more-item ${sidebarMode === 'thumbnails' ? 'active' : ''}`} onClick={() => { toggleSidebar('thumbnails'); setShowMoreMenu(false); }}>
+                <DsButton variant="ghost" size="sm" className={`ds-more-item ${sidebarMode === 'thumbnails' ? 'active' : ''}`} onClick={() => { toggleSidebar('thumbnails'); setShowMoreMenu(false); }}>
                   <GridFour size={14} />
                   <span>{t('pdf:toolbar.thumbnails')}</span>
-                </NotionButton>
-                <NotionButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { setShowSearch(true); setShowMoreMenu(false); setTimeout(() => searchInputRef.current?.focus(), 100); }}>
+                </DsButton>
+                <DsButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { setShowSearch(true); setShowMoreMenu(false); setTimeout(() => searchInputRef.current?.focus(), 100); }}>
                   <MagnifyingGlass size={14} />
                   <span>{t('pdf:toolbar.search')}</span>
-                </NotionButton>
+                </DsButton>
 
                 <div className="ds-more-divider" />
 
-                <NotionButton variant="ghost" size="sm" className={`ds-more-item ${currentPageBookmark ? 'active' : ''}`} onClick={() => { addBookmark(); setShowMoreMenu(false); }}>
+                <DsButton variant="ghost" size="sm" className={`ds-more-item ${currentPageBookmark ? 'active' : ''}`} onClick={() => { addBookmark(); setShowMoreMenu(false); }}>
                   {currentPageBookmark ? <BookmarkCheck size={14} /> : <BookmarkSimple size={14} />}
                   <span>{currentPageBookmark
                     ? t('pdf:bookmark.editBookmark')
                     : t('pdf:bookmark.addBookmark')}</span>
-                </NotionButton>
+                </DsButton>
                 {bookmarks.length > 0 && (
-                  <NotionButton variant="ghost" size="sm" className={`ds-more-item ${showBookmarkList ? 'active' : ''}`} onClick={() => { setShowBookmarkList(!showBookmarkList); setShowMoreMenu(false); }}>
+                  <DsButton variant="ghost" size="sm" className={`ds-more-item ${showBookmarkList ? 'active' : ''}`} onClick={() => { setShowBookmarkList(!showBookmarkList); setShowMoreMenu(false); }}>
                     <Bookmark size={14} />
                     <span>{t('pdf:bookmark.showBookmarks')} ({bookmarks.length})</span>
-                  </NotionButton>
+                  </DsButton>
                 )}
                 {annotationToggleAvailable && (
-                  <NotionButton variant="ghost" size="sm" className={`ds-more-item ${resolvedEnableTextSelection ? 'active' : ''}`} onClick={() => { setAnnotationMode(!resolvedEnableTextSelection); setShowMoreMenu(false); }}>
+                  <DsButton variant="ghost" size="sm" className={`ds-more-item ${resolvedEnableTextSelection ? 'active' : ''}`} onClick={() => { setAnnotationMode(!resolvedEnableTextSelection); setShowMoreMenu(false); }}>
                     <Highlighter size={14} />
                     <span>{t('pdf:toolbar.highlight')}</span>
-                  </NotionButton>
+                  </DsButton>
                 )}
                 {highlights.length > 0 && (
-                  <NotionButton variant="ghost" size="sm" className={`ds-more-item ${showHighlightList ? 'active' : ''}`} onClick={() => { setShowHighlightList(!showHighlightList); setShowMoreMenu(false); }}>
+                  <DsButton variant="ghost" size="sm" className={`ds-more-item ${showHighlightList ? 'active' : ''}`} onClick={() => { setShowHighlightList(!showHighlightList); setShowMoreMenu(false); }}>
                     <Highlighter size={14} weight="fill" />
                     <span>{t('pdf:toolbar.show_highlights')} ({highlights.length})</span>
-                  </NotionButton>
+                  </DsButton>
                 )}
 
                 <div className="ds-more-divider" />
 
-                <NotionButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { handleRotate(); setShowMoreMenu(false); }}>
+                <DsButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { handleRotate(); setShowMoreMenu(false); }}>
                   <ArrowClockwise size={14} />
                   <span>{t('pdf:toolbar.rotate_cw')}</span>
-                </NotionButton>
-                <NotionButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { handleRotateCcw(); setShowMoreMenu(false); }}>
+                </DsButton>
+                <DsButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { handleRotateCcw(); setShowMoreMenu(false); }}>
                   <ArrowCounterClockwise size={14} />
                   <span>{t('pdf:toolbar.rotate_ccw')}</span>
-                </NotionButton>
-                <NotionButton variant="ghost" size="sm" className={`ds-more-item ${isDarkReading ? 'active' : ''}`} onClick={() => { handleToggleDarkReading(); setShowMoreMenu(false); }}>
+                </DsButton>
+                <DsButton variant="ghost" size="sm" className={`ds-more-item ${isDarkReading ? 'active' : ''}`} onClick={() => { handleToggleDarkReading(); setShowMoreMenu(false); }}>
                   {isDarkReading ? <Sun size={14} /> : <Moon size={14} />}
                   <span>{isDarkReading ? t('pdf:toolbar.light_reading') : t('pdf:toolbar.dark_reading')}</span>
-                </NotionButton>
+                </DsButton>
                 {dualPageAvailable && (
-                  <NotionButton variant="ghost" size="sm" className={`ds-more-item ${viewMode === 'dual' ? 'active' : ''}`} onClick={() => { handleToggleViewMode(); setShowMoreMenu(false); }}>
+                  <DsButton variant="ghost" size="sm" className={`ds-more-item ${viewMode === 'dual' ? 'active' : ''}`} onClick={() => { handleToggleViewMode(); setShowMoreMenu(false); }}>
                     {viewMode === 'single' ? <Book size={14} /> : <BookOpen size={14} />}
                     <span>{viewMode === 'single' ? t('pdf:toolbar.dual_page') : t('pdf:toolbar.single_page')}</span>
-                  </NotionButton>
+                  </DsButton>
                 )}
                 {fullscreenSupported && (
-                  <NotionButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { handleToggleFullscreen(); setShowMoreMenu(false); }}>
+                  <DsButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { handleToggleFullscreen(); setShowMoreMenu(false); }}>
                     {isFullscreen ? <ArrowsIn size={14} /> : <ArrowsOut size={14} />}
                     <span>{isFullscreen ? t('pdf:toolbar.exit_fullscreen') : t('pdf:toolbar.fullscreen')}</span>
-                  </NotionButton>
+                  </DsButton>
                 )}
               </div>
             )}
@@ -3316,18 +3316,18 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         <div className={isSmallViewport ? 'ds-pdf__mobile-panel' : 'ds-pdf__highlights-panel'}>
           {isSmallViewport ? (
             <div className="ds-pdf__mobile-panel-header">
-              <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={() => setShowHighlightList(false)} aria-label={t('common:back')}>
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={() => setShowHighlightList(false)} aria-label={t('common:back')}>
                 <CaretLeft size={18} />
-              </NotionButton>
+              </DsButton>
               <span className="ds-pdf__mobile-panel-title">{t('pdf:toolbar.highlights')}</span>
               <span className="ds-pdf__mobile-panel-spacer" aria-hidden="true" />
             </div>
           ) : (
             <div className="ds-outline-header">
               <span>{t('pdf:toolbar.highlights')}</span>
-              <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setShowHighlightList(false)} aria-label={t('pdf:a11y.close')}>
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setShowHighlightList(false)} aria-label={t('pdf:a11y.close')}>
                 <X size={14} />
-              </NotionButton>
+              </DsButton>
             </div>
           )}
           <div className="ds-highlights-list">
@@ -3350,9 +3350,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                     {t('pdf:toolbar.page', { page: hl.pageIndex })}
                   </div>
                 </div>
-                <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-delete" onClick={(e) => { e.stopPropagation(); removeHighlight(hl.id); }} title={t('pdf:toolbar.delete_highlight')} aria-label={t('pdf:a11y.delete')}>
+                <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-delete" onClick={(e) => { e.stopPropagation(); removeHighlight(hl.id); }} title={t('pdf:toolbar.delete_highlight')} aria-label={t('pdf:a11y.delete')}>
                   <X size={12} />
-                </NotionButton>
+                </DsButton>
               </div>
             ))}
           </div>
@@ -3364,18 +3364,18 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         <div className={isSmallViewport ? 'ds-pdf__mobile-panel' : 'ds-pdf__bookmarks-panel'}>
           {isSmallViewport ? (
             <div className="ds-pdf__mobile-panel-header">
-              <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={() => setShowBookmarkList(false)} aria-label={t('common:back')}>
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={() => setShowBookmarkList(false)} aria-label={t('common:back')}>
                 <CaretLeft size={18} />
-              </NotionButton>
+              </DsButton>
               <span className="ds-pdf__mobile-panel-title">{t('pdf:bookmark.bookmarkList')}</span>
               <span className="ds-pdf__mobile-panel-spacer" aria-hidden="true" />
             </div>
           ) : (
             <div className="ds-outline-header">
               <span>{t('pdf:bookmark.bookmarkList')}</span>
-              <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setShowBookmarkList(false)} aria-label={t('pdf:a11y.close')}>
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setShowBookmarkList(false)} aria-label={t('pdf:a11y.close')}>
                 <X size={14} />
-              </NotionButton>
+              </DsButton>
             </div>
           )}
           <div className="ds-bookmarks-list">
@@ -3424,13 +3424,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   </div>
                   <div className="ds-bookmark-actions">
                     {editingBookmarkId !== bm.id && (
-                      <NotionButton variant="ghost" size="icon" iconOnly className="ds-bookmark-action-btn" onClick={(e) => { e.stopPropagation(); startEditBookmark(bm); }} title={t('pdf:bookmark.editTitle')} aria-label={t('pdf:a11y.edit')}>
+                      <DsButton variant="ghost" size="icon" iconOnly className="ds-bookmark-action-btn" onClick={(e) => { e.stopPropagation(); startEditBookmark(bm); }} title={t('pdf:bookmark.editTitle')} aria-label={t('pdf:a11y.edit')}>
                         <Pencil size={12} />
-                      </NotionButton>
+                      </DsButton>
                     )}
-                    <NotionButton variant="ghost" size="icon" iconOnly className="ds-bookmark-action-btn ds-bookmark-delete-btn" onClick={(e) => { e.stopPropagation(); removeBookmark(bm.id); }} title={t('pdf:bookmark.deleteBookmark')} aria-label={t('pdf:a11y.delete')}>
+                    <DsButton variant="ghost" size="icon" iconOnly className="ds-bookmark-action-btn ds-bookmark-delete-btn" onClick={(e) => { e.stopPropagation(); removeBookmark(bm.id); }} title={t('pdf:bookmark.deleteBookmark')} aria-label={t('pdf:a11y.delete')}>
                       <Trash size={12} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
               ))

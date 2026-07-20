@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Folder, CaretRight, CaretLeft, House, CircleNotch, FolderOpen as FolderInputIcon } from '@phosphor-icons/react';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogFooter } from '@/components/ui/NotionDialog';
+import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogFooter } from '@/components/ui/DsDialog';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { folderApi } from '@/dstu';
 import type { FolderTreeNode } from '@/dstu/types/folder';
 import { isErr } from '@/shared/result';
@@ -20,7 +20,7 @@ interface FolderPickerDialogProps {
   title?: string;
   /**
    * 📱 内联渲染模式（移动端契约：禁止模态框）。
-   * true 时不再渲染 NotionDialog，而是渲染一个覆盖宿主容器的全屏子屏
+   * true 时不再渲染 DsDialog，而是渲染一个覆盖宿主容器的全屏子屏
    * （absolute inset-0 + 顶栏返回 + 底部确认条），需挂在 relative 容器内。
    */
   inline?: boolean;
@@ -105,7 +105,7 @@ function FolderNode({
         }}
       >
         {hasChildren ? (
-          <NotionButton variant="ghost" size="icon" iconOnly tabIndex={-1} className="!h-5 !w-5 !p-0.5" onClick={(e) => { e.stopPropagation(); onToggleExpand(node.folder.id); }} aria-label="toggle">
+          <DsButton variant="ghost" size="icon" iconOnly tabIndex={-1} className="!h-5 !w-5 !p-0.5" onClick={(e) => { e.stopPropagation(); onToggleExpand(node.folder.id); }} aria-label="toggle">
             <CaretRight 
               className={cn(
                 'transition-transform duration-200 ease-out',
@@ -113,7 +113,7 @@ function FolderNode({
               )}
               size={14}
             />
-          </NotionButton>
+          </DsButton>
         ) : (
           <span className="w-4" />
         )}
@@ -287,7 +287,7 @@ export function FolderPickerDialog({
       >
         {/* 顶栏：返回 + 标题 */}
         <div className="flex items-center gap-1 border-b border-border/50 pl-1 pr-2 py-1.5 shrink-0">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => onOpenChange(false)}
@@ -296,7 +296,7 @@ export function FolderPickerDialog({
           >
             <CaretLeft className="h-4 w-4" aria-hidden="true" />
             {t('common:back')}
-          </NotionButton>
+          </DsButton>
           <FolderInputIcon size={16} className="text-muted-foreground shrink-0" />
           <h2 className="text-sm font-semibold truncate">{resolvedTitle}</h2>
         </div>
@@ -308,15 +308,15 @@ export function FolderPickerDialog({
 
         {/* 底部确认条 */}
         <div className="flex items-center justify-end gap-2 border-t border-border/50 px-3 py-2 shrink-0 bg-background pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))]">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => onOpenChange(false)}
             className="[@media(pointer:coarse)]:min-h-[44px] px-4"
           >
             {t('common:cancel')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="primary"
             size="sm"
             onClick={handleConfirm}
@@ -324,20 +324,20 @@ export function FolderPickerDialog({
             className="[@media(pointer:coarse)]:min-h-[44px] px-4"
           >
             {t('finder.folderPicker.confirm')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     );
   }
 
   return (
-    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-md">
-        <NotionDialogHeader>
-          <NotionDialogTitle className="flex items-center gap-2">
+    <DsDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-md">
+        <DsDialogHeader>
+          <DsDialogTitle className="flex items-center gap-2">
             <FolderInputIcon size={16} className="text-muted-foreground" />
             {resolvedTitle}
-          </NotionDialogTitle>
-        </NotionDialogHeader>
+          </DsDialogTitle>
+        </DsDialogHeader>
 
         {/* 内容区 */}
         <div className="h-[320px] overflow-hidden mb-3">
@@ -346,14 +346,14 @@ export function FolderPickerDialog({
           </CustomScrollArea>
         </div>
 
-        <NotionDialogFooter>
-          <NotionButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+        <DsDialogFooter>
+          <DsButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             {t('common:cancel')}
-          </NotionButton>
-          <NotionButton variant="primary" size="sm" onClick={handleConfirm} disabled={isLoading}>
+          </DsButton>
+          <DsButton variant="primary" size="sm" onClick={handleConfirm} disabled={isLoading}>
             {t('finder.folderPicker.confirm')}
-          </NotionButton>
-        </NotionDialogFooter>
-    </NotionDialog>
+          </DsButton>
+        </DsDialogFooter>
+    </DsDialog>
   );
 }

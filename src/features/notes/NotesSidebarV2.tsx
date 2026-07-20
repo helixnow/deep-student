@@ -17,7 +17,7 @@ import {
   FileText,
   PencilSimple,
 } from "@phosphor-icons/react";
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Z_INDEX } from '@/config/zIndex';
 import {
   AppMenu,
@@ -49,7 +49,7 @@ import { useBreakpoint } from "@/hooks/useBreakpoint";
 
 const stripHtml = (raw: string) => raw.replace(/<[^>]*>/g, '');
 
-/** 骨架屏行条：替代 daisyUI spinner，与全局 Notion 风格一致 */
+/** 骨架屏行条：替代 daisyUI spinner，与全局 简洁风格一致 */
 const SidebarSkeletonRows: React.FC<{ rows?: number }> = ({ rows = 8 }) => (
   <div className="absolute inset-0 px-3 py-2 space-y-2 overflow-hidden" aria-hidden="true">
     {Array.from({ length: rows }).map((_, i) => (
@@ -410,7 +410,7 @@ const NotesSidebarContent: React.FC<{
       <div className="p-3 pb-0 space-y-3">
         <div className="flex items-center gap-1 min-h-[36px]">
           {/* 触屏（pointer:coarse）下放大到 40px 触控目标 */}
-          <NotionButton 
+          <DsButton 
             variant="ghost" 
             size="icon"
             className="h-8 w-8 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 text-muted-foreground/70 hover:text-foreground"
@@ -418,8 +418,8 @@ const NotesSidebarContent: React.FC<{
             title={t('notes:sidebar.actions.new_note')}
           >
             <FileText className="h-4 w-4" />
-          </NotionButton>
-          <NotionButton 
+          </DsButton>
+          <DsButton 
             variant="ghost" 
             size="icon"
             className="h-8 w-8 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 text-muted-foreground/70 hover:text-foreground"
@@ -427,8 +427,8 @@ const NotesSidebarContent: React.FC<{
             title={t('notes:sidebar.actions.new_folder')}
           >
             <FolderPlus className="h-4 w-4" />
-          </NotionButton>
-          <NotionButton 
+          </DsButton>
+          <DsButton 
             variant="ghost" 
             size="icon"
             className={cn(
@@ -442,7 +442,7 @@ const NotesSidebarContent: React.FC<{
             }
           >
             <Star className={cn("h-3.5 w-3.5", showFavoritesOnly && "fill-current")} />
-          </NotionButton>
+          </DsButton>
 
           <AddReferenceDropdown
             selectedFolderId={
@@ -453,7 +453,7 @@ const NotesSidebarContent: React.FC<{
 
           <AppMenu>
             <AppMenuTrigger asChild>
-              <NotionButton 
+              <DsButton 
                 variant="ghost" 
                 size="sm"
                 className="h-8 [@media(pointer:coarse)]:h-10 px-2 text-[11px] text-muted-foreground/70 hover:text-foreground"
@@ -461,7 +461,7 @@ const NotesSidebarContent: React.FC<{
               >
                 {/* 显示当前排序方式，而非写死首项 */}
                 {t(`notes:sidebar.actions.sort_${sortMethod}`, t('notes:sidebar.actions.sort'))}
-              </NotionButton>
+              </DsButton>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={160}>
               <AppMenuItem checked={sortMethod === 'name_asc'} onClick={() => changeSort('name_asc')}>{t('notes:sidebar.actions.sort_name_asc')}</AppMenuItem>
@@ -577,14 +577,14 @@ const NotesSidebarContent: React.FC<{
               {t('notes:tree.empty')}
             </p>
             <div className="flex items-center gap-2">
-              <NotionButton variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={handleCreateNote}>
+              <DsButton variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={handleCreateNote}>
                 <FileText className="h-3.5 w-3.5 mr-1" />
                 {t('notes:sidebar.actions.new_note')}
-              </NotionButton>
-              <NotionButton variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground" onClick={handleCreateFolder}>
+              </DsButton>
+              <DsButton variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground" onClick={handleCreateFolder}>
                 <FolderPlus className="h-3.5 w-3.5 mr-1" />
                 {t('notes:sidebar.actions.new_folder')}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         ) : (
@@ -691,7 +691,7 @@ const NotesSidebarContent: React.FC<{
                 return <div key={item.id} className="app-menu-separator" />;
               }
               return (
-                <NotionButton
+                <DsButton
                   key={item.id}
                   variant="ghost" size="sm"
                   className="app-menu-item"
@@ -701,7 +701,7 @@ const NotesSidebarContent: React.FC<{
                   }}
                 >
                   <span className="app-menu-item-content">{t(item.label, item.label)}</span>
-                </NotionButton>
+                </DsButton>
               );
             })}
             
@@ -710,46 +710,46 @@ const NotesSidebarContent: React.FC<{
               const note = notes.find(n => n.id === contextMenu.id);
               if (!note) return null;
               return (
-                <NotionButton variant="ghost" size="sm" className="app-menu-item" onClick={() => { toggleFavorite(contextMenu.id); setContextMenu(null); }}>
+                <DsButton variant="ghost" size="sm" className="app-menu-item" onClick={() => { toggleFavorite(contextMenu.id); setContextMenu(null); }}>
                   <span className="app-menu-item-icon">
                     <Star className={cn("h-4 w-4", note.is_favorite && "fill-warning text-warning")} />
                   </span>
                   <span className="app-menu-item-content">
                     {note.is_favorite ? t('notes:favorites.context_unmark') : t('notes:favorites.context_mark')}
                   </span>
-                </NotionButton>
+                </DsButton>
               );
             })()}
             
             {treeData[contextMenu.id]?.canRename !== false && (
-              <NotionButton variant="ghost" size="sm" className="app-menu-item" onClick={() => { setRenamingId(contextMenu.id); setContextMenu(null); }}>
+              <DsButton variant="ghost" size="sm" className="app-menu-item" onClick={() => { setRenamingId(contextMenu.id); setContextMenu(null); }}>
                 <span className="app-menu-item-icon"><PencilSimple className="h-4 w-4" /></span>
                 <span className="app-menu-item-content">{t('notes:tree.context_menu.rename')}</span>
-              </NotionButton>
+              </DsButton>
             )}
             
             {/* 引用操作 */}
             {treeData[contextMenu.id]?.isFolder && (
               <>
                 <div className="app-menu-separator" />
-                <NotionButton variant="ghost" size="sm" className="app-menu-item" onClick={() => { openFolderRefPicker(contextMenu.id); setContextMenu(null); }}>
+                <DsButton variant="ghost" size="sm" className="app-menu-item" onClick={() => { openFolderRefPicker(contextMenu.id); setContextMenu(null); }}>
                   <span className="app-menu-item-icon"><BookOpen className="h-4 w-4" /></span>
                   <span className="app-menu-item-content">{t('notes:reference.add_textbook')}</span>
-                </NotionButton>
+                </DsButton>
               </>
             )}
             
             {/* 删除 */}
             {isReferenceId(contextMenu.id) ? (
-              <NotionButton variant="ghost" size="sm" className="app-menu-item app-menu-item-destructive" onClick={() => { removeRef(contextMenu.id); setContextMenu(null); }}>
+              <DsButton variant="ghost" size="sm" className="app-menu-item app-menu-item-destructive" onClick={() => { removeRef(contextMenu.id); setContextMenu(null); }}>
                 <span className="app-menu-item-icon"><Link className="h-4 w-4" /></span>
                 <span className="app-menu-item-content">{t('notes:reference.remove')}</span>
-              </NotionButton>
+              </DsButton>
             ) : (
-              <NotionButton variant="ghost" size="sm" className="app-menu-item app-menu-item-destructive" onClick={() => { deleteItems([contextMenu.id]); setContextMenu(null); }}>
+              <DsButton variant="ghost" size="sm" className="app-menu-item app-menu-item-destructive" onClick={() => { deleteItems([contextMenu.id]); setContextMenu(null); }}>
                 <span className="app-menu-item-icon"><Trash size={16} /></span>
                 <span className="app-menu-item-content">{t('notes:tree.context_menu.delete')}</span>
-              </NotionButton>
+              </DsButton>
             )}
           </div>
         </>,
@@ -797,7 +797,7 @@ export const NotesSidebarV2: React.FC<NotesSidebarV2Props> = ({
         onRefreshClick={() => refreshNotes()}
         showCollapse={!isSmallScreen}
         rightActions={
-          <NotionButton
+          <DsButton
             variant="utility"
             size="icon"
             className="h-7 w-7"
@@ -805,7 +805,7 @@ export const NotesSidebarV2: React.FC<NotesSidebarV2Props> = ({
             title={t('notes:sidebar.trash')}
           >
             <Trash size={14} />
-          </NotionButton>
+          </DsButton>
         }
       />
       <NotesSidebarContent onNoteSelected={isSmallScreen ? onClose : undefined} />

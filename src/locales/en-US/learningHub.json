@@ -950,6 +950,8 @@
     "rename": "Rename",
     "remove": "Remove from Desktop",
     "resourceNotFound": "Resource not found or has been deleted",
+    "shortcutAdded": "Added to desktop",
+    "shortcutExists": "Already on the desktop",
     "setRootFolder": "Set Desktop Root Folder",
     "rootPath": "Root",
     "presets": {

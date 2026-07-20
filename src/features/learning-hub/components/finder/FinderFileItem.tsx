@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN, enUS } from 'date-fns/locale';
 import { Star, DotsThree, Check } from '@phosphor-icons/react';
@@ -283,21 +283,21 @@ export const FinderFileItem = React.memo(function FinderFileItem({
               </>
             )}
             {/* 更多操作按钮 - 桌面悬停显示，触屏常显（N-4） */}
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
               className={cn(
                 'hover:bg-[var(--interactive-hover)] transition-opacity duration-150',
                 isTouchPrimary
-                  ? '!h-9 !w-9 !p-1.5 opacity-100'
+                  ? '!h-11 !w-11 !p-2.5 opacity-100'
                   : '!h-6 !w-6 !p-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
               )}
               onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
               aria-label={t('common:more')}
             >
               <DotsThree size={isTouchPrimary ? 20 : 16} className={isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground/60'} />
-            </NotionButton>
+            </DsButton>
           </div>
         )}
       </div>
@@ -334,16 +334,16 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       )}
       {/* 触屏更多操作入口（N-4）：网格模式无 hover/双指，常显右上角 */}
       {isTouchPrimary && !isEditing && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
-          className="absolute top-0.5 right-0.5 z-10 !h-8 !w-8 !p-1 hover:bg-[var(--interactive-hover)]"
+          className="absolute right-0 top-0 z-10 !h-11 !w-11 !p-2.5 hover:bg-[var(--interactive-hover)]"
           onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
           aria-label={t('common:more')}
         >
           <DotsThree size={18} className="text-muted-foreground/70" />
-        </NotionButton>
+        </DsButton>
       )}
       
       {/* 自定义 SVG 图标：固定盒，防止被网格单元横向拉伸 */}

@@ -28,7 +28,7 @@ import {
 } from '../../icons';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { Input } from '@/components/ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   AppMenu,
   AppMenuContent,
@@ -189,7 +189,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
     }
 
     const button = (
-      <NotionButton variant="ghost" size="sm"
+      <DsButton variant="ghost" size="sm"
         className={cn(
           'group relative w-full !rounded-md',
           collapsed ? 'justify-center !px-2 !py-2.5' : '!justify-start gap-2.5 !px-2.5 !py-2',
@@ -220,7 +220,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
             )}
           </>
         )}
-      </NotionButton>
+      </DsButton>
     );
 
     if (collapsed) {
@@ -373,14 +373,14 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   />
                 )}
                 {searchQuery && (
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onSearchChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0.5 hover:bg-[var(--interactive-hover)]" aria-label={t('common:clear')}>
+                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => onSearchChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0.5 hover:bg-[var(--interactive-hover)]" aria-label={t('common:clear')}>
                     <X size={14} className="text-muted-foreground/60" />
-                  </NotionButton>
+                  </DsButton>
                 )}
               </div>
               {!fillContainer && <AppMenu>
                 <AppMenuTrigger asChild>
-                  <NotionButton 
+                  <DsButton 
                     variant="ghost" 
                     size="icon" 
                     className={cn(
@@ -392,7 +392,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     disabled={createDisabled}
                   >
                     <Plus size={16} />
-                  </NotionButton>
+                  </DsButton>
                 </AppMenuTrigger>
                 <AppMenuContent align="end" className="min-w-[180px]">
                   {createMenuItems}
@@ -402,7 +402,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
           ) : (
             <AppMenu>
               <AppMenuTrigger asChild>
-                <NotionButton 
+                <DsButton 
                   variant="ghost" 
                   size="icon" 
                   className="h-9 w-9 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
@@ -410,7 +410,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   disabled={createDisabled}
                 >
                   <Plus className="h-4 w-4" />
-                </NotionButton>
+                </DsButton>
               </AppMenuTrigger>
               <AppMenuContent align="start" className="min-w-[180px]">
                 {createMenuItems}
@@ -464,13 +464,13 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
 
         {onToggleCollapse && (
           <div className="shrink-0 h-11 flex items-center px-2 border-t border-border/40">
-            <NotionButton variant="ghost" size="sm" onClick={onToggleCollapse} className="w-full justify-center !py-1.5 text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)]" title={collapsed ? t('finder.quickAccess.expand') : t('finder.quickAccess.collapse')}>
+            <DsButton variant="ghost" size="sm" onClick={onToggleCollapse} className="w-full justify-center !py-1.5 text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)]" title={collapsed ? t('finder.quickAccess.expand') : t('finder.quickAccess.collapse')}>
               {collapsed ? (
                 <CaretRight size={16} />
               ) : (
                 <CaretLeft size={16} />
               )}
-            </NotionButton>
+            </DsButton>
           </div>
         )}
       </WorkbenchSidebarSurface>

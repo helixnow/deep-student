@@ -9,7 +9,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody } from '@/components/ui/NotionDialog';
+import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogBody } from '@/components/ui/DsDialog';
 import { Progress } from '@/components/ui/shad/Progress';
 import { CircleNotch, CheckCircle, XCircle, FileText } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -98,7 +98,7 @@ export const ImportProgressModal: React.FC<ImportProgressModalProps> = ({
   const canClose = stage === 'done' || stage === 'error';
 
   return (
-    <NotionDialog
+    <DsDialog
       open={isImporting}
       onOpenChange={(open) => {
         if (!open && canClose && onClose) {
@@ -109,13 +109,13 @@ export const ImportProgressModal: React.FC<ImportProgressModalProps> = ({
       closeOnOverlay={canClose}
       showClose={canClose}
     >
-        <NotionDialogHeader>
-          <NotionDialogTitle className="flex items-center gap-2">
+        <DsDialogHeader>
+          <DsDialogTitle className="flex items-center gap-2">
             <FileText size={20} />
             {t('import.title')}
-          </NotionDialogTitle>
-        </NotionDialogHeader>
-        <NotionDialogBody>
+          </DsDialogTitle>
+        </DsDialogHeader>
+        <DsDialogBody>
 
         {/* tabIndex=-1：导入中无可聚焦元素时作为焦点兜底容器 */}
         <div ref={focusScopeRef} tabIndex={-1} className="space-y-4 py-4 outline-none">
@@ -154,8 +154,8 @@ export const ImportProgressModal: React.FC<ImportProgressModalProps> = ({
             </div>
           )}
         </div>
-        </NotionDialogBody>
-    </NotionDialog>
+        </DsDialogBody>
+    </DsDialog>
   );
 };
 

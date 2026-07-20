@@ -1,5 +1,5 @@
 /**
- * TabBar - 学习资源标签页栏（Notion 风格）
+ * TabBar - 学习资源标签页栏（简洁风格）
  *
  * 显示已打开的标签页列表，支持切换、关闭、拖拽排序。
  * 标签页过多时显示左右滚动箭头按钮。
@@ -318,7 +318,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
             onCloseSplitView && (
               <button
                 role="menuitem"
-                className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left [@media(pointer:coarse)]:min-h-[40px]"
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left [@media(pointer:coarse)]:min-h-11"
                 onClick={() => { onCloseSplitView(); setCtxMenu(null); }}
               >
                 <SidebarSimple size={14} />
@@ -331,7 +331,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
                 role="menuitem"
                 disabled={!canSplit}
                 className={cn(
-                  'flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left [@media(pointer:coarse)]:min-h-[40px]',
+                  'flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left [@media(pointer:coarse)]:min-h-11',
                   canSplit ? 'hover:bg-[var(--interactive-hover)]' : 'opacity-40 cursor-default',
                 )}
                 onClick={() => { if (canSplit) { onSplitView(); setCtxMenu(null); } }}
@@ -344,7 +344,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
           {onTogglePin && (
             <button
               role="menuitem"
-              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left [@media(pointer:coarse)]:min-h-[40px]"
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left [@media(pointer:coarse)]:min-h-11"
               onClick={() => { onTogglePin(); setCtxMenu(null); }}
             >
               {tab.isPinned ? <PushPinSlash size={14} /> : <PushPin size={14} />}
@@ -356,7 +356,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
           <div className="h-px bg-border my-1" role="separator" />
           <button
             role="menuitem"
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left [@media(pointer:coarse)]:min-h-[40px]"
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left [@media(pointer:coarse)]:min-h-11"
             onClick={() => { onClose(); setCtxMenu(null); }}
           >
             <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
@@ -367,7 +367,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
           {onCloseOthers && (
             <button
               role="menuitem"
-              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left [@media(pointer:coarse)]:min-h-[40px]"
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left [@media(pointer:coarse)]:min-h-11"
               onClick={() => { onCloseOthers(); setCtxMenu(null); }}
             >
               <span className="w-[14px]" />
@@ -378,7 +378,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
             <button
               role="menuitem"
               className={cn(
-                'flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left [@media(pointer:coarse)]:min-h-[40px]',
+                'flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left [@media(pointer:coarse)]:min-h-11',
                 hasTabsToRight
                   ? 'hover:bg-[var(--interactive-hover)]'
                   : 'opacity-40 cursor-default',

@@ -6,12 +6,12 @@
  * - 点击日期内联展开当日明细（无弹窗）
  * - 月份切换带方向感滑动过渡；数据随所见月份加载
  *
- * 🆕 2026-01 新增；2026-07 对标 Anki 体验改造
+ * 🆕 2026-01 新增；2026-07 复习体验改造
  */
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Card } from '@/components/ui/shad/Card';
 import {
   CaretLeft,
@@ -34,6 +34,7 @@ import {
 } from '@/stores/reviewPlanStore';
 import { useQuestionBankStore, type Question } from '@/stores/questionBankStore';
 import { getReviewQuestionTypeMeta } from '@/components/review/reviewQuestionTypeMeta';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 // ============================================================================
 // 类型定义
@@ -74,22 +75,26 @@ const formatLocalDate = (d: Date): string => {
 // 热力图颜色等级
 // ============================================================================
 
+// 主题色阶（跟随 --primary，与做题统计视图 LearningHeatmapChart 的色阶策略一致）
 const getHeatmapColor = (count: number): string => {
   if (count === 0) return 'bg-muted/30';
-  if (count <= 3) return 'bg-emerald-200 dark:bg-emerald-900/50';
-  if (count <= 7) return 'bg-emerald-300 dark:bg-emerald-800/60';
-  if (count <= 12) return 'bg-emerald-400 dark:bg-emerald-700/70';
-  if (count <= 20) return 'bg-emerald-500 dark:bg-emerald-600/80';
-  return 'bg-emerald-600 dark:bg-emerald-500';
+  if (count <= 3) return 'bg-primary/20';
+  if (count <= 7) return 'bg-primary/40';
+  if (count <= 12) return 'bg-primary/60';
+  if (count <= 20) return 'bg-primary/80';
+  return 'bg-primary';
 };
+
+// 高密度格子（深色底）上的文字需要反色才可读
+const isDenseHeatmapCell = (count: number): boolean => count > 12;
 
 const getAccuracyColor = (passed: number, total: number): string => {
   if (total === 0) return 'text-muted-foreground';
   const rate = passed / total;
-  if (rate >= 0.9) return 'text-emerald-500';
-  if (rate >= 0.7) return 'text-sky-500';
-  if (rate >= 0.5) return 'text-amber-500';
-  return 'text-red-500';
+  if (rate >= 0.9) return 'text-success';
+  if (rate >= 0.7) return 'text-info';
+  if (rate >= 0.5) return 'text-warning';
+  return 'text-destructive';
 };
 
 // ============================================================================
@@ -122,58 +127,58 @@ const DayDetail: React.FC<DayDetailProps> = ({
   const failed = data ? Math.max(0, data.count - data.passed) : 0;
 
   return (
-    <Card className="ui-rise-in p-4 border-primary/20 bg-gradient-to-br from-background to-muted/20">
+    <Card className="ui-rise-in border-primary/20 bg-gradient-to-br from-background to-muted/20 p-3 sm:p-4">
       {/* 头部 */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="font-semibold text-foreground">{formattedDate}</h3>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate font-semibold text-foreground">{formattedDate}</h3>
           <p className="text-sm text-muted-foreground">{weekday}</p>
         </div>
-        <NotionButton
+        <DsButton
           variant="ghost"
           iconOnly
           size="sm"
           onClick={onClose}
           aria-label={t('review:calendar.closeDetail')}
-          className="w-8 h-8"
+          className="h-10 w-10 shrink-0 sm:h-8 sm:w-8"
         >
           <X size={16} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 统计概览 */}
       {data && data.count > 0 ? (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-1">
-            <div className="text-center p-2 rounded-lg bg-sky-500/10">
-              <Target size={20} className="text-sky-500 mx-auto mb-1" />
-              <p className="text-lg font-bold tabular-nums text-sky-600 dark:text-sky-400">
+            <div className="text-center p-2 rounded-lg bg-info/10">
+              <Target size={20} className="text-info mx-auto mb-1" />
+              <p className="text-lg font-bold tabular-nums text-info">
                 {data.count}
               </p>
               <p className="text-xs text-muted-foreground">
                 {t('review:calendar.totalReviews')}
               </p>
             </div>
-            <div className="text-center p-2 rounded-lg bg-emerald-500/10">
-              <CheckCircle size={20} className="text-emerald-500 mx-auto mb-1" />
-              <p className="text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+            <div className="text-center p-2 rounded-lg bg-success/10">
+              <CheckCircle size={20} className="text-success mx-auto mb-1" />
+              <p className="text-lg font-bold tabular-nums text-success">
                 {data.passed}
               </p>
               <p className="text-xs text-muted-foreground">
                 {t('review:calendar.passed')}
               </p>
             </div>
-            <div className="text-center p-2 rounded-lg bg-red-500/10">
-              <XCircle size={20} className="text-red-500 mx-auto mb-1" />
-              <p className="text-lg font-bold tabular-nums text-red-600 dark:text-red-400">
+            <div className="text-center p-2 rounded-lg bg-destructive/10">
+              <XCircle size={20} className="text-destructive mx-auto mb-1" />
+              <p className="text-lg font-bold tabular-nums text-destructive">
                 {failed}
               </p>
               <p className="text-xs text-muted-foreground">
                 {t('review:calendar.failed')}
               </p>
             </div>
-            <div className="text-center p-2 rounded-lg bg-amber-500/10">
-              <TrendUp size={20} className="text-amber-500 mx-auto mb-1" />
+            <div className="text-center p-2 rounded-lg bg-warning/10">
+              <TrendUp size={20} className="text-warning mx-auto mb-1" />
               <p className={cn('text-lg font-bold tabular-nums', getAccuracyColor(data.passed, data.count))}>
                 {accuracy}%
               </p>
@@ -259,13 +264,13 @@ const CalendarCell: React.FC<CalendarCellProps> = ({
   const count = data?.count || 0;
 
   return (
-    <NotionButton
+    <DsButton
       variant="ghost" size="sm"
       onClick={onClick}
       aria-pressed={isSelected}
       className={cn(
-        // 触控目标 ≥40px（min-h/min-w 兜底，宽格子仍随网格拉伸）
-        '!p-1 !h-auto !rounded-lg aspect-square relative min-h-10 min-w-10',
+        // 单元格随七列网格收缩；DsButton 的粗指针伪元素继续提供扩展点击区
+        '!p-0.5 sm:!p-1 !h-auto !rounded-lg aspect-square relative min-h-9 min-w-0 sm:min-h-10',
         'ui-state-colors hover:ring-2 hover:ring-primary/30',
         isCurrentMonth ? 'opacity-100' : 'opacity-30',
         isToday && 'ring-2 ring-primary',
@@ -278,29 +283,41 @@ const CalendarCell: React.FC<CalendarCellProps> = ({
           'absolute top-1 left-1 text-[10px] font-medium leading-none',
           isToday
             ? 'flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-0.5 font-bold text-primary-foreground'
-            : 'text-foreground/70'
+            : isDenseHeatmapCell(count)
+              ? 'text-primary-foreground/85'
+              : 'text-foreground/70'
         )}
       >
         {date.getDate()}
       </span>
       {count > 0 && (
-        <span className="absolute bottom-1 right-1 text-[9px] font-bold tabular-nums text-emerald-700 dark:text-emerald-300">
+        <span
+          className={cn(
+            'absolute bottom-1 right-1 text-[9px] font-bold tabular-nums',
+            isDenseHeatmapCell(count) ? 'text-primary-foreground' : 'text-primary'
+          )}
+        >
           {count}
         </span>
       )}
-      {/* 到期密度指示（琥珀色，与已完成的绿色区分） */}
+      {/* 到期密度指示（警示色，与已完成的主题色区分） */}
       {dueCount > 0 && (
-        <span className="absolute bottom-1 left-1 inline-flex items-center gap-0.5 text-[9px] font-bold tabular-nums text-amber-600 dark:text-amber-400">
+        <span
+          className={cn(
+            'absolute bottom-1 left-1 inline-flex items-center gap-0.5 text-[9px] font-bold tabular-nums',
+            isDenseHeatmapCell(count) ? 'text-primary-foreground/85' : 'text-warning'
+          )}
+        >
           <span
             className={cn(
               'h-1.5 w-1.5 rounded-full',
-              dueCount > 10 ? 'bg-amber-600 dark:bg-amber-400' : dueCount > 5 ? 'bg-amber-500' : 'bg-amber-400/80'
+              dueCount > 10 ? 'bg-warning' : dueCount > 5 ? 'bg-warning/80' : 'bg-warning/60'
             )}
           />
           {dueCount}
         </span>
       )}
-    </NotionButton>
+    </DsButton>
   );
 };
 
@@ -313,10 +330,10 @@ const HeatmapLegend: React.FC<{ showDueLegend?: boolean }> = ({ showDueLegend })
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-      {/* 到期密度图例（琥珀色，与已完成绿色区分） */}
+      {/* 到期密度图例（警示色，与已完成的主题色区分） */}
       {showDueLegend ? (
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+          <span className="h-1.5 w-1.5 rounded-full bg-warning" />
           {t('review:calendar.dueLegend')}
         </span>
       ) : (
@@ -391,10 +408,10 @@ const StreakStats: React.FC<StreakStatsProps> = ({ calendarData }) => {
   }, [calendarData]);
 
   return (
-    <div className="grid grid-cols-4 gap-2">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       <div className="text-center p-2 rounded-lg bg-muted/30">
-        <Flame size={20} className="text-orange-500 mx-auto mb-1" />
-        <p className="text-lg font-bold tabular-nums text-orange-600 dark:text-orange-400">
+        <Flame size={20} className="text-warning mx-auto mb-1" />
+        <p className="text-lg font-bold tabular-nums text-warning">
           {stats.currentStreak}
         </p>
         <p className="text-[10px] text-muted-foreground">
@@ -402,8 +419,8 @@ const StreakStats: React.FC<StreakStatsProps> = ({ calendarData }) => {
         </p>
       </div>
       <div className="text-center p-2 rounded-lg bg-muted/30">
-        <TrendUp size={20} className="text-purple-500 mx-auto mb-1" />
-        <p className="text-lg font-bold tabular-nums text-purple-600 dark:text-purple-400">
+        <TrendUp size={20} className="text-primary mx-auto mb-1" />
+        <p className="text-lg font-bold tabular-nums text-primary">
           {stats.longestStreak}
         </p>
         <p className="text-[10px] text-muted-foreground">
@@ -411,8 +428,8 @@ const StreakStats: React.FC<StreakStatsProps> = ({ calendarData }) => {
         </p>
       </div>
       <div className="text-center p-2 rounded-lg bg-muted/30">
-        <Calendar size={20} className="text-sky-500 mx-auto mb-1" />
-        <p className="text-lg font-bold tabular-nums text-sky-600 dark:text-sky-400">
+        <Calendar size={20} className="text-info mx-auto mb-1" />
+        <p className="text-lg font-bold tabular-nums text-info">
           {stats.totalDays}
         </p>
         <p className="text-[10px] text-muted-foreground">
@@ -420,8 +437,8 @@ const StreakStats: React.FC<StreakStatsProps> = ({ calendarData }) => {
         </p>
       </div>
       <div className="text-center p-2 rounded-lg bg-muted/30">
-        <Target size={20} className="text-emerald-500 mx-auto mb-1" />
-        <p className="text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+        <Target size={20} className="text-success mx-auto mb-1" />
+        <p className="text-lg font-bold tabular-nums text-success">
           {stats.totalReviews}
         </p>
         <p className="text-[10px] text-muted-foreground">
@@ -464,6 +481,14 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
   // 本地状态
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedDate) return;
+    return registerBackHandler(() => {
+      setSelectedDate(null);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [selectedDate]);
   // 月份切换方向（驱动滑动过渡的入场方向）
   const [slideDir, setSlideDir] = useState<'left' | 'right'>('left');
 
@@ -637,17 +662,17 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
   return (
     <div className={cn('space-y-4', className)}>
       {/* 头部 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="truncate text-lg font-semibold text-foreground">
             {t('review:calendar.title')}
           </h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="line-clamp-2 text-sm text-muted-foreground">
             {t('review:calendar.subtitle')}
           </p>
         </div>
         {onClose && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             iconOnly
             size="sm"
@@ -655,7 +680,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
             aria-label={t('common:close')}
           >
             <X size={20} />
-          </NotionButton>
+          </DsButton>
         )}
       </div>
 
@@ -671,10 +696,10 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
       <StreakStats calendarData={calendarData} />
 
       {/* 日历区域 */}
-      <Card className="p-4 overflow-hidden">
+      <Card className="overflow-hidden p-2 sm:p-4">
         {/* 月份导航 */}
-        <div className="flex items-center justify-between mb-4">
-          <NotionButton
+        <div className="mb-4 flex items-center justify-between gap-1">
+          <DsButton
             variant="ghost"
             iconOnly
             size="sm"
@@ -682,19 +707,19 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
             aria-label={t('review:calendar.prevMonth')}
           >
             <CaretLeft size={20} />
-          </NotionButton>
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-foreground">{monthName}</h3>
-            <NotionButton
+          </DsButton>
+          <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+            <h3 className="truncate font-semibold text-foreground">{monthName}</h3>
+            <DsButton
               variant="outline"
               size="sm"
               onClick={goToToday}
               className="h-7 text-xs"
             >
               {t('review:calendar.today')}
-            </NotionButton>
+            </DsButton>
           </div>
-          <NotionButton
+          <DsButton
             variant="ghost"
             iconOnly
             size="sm"
@@ -702,7 +727,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
             aria-label={t('review:calendar.nextMonth')}
           >
             <CaretRight size={20} />
-          </NotionButton>
+          </DsButton>
         </div>
 
         {/* 星期标题 */}

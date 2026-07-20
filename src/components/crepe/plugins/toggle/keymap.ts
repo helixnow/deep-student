@@ -65,7 +65,7 @@ export function tryExitToggleOnEnter(view: EditorView): boolean {
 
 /**
  * 内容区仅剩一个空块时的 Backspace：把 toggle 整体还原成段落。
- * 标题非空时还原为含标题文本的段落（Notion 拆 toggle 手感），避免误删标题。
+ * 标题非空时还原为含标题文本的段落（简洁 拆 toggle 手感），避免误删标题。
  */
 export function tryUnwrapEmptyToggleOnBackspace(view: EditorView): boolean {
   const { state } = view

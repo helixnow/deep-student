@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useId, useCallback, forwardRef, useMemo } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CaretRight, Star, FileText, Plus, DotsThree } from '@phosphor-icons/react';
@@ -557,9 +557,9 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
         >
           {/* 展开/折叠箭头 - 文件夹显示，引用节点和笔记显示图标 */}
           {node.isFolder ? (
-            <NotionButton variant="ghost" size="icon" iconOnly className="rct-tree-item-arrow mr-2" onClick={handleExpandClick} aria-label={isExpanded ? t('notes:tree.aria.collapse') : t('notes:tree.aria.expand')} aria-expanded={isExpanded}>
+            <DsButton variant="ghost" size="icon" iconOnly className="rct-tree-item-arrow mr-2" onClick={handleExpandClick} aria-label={isExpanded ? t('notes:tree.aria.collapse') : t('notes:tree.aria.expand')} aria-expanded={isExpanded}>
               <CaretRight className="w-3 h-3" />
-            </NotionButton>
+            </DsButton>
           ) : isReference && sourceDb ? (
             // 引用节点显示对应图标
             <span className="rct-tree-item-icon mr-2 flex-shrink-0">

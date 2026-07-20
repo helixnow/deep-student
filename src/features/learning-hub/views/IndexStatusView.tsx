@@ -1,4 +1,4 @@
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { pLimit } from '@/utils/concurrency';
 import { Input } from '@/components/ui/shad/Input';
 import IndexDiagnosticPanel from './IndexDiagnosticPanel';
@@ -59,7 +59,7 @@ import {
   Eraser,
   Stack,
 } from '@phosphor-icons/react';
-// Button 组件已替换为原生 button + Tailwind（Notion 风格）
+// Button 组件已替换为原生 button + Tailwind（简洁风格）
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
@@ -227,7 +227,7 @@ const InlineExpand: React.FC<{ children: React.ReactNode; className?: string }> 
 };
 
 // ============================================================================
-// 进行中进度条的 shimmer 高光（对齐 Notion/Cursor 索引进行中的质感）
+// 进行中进度条的 shimmer 高光（对齐常见笔记编辑器/Cursor 索引进行中的质感）
 // ============================================================================
 
 const SHIMMER_KEYFRAMES = '@keyframes idx-status-shimmer { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }';
@@ -257,7 +257,7 @@ const isMmIndexCandidate = (r: ResourceIndexStatus): boolean => {
 };
 
 // ============================================================================
-// 首屏加载骨架（对齐 Notion：结构先行，内容渐显）
+// 首屏加载骨架（对齐 结构先行，内容渐显）
 // ============================================================================
 
 const IndexStatusSkeleton: React.FC = () => (
@@ -1328,7 +1328,7 @@ export const IndexStatusView: React.FC = () => {
     const Icon = config.icon;
     
     return (
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         onClick={onClick}
@@ -1345,7 +1345,7 @@ export const IndexStatusView: React.FC = () => {
         <Icon className="h-3.5 w-3.5" weight={isActive ? 'fill' : 'regular'} />
         <span>{t(config.labelKey)}</span>
         <span className="tabular-nums opacity-80">{count}</span>
-      </NotionButton>
+      </DsButton>
     );
   };
 
@@ -1475,16 +1475,16 @@ export const IndexStatusView: React.FC = () => {
             )}
           </div>
 
-          {/* 操作按钮 - Notion 风格 */}
+          {/* 操作按钮 - 简洁风格 */}
           <div className="flex-shrink-0 w-8 flex justify-end" onClick={(e) => e.stopPropagation()}>
             {needsReindex && (
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleReindex(resource.resourceId)} disabled={isReindexing} className="opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 hover:text-primary hover:bg-primary/10" title={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')} aria-label={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleReindex(resource.resourceId)} disabled={isReindexing} className="opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 hover:text-primary hover:bg-primary/10" title={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')} aria-label={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')}>
                 {isReindexing ? (
                   <CircleNotch className="h-4 w-4 animate-spin" />
                 ) : (
                   <ArrowsClockwise className="h-4 w-4" />
                 )}
-              </NotionButton>
+              </DsButton>
             )}
           </div>
         </div>
@@ -1705,7 +1705,7 @@ export const IndexStatusView: React.FC = () => {
               {/* 数据透视操作按钮 */}
               <div className="col-span-2 md:col-span-4 flex flex-wrap gap-2 pt-2 border-t border-border/30">
                 {showOcrStatus && (
-                  <NotionButton
+                  <DsButton
                     variant="outline"
                     size="sm"
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleInspectOcr(resource.resourceId); }}
@@ -1716,10 +1716,10 @@ export const IndexStatusView: React.FC = () => {
                   >
                     <Eye className="h-3.5 w-3.5" />
                     {t('indexStatus.detail.viewOcrText')}
-                  </NotionButton>
+                  </DsButton>
                 )}
                 {resource.textChunkCount > 0 && (
-                  <NotionButton
+                  <DsButton
                     variant="outline"
                     size="sm"
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleInspectChunks(resource.resourceId); }}
@@ -1727,10 +1727,10 @@ export const IndexStatusView: React.FC = () => {
                   >
                     <Stack className="h-3.5 w-3.5" />
                     {t('indexStatus.detail.viewTextChunks', { count: resource.textChunkCount })}
-                  </NotionButton>
+                  </DsButton>
                 )}
                 {showOcrStatus && resource.hasOcr && (
-                  <NotionButton
+                  <DsButton
                     variant="outline"
                     size="sm"
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleClearOcrAndReindex(resource.resourceId); }}
@@ -1739,7 +1739,7 @@ export const IndexStatusView: React.FC = () => {
                   >
                     {clearingOcr ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
                     {t('indexStatus.action.clearOcrAndReindex')}
-                  </NotionButton>
+                  </DsButton>
                 )}
               </div>
 
@@ -1808,9 +1808,9 @@ export const IndexStatusView: React.FC = () => {
                           <Eye className="h-3.5 w-3.5 text-primary shrink-0" />
                           <span className="font-medium text-xs truncate">{t('indexStatus.detail.ocrAndExtractedTitle')}</span>
                         </div>
-                        <NotionButton variant="ghost" size="icon" iconOnly onClick={(e: React.MouseEvent) => { e.stopPropagation(); closeInspectPanel(); }} className="h-6 w-6" aria-label={t('common:close')}>
+                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e: React.MouseEvent) => { e.stopPropagation(); closeInspectPanel(); }} className="h-6 w-6" aria-label={t('common:close')}>
                           <X className="h-3.5 w-3.5" />
-                        </NotionButton>
+                        </DsButton>
                       </div>
 
                       <div className="p-3">
@@ -1905,7 +1905,7 @@ export const IndexStatusView: React.FC = () => {
                             {/* 操作区 */}
                             {ocrInfo.hasOcr && (
                               <div className="flex justify-end pt-2 border-t border-border/30">
-                                <NotionButton
+                                <DsButton
                                   variant="outline"
                                   size="sm"
                                   onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleClearOcrAndReindex(resource.resourceId); }}
@@ -1914,7 +1914,7 @@ export const IndexStatusView: React.FC = () => {
                                 >
                                   {clearingOcr ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
                                   {t('indexStatus.action.clearOcrAndReindex')}
-                                </NotionButton>
+                                </DsButton>
                               </div>
                             )}
                           </div>
@@ -1962,9 +1962,9 @@ export const IndexStatusView: React.FC = () => {
         {isDbError && (
           <p className="text-xs text-warning">{t('indexStatus.notification.checkDb')}</p>
         )}
-        <NotionButton variant="ghost" size="sm" onClick={() => { loadData(); }} className="text-primary hover:bg-primary/10">
+        <DsButton variant="ghost" size="sm" onClick={() => { loadData(); }} className="text-primary hover:bg-primary/10">
           {t('indexStatus.action.retry')}
-        </NotionButton>
+        </DsButton>
       </div>
     );
   }
@@ -2023,19 +2023,19 @@ export const IndexStatusView: React.FC = () => {
 
           {/* 第三行：操作按钮独占一行 */}
           <div className="flex items-center gap-1.5">
-            <NotionButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn('!px-3', batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-neutral-500 dark:bg-foreground text-white dark:text-background hover:bg-[var(--interactive-hover)] dark:hover:bg-foreground/90')}>
+            <DsButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn('!px-3', batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-neutral-500 dark:bg-foreground text-white dark:text-background hover:bg-[var(--interactive-hover)] dark:hover:bg-foreground/90')}>
               {(batchIndexing || mmIndexing) ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Lightning className="h-3.5 w-3.5 fill-current" />}
               {batchIndexing ? t('indexStatus.action.ocrIndexing') : mmIndexing ? t('indexStatus.action.mmIndexing') : t('indexStatus.action.oneClickIndex')}
-            </NotionButton>
-            <NotionButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing}>
+            </DsButton>
+            <DsButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing}>
               <ArrowsClockwise className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
               {t('indexStatus.action.refresh')}
-            </NotionButton>
+            </DsButton>
             {/* 更多操作下拉 */}
             <div className="relative" ref={mobileMoreRef}>
-              <NotionButton variant="default" size="sm" onClick={() => setMobileMoreOpen(v => !v)} className={cn(mobileMoreOpen && 'bg-accent text-accent-foreground')}>
+              <DsButton variant="default" size="sm" onClick={() => setMobileMoreOpen(v => !v)} className={cn(mobileMoreOpen && 'bg-accent text-accent-foreground')}>
                 <DotsThree className="h-3.5 w-3.5" />
-              </NotionButton>
+              </DsButton>
               {/* z-dropdown：走全局浮层阶梯，替换裸 z-50 */}
               {mobileMoreOpen && (
                 <div className="absolute right-0 top-full mt-1 z-dropdown min-w-[160px] rounded-md border bg-popover shadow-md py-1 ui-zoom-fade-in">
@@ -2285,7 +2285,7 @@ export const IndexStatusView: React.FC = () => {
 
           {/* 右侧操作按钮 — macOS 工具簇 */}
           <div className="flex flex-col gap-2 shrink-0 min-w-[148px]">
-            <NotionButton
+            <DsButton
               variant="primary"
               size="sm"
               onClick={handleUnifiedIndex}
@@ -2303,10 +2303,10 @@ export const IndexStatusView: React.FC = () => {
                 <Lightning className="h-3.5 w-3.5" weight="fill" />
               )}
               {batchIndexing ? t('indexStatus.action.ocrIndexing') : mmIndexing ? t('indexStatus.action.mmIndexing') : t('indexStatus.action.oneClickIndex')}
-            </NotionButton>
+            </DsButton>
             
             <div className="grid grid-cols-2 gap-1.5">
-              <NotionButton
+              <DsButton
                 variant="default"
                 size="sm"
                 onClick={() => { loadData(); }}
@@ -2316,8 +2316,8 @@ export const IndexStatusView: React.FC = () => {
               >
                 <ArrowsClockwise className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
                 {t('indexStatus.action.refresh')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="default"
                 size="sm"
                 onClick={() => setShowTestPanel(!showTestPanel)}
@@ -2330,10 +2330,10 @@ export const IndexStatusView: React.FC = () => {
               >
                 <TestTube className="h-3.5 w-3.5" />
                 {t('indexStatus.action.recallTest')}
-              </NotionButton>
+              </DsButton>
             </div>
             
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={toggleResetConfirm}
@@ -2350,7 +2350,7 @@ export const IndexStatusView: React.FC = () => {
                 <ArrowCounterClockwise className="h-3.5 w-3.5" />
               )}
               {t('indexStatus.action.resetState')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -2365,7 +2365,7 @@ export const IndexStatusView: React.FC = () => {
               <div className="text-[11px] text-muted-foreground mt-0.5">{t('indexStatus.confirm.resetDescription')}</div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <NotionButton
+              <DsButton
                 variant="danger"
                 size="sm"
                 onClick={handleResetAllIndexState}
@@ -2374,10 +2374,10 @@ export const IndexStatusView: React.FC = () => {
               >
                 {resetting ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <ArrowCounterClockwise className="h-3.5 w-3.5" />}
                 {t('indexStatus.confirm.confirmReset')}
-              </NotionButton>
-              <NotionButton variant="ghost" size="sm" onClick={() => setResetConfirmOpen(false)} className="!h-7 text-[11px]">
+              </DsButton>
+              <DsButton variant="ghost" size="sm" onClick={() => setResetConfirmOpen(false)} className="!h-7 text-[11px]">
                 {t('indexStatus.confirm.cancel')}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         </InlineExpand>
@@ -2403,7 +2403,7 @@ export const IndexStatusView: React.FC = () => {
               {MULTIMODAL_INDEX_SUPPORTED && (
                 <div className="inline-flex items-center gap-0.5 p-0.5 rounded-lg bg-muted/50 border border-black/[0.04] dark:border-white/[0.06]" role="group" aria-label={t('indexStatus.test.modeGroupLabel')}>
                   {(['text', 'multimodal'] as const).map((mode) => (
-                    <NotionButton
+                    <DsButton
                       key={mode}
                       variant="ghost"
                       size="sm"
@@ -2417,17 +2417,17 @@ export const IndexStatusView: React.FC = () => {
                       )}
                     >
                       {mode === 'text' ? t('indexStatus.test.modeText') : t('indexStatus.test.modeMultimodal')}
-                    </NotionButton>
+                    </DsButton>
                   ))}
                 </div>
               )}
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowTestPanel(false)} aria-label={t('common:close')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowTestPanel(false)} aria-label={t('common:close')}>
                 <X className="h-4 w-4" />
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
           
-          {/* 搜索输入 - Notion 风格 */}
+          {/* 搜索输入 - 简洁风格 */}
           <div className="flex gap-2 max-w-3xl">
             <div className="relative flex-1">
               <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -2441,7 +2441,7 @@ export const IndexStatusView: React.FC = () => {
                 autoFocus
               />
             </div>
-            <NotionButton variant="primary" size="sm" onClick={handleTestSearch} disabled={testLoading || !testQuery.trim()} className="!h-10 !px-6">
+            <DsButton variant="primary" size="sm" onClick={handleTestSearch} disabled={testLoading || !testQuery.trim()} className="!h-10 !px-6">
               {testLoading ? (
                 <CircleNotch className="h-4 w-4 animate-spin" />
               ) : (
@@ -2450,7 +2450,7 @@ export const IndexStatusView: React.FC = () => {
                   {t('indexStatus.action.search')}
                 </>
               )}
-            </NotionButton>
+            </DsButton>
           </div>
 
           {/* 测试结果 */}
@@ -2532,7 +2532,7 @@ export const IndexStatusView: React.FC = () => {
               const isActive = selectedType === type;
               const label = type === 'all' ? t('indexStatus.filter.all') : (RESOURCE_TYPE_CONFIG[type]?.labelKey ? t(RESOURCE_TYPE_CONFIG[type].labelKey) : type);
               return (
-                <NotionButton
+                <DsButton
                   key={type}
                   variant="ghost"
                   size="sm"
@@ -2545,7 +2545,7 @@ export const IndexStatusView: React.FC = () => {
                   )}
                 >
                   {label}
-                </NotionButton>
+                </DsButton>
               );
             })}
           </div>
@@ -2601,7 +2601,7 @@ export const IndexStatusView: React.FC = () => {
                     'flex items-center border-b border-black/[0.03] dark:border-white/[0.05]',
                     config.bgColor
                   )}>
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       onClick={() => toggleGroup(state)}
@@ -2618,10 +2618,10 @@ export const IndexStatusView: React.FC = () => {
                       <Icon className={cn('h-3.5 w-3.5', config.color)} weight="fill" />
                       <span className={cn(config.color, 'tracking-tight')}>{t(config.labelKey)}</span>
                       <span className="text-muted-foreground/70 font-normal tabular-nums">({resources.length})</span>
-                    </NotionButton>
+                    </DsButton>
                     {/* 失败组：重试全部失败项（内联确认条，不用对话框） */}
                     {state === 'failed' && failedResources.length > 0 && (
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         onClick={() => setRetryFailedConfirmOpen((v) => !v)}
@@ -2633,7 +2633,7 @@ export const IndexStatusView: React.FC = () => {
                       >
                         {retryingFailed ? <CircleNotch className="h-3 w-3 animate-spin" /> : <ArrowsClockwise className="h-3 w-3" />}
                         {t('indexStatus.action.retryAllFailed')}
-                      </NotionButton>
+                      </DsButton>
                     )}
                   </div>
 
@@ -2647,13 +2647,13 @@ export const IndexStatusView: React.FC = () => {
                           <div className="text-[11px] text-muted-foreground mt-0.5">{t('indexStatus.confirm.retryFailedDescription', { count: failedResources.length })}</div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <NotionButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-[11px]">
+                          <DsButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-[11px]">
                             {retryingFailed ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <ArrowsClockwise className="h-3.5 w-3.5" />}
                             {t('indexStatus.confirm.confirmRetry')}
-                          </NotionButton>
-                          <NotionButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-[11px]">
+                          </DsButton>
+                          <DsButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-[11px]">
                             {t('indexStatus.confirm.cancel')}
-                          </NotionButton>
+                          </DsButton>
                         </div>
                       </div>
                     </InlineExpand>
@@ -2676,7 +2676,7 @@ export const IndexStatusView: React.FC = () => {
             {selectedState === 'failed' && failedResources.length > 0 && (
               <div className="border-b border-black/[0.04] dark:border-white/[0.06]">
                 <div className="flex items-center justify-end px-3 md:px-4 py-1.5 bg-danger/5">
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={() => setRetryFailedConfirmOpen((v) => !v)}
@@ -2688,7 +2688,7 @@ export const IndexStatusView: React.FC = () => {
                   >
                     {retryingFailed ? <CircleNotch className="h-3 w-3 animate-spin" /> : <ArrowsClockwise className="h-3 w-3" />}
                     {t('indexStatus.action.retryAllFailed')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
                 {retryFailedConfirmOpen && (
                   <InlineExpand>
@@ -2699,13 +2699,13 @@ export const IndexStatusView: React.FC = () => {
                         <div className="text-[11px] text-muted-foreground mt-0.5">{t('indexStatus.confirm.retryFailedDescription', { count: failedResources.length })}</div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <NotionButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-[11px]">
+                        <DsButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-[11px]">
                           {retryingFailed ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <ArrowsClockwise className="h-3.5 w-3.5" />}
                           {t('indexStatus.confirm.confirmRetry')}
-                        </NotionButton>
-                        <NotionButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-[11px]">
+                        </DsButton>
+                        <DsButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-[11px]">
                           {t('indexStatus.confirm.cancel')}
-                        </NotionButton>
+                        </DsButton>
                       </div>
                     </div>
                   </InlineExpand>
@@ -2727,7 +2727,7 @@ export const IndexStatusView: React.FC = () => {
                 {t('indexStatus.list.showingPartial', { shown: summary.resources.length, total: summary.totalResources })}
               </span>
             )}
-            <NotionButton
+            <DsButton
               variant="outline"
               size="sm"
               onClick={handleLoadMore}
@@ -2742,7 +2742,7 @@ export const IndexStatusView: React.FC = () => {
               ) : (
                 t('indexStatus.action.loadMore')
               )}
-            </NotionButton>
+            </DsButton>
           </div>
         )}
       </CustomScrollArea>

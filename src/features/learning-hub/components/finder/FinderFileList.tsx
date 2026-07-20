@@ -2,7 +2,7 @@ import React, { useRef, useCallback, useMemo, useState, useEffect, useLayoutEffe
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { CircleNotch, FolderOpen, Plus, ArrowClockwise, WarningCircle } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   DndContext,
@@ -128,9 +128,9 @@ function FinderDropChip({
     <div
       ref={setNodeRef}
       className={cn(
-        // 触屏拖放目标放大到 ≥40px 高（手指拖拽命中）
+        // 触屏拖放目标放大到标准 44px 高（手指拖拽命中）
         'px-2 py-0.5 rounded-md text-[11px] font-medium truncate max-w-[140px]',
-        '[@media(pointer:coarse)]:flex [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:min-h-[40px] [@media(pointer:coarse)]:px-3',
+        '[@media(pointer:coarse)]:flex [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3',
         'border border-transparent transition-colors',
         isOver ? overClass : idleClass
       )}
@@ -1043,14 +1043,15 @@ export function FinderFileList({
         <p className="text-sm font-medium text-destructive mb-1">{t('finder.error.title')}</p>
         <p className="text-xs text-muted-foreground/70 text-center max-w-[280px] mb-4">{error}</p>
         {onRetry && (
-          <NotionButton
+          <DsButton
             variant="default"
             size="sm"
             onClick={onRetry}
+            className="[@media(pointer:coarse)]:min-h-11"
           >
             <ArrowClockwise size={14} className="mr-1.5" />
             {t('finder.error.retry')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     );
@@ -1082,10 +1083,10 @@ export function FinderFileList({
 
         {/* ★ 可操作的新建入口：直接在点击位置打开与右键相同的新建菜单 */}
         {canCreate && onContainerContextMenu && (
-          <NotionButton
+          <DsButton
             variant="default"
             size="sm"
-            className="mt-4"
+            className="mt-4 [@media(pointer:coarse)]:min-h-11"
             onClick={(e) => {
               e.stopPropagation();
               onContainerContextMenu(e);
@@ -1093,7 +1094,7 @@ export function FinderFileList({
           >
             <Plus size={14} className="mr-1.5" />
             {t('finder.toolbar.new')}
-          </NotionButton>
+          </DsButton>
         )}
 
         {/* 快捷操作提示（桌面端） */}
@@ -1197,12 +1198,12 @@ export function FinderFileList({
               {dragCount > 1 && (
                 <>
                   <div
-                    className="absolute inset-0 rounded-lg bg-background border border-border/60 shadow-notion opacity-60"
+                    className="absolute inset-0 rounded-lg bg-background border border-border/60 shadow-card opacity-60"
                     style={{ transform: 'translate(6px, 6px)' }}
                     aria-hidden
                   />
                   <div
-                    className="absolute inset-0 rounded-lg bg-background border border-border/60 shadow-notion opacity-80"
+                    className="absolute inset-0 rounded-lg bg-background border border-border/60 shadow-card opacity-80"
                     style={{ transform: 'translate(3px, 3px)' }}
                     aria-hidden
                   />
@@ -1223,7 +1224,7 @@ export function FinderFileList({
                   <div className={cn(
                     "absolute -top-2 -right-2 bg-primary text-primary-foreground",
                     "text-[11px] font-semibold rounded-full min-w-[20px] h-5 px-1.5",
-                    "flex items-center justify-center shadow-notion-lg",
+                    "flex items-center justify-center shadow-card-lg",
                     "finder-pop-in"
                   )}>
                     {dragCount}
@@ -1242,7 +1243,7 @@ export function FinderFileList({
     );
   }
 
-  // Grid 模式 - Notion 风格的网格布局
+  // Grid 模式 - 简洁风格的网格布局
   return (
     <DndContext
       sensors={sensors}
@@ -1338,12 +1339,12 @@ export function FinderFileList({
             {dragCount > 1 && (
               <>
                 <div
-                  className="absolute inset-0 rounded-xl bg-background border border-border/60 shadow-notion opacity-60"
+                  className="absolute inset-0 rounded-xl bg-background border border-border/60 shadow-card opacity-60"
                   style={{ transform: 'translate(6px, 6px)' }}
                   aria-hidden
                 />
                 <div
-                  className="absolute inset-0 rounded-xl bg-background border border-border/60 shadow-notion opacity-80"
+                  className="absolute inset-0 rounded-xl bg-background border border-border/60 shadow-card opacity-80"
                   style={{ transform: 'translate(3px, 3px)' }}
                   aria-hidden
                 />
@@ -1364,7 +1365,7 @@ export function FinderFileList({
                 <div className={cn(
                   "absolute -top-2 -right-2 bg-primary text-primary-foreground",
                   "text-[11px] font-semibold rounded-full min-w-[20px] h-5 px-1.5",
-                  "flex items-center justify-center shadow-notion-lg",
+                  "flex items-center justify-center shadow-card-lg",
                   "finder-pop-in"
                 )}>
                   {dragCount}

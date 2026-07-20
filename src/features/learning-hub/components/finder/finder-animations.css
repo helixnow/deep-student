@@ -1,5 +1,5 @@
 /* Finder 局部入场动画。
-   原实现来自 notion-animations.css（animate-fade-in / animate-pop-in），
+   原实现来自 card-animations.css（animate-fade-in / animate-pop-in），
    迁移后缓动改用 transitions-dev token（src/styles/transitions-dev.css）。 */
 
 @keyframes finder-fade-in {

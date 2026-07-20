@@ -206,6 +206,20 @@ export const createImageUploader = (
 };
 
 /**
+ * 触屏/窄屏编辑面判定（与 NotesCrepeEditor 的 isTouchEditingSurface 口径一致：
+ * isSmallScreen(<768, 对齐 BREAKPOINTS.md) || (pointer: coarse)）。
+ * 移动端没有「拖拽上传」场景，上传区文案需去掉拖拽话术。
+ */
+export const isTouchEditingSurface = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 768;
+  } catch {
+    return false;
+  }
+};
+
+/**
  * 创建图片块功能配置
  */
 export const createImageBlockConfig = (
@@ -213,15 +227,21 @@ export const createImageBlockConfig = (
   blobRegistry?: TransientBlobUrlRegistry
 ): ImageBlockFeatureConfig => {
   const uploader = createImageUploader(noteId, blobRegistry);
+  // 触屏/窄屏没有拖拽场景：上传区提示改为「点击上传图片」
+  const uploadPlaceholderKey = isTouchEditingSurface()
+    ? 'notes:editor.image_upload.placeholder_touch'
+    : 'notes:editor.image_upload.placeholder';
 
   return {
-    // 块级图片上传
+    // 块级图片上传（上传按钮默认是英文 "Upload file"，这里统一 i18n）
     blockOnUpload: uploader,
-    blockUploadPlaceholderText: i18next.t('notes:editor.image_upload.placeholder'),
+    blockUploadButton: i18next.t('notes:editor.image_upload.upload_button'),
+    blockUploadPlaceholderText: i18next.t(uploadPlaceholderKey),
     blockCaptionPlaceholderText: i18next.t('notes:editor.image_upload.caption_placeholder'),
     
     // 内联图片上传
     inlineOnUpload: uploader,
+    inlineUploadButton: i18next.t('notes:editor.image_upload.upload_button_inline'),
     inlineUploadPlaceholderText: i18next.t('notes:editor.image_upload.inline_placeholder'),
     
     // 代理图片 URL：将路径转换为可显示的 URL

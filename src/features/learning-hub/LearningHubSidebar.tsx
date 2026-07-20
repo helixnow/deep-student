@@ -103,9 +103,9 @@ import type { LearningHubSidebarProps, ResourceListItem } from './types';
 import type { FolderItemType, FolderTreeNode } from '@/dstu/types/folder';
 import { VfsError, VfsErrorCode, err, ok, reportError } from '@/shared/result';
 import { LearningHubContextMenu, type ContextMenuTarget } from './components/LearningHubContextMenu';
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { Input } from '@/components/ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { usePageMount, pageLifecycleTracker } from '@/debug-panel/hooks/usePageLifecycle';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -234,7 +234,7 @@ export function LearningHubSidebar({
   const [canvasSearchQuery, setCanvasSearchQuery] = useState('');
   const canvasRequestIdRef = useRef(0);
 
-  // Canvas is its own Finder host: never reuse the global Finder path/items/search.
+  // Canvas uses an isolated file-browser state: never reuse the global path/items/search.
   const currentPath = mode === 'canvas' ? canvasPath : storeCurrentPath;
   const history = mode === 'canvas' ? canvasHistory : storeHistory;
   const historyIndex = mode === 'canvas' ? canvasHistoryIndex : storeHistoryIndex;
@@ -1022,7 +1022,7 @@ export function LearningHubSidebar({
         filters: [
           {
             name: t('textbook.allDocuments'),
-            // 注：doc（旧版 Word）不支持，无纯 Rust 解析库
+      // 注：doc（旧版办公文档格式）不支持，无纯 Rust 解析库
             extensions: [
               'pdf', 'docx', 'txt', 'md', 'html', 'htm',
               'xlsx', 'xls', 'xlsb', 'ods',
@@ -2338,7 +2338,7 @@ export function LearningHubSidebar({
     }
   }, [items, t, clearSelection, setSelectedIds, handleRefresh, showSoftDeleteUndoToast]);
 
-  // 批量删除：非 trash 直接软删；trash 仍 NotionAlert 永久删
+  // 批量删除：非 trash 直接软删；trash 仍 DsAlert 永久删
   const handleBatchDelete = useCallback(() => {
     if (selectedIds.size === 0 || !canDeleteInCurrentView) return;
 
@@ -2627,7 +2627,7 @@ export function LearningHubSidebar({
   }, [selectedIds, canMoveInCurrentView]);
 
   // ★ 2026-06-12（审阅问题 FE-M4）：右键菜单"移动到…"
-  // 若右键项属于多选集合则移动整个集合（Finder 行为），否则只移动该项
+  // 若右键项属于多选集合则移动整个集合，否则只移动该项。
   const handleMoveTo = useCallback((target: ContextMenuTarget) => {
     if (!canMoveInCurrentView) return;
     let targetId: string | null = null;
@@ -2809,8 +2809,8 @@ export function LearningHubSidebar({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedIds, handleSelectAll, handleBatchDelete, handleClearSelection, currentPath.viewKind, currentPath.folderId, currentPath.breadcrumbs.length, goUp, canDeleteInCurrentView]);
 
-  const shouldRenderDesktopQuickAccess = !isSmallScreen && mode !== 'canvas';
-  const quickAccessNode = shouldRenderDesktopQuickAccess ? (
+  const shouldRenderQuickAccess = mode !== 'canvas' && (!isSmallScreen || Boolean(quickAccessPortalTarget));
+  const quickAccessNode = shouldRenderQuickAccess ? (
     <FinderQuickAccess
       collapsed={quickAccessPortalTarget ? false : effectiveQuickAccessCollapsed}
       activeType={currentQuickAccessType}
@@ -2849,7 +2849,7 @@ export function LearningHubSidebar({
       )}
       tabIndex={-1}
     >
-      {/* 左侧：快速导航栏（可折叠，包含搜索和新建）- 移动端和 canvas 模式隐藏 */}
+      {/* 左侧快速导航；移动端由 LearningHubPage portal 到统一抽屉。 */}
       {quickAccessPortalTarget && quickAccessNode
         ? createPortal(quickAccessNode, quickAccessPortalTarget)
         : quickAccessNode}
@@ -2880,46 +2880,50 @@ export function LearningHubSidebar({
                   aria-label={searchPlaceholder}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-9 text-sm flex-1"
+                  // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放
+                  className="h-11 text-[16px] flex-1"
                   autoFocus
                   disabled={!canSearchInCurrentView}
                 />
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
-                  className="h-10 w-10 p-0"
+                  className="h-11 w-11 p-0"
                   onClick={() => {
                     setMobileSearchExpanded(false);
                     setSearchQuery('');
                   }}
+                  aria-label={t('common:close')}
                 >
                   <X className="w-5 h-5" />
-                </NotionButton>
+                </DsButton>
               </div>
             ) : (
-              // 工具栏按钮（N-5: 移动端触控目标 ≥40px；刷新在顶栏，此处仅搜索/新建）
+              // 工具栏按钮（移动端触控目标 ≥44px；刷新在顶栏，此处仅搜索/新建）
               <>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
-                  className="h-10 w-10 p-0"
+                  className="h-11 w-11 p-0"
                   onClick={() => setMobileSearchExpanded(true)}
                   title={t('finder.search.title')}
+                  aria-label={t('finder.search.title')}
                   disabled={!canSearchInCurrentView}
                 >
                   <MagnifyingGlass className="w-5 h-5" />
-                </NotionButton>
+                </DsButton>
                 <AppMenu open={mobileCreateMenuOpen} onOpenChange={setMobileCreateMenuOpen}>
                   <AppMenuTrigger asChild>
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
-                      className="h-10 w-10 p-0"
+                      className="h-11 w-11 p-0"
                       title={t('finder.toolbar.new')}
+                      aria-label={t('finder.toolbar.new')}
                       disabled={!canCreateInCurrentView}
                     >
                       <Plus className="w-5 h-5" />
-                    </NotionButton>
+                    </DsButton>
                   </AppMenuTrigger>
                   <AppMenuContent align="end" className="min-w-[180px]">
                     <AppMenuItem
@@ -2976,15 +2980,16 @@ export function LearningHubSidebar({
                 </AppMenu>
                 {/* 回收站视图显示清空按钮 */}
                 {isTrashView && (
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
-                    className="h-10 w-10 p-0 text-destructive hover:text-destructive"
+                    className="h-11 w-11 p-0 text-destructive hover:text-destructive"
                     onClick={handleEmptyTrash}
                     title={t('finder.actions.emptyTrash')}
+                    aria-label={t('finder.actions.emptyTrash')}
                   >
                     <Trash className="w-5 h-5" />
-                  </NotionButton>
+                  </DsButton>
                 )}
                 <div className="flex-1" />
                 {/* 项目数显示 */}
@@ -3000,40 +3005,40 @@ export function LearningHubSidebar({
         {mode === 'canvas' && !hideToolbarAndNav && (
           <div className="study-shell-toolbar flex items-center gap-1 px-1.5 py-1 border-b shrink-0 min-w-0">
             {/* 返回/前进按钮（N-5: 小屏放大触控目标） */}
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
-              className={cn('p-0 shrink-0', isSmallScreen ? 'h-9 w-9' : 'h-6 w-6')}
+              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6')}
               onClick={goBack}
               disabled={historyIndex <= 0}
               title={t('finder.toolbar.back')}
             >
               <CaretLeft className={isSmallScreen ? 'w-5 h-5' : 'w-3.5 h-3.5'} />
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="sm"
-              className={cn('p-0 shrink-0', isSmallScreen ? 'h-9 w-9' : 'h-6 w-6')}
+              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6')}
               onClick={goForward}
               disabled={historyIndex >= history.length - 1}
               title={t('finder.toolbar.forward')}
             >
               <CaretRight className={isSmallScreen ? 'w-5 h-5' : 'w-3.5 h-3.5'} />
-            </NotionButton>
+            </DsButton>
             {/* 面包屑路径 */}
             <div className="flex items-center gap-0.5 min-w-0 overflow-hidden text-xs">
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-9 !w-9' : '!h-4 !w-4')} title={t('learningHub:title')} aria-label={t('breadcrumb.home')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-11 !w-11' : '!h-4 !w-4')} title={t('learningHub:title')} aria-label={t('breadcrumb.home')}>
                 <House className={isSmallScreen ? 'w-4 h-4' : 'w-3 h-3'} />
-              </NotionButton>
+              </DsButton>
               {effectivePath.breadcrumbs.map((crumb, index) => (
                 <React.Fragment key={crumb.id}>
                   <span className="text-muted-foreground/50 shrink-0">/</span>
                   {index === effectivePath.breadcrumbs.length - 1 ? (
                     <span className="truncate text-foreground font-medium">{crumb.name}</span>
                   ) : (
-                    <NotionButton variant="ghost" size="sm" onClick={() => jumpToBreadcrumb(index)} className="!h-auto !p-0 truncate text-muted-foreground hover:text-foreground">
+                    <DsButton variant="ghost" size="sm" onClick={() => jumpToBreadcrumb(index)} className="!h-auto !p-0 truncate text-muted-foreground hover:text-foreground">
                       {crumb.name}
-                    </NotionButton>
+                    </DsButton>
                   )}
                 </React.Fragment>
               ))}
@@ -3055,7 +3060,7 @@ export function LearningHubSidebar({
                   </span>
                   {selectedIds.size > 0 && (
                     <>
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         className="h-6 text-xs px-1.5"
@@ -3065,9 +3070,9 @@ export function LearningHubSidebar({
                         {selectedIds.size === items.length
                           ? <CheckSquare className="w-3.5 h-3.5" />
                           : t('finder.batch.selectAll')}
-                      </NotionButton>
+                      </DsButton>
                       {canAddToChatInCurrentView && (
-                      <NotionButton
+                      <DsButton
                         variant="primary"
                         size="sm"
                         className="h-6 text-xs px-2"
@@ -3077,7 +3082,7 @@ export function LearningHubSidebar({
                         {isInjecting
                           ? t('finder.canvas.adding')
                           : t('finder.canvas.addToChat')}
-                      </NotionButton>
+                      </DsButton>
                       )}
                     </>
                   )}
@@ -3091,12 +3096,12 @@ export function LearningHubSidebar({
             </div>
             <div className="flex items-center gap-0.5 shrink-0">
               {/* 多选模式切换按钮 */}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className={cn(
                   'p-0',
-                  isSmallScreen ? 'h-9 w-9' : 'h-7 w-7',
+                  isSmallScreen ? 'h-11 w-11' : 'h-7 w-7',
                   isMultiSelectMode && "bg-primary/10 text-primary hover:bg-primary/15"
                 )}
                 onClick={() => {
@@ -3110,18 +3115,18 @@ export function LearningHubSidebar({
                 title={isMultiSelectMode ? t('finder.canvas.exitMultiSelect') : t('finder.canvas.multiSelect')}
               >
                 <ListChecks className={isSmallScreen ? 'w-5 h-5' : 'w-4 h-4'} />
-              </NotionButton>
+              </DsButton>
               {/* 关闭资源库按钮 */}
               {onClose && (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
-                  className={cn('p-0', isSmallScreen ? 'h-9 w-9' : 'h-7 w-7')}
+                  className={cn('p-0', isSmallScreen ? 'h-11 w-11' : 'h-7 w-7')}
                   onClick={onClose}
                   title={t('common:close')}
                 >
                   <X className={isSmallScreen ? 'w-5 h-5' : 'w-4 h-4'} />
-                </NotionButton>
+                </DsButton>
               )}
             </div>
           </div>
@@ -3355,7 +3360,7 @@ export function LearningHubSidebar({
         )}
       
         {/* Batch Operation Toolbar + View Mode Toggle + App Close
-            canvas / 特殊系统视图（索引状态、记忆、桌面）不显示 Finder 底栏，避免「0 个项目」错位 */}
+            canvas / 特殊系统视图（索引状态、记忆、桌面）不显示文件列表底栏，避免「0 个项目」错位 */}
         {mode === 'canvas' || effectivePath.viewKind === 'indexStatus' || effectivePath.viewKind === 'memory' || effectivePath.viewKind === 'desktop' ? null : (
           <FinderBatchToolbar
             selectedCount={selectedIds.size}
@@ -3482,7 +3487,7 @@ export function LearningHubSidebar({
       />
 
       {/* ★ 删除确认对话框 - 替代原生 window.confirm */}
-      <NotionAlertDialog
+      <DsAlertDialog
         open={deleteConfirmOpen}
         onOpenChange={(open) => {
           if (!open && !isDeleting) {
@@ -3514,9 +3519,15 @@ export function LearningHubSidebar({
 
       {/* ★ 2026-06-12（审阅问题 FE-M5）：附件批量导入进度横幅（非模态，不阻塞操作） */}
       {attachImportProgress && (
-        <div data-wb-blur-surface className="absolute bottom-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-3.5 py-2 rounded-lg bg-background/95 backdrop-blur-lg border shadow-notion-lg">
+        <div
+          data-wb-blur-surface
+          className="absolute left-1/2 z-50 flex max-w-[calc(100%_-_1rem)] -translate-x-1/2 items-center gap-2.5 rounded-lg border bg-background/95 px-3.5 py-2 shadow-card-lg backdrop-blur-lg"
+          style={{
+            bottom: 'calc(3rem + var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)))',
+          }}
+        >
           <CircleNotch className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
-          <span className="text-xs whitespace-nowrap">
+          <span className="max-w-[60vw] truncate text-xs">
             {t('finder.dragDrop.importing', {
               done: attachImportProgress.done,
               total: attachImportProgress.total,

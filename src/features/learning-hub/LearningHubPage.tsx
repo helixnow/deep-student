@@ -27,8 +27,14 @@ import { getMemoryConfig } from '@/api/memoryApi';
 import { LearningHubSidebar } from './LearningHubSidebar';
 import type { ResourceListItem, ResourceType } from './types';
 import { cn } from '@/lib/utils';
-import { DotsSixVertical, SquaresFour, Gear, ArrowClockwise, ChatCircle } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DotsSixVertical, DotsThree, SquaresFour, Gear, ArrowClockwise, ChatCircle } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
+import {
+  AppMenu,
+  AppMenuContent,
+  AppMenuItem,
+  AppMenuTrigger,
+} from '@/components/ui/app-menu';
 import { useDesktopShellSidebarPortal } from '@/app/shell/DesktopShellSidebarPortal';
 import { useDesktopShellHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
 import { useUIStore } from '@/stores/uiStore';
@@ -477,6 +483,7 @@ export const LearningHubPage: React.FC = () => {
   const [activeAppType, setActiveAppType] = useState<string>('all');
   const [tabReloadKeys, setTabReloadKeys] = useState<Record<string, number>>({});
   const [isFinderRefreshing, setIsFinderRefreshing] = useState(false);
+  const [mobileHeaderMenuOpen, setMobileHeaderMenuOpen] = useState(false);
 
   // ★ 使用 finderStore 获取实际的文件夹导航状态（而非 NavigationContext）
   // finderStore 是实际控制文件列表显示的状态，NavigationContext 只是同步层
@@ -579,6 +586,30 @@ export const LearningHubPage: React.FC = () => {
     }));
   }, [activeTabId]);
 
+  const openActiveTabSettings = useCallback(() => {
+    if (!activeTab || !['translation', 'essay', 'exam'].includes(activeTab.type)) return;
+    const eventName = activeTab.type === 'translation'
+      ? 'translation:openSettings'
+      : activeTab.type === 'essay'
+        ? 'essay:openSettings'
+        : 'exam:openSettings';
+    window.dispatchEvent(new CustomEvent(eventName, {
+      detail: { targetResourceId: activeTab.resourceId },
+    }));
+  }, [activeTab]);
+
+  useEffect(() => {
+    setMobileHeaderMenuOpen(false);
+  }, [screenPosition, activeTabId]);
+
+  useEffect(() => {
+    if (!isSmallScreen || !mobileHeaderMenuOpen) return;
+    return registerBackHandler(() => {
+      setMobileHeaderMenuOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, mobileHeaderMenuOpen]);
+
   useEffect(() => {
     const handleMobileReset = () => {
       setScreenPosition('center');
@@ -591,17 +622,17 @@ export const LearningHubPage: React.FC = () => {
   const mobileHeaderRightActions = useMemo(() => {
     if (screenPosition === 'center') {
       return (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           onClick={() => void refreshFinder()}
           disabled={isFinderRefreshing}
-          className="h-9 w-9"
+          className="h-11 w-11"
           aria-label={t('common:refresh')}
           title={t('common:refresh')}
         >
           <ArrowClockwise size={20} className={isFinderRefreshing ? 'animate-spin' : undefined} />
-        </NotionButton>
+        </DsButton>
       );
     }
 
@@ -609,60 +640,66 @@ export const LearningHubPage: React.FC = () => {
       return undefined;
     }
 
-    const settingsButton = (activeTab.type === 'translation' || activeTab.type === 'essay' || activeTab.type === 'exam') ? (
-      <NotionButton
-        variant="ghost"
-        size="icon"
-        onClick={() => {
-          const eventName = activeTab.type === 'translation'
-            ? 'translation:openSettings'
-            : activeTab.type === 'essay'
-              ? 'essay:openSettings'
-              : 'exam:openSettings';
-          window.dispatchEvent(new CustomEvent(eventName, {
-            detail: { targetResourceId: activeTab.resourceId },
-          }));
-        }}
-        className="h-9 w-9"
-        aria-label={t('learningHub:toolbar.settings')}
-      >
-        <Gear size={20} />
-      </NotionButton>
-    ) : null;
+    const supportsSettings = activeTab.type === 'translation'
+      || activeTab.type === 'essay'
+      || activeTab.type === 'exam';
 
     const injectableTypes = ['note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'mindmap'];
     const canShowInject = injectableTypes.includes(activeTab.type) && canInject();
     const injectButton = canShowInject ? (
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="icon"
         onClick={() => handleInjectToChatRef.current()}
         disabled={isInjecting}
-        className="h-9 w-9"
+        className="h-11 w-11"
         aria-label={t('learningHub:contextMenu.referenceToChat')}
         title={t('learningHub:contextMenu.referenceToChat')}
       >
         <ChatCircle size={20} />
-      </NotionButton>
+      </DsButton>
     ) : null;
 
     return (
       <>
         {injectButton}
-        <NotionButton
-          variant="ghost"
-          size="icon"
-          onClick={reloadActiveTab}
-          className="h-9 w-9"
-          aria-label={t('common:reload')}
-          title={t('common:reload')}
-        >
-          <ArrowClockwise size={20} />
-        </NotionButton>
-        {settingsButton}
+        <AppMenu open={mobileHeaderMenuOpen} onOpenChange={setMobileHeaderMenuOpen}>
+          <AppMenuTrigger asChild>
+            <DsButton
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11"
+              aria-label={t('common:more')}
+              title={t('common:more')}
+            >
+              <DotsThree size={22} weight="bold" />
+            </DsButton>
+          </AppMenuTrigger>
+          <AppMenuContent align="end" width={188}>
+            <AppMenuItem icon={<ArrowClockwise size={16} />} onClick={reloadActiveTab}>
+              {t('common:reload')}
+            </AppMenuItem>
+            {supportsSettings && (
+              <AppMenuItem icon={<Gear size={16} />} onClick={openActiveTabSettings}>
+                {t('learningHub:toolbar.settings')}
+              </AppMenuItem>
+            )}
+          </AppMenuContent>
+        </AppMenu>
       </>
     );
-  }, [screenPosition, activeTab, isFinderRefreshing, refreshFinder, reloadActiveTab, canInject, isInjecting, t]);
+  }, [
+    screenPosition,
+    activeTab,
+    isFinderRefreshing,
+    refreshFinder,
+    reloadActiveTab,
+    openActiveTabSettings,
+    canInject,
+    isInjecting,
+    mobileHeaderMenuOpen,
+    t,
+  ]);
 
   // 移动端统一顶栏配置 - 抽屉打开时保持顶栏可见，便于一次点击关闭（避免 hidden 后点击穿透叠层）
   useMobileHeader('learning-hub', {
@@ -1128,9 +1165,6 @@ export const LearningHubPage: React.FC = () => {
     return (
       <div
         className="study-shell-page relative flex h-full w-full flex-col overflow-hidden"
-        style={{
-          bottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
-        }}
       >
         <MobileSlidingLayout
           className="flex-1"

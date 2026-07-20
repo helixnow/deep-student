@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   Crop,
@@ -236,7 +236,7 @@ export function ImageCropDialog({
             {/* Page navigation */}
             {hasMultiplePages && (
               <div className="flex items-center justify-center gap-3">
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   iconOnly
@@ -244,11 +244,11 @@ export function ImageCropDialog({
                   onClick={() => { setCurrentPage(p => p - 1); setCropRect(null); }}
                 >
                   <CaretLeft size={16} />
-                </NotionButton>
+                </DsButton>
                 <span className="text-sm text-muted-foreground tabular-nums">
                   {currentPage + 1} / {sourceImages.length}
                 </span>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   iconOnly
@@ -256,7 +256,7 @@ export function ImageCropDialog({
                   onClick={() => { setCurrentPage(p => p + 1); setCropRect(null); }}
                 >
                   <CaretRight size={16} />
-                </NotionButton>
+                </DsButton>
               </div>
             )}
 
@@ -302,7 +302,7 @@ export function ImageCropDialog({
 />
                     {/* Selection border */}
                     <div
-                      className="absolute border-2 border-blue-500 pointer-events-none"
+                      className="absolute border-2 border-primary pointer-events-none"
                       style={{
                         left: `${cropRect.x * 100}%`,
                         top: `${cropRect.y * 100}%`,
@@ -313,7 +313,7 @@ export function ImageCropDialog({
                     {/* Size label */}
                     {imageRef.current && (
                       <div
-                        className="absolute text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded pointer-events-none"
+                        className="absolute text-[10px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded pointer-events-none"
                         style={{
                           left: `${cropRect.x * 100}%`,
                           top: `${cropRect.y * 100}%`,
@@ -344,7 +344,7 @@ export function ImageCropDialog({
     >
         {/* 顶栏：取消 + 标题 + 确认 */}
         <div className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b border-border/60 px-2">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -353,14 +353,14 @@ export function ImageCropDialog({
             className="!h-11 !w-11 text-muted-foreground"
           >
             <ArrowLeft size={20} />
-          </NotionButton>
+          </DsButton>
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <ImageIcon size={16} className="flex-shrink-0 text-muted-foreground" />
             <span className="truncate text-sm font-medium text-foreground">
               {t('question_bank.source_images')}
             </span>
           </div>
-          <NotionButton
+          <DsButton
             variant="primary"
             size="sm"
             disabled={!cropRect || cropping}
@@ -373,14 +373,14 @@ export function ImageCropDialog({
               <Crop size={14} className="mr-1" />
             )}
             {t('question_bank.crop_and_add')}
-          </NotionButton>
+          </DsButton>
         </div>
 
         {/* 提示条：拖选提示 / 已选中 + 清除 */}
         <div className="flex min-h-[36px] flex-shrink-0 items-center justify-between gap-2 border-b border-border/40 px-4 py-1.5">
           <span className="min-w-0 truncate text-xs text-muted-foreground">
             {cropRect ? (
-              <span className="font-medium text-blue-500">
+              <span className="font-medium text-primary">
                 {t('question_bank.crop_selected')}
               </span>
             ) : sourceImages.length > 0 ? (
@@ -390,7 +390,7 @@ export function ImageCropDialog({
             )}
           </span>
           {cropRect && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => setCropRect(null)}
@@ -398,7 +398,7 @@ export function ImageCropDialog({
             >
               <Trash size={14} className="mr-1" />
               {t('question_bank.clear_selection')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
 

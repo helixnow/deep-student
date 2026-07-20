@@ -1,5 +1,5 @@
 /**
- * 将单个 URL 以 Notion 风格应用到当前选区（单事务，undo 友好）。
+ * 将单个 URL 以 简洁风格应用到当前选区（单事务，undo 友好）。
  */
 
 import type { ResolvedPos } from '@milkdown/prose/model';

@@ -160,11 +160,16 @@ export function useSelectionBox({
       return new Set();
     };
 
-    const handleMouseMove = (e: MouseEvent) => {
+    // WebView2 高刷鼠标（125Hz+）下 per-event setState + 命中计算会逐帧触发 layout 与选中集重建，
+    // mousemove 只缓存最新坐标，rAF 每帧消费一次（pendingPoint 模式，同 pointerEngine）
+    let rafId = 0;
+    let pendingPoint: { x: number; y: number } | null = null;
+
+    const processPoint = (point: { x: number; y: number }) => {
       if (!startPointRef.current) return;
 
-      const dx = e.clientX - startPointRef.current.x;
-      const dy = e.clientY - startPointRef.current.y;
+      const dx = point.x - startPointRef.current.x;
+      const dy = point.y - startPointRef.current.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
 
       // 达到最小距离才开始框选
@@ -176,8 +181,8 @@ export function useSelectionBox({
           detail: {
             type: 'selection_start',
             timestamp: Date.now(),
-            clientX: e.clientX,
-            clientY: e.clientY,
+            clientX: point.x,
+            clientY: point.y,
             boxStartX: startPointRef.current.x,
             boxStartY: startPointRef.current.y,
           }
@@ -188,8 +193,8 @@ export function useSelectionBox({
         const newRect: SelectionBoxRect = {
           startX: startPointRef.current.x,
           startY: startPointRef.current.y,
-          endX: e.clientX,
-          endY: e.clientY,
+          endX: point.x,
+          endY: point.y,
         };
         setSelectionRect(newRect);
 
@@ -214,14 +219,14 @@ export function useSelectionBox({
             detail: {
               type: 'mouse_move',
               timestamp: now,
-              clientX: e.clientX,
-              clientY: e.clientY,
+              clientX: point.x,
+              clientY: point.y,
               boxStartX: startPointRef.current.x,
               boxStartY: startPointRef.current.y,
               boxEndX: newRect.endX,
               boxEndY: newRect.endY,
-              offsetX: newRect.endX - e.clientX,
-              offsetY: newRect.endY - e.clientY,
+              offsetX: newRect.endX - point.x,
+              offsetY: newRect.endY - point.y,
               selectedCount: selectedIds.size,
             }
           }));
@@ -229,8 +234,29 @@ export function useSelectionBox({
       }
     };
 
+    const processFrame = () => {
+      rafId = 0;
+      const point = pendingPoint;
+      pendingPoint = null;
+      if (point) processPoint(point);
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!startPointRef.current) return;
+      pendingPoint = { x: e.clientX, y: e.clientY };
+      if (rafId === 0) {
+        rafId = requestAnimationFrame(processFrame);
+      }
+    };
+
     const handleMouseUp = (e: MouseEvent) => {
       if (startPointRef.current) {
+        // 冲刷尚未消费的最后一个点，保证最终选中集与松手位置一致
+        if (rafId !== 0) {
+          cancelAnimationFrame(rafId);
+        }
+        processFrame();
+
         if (hasStartedSelectingRef.current) {
           window.dispatchEvent(new CustomEvent('selection-box-debug', {
             detail: {
@@ -254,6 +280,8 @@ export function useSelectionBox({
     document.addEventListener('mouseup', handleMouseUp);
 
     return () => {
+      if (rafId !== 0) cancelAnimationFrame(rafId);
+      pendingPoint = null;
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };

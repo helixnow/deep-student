@@ -20,7 +20,7 @@ import { useNotesOptional } from './NotesContext';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { NotesEditorHeader } from './components/NotesEditorHeader';
 import { NotesEditorToolbar } from './components/NotesEditorToolbar';
 import {
@@ -1623,7 +1623,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
           </div>
 
           <div className="w-full max-w-2xl flex flex-wrap items-stretch justify-center gap-3">
-            <NotionButton
+            <DsButton
               onClick={() => {
                 if (createNote) {
                   void createNote();
@@ -1644,9 +1644,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               <div className="flex items-center gap-1">
                 <ShortcutKey>{isMacOS() ? '⌘N' : 'Ctrl+N'}</ShortcutKey>
               </div>
-            </NotionButton>
+            </DsButton>
 
-            <NotionButton
+            <DsButton
               onClick={async () => {
                 if (createFolder) {
                   const id = await createFolder();
@@ -1666,9 +1666,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 <FolderPlus size={16} className="text-muted-foreground transition-colors" />
                 {t('notes:editor.empty_state.actions.new_folder')}
               </div>
-            </NotionButton>
+            </DsButton>
 
-            <NotionButton
+            <DsButton
               onClick={() => {
                 try {
                   // Context 侧栏 + Learning Hub 侧栏各听不同事件，一并派发
@@ -1687,7 +1687,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 <MagnifyingGlass size={16} className="text-muted-foreground transition-colors" />
                 {t('notes:editor.empty_state.actions.search_note')}
               </div>
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       </div>
@@ -1765,7 +1765,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             {t('notes:editor.conflict_refreshed')}
           </span>
           <div className="ml-auto flex shrink-0 items-center gap-1">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className={cn(
@@ -1782,23 +1782,23 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               {conflictDiffOpen
                 ? t('notes:editorV2.conflict_compare_hide', 'Hide comparison')
                 : t('notes:editorV2.conflict_compare', 'Compare')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="sm"
               className="h-6 px-2 text-xs"
               onClick={() => resolveConflict('mine', conflictAction)}
             >
               {t('notes:editor.conflict_restore_mine')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="sm"
               className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
               onClick={() => resolveConflict('remote', conflictAction)}
             >
               {t('notes:editor.conflict_keep_remote', 'Keep remote')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -1860,14 +1860,14 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 ) : conflictRemoteStatus === 'error' ? (
                   <div className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
                     <span>{t('notes:editorV2.conflict_diff_load_failed', 'Could not load the remote version')}</span>
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       className="h-6 px-2 text-xs"
                       onClick={() => { void fetchConflictRemote(); }}
                     >
                       {t('notes:editorV2.conflict_diff_retry', 'Retry')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 ) : (
                   <div className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
@@ -1877,21 +1877,21 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 )}
 
                 <div className="flex flex-shrink-0 items-center justify-end gap-1.5 border-t border-border/60 bg-muted/20 px-3 py-2">
-                  <NotionButton
+                  <DsButton
                     variant="outline"
                     size="sm"
                     className="h-7"
                     onClick={() => resolveConflict('remote', conflictAction)}
                   >
                     {t('notes:editor.conflict_keep_remote', 'Keep remote')}
-                  </NotionButton>
-                  <NotionButton
+                  </DsButton>
+                  <DsButton
                     size="sm"
                     className="h-7"
                     onClick={() => resolveConflict('mine', conflictAction)}
                   >
                     {t('notes:editor.conflict_restore_mine')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               </section>
             </div>
@@ -1906,7 +1906,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
           <div className="ml-auto flex items-center gap-1">
             {!readOnly && (
               <CommonTooltip content={t('notes:toolbar.note_templates', 'Note templates')} position="bottom">
-                <NotionButton
+                <DsButton
                   ref={templateTriggerRef}
                   variant="ghost"
                   iconOnly
@@ -1923,11 +1923,11 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   aria-controls={templatePanelId}
                 >
                   <NoteBlank size={16} />
-                </NotionButton>
+                </DsButton>
               </CommonTooltip>
             )}
             <CommonTooltip content={t('notes:toolbar.ask_agent', 'Ask Agent')} position="bottom">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 iconOnly
                 size="sm"
@@ -1936,11 +1936,11 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 aria-label={t('notes:toolbar.ask_agent', 'Ask Agent')}
               >
                 <Robot size={16} />
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
             {/* 查找替换按钮 */}
             <CommonTooltip content={t('notes:toolbar.find_replace')} position="bottom">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 iconOnly
                 size="sm"
@@ -1953,7 +1953,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 aria-pressed={isFindReplaceOpen}
               >
                 <MagnifyingGlass size={16} />
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
             {/* 阅读模式切换按钮 - 仅在非外部 readOnly 时显示 */}
             {!readOnly && (
@@ -1961,7 +1961,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 content={readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}
                 position="bottom"
               >
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   iconOnly
                   size="sm"
@@ -1984,14 +1984,14 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   aria-pressed={readingMode}
                 >
                   {readingMode ? <BookOpen size={16} /> : <PencilLine size={16} />}
-                </NotionButton>
+                </DsButton>
               </CommonTooltip>
             )}
             <CommonTooltip
               content={`${focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')} (${isMacOS() ? '⌘⇧U' : 'Ctrl+Shift+U'})`}
               position="bottom"
             >
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 iconOnly
                 size="sm"
@@ -2001,7 +2001,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 aria-pressed={focusMode}
               >
                 {focusMode ? <CornersIn size={16} /> : <CornersOut size={16} />}
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
             {headerActions}
           </div>
@@ -2028,7 +2028,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               <Robot size={14} className="text-primary shrink-0" />
               <span className="min-w-0 truncate text-xs text-foreground">{t('notes:aiCheckpoint.applied')}</span>
               <div className="ml-auto flex flex-shrink-0 items-center gap-1">
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
@@ -2036,8 +2036,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 >
                   <ArrowCounterClockwise size={12} className="mr-1" />
                   {t('notes:aiCheckpoint.rollback')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6 text-muted-foreground hover:text-foreground"
@@ -2045,7 +2045,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   aria-label={t('notes:aiCheckpoint.keep')}
                 >
                   <X size={12} />
-                </NotionButton>
+                </DsButton>
               </div>
             </div>
           </div>
@@ -2054,7 +2054,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
       {focusMode && (
         <CommonTooltip content={`${t('notes:toolbar.exit_focus_mode', 'Exit focus mode')} (${isMacOS() ? '⌘⇧U' : 'Ctrl+Shift+U'})`} position="left">
-          <NotionButton
+          <DsButton
             variant="ghost"
             iconOnly
             size="sm"
@@ -2063,7 +2063,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             aria-label={t('notes:toolbar.exit_focus_mode', 'Exit focus mode')}
           >
             <CornersIn size={17} />
-          </NotionButton>
+          </DsButton>
         </CommonTooltip>
       )}
       
@@ -2142,14 +2142,14 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               ) : windowingState.loadMoreError ? (
                 <>
                   <span>{t('notes:editor.windowing.load_more_failed')}</span>
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2 text-xs"
                     onClick={onRetryLoadMore}
                   >
                     {t('notes:editor.windowing.retry')}
-                  </NotionButton>
+                  </DsButton>
                 </>
               ) : null}
             </div>

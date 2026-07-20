@@ -15,7 +15,7 @@ import {
   FileText,
   CircleNotch,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 
 export type PreviewStatusTone = 'error' | 'warning' | 'empty' | 'loading';
@@ -186,19 +186,19 @@ export const PreviewStatus: React.FC<PreviewStatusProps> = ({
       {actions && actions.length > 0 && (
         <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
           {actions.map((action) => (
-            <NotionButton
+            <DsButton
               key={action.id}
               variant={action.variant ?? (action.id === 'retry' ? 'ghost' : 'default')}
               size="sm"
               onClick={action.onClick}
               disabled={action.disabled || action.loading}
-              className="gap-1.5"
+              className="gap-1.5 [@media(pointer:coarse)]:min-h-11"
             >
               {action.loading && (
                 <CircleNotch className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
               )}
               {action.label}
-            </NotionButton>
+            </DsButton>
           ))}
         </div>
       )}

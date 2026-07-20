@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { createPortal } from 'react-dom';
 import { X, MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowClockwise, House, CaretLeft, CaretRight, TextT, Crop, Check, ArrowCounterClockwise, Download } from '@phosphor-icons/react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -191,16 +191,35 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     };
     setDragStart(startPos);
 
-    // 使用原生事件监听器，确保丝滑拖拽
-    const handleGlobalMouseMove = (e: MouseEvent) => {
+    // 使用原生事件监听器，确保丝滑拖拽；
+    // WebView2 高刷鼠标（125Hz+）下 per-event setState 会逐帧触发 layout，
+    // mousemove 只缓存最新坐标，rAF 每帧消费一次（pendingPoint 模式）
+    let rafId = 0;
+    let pendingPoint: { x: number; y: number } | null = null;
+
+    const processFrame = () => {
+      rafId = 0;
+      const point = pendingPoint;
+      pendingPoint = null;
+      if (!point) return;
       setPosition({
-        x: e.clientX - startPos.x,
-        y: e.clientY - startPos.y
+        x: point.x - startPos.x,
+        y: point.y - startPos.y
       });
+    };
+
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      pendingPoint = { x: e.clientX, y: e.clientY };
+      if (rafId === 0) {
+        rafId = requestAnimationFrame(processFrame);
+      }
     };
 
     const handleGlobalMouseUp = () => {
       setIsDragging(false);
+      // 冲刷最后一个点，保证松手位置不丢
+      if (rafId !== 0) cancelAnimationFrame(rafId);
+      processFrame();
       document.removeEventListener('mousemove', handleGlobalMouseMove);
       document.removeEventListener('mouseup', handleGlobalMouseUp);
       dragCleanupRef.current = null;
@@ -210,6 +229,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     document.addEventListener('mouseup', handleGlobalMouseUp);
     // 保存清理函数供卸载时使用
     dragCleanupRef.current = () => {
+      if (rafId !== 0) cancelAnimationFrame(rafId);
+      pendingPoint = null;
       document.removeEventListener('mousemove', handleGlobalMouseMove);
       document.removeEventListener('mouseup', handleGlobalMouseUp);
     };
@@ -303,16 +324,34 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     setCropRect({ startX: x, startY: y, endX: x, endY: y });
     setIsCropping(true);
 
-    const handleGlobalCropMove = (ev: MouseEvent) => {
+    // 同图片拖拽：mousemove 只缓存坐标，rAF 合并 getBoundingClientRect + setState
+    let rafId = 0;
+    let pendingPoint: { x: number; y: number } | null = null;
+
+    const processFrame = () => {
+      rafId = 0;
+      const point = pendingPoint;
+      pendingPoint = null;
+      if (!point) return;
       const rect = cropContainerRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const mx = Math.max(0, Math.min(ev.clientX - rect.left, rect.width));
-      const my = Math.max(0, Math.min(ev.clientY - rect.top, rect.height));
+      const mx = Math.max(0, Math.min(point.x - rect.left, rect.width));
+      const my = Math.max(0, Math.min(point.y - rect.top, rect.height));
       setCropRect(prev => prev ? { ...prev, endX: mx, endY: my } : null);
+    };
+
+    const handleGlobalCropMove = (ev: MouseEvent) => {
+      pendingPoint = { x: ev.clientX, y: ev.clientY };
+      if (rafId === 0) {
+        rafId = requestAnimationFrame(processFrame);
+      }
     };
 
     const handleGlobalCropUp = () => {
       setIsCropping(false);
+      // 冲刷最后一个点，保证裁剪框终点与松手位置一致
+      if (rafId !== 0) cancelAnimationFrame(rafId);
+      processFrame();
       document.removeEventListener('mousemove', handleGlobalCropMove);
       document.removeEventListener('mouseup', handleGlobalCropUp);
       cropCleanupRef.current = null;
@@ -321,6 +360,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     document.addEventListener('mousemove', handleGlobalCropMove);
     document.addEventListener('mouseup', handleGlobalCropUp);
     cropCleanupRef.current = () => {
+      if (rafId !== 0) cancelAnimationFrame(rafId);
+      pendingPoint = null;
       document.removeEventListener('mousemove', handleGlobalCropMove);
       document.removeEventListener('mouseup', handleGlobalCropUp);
     };
@@ -453,7 +494,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                 <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/70 text-white text-xs backdrop-blur-sm z-30">
                   <span>{t('common:imageViewer.crop_hint')}</span>
                   {cropRect && !isCropping && Math.abs(cropRect.endX - cropRect.startX) > 5 && (
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       className="!h-6 !px-2 text-white hover:bg-[var(--overlay-control-hover)]"
@@ -461,9 +502,9 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     >
                       <Check size={14} className="mr-1" />
                       {t('common:imageViewer.crop_confirm')}
-                    </NotionButton>
+                    </DsButton>
                   )}
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     className="!h-6 !px-2 text-white hover:bg-[var(--overlay-control-hover)]"
@@ -471,7 +512,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                   >
                     <X size={14} className="mr-1" />
                     {t('common:actions.cancel')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               </div>
             )}
@@ -515,7 +556,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                   <TextT size={14} />
                   <span>{t('common:imageViewer.ocr_text')}</span>
                 </div>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
@@ -524,7 +565,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                   aria-label="close panel"
                 >
                   <X size={14} />
-                </NotionButton>
+                </DsButton>
               </div>
               <CustomScrollArea className="flex-1" viewportClassName="p-3">
                 {hasOcrText ? (
@@ -545,12 +586,12 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         {/* 导航按钮 */}
         {images.length > 1 && !isCropMode && (
           <>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => goTo(internalIndex - 1)} className="modern-viewer-icon-button absolute left-4 top-1/2 -translate-y-1/2 !rounded-full !p-3 z-10" disabled={internalIndex === 0} title={t('common:imageViewer.previous')} aria-label={t('a11y.prev')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={() => goTo(internalIndex - 1)} className="modern-viewer-icon-button absolute left-4 top-1/2 -translate-y-1/2 !rounded-full !p-3 z-10" disabled={internalIndex === 0} title={t('common:imageViewer.previous')} aria-label={t('a11y.prev')}>
               <CaretLeft size={24} />
-            </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => goTo(internalIndex + 1)} className="modern-viewer-icon-button absolute right-4 top-1/2 -translate-y-1/2 !rounded-full !p-3 z-10" disabled={internalIndex === images.length - 1} title={t('common:imageViewer.next_title')} aria-label={t('a11y.next')}>
+            </DsButton>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={() => goTo(internalIndex + 1)} className="modern-viewer-icon-button absolute right-4 top-1/2 -translate-y-1/2 !rounded-full !p-3 z-10" disabled={internalIndex === images.length - 1} title={t('common:imageViewer.next_title')} aria-label={t('a11y.next')}>
               <CaretRight size={24} />
-            </NotionButton>
+            </DsButton>
           </>
         )}
 
@@ -586,28 +627,28 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             {internalIndex + 1} / {images.length}
           </span>
           <div className="modern-viewer-divider" />
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setScale(prev => Math.max(prev / 1.2, 0.1))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_out')} aria-label="zoom out">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setScale(prev => Math.max(prev / 1.2, 0.1))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_out')} aria-label="zoom out">
             <MagnifyingGlassMinus size={16} />
-          </NotionButton>
+          </DsButton>
           <span className="modern-viewer-zoom-readout">
             {Math.round(scale * 100)}%
           </span>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setScale(prev => Math.min(prev * 1.2, 5))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_in')} aria-label="zoom in">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setScale(prev => Math.min(prev * 1.2, 5))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_in')} aria-label="zoom in">
             <MagnifyingGlassPlus size={16} />
-          </NotionButton>
+          </DsButton>
           <div className="modern-viewer-divider" />
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev - 90 + 360) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_ccw')} aria-label="rotate ccw">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev - 90 + 360) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_ccw')} aria-label="rotate ccw">
             <ArrowCounterClockwise size={16} />
-          </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev + 90) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_title')} aria-label="rotate">
+          </DsButton>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev + 90) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_title')} aria-label="rotate">
             <ArrowClockwise size={16} />
-          </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { setScale(1); setRotation(0); setPosition({ x: 0, y: 0 }); }} className="modern-viewer-icon-button" title={t('common:imageViewer.reset_title')} aria-label="reset">
+          </DsButton>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => { setScale(1); setRotation(0); setPosition({ x: 0, y: 0 }); }} className="modern-viewer-icon-button" title={t('common:imageViewer.reset_title')} aria-label="reset">
             <House size={16} />
-          </NotionButton>
+          </DsButton>
           <div className="modern-viewer-divider" />
           {/* 裁剪 */}
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -627,10 +668,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             aria-label="crop"
           >
             <Crop size={16} />
-          </NotionButton>
+          </DsButton>
           {/* OCR 文字面板切换 */}
           {ocrTexts && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -640,12 +681,12 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
               aria-label="ocr text"
             >
               <TextT size={16} />
-            </NotionButton>
+            </DsButton>
           )}
           {/* 下载 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="modern-viewer-icon-button" title={t('common:imageViewer.download')} aria-label="download">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="modern-viewer-icon-button" title={t('common:imageViewer.download')} aria-label="download">
             <Download size={16} />
-          </NotionButton>
+          </DsButton>
           <div className="modern-viewer-divider" />
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <span>{t('common:imageViewer.blurLabel')}</span>
@@ -656,9 +697,9 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 />
           </div>
           <div className="modern-viewer-divider" />
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="modern-viewer-icon-button modern-viewer-icon-button--danger" title={t('common:imageViewer.close')} aria-label={t('a11y.close')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className="modern-viewer-icon-button modern-viewer-icon-button--danger" title={t('common:imageViewer.close')} aria-label={t('a11y.close')}>
             <X size={16} />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     </div>

@@ -3,9 +3,12 @@
 
 #![allow(non_snake_case)] // Tauri 命令参数使用 camelCase 与前端保持一致
 
+use crate::backup_common::{DataGovernanceOperationGuard, DataGovernanceOperationKind};
 use crate::commands::AppState;
 use crate::data_governance::file_deletion_queue::{
-    active_data_dir_from_runtime_base, asset_key_from_relative_path, enqueue_asset_deletion,
+    active_data_dir_from_runtime_base, asset_key_from_relative_path, asset_local_path_from_key,
+    delete_asset_with_journal, finish_asset_deletion_with_conn, prepare_asset_deletion_with_conn,
+    recover_asset_deletions,
 };
 use crate::dstu::handler_utils::node_converters::note_to_dstu_node;
 use crate::models::AppError;
@@ -197,34 +200,44 @@ fn collect_note_asset_deletion_entries_inner(
     runtime_base: &Path,
     current: &Path,
     out: &mut Vec<(String, Option<u64>)>,
-) {
-    let Ok(children) = std::fs::read_dir(current) else {
-        return;
-    };
+) -> Result<()> {
+    let children = std::fs::read_dir(current).map_err(|e| {
+        AppError::file_system(format!(
+            "读取待删除笔记资产目录失败 ({}): {}",
+            current.display(),
+            e
+        ))
+    })?;
     for child in children {
-        let Ok(child) = child else {
-            continue;
-        };
+        let child = child.map_err(|e| {
+            AppError::file_system(format!(
+                "读取待删除笔记资产目录项失败 ({}): {}",
+                current.display(),
+                e
+            ))
+        })?;
         let path: PathBuf = child.path();
         if path.is_dir() {
-            collect_note_asset_deletion_entries_inner(runtime_base, &path, out);
+            collect_note_asset_deletion_entries_inner(runtime_base, &path, out)?;
             continue;
         }
         if !path.is_file() {
-            continue;
+            return Err(AppError::validation(format!(
+                "拒绝删除非普通笔记资产: {}",
+                path.display()
+            )));
         }
         let rel = path
             .strip_prefix(runtime_base)
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
-        let Some(key) = asset_key_from_relative_path(&rel) else {
-            log::warn!("[notes] 跳过资产目录删除队列：无法归一化相对路径 {}", rel);
-            continue;
-        };
+        let key = asset_key_from_relative_path(&rel)
+            .ok_or_else(|| AppError::validation(format!("无法归一化资产路径: {}", rel)))?;
         let size = std::fs::metadata(&path).ok().map(|m| m.len());
         out.push((key, size));
     }
+    Ok(())
 }
 
 // ================= Notes: 独立笔记系统（CRUD） =================
@@ -557,6 +570,10 @@ pub async fn notes_hard_delete(
     state: State<'_, AppState>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
 ) -> Result<bool> {
+    let _operation = DataGovernanceOperationGuard::try_acquire(
+        DataGovernanceOperationKind::DeletePropagation,
+        None,
+    )?;
     // ★ 切换到 VFS 版本
     let vfs_db = state
         .vfs_db
@@ -568,69 +585,78 @@ pub async fn notes_hard_delete(
     let note_id = id.clone();
 
     let (deleted, resource_ids) = tokio::task::spawn_blocking(move || {
-        // 预先收集 resource_id（用于索引清理）
-        // ★ 修复：硬删除通常作用于已软删除（回收站）的笔记，必须用 including_deleted 版本，
-        // 否则 resource_id 收集为空，索引（SQLite + Lance）永远不会被清理。
-        let resource_ids: Vec<String> = {
-            let conn = vfs_db
-                .get_conn_safe()
-                .map_err(|e| AppError::database(format!("VFS 连接失败: {}", e)))?;
-            let mut ids = Vec::new();
-            if let Ok(Some(note)) =
-                VfsNoteRepo::get_note_including_deleted_with_conn(&conn, &note_id)
-            {
-                ids.push(note.resource_id);
-            }
-            ids
-        };
-
         // purge 前收集资产删除队列条目（大小必须在删除前采集）
         let runtime_base = file_manager.get_writable_app_data_dir();
+        let active_dir = active_data_dir_from_runtime_base(&runtime_base);
+        recover_asset_deletions(&active_dir)
+            .map_err(|e| AppError::file_system(format!("恢复未完成资产删除失败: {}", e)))?;
         let assets_dir = runtime_base
             .join("notes_assets")
             .join(&subject)
             .join(&note_id);
         let mut pending_asset_deletions: Vec<(String, Option<u64>)> = Vec::new();
-        collect_note_asset_deletion_entries_inner(
-            &runtime_base,
-            &assets_dir,
-            &mut pending_asset_deletions,
-        );
+        if assets_dir.is_dir() {
+            collect_note_asset_deletion_entries_inner(
+                &runtime_base,
+                &assets_dir,
+                &mut pending_asset_deletions,
+            )?;
+        }
 
-        // VFS purge_note 会删除：笔记、关联资源
-        // ★ P0-4：不再用 unwrap_or(false) 吞掉错误；NotFound 视为「未删除」，其余错误向上传播
-        let deleted = match crate::vfs::VfsNoteRepo::purge_note(&vfs_db, &note_id) {
-            Ok(()) => true,
-            Err(crate::vfs::VfsError::NotFound { .. }) => false,
-            Err(e) => {
-                return Err(AppError::database(format!("硬删除笔记失败: {}", e)));
+        let conn = vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("VFS 连接失败: {}", e)))?;
+        // 硬删除通常作用于已软删除的笔记，必须读取 including_deleted。
+        let Some(note) = VfsNoteRepo::get_note_including_deleted_with_conn(&conn, &note_id)
+            .map_err(|e| AppError::database(format!("读取待硬删除笔记失败: {}", e)))?
+        else {
+            return Ok::<(bool, Vec<String>), AppError>((false, Vec::new()));
+        };
+        let resource_ids = vec![note.resource_id];
+
+        // metadata purge 与全部 prepared intent 在同一 SQLite 事务中提交。
+        // 只有提交成功后才允许删除物理文件。
+        conn.execute_batch("SAVEPOINT notes_hard_delete_with_assets")
+            .map_err(|e| AppError::database(format!("开启笔记硬删除事务失败: {}", e)))?;
+        let transaction_result = (|| -> Result<Vec<_>> {
+            let mut intents = Vec::with_capacity(pending_asset_deletions.len());
+            for (key, _size) in &pending_asset_deletions {
+                let local_path = asset_local_path_from_key(&key)
+                    .map_err(|e| AppError::validation(e.to_string()))?;
+                intents.push(
+                    prepare_asset_deletion_with_conn(&conn, &active_dir, key, &local_path)
+                        .map_err(|e| {
+                            AppError::file_system(format!("准备笔记资产删除意图失败: {}", e))
+                        })?,
+                );
+            }
+
+            VfsNoteRepo::purge_note_with_conn(&conn, &note_id)
+                .map_err(|e| AppError::database(format!("硬删除笔记失败: {}", e)))?;
+            Ok(intents)
+        })();
+        let intents = match transaction_result {
+            Ok(intents) => {
+                conn.execute_batch("RELEASE SAVEPOINT notes_hard_delete_with_assets")
+                    .map_err(|e| AppError::database(format!("提交笔记硬删除事务失败: {}", e)))?;
+                intents
+            }
+            Err(error) => {
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT notes_hard_delete_with_assets;
+                     RELEASE SAVEPOINT notes_hard_delete_with_assets;",
+                );
+                return Err(error);
             }
         };
 
-        if deleted {
-            // 清理资产目录；成功后写入资产删除队列（云同步清理）
-            match file_manager.delete_note_assets_dir(&subject, &note_id) {
-                Ok(_) => {
-                    let active_dir = active_data_dir_from_runtime_base(&runtime_base);
-                    for (key, size) in pending_asset_deletions {
-                        if let Err(err) = enqueue_asset_deletion(&active_dir, &key, size) {
-                            log::warn!(
-                                "[notes_hard_delete] 写入资产删除队列失败（不阻塞删除）: key={}, err={}",
-                                key,
-                                err
-                            );
-                        }
-                    }
-                }
-                Err(e) => log::warn!(
-                    "[notes_hard_delete] Failed to delete note assets dir for {}: {}",
-                    note_id,
-                    e
-                ),
-            }
+        for intent in &intents {
+            finish_asset_deletion_with_conn(&conn, &active_dir, intent)
+                .map_err(|e| AppError::file_system(format!("完成笔记资产删除安全链失败: {}", e)))?;
         }
+        file_manager.delete_note_assets_dir(&subject, &note_id)?;
 
-        Ok::<(bool, Vec<String>), AppError>((deleted, resource_ids))
+        Ok::<(bool, Vec<String>), AppError>((true, resource_ids))
     })
     .await
     .map_err(|e| AppError::internal(format!("硬删除笔记任务失败: {}", e)))??;
@@ -638,17 +664,20 @@ pub async fn notes_hard_delete(
     if deleted {
         // 清理索引（SQLite + Lance）
         let index_service = VfsIndexService::new(vfs_db_for_index);
+        let mut index_errors = Vec::new();
         for rid in resource_ids {
-            if let Err(e) = index_service
+            if let Err(error) = index_service
                 .delete_resource_index_full(&rid, &lance_store)
                 .await
             {
-                log::warn!(
-                    "[notes_hard_delete] Failed to delete index for {}: {}",
-                    rid,
-                    e
-                );
+                index_errors.push(format!("{}: {}", rid, error));
             }
+        }
+        if !index_errors.is_empty() {
+            return Err(AppError::internal(format!(
+                "笔记已硬删除，但部分检索索引清理失败: {}",
+                index_errors.join("; ")
+            )));
         }
     }
 
@@ -666,6 +695,10 @@ pub async fn notes_empty_trash(
     state: State<'_, AppState>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
 ) -> Result<usize> {
+    let _operation = DataGovernanceOperationGuard::try_acquire(
+        DataGovernanceOperationKind::DeletePropagation,
+        None,
+    )?;
     // ★ 切换到 VFS 版本
     let vfs_db = state
         .vfs_db
@@ -676,13 +709,19 @@ pub async fn notes_empty_trash(
 
     // 同步 IO（SQLite + 文件系统）统一放入 spawn_blocking，避免阻塞 async runtime
     let (deleted, resource_ids) = tokio::task::spawn_blocking(move || {
+        let runtime_base = file_manager.get_writable_app_data_dir();
+        let active_dir = active_data_dir_from_runtime_base(&runtime_base);
+        recover_asset_deletions(&active_dir)
+            .map_err(|e| AppError::file_system(format!("恢复未完成资产删除失败: {}", e)))?;
+
+        let conn = vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("VFS 连接失败: {}", e)))?;
+
         // 1) 一次查询收集待删笔记的 id 与 resource_id（避免逐条 get_note）
         let mut note_ids: Vec<String> = Vec::new();
         let mut resource_ids: Vec<String> = Vec::new();
         {
-            let conn = vfs_db
-                .get_conn_safe()
-                .map_err(|e| AppError::database(format!("VFS 连接失败: {}", e)))?;
             let mut stmt = conn
                 .prepare("SELECT id, resource_id FROM notes WHERE deleted_at IS NOT NULL")
                 .map_err(|e| AppError::database(format!("准备回收站查询失败: {}", e)))?;
@@ -691,9 +730,11 @@ pub async fn notes_empty_trash(
                     Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
                 })
                 .map_err(|e| AppError::database(format!("遍历回收站失败: {}", e)))?;
-            for row in rows.flatten() {
-                note_ids.push(row.0);
-                resource_ids.push(row.1);
+            for row in rows {
+                let (note_id, resource_id) =
+                    row.map_err(|e| AppError::database(format!("读取回收站条目失败: {}", e)))?;
+                note_ids.push(note_id);
+                resource_ids.push(resource_id);
             }
             resource_ids.sort();
             resource_ids.dedup();
@@ -702,63 +743,104 @@ pub async fn notes_empty_trash(
         // 2) purge 前收集各笔记的资产目录与删除队列条目。
         //    资产按 notes_assets/<subject>/<note_id> 组织；当前前端统一 "_global"，
         //    但历史数据可能分布在其他 subject 下，故扫描全部 subject 目录。
-        let runtime_base = file_manager.get_writable_app_data_dir();
         let notes_assets_root = runtime_base.join("notes_assets");
         let mut pending_dirs: Vec<(String, String, Vec<(String, Option<u64>)>)> = Vec::new();
         if !note_ids.is_empty() && notes_assets_root.is_dir() {
-            if let Ok(subject_entries) = std::fs::read_dir(&notes_assets_root) {
-                for subject_entry in subject_entries.flatten() {
-                    let subject_path = subject_entry.path();
-                    if !subject_path.is_dir() {
-                        continue;
-                    }
-                    let Some(subject_name) =
-                        subject_entry.file_name().to_str().map(|s| s.to_string())
-                    else {
-                        continue;
-                    };
-                    for note_id in &note_ids {
-                        let note_dir = subject_path.join(note_id);
-                        if note_dir.is_dir() {
-                            let mut entries = Vec::new();
-                            collect_note_asset_deletion_entries_inner(
-                                &runtime_base,
-                                &note_dir,
-                                &mut entries,
-                            );
-                            pending_dirs.push((subject_name.clone(), note_id.clone(), entries));
-                        }
+            let subject_entries = std::fs::read_dir(&notes_assets_root).map_err(|e| {
+                AppError::file_system(format!(
+                    "读取笔记资产根目录失败 ({}): {}",
+                    notes_assets_root.display(),
+                    e
+                ))
+            })?;
+            for subject_entry in subject_entries {
+                let subject_entry = subject_entry.map_err(|e| {
+                    AppError::file_system(format!(
+                        "读取笔记资产 subject 目录项失败 ({}): {}",
+                        notes_assets_root.display(),
+                        e
+                    ))
+                })?;
+                let subject_path = subject_entry.path();
+                if !subject_path.is_dir() {
+                    continue;
+                }
+                let subject_name = subject_entry
+                    .file_name()
+                    .to_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| {
+                        AppError::validation(format!(
+                            "笔记资产 subject 目录名不是 UTF-8: {}",
+                            subject_path.display()
+                        ))
+                    })?;
+                for note_id in &note_ids {
+                    let note_dir = subject_path.join(note_id);
+                    if note_dir.is_dir() {
+                        let mut entries = Vec::new();
+                        collect_note_asset_deletion_entries_inner(
+                            &runtime_base,
+                            &note_dir,
+                            &mut entries,
+                        )?;
+                        pending_dirs.push((subject_name.clone(), note_id.clone(), entries));
                     }
                 }
             }
         }
 
-        // 3) 批量清空回收站（repo 层每条 purge 均有 SAVEPOINT 事务保护）
-        let deleted = crate::vfs::VfsNoteRepo::purge_deleted_notes(&vfs_db)
-            .map_err(|e| AppError::database(format!("VFS 清空回收站失败: {}", e)))?;
-
-        // 4) purge 成功后删除磁盘资产目录；成功删除的目录写入资产删除队列
-        let active_dir = active_data_dir_from_runtime_base(&runtime_base);
-        for (subject, note_id, entries) in pending_dirs {
-            match file_manager.delete_note_assets_dir(&subject, &note_id) {
-                Ok(_) => {
-                    for (key, size) in entries {
-                        if let Err(err) = enqueue_asset_deletion(&active_dir, &key, size) {
-                            log::warn!(
-                                "[notes_empty_trash] 写入资产删除队列失败（不阻塞清空）: key={}, err={}",
-                                key,
-                                err
-                            );
-                        }
-                    }
+        // 3) 全部 prepared intent 与批量 purge 在同一事务中提交。
+        conn.execute_batch("SAVEPOINT notes_empty_trash_with_assets")
+            .map_err(|e| AppError::database(format!("开启清空回收站事务失败: {}", e)))?;
+        let transaction_result = (|| -> Result<(usize, Vec<_>)> {
+            let intent_capacity = pending_dirs
+                .iter()
+                .map(|(_, _, entries)| entries.len())
+                .sum();
+            let mut intents = Vec::with_capacity(intent_capacity);
+            for (_, _, entries) in &pending_dirs {
+                for (key, _size) in entries {
+                    let local_path = asset_local_path_from_key(key)
+                        .map_err(|e| AppError::validation(e.to_string()))?;
+                    intents.push(
+                        prepare_asset_deletion_with_conn(&conn, &active_dir, key, &local_path)
+                            .map_err(|e| {
+                                AppError::file_system(format!(
+                                    "准备清空回收站资产删除意图失败: {}",
+                                    e
+                                ))
+                            })?,
+                    );
                 }
-                Err(e) => log::warn!(
-                    "[notes_empty_trash] 删除笔记资产目录失败 {}/{}: {}",
-                    subject,
-                    note_id,
-                    e
-                ),
             }
+            let deleted = VfsNoteRepo::purge_deleted_notes_with_conn(&conn)
+                .map_err(|e| AppError::database(format!("VFS 清空回收站失败: {}", e)))?;
+            Ok((deleted, intents))
+        })();
+        let (deleted, intents) = match transaction_result {
+            Ok(result) => {
+                conn.execute_batch("RELEASE SAVEPOINT notes_empty_trash_with_assets")
+                    .map_err(|e| AppError::database(format!("提交清空回收站事务失败: {}", e)))?;
+                result
+            }
+            Err(error) => {
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT notes_empty_trash_with_assets;
+                     RELEASE SAVEPOINT notes_empty_trash_with_assets;",
+                );
+                return Err(error);
+            }
+        };
+
+        // 4) 提交后逐文件完成物理删除和 ready outbox；失败保持 prepared 可恢复。
+        for intent in &intents {
+            finish_asset_deletion_with_conn(&conn, &active_dir, intent).map_err(|e| {
+                AppError::file_system(format!("完成清空回收站资产删除安全链失败: {}", e))
+            })?;
+        }
+        for (subject, note_id, _entries) in pending_dirs {
+            file_manager.delete_note_assets_dir(&subject, &note_id)?;
         }
 
         Ok::<(usize, Vec<String>), AppError>((deleted, resource_ids))
@@ -769,17 +851,20 @@ pub async fn notes_empty_trash(
     // 5) 清理索引（SQLite + Lance）
     if !resource_ids.is_empty() {
         let index_service = VfsIndexService::new(vfs_db_for_index);
+        let mut index_errors = Vec::new();
         for rid in resource_ids {
-            if let Err(e) = index_service
+            if let Err(error) = index_service
                 .delete_resource_index_full(&rid, &lance_store)
                 .await
             {
-                log::warn!(
-                    "[notes_empty_trash] Failed to delete index for {}: {}",
-                    rid,
-                    e
-                );
+                index_errors.push(format!("{}: {}", rid, error));
             }
+        }
+        if !index_errors.is_empty() {
+            return Err(AppError::internal(format!(
+                "回收站已清空，但部分检索索引清理失败: {}",
+                index_errors.join("; ")
+            )));
         }
     }
 
@@ -904,35 +989,21 @@ pub async fn notes_list_assets(
 
 #[tauri::command]
 pub async fn notes_delete_asset(relative_path: String, state: State<'_, AppState>) -> Result<bool> {
+    let _operation = DataGovernanceOperationGuard::try_acquire(
+        DataGovernanceOperationKind::DeletePropagation,
+        None,
+    )?;
     log::info!("[notes_delete_asset] 收到删除请求: {}", relative_path);
     let file_manager = state.file_manager.clone();
     let deleted = tokio::task::spawn_blocking(move || {
-        let queue_key = asset_key_from_relative_path(&relative_path);
+        let queue_key = asset_key_from_relative_path(&relative_path)
+            .ok_or_else(|| AppError::validation("拒绝删除：资产路径无效"))?;
+        let local_path = asset_local_path_from_key(&queue_key)
+            .map_err(|e| AppError::validation(e.to_string()))?;
         let runtime_base = file_manager.get_writable_app_data_dir();
         let active_dir = active_data_dir_from_runtime_base(&runtime_base);
-        // 大小必须在删除前采集
-        let size = queue_key.as_deref().and_then(|key| {
-            let local_rel = key
-                .strip_prefix("active/")
-                .or_else(|| key.strip_prefix("app_data/"))
-                .unwrap_or(&relative_path);
-            std::fs::metadata(active_dir.join(local_rel))
-                .ok()
-                .map(|m| m.len())
-        });
-        let deleted = file_manager.delete_note_asset(&relative_path)?;
-        if deleted {
-            if let Some(key) = queue_key {
-                if let Err(err) = enqueue_asset_deletion(&active_dir, &key, size) {
-                    log::warn!(
-                        "[notes_delete_asset] 写入资产删除队列失败（不阻塞删除）: key={}, err={}",
-                        key,
-                        err
-                    );
-                }
-            }
-        }
-        Ok::<bool, AppError>(deleted)
+        delete_asset_with_journal(&active_dir, &queue_key, &local_path)
+            .map_err(|e| AppError::file_system(format!("删除资产安全链失败: {}", e)))
     })
     .await
     .map_err(|e| AppError::internal(format!("删除笔记资产任务失败: {}", e)))??;
@@ -1186,38 +1257,23 @@ pub async fn notes_assets_bulk_delete(
     paths: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<usize> {
+    let _operation = DataGovernanceOperationGuard::try_acquire(
+        DataGovernanceOperationKind::DeletePropagation,
+        None,
+    )?;
     let file_manager = state.file_manager.clone();
     tokio::task::spawn_blocking(move || {
         let runtime_base = file_manager.get_writable_app_data_dir();
         let active_dir = active_data_dir_from_runtime_base(&runtime_base);
         let mut deleted = 0usize;
         for p in &paths {
-            let queue_key = asset_key_from_relative_path(p);
-            // 大小必须在删除前采集（删除后 metadata 必然失败）
-            let size = queue_key.as_deref().and_then(|key| {
-                let local_rel = key
-                    .strip_prefix("active/")
-                    .or_else(|| key.strip_prefix("app_data/"))
-                    .unwrap_or(p);
-                std::fs::metadata(active_dir.join(local_rel))
-                    .ok()
-                    .map(|m| m.len())
-            });
-            if file_manager.delete_note_asset(p)? {
-                if let Some(key) = queue_key {
-                    if let Err(err) = enqueue_asset_deletion(&active_dir, &key, size) {
-                        log::warn!(
-                            "[notes_assets_bulk_delete] 写入资产删除队列失败（不阻塞删除）: key={}, err={}",
-                            key,
-                            err
-                        );
-                    }
-                } else {
-                    log::warn!(
-                        "[notes_assets_bulk_delete] 跳过资产删除队列：无法归一化相对路径 {}",
-                        p
-                    );
-                }
+            let key = asset_key_from_relative_path(p)
+                .ok_or_else(|| AppError::validation(format!("资产路径无效: {}", p)))?;
+            let local_path =
+                asset_local_path_from_key(&key).map_err(|e| AppError::validation(e.to_string()))?;
+            if delete_asset_with_journal(&active_dir, &key, &local_path)
+                .map_err(|e| AppError::file_system(format!("批量删除资产安全链失败: {}", e)))?
+            {
                 deleted += 1;
             }
         }

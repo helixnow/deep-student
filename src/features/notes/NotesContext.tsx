@@ -704,7 +704,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             if (closedIndex === -1) return prev;
             const newTabs = prev.filter(id => id !== noteId);
             if (activeTabId === noteId) {
-                // 关闭激活标签时，优先激活右侧邻近标签，否则左侧（对齐 Chrome/Obsidian 习惯）
+                // 关闭激活标签时，优先激活右侧邻近标签，否则左侧。
                 const neighborTab = newTabs[closedIndex] ?? newTabs[closedIndex - 1] ?? null;
                 setActiveTabId(neighborTab);
                 if (neighborTab) {

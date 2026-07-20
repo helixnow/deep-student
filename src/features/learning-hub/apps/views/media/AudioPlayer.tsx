@@ -21,7 +21,7 @@ import {
   CircleNotch,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Slider } from '@/components/ui/shad/Slider';
 import { formatMediaTime } from '../previewUtils';
 import { useMediaPlayback } from './useMediaPlayback';
@@ -166,7 +166,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           <div className="grid w-full grid-cols-3 items-center">
             <div className="flex items-center justify-start gap-0.5">
               <PlaybackRateMenu rate={rate} onRateChange={setRate} />
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 iconOnly
@@ -177,11 +177,11 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 className={cn('h-8 w-8', loop && 'bg-[var(--interactive-hover)] text-primary')}
               >
                 <Repeat size={16} aria-hidden="true" />
-              </NotionButton>
+              </DsButton>
             </div>
 
             <div className="flex items-center justify-center gap-2">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 iconOnly
@@ -189,12 +189,12 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 title={t('learningHub:mediaPreview.skipBackward')}
                 onClick={() => seekBy(-SKIP_SECONDS)}
                 disabled={!isReady}
-                className="h-9 w-9"
+                className="h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
               >
                 <ArrowCounterClockwise size={16} aria-hidden="true" />
-              </NotionButton>
+              </DsButton>
 
-              <NotionButton
+              <DsButton
                 variant="primary"
                 size="md"
                 iconOnly
@@ -219,9 +219,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 ) : (
                   <Play size={20} weight="fill" className="ml-0.5" aria-hidden="true" />
                 )}
-              </NotionButton>
+              </DsButton>
 
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 iconOnly
@@ -229,14 +229,14 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 title={t('learningHub:mediaPreview.skipForward')}
                 onClick={() => seekBy(SKIP_SECONDS)}
                 disabled={!isReady}
-                className="h-9 w-9"
+                className="h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
               >
                 <ArrowClockwise size={16} aria-hidden="true" />
-              </NotionButton>
+              </DsButton>
             </div>
 
             <div className="flex items-center justify-end gap-1">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 iconOnly
@@ -254,7 +254,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 className="h-8 w-8"
               >
                 <VolumeIcon size={16} aria-hidden="true" />
-              </NotionButton>
+              </DsButton>
               {/* 触屏隐藏 64px 微型滑杆（手指不可精确操作），保留静音钮；音量走系统控制 */}
               <Slider
                 value={[muted ? 0 : volume]}

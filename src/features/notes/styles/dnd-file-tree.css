@@ -214,7 +214,7 @@
   box-shadow: 0 0 2px var(--tree-drop-indicator);
 }
 
-/* 拖拽覆盖层 - Notion 风格 */
+/* 拖拽覆盖层 - 简洁风格 */
 .dnd-drag-overlay {
   padding: 0 12px;
   background: hsl(var(--background) / 0.88);

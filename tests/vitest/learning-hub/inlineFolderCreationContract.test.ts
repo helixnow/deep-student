@@ -19,6 +19,6 @@ describe('learning hub inline folder creation', () => {
   it('cancels an empty or escaped draft without using a create dialog', () => {
     expect(source).toContain('pendingFolderDraftRef.current?.node.id !== itemId');
     expect(source).toContain('if (isPendingFolderId(itemId))');
-    expect(source).not.toContain('<NotionDialog open={createDialogOpen}');
+    expect(source).not.toContain('<DsDialog open={createDialogOpen}');
   });
 });

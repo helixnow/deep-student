@@ -174,7 +174,7 @@
   color: hsl(var(--muted-foreground));
 }
 
-/* '|别名' / '#标题' 模式提示行（列表底部，Obsidian 式 footer hint） */
+/* '|别名' / '#标题' 模式提示行（列表底部， footer hint） */
 .crepe-wikilink-suggest__hint {
   margin-top: 0.25rem;
   padding: 0.35rem 0.55rem 0.2rem;
@@ -356,7 +356,7 @@
   gap: 0.35rem;
 }
 
-/* Notion 风格小按钮（vanilla DOM 浮层，无法复用 React NotionButton） */
+/* 简洁风格小按钮（vanilla DOM 浮层，无法复用 React DsButton） */
 .crepe-wikilink-create-confirm__button {
   border: 0;
   font: inherit;

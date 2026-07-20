@@ -71,7 +71,7 @@ export function applyCalloutInputRule(
   return tr.replaceWith(blockStart, blockStart + blockNode.nodeSize, callout);
 }
 
-/** Also accept the full Obsidian line while still in a plain paragraph. */
+/** Also accept the full callout line while still in a plain paragraph. */
 export function applyFullLineCalloutInputRule(
   state: EditorState,
   match: RegExpMatchArray,

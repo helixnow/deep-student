@@ -1,5 +1,5 @@
 import React from "react";
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/shad/Tabs";
 import { cn } from "../../lib/utils";
 import {
@@ -291,14 +291,14 @@ const NotesTabsBar: React.FC<NotesTabsBarProps> = ({
         }}
       >
         {canLeft && (
-          <NotionButton variant="ghost" size="icon" iconOnly aria-label="scroll-left" className="notes-tabs-scroll-btn left-0" onClick={() => scrollByDirection('left')}>
+          <DsButton variant="ghost" size="icon" iconOnly aria-label="scroll-left" className="notes-tabs-scroll-btn left-0" onClick={() => scrollByDirection('left')}>
             <CaretLeft size={16} />
-          </NotionButton>
+          </DsButton>
         )}
         {canRight && (
-          <NotionButton variant="ghost" size="icon" iconOnly aria-label="scroll-right" className="notes-tabs-scroll-btn right-0" onClick={() => scrollByDirection('right')}>
+          <DsButton variant="ghost" size="icon" iconOnly aria-label="scroll-right" className="notes-tabs-scroll-btn right-0" onClick={() => scrollByDirection('right')}>
             <CaretRight size={16} />
-          </NotionButton>
+          </DsButton>
         )}
         <DndContext sensors={sensors} autoScroll={SHELL_SAFE_AUTO_SCROLL} onDragEnd={handleDragEnd}>
           <SortableContext items={items} strategy={horizontalListSortingStrategy}>

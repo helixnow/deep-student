@@ -1,5 +1,5 @@
 /**
- * Small, UI-independent helpers for Obsidian-style wiki links.
+ * Small, UI-independent helpers for compatible wiki links.
  *
  * A target first resolves to a note ID (exact, case-sensitive — autocomplete
  * writes IDs verbatim). If no ID matches, a trimmed, case-insensitive title
@@ -239,7 +239,7 @@ const codeRanges = markdownCodeRanges;
 /**
  * Parses inline wiki links while leaving Markdown code alone: both fenced
  * blocks and inline code spans are skipped, matching the editor's remark
- * layer (which only visits plain text nodes) and Obsidian behaviour.
+ * layer (which only visits plain text nodes) and behaviour.
  */
 export function parseWikiLinks(markdown: string): WikiLink[] {
   const links: WikiLink[] = [];

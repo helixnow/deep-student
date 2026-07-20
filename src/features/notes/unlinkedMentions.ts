@@ -1,5 +1,5 @@
 /**
- * Obsidian-style "unlinked mentions": plain-text occurrences of a note title
+ * compatible "unlinked mentions": plain-text occurrences of a note title
  * inside another note's markdown that are not already part of a wiki link,
  * an `@` note mention, or a code span/fence.
  */

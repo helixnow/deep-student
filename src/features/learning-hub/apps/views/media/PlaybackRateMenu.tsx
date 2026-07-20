@@ -9,7 +9,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check } from '@phosphor-icons/react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/shad/Popover';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { PLAYBACK_RATES } from './useMediaPlayback';
 
@@ -42,7 +42,7 @@ export const PlaybackRateMenu: React.FC<PlaybackRateMenuProps> = ({
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           aria-label={label}
@@ -53,7 +53,7 @@ export const PlaybackRateMenu: React.FC<PlaybackRateMenuProps> = ({
           )}
         >
           {formatRate(rate)}
-        </NotionButton>
+        </DsButton>
       </PopoverTrigger>
       <PopoverContent
         side="top"

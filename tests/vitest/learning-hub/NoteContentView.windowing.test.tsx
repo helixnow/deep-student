@@ -61,8 +61,8 @@ vi.mock('@/hooks/useBreakpoint', () => ({
   useIsMobile: () => false,
 }));
 
-vi.mock('@/components/ui/NotionButton', () => ({
-  NotionButton: ({ children, iconOnly: _iconOnly, variant: _variant, size: _size, ...props }: any) => (
+vi.mock('@/components/ui/DsButton', () => ({
+  DsButton: ({ children, iconOnly: _iconOnly, variant: _variant, size: _size, ...props }: any) => (
     <button type="button" {...props}>{children}</button>
   ),
 }));

@@ -17,7 +17,7 @@ import { useTranslation } from 'react-i18next';
 import ExcelJS from 'exceljs';
 import DOMPurify from 'dompurify';
 import { CaretLeft, CaretRight, Warning, Table as TableIcon } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   normalizeBase64,
@@ -1113,7 +1113,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
         <div className="flex flex-shrink-0 items-center gap-1.5 border-t bg-muted/30 px-2 py-1">
           {sheetCount > 1 ? (
             <>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="h-6 w-6 flex-shrink-0 p-0 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
@@ -1123,7 +1123,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
                 aria-label={t('learningHub:officePreview.prevSheet')}
               >
                 <CaretLeft size={14} />
-              </NotionButton>
+              </DsButton>
               <div
                 role="tablist"
                 aria-label={t('learningHub:officePreview.sheetTabs')}
@@ -1132,7 +1132,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
                 {sheetTabs.map((tab, index) => {
                   const isActive = index === currentSheetIndex;
                   return (
-                    <NotionButton
+                    <DsButton
                       key={`${index}-${tab.name}`}
                       ref={isActive ? activeTabRef : undefined}
                       variant="ghost"
@@ -1160,11 +1160,11 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
                           aria-hidden="true"
                         />
                       )}
-                    </NotionButton>
+                    </DsButton>
                   );
                 })}
               </div>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="h-6 w-6 flex-shrink-0 p-0 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
@@ -1174,7 +1174,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
                 aria-label={t('learningHub:officePreview.nextSheet')}
               >
                 <CaretRight size={14} />
-              </NotionButton>
+              </DsButton>
               <span
                 className="flex-shrink-0 text-[11px] tabular-nums text-muted-foreground"
                 aria-live="polite"
@@ -1195,8 +1195,9 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
                 {selectionInfo.label}
               </span>
             )}
+            {/* 📱 多 Sheet 时窄屏（<sm）隐藏表格尺寸读数：把宝贵宽度让给 Sheet 标签条与选区信息 */}
             {currentSheet && !currentSheet.isEmpty && (
-              <span className="tabular-nums">
+              <span className={sheetCount > 1 ? 'tabular-nums max-sm:hidden' : 'tabular-nums'}>
                 {t('learningHub:officePreview.dimensions', {
                   rows: currentSheet.totalRows,
                   cols: currentSheet.totalCols,

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
 import { CircleNotch, WarningCircle, ArrowClockwise, Scan, Tag, Clock, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download, Plus, CaretDown, PencilSimple, XCircle, ClockCounterClockwise, Table as TableIcon } from '@phosphor-icons/react';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { percentOf, ratioToPercent } from '@/components/stats';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import { 
@@ -752,6 +752,16 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     return null;
   }, [practiceMode, activeTimedSession, activeMockExamSession]);
 
+  // 限时练习的暂停补偿：TimedPracticeMode 恢复会话按 started_at + duration
+  // + paused_seconds 计算倒计时终点，这里的 elapsed 必须同口径扣除
+  // paused_seconds，否则暂停过的用户会被超时 effect 提前强制交卷。
+  // 模拟考无暂停机制，恒为 0。
+  const activeAdvancedPausedSeconds = useMemo(() => {
+    if (practiceMode !== 'timed') return 0;
+    const paused = activeTimedSession?.paused_seconds;
+    return typeof paused === 'number' && Number.isFinite(paused) ? Math.max(0, paused) : 0;
+  }, [practiceMode, activeTimedSession]);
+
   // 计时器逻辑
   // ★ 标签页：普通练习的秒表在 isActive === false 时暂停，避免后台计时不精确；
   //   限时/模拟考（advanced runtime）必须按墙钟走：后台切换、休眠恢复都不能"暂停"考试，
@@ -763,8 +773,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         if (advancedRuntime && activeAdvancedStartedAt) {
           const startedMs = Date.parse(activeAdvancedStartedAt);
           if (Number.isFinite(startedMs)) {
-            // 墙钟推算，免疫 setInterval 漂移与系统休眠
-            setElapsedTime(Math.max(0, Math.floor((Date.now() - startedMs) / 1000)));
+            // 墙钟推算，免疫 setInterval 漂移与系统休眠；扣除累计暂停时长，
+            // 与 TimedPracticeMode 的倒计时终点口径一致
+            setElapsedTime(Math.max(
+              0,
+              Math.floor((Date.now() - startedMs) / 1000) - activeAdvancedPausedSeconds,
+            ));
             return;
           }
         }
@@ -777,7 +791,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         timerRef.current = null;
       }
     };
-  }, [viewMode, isTimerRunning, isActive, activeAdvancedTimerDuration, activeAdvancedStartedAt]);
+  }, [viewMode, isTimerRunning, isActive, activeAdvancedTimerDuration, activeAdvancedStartedAt, activeAdvancedPausedSeconds]);
 
   const isAdvancedRuntimeTimer = activeAdvancedTimerDuration != null;
   const advancedTimerRemaining = useMemo(() => {
@@ -791,13 +805,14 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     }
     const startedMs = Date.parse(activeAdvancedStartedAt);
     if (!Number.isFinite(startedMs)) return;
+    // 恢复时同样扣除累计暂停时长，保持与 tick 推算、启动页倒计时同口径
     const restoredElapsed = Math.min(
       activeAdvancedTimerDuration,
-      Math.max(0, Math.floor((Date.now() - startedMs) / 1000)),
+      Math.max(0, Math.floor((Date.now() - startedMs) / 1000) - activeAdvancedPausedSeconds),
     );
     setElapsedTime(restoredElapsed);
     setIsTimerRunning(true);
-  }, [viewMode, activeAdvancedStartedAt, activeAdvancedTimerDuration]);
+  }, [viewMode, activeAdvancedStartedAt, activeAdvancedTimerDuration, activeAdvancedPausedSeconds]);
 
   useEffect(() => {
     if (!activeTimedSession || activeTimedSession.is_submitted || activeTimedSession.is_timeout) {
@@ -1127,6 +1142,18 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const handleRefreshQuestion = useCallback(async (questionId: string) => {
     await refreshQuestion(questionId);
   }, [refreshQuestion]);
+
+  // 答题卡状态以本地会话（useQuestionBankSession）为准：做题导航走本地
+  // currentIndex，全局 store.currentQuestionId 与之不同步；收藏集同理来自
+  // 本地会话题目，全局 store.questions map 在此流程通常未加载
+  const sessionCurrentQuestionId = questions[currentIndex]?.id ?? null;
+  const favoriteQuestionIds = useMemo(() => {
+    const ids = new Set<string>();
+    questions.forEach((question) => {
+      if (question.isFavorite) ids.add(question.id);
+    });
+    return ids;
+  }, [questions]);
 
   // 高级模式下 currentIndex 需要映射到过滤后的子集
   const practiceCurrentIndex = useMemo(() => {
@@ -1917,10 +1944,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           <span className="text-sm font-medium text-foreground">{t('exam_sheet:errors.loadFailed')}</span>
           <span className="text-xs text-muted-foreground break-words">{loadErrorMessage}</span>
         </div>
-        <NotionButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-2 [@media(pointer:coarse)]:min-h-11">
+        <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-2 [@media(pointer:coarse)]:min-h-11">
           <ArrowClockwise size={16} />
           {t('common:actions.retry')}
-        </NotionButton>
+        </DsButton>
       </div>
     );
   }
@@ -1965,20 +1992,21 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       {/* ★ 断点续导：importing 状态横幅 */}
       {isImportingSession && (
         <div className="flex-shrink-0 border-b border-warning/30 bg-warning/10 px-3 py-2 sm:px-4">
-          <div className="flex items-center justify-between gap-3">
+          {/* 📱 flex-wrap：375px 下右侧「恢复导入」按钮组换行到第二行，避免把提示文案挤到不可读 */}
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
             <div className="flex items-center gap-2 min-w-0">
               <WarningCircle size={16} className="flex-shrink-0 text-warning" />
               <span className="truncate text-sm text-warning">
                 {t('exam_sheet:uploader.import_interrupted', { count: questions.length })}
               </span>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
               {resumeError && (
                 <span className="text-xs text-destructive max-w-[200px] truncate" title={resumeError}>
                   {resumeError}
                 </span>
               )}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={handleResumeImport}
@@ -1994,7 +2022,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   ? t('exam_sheet:uploader.resuming')
                   : t('exam_sheet:uploader.resume_import')
                 }
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         </div>
@@ -2006,10 +2034,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             <span className="text-sm text-destructive truncate" title={error}>
               {t('exam_sheet:errors.loadQuestionsFailed')}: {error}
             </span>
-            <NotionButton variant="ghost" size="sm" onClick={handleRetryQuestions} className="gap-1.5 [@media(pointer:coarse)]:min-h-11">
+            <DsButton variant="ghost" size="sm" onClick={handleRetryQuestions} className="gap-1.5 [@media(pointer:coarse)]:min-h-11">
               <ArrowClockwise size={14} />
               {t('common:actions.retry')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -2039,7 +2067,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 }}
               />
             )}
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => requestViewMode('list')}
@@ -2054,8 +2082,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               )}
             >
               {t('learningHub:exam.tab.questionBank')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => {
@@ -2076,12 +2104,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               )}
             >
               {t('learningHub:exam.tab.practice')}
-            </NotionButton>
+            </DsButton>
             {/* 二级视图收纳进「更多」菜单：错题 / 复习 / 收藏 / 知识点 / 统计 / 管理 */}
             {hasQuestions && (
               <AppMenu>
                 <AppMenuTrigger asChild>
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     data-exam-tab=""
@@ -2100,7 +2128,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                       size={12}
                       className="opacity-60 transition-transform duration-200 ease-out motion-reduce:transition-none group-aria-expanded:rotate-180"
                     />
-                  </NotionButton>
+                  </DsButton>
                 </AppMenuTrigger>
                 <AppMenuContent align="start" width={180}>
                   {secondaryTabs.map(({ mode, label, icon: Icon, badge }) => (
@@ -2132,7 +2160,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   className="h-7 flex-shrink-0 border-0 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:h-11"
                 />
                 
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={isAdvancedRuntimeTimer ? undefined : toggleTimer}
@@ -2170,7 +2198,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   <span className={cn('font-mono tabular-nums text-xs', !isAdvancedRuntimeTimer && !isTimerRunning && 'animate-pulse')}>
                     {formatTime(advancedTimerRemaining ?? elapsedTime)}
                   </span>
-                </NotionButton>
+                </DsButton>
               </>
             )}
           </div>
@@ -2179,7 +2207,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {hasQuestions && stats && <StatsSummary stats={stats} />}
             {hasQuestions && (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={handleOpenExport}
@@ -2189,12 +2217,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               >
                 <Download size={14} />
                 <span className="hidden sm:inline">{t('learningHub:exam.tab.export')}</span>
-              </NotionButton>
+              </DsButton>
             )}
             {!readOnly && (
               <AppMenu>
                 <AppMenuTrigger asChild>
-                  <NotionButton
+                  <DsButton
                     variant={viewMode === 'upload' ? 'default' : 'ghost'}
                     size="sm"
                     aria-label={t('learningHub:exam.tab.addQuestion')}
@@ -2204,7 +2232,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     <Plus size={14} />
                     <span className="hidden sm:inline">{t('learningHub:exam.tab.addQuestion')}</span>
                     <CaretDown size={12} className="opacity-60" />
-                  </NotionButton>
+                  </DsButton>
                 </AppMenuTrigger>
                 <AppMenuContent align="end" width={200}>
                   <AppMenuItem
@@ -2248,12 +2276,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             </div>
           </div>
           <div className="mt-2 flex items-center justify-end gap-2">
-            <NotionButton variant="ghost" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelReviewExit}>
+            <DsButton variant="ghost" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelReviewExit}>
               {t('common:cancel')}
-            </NotionButton>
-            <NotionButton variant="warning" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmReviewExit}>
+            </DsButton>
+            <DsButton variant="warning" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmReviewExit}>
               {t('review:session.exitConfirm')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -2271,21 +2299,21 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             </div>
           </div>
           <div className="mt-2 flex items-center justify-end gap-2">
-            <NotionButton variant="ghost" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelDiscardDraft}>
+            <DsButton variant="ghost" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelDiscardDraft}>
               {t('common:cancel')}
-            </NotionButton>
-            <NotionButton variant="danger" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmDiscardDraft}>
+            </DsButton>
+            <DsButton variant="danger" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmDiscardDraft}>
               {t('common:actions.discard')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
 
       {/* 内容区：viewMode 变化时以淡入 + 轻微上移过渡（懒加载 chunk 未就绪时
           startTransition 保持旧视图；首次挂载由骨架屏兜底，避免空白/转圈闪切） */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden">
         <Suspense fallback={<ViewSkeleton />}>
-          <div key={viewMode} className="h-full ui-rise-in">
+          <div key={viewMode} className="h-full min-h-0 ui-rise-in">
           {viewMode === 'launcher' && hasQuestions ? (
             /* 练习启动页 — 选择练习模式 */
             <PracticeLauncher
@@ -2295,6 +2323,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onStartPractice={handleStartPractice}
               requestedMode={launcherRequestedMode}
               onRequestedModeHandled={() => setLauncherRequestedMode(null)}
+              currentQuestionId={sessionCurrentQuestionId}
+              markedQuestionIds={favoriteQuestionIds}
             />
           ) : viewMode === 'manage' && hasQuestions ? (
             <QuestionBankManageView

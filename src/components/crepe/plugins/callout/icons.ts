@@ -2,7 +2,7 @@ import type { CalloutType } from './types';
 
 /**
  * Phosphor regular (线性) paths — viewBox 0 0 256 256.
- * 对齐 Obsidian callout 习惯：note=铅笔便签、tip=灯泡、warning=三角、danger=闪电、info=圆 i。
+ * 
  */
 const ICON_PATHS: Record<CalloutType, string> = {
   // NotePencil

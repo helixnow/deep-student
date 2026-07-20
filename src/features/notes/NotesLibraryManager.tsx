@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/shad/Tabs';
 import { Progress } from '@/components/ui/shad/Progress';
@@ -124,7 +124,7 @@ export function NotesLibraryPanel({
             {t('notes:library_manager.description')}
           </p>
         </div>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           onClick={onClose}
@@ -133,7 +133,7 @@ export function NotesLibraryPanel({
           title={t('common:actions.close', '关闭')}
         >
           <X className="h-4 w-4" />
-        </NotionButton>
+        </DsButton>
       </div>
 
       <Tabs
@@ -187,7 +187,7 @@ export function NotesLibraryPanel({
                   placeholder={t('notes:export.destination.placeholder')}
                   className="min-w-[180px] flex-1"
                 />
-                <NotionButton
+                <DsButton
                   variant="outline"
                   size="sm"
                   onClick={onPickExportPath}
@@ -201,16 +201,16 @@ export function NotesLibraryPanel({
                   ) : (
                     t('notes:export.destination.choose')
                   )}
-                </NotionButton>
+                </DsButton>
                 {exportTargetPath && (
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={() => onExportTargetPathChange('')}
                     disabled={exporting || exportPathLoading}
                   >
                     {t('notes:export.destination.clear')}
-                  </NotionButton>
+                  </DsButton>
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -245,23 +245,23 @@ export function NotesLibraryPanel({
                   placeholder={t('notes:import.file.placeholder')}
                   className="min-w-[180px] flex-1"
                 />
-                <NotionButton
+                <DsButton
                   variant="outline"
                   size="sm"
                   onClick={onPickImportFile}
                   disabled={importing}
                 >
                   {t('notes:import.file.choose')}
-                </NotionButton>
+                </DsButton>
                 {importFilePath && (
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={() => onImportFilePathChange('')}
                     disabled={importing}
                   >
                     {t('notes:import.file.clear')}
-                  </NotionButton>
+                  </DsButton>
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -362,15 +362,15 @@ export function NotesLibraryPanel({
       </Tabs>
 
       <div className="flex items-center justify-end gap-2 border-t border-border/60 px-5 py-3">
-        <NotionButton
+        <DsButton
           variant="ghost"
           onClick={onClose}
           disabled={exporting || importing}
         >
           {t('notes:dialogs.cancel')}
-        </NotionButton>
+        </DsButton>
         {activeTab === 'export' ? (
-          <NotionButton
+          <DsButton
             onClick={onConfirmExport}
             disabled={exporting || !exportTargetPath}
           >
@@ -382,9 +382,9 @@ export function NotesLibraryPanel({
             ) : (
               t('notes:export.actions.export')
             )}
-          </NotionButton>
+          </DsButton>
         ) : (
-          <NotionButton
+          <DsButton
             onClick={onConfirmImport}
             disabled={importing || !importFilePath}
           >
@@ -396,7 +396,7 @@ export function NotesLibraryPanel({
             ) : (
               t('notes:import.actions.import')
             )}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     </div>

@@ -145,7 +145,7 @@ describe('wikilinks', () => {
     ]);
   });
 
-  // B9：行内 code（反引号 span）内的 [[...]] / note:// 不再解析，与 Obsidian
+ // B9：行内 code（反引号 span）内的 [[...]] / note:// 不再解析，与 
   // 及编辑器 remark 层（只 visit text 节点）对齐。fence/escape 跳过契约不变。
   it('skips wiki links and note mentions inside inline code spans', () => {
     const markdown = [

@@ -11,7 +11,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretLeft, SidebarSimple, WarningCircle, X } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
 import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
 import { reportError, toVfsError, VfsError, VfsErrorCode } from '@/shared/result';
@@ -878,17 +878,18 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       ? t('notes:error.notFound')
       : error.toUserMessage();
     return (
-      <div className="flex flex-col items-center justify-center h-full" role="alert">
+      <div className="flex flex-col items-center justify-center h-full px-6" role="alert">
         <WarningCircle size={32} className="text-destructive mb-2" aria-hidden="true" />
-        <span className="text-destructive">{message}</span>
-        <div className="flex gap-2 mt-3">
-          <NotionButton variant="primary" onClick={() => loadNoteContent()}>
+        {/* 📱 长错误信息（含路径/ID）在 375px 窄屏必须可换行，避免横向溢出 */}
+        <span className="text-destructive text-center break-words max-w-md">{message}</span>
+        <div className="flex flex-wrap justify-center gap-2 mt-3">
+          <DsButton variant="primary" className="[@media(pointer:coarse)]:min-h-11" onClick={() => loadNoteContent()}>
             {t('common:retry')}
-          </NotionButton>
+          </DsButton>
           {onClose && (
-            <NotionButton variant="ghost" onClick={onClose}>
+            <DsButton variant="ghost" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
               {t('common:close')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       </div>
@@ -932,12 +933,15 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             onRetryLoadMore={handleRetryLoadMore}
             headerActions={propertiesPanelDisabled ? undefined : (
               <CommonTooltip content={t('notes:contextPanel.title')} position="bottom">
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   iconOnly
                   size="sm"
                   className={cn(
                     'h-7 w-7 text-muted-foreground hover:text-foreground',
+                    // 📱 触屏：视觉尺寸与编辑器工具栏其余 h-7 按钮保持一致，
+                    // 用透明伪元素外扩命中区达到 ≥44px 触控目标（仓库既有约定）
+                    "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']",
                     (rightPanelVisible || mobilePanelOpen) && 'bg-[var(--interactive-hover)] text-foreground',
                   )}
                   onClick={() => isSmallScreen ? setMobilePanelOpen(true) : toggleRightPanel()}
@@ -945,7 +949,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
                   aria-expanded={isSmallScreen ? mobilePanelOpen : rightPanelVisible}
                 >
                   <SidebarSimple size={15} aria-hidden="true" />
-                </NotionButton>
+                </DsButton>
               </CommonTooltip>
             )}
           />
@@ -962,9 +966,9 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         >
           <div className="flex h-9 flex-shrink-0 items-center justify-between border-b border-border px-2.5">
             <span className="text-xs font-medium text-foreground/80">{t('notes:contextPanel.title')}</span>
-            <NotionButton variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={toggleRightPanel} aria-label={t('common:close')}>
+            <DsButton variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={toggleRightPanel} aria-label={t('common:close')}>
               <X size={13} aria-hidden="true" />
-            </NotionButton>
+            </DsButton>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             <NotesContextPanel noteId={noteId} title={title} createdAt={node.createdAt} updatedAt={lastKnownUpdatedAt ?? node.updatedAt} tags={tags} content={isContentReady ? visibleContent : ''} onTagsChange={readOnly ? undefined : handleTagsChange} />
@@ -976,7 +980,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       {!propertiesPanelDisabled && isSmallScreen && mobilePanelOpen && (
         <div className="absolute inset-0 z-40 flex flex-col bg-background">
           <div className="flex items-center gap-1 px-2 py-1 border-b border-border/40 flex-shrink-0">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => setMobilePanelOpen(false)}
@@ -985,7 +989,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             >
               <CaretLeft size={16} aria-hidden="true" />
               {t('common:back')}
-            </NotionButton>
+            </DsButton>
             <span className="text-sm font-medium truncate text-foreground/90">
               {t('notes:contextPanel.title')}
             </span>

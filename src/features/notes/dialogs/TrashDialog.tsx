@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useNotes } from "../NotesContext";
 import { getErrorMessage } from "../../../utils/errorUtils";
 import { Trash, ArrowCounterClockwise, ArrowsClockwise, X } from "@phosphor-icons/react";
@@ -22,7 +22,7 @@ type ConfirmState =
  * Legacy notes trash (NotesHome host). Rendered as a non-modal inline panel
  * anchored to the right edge of the positioned host container — no fullscreen
  * scrim, no focus trap. Permanent-delete / empty confirmations are inline
- * strips (the old NotionAlertDialog is no longer used); Escape collapses the
+ * strips (the old DsAlertDialog is no longer used); Escape collapses the
  * confirm first, then closes the panel. Export name kept for compatibility.
  */
 export function TrashDialog() {
@@ -151,12 +151,12 @@ export function TrashDialog() {
                 <p className="text-muted-foreground">{labelDesc}</p>
             </div>
             <div className="flex justify-end gap-2">
-                <NotionButton variant="outline" size="sm" onClick={() => setConfirm(null)}>
+                <DsButton variant="outline" size="sm" onClick={() => setConfirm(null)}>
                     {t('common:actions.cancel')}
-                </NotionButton>
-                <NotionButton variant="danger" size="sm" onClick={() => void handleHardDelete()}>
+                </DsButton>
+                <DsButton variant="danger" size="sm" onClick={() => void handleHardDelete()}>
                     {t('common:actions.confirm')}
-                </NotionButton>
+                </DsButton>
             </div>
         </div>
     );
@@ -178,7 +178,7 @@ export function TrashDialog() {
                     )}
                 </h2>
                 <div className="flex items-center gap-1.5">
-                    <NotionButton
+                    <DsButton
                         variant="ghost"
                         size="icon"
                         onClick={() => void loadTrash()}
@@ -187,8 +187,8 @@ export function TrashDialog() {
                         title={t('common:actions.refresh', '刷新')}
                     >
                         <ArrowsClockwise className="h-4 w-4" />
-                    </NotionButton>
-                    <NotionButton
+                    </DsButton>
+                    <DsButton
                         variant="outline"
                         size="sm"
                         onClick={() => setConfirm({ type: 'empty' })}
@@ -196,8 +196,8 @@ export function TrashDialog() {
                         className="text-destructive hover:text-destructive"
                     >
                         {t('notes:trash.empty_trash')}
-                    </NotionButton>
-                    <NotionButton
+                    </DsButton>
+                    <DsButton
                         variant="ghost"
                         size="icon"
                         onClick={() => setTrashOpen(false)}
@@ -205,7 +205,7 @@ export function TrashDialog() {
                         title={t('common:actions.close', '关闭')}
                     >
                         <X className="h-4 w-4" />
-                    </NotionButton>
+                    </DsButton>
                 </div>
             </div>
 
@@ -238,7 +238,7 @@ export function TrashDialog() {
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-1">
-                                        <NotionButton
+                                        <DsButton
                                             variant="ghost"
                                             size="icon"
                                             onClick={() => void handleRestore(item)}
@@ -246,8 +246,8 @@ export function TrashDialog() {
                                             aria-label={t('notes:trash.restore')}
                                         >
                                             <ArrowCounterClockwise className="h-4 w-4 text-primary" />
-                                        </NotionButton>
-                                        <NotionButton
+                                        </DsButton>
+                                        <DsButton
                                             variant="ghost"
                                             size="icon"
                                             onClick={() => setConfirm({ type: 'hard', id: item.id, title: item.title })}
@@ -255,7 +255,7 @@ export function TrashDialog() {
                                             aria-label={t('notes:trash.delete_permanently')}
                                         >
                                             <X className="h-4 w-4 text-destructive" />
-                                        </NotionButton>
+                                        </DsButton>
                                     </div>
                                 </div>
                                 {confirm?.type === 'hard' && confirm.id === item.id && confirmBar(

@@ -1,5 +1,5 @@
 /**
- * Obsidian 风格折叠 callout 标记解析/序列化。
+ * 简洁风格折叠 callout 标记解析/序列化。
  *
  * 语法：
  *   > [!toggle]- 标题   → open: false（默认折叠）

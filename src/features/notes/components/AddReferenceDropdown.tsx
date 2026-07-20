@@ -1,7 +1,7 @@
 /**
  * 添加引用入口按钮
  *
- * 改造说明（对齐 Notion 内联体验）：
+ * 改造说明（对齐常见笔记编辑器 内联体验）：
  * - 原为 AppMenu 二级菜单（仅一项"添加教材引用"）→ 现在按钮直接展开
  *   锚定在按钮下方的 ReferenceSelector 内联面板，少一次点击。
  * - 添加失败时给出 toast 反馈（原先仅 console.error 吞错）。
@@ -17,7 +17,7 @@
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LinkSimple, CaretDown } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useNotes } from '../NotesContext';
 import { cn } from '../../../lib/utils';
 import { ReferenceSelector, type ReferenceSelectResult } from '../reference-selector';
@@ -77,7 +77,7 @@ export const AddReferenceDropdown: React.FC<AddReferenceDropdownProps> = ({
 
     return (
         <>
-            <NotionButton
+            <DsButton
                 ref={triggerRef}
                 variant="ghost"
                 size={compact ? 'icon' : 'sm'}
@@ -107,7 +107,7 @@ export const AddReferenceDropdown: React.FC<AddReferenceDropdownProps> = ({
                         />
                     </>
                 )}
-            </NotionButton>
+            </DsButton>
 
             {/* 教材选择内联面板（锚定在按钮下方展开） */}
             <ReferenceSelector

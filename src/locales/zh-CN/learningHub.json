@@ -950,6 +950,8 @@
     "rename": "重命名",
     "remove": "从桌面移除",
     "resourceNotFound": "资源不存在或已被删除",
+    "shortcutAdded": "已添加到桌面",
+    "shortcutExists": "该项目已在桌面",
     "setRootFolder": "设置桌面根目录",
     "rootPath": "根目录",
     "presets": {

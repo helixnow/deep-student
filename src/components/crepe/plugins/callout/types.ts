@@ -1,4 +1,4 @@
-/** Obsidian-compatible callout types supported by this plugin. */
+/** compatible callout types supported by this plugin. */
 export const CALLOUT_TYPES = ['note', 'tip', 'warning', 'danger', 'info'] as const;
 
 export type CalloutType = (typeof CALLOUT_TYPES)[number];
@@ -22,10 +22,10 @@ export function nextCalloutType(current: string): CalloutType {
 }
 
 /**
- * Match Obsidian callout marker at the start of a blockquote's first paragraph.
+ * Match callout marker at the start of a blockquote's first paragraph.
  * Examples: `[!note]`, `[!tip] Title`, `[!warning]  注意`
  * 容错：全角感叹号 `！`、类型任意大小写、`]` 后可跟半/全角冒号、
- * Obsidian 折叠后缀 `-`（collapsed）/ `+`（展开）。
+ * 折叠后缀 `-`（collapsed）/ `+`（展开）。
  */
 export const CALLOUT_MARKER_RE =
   /^\[[!！]([a-zA-Z]+)\]([+-])?(?:[:：]\s*(.*)|\s+(.*))?$/;

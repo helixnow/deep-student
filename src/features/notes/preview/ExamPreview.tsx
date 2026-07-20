@@ -9,7 +9,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../../lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -99,7 +99,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       )}
     >
       {/* 卡片头部 */}
-      <NotionButton variant="ghost" size="sm" onClick={onToggle} className={cn('!w-full !justify-start !px-3 !py-2 !h-auto !text-left', 'hover:bg-[var(--interactive-hover)] !rounded-t-lg', !isExpanded && '!rounded-b-lg')}>
+      <DsButton variant="ghost" size="sm" onClick={onToggle} className={cn('!w-full !justify-start !px-3 !py-2 !h-auto !text-left', 'hover:bg-[var(--interactive-hover)] !rounded-t-lg', !isExpanded && '!rounded-b-lg')}>
         {isExpanded ? (
           <CaretDown className="h-4 w-4 shrink-0 text-muted-foreground" />
         ) : (
@@ -114,7 +114,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             {t('notes:previewPanel.exam.linked')}
           </Badge>
         )}
-      </NotionButton>
+      </DsButton>
 
       {/* 展开内容 */}
       {isExpanded && (
@@ -161,14 +161,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
           {/* 操作按钮 */}
           {onClick && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => onClick(card)}
               className="w-full mt-2 text-xs"
             >
               {t('notes:previewPanel.exam.viewCardDetail')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       )}
@@ -203,7 +203,7 @@ const PageSection: React.FC<PageSectionProps> = ({
     <div className="space-y-2">
       {/* 页面缩略图 */}
       <div className="relative">
-        <NotionButton variant="ghost" size="sm" onClick={() => setShowImage(!showImage)} className={cn('!w-full !p-0 !h-auto overflow-hidden !rounded-lg border border-border', 'bg-muted/30 hover:border-primary/30', 'dark:bg-muted/20 dark:hover:border-primary/40')}>
+        <DsButton variant="ghost" size="sm" onClick={() => setShowImage(!showImage)} className={cn('!w-full !p-0 !h-auto overflow-hidden !rounded-lg border border-border', 'bg-muted/30 hover:border-primary/30', 'dark:bg-muted/20 dark:hover:border-primary/40')}>
           {showImage && page.originalImagePath ? (
             <img
               src={convertFileSrc(page.originalImagePath)}
@@ -222,7 +222,7 @@ const PageSection: React.FC<PageSectionProps> = ({
               </Badge>
             </div>
           )}
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 题目卡片列表 */}
@@ -499,7 +499,7 @@ export const ExamPreview: React.FC<ExamPreviewProps> = ({
 
         {/* 查看详情按钮 */}
         {onViewDetail && (
-          <NotionButton
+          <DsButton
             variant="default"
             size="sm"
             onClick={() => onViewDetail(sessionId)}
@@ -507,7 +507,7 @@ export const ExamPreview: React.FC<ExamPreviewProps> = ({
           >
             <ArrowSquareOut className="h-4 w-4" />
             {t('notes:previewPanel.exam.viewDetail')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     </CustomScrollArea>

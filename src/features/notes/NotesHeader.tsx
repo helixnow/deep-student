@@ -15,7 +15,7 @@ import {
     ArrowRight,
     FolderOpen,
 } from "@phosphor-icons/react";
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Separator } from "@/components/ui/shad/Separator";
 import {
     AppMenu,
@@ -230,14 +230,14 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                 {/* Mobile Menu Toggle */}
                 {onMobileMenuClick && (
                     <>
-                        <NotionButton 
+                        <DsButton 
                             variant="ghost" 
                             iconOnly size="sm" 
                             className="h-7 w-7 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9 shrink-0 text-muted-foreground/70 hover:text-foreground md:hidden"
                             onClick={onMobileMenuClick}
                         >
                             <SidebarSimple className="h-4 w-4" />
-                        </NotionButton>
+                        </DsButton>
                         <Separator className="h-4 w-px mx-1 bg-border/40 md:hidden" />
                     </>
                 )}
@@ -310,7 +310,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
 
                     <div className="flex items-center gap-1 ml-2">
                         {/* 触屏（pointer:coarse）下放大到 40px 触控高度 */}
-                        <NotionButton
+                        <DsButton
                             variant="ghost"
                             size="sm"
                             className="h-7 [@media(pointer:coarse)]:h-10 px-2 text-xs font-medium text-muted-foreground hover:text-foreground hidden sm:flex"
@@ -321,10 +321,10 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                                 <FloppyDisk className="h-3.5 w-3.5" />
                                 {saving ? t('notes:editor.save_status.saving') : t('notes:actions.save')}
                             </span>
-                        </NotionButton>
+                        </DsButton>
                         {onMobilePlatform ? (
                             // P2-12：移动平台库导出不可用（依赖桌面文件对话框），改「复制 Markdown」
-                            <NotionButton
+                            <DsButton
                                 variant="ghost"
                                 size="sm"
                                 className="h-7 [@media(pointer:coarse)]:h-10 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
@@ -334,9 +334,9 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                                     <Copy className="h-3.5 w-3.5" />
                                     <span>{t('notes:header.copy_markdown', '复制 Markdown')}</span>
                                 </span>
-                            </NotionButton>
+                            </DsButton>
                         ) : (
-                            <NotionButton
+                            <DsButton
                                 variant="ghost"
                                 size="sm"
                                 className="h-7 [@media(pointer:coarse)]:h-10 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
@@ -346,16 +346,16 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                                     <FileArchive className="h-3.5 w-3.5" />
                                     <span>{t('notes:toolbar.export_library')}</span>
                                 </span>
-                            </NotionButton>
+                            </DsButton>
                         )}
 
                         <Separator className="h-4 w-px mx-1 bg-border/40" />
 
                         <AppMenu open={menuOpen} onOpenChange={setMenuOpen}>
                             <AppMenuTrigger asChild>
-                                <NotionButton variant="ghost" iconOnly size="sm" className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 text-muted-foreground">
+                                <DsButton variant="ghost" iconOnly size="sm" className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 text-muted-foreground">
                                     <DotsThreeVertical className="h-3.5 w-3.5" />
-                                </NotionButton>
+                                </DsButton>
                             </AppMenuTrigger>
                             <AppMenuContent align="end" width={240}>
                                 <AppMenuGroup label={t('notes:menu.page_actions')}>

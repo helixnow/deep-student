@@ -1,5 +1,5 @@
 /**
- * Obsidian-compatible Callout blocks for Crepe / Milkdown.
+ * compatible Callout blocks for Crepe / Milkdown.
  *
  * Syntax (roundtrip-safe Markdown):
  *   > [!note] Optional title

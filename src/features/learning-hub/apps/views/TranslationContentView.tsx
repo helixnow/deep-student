@@ -26,7 +26,7 @@ import {
 } from '@/dstu/adapters/translationDstuAdapter';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { reportFrontendError } from '@/logging/errorReporter';
 import { registerContentAgentSurface } from '@/features/workbench/apps/content/contentAgentSurfaces';
@@ -122,10 +122,10 @@ const CopyButton: React.FC<{
     }
   }, [text]);
 
-  // 说明：NotionButton 基类含 [&_svg]:text-inherit 且 cn 非 tailwind-merge，
+  // 说明：DsButton 基类含 [&_svg]:text-inherit 且 cn 非 tailwind-merge，
   // 同元素覆盖 text-* 不可靠，改在子 span 上着色（直接类优先于继承色）
   return (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="sm"
       aria-label={ariaLabel}
@@ -142,7 +142,7 @@ const CopyButton: React.FC<{
       <span className={copied ? 'text-success' : undefined}>
         {copied ? copiedLabel : copyLabel}
       </span>
-    </NotionButton>
+    </DsButton>
   );
 };
 
@@ -175,12 +175,13 @@ const BilingualPreview: React.FC<{ session: TranslationSession }> = ({ session }
           key={section.key}
           className="flex flex-col min-w-0 rounded-lg border border-border/50 bg-muted/10 overflow-hidden"
         >
+          {/* 📱 标题可截断、字数不换行：窄屏下防止头部被复制按钮挤压产生横向溢出 */}
           <header className="flex items-center gap-2 px-3 py-2 border-b border-border/50">
-            <h3 className="text-sm font-medium text-foreground">{section.title}</h3>
-            <span className="text-xs text-muted-foreground">
+            <h3 className="min-w-0 truncate text-sm font-medium text-foreground">{section.title}</h3>
+            <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
               {t('translation:contentView.char_count', { n: section.text.length })}
             </span>
-            <div className="ml-auto">
+            <div className="ml-auto shrink-0">
               <CopyButton
                 text={section.text}
                 ariaLabel={section.copyAria}
@@ -499,13 +500,13 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           {t('translation:errors.load_failed', { error: loadError })}
         </p>
         <div className="flex gap-2">
-          <NotionButton variant="primary" className="[@media(pointer:coarse)]:min-h-11" onClick={() => void loadSession()}>
+          <DsButton variant="primary" className="[@media(pointer:coarse)]:min-h-11" onClick={() => void loadSession()}>
             {t('common:retry')}
-          </NotionButton>
+          </DsButton>
           {onClose && (
-            <NotionButton variant="ghost" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
+            <DsButton variant="ghost" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
               {t('common:back')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       </div>
@@ -535,14 +536,14 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0 max-sm:w-full max-sm:justify-end">
-          <NotionButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={reloadWorkbench}>
+          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={reloadWorkbench}>
             <ArrowClockwise size={14} aria-hidden="true" />
             {t('translation:contentView.workbench_error_retry')}
-          </NotionButton>
+          </DsButton>
           {onClose && (
-            <NotionButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
               {t('common:back')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       </div>
@@ -563,13 +564,14 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           role="alert"
         >
           <Warning size={16} className="text-destructive shrink-0" aria-hidden="true" />
+          {/* 📱 窄屏放宽为两行折行：title 悬停提示在触屏不可达，单行截断会丢失错误详情 */}
           <span
-            className="min-w-0 flex-1 truncate text-sm text-destructive"
+            className="min-w-0 flex-1 truncate text-sm text-destructive max-sm:whitespace-normal max-sm:line-clamp-2"
             title={saveState.message}
           >
             {t('translation:contentView.save_failed', { error: saveState.message })}
           </span>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             className="shrink-0 [@media(pointer:coarse)]:min-h-11"
@@ -580,8 +582,8 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
               <ArrowClockwise size={14} aria-hidden="true" />
               {t('translation:contentView.save_retry')}
             </span>
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="icon"
             className="shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
@@ -589,7 +591,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
             onClick={() => setSaveState({ status: 'idle' })}
           >
             <X size={14} aria-hidden="true" />
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 
@@ -600,15 +602,15 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
             {t('translation:contentView.empty_hint')}
           </span>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
-            className="shrink-0 [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:min-w-10"
+            className="shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             aria-label={t('translation:contentView.empty_hint_dismiss')}
             onClick={() => setEmptyHintDismissed(true)}
           >
             <X size={12} aria-hidden="true" />
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 

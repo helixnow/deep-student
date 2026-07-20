@@ -17,7 +17,7 @@ import {
   ArrowClockwise,
   GitBranch,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { getMemoryTree, type FolderTreeNode } from '@/api/memoryApi';
 
@@ -149,7 +149,7 @@ const TreeNode: React.FC<{
           )}
 
           {/* Navigate button */}
-          <NotionButton
+          <DsButton
             variant="ghost" size="icon" iconOnly
             // 触屏放大命中区（≥32px），负 margin 抵消占位保持行高稳定
             className="!h-5 !w-5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!h-8 [@media(pointer:coarse)]:!w-8 [@media(pointer:coarse)]:-my-1.5 transition-opacity"
@@ -158,7 +158,7 @@ const TreeNode: React.FC<{
             aria-label={t('memory.open_folder')}
           >
             <CaretRight size={12} />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 
@@ -224,10 +224,10 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
     return (
       <div className={cn('flex flex-col items-center justify-center py-12 gap-2', className)}>
         <span className="text-sm text-muted-foreground">{error}</span>
-        <NotionButton variant="ghost" size="sm" onClick={loadTree}>
+        <DsButton variant="ghost" size="sm" onClick={loadTree}>
           <ArrowClockwise size={14} />
           {t('common:retry')}
-        </NotionButton>
+        </DsButton>
       </div>
     );
   }
@@ -255,9 +255,9 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
           {totalMemories} {t('memory.items')}
         </span>
         <div className="flex-1" />
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={loadTree} disabled={isLoading} className="!h-5 !w-5 [@media(pointer:coarse)]:!h-8 [@media(pointer:coarse)]:!w-8" aria-label={t('memory.aria.refresh')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={loadTree} disabled={isLoading} className="!h-5 !w-5 [@media(pointer:coarse)]:!h-8 [@media(pointer:coarse)]:!w-8" aria-label={t('memory.aria.refresh')}>
           <ArrowClockwise size={12} className={cn(isLoading && 'animate-spin')} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* Tree */}

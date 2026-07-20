@@ -61,7 +61,7 @@ import {
   ListPlus,
   Sparkle,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
@@ -1054,19 +1054,19 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <p className="text-sm text-muted-foreground text-center mb-6 max-w-sm">
           {loadError}
         </p>
-        <NotionButton
+        <DsButton
           variant="primary"
           size="md"
           onClick={loadConfig}
         >
           <ArrowClockwise className="w-4 h-4" />
           {t('common:retry')}
-        </NotionButton>
+        </DsButton>
       </div>
     );
   }
 
-  // ========== 渲染：未配置根文件夹 - Notion 风格（全内联，无模态框） ==========
+  // ========== 渲染：未配置根文件夹 - 简洁风格（全内联，无模态框） ==========
   if (!config?.memoryRootFolderId) {
     return (
       <div className={cn('flex flex-col items-center justify-center h-full p-8', className)}>
@@ -1085,7 +1085,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <CustomScrollArea className="rounded-lg bg-muted/30 max-h-40">
               <div className="p-1">
                 {folderList.map((folder) => (
-                  <NotionButton
+                  <DsButton
                     key={folder.id}
                     variant="ghost" size="sm"
                     className="w-full !justify-start !px-3 !py-2"
@@ -1093,20 +1093,20 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   >
                     <FolderOpen size={14} className="text-muted-foreground" />
                     <span className="truncate">{folder.title}</span>
-                  </NotionButton>
+                  </DsButton>
                 ))}
               </div>
             </CustomScrollArea>
           </div>
         ) : (
-          <NotionButton variant="ghost" size="sm" onClick={loadFolders} disabled={loadingFolders} className="mb-4">
+          <DsButton variant="ghost" size="sm" onClick={loadFolders} disabled={loadingFolders} className="mb-4">
             {loadingFolders ? (
               <CircleNotch size={16} className="animate-spin" />
             ) : (
               <FolderOpen size={16} />
             )}
             {t('memory.select_folder')}
-          </NotionButton>
+          </DsButton>
         )}
 
         <div className="text-xs text-muted-foreground/60 mb-3">{t('learningHub:memory.or')}</div>
@@ -1137,22 +1137,22 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   className="w-full h-9 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background"
                 />
                 <div className="flex gap-2">
-                  <NotionButton variant="ghost" size="sm" className="flex-1" onClick={() => { setShowCreateRootForm(false); setNewRootFolderTitle(''); }}>
+                  <DsButton variant="ghost" size="sm" className="flex-1" onClick={() => { setShowCreateRootForm(false); setNewRootFolderTitle(''); }}>
                     {t('common:cancel')}
-                  </NotionButton>
-                  <NotionButton variant="primary" size="sm" className="flex-1" onClick={handleCreateRootFolder} disabled={isMutating || !newRootFolderTitle.trim()}>
+                  </DsButton>
+                  <DsButton variant="primary" size="sm" className="flex-1" onClick={handleCreateRootFolder} disabled={isMutating || !newRootFolderTitle.trim()}>
                     {isMutating && <CircleNotch size={16} className="animate-spin" />}
                     {t('common:create')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               </div>
             </motion.div>
           ) : (
             <motion.div key="create-root-button" {...disclosureMotion} className="overflow-hidden">
-              <NotionButton variant="ghost" size="sm" onClick={() => setShowCreateRootForm(true)} className="text-primary hover:bg-primary/10">
+              <DsButton variant="ghost" size="sm" onClick={() => setShowCreateRootForm(true)} className="text-primary hover:bg-primary/10">
                 <Plus size={16} />
                 {t('memory.create_folder')}
-              </NotionButton>
+              </DsButton>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1163,7 +1163,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   // ========== 渲染：主视图 ==========
   return (
     <div className={cn('flex flex-col h-full', className)}>
-      {/* 顶部工具栏 - Notion 风格（窄容器允许折行，避免单行溢出） */}
+      {/* 顶部工具栏 - 简洁风格（窄容器允许折行，避免单行溢出） */}
       <div data-wb-blur-surface className="flex flex-wrap items-center gap-2 gap-y-1.5 px-4 py-3 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/80 backdrop-blur-xl">
         {/* 搜索框：保留最小可用宽度，不足时让后续按钮折行 */}
         <div className="flex-1 min-w-[9rem] relative">
@@ -1182,17 +1182,17 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           {isSearching ? (
             <CircleNotch size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground/60" />
           ) : searchQuery ? (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 text-muted-foreground/60 hover:text-foreground" aria-label={t('memory.aria.clear_search')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 text-muted-foreground/60 hover:text-foreground [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3 [@media(pointer:coarse)]:before:content-['']" aria-label={t('memory.aria.clear_search')}>
               ×
-            </NotionButton>
+            </DsButton>
           ) : null}
         </div>
 
         {/* 视图切换 */}
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={loadMemories} disabled={isListLoading} aria-label={t('memory.aria.refresh')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={loadMemories} disabled={isListLoading} aria-label={t('memory.aria.refresh')}>
           <ArrowClockwise className={cn('w-4 h-4', isListLoading && 'animate-spin')} />
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={() => setViewMode(viewMode === 'list' ? 'tree' : 'list')}
           className={cn(viewMode === 'tree' && 'text-primary bg-primary/10')}
@@ -1200,35 +1200,35 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           title={viewMode === 'tree' ? t('memory.list_view') : t('memory.tree_view')}
         >
           {viewMode === 'tree' ? <List size={16} /> : <GitBranch size={16} />}
-        </NotionButton>
+        </DsButton>
 
         <div className="w-px h-5 bg-border/50" />
 
         {/* 操作 */}
-        <NotionButton
+        <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={() => { setBatchMode(!batchMode); setSelectedIds(new Set()); setConfirmingBatchDelete(false); }}
           className={cn(batchMode && 'text-primary bg-primary/10')}
           aria-label={t('memory.aria.batch')}
         >
           <CheckSquare size={16} />
-        </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleExportMemories} disabled={isMutating} aria-label={t('memory.aria.export')}>
+        </DsButton>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={handleExportMemories} disabled={isMutating} aria-label={t('memory.aria.export')}>
           <Download size={16} />
-        </NotionButton>
+        </DsButton>
 
         <div className="w-px h-5 bg-border/50" />
 
         {/* 面板 */}
-        <NotionButton
+        <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={handleToggleProfile}
           className={cn(showProfile && 'text-primary bg-primary/10')}
           aria-label={t('memory.aria.profile')}
         >
           <MemoryIcon size={16} />
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={handleToggleAuditLog}
           className={cn(showAuditLog && 'text-primary bg-primary/10')}
@@ -1236,38 +1236,38 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           title={t('memory.audit_log')}
         >
           <ClockCounterClockwise size={16} />
-        </NotionButton>
+        </DsButton>
         {!batchMode && (
           <>
-            <NotionButton
+            <DsButton
               variant="ghost" size="sm"
               onClick={isBatchImporting ? handleCancelBatchImport : handleOpenBatchImport}
               className={cn('text-success hover:bg-success/10', isBatchImporting && 'bg-success/10')}
             >
               <ListPlus size={16} />
               {t('memory.batch_import')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost" size="sm"
               onClick={isCreatingInline ? handleCancelCreate : handleOpenCreate}
               className={cn('text-primary hover:bg-primary/10', isCreatingInline && 'bg-primary/10')}
             >
               <Plus size={16} />
               {t('memory.new')}
-            </NotionButton>
+            </DsButton>
           </>
         )}
         {batchMode && (
           <>
-            <NotionButton
+            <DsButton
               variant="ghost" size="sm"
               onClick={handleToggleSelectAll}
               className="text-muted-foreground hover:bg-[var(--interactive-hover)]"
             >
               {selectedIds.size === visibleIds.length && visibleIds.length > 0 ? t('memory.deselect_all') : t('memory.select_all')}
-            </NotionButton>
+            </DsButton>
             {selectedIds.size > 0 && (
-              <NotionButton
+              <DsButton
                 variant="ghost" size="sm"
                 onClick={handleBatchDelete}
                 disabled={isMutating}
@@ -1280,7 +1280,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 {confirmingBatchDelete
                   ? t('memory.confirm_delete')
                   : t('memory.batch_delete', { count: selectedIds.size })}
-              </NotionButton>
+              </DsButton>
             )}
           </>
         )}
@@ -1292,7 +1292,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           <FolderOpen size={14} />
           <span>{t('memory.root_folder')}:</span>
           <span className="font-medium text-foreground">{config.memoryRootFolderTitle || t('memory.defaultRootTitle')}</span>
-          <NotionButton
+          <DsButton
             variant="ghost" size="sm"
             onClick={handleOpenRootPicker}
             disabled={loadingFolders}
@@ -1304,7 +1304,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               <Gear size={12} />
             )}
             {t('memory.change')}
-          </NotionButton>
+          </DsButton>
         </div>
         <div className="flex items-center gap-2">
           <Lightning size={14} />
@@ -1350,9 +1350,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       className="w-full h-6 px-2 text-[11px] bg-muted/30 border-transparent rounded focus-visible:border-border focus-visible:bg-background"
                     />
                   </div>
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setIsPickerOpen(false)} className="!h-5 !w-5 !p-0" aria-label={t('common:cancel')}>
+                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => setIsPickerOpen(false)} className="!h-5 !w-5 !p-0" aria-label={t('common:cancel')}>
                     <X size={12} />
-                  </NotionButton>
+                  </DsButton>
                 </div>
                 <CustomScrollArea className="max-h-48">
                   <div className="p-1">
@@ -1361,7 +1361,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         {t('memory.no_results')}
                       </div>
                     ) : filteredFolderList.map((folder) => (
-                      <NotionButton
+                      <DsButton
                         key={folder.id}
                         variant="ghost" size="sm"
                         className={cn(
@@ -1375,7 +1375,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         {folder.id === config.memoryRootFolderId && (
                           <CheckCircle size={12} className="ml-auto shrink-0" />
                         )}
-                      </NotionButton>
+                      </DsButton>
                     ))}
                   </div>
                 </CustomScrollArea>
@@ -1385,9 +1385,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         </AnimatePresence>
       </div>
 
-      {/* 统计栏 */}
+      {/* 统计栏 — 窄容器（移动端中屏）允许折行，避免类别徽章把统计栏撑出横向溢出 */}
       {memories.length > 0 && !isSearchMode && (
-        <div className="px-4 py-1.5 text-2xs text-muted-foreground/70 border-b border-border/20 flex items-center gap-3">
+        <div className="px-4 py-1.5 text-2xs text-muted-foreground/70 border-b border-border/20 flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="font-medium text-muted-foreground">{t('memory.count', { count: memories.length })}</span>
           {Object.entries(memoryStats.purposeCounts).map(([key, count]) => (
             <span key={key} className={cn('px-1.5 py-0 rounded', PURPOSE_BADGE_STYLES[key] || 'bg-muted')}>
@@ -1422,9 +1422,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   ) : profileError ? (
                     <div className="px-4 py-4 text-xs text-destructive/80 text-center space-y-2">
                       <div>{profileError}</div>
-                      <NotionButton variant="ghost" size="sm" onClick={() => { setShowProfile(false); handleToggleProfile(); }} className="text-xs">
+                      <DsButton variant="ghost" size="sm" onClick={() => { setShowProfile(false); handleToggleProfile(); }} className="text-xs">
                         {t('common:retry')}
-                      </NotionButton>
+                      </DsButton>
                     </div>
                   ) : profileSections.length === 0 ? (
                     <div className="px-4 py-4 text-xs text-muted-foreground/60 text-center">
@@ -1450,7 +1450,8 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             {showAuditLog && (
               <motion.div key="audit-panel" {...disclosureMotion} className="overflow-hidden">
                 <div className="rounded-lg border border-border/60 bg-card/50 overflow-hidden">
-                  <div data-wb-blur-surface className="flex items-center gap-2 px-4 py-2.5 border-b border-black/[0.05] dark:border-white/[0.07] bg-muted/25 backdrop-blur-sm">
+                  {/* 窄容器允许筛选器折行，避免标题 + 两个筛选下拉在移动端横向溢出 */}
+                  <div data-wb-blur-surface className="flex flex-wrap items-center gap-2 gap-y-1.5 px-4 py-2.5 border-b border-black/[0.05] dark:border-white/[0.07] bg-muted/25 backdrop-blur-sm">
                     <ClockCounterClockwise size={14} className="text-muted-foreground" />
                     <span className="text-xs font-medium text-muted-foreground">{t('memory.audit_log')}</span>
                     <div className="ml-auto flex items-center gap-1.5">
@@ -1479,9 +1480,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           <SelectItem value="false">{t('memory.audit_failed')}</SelectItem>
                         </SelectContent>
                       </Select>
-                      <NotionButton variant="ghost" size="icon" iconOnly onClick={() => loadAuditLogs(0)} disabled={isLoadingAuditLog} className="!h-5 !w-5 !p-0" aria-label={t('memory.aria.refresh_logs')}>
+                      <DsButton variant="ghost" size="icon" iconOnly onClick={() => loadAuditLogs(0)} disabled={isLoadingAuditLog} className="!h-5 !w-5 !p-0" aria-label={t('memory.aria.refresh_logs')}>
                         <ArrowClockwise className={cn('w-3 h-3', isLoadingAuditLog && 'animate-spin')} />
-                      </NotionButton>
+                      </DsButton>
                     </div>
                   </div>
                   {isLoadingAuditLog && auditLogs.length === 0 ? (
@@ -1492,9 +1493,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     <div className="px-4 py-4 text-xs text-danger text-center space-y-2">
                       <div>{auditLoadError}</div>
                       <div>
-                        <NotionButton variant="ghost" size="sm" onClick={() => loadAuditLogs(0)} className="text-xs">
+                        <DsButton variant="ghost" size="sm" onClick={() => loadAuditLogs(0)} className="text-xs">
                           {t('common:retry')}
-                        </NotionButton>
+                        </DsButton>
                       </div>
                     </div>
                   ) : auditLogs.length === 0 ? (
@@ -1510,10 +1511,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       </div>
                       {hasMoreAuditLogs && (
                         <div className="flex justify-center py-2 border-t border-border/20">
-                          <NotionButton variant="ghost" size="sm" onClick={handleLoadMoreLogs} disabled={isLoadingAuditLog} className="text-xs text-muted-foreground">
+                          <DsButton variant="ghost" size="sm" onClick={handleLoadMoreLogs} disabled={isLoadingAuditLog} className="text-xs text-muted-foreground">
                             {isLoadingAuditLog ? <CircleNotch size={12} className="animate-spin" /> : null}
                             {t('memory.audit_load_more')}
-                          </NotionButton>
+                          </DsButton>
                         </div>
                       )}
                     </div>
@@ -1533,9 +1534,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <ListPlus size={16} />
                       <span className="text-sm font-medium">{t('memory.batch_import')}</span>
                     </div>
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCancelBatchImport} disabled={isMutating} aria-label={t('memory.aria.cancel_batch_import')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelBatchImport} disabled={isMutating} aria-label={t('memory.aria.cancel_batch_import')}>
                       <X size={16} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
 
                   <div className="text-xs text-muted-foreground leading-relaxed">
@@ -1563,7 +1564,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       ['study', 'memory.type_study'],
                       ['note', 'memory.type_note'],
                     ] as const).map(([type, labelKey]) => (
-                      <NotionButton
+                      <DsButton
                         key={type}
                         variant="ghost"
                         size="sm"
@@ -1576,7 +1577,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         )}
                       >
                         {t(labelKey)}
-                      </NotionButton>
+                      </DsButton>
                     ))}
                   </div>
 
@@ -1585,7 +1586,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     {(batchImportType === 'fact'
                       ? (['memorized', 'internalized', 'supplementary', 'systemic'] as const)
                       : (['memorized', 'internalized', 'supplementary'] as const)).map((p) => (
-                      <NotionButton
+                      <DsButton
                         key={p}
                         variant="ghost"
                         size="sm"
@@ -1598,7 +1599,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         )}
                       >
                         {purposeLabel(t, p)}
-                      </NotionButton>
+                      </DsButton>
                     ))}
                   </div>
 
@@ -1607,13 +1608,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   </div>
 
                   <div className="flex gap-2 pt-1">
-                    <NotionButton variant="ghost" size="sm" onClick={handleCancelBatchImport} disabled={isMutating} className="flex-1 !h-9">
+                    <DsButton variant="ghost" size="sm" onClick={handleCancelBatchImport} disabled={isMutating} className="flex-1 !h-9">
                       {t('common:cancel')}
-                    </NotionButton>
-                    <NotionButton variant="primary" size="sm" onClick={handleBatchImport} disabled={isMutating || parseBatchImportItems(batchImportText).length === 0} className="flex-1 !h-9">
+                    </DsButton>
+                    <DsButton variant="primary" size="sm" onClick={handleBatchImport} disabled={isMutating || parseBatchImportItems(batchImportText).length === 0} className="flex-1 !h-9">
                       {isMutating && <CircleNotch size={16} className="animate-spin" />}
                       {t('memory.batch_import_confirm')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
               </motion.div>
@@ -1630,9 +1631,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <MemoryIcon size={16} />
                       <span className="text-sm font-medium">{t('memory.create_title')}</span>
                     </div>
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCancelCreate} disabled={isMutating} aria-label={t('memory.aria.cancel')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelCreate} disabled={isMutating} aria-label={t('memory.aria.cancel')}>
                       <X size={16} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
 
                   <Input
@@ -1669,7 +1670,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       ['study', 'memory.type_study'],
                       ['note', 'memory.type_note'],
                     ] as const).map(([type, labelKey]) => (
-                      <NotionButton
+                      <DsButton
                         key={type}
                         variant="ghost"
                         size="sm"
@@ -1682,7 +1683,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         )}
                       >
                         {t(labelKey)}
-                      </NotionButton>
+                      </DsButton>
                     ))}
                   </div>
 
@@ -1692,7 +1693,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     {(newMemoryType === 'fact'
                       ? (['memorized', 'internalized', 'supplementary', 'systemic'] as const)
                       : (['memorized', 'internalized', 'supplementary'] as const)).map((p) => (
-                      <NotionButton
+                      <DsButton
                         key={p}
                         variant="ghost"
                         size="sm"
@@ -1705,18 +1706,18 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         )}
                       >
                         {purposeLabel(t, p)}
-                      </NotionButton>
+                      </DsButton>
                     ))}
                   </div>
 
                   <div className="flex gap-2 pt-1">
-                    <NotionButton variant="ghost" size="sm" onClick={handleCancelCreate} disabled={isMutating} className="flex-1 !h-9">
+                    <DsButton variant="ghost" size="sm" onClick={handleCancelCreate} disabled={isMutating} className="flex-1 !h-9">
                       {t('common:cancel')}
-                    </NotionButton>
-                    <NotionButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isMutating || !newMemoryTitle.trim() || !newMemoryContent.trim()} className="flex-1 !h-9">
+                    </DsButton>
+                    <DsButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isMutating || !newMemoryTitle.trim() || !newMemoryContent.trim()} className="flex-1 !h-9">
                       {isMutating && <CircleNotch size={16} className="animate-spin" />}
                       {t('common:create')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
               </motion.div>
@@ -1733,10 +1734,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <WarningCircle size={32} className="mb-2 text-destructive/60" />
                 <span className="text-sm mb-3">{treeError}</span>
-                <NotionButton variant="primary" size="sm" onClick={loadTree}>
+                <DsButton variant="primary" size="sm" onClick={loadTree}>
                   <ArrowClockwise className="w-3.5 h-3.5" />
                   {t('common:retry')}
-                </NotionButton>
+                </DsButton>
               </div>
             ) : treeData ? (
               <div className="space-y-0.5">
@@ -1771,7 +1772,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             )
           )}
 
-          {/* 列表内容 - Notion 风格 */}
+          {/* 列表内容 - 简洁风格 */}
           {viewMode === 'list' && isListLoading && memories.length === 0 && !loadError && !isSearchMode ? (
             <div className="flex items-center justify-center h-32">
               <CircleNotch size={20} className="animate-spin text-muted-foreground" />
@@ -1783,7 +1784,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 {t('memory.load_error_title')}
               </span>
               <span className="text-xs mb-3 text-center max-w-xs">{loadError}</span>
-              <NotionButton
+              <DsButton
                 variant="primary"
                 size="sm"
                 onClick={loadMemories}
@@ -1791,7 +1792,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               >
                 <ArrowClockwise className={cn('w-3.5 h-3.5', isListLoading && 'animate-spin')} />
                 {t('common:retry')}
-              </NotionButton>
+              </DsButton>
             </div>
           ) : viewMode === 'list' && isSearchMode ? (
             // 搜索结果
@@ -1885,9 +1886,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
               <MemoryIcon size={40} className="mb-3 opacity-40" />
               <span className="text-sm mb-2">{t('memory.empty')}</span>
-              <NotionButton variant="ghost" size="sm" onClick={handleOpenCreate} className="text-primary hover:underline !p-0 !h-auto">
+              <DsButton variant="ghost" size="sm" onClick={handleOpenCreate} className="text-primary hover:underline !p-0 !h-auto">
                 {t('memory.create_first')}
-              </NotionButton>
+              </DsButton>
             </div>
           ) : viewMode === 'list' ? (
             // 记忆列表 - 内联展开布局 + 批量选择 + 内联编辑
@@ -1958,7 +1959,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                             <Star size={12} className="text-amber-500 flex-shrink-0" weight="fill" />
                           )}
                           {memory.isStale && !memory.isArchived && (
-                            <NotionButton
+                            <DsButton
                               variant="ghost" size="sm"
                               className="!h-auto !px-1.5 !py-0 text-2xs text-muted-foreground hover:text-primary hover:bg-primary/10 flex-shrink-0"
                               title={t('memory.stale_tooltip')}
@@ -1967,10 +1968,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                             >
                               <Clock size={10} />
                               {t('memory.restore_stale')}
-                            </NotionButton>
+                            </DsButton>
                           )}
                           {memory.isArchived && (
-                            <NotionButton
+                            <DsButton
                               variant="ghost" size="sm"
                               className="!h-auto !px-1.5 !py-0 text-2xs text-muted-foreground hover:text-primary hover:bg-primary/10 flex-shrink-0"
                               title={t('memory.archived_tooltip')}
@@ -1979,7 +1980,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                             >
                               <Archive size={10} />
                               {t('memory.archived_badge')}
-                            </NotionButton>
+                            </DsButton>
                           )}
                           {memory.needsDedupReview && (
                             <span
@@ -2002,7 +2003,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       </div>
                       {!batchMode && (
                         isConfirmingDelete ? (
-                          <NotionButton
+                          <DsButton
                             variant="ghost" size="sm"
                             className="!h-auto !px-2 !py-1 text-[11px] text-danger bg-danger/10 hover:bg-danger/20 font-medium flex-shrink-0"
                             onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }}
@@ -2010,12 +2011,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           >
                             <Trash size={12} />
                             {t('memory.confirm_delete')}
-                          </NotionButton>
+                          </DsButton>
                         ) : (
                           // 触屏无 hover：删除钮常显弱化态（[@media(pointer:coarse)]），避免隐形可点
-                          <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground hover:text-danger hover:bg-danger/10" onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }} aria-label={t('memory.aria.delete')}>
+                          <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground hover:text-danger hover:bg-danger/10" onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }} aria-label={t('memory.aria.delete')}>
                             <Trash size={14} />
-                          </NotionButton>
+                          </DsButton>
                         )
                       )}
                     </div>
@@ -2047,10 +2048,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               })}
               {hasMoreMemories && (
                 <div className="flex justify-center py-2">
-                  <NotionButton variant="ghost" size="sm" onClick={handleLoadMoreMemories} disabled={isLoadingMore} className="text-xs text-muted-foreground">
+                  <DsButton variant="ghost" size="sm" onClick={handleLoadMoreMemories} disabled={isLoadingMore} className="text-xs text-muted-foreground">
                     {isLoadingMore ? <CircleNotch size={12} className="animate-spin" /> : null}
                     {t('memory.load_more')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               )}
             </div>
@@ -2217,7 +2218,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                       <Star size={12} className="text-amber-500 flex-shrink-0" weight="fill" />
                     )}
                     {isConfirmingDelete ? (
-                      <NotionButton
+                      <DsButton
                         variant="ghost" size="sm"
                         className="!h-auto !px-1.5 !py-0.5 text-2xs text-danger bg-danger/10 hover:bg-danger/20 font-medium flex-shrink-0"
                         onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }}
@@ -2225,9 +2226,9 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                       >
                         <Trash size={10} />
                         {t('memory.confirm_delete')}
-                      </NotionButton>
+                      </DsButton>
                     ) : (
-                      <NotionButton
+                      <DsButton
                         variant="ghost" size="icon" iconOnly
                         // 触屏无 hover：删除钮常显弱化态，避免隐形可点
                         className="!p-1 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground hover:text-danger hover:bg-danger/10"
@@ -2235,7 +2236,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                         aria-label={t('memory.aria.delete')}
                       >
                         <Trash size={12} />
-                      </NotionButton>
+                      </DsButton>
                     )}
                   </div>
 
@@ -2348,13 +2349,13 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
                 className="w-full px-3 py-2 text-xs bg-muted/30 border-transparent rounded-md resize-none overflow-hidden focus:border-border focus:bg-background focus:outline-none transition-colors"
               />
               <div className="flex gap-2">
-                <NotionButton variant="ghost" size="sm" onClick={onCancelEdit} className="!h-auto !px-2 !py-1 text-xs">
+                <DsButton variant="ghost" size="sm" onClick={onCancelEdit} className="!h-auto !px-2 !py-1 text-xs">
                   <X size={12} />{t('common:cancel')}
-                </NotionButton>
-                <NotionButton variant="primary" size="sm" onClick={onSaveEdit} disabled={isLoading} className="!h-auto !px-2 !py-1 text-xs">
+                </DsButton>
+                <DsButton variant="primary" size="sm" onClick={onSaveEdit} disabled={isLoading} className="!h-auto !px-2 !py-1 text-xs">
                   {isLoading ? <CircleNotch size={12} className="animate-spin" /> : <FloppyDisk size={12} />}
                   {t('common:save')}
-                </NotionButton>
+                </DsButton>
               </div>
             </div>
           ) : (
@@ -2377,7 +2378,7 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
           )}
           <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/30 bg-muted/20">
             <div className="flex items-center gap-1.5">
-              <NotionButton
+              <DsButton
                 variant="ghost" size="sm"
                 onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }}
                 className={cn(
@@ -2387,16 +2388,16 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
               >
                 <Trash size={12} />
                 {confirmingDelete ? t('memory.confirm_delete') : t('common:delete')}
-              </NotionButton>
+              </DsButton>
               {!isEditing && (
-                <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onStartEdit(noteId, content); }} className="text-muted-foreground hover:bg-[var(--interactive-hover)] !h-auto !px-2 !py-1 text-xs">
+                <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onStartEdit(noteId, content); }} className="text-muted-foreground hover:bg-[var(--interactive-hover)] !h-auto !px-2 !py-1 text-xs">
                   <PencilSimple size={12} />{t('memory.edit')}
-                </NotionButton>
+                </DsButton>
               )}
             </div>
-            <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onOpenInEditor(noteId, noteTitle); }} className="text-primary bg-primary/10 hover:bg-primary/15 !h-auto !px-2 !py-1 text-xs font-medium">
+            <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onOpenInEditor(noteId, noteTitle); }} className="text-primary bg-primary/10 hover:bg-primary/15 !h-auto !px-2 !py-1 text-xs font-medium">
               <ArrowSquareOut size={12} />{t('memory.open_editor')}
-            </NotionButton>
+            </DsButton>
           </div>
         </>
       ) : null}

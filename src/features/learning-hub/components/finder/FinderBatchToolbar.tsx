@@ -15,7 +15,7 @@ import {
   ListChecks,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import {
@@ -105,8 +105,8 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
   // 📱 触屏设备：底部工具栏是移动端主要操作入口（多选/排序/批量操作），
   // 放大触控目标（契约第 6 条）；桌面保持原紧凑尺寸。
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
-  const smallIconBtnClass = isTouchPrimary ? '!h-9 !w-9 !p-1.5' : '!h-6 !w-6 !p-1';
-  const actionIconBtnClass = isTouchPrimary ? 'h-9 w-9' : 'h-7 w-7';
+  const smallIconBtnClass = isTouchPrimary ? '!h-11 !w-11 !p-2.5' : '!h-6 !w-6 !p-1';
+  const actionIconBtnClass = isTouchPrimary ? 'h-11 w-11' : 'h-7 w-7';
 
   // 📱 Android 返回键：排序菜单（AppMenu 自绘浮层）打开时先关闭菜单（契约第 4 条）
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
@@ -123,7 +123,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
       className={cn(
         "relative -mr-px flex items-center gap-1.5 px-3 border-t text-sm h-10 shrink-0 overflow-hidden",
         // 📱 触屏：底部工具栏贴屏幕底，留出手势导航安全区
-        "[@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:pb-[var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px))]",
+        "[@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:pb-[var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px))]",
         "bg-[color:var(--shell-toolbar-surface,var(--background))]",
         className
       )}
@@ -143,18 +143,18 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
         {/* 视图切换按钮组 - 在有选中项时可能被隐藏 */}
         {onViewModeChange && !hasSelection && (
           <div className="flex items-center bg-muted/50 rounded p-0.5 gap-0.5 shrink-0">
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onViewModeChange('grid')} className={cn(smallIconBtnClass, viewMode === 'grid' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')} title={t('finder.viewMode.grid')} aria-label={t('finder.viewMode.grid')} aria-pressed={viewMode === 'grid'}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={() => onViewModeChange('grid')} className={cn(smallIconBtnClass, viewMode === 'grid' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')} title={t('finder.viewMode.grid')} aria-label={t('finder.viewMode.grid')} aria-pressed={viewMode === 'grid'}>
               <SquaresFour size={isTouchPrimary ? 18 : 14} />
-            </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onViewModeChange('list')} className={cn(smallIconBtnClass, viewMode === 'list' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')} title={t('finder.viewMode.list')} aria-label={t('finder.viewMode.list')} aria-pressed={viewMode === 'list'}>
+            </DsButton>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={() => onViewModeChange('list')} className={cn(smallIconBtnClass, viewMode === 'list' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')} title={t('finder.viewMode.list')} aria-label={t('finder.viewMode.list')} aria-pressed={viewMode === 'list'}>
               <List size={isTouchPrimary ? 18 : 14} />
-            </NotionButton>
+            </DsButton>
           </div>
         )}
 
         {/* ★ 多选模式开关（触屏设备，由父组件决定是否传入） */}
         {onToggleMultiSelectMode && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -171,14 +171,14 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
             aria-pressed={multiSelectMode}
           >
             <ListChecks size={isTouchPrimary ? 18 : 14} />
-          </NotionButton>
+          </DsButton>
         )}
 
         {/* 排序菜单 - 在有选中项时隐藏 */}
         {onSortChange && !hasSelection && (
           <AppMenu open={sortMenuOpen} onOpenChange={setSortMenuOpen}>
             <AppMenuTrigger asChild>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -187,7 +187,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
                 aria-label={t('finder.sort.title')}
               >
                 {sortOrder === 'asc' ? <SortAscending size={isTouchPrimary ? 18 : 14} /> : <SortDescending size={isTouchPrimary ? 18 : 14} />}
-              </NotionButton>
+              </DsButton>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={170}>
               {SORT_OPTIONS.map((opt) => (
@@ -220,13 +220,13 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
       {/* 选择信息（有选中项时显示）- 允许文本被截断 */}
       {hasSelection && (
         <div className="flex items-center gap-1 text-accent-foreground min-w-0 ml-2 overflow-hidden">
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={allSelected ? onClearSelection : onSelectAll} className={cn(smallIconBtnClass, 'shrink-0')} title={allSelected ? t('finder.batch.deselectAll') : t('finder.batch.selectAll')} aria-label={allSelected ? t('finder.batch.deselectAll') : t('finder.batch.selectAll')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={allSelected ? onClearSelection : onSelectAll} className={cn(smallIconBtnClass, 'shrink-0')} title={allSelected ? t('finder.batch.deselectAll') : t('finder.batch.selectAll')} aria-label={allSelected ? t('finder.batch.deselectAll') : t('finder.batch.selectAll')}>
             {allSelected ? (
               <CheckSquare size={16} />
             ) : (
               <Square size={16} />
             )}
-          </NotionButton>
+          </DsButton>
           <span className="whitespace-nowrap text-xs truncate text-muted-foreground">
             {t('finder.multiSelect.selected', { count: selectedCount })}
           </span>
@@ -239,7 +239,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
         {hasSelection && (
           <>
             {onBatchAddToChat && (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 onClick={onBatchAddToChat}
@@ -249,11 +249,11 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
                 aria-label={t('finder.multiSelect.addToChat')}
               >
                 <Chat size={16} />
-              </NotionButton>
+              </DsButton>
             )}
 
             {onBatchMove && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               onClick={onBatchMove}
@@ -263,11 +263,11 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
               aria-label={t('finder.multiSelect.move')}
             >
               <FolderOpen size={16} />
-            </NotionButton>
+            </DsButton>
             )}
 
             {onBatchDelete && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               onClick={onBatchDelete}
@@ -277,27 +277,30 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
               aria-label={deleteLabel}
             >
               <Trash size={16} />
-            </NotionButton>
+            </DsButton>
             )}
 
             {/* 清除选择/关闭按钮 - 放在删除按钮后面，使用明显的样式 */}
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { onClearSelection(); if (hasOpenApp && onCloseApp) { onCloseApp(); } }} className={cn(isTouchPrimary ? '!h-9 !w-9 !p-2' : '!h-7 !w-7 !p-1.5', 'hover:bg-[var(--interactive-hover)] ml-0.5')} title={hasOpenApp ? t('finder.appPanel.close') : t('common:close')} aria-label={hasOpenApp ? t('finder.appPanel.close') : t('common:close')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={() => { onClearSelection(); if (hasOpenApp && onCloseApp) { onCloseApp(); } }} className={cn(isTouchPrimary ? '!h-11 !w-11 !p-2.5' : '!h-7 !w-7 !p-1.5', 'hover:bg-[var(--interactive-hover)] ml-0.5')} title={hasOpenApp ? t('finder.appPanel.close') : t('common:close')} aria-label={hasOpenApp ? t('finder.appPanel.close') : t('common:close')}>
               <X size={16} className="text-accent-foreground" />
-            </NotionButton>
+            </DsButton>
           </>
         )}
 
         {/* 关闭应用按钮 - 无选中项但有应用打开时显示 */}
         {!hasSelection && hasOpenApp && onCloseApp && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={onCloseApp}
-            className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            className={cn(
+              'gap-1.5 text-xs text-muted-foreground hover:text-foreground',
+              isTouchPrimary ? 'h-11' : 'h-7',
+            )}
           >
             <X size={14} />
             {t('finder.appPanel.close')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     </div>

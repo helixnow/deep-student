@@ -1687,7 +1687,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
               },
             },
             
-            // 占位符配置：block 模式在聚焦的空段落展示 "输入 /" 提示（对齐 Notion）
+            // 占位符配置：block 模式在聚焦的空段落展示 "输入 /" 提示（对齐常见笔记编辑器）
             [CrepeFeature.Placeholder]: {
               text: placeholderRef.current || i18next.t('notes:editor.placeholder.body'),
               mode: 'block',

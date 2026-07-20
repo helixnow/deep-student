@@ -46,7 +46,7 @@ import {
   Question,
   ArrowClockwise,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 // ============================================================================
 // DSTU API 调用
@@ -408,7 +408,7 @@ const ErrorState: React.FC<{ error: string; className?: string; onRetry?: () => 
         <p className="max-w-xs text-xs text-muted-foreground">{error}</p>
       </div>
       {onRetry && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={onRetry}
@@ -416,7 +416,7 @@ const ErrorState: React.FC<{ error: string; className?: string; onRetry?: () => 
         >
           <ArrowClockwise size={14} />
           {t('notes:wikilinkV2.previewRetry')}
-        </NotionButton>
+        </DsButton>
       )}
     </div>
   );

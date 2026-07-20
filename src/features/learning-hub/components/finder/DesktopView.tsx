@@ -19,22 +19,11 @@ import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
-import {
-  IllustratedNoteIcon,
-  IllustratedTextbookIcon,
-  IllustratedExamIcon,
-  IllustratedEssayIcon,
-  IllustratedTranslationIcon,
-  IllustratedMindmapIcon,
-  IllustratedFolderIcon,
-  FavoriteIcon,
-  RecentIcon,
-  AllFilesIcon,
-  IllustratedImageIcon,
-  IllustratedGenericFileIcon,
-  TrashIcon as TrashIconSvg,
-  type ResourceIconProps,
-} from '../../icons';
+import { useLiquidGlassLens } from '@/features/workbench/core/liquidGlassLens';
+import '@/features/workbench/styles/workbench.tokens.css';
+import '@/features/workbench/components/DesktopContextMenu.css';
+import { IllustratedGenericFileIcon } from '../../icons';
+import { APP_TYPE_ICONS, QUICK_ACCESS_ICONS, getShortcutIcon } from './shortcutIcons';
 import { useShallow } from 'zustand/react/shallow';
 import {
   useDesktopStore,
@@ -44,8 +33,8 @@ import {
   getPresetAppShortcuts,
 } from '../../stores/desktopStore';
 import type { QuickAccessType } from '../../stores/finderStore';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody, DsDialogFooter } from '@/components/ui/DsDialog';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { FolderPickerDialog } from './FolderPickerDialog';
@@ -67,59 +56,6 @@ interface DesktopViewProps {
    * @param desktopRoot 桌面根目录配置
    */
   onCreateInDesktopRoot?: (type: CreateResourceType, desktopRoot: DesktopRootConfig) => void;
-}
-
-/** 应用类型对应的图标 */
-const APP_TYPE_ICONS: Record<AppType, React.FC<ResourceIconProps>> = {
-  note: IllustratedNoteIcon,
-  exam: IllustratedExamIcon,
-  essay: IllustratedEssayIcon,
-  translation: IllustratedTranslationIcon,
-  mindmap: IllustratedMindmapIcon,
-  textbook: IllustratedTextbookIcon,
-};
-
-/** 快捷入口类型对应的图标 */
-const QUICK_ACCESS_ICONS: Partial<Record<QuickAccessType, React.FC<ResourceIconProps>>> = {
-  notes: IllustratedNoteIcon,
-  exams: IllustratedExamIcon,
-  essays: IllustratedEssayIcon,
-  translations: IllustratedTranslationIcon,
-  mindmaps: IllustratedMindmapIcon,
-  textbooks: IllustratedTextbookIcon,
-  favorites: FavoriteIcon,
-  recent: RecentIcon,
-  allFiles: AllFilesIcon,
-  images: IllustratedImageIcon,
-  files: IllustratedGenericFileIcon,
-  trash: TrashIconSvg,
-};
-
-/** 获取快捷方式图标 */
-function getShortcutIcon(shortcut: DesktopShortcut): React.FC<ResourceIconProps> {
-  if (shortcut.type === 'app' && shortcut.target.appType) {
-    return APP_TYPE_ICONS[shortcut.target.appType] || IllustratedGenericFileIcon;
-  }
-  if (shortcut.type === 'quickAccess' && shortcut.target.quickAccessType) {
-    return QUICK_ACCESS_ICONS[shortcut.target.quickAccessType] || IllustratedGenericFileIcon;
-  }
-  if (shortcut.type === 'folder') {
-    return IllustratedFolderIcon;
-  }
-  if (shortcut.type === 'resource' && shortcut.target.resourceType) {
-    const typeIconMap: Record<string, React.FC<ResourceIconProps>> = {
-      note: IllustratedNoteIcon,
-      exam: IllustratedExamIcon,
-      essay: IllustratedEssayIcon,
-      translation: IllustratedTranslationIcon,
-      mindmap: IllustratedMindmapIcon,
-      textbook: IllustratedTextbookIcon,
-      image: IllustratedImageIcon,
-      folder: IllustratedFolderIcon,
-    };
-    return typeIconMap[shortcut.target.resourceType] || IllustratedGenericFileIcon;
-  }
-  return IllustratedGenericFileIcon;
 }
 
 // ============================================================================
@@ -156,10 +92,14 @@ function DesktopContextMenu({
   const { t } = useTranslation('learningHub');
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState(state.position);
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
+
+  // 液态玻璃透镜（学习桌面菜单同款材质）
+  useLiquidGlassLens(menuRef, state.open);
 
   // 边界检测（useLayoutEffect：在绘制前完成定位，避免菜单先出现在旧位置再跳动）
   useLayoutEffect(() => {
-    if (!state.open || !menuRef.current) return;
+    if (!state.open || !menuRef.current || isTouchPrimary) return;
 
     const rect = menuRef.current.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
@@ -178,7 +118,7 @@ function DesktopContextMenu({
     y = Math.max(8, y);
 
     setMenuPosition({ x, y });
-  }, [state.open, state.position]);
+  }, [isTouchPrimary, state.open, state.position]);
 
   // 点击外部关闭；触屏补充：菜单外 touchstart（capture）或背景滚动时关闭，避免滚动穿透时菜单悬空
   useEffect(() => {
@@ -196,7 +136,10 @@ function DesktopContextMenu({
       }
     };
 
-    const handleScroll = () => onClose();
+    const handleScroll = (event: Event) => {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      onClose();
+    };
 
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -229,6 +172,7 @@ function DesktopContextMenu({
 
   if (!state.open) return null;
 
+  // 学习桌面 wb-desk-menu 同款菜单行（样式见 workbench DesktopContextMenu.css）
   const MenuItem = ({
     icon,
     label,
@@ -240,43 +184,71 @@ function DesktopContextMenu({
     onClick: () => void;
     danger?: boolean;
   }) => (
-    <NotionButton variant="ghost" size="sm" className={cn('w-full !justify-start !px-3 !py-2 [@media(pointer:coarse)]:min-h-[40px]', danger && 'text-danger hover:text-danger')} onClick={() => { onClick(); onClose(); }}>
-      {icon}
-      <span>{label}</span>
-    </NotionButton>
+    <button
+      type="button"
+      role="menuitem"
+      className={cn(
+        'wb-desk-menu-item [@media(pointer:coarse)]:min-h-11',
+        danger && 'wb-desk-menu-item--danger'
+      )}
+      onClick={() => { onClick(); onClose(); }}
+    >
+      <span className="wb-desk-menu-item-icon" aria-hidden="true">{icon}</span>
+      <span className="wb-desk-menu-item-label">{label}</span>
+    </button>
   );
 
-  const Separator = () => <div className="h-px bg-border my-1" />;
+  const Separator = () => <div className="wb-desk-menu-sep" role="separator" />;
 
   return createPortal(
     <div
       ref={menuRef}
+      role="menu"
       data-wb-blur-surface
       className={cn(
-        'fixed min-w-[160px] overflow-hidden rounded-lg',
-        'bg-popover/95 backdrop-blur-md text-popover-foreground',
-        'border border-transparent ring-1 ring-border/40 shadow-lg',
-        'py-1 ui-zoom-fade-in'
+        'wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden',
+        isTouchPrimary && 'max-w-none rounded-t-2xl',
       )}
-      style={{ left: menuPosition.x, top: menuPosition.y, zIndex: Z_INDEX.contextMenu }}
+      style={isTouchPrimary
+        ? {
+            position: 'fixed',
+            left: 8,
+            right: 8,
+            bottom: 0,
+            top: 'auto',
+            width: 'auto',
+            maxHeight: 'calc(100dvh - var(--mobile-header-total-height, 56px) - 8px)',
+            paddingBottom: 'var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
+            zIndex: Z_INDEX.contextMenu,
+          }
+        : {
+            // .wb-desk-menu 默认 absolute；此处 Portal 到 body，用 fixed
+            position: 'fixed',
+            left: menuPosition.x,
+            top: menuPosition.y,
+            zIndex: Z_INDEX.contextMenu,
+          }}
     >
+      {isTouchPrimary && (
+        <div aria-hidden className="mx-auto my-2 h-1 w-10 rounded-full bg-muted-foreground/25" />
+      )}
       {state.target ? (
         // 快捷方式右键菜单
         <>
           <MenuItem
-            icon={<ArrowSquareOut size={16} />}
+            icon={<ArrowSquareOut size={15} weight="duotone" />}
             label={t('desktop.open')}
             onClick={() => onOpenShortcut?.(state.target!)}
           />
           <Separator />
           <MenuItem
-            icon={<PencilSimple size={16} />}
+            icon={<PencilSimple size={15} weight="duotone" />}
             label={t('desktop.rename')}
             onClick={() => onRenameShortcut?.(state.target!)}
           />
           <Separator />
           <MenuItem
-            icon={<Trash size={16} />}
+            icon={<Trash size={15} weight="duotone" />}
             label={t('desktop.remove')}
             onClick={() => onRemoveShortcut?.(state.target!)}
             danger
@@ -286,13 +258,13 @@ function DesktopContextMenu({
         // 空白区域右键菜单
         <>
           <MenuItem
-            icon={<Plus size={16} />}
+            icon={<Plus size={15} weight="duotone" />}
             label={t('desktop.addShortcut')}
             onClick={onAddShortcut}
           />
           <Separator />
           <MenuItem
-            icon={<Gear size={16} />}
+            icon={<Gear size={15} weight="duotone" />}
             label={t('desktop.setRootFolder')}
             onClick={() => onSetDesktopRoot?.()}
           />
@@ -385,16 +357,16 @@ function ShortcutCard({
     >
       {/* 触屏常显「更多」入口：快捷方式的重命名/移除原本只有右键菜单可达 */}
       {isTouchPrimary && !isEditing && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
-          className="absolute top-0.5 right-0.5 z-10 !h-8 !w-8 !p-1 hover:bg-[var(--interactive-hover)]"
+          className="absolute right-0 top-0 z-10 !h-11 !w-11 !p-2.5 hover:bg-[var(--interactive-hover)]"
           onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
           aria-label={t('more')}
         >
           <DotsThree size={18} className="text-muted-foreground/70" />
-        </NotionButton>
+        </DsButton>
       )}
 
       {/* 图标 */}
@@ -420,21 +392,21 @@ function ShortcutCard({
             }
           }}
         >
-          {/* 触屏：重命名控件放大到 ≥36px */}
+          {/* 触屏：重命名控件使用标准 44px 触控目标。 */}
           <Input
             value={editName}
             onChange={e => setEditName(e.target.value)}
             onKeyDown={handleKeyDown}
             onFocus={e => e.target.select()}
-            className="h-6 w-24 text-xs text-center px-1 [@media(pointer:coarse)]:h-9"
+            className="h-6 w-24 text-xs text-center px-1 [@media(pointer:coarse)]:h-11"
             autoFocus
           />
-          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9" onClick={commitOrCancel} aria-label={t('confirm')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={commitOrCancel} aria-label={t('confirm')}>
             <Check size={14} className="text-success" />
-          </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9" onClick={onEditCancel} aria-label={t('cancel')}>
+          </DsButton>
+          <DsButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={onEditCancel} aria-label={t('cancel')}>
             <X size={14} className="text-danger" />
-          </NotionButton>
+          </DsButton>
         </div>
       ) : (
         <span className="text-xs text-center font-medium text-foreground/80 group-hover:text-foreground line-clamp-2 max-w-[80px]">
@@ -484,14 +456,14 @@ function AddShortcutDialog({
   }, [hasAppShortcut, hasQuickAccessShortcut, shortcuts]);
 
   return (
-    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-[500px]">
-        <NotionDialogHeader>
-          <NotionDialogTitle>{t('desktop.addShortcut')}</NotionDialogTitle>
-          <NotionDialogDescription>
+    <DsDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-[500px]">
+        <DsDialogHeader>
+          <DsDialogTitle>{t('desktop.addShortcut')}</DsDialogTitle>
+          <DsDialogDescription>
             {t('desktop.addShortcutDesc')}
-          </NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogBody>
+          </DsDialogDescription>
+        </DsDialogHeader>
+        <DsDialogBody>
 
         <div className="grid grid-cols-3 gap-3 py-4">
           {getPresetAppShortcuts().map((preset, index) => {
@@ -503,7 +475,7 @@ function AddShortcutDialog({
             const added = isPresetAdded(preset);
 
             return (
-              <NotionButton
+              <DsButton
                 key={index}
                 variant="ghost" size="sm"
                 className={cn(
@@ -520,18 +492,18 @@ function AddShortcutDialog({
                 {added && (
                   <span className="text-2xs text-success">{t('desktop.added')}</span>
                 )}
-              </NotionButton>
+              </DsButton>
             );
           })}
         </div>
 
-        </NotionDialogBody>
-        <NotionDialogFooter>
-          <NotionButton variant="default" size="sm" onClick={() => onOpenChange(false)}>
+        </DsDialogBody>
+        <DsDialogFooter>
+          <DsButton variant="default" size="sm" onClick={() => onOpenChange(false)}>
             {t('common:close')}
-          </NotionButton>
-        </NotionDialogFooter>
-    </NotionDialog>
+          </DsButton>
+        </DsDialogFooter>
+    </DsDialog>
   );
 }
 
@@ -679,11 +651,14 @@ export function DesktopView({
   }, []);
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-background">
+    <div className="relative flex h-full flex-1 flex-col overflow-hidden bg-background">
       {/* 快捷方式网格 */}
       <CustomScrollArea className="flex-1">
         <div
-          className="p-4 min-h-full"
+          className="min-h-full p-4"
+          style={{
+            paddingBottom: 'calc(1rem + var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)))',
+          }}
           onContextMenu={handleContainerContextMenu}
         >
           {shortcuts.length === 0 ? (
@@ -696,24 +671,24 @@ export function DesktopView({
                 {t(isSmallScreen ? 'desktop.touchHint' : 'desktop.rightClickHint', isSmallScreen ? '点击下方按钮添加快捷方式' : '右键点击添加快捷方式')}
               </p>
               <div className="flex flex-wrap items-center justify-center gap-2">
-                <NotionButton
+                <DsButton
                   variant="default"
                   size="sm"
                   className="[@media(pointer:coarse)]:min-h-11"
                   onClick={() => setShowAddDialog(true)}
                 >
                   {t('desktop.addFirst')}
-                </NotionButton>
+                </DsButton>
                 {/* r3 建议后续#3：空态并列次级入口——此前触屏空态下「设置桌面根目录」
                     必须先添加一个快捷方式后经「添加」卡菜单才可达 */}
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   className="text-muted-foreground [@media(pointer:coarse)]:min-h-11"
                   onClick={() => setShowRootFolderPicker(true)}
                 >
                   {t('desktop.setRootFolder')}
-                </NotionButton>
+                </DsButton>
               </div>
             </div>
           ) : (
@@ -786,6 +761,7 @@ export function DesktopView({
         onOpenChange={setShowRootFolderPicker}
         onConfirm={handleSetDesktopRoot}
         title={t('desktop.setRootFolder')}
+        inline={isTouchPrimary}
       />
     </div>
   );

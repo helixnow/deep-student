@@ -1,7 +1,7 @@
 /**
- * Notion 式 Toggle（折叠）块 — Milkdown/Crepe 插件入口。
+ *  Toggle（折叠）块 — Milkdown/Crepe 插件入口。
  *
- * 语法：Obsidian 折叠 callout
+ * 语法：折叠 callout
  *   > [!toggle]- 标题   （默认折叠，open=false）
  *   > [!toggle] 标题    （默认展开，open=true）
  *

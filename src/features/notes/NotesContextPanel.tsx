@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from "react-i18next";
 import { TextAlignLeft, Calendar, CaretRight, Tag, Clock, X, Plus, PencilSimple, Check } from "@phosphor-icons/react";
 import { useNotesOptional } from "./NotesContext";
@@ -623,7 +623,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                             aria-label={t('notes:header.rename_tag')}
                                             autoFocus
                                         />
-                                        <NotionButton
+                                        <DsButton
                                             variant="ghost" iconOnly size="sm"
                                             className="!h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40"
                                             onClick={handleRenameTag}
@@ -631,8 +631,8 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                             aria-label={t('notes:header.confirm_rename')}
                                         >
                                             <Check className="w-3 h-3" aria-hidden="true" />
-                                        </NotionButton>
-                                        <NotionButton
+                                        </DsButton>
+                                        <DsButton
                                             variant="ghost" iconOnly size="sm"
                                             className="!h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40"
                                             onClick={handleCancelRenameTag}
@@ -640,14 +640,14 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                             aria-label={t('notes:header.cancel_rename')}
                                         >
                                             <X className="w-3 h-3" aria-hidden="true" />
-                                        </NotionButton>
+                                        </DsButton>
                                     </span>
                                 ) : (
                                     <>
                                         <span onDoubleClick={canEditTags ? () => handleStartRenameTag(tag) : undefined}>{tag}</span>
                                         {canEditTags && (
                                             <>
-                                                <NotionButton
+                                                <DsButton
                                                     variant="ghost" iconOnly size="sm"
                                                     className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity"
                                                     onClick={(e) => {
@@ -658,8 +658,8 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                                     aria-label={`${t('notes:header.rename_tag')}: ${tag}`}
                                                 >
                                                     <PencilSimple className="w-3 h-3" aria-hidden="true" />
-                                                </NotionButton>
-                                                <NotionButton
+                                                </DsButton>
+                                                <DsButton
                                                     variant="ghost" iconOnly size="sm"
                                                     className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity"
                                                     onClick={(e) => {
@@ -669,7 +669,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                                     aria-label={`${t('notes:context.tag_remove')} ${tag}`}
                                                 >
                                                     <X className="w-3 h-3" aria-hidden="true" />
-                                                </NotionButton>
+                                                </DsButton>
                                             </>
                                         )}
                                     </>
@@ -697,7 +697,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                 }}
                             />
                         ) : (
-                            <NotionButton
+                            <DsButton
                                 variant="ghost" size="sm"
                                 className={cn(
                                     "inline-flex items-center gap-0.5 rounded-sm text-[11px] text-muted-foreground hover:text-foreground",
@@ -708,7 +708,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                             >
                                 <Plus className="w-3 h-3" />
                                 {t('notes:context.add_tag')}
-                            </NotionButton>
+                            </DsButton>
                         )}
                     </div>
                 </div>
@@ -759,7 +759,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                             />
                                         ))}
                                         {hasChildren ? (
-                                            <NotionButton
+                                            <DsButton
                                                 variant="ghost" iconOnly size="sm"
                                                 className="notes-outline-caret !h-auto !w-4 !min-w-0 shrink-0 self-stretch !rounded-sm !p-0 text-muted-foreground/70 hover:text-foreground hover:!bg-transparent"
                                                 onClick={(e) => {
@@ -775,11 +775,11 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                                     className={cn("w-3 h-3", !isCollapsed && "rotate-90")}
                                                     aria-hidden="true"
                                                 />
-                                            </NotionButton>
+                                            </DsButton>
                                         ) : (
                                             <span className="w-4 shrink-0" aria-hidden="true" />
                                         )}
-                                        <NotionButton
+                                        <DsButton
                                             variant="ghost" size="sm"
                                             className={cn(
                                                 "!h-auto !w-auto min-w-0 flex-1 !flex-col !items-start !justify-start gap-0 !rounded-sm !px-1 !py-1 !text-left text-xs hover:!bg-transparent",
@@ -810,7 +810,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                                     {heading.preview}
                                                 </span>
                                             )}
-                                        </NotionButton>
+                                        </DsButton>
                                     </div>
                                 );
                             })

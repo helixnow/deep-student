@@ -9,7 +9,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../../lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { WarningCircle, BookOpen, ArrowSquareOut, FileText } from '@phosphor-icons/react';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import type { PDFPreviewProps } from './types';
@@ -176,7 +176,7 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
           <span className="text-sm font-medium text-foreground truncate">{displayName}</span>
           <div className="flex items-center gap-2">
             {canOpenSystem && (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={handleOpenPdf}
@@ -185,16 +185,16 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
               >
                 <ArrowSquareOut size={16} />
                 {t('notes:previewPanel.pdf.openSystem')}
-              </NotionButton>
+              </DsButton>
             )}
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => setInlineOpen(false)}
               className="gap-1"
             >
               {t('common:back')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
         <div className="flex-1 min-h-0">
@@ -262,7 +262,7 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
       {showActionButtons && (
         <div className="flex flex-col items-center gap-3">
           {canInlinePreview && (
-            <NotionButton
+            <DsButton
               variant="default"
               size="md"
               onClick={() => setInlineOpen(true)}
@@ -270,10 +270,10 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
             >
               <BookOpen className="h-4 w-4" />
               {t('notes:previewPanel.pdf.openInline')}
-            </NotionButton>
+            </DsButton>
           )}
           {canOpenSystem && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="md"
               onClick={handleOpenPdf}
@@ -291,7 +291,7 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
                   {t('notes:previewPanel.pdf.openSystem')}
                 </>
               )}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       )}

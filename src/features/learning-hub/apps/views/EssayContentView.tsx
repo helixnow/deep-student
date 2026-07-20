@@ -12,7 +12,7 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CircleNotch } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import {
   essayDstuAdapter,
@@ -233,13 +233,13 @@ const EssayContentView: React.FC<ContentViewProps> = ({
       <div className="flex flex-col items-center justify-center h-full bg-background gap-4 px-6" role="alert">
         <p className="text-destructive text-center break-words max-w-md">{error}</p>
         <div className="flex gap-2">
-          <NotionButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => void loadSession()}>
+          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => void loadSession()}>
             {t('common:retry')}
-          </NotionButton>
+          </DsButton>
           {onClose && (
-            <NotionButton variant="default" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
+            <DsButton variant="default" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
               {t('common:close')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       </div>

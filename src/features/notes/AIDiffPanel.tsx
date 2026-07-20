@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, X, Robot } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { isMacOS } from '@/utils/platform';
@@ -191,7 +191,7 @@ export function AIDiffPanel({
               <span className="ml-1">{t('aiDiff.reject')}</span>
             </div>
             <div className="flex flex-shrink-0 items-center gap-1.5">
-              <NotionButton
+              <DsButton
                 variant="outline"
                 size="sm"
                 onClick={onReject}
@@ -200,8 +200,8 @@ export function AIDiffPanel({
               >
                 <X size={13} className="mr-1" />
                 {t('aiDiff.reject')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 size="sm"
                 onClick={onAccept}
                 disabled={isApplying}
@@ -210,7 +210,7 @@ export function AIDiffPanel({
               >
                 <Check size={13} className="mr-1" />
                 {t('aiDiff.accept')}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
 

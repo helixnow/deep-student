@@ -41,7 +41,7 @@ import {
   FrameCorners,
   CaretDown,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import { invoke } from '@tauri-apps/api/core';
@@ -57,6 +57,7 @@ import {
 import { normalizeResourceInstanceKey } from '@/features/workbench/apps/content/resourceIdentity';
 import { formatFileSize } from './previewUtils';
 import { PreviewStatus } from './PreviewStatus';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 /** 图片大文件确认阈值（后端图片上限 50MB；超过 20MB 先提示再加载） */
 const IMAGE_LARGE_FILE_THRESHOLD = 20 * 1024 * 1024;
@@ -683,6 +684,14 @@ const ImageContentView: React.FC<ContentViewProps> = ({
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [zoomMenuOpen]);
 
+  useEffect(() => {
+    if (!zoomMenuOpen) return;
+    return registerBackHandler(() => {
+      setZoomMenuOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [zoomMenuOpen]);
+
   const selectZoomPreset = useCallback((preset: number | 'fit') => {
     setZoomMenuOpen(false);
     if (preset === 'fit') {
@@ -920,7 +929,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
         aria-label={t('learningHub:image.toolbarLabel')}
       >
         <div className="flex items-center gap-1">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handleZoomOut}
@@ -930,7 +939,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             className="max-md:min-h-11 max-md:min-w-11"
           >
             <MagnifyingGlassMinus size={16} />
-          </NotionButton>
+          </DsButton>
           {/* 百分比 = 实际像素比例（100% 即 1:1）；点击展开档位菜单 */}
           <div
             ref={zoomMenuWrapRef}
@@ -942,7 +951,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
               }
             }}
           >
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => setZoomMenuOpen((prev) => !prev)}
@@ -954,7 +963,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             >
               {displayZoom}%
               <CaretDown size={10} aria-hidden="true" />
-            </NotionButton>
+            </DsButton>
             {zoomMenuOpen && (
               <div
                 role="menu"
@@ -980,10 +989,33 @@ const ImageContentView: React.FC<ContentViewProps> = ({
                     {preset}%
                   </button>
                 ))}
+                <div className="my-1 h-px bg-border md:hidden" aria-hidden="true" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="hidden min-h-11 w-full items-center px-3 py-1.5 text-left text-sm transition-colors duration-150 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none max-md:flex"
+                  onClick={() => {
+                    setZoomMenuOpen(false);
+                    handleActualSize();
+                  }}
+                >
+                  {t('learningHub:image.actualSize')}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="hidden min-h-11 w-full items-center px-3 py-1.5 text-left text-sm transition-colors duration-150 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none max-md:flex"
+                  onClick={() => {
+                    setZoomMenuOpen(false);
+                    handleReset();
+                  }}
+                >
+                  {t('learningHub:image.reset')}
+                </button>
               </div>
             )}
           </div>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handleZoomIn}
@@ -993,9 +1025,9 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             className="max-md:min-h-11 max-md:min-w-11"
           >
             <MagnifyingGlassPlus size={16} />
-          </NotionButton>
+          </DsButton>
           <div className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={enterFitMode}
@@ -1005,19 +1037,19 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             className={`max-md:min-h-11 max-md:min-w-11 ${fitMode ? 'bg-muted text-foreground' : ''}`}
           >
             <ArrowsIn size={16} />
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handleActualSize}
             title={t('learningHub:image.actualSize')}
             aria-label={t('learningHub:image.actualSize')}
             aria-pressed={isActualSize}
-            className={`max-md:min-h-11 max-md:min-w-11 ${isActualSize ? 'bg-muted text-foreground' : ''}`}
+            className={`hidden md:inline-flex ${isActualSize ? 'bg-muted text-foreground' : ''}`}
           >
             <FrameCorners size={16} />
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handleRotate}
@@ -1026,19 +1058,19 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             className="max-md:min-h-11 max-md:min-w-11"
           >
             <ArrowClockwise size={16} />
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handleReset}
             title={t('learningHub:image.reset')}
             aria-label={t('learningHub:image.reset')}
-            className="max-md:min-h-11 max-md:min-w-11"
+            className="hidden md:inline-flex"
           >
             <ArrowCounterClockwise size={16} />
-          </NotionButton>
+          </DsButton>
         </div>
-        {/* 文件名：移动端隐藏（顶栏标签页标题已展示，400px 下 7 个 ≥44px 控件已占满工具栏） */}
+        {/* 文件名：移动端隐藏；低频的 1:1/重置动作已收进百分比菜单，避免窄屏挤压。 */}
         <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground min-w-0">
           <span className="truncate max-w-[200px]">{node.name}</span>
         </div>

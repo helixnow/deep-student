@@ -1,8 +1,8 @@
 /**
- * 学习资源管理器自定义 SVG 图标 - Notion 风格优化版 (v4)
+ * 学习资源管理器自定义 SVG 图标 - 简洁风格优化版 (v4)
  * 
  * 优化重点 (v4):
- * - 文件夹：彻底扁平化，去除所有阴影滤镜，使用纯色块构建，接近 Notion UI 的文件夹质感
+ * - 文件夹：彻底扁平化，去除所有阴影滤镜，使用纯色块构建，接近常见笔记 UI 的文件夹质感
  * - 翻译：重新设计为经典的 "文/A" 切换卡片，更清晰的语义
  * - 整体：移除所有 SVG 滤镜（提升性能且更风格化），仅使用透明度表达层次
  */
@@ -20,7 +20,7 @@ export interface ResourceIconProps {
 
 const defaultSize = 48;
 
-// Notion Color Palette (Matte & Pastel)
+// Color Palette (Matte & Pastel)
 // Adjusted for v4: Slightly more vibrant for dark mode visibility, but still matte
 const palette = {
   gray:   { bg: '#F1F0EF', fg: '#787774', border: '#E0E0E0' },
@@ -352,8 +352,8 @@ export const TodoIcon: React.FC<ResourceIconProps> = React.memo(({
 TodoIcon.displayName = 'TodoIcon';
 
 // ============================================================================
-// 文件夹图标 - 黄/橙色 (Notion-style Folder) - v5 重设计
-// 参考 macOS/Notion 的经典文件夹配色，更饱满的形状
+// 文件夹图标 - 黄/橙色 (简洁-style Folder) - v5 重设计
+// 参考 macOS/简洁 的经典文件夹配色，更饱满的形状
 // ============================================================================
 export const FolderIcon: React.FC<ResourceIconProps> = React.memo(({
   className,

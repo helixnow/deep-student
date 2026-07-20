@@ -14,7 +14,7 @@ import { Warning, Trash, ArrowClockwise, CircleNotch } from '@phosphor-icons/rea
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 // ============================================================================
 // 类型定义
@@ -132,7 +132,7 @@ export const InvalidReferenceOverlay: React.FC<InvalidReferenceOverlayProps> = m
               content={<p className="text-xs">{t('notes:reference.refreshTitle')}</p>}
               position="top"
             >
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6"
@@ -147,7 +147,7 @@ export const InvalidReferenceOverlay: React.FC<InvalidReferenceOverlayProps> = m
                 ) : (
                   <ArrowClockwise size={12} />
                 )}
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
           )}
 
@@ -157,7 +157,7 @@ export const InvalidReferenceOverlay: React.FC<InvalidReferenceOverlayProps> = m
               content={<p className="text-xs">{t('notes:reference.remove')}</p>}
               position="top"
             >
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 text-destructive hover:text-destructive"
@@ -167,7 +167,7 @@ export const InvalidReferenceOverlay: React.FC<InvalidReferenceOverlayProps> = m
                 }}
               >
                 <Trash size={12} />
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
           )}
         </div>

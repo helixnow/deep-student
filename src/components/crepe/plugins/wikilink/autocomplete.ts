@@ -1,7 +1,7 @@
 /**
  * 输入 [[ 触发笔记标题补全浮层（共享 suggestOverlay 定位）
  *
- * 对齐 Obsidian 的补全语法：
+ * 
  * - `[[query`            → 笔记标题补全（按 匹配档位 → 最近编辑 → 标题 排序）
  * - `[[target|label`     → 别名编辑：仍按 target 匹配，选中后写入 label
  * - `[[target#heading`   → 标题补全：target 可解析时异步读取该笔记的标题列表

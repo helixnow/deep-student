@@ -2,7 +2,7 @@ import React, { useCallback, useRef, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { MagnifyingGlass, X, Funnel, Tag as TagIcon } from "@phosphor-icons/react";
 import { Input } from "@/components/ui/shad/Input";
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
     Popover,
     PopoverContent,
@@ -143,7 +143,7 @@ export const NotesSidebarSearch: React.FC<NotesSidebarSearchProps> = ({
                     {/* 标签过滤器按钮 */}
                     <Popover open={showTagFilter} onOpenChange={setShowTagFilter}>
                         <PopoverTrigger asChild>
-                            <NotionButton
+                            <DsButton
                                 variant="ghost"
                                 size="icon"
                                 className={`h-6 w-6 ${selectedTags.length > 0 ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
@@ -155,7 +155,7 @@ export const NotesSidebarSearch: React.FC<NotesSidebarSearchProps> = ({
                                         {selectedTags.length}
                                     </Badge>
                                 )}
-                            </NotionButton>
+                            </DsButton>
                         </PopoverTrigger>
                         <PopoverContent className="w-64 p-2" align="end">
                             <div className="space-y-2">
@@ -171,14 +171,14 @@ export const NotesSidebarSearch: React.FC<NotesSidebarSearchProps> = ({
                                         <div className="text-xs text-destructive/80">
                                             {t('notes:errors.load_tags_failed')}
                                         </div>
-                                        <NotionButton
+                                        <DsButton
                                             variant="ghost"
                                             size="sm"
                                             className="h-6 text-xs"
                                             onClick={loadTags}
                                         >
                                             {t('common:retry')}
-                                        </NotionButton>
+                                        </DsButton>
                                     </div>
                                 ) : availableTags.length > 0 ? (
                                     <div className="flex flex-wrap gap-1 max-h-40 overflow-y-auto">
@@ -207,14 +207,14 @@ export const NotesSidebarSearch: React.FC<NotesSidebarSearchProps> = ({
                     </Popover>
                     {/* 清除按钮 */}
                     {localTerm && (
-                        <NotionButton
+                        <DsButton
                             variant="ghost"
                             size="icon"
                             className="h-6 w-6 text-muted-foreground hover:text-foreground"
                             onClick={handleClear}
                         >
                             <X className="h-3 w-3" />
-                        </NotionButton>
+                        </DsButton>
                     )}
                 </div>
             </div>

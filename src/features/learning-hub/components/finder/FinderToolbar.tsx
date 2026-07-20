@@ -7,7 +7,7 @@ import {
   AppMenuSeparator,
   AppMenuTrigger,
 } from '@/components/ui/app-menu';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   ArrowClockwise,
   CaretLeft,
@@ -80,7 +80,7 @@ function CompressedBreadcrumbs({
   );
 
   const homeButton = (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="sm"
       onClick={() => (onNavigateHome ? onNavigateHome() : onBreadcrumbClick(-1))}
@@ -95,7 +95,7 @@ function CompressedBreadcrumbs({
       disabled={breadcrumbs.length === 0}
     >
       <span className="truncate max-w-[72px]">{rootLabel}</span>
-    </NotionButton>
+    </DsButton>
   );
 
   if (breadcrumbs.length === 0) {
@@ -116,7 +116,7 @@ function CompressedBreadcrumbs({
       <nav data-agent-entity="files:path" className="pointer-events-auto flex min-w-0 max-w-full items-center justify-center gap-0.5 rounded-md" aria-label={title}>
         {homeButton}
         {sep}
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => onBreadcrumbClick(0)}
@@ -125,10 +125,10 @@ function CompressedBreadcrumbs({
           aria-label={parentCrumb?.name || '…'}
         >
           …
-        </NotionButton>
+        </DsButton>
         {sep}
         {parentCrumb ? (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => onBreadcrumbClick(parentIndex)}
@@ -136,7 +136,7 @@ function CompressedBreadcrumbs({
             title={parentCrumb.name}
           >
             <span className="truncate max-w-[72px]">{parentCrumb.name}</span>
-          </NotionButton>
+          </DsButton>
         ) : null}
         {parentCrumb ? sep : null}
         <span className="min-w-0 truncate text-ui font-medium tracking-tight text-foreground/85">
@@ -159,7 +159,7 @@ function CompressedBreadcrumbs({
                 {crumb.name}
               </span>
             ) : (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={() => onBreadcrumbClick(index)}
@@ -167,7 +167,7 @@ function CompressedBreadcrumbs({
                 title={crumb.name}
               >
                 <span className="truncate max-w-[88px]">{crumb.name}</span>
-              </NotionButton>
+              </DsButton>
             )}
           </React.Fragment>
         );
@@ -209,7 +209,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
 
   const navButtons = (
     <div className="finder-toolbar-control-group flex shrink-0 items-center gap-0.5 rounded-xl bg-[color:var(--interactive-hover)]/70 p-0.5">
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="icon"
         iconOnly
@@ -220,8 +220,8 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         aria-label={t('finder.toolbar.back')}
       >
         <CaretLeft size={16} />
-      </NotionButton>
-      <NotionButton
+      </DsButton>
+      <DsButton
         variant="ghost"
         size="icon"
         iconOnly
@@ -232,7 +232,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         aria-label={t('finder.toolbar.forward')}
       >
         <CaretRight size={16} />
-      </NotionButton>
+      </DsButton>
     </div>
   );
 
@@ -241,7 +241,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
       {onViewModeChange && (
         <div className="finder-toolbar-control-group pointer-events-auto flex shrink-0 items-center gap-0.5 rounded-xl bg-[color:var(--interactive-hover)]/70 p-0.5">
           {(['grid', 'list'] as ViewMode[]).map((mode) => (
-            <NotionButton
+            <DsButton
               key={mode}
               variant="ghost"
               size="icon"
@@ -256,7 +256,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
               aria-pressed={viewMode === mode}
             >
               {mode === 'grid' ? <SquaresFour size={16} /> : <List size={16} />}
-            </NotionButton>
+            </DsButton>
           ))}
         </div>
       )}
@@ -264,7 +264,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
       {onSortChange && (
         <AppMenu open={sortMenuOpen} onOpenChange={setSortMenuOpen}>
           <AppMenuTrigger asChild>
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -273,7 +273,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
               aria-label={t('finder.sort.title')}
             >
               {sortOrder === 'asc' ? <SortAscending size={16} /> : <SortDescending size={16} />}
-            </NotionButton>
+            </DsButton>
           </AppMenuTrigger>
           <AppMenuContent align="start" width={170}>
             {SORT_OPTIONS.map((option) => (
@@ -303,7 +303,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
       )}
 
       {onNewFolder && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -313,11 +313,11 @@ export const FinderToolbar = React.memo(function FinderToolbar({
           aria-label={t('finder.toolbar.newFolder')}
         >
           <FolderPlus size={16} />
-        </NotionButton>
+        </DsButton>
       )}
 
       {onRefresh && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -327,7 +327,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
           aria-label={t('common:refresh')}
         >
           <ArrowClockwise size={16} />
-        </NotionButton>
+        </DsButton>
       )}
     </>
   );

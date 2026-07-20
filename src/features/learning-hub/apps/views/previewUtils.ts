@@ -82,7 +82,7 @@ export const ZOOM_MIN = 0.25;
 export const ZOOM_MAX = 4.0;
 
 /**
- * 缩放档位阶梯（对标 Chrome PDF 工具栏）：
+ * 缩放档位阶梯（常见 PDF 工具栏习惯）：
  * 加减按钮与 Ctrl+=/− 快捷键沿阶梯跳档，低倍区细、高倍区粗
  */
 export const ZOOM_LADDER: readonly number[] = [

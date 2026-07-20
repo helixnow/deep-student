@@ -46,7 +46,7 @@ export function fuzzyMatchNotes(
     .sort(
       (a, b) =>
         a.rank - b.rank
-        // 同档命中按最近编辑优先（对齐 Obsidian quick-open 心智；无时间戳的排后）
+ // 同档命中按最近编辑优先（
         || (b.note.updatedAt ?? 0) - (a.note.updatedAt ?? 0)
         || a.note.title.localeCompare(b.note.title, undefined, { sensitivity: 'base' }),
     )

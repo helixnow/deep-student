@@ -19,7 +19,7 @@ export interface WikiLinkTargetParts {
 
 const WIKI_LINK_INNER = /\[\[([^\]\r\n]+?)\]\]/g;
 
-/** 将 target(+可选 label) 格式化为 Obsidian 式双链文本 */
+/** 将 target(+可选 label) 格式化为 双链文本 */
 export function formatWikiLink(target: string, label?: string | null): string {
   const t = target.trim();
   const l = (label ?? '').trim();
@@ -43,7 +43,7 @@ export function parseWikiLinkText(raw: string): WikiLinkParts | null {
   return parseWikiLinkInner(trimmed.slice(2, -2));
 }
 
-/** Split an Obsidian-style `Note#Heading` destination without changing its source form. */
+/** Split an compatible `Note#Heading` destination without changing its source form. */
 export function splitWikiLinkTarget(target: string): WikiLinkTargetParts {
   const separator = target.indexOf('#');
   if (separator < 0) {

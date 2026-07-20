@@ -8,7 +8,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/shad/Popover";
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from "@/components/ui/shad/Input";
 import { Badge } from "@/components/ui/shad/Badge";
 import { NotesAPI } from "../../../utils/notesApi";
@@ -504,22 +504,22 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
                                                 aria-label={t('notes:header.rename_tag')}
                                                 autoFocus
                                             />
-                                            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRenameTag} disabled={isRenaming} className="!h-auto !w-auto !p-0 opacity-70 hover:opacity-100 disabled:opacity-50" aria-label={t('notes:header.confirm_rename')}>
+                                            <DsButton variant="ghost" size="icon" iconOnly onClick={handleRenameTag} disabled={isRenaming} className="!h-auto !w-auto !p-0 opacity-70 hover:opacity-100 disabled:opacity-50" aria-label={t('notes:header.confirm_rename')}>
                                                 <Check className="h-3 w-3" aria-hidden="true" />
-                                            </NotionButton>
-                                            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCancelRename} disabled={isRenaming} className="!h-auto !w-auto !p-0 opacity-70 hover:opacity-100 disabled:opacity-50" aria-label={t('notes:header.cancel_rename')}>
+                                            </DsButton>
+                                            <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelRename} disabled={isRenaming} className="!h-auto !w-auto !p-0 opacity-70 hover:opacity-100 disabled:opacity-50" aria-label={t('notes:header.cancel_rename')}>
                                                 <X className="h-3 w-3" aria-hidden="true" />
-                                            </NotionButton>
+                                            </DsButton>
                                         </div>
                                     ) : (
                                         <>
                                             <span onDoubleClick={() => handleStartRename(tag)}>{tag}</span>
-                                            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleStartRename(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity motion-reduce:transition-none" title={t('notes:header.rename_tag')} aria-label={`${t('notes:header.rename_tag')}: ${tag}`}>
+                                            <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleStartRename(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity motion-reduce:transition-none" title={t('notes:header.rename_tag')} aria-label={`${t('notes:header.rename_tag')}: ${tag}`}>
                                                 <PencilSimple className="h-3 w-3" aria-hidden="true" />
-                                            </NotionButton>
-                                            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveTag(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity motion-reduce:transition-none" title={t('notes:header.remove_tag')} aria-label={`${t('notes:header.remove_tag')}: ${tag}`}>
+                                            </DsButton>
+                                            <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveTag(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity motion-reduce:transition-none" title={t('notes:header.remove_tag')} aria-label={`${t('notes:header.remove_tag')}: ${tag}`}>
                                                 <X className="h-3 w-3" aria-hidden="true" />
-                                            </NotionButton>
+                                            </DsButton>
                                         </>
                                     )}
                                 </Badge>

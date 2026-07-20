@@ -1,7 +1,7 @@
 /**
  * 引用选择器 —— 锚定内联面板（非模态）
  *
- * 从触发按钮下方展开的 Popover 式浮层（360px），替代原先的 NotionDialog 居中模态：
+ * 从触发按钮下方展开的 Popover 式浮层（360px），替代原先的 DsDialog 居中模态：
  * 1. 搜索过滤（单一防抖加载路径，打开即拉取、输入 300ms 防抖）
  * 2. 资源预览（教材封面缩略图，无封面回退类型图标）
  * 3. 单击条目即选中并确认（无二步 Confirm）
@@ -15,7 +15,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { MagnifyingGlass, X, BookOpen, Table, CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import { resolvePopoverPosition, type PopoverPosition } from '@/components/ui/shad/Popover';
@@ -416,7 +416,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
           )}
           <span className="truncate">{panelTitle}</span>
         </span>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -425,7 +425,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
           aria-label={t('notes:a11y.close')}
         >
           <X className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 搜索框 */}
@@ -447,7 +447,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
             className="h-8 w-full pl-8 pr-8 text-sm"
           />
           {searchQuery && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -456,7 +456,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
               aria-label={t('notes:a11y.clear')}
             >
               <X className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       </div>
@@ -475,9 +475,9 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
             <div className="flex h-full flex-col items-center justify-center py-10">
               <WarningCircle className="h-6 w-6 text-destructive" aria-hidden="true" />
               <p className="mt-2 px-4 text-center text-xs text-destructive">{error}</p>
-              <NotionButton variant="ghost" size="sm" onClick={loadData} className="mt-2 text-xs text-primary hover:underline">
+              <DsButton variant="ghost" size="sm" onClick={loadData} className="mt-2 text-xs text-primary hover:underline">
                 {t('common:actions.retry')}
-              </NotionButton>
+              </DsButton>
             </div>
           ) : items.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center py-10">
@@ -488,14 +488,14 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
               )}
               <p className="mt-2 text-xs text-muted-foreground">{emptyText}</p>
               {searchQuery && (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={() => setSearchQuery('')}
                   className="mt-1.5 text-xs text-primary hover:underline"
                 >
                   {t('notes:a11y.clear')}
-                </NotionButton>
+                </DsButton>
               )}
             </div>
           ) : (
@@ -548,14 +548,14 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
           {items.length > 0 && hint && (
             <span className="hidden text-[11px] text-muted-foreground/70 sm:inline">{hint}</span>
           )}
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => onOpenChange(false)}
             className="!h-6 text-[11px] text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
           >
             {t('common:cancel')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     </div>

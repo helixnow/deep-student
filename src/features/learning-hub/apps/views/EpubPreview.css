@@ -114,6 +114,10 @@
   padding: 12px;
 }
 
+.epub-preview-settings .epub-preview-settings-theme-row {
+  display: none;
+}
+
 .epub-preview-settings-row {
   display: flex;
   align-items: center;
@@ -182,6 +186,15 @@
   display: flex;
   flex: 1;
   min-height: 0;
+}
+
+.epub-preview-sidebar-scrim {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  border: 0;
+  background: var(--overlay);
+  appearance: none;
 }
 
 .epub-preview-sidebar {
@@ -453,7 +466,25 @@
   text-align: center;
 }
 
-@media (width <= 700px) {
+/* 断点对齐 App shell 的移动端界线（BREAKPOINTS.md=768，与 useIsMobile 同源） */
+@media (width < 768px) {
+  .epub-preview-toolbar {
+    min-height: 52px;
+  }
+
+  .epub-preview-book-title,
+  .epub-preview-toolbar > .epub-preview-theme-seg {
+    display: none;
+  }
+
+  .epub-preview-settings {
+    width: min(272px, calc(100vw - 16px));
+  }
+
+  .epub-preview-settings .epub-preview-settings-theme-row {
+    display: flex;
+  }
+
   .epub-preview-sidebar {
     --epub-sidebar-width: min(82vw, 300px);
 
@@ -462,8 +493,32 @@
     inset: 0 auto 0 0;
   }
 
-  .epub-preview-book-title {
-    max-width: 34vw;
+  .epub-preview-sidebar-inner {
+    padding-bottom: var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (pointer: coarse) {
+  .epub-preview button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .epub-preview-toc button,
+  .epub-preview-search-results button {
+    width: 100%;
+  }
+
+  .epub-preview-search-input input {
+    min-height: 44px;
+  }
+
+  .epub-preview-settings-row input[type='range'] {
+    min-height: 44px;
+  }
+
+  .epub-preview-footer {
+    min-height: 48px;
   }
 }
 

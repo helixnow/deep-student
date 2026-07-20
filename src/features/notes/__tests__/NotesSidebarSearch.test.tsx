@@ -69,9 +69,9 @@ vi.mock('@/components/ui/shad/Input', () => ({
     )),
 }));
 
-vi.mock('@/components/ui/NotionButton', () => ({
-    NotionButton: ({ children, onClick, className, ...props }: MockButtonProps & { [key: string]: unknown }) => (
-        <button data-testid="notion-button" onClick={onClick} className={className} {...props}>
+vi.mock('@/components/ui/DsButton', () => ({
+    DsButton: ({ children, onClick, className, ...props }: MockButtonProps & { [key: string]: unknown }) => (
+        <button data-testid="card-button" onClick={onClick} className={className} {...props}>
             {children}
         </button>
     ),
@@ -193,7 +193,7 @@ describe('NotesSidebarSearch', () => {
             expect(mockPerformSearch).toHaveBeenCalledWith('test query', []);
         });
 
-        const clearButton = screen.getAllByTestId('notion-button').at(-1);
+        const clearButton = screen.getAllByTestId('card-button').at(-1);
         if (!clearButton) {
             throw new Error('Clear button not found');
         }
@@ -211,7 +211,7 @@ describe('NotesSidebarSearch', () => {
         render(<NotesSidebarSearch />);
 
         // 点击过滤器按钮
-        const filterButtons = screen.getAllByTestId('notion-button');
+        const filterButtons = screen.getAllByTestId('card-button');
         const filterButton = filterButtons.find(btn => btn.querySelector('svg'));
         if (filterButton) {
             fireEvent.click(filterButton);
@@ -230,7 +230,7 @@ describe('NotesSidebarSearch', () => {
         render(<NotesSidebarSearch />);
 
         // 点击过滤器按钮打开弹窗
-        const filterButtons = screen.getAllByTestId('notion-button');
+        const filterButtons = screen.getAllByTestId('card-button');
         const filterButton = filterButtons[0]; // 第一个按钮是过滤器按钮
         fireEvent.click(filterButton);
 
@@ -259,7 +259,7 @@ describe('NotesSidebarSearch', () => {
         render(<NotesSidebarSearch />);
 
         // 打开过滤器
-        const filterButtons = screen.getAllByTestId('notion-button');
+        const filterButtons = screen.getAllByTestId('card-button');
         const filterButton = filterButtons[0];
         fireEvent.click(filterButton);
 
@@ -296,7 +296,7 @@ describe('NotesSidebarSearch', () => {
         render(<NotesSidebarSearch />);
 
         // 打开过滤器并选择标签
-        const filterButtons = screen.getAllByTestId('notion-button');
+        const filterButtons = screen.getAllByTestId('card-button');
         const filterButton = filterButtons[0];
         fireEvent.click(filterButton);
 

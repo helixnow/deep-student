@@ -13,7 +13,7 @@ import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretRight, House, FolderOpen } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { RealPathBreadcrumbItem } from '../types/navigation';
 
 // ============================================================================
@@ -101,10 +101,10 @@ export const PathBreadcrumb = React.memo(function PathBreadcrumb({
       aria-label={t('breadcrumb.ariaLabel')}
     >
       {/* 根目录 */}
-      <NotionButton variant="ghost" size="sm" onClick={() => onNavigate(-1)} className={cn('!h-auto !px-1.5 !py-0.5', breadcrumbs.length === 0 && 'text-foreground font-medium')} title={rootText}>
+      <DsButton variant="ghost" size="sm" onClick={() => onNavigate(-1)} className={cn('!h-auto !px-1.5 !py-0.5', breadcrumbs.length === 0 && 'text-foreground font-medium')} title={rootText}>
         {showRootIcon && <House size={14} />}
         {breadcrumbs.length === 0 && <span>{rootText}</span>}
-      </NotionButton>
+      </DsButton>
 
       {/* 面包屑项 */}
       {visibleItems.items.map((item, displayIndex) => {
@@ -136,10 +136,10 @@ export const PathBreadcrumb = React.memo(function PathBreadcrumb({
             )}
 
             {/* 面包屑按钮 */}
-            <NotionButton variant="ghost" size="sm" onClick={() => !isLast && onNavigate(actualIndex)} disabled={isLast} className={cn('!h-auto !px-1.5 !py-0.5 truncate max-w-[120px]', isLast ? 'text-foreground font-medium cursor-default' : '')} title={item.name}>
+            <DsButton variant="ghost" size="sm" onClick={() => !isLast && onNavigate(actualIndex)} disabled={isLast} className={cn('!h-auto !px-1.5 !py-0.5 truncate max-w-[120px]', isLast ? 'text-foreground font-medium cursor-default' : '')} title={item.name}>
               {isLast && <FolderOpen size={14} className="flex-shrink-0" />}
               <span className="truncate">{item.name}</span>
-            </NotionButton>
+            </DsButton>
           </React.Fragment>
         );
       })}
@@ -181,7 +181,7 @@ const DropdownEllipsis = React.memo(function DropdownEllipsis({ items, onNavigat
 
   return (
     <div className="relative" onBlur={handleBlur} onKeyDown={handleKeyDown}>
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         onClick={() => setIsOpen(!isOpen)}
@@ -191,7 +191,7 @@ const DropdownEllipsis = React.memo(function DropdownEllipsis({ items, onNavigat
         aria-expanded={isOpen}
       >
         <span className="text-muted-foreground">...</span>
-      </NotionButton>
+      </DsButton>
 
       {isOpen && (
         <div
@@ -204,9 +204,9 @@ const DropdownEllipsis = React.memo(function DropdownEllipsis({ items, onNavigat
           )}
         >
           {items.map((item, index) => (
-            <NotionButton key={item.fullPath} role="menuitem" variant="ghost" size="sm" onClick={() => { onNavigate(index); setIsOpen(false); }} className="w-full !justify-start !px-3 !py-1.5 truncate" title={item.name}>
+            <DsButton key={item.fullPath} role="menuitem" variant="ghost" size="sm" onClick={() => { onNavigate(index); setIsOpen(false); }} className="w-full !justify-start !px-3 !py-1.5 truncate" title={item.name}>
               {item.name}
-            </NotionButton>
+            </DsButton>
           ))}
         </div>
       )}

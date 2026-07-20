@@ -1,5 +1,5 @@
 /**
- * Crepe 编辑器 [[wikilink]] 双链插件（Obsidian 式）
+ * Crepe 编辑器 [[wikilink]] 双链插件
  *
  * 使用（由接线代理注册，本模块不自行挂载）：
  *   import { wikilinkPlugin } from './wikilink';

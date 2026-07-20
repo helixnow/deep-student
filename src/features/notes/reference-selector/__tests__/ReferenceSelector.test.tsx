@@ -30,8 +30,8 @@ vi.mock('@tauri-apps/api/core', () => ({
     convertFileSrc: (path: string) => `asset://mock${path}`,
 }));
 
-vi.mock('@/components/ui/NotionButton', () => ({
-    NotionButton: React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(
+vi.mock('@/components/ui/DsButton', () => ({
+    DsButton: React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(
         ({ children, ...props }, ref) => {
             // 过滤非 DOM 属性
             const { ...rest } = props as Record<string, unknown>;

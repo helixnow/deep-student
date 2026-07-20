@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MagnifyingGlass, X, CaretUp, CaretDown, CaretRight } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import type { CrepeEditorApi } from '@/components/crepe/types';
 import { editorViewCtx } from '@milkdown/kit/core';
@@ -338,7 +338,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
     >
       <div className="flex items-center gap-1 px-2 py-1">
         {!readOnly ? (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             className="h-6 w-6 p-0"
@@ -358,7 +358,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
                 isReplaceMode && 'rotate-90',
               )}
             />
-          </NotionButton>
+          </DsButton>
         ) : (
           <div className="w-6 flex-shrink-0" />
         )}
@@ -414,7 +414,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
         )}
 
         <div className="ml-auto flex flex-shrink-0 items-center gap-0.5">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             className={cn('h-6 w-6 p-0 text-[10px] font-semibold', caseSensitive && 'bg-[var(--interactive-selected)] text-foreground')}
@@ -424,8 +424,8 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             aria-pressed={caseSensitive}
           >
             Aa
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="sm"
             className={cn('h-6 w-6 p-0 text-[10px] font-semibold', wholeWord && 'bg-[var(--interactive-selected)] text-foreground')}
@@ -435,8 +435,8 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             aria-pressed={wholeWord}
           >
             W
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="sm"
             className={cn(
@@ -449,9 +449,9 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             aria-pressed={useRegex}
           >
             .*
-          </NotionButton>
+          </DsButton>
           <div className="mx-0.5 h-4 w-[1px] bg-border/60" aria-hidden="true" />
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             className="h-6 w-6 p-0"
@@ -461,8 +461,8 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             aria-label={t('notes:findReplace.prev')}
           >
             <CaretUp className="h-4 w-4" />
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="sm"
             className="h-6 w-6 p-0"
@@ -472,9 +472,9 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             aria-label={t('notes:findReplace.next')}
           >
             <CaretDown className="h-4 w-4" />
-          </NotionButton>
+          </DsButton>
           <div className="mx-0.5 h-4 w-[1px] bg-border/60" aria-hidden="true" />
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
@@ -482,7 +482,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             aria-label={t('common:close')}
           >
             <X className="h-4 w-4" />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 
@@ -500,7 +500,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             />
           </div>
           <div className="flex flex-shrink-0 items-center gap-1">
-            <NotionButton
+            <DsButton
               variant="secondary"
               size="sm"
               className="h-6 text-[10px] px-2 ui-press"
@@ -508,8 +508,8 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
               onClick={handleReplaceCurrent}
             >
               {t('notes:findReplace.replace')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="secondary"
               size="sm"
               className="h-6 text-[10px] px-2 ui-press"
@@ -517,7 +517,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
               onClick={handleReplaceAll}
             >
               {t('notes:findReplace.replaceAll')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}

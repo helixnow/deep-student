@@ -7,14 +7,14 @@
  * - text/其他: 不显示工具栏
  * 
  * 交互特性：
- * - 缩放加减沿 ZOOM_LADDER 阶梯跳档（对标 Chrome PDF 工具栏）
+ * - 缩放加减沿 ZOOM_LADDER 阶梯跳档（常见 PDF 工具栏习惯）
  * - 缩放百分比本身是下拉菜单触发器，可直接选择预设档位
  * - 按钮 title 内联显示键盘快捷键（Ctrl/⌘ +、−、0）
  * - 重置按钮仅在偏离默认值（100%）时可用
  */
 
 import React from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowCounterClockwise, Minus, Plus, TextT, CaretLeft, CaretRight, CaretUp } from '@phosphor-icons/react';
 import {
@@ -169,15 +169,15 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
 
   return (
     <div
-      className={`modern-viewer-toolbar modern-viewer-toolbar--glass ${className}`}
+      className={`modern-viewer-toolbar modern-viewer-toolbar--glass [@media(pointer:coarse)]:[&_button]:min-h-11 [@media(pointer:coarse)]:[&_button]:min-w-11 ${className}`}
       role="toolbar"
       aria-label={t('learningHub:officePreview.toolbarLabel')}
     >
       {/* 缩放控制区域 */}
       <div className="modern-viewer-toolbar-group" role="group" aria-label={t('learningHub:previewToolbar.zoomMenu')}>
-        <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleZoomOut} disabled={zoomScale <= ZOOM_MIN} title={withShortcut(t('learningHub:previewToolbar.zoomOut'), ' −')} aria-label={t('learningHub:previewToolbar.zoomOut')}>
+        <DsButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleZoomOut} disabled={zoomScale <= ZOOM_MIN} title={withShortcut(t('learningHub:previewToolbar.zoomOut'), ' −')} aria-label={t('learningHub:previewToolbar.zoomOut')}>
           <MagnifyingGlassMinus size={16} />
-        </NotionButton>
+        </DsButton>
 
         {/* 缩放百分比 = 预设档位菜单触发器 */}
         <AppMenu mode="dropdown">
@@ -209,13 +209,15 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
           </AppMenuContent>
         </AppMenu>
 
-        <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleZoomIn} disabled={zoomScale >= ZOOM_MAX} title={withShortcut(t('learningHub:previewToolbar.zoomIn'), ' +')} aria-label={t('learningHub:previewToolbar.zoomIn')}>
+        <DsButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleZoomIn} disabled={zoomScale >= ZOOM_MAX} title={withShortcut(t('learningHub:previewToolbar.zoomIn'), ' +')} aria-label={t('learningHub:previewToolbar.zoomIn')}>
           <MagnifyingGlassPlus size={16} />
-        </NotionButton>
+        </DsButton>
 
-        <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={onZoomReset} disabled={zoomIsDefault} title={withShortcut(t('learningHub:previewToolbar.resetZoom'), ' 0')} aria-label={t('learningHub:previewToolbar.resetZoom')}>
+        {/* 📱 <md 隐藏独立重置按钮：同一操作已收纳在缩放档位菜单的「恢复默认缩放」，
+            窄屏（375-430px）上省出 ~44px，让 docx/xlsx 的缩放+字号双分组不再溢出 */}
+        <DsButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button max-md:hidden" onClick={onZoomReset} disabled={zoomIsDefault} title={withShortcut(t('learningHub:previewToolbar.resetZoom'), ' 0')} aria-label={t('learningHub:previewToolbar.resetZoom')}>
           <ArrowCounterClockwise size={14} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 幻灯片页码控制区域（仅 pptx） */}
@@ -224,17 +226,27 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
           <div className="modern-viewer-divider" />
 
           <div className="modern-viewer-toolbar-group" role="group" aria-label={t('learningHub:previewToolbar.slideNavGroup')}>
-            <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={() => slideNav.navigateTo(Math.max(0, slideNav.current - 1))} disabled={slideNav.current === 0} title={t('learningHub:previewToolbar.prevSlide')} aria-label={t('learningHub:previewToolbar.prevSlide')}>
+            <DsButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={() => slideNav.navigateTo(Math.max(0, slideNav.current - 1))} disabled={slideNav.current === 0} title={t('learningHub:previewToolbar.prevSlide')} aria-label={t('learningHub:previewToolbar.prevSlide')}>
               <CaretLeft size={16} />
-            </NotionButton>
+            </DsButton>
 
-            <span className="modern-viewer-zoom-readout" aria-live="polite">
-              {t('learningHub:docPreview.slideNav', { current: slideNav.current + 1, total: slideNav.total })}
+            {/* 📱 <md 用紧凑的「n / N」页码（完整中文文案在 375px 宽下会把工具栏挤出可视区） */}
+            <span
+              className="modern-viewer-zoom-readout"
+              aria-live="polite"
+              aria-label={t('learningHub:docPreview.slideNav', { current: slideNav.current + 1, total: slideNav.total })}
+            >
+              <span className="max-md:hidden">
+                {t('learningHub:docPreview.slideNav', { current: slideNav.current + 1, total: slideNav.total })}
+              </span>
+              <span className="tabular-nums md:hidden" aria-hidden="true">
+                {slideNav.current + 1} / {slideNav.total}
+              </span>
             </span>
 
-            <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={() => slideNav.navigateTo(Math.min(slideNav.total - 1, slideNav.current + 1))} disabled={slideNav.current === slideNav.total - 1} title={t('learningHub:previewToolbar.nextSlide')} aria-label={t('learningHub:previewToolbar.nextSlide')}>
+            <DsButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={() => slideNav.navigateTo(Math.min(slideNav.total - 1, slideNav.current + 1))} disabled={slideNav.current === slideNav.total - 1} title={t('learningHub:previewToolbar.nextSlide')} aria-label={t('learningHub:previewToolbar.nextSlide')}>
               <CaretRight size={16} />
-            </NotionButton>
+            </DsButton>
           </div>
         </>
       )}
@@ -247,9 +259,9 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
           <div className="modern-viewer-toolbar-group" role="group" aria-label={t('learningHub:previewToolbar.fontGroup')}>
             <TextT size={14} className="text-muted-foreground" aria-hidden="true" />
 
-            <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleFontDecrease} disabled={fontScale <= FONT_MIN} title={t('learningHub:previewToolbar.fontDecrease')} aria-label={t('learningHub:previewToolbar.fontDecrease')}>
+            <DsButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleFontDecrease} disabled={fontScale <= FONT_MIN} title={t('learningHub:previewToolbar.fontDecrease')} aria-label={t('learningHub:previewToolbar.fontDecrease')}>
               <Minus size={14} />
-            </NotionButton>
+            </DsButton>
 
             <span
               className="modern-viewer-zoom-readout"
@@ -260,14 +272,16 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
               {formatPercent(fontScale)}
             </span>
 
-            <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleFontIncrease} disabled={fontScale >= FONT_MAX} title={t('learningHub:previewToolbar.fontIncrease')} aria-label={t('learningHub:previewToolbar.fontIncrease')}>
+            <DsButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleFontIncrease} disabled={fontScale >= FONT_MAX} title={t('learningHub:previewToolbar.fontIncrease')} aria-label={t('learningHub:previewToolbar.fontIncrease')}>
               <Plus size={14} />
-            </NotionButton>
+            </DsButton>
 
+            {/* 📱 <md 隐藏字号重置：0.1 步进从任意档位都能精确回到 100%（读数即时可见），
+                窄屏优先保证增减按钮 ≥44px 触控目标且不横向溢出 */}
             {onFontReset && (
-              <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={onFontReset} disabled={fontIsDefault} title={t('learningHub:previewToolbar.resetFont')} aria-label={t('learningHub:previewToolbar.resetFont')}>
+              <DsButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button max-md:hidden" onClick={onFontReset} disabled={fontIsDefault} title={t('learningHub:previewToolbar.resetFont')} aria-label={t('learningHub:previewToolbar.resetFont')}>
                 <ArrowCounterClockwise size={14} />
-              </NotionButton>
+              </DsButton>
             )}
           </div>
         </>

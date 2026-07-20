@@ -11,7 +11,7 @@ function getNodeText(node: MarkdownNode | undefined): string {
 }
 
 /**
- * If a blockquote's first paragraph is an Obsidian callout marker
+ * If a blockquote's first paragraph is an callout marker
  * (`[!note] optional title`), convert the AST node to `callout`.
  */
 export function promoteBlockquoteToCallout(node: MarkdownNode): boolean {

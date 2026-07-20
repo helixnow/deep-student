@@ -20,7 +20,7 @@ import { dstu } from '@/dstu';
 import { reportError } from '@/shared/result';
 import type { DstuNode } from '@/dstu/types';
 import type { ResourceType } from '../types';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { AppContentErrorBoundary } from './AppContentErrorBoundary';
 
 // 🔧 修复：NoteContentView 不使用懒加载（避免 Suspense 导致 Crepe 初始化卡住）
@@ -351,19 +351,19 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
           {error || typeMismatch || t('error.resourceNotFound')}
         </p>
         <div className="flex items-center gap-2">
-          <NotionButton
+          <DsButton
             variant="outline"
             size="sm"
             onClick={() => setLocalReloadNonce((n) => n + 1)}
-            className="gap-1.5"
+            className="gap-1.5 [@media(pointer:coarse)]:min-h-11"
           >
             <ArrowClockwise size={14} aria-hidden="true" />
             {t('common:reload')}
-          </NotionButton>
+          </DsButton>
           {onClose && (
-            <NotionButton variant="ghost" size="sm" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
               {t('common:close')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       </div>

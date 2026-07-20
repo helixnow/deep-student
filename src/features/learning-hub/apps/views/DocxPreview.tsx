@@ -2,7 +2,7 @@
  * DOCX 富文本预览组件
  * 使用 docx-preview 库将 DOCX 文档渲染为 HTML
  *
- * 观感对标 Word 网页版 / macOS Quick Look：
+ * 观感参考常见办公文档网页预览 / macOS Quick Look：
  * - 灰色台面 + 白纸页面 + 柔和投影（暗色模式保持浅色纸面，文档原色不做重写，
  *   与 Word/快速查看的行为一致，彩色文字、品牌色完整保真）
  * - 字号缩放通过 calc(原字号 × --docx-font-scale) 实现，不破坏文档内部字号层级
@@ -17,6 +17,7 @@ import { renderAsync } from 'docx-preview';
 import { FileX } from '@phosphor-icons/react';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
+import { useIsMobile } from '@/hooks/useBreakpoint';
 import {
   normalizeBase64,
   decodeBase64ToArrayBuffer,
@@ -45,6 +46,10 @@ const FONT_SCALE_VAR = '--docx-font-scale';
 /** 台面四周留白（px）；autoScale 计算时需从可用宽度中扣除水平部分 */
 const DESK_PADDING_X = 32;
 const DESK_PADDING_Y = 28;
+/** 📱 移动端（<768px）收窄台面留白：375px 视口下 64px 水平留白会把
+ *  A4 页的 autoScale 压到 ~0.39，正文字号过小；收窄后可读宽度 +8% */
+const DESK_PADDING_X_MOBILE = 12;
+const DESK_PADDING_Y_MOBILE = 16;
 
 /**
  * 将 docx-preview 写在元素内联样式里的 font-size 改写为
@@ -90,6 +95,12 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
   fontScale: externalFontScale,
 }) => {
   const { t } = useTranslation(['learningHub']);
+  const isMobile = useIsMobile();
+  const deskPaddingX = isMobile ? DESK_PADDING_X_MOBILE : DESK_PADDING_X;
+  const deskPaddingY = isMobile ? DESK_PADDING_Y_MOBILE : DESK_PADDING_Y;
+  // autoScale 计算在 effect 中读取（避免因断点切换整体重建 observers 之外的逻辑）
+  const deskPaddingXRef = useRef(deskPaddingX);
+  deskPaddingXRef.current = deskPaddingX;
   const containerRef = useRef<HTMLDivElement>(null);
   // ★ 独立的样式容器：docx-preview 生成的 <style> 不能进入 sanitizeRenderedDom
   //   （其 ALLOWED_TAGS 不含 style，混在内容容器里会被整体剥离，导致文档失去
@@ -261,7 +272,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
         resizeObserver.observe(target);
         observedTarget = target;
       }
-      const availableWidth = viewport.clientWidth - DESK_PADDING_X * 2;
+      const availableWidth = viewport.clientWidth - deskPaddingXRef.current * 2;
       const contentWidth = target.scrollWidth || target.clientWidth;
       if (availableWidth <= 0 || !contentWidth) return;
       const nextAutoScale = Math.min(1, availableWidth / contentWidth);
@@ -299,7 +310,8 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
     };
-  }, [base64Content]);
+  // deskPaddingX：断点切换改变可用宽度，需重算 autoScale（observers 重建成本可忽略）
+  }, [base64Content, deskPaddingX]);
 
   // 页码跟踪：IntersectionObserver 用视口中线判定当前页
   useEffect(() => {
@@ -382,7 +394,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
           className="absolute inset-0 z-10 flex justify-center overflow-hidden"
           style={{
             background: 'var(--docx-desk)',
-            padding: `${DESK_PADDING_Y}px ${DESK_PADDING_X}px 0`,
+            padding: `${deskPaddingY}px ${deskPaddingX}px 0`,
           }}
           role="status"
           aria-label={t('learningHub:docPreview.loadingDocument')}
@@ -473,7 +485,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
           overflow: visible;
           width: max-content;
           margin: 0 auto;
-          padding: ${DESK_PADDING_Y}px ${DESK_PADDING_X}px;
+          padding: ${deskPaddingY}px ${deskPaddingX}px;
         }
 
         /* docx-preview 外层包装（可能带内联 padding）

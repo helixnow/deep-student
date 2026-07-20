@@ -1,5 +1,5 @@
 /**
- * Toggle 块 remark 插件：把 Obsidian 折叠 callout 形状的 blockquote
+ * Toggle 块 remark 插件：把 折叠 callout 形状的 blockquote
  * 转成自定义 MDAST `toggle`，供 Milkdown parseMarkdown 消费。
  *
  * CommonMark 会把

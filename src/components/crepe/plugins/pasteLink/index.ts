@@ -1,5 +1,5 @@
 /**
- * 粘贴 URL 智能链接（Notion 风格）
+ * 粘贴 URL 智能链接（简洁风格）
  *
  * 使用：`crepe.editor.use(pasteLinkPlugin())`（须在 create 前；见 docs/revamp/05-paste-link.md）
  */

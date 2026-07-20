@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { UploadSimple, WarningCircle, X } from '@phosphor-icons/react';
 import useTheme from '@/hooks/useTheme';
 import { useMobileHeader } from '@/components/layout';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { TauriAPI } from '@/utils/tauriApi';
 import '../styles/pdf-reader.css';
 import { EnhancedPdfViewer } from './EnhancedPdfViewer';
@@ -24,7 +24,7 @@ export const PdfReader: React.FC = () => {
   useMobileHeader('pdf-reader', {
     title: t('common:navigation.pdf_reader'),
     rightActions: (
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         iconOnly
@@ -32,7 +32,7 @@ export const PdfReader: React.FC = () => {
         onClick={() => handleSelectFileRef.current()}
       >
         <UploadSimple size={18} />
-      </NotionButton>
+      </DsButton>
     ),
   }, [t]);
 
@@ -256,11 +256,11 @@ export const PdfReader: React.FC = () => {
             {errorHint && <p className="pdf-reader-status__hint">{errorHint}</p>}
           </div>
           <div className="pdf-reader-status__actions">
-            <NotionButton variant="ghost" size="sm" onClick={handleSelectFile} className="gap-1.5">
+            <DsButton variant="ghost" size="sm" onClick={handleSelectFile} className="gap-1.5">
               <UploadSimple size={14} />
               {t('pdf:empty.select_button')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="sm"
               iconOnly
@@ -268,7 +268,7 @@ export const PdfReader: React.FC = () => {
               onClick={clearError}
             >
               <X size={14} />
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -280,10 +280,10 @@ export const PdfReader: React.FC = () => {
           </div>
           <h2>{t('pdf:empty.title')}</h2>
           <p>{t('pdf:empty.description')}</p>
-          <NotionButton variant="primary" size="sm" onClick={handleSelectFile} className="mt-4 gap-1.5">
+          <DsButton variant="primary" size="sm" onClick={handleSelectFile} className="mt-4 gap-1.5">
             <UploadSimple size={16} />
             {t('pdf:empty.select_button')}
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 

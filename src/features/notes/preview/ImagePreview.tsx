@@ -11,7 +11,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../../lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import {
   WarningCircle,
@@ -224,7 +224,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
         </span>
         <div className="flex items-center gap-1">
           <CommonTooltip content={<p className="text-xs">{t('notes:previewPanel.image.zoomOut')}</p>} position="bottom">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0"
@@ -233,7 +233,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               aria-label={t('notes:previewPanel.image.zoomOut')}
             >
               <MagnifyingGlassMinus size={16} />
-            </NotionButton>
+            </DsButton>
           </CommonTooltip>
           <span
             className="min-w-[3rem] select-none text-center text-xs tabular-nums text-muted-foreground"
@@ -242,7 +242,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             {Math.round(view.scale * 100)}%
           </span>
           <CommonTooltip content={<p className="text-xs">{t('notes:previewPanel.image.zoomIn')}</p>} position="bottom">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0"
@@ -251,10 +251,10 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               aria-label={t('notes:previewPanel.image.zoomIn')}
             >
               <MagnifyingGlassPlus size={16} />
-            </NotionButton>
+            </DsButton>
           </CommonTooltip>
           <CommonTooltip content={<p className="text-xs">{t('notes:wikilinkV2.imageResetZoom')}</p>} position="bottom">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0"
@@ -263,7 +263,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               aria-label={t('notes:wikilinkV2.imageResetZoom')}
             >
               <ArrowCounterClockwise size={16} />
-            </NotionButton>
+            </DsButton>
           </CommonTooltip>
         </div>
       </div>

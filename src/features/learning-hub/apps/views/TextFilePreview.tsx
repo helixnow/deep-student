@@ -343,7 +343,8 @@ const CopyTextButton: React.FC<{ text: string }> = ({ text }) => {
     <button
       type="button"
       onClick={handleCopy}
-      className="ui-state-colors inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+      // 📱 触屏：放大到 ≥40px 触控目标（桌面保持紧凑内联尺寸）
+      className="ui-state-colors inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:px-2.5"
       aria-label={t('learningHub:filePreview.copy')}
     >
       {copied ? <Check size={12} className="text-success" aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
@@ -724,7 +725,8 @@ const CsvTable: React.FC<CsvTableProps> = ({ parsed, hasHeader, revealFull }) =>
                   type="button"
                   onClick={() => cycleSort(i)}
                   title={nextActionLabel}
-                  className="ui-state-colors group flex w-full items-center gap-1 px-3 py-1.5 text-left hover:bg-accent"
+                  // 📱 触屏：表头排序按钮 ≥40px 高，避免误触相邻列
+                  className="ui-state-colors group flex w-full items-center gap-1 px-3 py-1.5 text-left hover:bg-accent [@media(pointer:coarse)]:min-h-10"
                 >
                   <span className={cn('max-w-[24rem] truncate', !headerCells && 'text-muted-foreground')}>
                     {headerCells
@@ -957,7 +959,8 @@ const TextFilePreviewComponent: React.FC<TextFilePreviewProps> = ({ content, fil
         <FileMetaBar ext={ext} items={textMetaItems} copyText={content} />
         <div className="px-4 pb-4" onClick={handleMarkdownClick}>
           {truncationNotice}
-          <div className="prose prose-sm dark:prose-invert max-w-none">
+          {/* break-words：长 URL / 无空格长词在 375px 视口下不得撑出横向溢出 */}
+          <div className="prose prose-sm dark:prose-invert max-w-none break-words">
             <ReactMarkdown remarkPlugins={MARKDOWN_REMARK_PLUGINS} components={markdownComponents as any}>
               {cappedText}
             </ReactMarkdown>
@@ -991,7 +994,7 @@ const TextFilePreviewComponent: React.FC<TextFilePreviewProps> = ({ content, fil
             ]}
             copyText={content}
           >
-            <label className="flex cursor-pointer select-none items-center gap-1.5">
+            <label className="flex cursor-pointer select-none items-center gap-1.5 [@media(pointer:coarse)]:min-h-10">
               <input
                 type="checkbox"
                 checked={csvHasHeader}

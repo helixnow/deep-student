@@ -20,7 +20,7 @@ import {
   Play,
   ArrowCounterClockwise,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
@@ -389,7 +389,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
   return (
     <div className="border-t border-border/50">
       {/* 标题栏 */}
-      <NotionButton variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)} className="w-full !justify-start !px-4 !py-2 hover:bg-[var(--interactive-hover)]">
+      <DsButton variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)} className="w-full !justify-start !px-4 !py-2 hover:bg-[var(--interactive-hover)]">
         {isExpanded ? (
           <CaretDown size={16} className="text-muted-foreground" />
         ) : (
@@ -402,14 +402,14 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
             {t('diagnostic.logCount', { count: logs.length })}
           </span>
         )}
-      </NotionButton>
+      </DsButton>
 
       {/* 展开内容 */}
       {isExpanded && (
         <div className="px-4 pb-4 space-y-3">
           {/* 操作按钮 */}
           <div className="flex flex-wrap gap-2">
-            <NotionButton
+            <DsButton
               size="sm"
               variant="ghost"
               onClick={() => handleGetDiagnostic()}
@@ -418,8 +418,8 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
             >
               <ArrowClockwise className={cn('h-3.5 w-3.5 mr-1', isLoading && 'animate-spin')} />
               {t('diagnostic.getDiagnostic')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               size="sm"
               variant="ghost"
               onClick={handleIndexWithDiagnostic}
@@ -428,8 +428,8 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
             >
               <Play size={14} className="mr-1" />
               {t('diagnostic.indexWithDiag')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               size="sm"
               variant="ghost"
               onClick={handleResetDisabled}
@@ -438,8 +438,8 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
             >
               <ArrowCounterClockwise size={14} className="mr-1" />
               {t('diagnostic.resetDisabled')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               size="sm"
               variant="ghost"
               onClick={handleResetIndexedWithoutEmb}
@@ -448,8 +448,8 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
             >
               <ArrowCounterClockwise size={14} className="mr-1" />
               {t('diagnostic.resetNoEmbed')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               size="sm"
               variant="ghost"
               onClick={handleDiagnoseLanceSchema}
@@ -458,9 +458,9 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
             >
               <Bug size={14} className="mr-1" />
               Lance Schema
-            </NotionButton>
+            </DsButton>
             <div className="flex-1" />
-            <NotionButton
+            <DsButton
               size="sm"
               variant="ghost"
               onClick={handleCopyLogs}
@@ -469,8 +469,8 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
             >
               <Copy size={14} className="mr-1" />
               {t('diagnostic.copyLogs')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               size="sm"
               variant="ghost"
               onClick={handleClearLogs}
@@ -479,7 +479,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
             >
               <Trash size={14} className="mr-1" />
               {t('diagnostic.clearLogs')}
-            </NotionButton>
+            </DsButton>
           </div>
 
           {/* 日志区域 */}

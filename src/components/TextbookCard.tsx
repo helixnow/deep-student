@@ -11,7 +11,7 @@ import {
   Star,
   Clock
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent } from './ui/shad/Card';
 import {
   AppMenu,
@@ -104,9 +104,9 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
           {/* 悬停遮罩 - 仅在非回收站模式下显示打开按钮 */}
           {!isTrashed && (
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-              <NotionButton size="sm" variant="default" className="shadow-lg font-medium translate-y-4 group-hover:translate-y-0 transition-transform">
+              <DsButton size="sm" variant="default" className="shadow-lg font-medium translate-y-4 group-hover:translate-y-0 transition-transform">
                 {t('common:textbook.open')}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
         </div>
@@ -132,9 +132,9 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
             <div onClick={(e) => e.stopPropagation()}>
               <AppMenu>
                 <AppMenuTrigger asChild>
-                  <NotionButton variant="ghost" iconOnly size="sm" className="w-8 h-8 -mr-2 text-muted-foreground hover:text-foreground">
+                  <DsButton variant="ghost" iconOnly size="sm" className="w-8 h-8 -mr-2 text-muted-foreground hover:text-foreground">
                     <DotsThreeVertical size={16} />
-                  </NotionButton>
+                  </DsButton>
                 </AppMenuTrigger>
                 <AppMenuContent align="end" width={160}>
                   {!isTrashed ? (
@@ -224,14 +224,14 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
       <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
         {!isTrashed ? (
           <>
-            <NotionButton variant="default" size="sm" onClick={() => onOpen(book)} className="hidden sm:flex">
+            <DsButton variant="default" size="sm" onClick={() => onOpen(book)} className="hidden sm:flex">
               {t('common:textbook.open')}
-            </NotionButton>
+            </DsButton>
             <AppMenu>
               <AppMenuTrigger asChild>
-                <NotionButton variant="ghost" iconOnly size="sm" className="w-8 h-8 text-muted-foreground hover:text-foreground">
+                <DsButton variant="ghost" iconOnly size="sm" className="w-8 h-8 text-muted-foreground hover:text-foreground">
                   <DotsThreeVertical size={16} />
-                </NotionButton>
+                </DsButton>
               </AppMenuTrigger>
               <AppMenuContent align="end" width={160}>
                 <AppMenuItem icon={<BookOpen size={16} />} onClick={() => onOpen(book)} className="sm:hidden">
@@ -255,12 +255,12 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
           </>
         ) : (
           <>
-            <NotionButton size="sm" variant="ghost" onClick={() => onRecover(book)}>
+            <DsButton size="sm" variant="ghost" onClick={() => onRecover(book)}>
               {t('common:textbook.recover')}
-            </NotionButton>
-            <NotionButton size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => onDeletePermanent(book)}>
+            </DsButton>
+            <DsButton size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => onDeletePermanent(book)}>
               <Trash size={16} />
-            </NotionButton>
+            </DsButton>
           </>
         )}
       </div>

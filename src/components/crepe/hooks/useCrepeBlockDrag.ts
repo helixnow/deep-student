@@ -6,7 +6,7 @@
  * 关键设计：
  * 1. 在 wrapper 上捕获 pointer，而不是在 block handle 元素上
  * 2. 定位一律基于被拖块/内容列的真实 rect（兼容缩放与窄边距），不用魔法数
- * 3. 拖拽预览为克隆块的半透明幽灵卡（Notion 风格），源块淡化留在文档中
+ * 3. 拖拽预览为克隆块的半透明幽灵卡（简洁风格），源块淡化留在文档中
  * 4. 边缘自动滚动使用二次加速曲线；Escape / pointercancel / 窗口失焦可取消拖拽
  */
 
@@ -302,7 +302,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
   }, []);
 
   /**
-   * 创建 Notion 风格的半透明块幽灵预览：克隆被拖块内容、限制宽高、
+   * 创建 简洁风格的半透明块幽灵预览：克隆被拖块内容、限制宽高、
    * 底部渐隐裁剪。克隆容器借用 milkdown / ProseMirror 类名以复用既有
    * 排版样式，纯 cloneNode 成本低（不做逐属性 computed style 拷贝）。
    */

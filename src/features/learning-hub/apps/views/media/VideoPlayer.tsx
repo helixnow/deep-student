@@ -23,7 +23,7 @@ import {
   CircleNotch,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Slider } from '@/components/ui/shad/Slider';
 import { formatMediaTime } from '../previewUtils';
 import { useMediaPlayback } from './useMediaPlayback';
@@ -276,7 +276,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         />
 
         <div className="mt-1.5 flex items-center gap-1">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             iconOnly
@@ -299,9 +299,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             ) : (
               <Play size={16} weight="fill" aria-hidden="true" />
             )}
-          </NotionButton>
+          </DsButton>
 
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             iconOnly
@@ -312,9 +312,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             className={overlayButtonClass}
           >
             <ArrowCounterClockwise size={16} aria-hidden="true" />
-          </NotionButton>
+          </DsButton>
 
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             iconOnly
@@ -325,7 +325,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             className={overlayButtonClass}
           >
             <ArrowClockwise size={16} aria-hidden="true" />
-          </NotionButton>
+          </DsButton>
 
           <span className="ml-1.5 text-xs tabular-nums text-white/90">
             {formatMediaTime(currentTime)}
@@ -336,7 +336,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
           {/* 音量：按钮 + hover 展开滑杆 */}
           <div className="group/volume flex items-center gap-1">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               iconOnly
@@ -354,7 +354,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               className={overlayButtonClass}
             >
               <VolumeIcon size={16} aria-hidden="true" />
-            </NotionButton>
+            </DsButton>
             <div className="w-0 overflow-hidden transition-all duration-150 group-hover/volume:w-20 motion-reduce:transition-none">
               <Slider
                 value={[muted ? 0 : volume]}
@@ -374,7 +374,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             onOpenChange={setRateMenuOpen}
           />
 
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             iconOnly
@@ -385,9 +385,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             className={cn(overlayButtonClass, loop && 'bg-[var(--overlay-control-hover)]')}
           >
             <Repeat size={16} aria-hidden="true" />
-          </NotionButton>
+          </DsButton>
 
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             iconOnly
@@ -409,7 +409,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             ) : (
               <ArrowsOut size={16} aria-hidden="true" />
             )}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     </div>

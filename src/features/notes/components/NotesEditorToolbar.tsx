@@ -8,7 +8,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import type { CrepeEditorApi } from '@/components/crepe/types';
 import type { Ctx } from '@milkdown/kit/ctx';
@@ -312,7 +312,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
               if (!item) return null;
               return (
                 <CommonTooltip key={label} content={item.label} shortcut={item.shortcut} position="bottom">
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="icon"
                     iconOnly
@@ -323,7 +323,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
                     onClick={item.action}
                   >
                     {React.cloneElement(item.icon, { className: 'h-4 w-4' })}
-                  </NotionButton>
+                  </DsButton>
                 </CommonTooltip>
               );
             })}
@@ -334,7 +334,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
       <Popover open={overflowOpen} onOpenChange={setOverflowOpen}>
         <CommonTooltip content={toolbarLabel}>
           <PopoverTrigger asChild>
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -345,7 +345,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
               aria-expanded={overflowOpen}
             >
               <TextAa className="h-4 w-4" />
-            </NotionButton>
+            </DsButton>
           </PopoverTrigger>
         </CommonTooltip>
         <PopoverContent
@@ -356,7 +356,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
           onKeyDown={handleMenuKeyDown}
         >
           {formatActions.map((item, index) => (
-            <NotionButton
+            <DsButton
               key={item.label}
               ref={(el) => { menuItemRefs.current[index] = el; }}
               variant="ghost"
@@ -372,7 +372,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
               {React.cloneElement(item.icon, { className: 'h-4 w-4 shrink-0' })}
               <span className="min-w-0 flex-1 truncate">{item.label}</span>
               {item.shortcut && <kbd>{item.shortcut}</kbd>}
-            </NotionButton>
+            </DsButton>
           ))}
         </PopoverContent>
       </Popover>
