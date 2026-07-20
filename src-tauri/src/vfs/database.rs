@@ -24,9 +24,7 @@ use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
 use super::error::{VfsError, VfsResult};
-use crate::database::maintenance::{
-    checkpoint_truncate_strict, fail_closed_placeholder_pool,
-};
+use crate::database::maintenance::{checkpoint_truncate_strict, fail_closed_placeholder_pool};
 
 /// 数据库文件名
 const DATABASE_FILENAME: &str = "vfs.db";

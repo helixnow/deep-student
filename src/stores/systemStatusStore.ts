@@ -69,10 +69,18 @@ export const useSystemStatusStore = create<SystemStatusState>((set) => ({
       maintenanceGeneration: state.maintenanceGeneration + 1,
     })),
   exitMaintenanceMode: () =>
-    set((state) => ({
-      maintenanceMode: false,
-      maintenanceReason: null,
-      maintenanceRequiresRestart: false,
-      maintenanceGeneration: state.maintenanceGeneration + 1,
-    })),
+    set((state) => {
+      // 恢复切槽已经登记后，当前进程绝不能因某个调用方的 finally 撤掉写屏障。
+      // 该状态只会随进程重启重新初始化；新进程在槽激活、迁移和校验完成后
+      // 才会由后端解除持久化维护租约。
+      if (state.maintenanceRequiresRestart) {
+        return state;
+      }
+      return {
+        maintenanceMode: false,
+        maintenanceReason: null,
+        maintenanceRequiresRestart: false,
+        maintenanceGeneration: state.maintenanceGeneration + 1,
+      };
+    }),
 }));

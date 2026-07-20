@@ -584,17 +584,18 @@ mod tests {
         )
         .unwrap();
 
-        let insert_record = |id: &str, todo: Option<&str>, ty: &str, status: &str, del: Option<&str>| {
-            conn.execute(
-                "INSERT INTO pomodoro_records
+        let insert_record =
+            |id: &str, todo: Option<&str>, ty: &str, status: &str, del: Option<&str>| {
+                conn.execute(
+                    "INSERT INTO pomodoro_records
                      (id, todo_item_id, start_time, duration, actual_duration,
                       type, status, created_at, updated_at, deleted_at)
                  VALUES (?1, ?2, '2026-07-01T01:00:00Z', 1500, 1500, ?3, ?4,
                          '2026-07-01T01:00:00Z', '2026-07-01T01:00:00Z', ?5)",
-                params![id, todo, ty, status, del],
-            )
-            .unwrap();
-        };
+                    params![id, todo, ty, status, del],
+                )
+                .unwrap();
+            };
         insert_record("r-count", Some("todo-1"), "work", "completed", None);
         insert_record("r-interrupted", Some("todo-1"), "work", "interrupted", None);
         insert_record("r-break", Some("todo-1"), "short_break", "completed", None);

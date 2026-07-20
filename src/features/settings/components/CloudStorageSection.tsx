@@ -9,12 +9,12 @@ import { useTranslation } from 'react-i18next';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { Cloud, CheckCircle, XCircle, CircleNotch, ClockCounterClockwise, Upload, Download, Trash, WarningCircle } from '@phosphor-icons/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/shad/Card';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Label } from '@/components/ui/shad/Label';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/shad/Tabs';
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { ApiKeyField } from './ApiKeyField';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -40,9 +40,7 @@ interface SyncOpProgress {
 }
 
 // 本地存储配置的 key（仅存储非敏感信息，密码存储在系统安全存储中）
-const CONFIG_STORAGE_KEY = 'cloud_storage_config_v2';
-// 旧版 key（用于迁移）
-const LEGACY_CONFIG_KEY = 'cloud_storage_config';
+const CONFIG_STORAGE_KEY = cloudApi.CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY;
 const FTP_RISK_WARNING_KEY = 'cloud_storage_ftp_risk_warning_v1';
 // #91: FTP/FTPS 后端（PR#103）已合入并具备完整实现（原子上传/重试/TLS 强制），
 // 默认放开入口；保留 VITE_ENABLE_EXPERIMENTAL_FTP_STORAGE=false 作为紧急关闭开关。
@@ -86,6 +84,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     useTls: false,
   });
   const [root, setRoot] = useState('deep-student-sync');
+  const [allowInsecure, setAllowInsecure] = useState(false);
 
   // 端到端加密密码（可选）
   const [encryptionPassword, setEncryptionPassword] = useState('');
@@ -98,6 +97,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const [testing, setTesting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'connected' | 'failed'>('unknown');
   const [secureStoreIssue, setSecureStoreIssue] = useState<string | null>(null);
+  const [credentialStatus, setCredentialStatus] = useState<cloudApi.CloudStorageCredentialStatus>({
+    webdavPasswordConfigured: false,
+    s3SecretAccessKeyConfigured: false,
+    ftpPasswordConfigured: false,
+    encryptionPasswordConfigured: false,
+  });
 
   const markSecureStoreIssue = useCallback(
     (error: unknown, operation: 'read' | 'write'): string | null => {
@@ -164,7 +169,6 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 不安全连接警告对话框状态
   const [showInsecureFtpWarning, setShowInsecureFtpWarning] = useState(false);
   const [showInsecureWebdavWarning, setShowInsecureWebdavWarning] = useState(false);
-  const [showInsecureS3Warning, setShowInsecureS3Warning] = useState(false);
   // 记录当前不安全警告的上下文（保存还是测试连接）
   const [insecureWarningAction, setInsecureWarningAction] = useState<'save' | 'test' | null>(null);
 
@@ -193,164 +197,57 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 加载保存的配置 & 检测 S3 是否启用
   useEffect(() => {
+    let active = true;
     const loadConfig = async () => {
       let loadedFtpConfig = false;
       // 检测 S3 feature 是否启用
       const s3Available = await cloudApi.isS3Enabled();
-      setS3Enabled(s3Available);
-      
-      // 检查是否需要从旧配置迁移
-      let configLoaded = false;
-      const saved = localStorage.getItem(CONFIG_STORAGE_KEY);
-      const legacy = localStorage.getItem(LEGACY_CONFIG_KEY);
-      
-      if (saved) {
-        // 加载新格式配置
-        try {
-          const config: cloudApi.CloudStorageConfig = JSON.parse(saved);
+      if (active) setS3Enabled(s3Available);
+
+      // Backend DB wins unconditionally. The resolver consults localStorage
+      // only after an explicit `configured: false`, then performs one migration.
+      try {
+        const config = await cloudApi.resolveCloudStorageConfig();
+        if (config && active) {
           setProvider(config.provider);
           loadedFtpConfig = config.provider === 'ftp' || Boolean(config.ftp);
           setHasStoredFtpConfig(loadedFtpConfig);
-          const leakedCredentials: cloudApi.CloudStorageCredentials = {};
           if (config.webdav) {
             setWebdavConfig(prev => ({ ...prev, ...config.webdav, password: '' }));
-            if (config.webdav.password) {
-              leakedCredentials.webdavPassword = config.webdav.password;
-            }
           }
           if (config.s3) {
             setS3Config(prev => ({ ...prev, ...config.s3, secretAccessKey: '' }));
-            if (config.s3.secretAccessKey) {
-              leakedCredentials.s3SecretAccessKey = config.s3.secretAccessKey;
-            }
           }
           if (config.ftp) {
             const scheme = config.ftp.useTls ? 'ftps' : 'ftp';
             const hostPort = config.ftp.port ? `:${config.ftp.port}` : '';
             const endpoint = `${scheme}://${config.ftp.host}${hostPort}`;
             setFtpConfig(prev => ({ ...prev, ...config.ftp, password: '', endpoint }));
-            if (config.ftp.password) {
-              leakedCredentials.ftpPassword = config.ftp.password;
-            }
-          }
-          if (config.encryptionPassword) {
-            leakedCredentials.encryptionPassword = config.encryptionPassword;
           }
           if (config.root) setRoot(config.root);
-          if (
-            leakedCredentials.webdavPassword ||
-            leakedCredentials.s3SecretAccessKey ||
-            leakedCredentials.ftpPassword ||
-            leakedCredentials.encryptionPassword
-          ) {
-            await cloudApi.saveCredentials(leakedCredentials);
-            const safeConfig = {
-              ...config,
-              webdav: config.webdav ? { ...config.webdav, password: '' } : undefined,
-              s3: config.s3 ? { ...config.s3, secretAccessKey: '' } : undefined,
-              ftp: config.ftp ? { ...config.ftp, password: '' } : undefined,
-              encryptionPassword: undefined,
-            };
-            localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(safeConfig));
-          }
-          await cloudApi.saveCloudConfigSsot(config);
-          configLoaded = true;
-        } catch (e: unknown) {
-          console.error('Failed to load cloud storage config:', e);
-          const secureMessage = markSecureStoreIssue(e, 'write');
-          if (secureMessage) {
-            showGlobalNotification('error', secureMessage);
-          }
+          setAllowInsecure(config.allowInsecure ?? false);
+        } else if (active) {
+          setHasStoredFtpConfig(false);
+          setAllowInsecure(false);
         }
-      } else if (legacy) {
-        // 从旧配置迁移
-        console.log('Migrating from legacy cloud storage config...');
-        try {
-          const oldConfig: cloudApi.CloudStorageConfig = JSON.parse(legacy);
-          setProvider(oldConfig.provider);
-          
-          // 迁移凭据到安全存储
-          const credentials: cloudApi.CloudStorageCredentials = {};
-          if (oldConfig.webdav) {
-            setWebdavConfig(prev => ({ ...prev, ...oldConfig.webdav, password: '' }));
-            if (oldConfig.webdav.password) {
-              credentials.webdavPassword = oldConfig.webdav.password;
-            }
-          }
-          if (oldConfig.s3) {
-            setS3Config(prev => ({ ...prev, ...oldConfig.s3, secretAccessKey: '' }));
-            if (oldConfig.s3.secretAccessKey) {
-              credentials.s3SecretAccessKey = oldConfig.s3.secretAccessKey;
-            }
-          }
-          if (oldConfig.ftp) {
-            const scheme = oldConfig.ftp.useTls ? 'ftps' : 'ftp';
-            const hostPort = oldConfig.ftp.port ? `:${oldConfig.ftp.port}` : '';
-            const endpoint = `${scheme}://${oldConfig.ftp.host}${hostPort}`;
-            setFtpConfig(prev => ({ ...prev, ...oldConfig.ftp, password: '', endpoint }));
-            if (oldConfig.ftp.password) {
-              credentials.ftpPassword = oldConfig.ftp.password;
-            }
-          }
-          if (oldConfig.encryptionPassword) {
-            credentials.encryptionPassword = oldConfig.encryptionPassword;
-          }
-          loadedFtpConfig = oldConfig.provider === 'ftp' || Boolean(oldConfig.ftp);
-          setHasStoredFtpConfig(loadedFtpConfig);
-          if (oldConfig.root) setRoot(oldConfig.root);
-          
-          // 保存到安全存储
-          if (
-            credentials.webdavPassword ||
-            credentials.s3SecretAccessKey ||
-            credentials.ftpPassword ||
-            credentials.encryptionPassword
-          ) {
-            await cloudApi.saveCredentials(credentials);
-          }
-          
-          // 保存新格式配置（不含密码）
-          const safeConfig = {
-            ...oldConfig,
-            webdav: oldConfig.webdav ? { ...oldConfig.webdav, password: '' } : undefined,
-            s3: oldConfig.s3 ? { ...oldConfig.s3, secretAccessKey: '' } : undefined,
-            ftp: oldConfig.ftp ? { ...oldConfig.ftp, password: '' } : undefined,
-            encryptionPassword: undefined,
-          };
-          localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(safeConfig));
-          await cloudApi.saveCloudConfigSsot(oldConfig);
-          
-          // 删除旧配置
-          localStorage.removeItem(LEGACY_CONFIG_KEY);
-          console.log('Cloud storage config migration completed');
-          configLoaded = true;
-        } catch (e: unknown) {
-          console.error('Failed to migrate legacy config:', e);
-          const secureMessage = markSecureStoreIssue(e, 'write');
-          if (secureMessage) {
-            showGlobalNotification('error', secureMessage);
-          }
-        }
+      } catch (e: unknown) {
+        console.error('Failed to resolve backend cloud storage config:', e);
+        const secureMessage = markSecureStoreIssue(e, 'write');
+        showGlobalNotification(
+          'error',
+          secureMessage ?? `${t('cloudStorage:messages.configSsotFailed')}: ${getErrorMessage(e)}`,
+        );
       }
-      
-      // 从安全存储加载敏感凭据
+
+      if (!active) return;
+
+      // Only presence flags cross backend-to-frontend IPC. Secret values remain
+      // exclusively in secure storage and blank fields mean "keep existing".
       try {
-        const credentials = await cloudApi.getCredentials();
+        const status = await cloudApi.getCredentialStatus();
+        if (!active) return;
         setSecureStoreIssue(null);
-        if (credentials) {
-          if (credentials.webdavPassword) {
-            setWebdavConfig(prev => ({ ...prev, password: credentials.webdavPassword! }));
-          }
-          if (credentials.s3SecretAccessKey) {
-            setS3Config(prev => ({ ...prev, secretAccessKey: credentials.s3SecretAccessKey! }));
-          }
-          if (credentials.ftpPassword) {
-            setFtpConfig(prev => ({ ...prev, password: credentials.ftpPassword! }));
-          }
-          if (credentials.encryptionPassword) {
-            setEncryptionPassword(credentials.encryptionPassword);
-          }
-        }
+        setCredentialStatus(status);
       } catch (e: unknown) {
         console.warn('Failed to load credentials from secure storage:', e);
         const secureMessage = markSecureStoreIssue(e, 'read');
@@ -369,11 +266,16 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       }
     };
     
-    loadConfig();
+    void loadConfig();
+    return () => {
+      active = false;
+    };
   }, [markSecureStoreIssue, t]);
 
   // 构建配置对象
-  const buildConfig = useCallback((): cloudApi.CloudStorageConfig => {
+  const buildConfig = useCallback((
+    allowInsecureOverride = allowInsecure,
+  ): cloudApi.CloudStorageConfig => {
     let ftp: cloudApi.FtpConfig | undefined;
     if (provider === 'ftp') {
       // 从 endpoint URL 解析出 host/port/useTls
@@ -403,30 +305,34 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       s3: provider === 's3' ? s3Config : undefined,
       ftp,
       root,
+      allowInsecure: allowInsecureOverride,
       encryptionPassword: encryptionPassword || undefined,
     };
-  }, [provider, webdavConfig, s3Config, ftpConfig, root, encryptionPassword]);
+  }, [provider, webdavConfig, s3Config, ftpConfig, root, allowInsecure, encryptionPassword]);
 
   // 实际执行保存逻辑
-  const doSaveConfig = useCallback(async () => {
-    const config = buildConfig();
-    const safeConfig = {
-      ...config,
-      webdav: config.webdav ? { ...config.webdav, password: '' } : undefined,
-      s3: config.s3 ? { ...config.s3, secretAccessKey: '' } : undefined,
-      ftp: config.ftp ? { ...config.ftp, password: '' } : undefined,
-      encryptionPassword: undefined,
-    };
+  const doSaveConfig = useCallback(async (allowInsecureOverride = false) => {
+    const config = buildConfig(allowInsecureOverride);
 
     // 凭据是提交前置条件。只有安全存储成功后，才发布“已配置”的非敏感配置，
     // 避免安全存储（本机加密文件，见 secure_store.rs）写入失败留下无法工作的半配置状态。
     try {
-      await cloudApi.saveCredentials({
-        webdavPassword: webdavConfig.password || undefined,
-        s3SecretAccessKey: s3Config.secretAccessKey || undefined,
-        ftpPassword: ftpConfig.password || undefined,
-        encryptionPassword: encryptionPassword || undefined,
+      const storedCredentialStatus = await cloudApi.saveCredentials({
+        webdavPassword:
+          provider === 'webdav' && webdavConfig.password.trim()
+            ? webdavConfig.password
+            : undefined,
+        s3SecretAccessKey:
+          provider === 's3' && s3Config.secretAccessKey.trim()
+            ? s3Config.secretAccessKey
+            : undefined,
+        ftpPassword:
+          provider === 'ftp' && ftpConfig.password.trim()
+            ? ftpConfig.password
+            : undefined,
+        encryptionPassword: encryptionPassword.trim() ? encryptionPassword : undefined,
       });
+      setCredentialStatus(storedCredentialStatus);
       setSecureStoreIssue(null);
     } catch (e: unknown) {
       console.error('Failed to save credentials to secure storage:', e);
@@ -441,67 +347,102 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
 
     try {
-      await cloudApi.saveCloudConfigSsot(config);
+      const saved = await cloudApi.saveCloudConfigSsot(config);
+      const persistedAllowInsecure = saved.config?.allowInsecure ?? false;
+      setAllowInsecure(persistedAllowInsecure);
+      if (saved.config) {
+        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(saved.config));
+        localStorage.setItem(cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
+      }
     } catch (e: unknown) {
       console.error('Failed to save credential-free cloud config SSOT:', e);
       showGlobalNotification('error', t('cloudStorage:messages.configSsotFailed'));
       return;
     }
 
-    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(safeConfig));
     showGlobalNotification('success', t('cloudStorage:messages.configSaved'));
     onConfigChanged?.();
-  }, [buildConfig, webdavConfig.password, s3Config.secretAccessKey, ftpConfig.password, encryptionPassword, markSecureStoreIssue, t, onConfigChanged]);
+  }, [buildConfig, provider, webdavConfig.password, s3Config.secretAccessKey, ftpConfig.password, encryptionPassword, markSecureStoreIssue, t, onConfigChanged]);
 
   // 保存配置（先检查不安全连接）
   const saveConfig = useCallback(async () => {
     const config = buildConfig();
     if (
-      (config.provider === 'webdav' && !webdavConfig.password.trim()) ||
-      (config.provider === 's3' && !s3Config.secretAccessKey.trim()) ||
-      (config.provider === 'ftp' && !ftpConfig.password.trim())
+      (config.provider === 'webdav'
+        && !webdavConfig.password.trim()
+        && !credentialStatus.webdavPasswordConfigured) ||
+      (config.provider === 's3'
+        && !s3Config.secretAccessKey.trim()
+        && !credentialStatus.s3SecretAccessKeyConfigured) ||
+      (config.provider === 'ftp'
+        && !ftpConfig.password.trim()
+        && !credentialStatus.ftpPasswordConfigured)
     ) {
       showGlobalNotification('error', t('cloudStorage:errors.passwordRequired'));
       return;
     }
 
-    // FTP 明文连接警告：如果 endpoint 以 ftp:// 开头（非 ftps://），弹窗确认
-    if (config.provider === 'ftp' && ftpConfig.endpoint.trim().toLowerCase().startsWith('ftp://')) {
+    // Public cleartext transports require an explicit, persisted acknowledgement.
+    if (config.provider === 'ftp' && cloudApi.requiresInsecureTransportOptIn(config)) {
       setInsecureWarningAction('save');
       setShowInsecureFtpWarning(true);
       return;
     }
 
-    // WebDAV HTTP 连接警告：如果 endpoint 以 http:// 开头（非 https://），弹窗确认
-    if (config.provider === 'webdav' && webdavConfig.endpoint.trim().toLowerCase().startsWith('http://')) {
+    if (config.provider === 'webdav' && cloudApi.requiresInsecureTransportOptIn(config)) {
       setInsecureWarningAction('save');
       setShowInsecureWebdavWarning(true);
       return;
     }
 
-    // S3 HTTP 连接警告：如果 endpoint 以 http:// 开头（非 https://），弹窗确认
-    if (config.provider === 's3' && s3Config.endpoint.trim().toLowerCase().startsWith('http://')) {
-      setInsecureWarningAction('save');
-      setShowInsecureS3Warning(true);
+    // Public S3 has no insecure override. Loopback HTTP remains allowed.
+    if (config.provider === 's3' && cloudApi.isPublicHttpEndpoint(s3Config.endpoint)) {
+      showGlobalNotification('error', t('cloudStorage:s3.insecureWarning.description'));
       return;
     }
 
-    await doSaveConfig();
-  }, [buildConfig, webdavConfig.password, webdavConfig.endpoint, s3Config.secretAccessKey, s3Config.endpoint, ftpConfig, t, doSaveConfig]);
+    await doSaveConfig(false);
+  }, [buildConfig, credentialStatus, webdavConfig.password, s3Config.secretAccessKey, s3Config.endpoint, ftpConfig, t, doSaveConfig]);
 
   // 实际执行测试连接逻辑
-  const doTestConnection = useCallback(async () => {
+  const doTestConnection = useCallback(async (allowInsecureOverride = allowInsecure) => {
     setTesting(true);
     setConnectionStatus('unknown');
     try {
-      const config = buildConfig();
+      const config = buildConfig(allowInsecureOverride);
+      // Testing newly-entered credentials commits them once to secure storage;
+      // routine connection/status IPC below carries only empty placeholders.
+      const status = await cloudApi.saveCredentials({
+        webdavPassword:
+          provider === 'webdav' && webdavConfig.password.trim()
+            ? webdavConfig.password
+            : undefined,
+        s3SecretAccessKey:
+          provider === 's3' && s3Config.secretAccessKey.trim()
+            ? s3Config.secretAccessKey
+            : undefined,
+        ftpPassword:
+          provider === 'ftp' && ftpConfig.password.trim()
+            ? ftpConfig.password
+            : undefined,
+        encryptionPassword: encryptionPassword.trim() ? encryptionPassword : undefined,
+      });
+      setCredentialStatus(status);
+      // Persist every tested non-secret config first. Backend operations ignore
+      // IPC metadata and rebuild exclusively from this SSOT record.
+      const saved = await cloudApi.saveCloudConfigSsot(config);
+      if (saved.config) {
+        setAllowInsecure(saved.config.allowInsecure ?? false);
+        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(saved.config));
+        localStorage.setItem(cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
+      }
       await cloudApi.checkConnection(config);
       setConnectionStatus('connected');
       showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
       
       // 获取同步状态
-      const status = await cloudApi.getSyncStatus(config);
-      setSyncStatus(status);
+      const latestSyncStatus = await cloudApi.getSyncStatus(config);
+      setSyncStatus(latestSyncStatus);
       
       // 获取版本列表
       const versionList = await cloudApi.listVersions(config);
@@ -512,15 +453,24 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     } finally {
       setTesting(false);
     }
-  }, [buildConfig, t]);
+  }, [
+    allowInsecure,
+    buildConfig,
+    encryptionPassword,
+    ftpConfig.password,
+    provider,
+    s3Config.secretAccessKey,
+    t,
+    webdavConfig.password,
+  ]);
 
-  // 确认保存不安全 FTP/WebDAV/S3 配置
+  // 确认保存不安全 FTP/WebDAV 配置
   const handleConfirmInsecureFtpSave = useCallback(async () => {
     setShowInsecureFtpWarning(false);
     if (insecureWarningAction === 'test') {
-      await doTestConnection();
+      await doTestConnection(true);
     } else {
-      await doSaveConfig();
+      await doSaveConfig(true);
     }
     setInsecureWarningAction(null);
   }, [insecureWarningAction, doSaveConfig, doTestConnection]);
@@ -529,20 +479,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const handleConfirmInsecureWebdavSave = useCallback(async () => {
     setShowInsecureWebdavWarning(false);
     if (insecureWarningAction === 'test') {
-      await doTestConnection();
+      await doTestConnection(true);
     } else {
-      await doSaveConfig();
-    }
-    setInsecureWarningAction(null);
-  }, [insecureWarningAction, doSaveConfig, doTestConnection]);
-
-  // 确认保存不安全 S3 配置
-  const handleConfirmInsecureS3Save = useCallback(async () => {
-    setShowInsecureS3Warning(false);
-    if (insecureWarningAction === 'test') {
-      await doTestConnection();
-    } else {
-      await doSaveConfig();
+      await doSaveConfig(true);
     }
     setInsecureWarningAction(null);
   }, [insecureWarningAction, doSaveConfig, doTestConnection]);
@@ -556,16 +495,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       clearFailed = true;
       console.warn('Failed to clear cloud config backend SSOT:', e);
     }
-    // 清除安全存储中的凭据
-    try {
-      await cloudApi.deleteCredentials();
-    } catch (e: unknown) {
-      clearFailed = true;
-      console.warn('Failed to delete credentials from secure storage:', e);
-    }
+    // cloud_config_ssot_clear only succeeds after backend config and its
+    // secure-store credential record are both removed.
     // The local copy is only a UI cache; clear it even when one backend cleanup
     // failed so stale credentials are never reintroduced by the WebView.
     localStorage.removeItem(CONFIG_STORAGE_KEY);
+    localStorage.removeItem(cloudApi.CLOUD_STORAGE_LEGACY_STORAGE_KEY);
+    localStorage.setItem(cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
     // 重置状态
     setOpProgress(null);
     setHasStoredFtpConfig(false);
@@ -573,7 +509,16 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     setS3Config({ endpoint: '', bucket: '', accessKeyId: '', secretAccessKey: '', region: '', pathStyle: false });
     setFtpConfig({ host: '', port: 21, username: '', password: '', useTls: false, endpoint: '' });
     setRoot('deep-student-sync');
+    setAllowInsecure(false);
     setEncryptionPassword('');
+    if (!clearFailed) {
+      setCredentialStatus({
+        webdavPasswordConfigured: false,
+        s3SecretAccessKeyConfigured: false,
+        ftpPasswordConfigured: false,
+        encryptionPasswordConfigured: false,
+      });
+    }
     setConnectionStatus('unknown');
     setSyncStatus(null);
     setVersions([]);
@@ -588,29 +533,26 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 测试连接（先检查不安全连接）
   const testConnection = useCallback(async () => {
-    // FTP 明文连接警告
-    if (provider === 'ftp' && ftpConfig.endpoint.trim().toLowerCase().startsWith('ftp://')) {
+    const config = buildConfig();
+    if (provider === 'ftp' && cloudApi.requiresInsecureTransportOptIn(config)) {
       setInsecureWarningAction('test');
       setShowInsecureFtpWarning(true);
       return;
     }
 
-    // WebDAV HTTP 连接警告
-    if (provider === 'webdav' && webdavConfig.endpoint.trim().toLowerCase().startsWith('http://')) {
+    if (provider === 'webdav' && cloudApi.requiresInsecureTransportOptIn(config)) {
       setInsecureWarningAction('test');
       setShowInsecureWebdavWarning(true);
       return;
     }
 
-    // S3 HTTP 连接警告
-    if (provider === 's3' && s3Config.endpoint.trim().toLowerCase().startsWith('http://')) {
-      setInsecureWarningAction('test');
-      setShowInsecureS3Warning(true);
+    if (provider === 's3' && cloudApi.isPublicHttpEndpoint(s3Config.endpoint)) {
+      showGlobalNotification('error', t('cloudStorage:s3.insecureWarning.description'));
       return;
     }
 
-    await doTestConnection();
-  }, [provider, ftpConfig.endpoint, webdavConfig.endpoint, s3Config.endpoint, doTestConnection]);
+    await doTestConnection(false);
+  }, [provider, s3Config.endpoint, buildConfig, doTestConnection, t]);
 
   // 刷新状态
   const refreshStatus = useCallback(async () => {
@@ -630,7 +572,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const isConfigValid = useCallback(() => {
     if (provider === 'webdav') {
       const endpoint = webdavConfig.endpoint.trim();
-      if (!endpoint || !webdavConfig.username.trim()) return false;
+      if (
+        !endpoint
+        || !webdavConfig.username.trim()
+        || (!webdavConfig.password.trim() && !credentialStatus.webdavPasswordConfigured)
+      ) return false;
       // Validate URL format and protocol
       try {
         const url = new URL(endpoint);
@@ -639,7 +585,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       return true;
     } else if (provider === 's3') {
       const endpoint = s3Config.endpoint.trim();
-      if (!endpoint || !s3Config.bucket.trim() || !s3Config.accessKeyId.trim() || !s3Config.secretAccessKey.trim()) return false;
+      if (
+        !endpoint
+        || !s3Config.bucket.trim()
+        || !s3Config.accessKeyId.trim()
+        || (!s3Config.secretAccessKey.trim() && !credentialStatus.s3SecretAccessKeyConfigured)
+      ) return false;
       try {
         const url = new URL(endpoint);
         if (!['http:', 'https:'].includes(url.protocol)) return false;
@@ -650,14 +601,14 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       const endpoint = ftpConfig.endpoint.trim();
       const username = ftpConfig.username.trim();
       const password = ftpConfig.password.trim();
-      if (!endpoint || !username || !password) return false;
+      if (!endpoint || !username || (!password && !credentialStatus.ftpPasswordConfigured)) return false;
       try {
         const url = new URL(endpoint);
         if (!['ftp:', 'ftps:'].includes(url.protocol)) return false;
       } catch { return false; }
       return true;
     }
-  }, [provider, webdavConfig, s3Config, ftpConfig]);
+  }, [provider, webdavConfig, s3Config, ftpConfig, credentialStatus]);
 
   const resolveBackupId = useCallback((job: BackupJobSummary | null): string | null => {
     const stats = job?.result?.stats as Record<string, unknown> | undefined;
@@ -956,6 +907,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
   }, [buildConfig, pendingDeleteVersionId, refreshStatus, t]);
 
+  const persistedInsecureRisk =
+    allowInsecure && cloudApi.requiresInsecureTransportOptIn(buildConfig());
+  const persistedInsecureRiskMessage =
+    provider === 'ftp'
+      ? t('cloudStorage:ftp.insecureWarning.description')
+      : t('cloudStorage:webdav.insecureWarning.description');
+
   // 主要内容
   const content = (
     <div className={isDialog ? 'space-y-4' : 'space-y-6'}>
@@ -971,10 +929,19 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           </div>
         </div>
       )}
+      {persistedInsecureRisk && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          <WarningCircle size={18} className="mt-0.5 shrink-0" aria-hidden />
+          <p className="leading-relaxed">{persistedInsecureRiskMessage}</p>
+        </div>
+      )}
 
       {/* 存储类型选择 - 卡片式单选（<sm 上下堆叠，400px 双列卡片文案过挤） */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => setProvider('webdav')}
@@ -993,8 +960,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           <span className="text-xs text-muted-foreground line-clamp-2 whitespace-normal">
             {t('cloudStorage:provider.webdavDesc')}
           </span>
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => s3Enabled !== false && setProvider('s3')}
@@ -1020,9 +987,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               ? t('cloudStorage:provider.s3Disabled')
               : t('cloudStorage:provider.s3Desc')}
           </span>
-        </NotionButton>
+        </DsButton>
         {shouldShowFtpOption && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => setProvider('ftp')}
@@ -1041,7 +1008,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             <span className="text-xs text-warning line-clamp-2 whitespace-normal">
               {t('cloudStorage:provider.ftpDescExperimental')}
             </span>
-          </NotionButton>
+          </DsButton>
         )}
       </div>
 
@@ -1244,7 +1211,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
         {/* 操作按钮 */}
         <div className="flex flex-wrap gap-2">
-          <NotionButton
+          <DsButton
             variant="outline"
             onClick={testConnection}
             disabled={testing || !isConfigValid()}
@@ -1261,13 +1228,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 {t('cloudStorage:actions.testConnection')}
               </>
             )}
-          </NotionButton>
-          <NotionButton onClick={saveConfig} disabled={!isConfigValid()}>
+          </DsButton>
+          <DsButton onClick={saveConfig} disabled={!isConfigValid()}>
             {t('cloudStorage:actions.save')}
-          </NotionButton>
-          <NotionButton variant="danger" onClick={clearConfig}>
+          </DsButton>
+          <DsButton variant="danger" onClick={clearConfig}>
             {t('cloudStorage:actions.clearConfig')}
-          </NotionButton>
+          </DsButton>
         </div>
 
         {/* 同步状态 */}
@@ -1359,21 +1326,21 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 )}
 
                 {opProgress.error && (
-                  <NotionButton
+                  <DsButton
                     size="sm"
                     variant="ghost"
                     className="h-6 px-2 text-xs text-muted-foreground"
                     onClick={() => setOpProgress(null)}
                   >
                     关闭
-                  </NotionButton>
+                  </DsButton>
                 )}
               </div>
             )}
 
             {/* 快捷操作 */}
             <div className="flex flex-wrap gap-2 pt-2">
-              <NotionButton
+              <DsButton
                 size="sm"
                 onClick={handleBackupAndUpload}
                 disabled={uploading || downloading}
@@ -1389,15 +1356,15 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                     {t('cloudStorage:actions.uploadNow')}
                   </>
                 )}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 size="sm"
                 variant="outline"
                 onClick={() => setShowHistory(!showHistory)}
               >
                 <ClockCounterClockwise size={16} className="mr-2" />
                 {t('cloudStorage:actions.viewHistory')}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         )}
@@ -1423,7 +1390,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                       </div>
                     </div>
                     <div className="flex gap-1">
-                      <NotionButton
+                      <DsButton
                         size="sm"
                         variant="ghost"
                         title={t('cloudStorage:history.restore')}
@@ -1435,11 +1402,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                         ) : (
                           <Download size={16} />
                         )}
-                      </NotionButton>
+                      </DsButton>
                       {currentDeviceId === version.deviceId && (
                         isSmallScreen && confirmingDeleteVersionId === version.id ? (
                         // P2-12 移动端两段式行内确认：再点一次执行删除
-                        <NotionButton
+                        <DsButton
                           size="sm"
                           variant="danger"
                           className="whitespace-nowrap"
@@ -1450,9 +1417,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                         >
                           <Trash size={14} />
                           {t('common:actions.confirm_delete')}
-                        </NotionButton>
+                        </DsButton>
                       ) : (
-                        <NotionButton
+                        <DsButton
                           size="sm"
                           variant="ghost"
                           title={t('cloudStorage:history.delete')}
@@ -1467,7 +1434,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                           }}
                         >
                           <Trash size={16} className="text-destructive" />
-                        </NotionButton>
+                        </DsButton>
                         )
                       )}
                     </div>
@@ -1482,7 +1449,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 恢复确认对话框
   const restoreConfirmDialog = (
-    <NotionAlertDialog
+    <DsAlertDialog
       open={restoreConfirmOpen}
       onOpenChange={setRestoreConfirmOpen}
       title={t('cloudStorage:download.confirmTitle')}
@@ -1493,12 +1460,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       onConfirm={handleRestore}
     >
       <p className="text-sm font-medium text-destructive">{t('cloudStorage:download.warning')}</p>
-    </NotionAlertDialog>
+    </DsAlertDialog>
   );
 
   // 删除确认对话框
   const deleteConfirmDialog = (
-    <NotionAlertDialog
+    <DsAlertDialog
       open={deleteConfirmOpen}
       onOpenChange={setDeleteConfirmOpen}
       title={t('cloudStorage:history.delete')}
@@ -1512,7 +1479,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 不安全 FTP 连接警告对话框
   const insecureFtpWarningDialog = (
-    <NotionAlertDialog
+    <DsAlertDialog
       open={showInsecureFtpWarning}
       onOpenChange={(open) => { if (!open) setShowInsecureFtpWarning(false); }}
       title={t('cloudStorage:ftp.insecureWarning.title')}
@@ -1526,7 +1493,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 不安全 WebDAV 连接警告对话框
   const insecureWebdavWarningDialog = (
-    <NotionAlertDialog
+    <DsAlertDialog
       open={showInsecureWebdavWarning}
       onOpenChange={(open) => { if (!open) setShowInsecureWebdavWarning(false); }}
       title={t('cloudStorage:webdav.insecureWarning.title')}
@@ -1535,20 +1502,6 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       cancelText={t('common:actions.cancel')}
       confirmVariant="warning"
       onConfirm={handleConfirmInsecureWebdavSave}
-    />
-  );
-
-  // 不安全 S3 连接警告对话框
-  const insecureS3WarningDialog = (
-    <NotionAlertDialog
-      open={showInsecureS3Warning}
-      onOpenChange={(open) => { if (!open) setShowInsecureS3Warning(false); }}
-      title={t('cloudStorage:s3.insecureWarning.title')}
-      description={t('cloudStorage:s3.insecureWarning.description')}
-      confirmText={t('cloudStorage:s3.insecureWarning.confirm')}
-      cancelText={t('common:actions.cancel')}
-      confirmVariant="warning"
-      onConfirm={handleConfirmInsecureS3Save}
     />
   );
 
@@ -1570,7 +1523,6 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         {deleteConfirmDialog}
         {insecureFtpWarningDialog}
         {insecureWebdavWarningDialog}
-        {insecureS3WarningDialog}
       </>
     );
   }
@@ -1594,7 +1546,6 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       {deleteConfirmDialog}
       {insecureFtpWarningDialog}
       {insecureWebdavWarningDialog}
-      {insecureS3WarningDialog}
     </>
   );
 };

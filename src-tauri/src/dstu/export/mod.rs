@@ -509,8 +509,7 @@ fn export_folder_zip(
                         suggested_filename,
                         ..
                     } => (
-                        std::fs::read(&temp_path)
-                            .map_err(|e| format!("读取源文件失败: {}", e)),
+                        std::fs::read(&temp_path).map_err(|e| format!("读取源文件失败: {}", e)),
                         suggested_filename,
                     ),
                 };

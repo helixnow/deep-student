@@ -449,7 +449,10 @@ mod tests {
 
     #[test]
     fn test_evolution_tuning_key_constants_and_defaults() {
-        assert_eq!(CONFIG_KEY_EVOLUTION_STALE_HIT_DAYS, "evolution_stale_hit_days");
+        assert_eq!(
+            CONFIG_KEY_EVOLUTION_STALE_HIT_DAYS,
+            "evolution_stale_hit_days"
+        );
         assert_eq!(
             CONFIG_KEY_EVOLUTION_STALE_INJECTED_DAYS,
             "evolution_stale_injected_days"
@@ -458,7 +461,10 @@ mod tests {
             CONFIG_KEY_EVOLUTION_ARCHIVE_AFTER_STALE_DAYS,
             "evolution_archive_after_stale_days"
         );
-        assert_eq!(CONFIG_KEY_EVOLUTION_CATEGORY_QUOTA, "evolution_category_quota");
+        assert_eq!(
+            CONFIG_KEY_EVOLUTION_CATEGORY_QUOTA,
+            "evolution_category_quota"
+        );
         assert_eq!(
             CONFIG_KEY_EVOLUTION_SEMANTIC_MERGE_MAX_PAIRS,
             "evolution_semantic_merge_max_pairs"
@@ -467,7 +473,10 @@ mod tests {
             CONFIG_KEY_EVOLUTION_SEMANTIC_MERGE_MIN_SCORE,
             "evolution_semantic_merge_min_score"
         );
-        assert_eq!(CONFIG_KEY_EVOLUTION_STALE_MIN_HITS, "evolution_stale_min_hits");
+        assert_eq!(
+            CONFIG_KEY_EVOLUTION_STALE_MIN_HITS,
+            "evolution_stale_min_hits"
+        );
         // 在场保护窗口必须长于命中活跃窗口（在场是弱信号，只给更宽限的保护期）
         assert!(DEFAULT_EVOLUTION_STALE_INJECTED_DAYS > DEFAULT_EVOLUTION_STALE_HIT_DAYS);
         assert_eq!(DEFAULT_EVOLUTION_STALE_MIN_HITS, 2);

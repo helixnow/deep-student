@@ -395,6 +395,8 @@ pub struct UpdateQuestionParams {
     /// 结构化题目数据。None = 不更新；Some(Value::Null) = 清空该列
     /// （JSON 载荷传 null 会被 serde 解析为 None，前端如需清空请传 JSON null 字面量
     /// 的包装对象，或由 Rust 调用方显式传 Some(Value::Null)）。
+    /// 例外：question_type 切换到不使用 structured_data 的题型且本字段为 None 时，
+    /// 更新会自动把该列清为 NULL（见 should_clear_stale_structured_data）。
     #[serde(default)]
     pub structured_data: Option<serde_json::Value>,
     pub question_type: Option<QuestionType>,
@@ -410,6 +412,29 @@ pub struct UpdateQuestionParams {
     /// ACR R2-01：可选乐观锁基线；None 时保持旧行为（兼容存量调用）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_updated_at: Option<String>,
+}
+
+impl UpdateQuestionParams {
+    /// 题型切换后是否需要清空残留的 structured_data。
+    ///
+    /// 前端传 JSON null 会被 serde 解析为 None（=不更新），因此把 matching
+    /// 等结构化题型改成简答题时旧 {left,right,pairs} 会永远残留在 DB。规则：
+    /// 显式指定了新题型（question_type 为 Some）、新题型不使用 structured_data
+    /// （非 fill_blank/matching/ordering/numeric）、且本次未显式携带
+    /// structured_data 时，更新需把该列清为 NULL。question_type 为 None 的
+    /// 普通更新（如只改难度）绝不触发清空。
+    pub fn should_clear_stale_structured_data(&self) -> bool {
+        match (&self.question_type, &self.structured_data) {
+            (Some(next_type), None) => !matches!(
+                next_type,
+                QuestionType::FillBlank
+                    | QuestionType::Matching
+                    | QuestionType::Ordering
+                    | QuestionType::Numeric
+            ),
+            _ => false,
+        }
+    }
 }
 
 /// 历史记录
@@ -1863,14 +1888,23 @@ impl VfsQuestionRepo {
             ));
             param_idx += 1;
         }
-        if let Some(structured_data) = &params.structured_data {
-            set_clauses.push(format!("structured_data = ?{}", param_idx));
-            // Some(Value::Null) 表示清空该列（存 NULL 而非 "null" 文本）
-            let value: Option<String> = if structured_data.is_null() {
-                None
+        // Some(Value::Null) 显式清空该列（存 NULL 而非 "null" 文本）；
+        // 题型切换到不使用 structured_data 的类型且未显式携带时，同样清为 NULL，
+        // 避免 matching→short_answer 等切换后旧结构化数据永久残留
+        let structured_update: Option<Option<String>> =
+            if let Some(structured_data) = &params.structured_data {
+                Some(if structured_data.is_null() {
+                    None
+                } else {
+                    Some(structured_data.to_string())
+                })
+            } else if params.should_clear_stale_structured_data() {
+                Some(None)
             } else {
-                Some(structured_data.to_string())
+                None
             };
+        if let Some(value) = structured_update {
+            set_clauses.push(format!("structured_data = ?{}", param_idx));
             param_values.push(Box::new(value));
             param_idx += 1;
         }
@@ -2652,10 +2686,7 @@ impl VfsQuestionRepo {
                     Ok(serde_json::Value::Null) => None,
                     Ok(v) => Some(v),
                     Err(e) => {
-                        log::warn!(
-                            "[VFS::QuestionRepo] Failed to parse structured_data: {}",
-                            e
-                        );
+                        log::warn!("[VFS::QuestionRepo] Failed to parse structured_data: {}", e);
                         None
                     }
                 });

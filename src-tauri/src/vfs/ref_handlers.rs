@@ -839,10 +839,7 @@ fn resolve_single_ref_with_conn(
                         } else {
                             (
                                 Some(format!("[文档: {}]", title)),
-                                Some(format!(
-                                    "「{}」文本提取失败，该文档内容未能送入对话",
-                                    title
-                                )),
+                                Some(format!("「{}」文本提取失败，该文档内容未能送入对话", title)),
                             )
                         }
                     }

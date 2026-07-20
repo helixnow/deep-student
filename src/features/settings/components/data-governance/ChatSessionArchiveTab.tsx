@@ -12,7 +12,7 @@ import {
   Trash,
 } from '@phosphor-icons/react';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { ChatSession } from '@/features/chat/types/session';
@@ -253,7 +253,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => {
@@ -272,8 +272,8 @@ export const ChatSessionArchiveTab: React.FC = () => {
               <ArrowCounterClockwise size={14} />
             )}
             <span>{restoreLabel}</span>
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant={confirmingDelete ? 'danger' : 'ghost'}
             size="sm"
             onClick={() => permanentlyDeleteSession(session.id)}
@@ -292,7 +292,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
                 ? t('data:governance.archive_delete_confirm')
                 : t('data:governance.archive_delete')}
             </span>
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     );
@@ -314,7 +314,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
           </p>
         </div>
 
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={loadArchivedSessions}
@@ -326,7 +326,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
             <ArrowClockwise size={14} />
           )}
           <span>{t('common:actions.refresh')}</span>
-        </NotionButton>
+        </DsButton>
       </div>
 
       {loadError ? (
@@ -368,7 +368,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
                 </div>
                 {isArchivedGroup ? (
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       onClick={() => restoreGroup(group.id)}
@@ -381,8 +381,8 @@ export const ChatSessionArchiveTab: React.FC = () => {
                         <ArrowCounterClockwise size={14} />
                       )}
                       <span>{t('data:governance.archive_restore_group')}</span>
-                    </NotionButton>
-                    <NotionButton
+                    </DsButton>
+                    <DsButton
                       variant={confirmingDeleteGroup ? 'danger' : 'ghost'}
                       size="sm"
                       onClick={() => permanentlyDeleteGroup(group.id)}
@@ -401,7 +401,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
                           ? t('data:governance.archive_delete_group_confirm')
                           : t('data:governance.archive_delete_group')}
                       </span>
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 ) : null}
               </div>

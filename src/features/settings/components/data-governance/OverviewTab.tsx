@@ -22,7 +22,7 @@ import {
   XCircle,
 } from '@phosphor-icons/react';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/shad/Table';
 import { settingsQuietTableRowClassName } from '../SettingsCommon';
 import type {
@@ -156,10 +156,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 </p>
               </div>
             </div>
-            <NotionButton variant="ghost" size="sm" onClick={onOpenArchive} className="shrink-0">
+            <DsButton variant="ghost" size="sm" onClick={onOpenArchive} className="shrink-0">
               <Archive className="h-3.5 w-3.5" />
               {t('data:governance.archive_overview_action')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -172,7 +172,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             {t('data:governance.last_verification')}
           </div>
           {onVerifyLatestBackup && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={onVerifyLatestBackup}
@@ -185,7 +185,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 <Shield className="h-3.5 w-3.5 mr-1.5" />
               )}
               {t('data:governance.verify_latest_backup')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
 
@@ -330,14 +330,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </p>
           </div>
           <div className="flex gap-2">
-            <NotionButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8">
+            <DsButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8">
               <ArrowClockwise className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
               {t('common:actions.refresh')}
-            </NotionButton>
-            <NotionButton variant="default" size="sm" onClick={onRunHealthCheck} disabled={loading} className="h-8">
+            </DsButton>
+            <DsButton variant="default" size="sm" onClick={onRunHealthCheck} disabled={loading} className="h-8">
               <Shield className="h-3.5 w-3.5 mr-1.5" />
               {t('data:governance.run_health_check')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
 

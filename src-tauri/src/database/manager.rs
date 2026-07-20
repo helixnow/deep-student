@@ -298,9 +298,7 @@ mod tests {
         );
 
         // 屏障内：切换数据库文件同样被拒绝
-        assert!(manager
-            .switch_database(&manager.current_db_path())
-            .is_err());
+        assert!(manager.switch_database(&manager.current_db_path()).is_err());
 
         manager
             .exit_maintenance_mode()

@@ -31,12 +31,17 @@ let capturedListenerCallbacks: {
 const mockStartListening = vi.hoisted(() => vi.fn());
 const mockStopListening = vi.hoisted(() => vi.fn());
 const mockDialogSave = vi.hoisted(() => vi.fn());
+const mockGetBackupConfig = vi.hoisted(() => vi.fn());
+const mockSetBackupConfig = vi.hoisted(() => vi.fn());
+const mockTranslate = vi.hoisted(() => (key: string) => key);
 
 const mockDataGovernanceApi = vi.hoisted(() => ({
   getMigrationStatus: vi.fn(),
   runHealthCheck: vi.fn(),
   getBackupList: vi.fn(),
+  listBackupJobs: vi.fn(),
   listResumableJobs: vi.fn(),
+  getMaintenanceStatus: vi.fn(),
   getSyncStatus: vi.fn(),
   getAuditLogs: vi.fn(),
   runBackup: vi.fn(),
@@ -54,9 +59,21 @@ const mockDataGovernanceApi = vi.hoisted(() => ({
 
 vi.mock('@/api/dataGovernance', () => ({
   DataGovernanceApi: mockDataGovernanceApi,
+  getBackupConfig: mockGetBackupConfig,
+  setBackupConfig: mockSetBackupConfig,
   BACKUP_JOB_PROGRESS_EVENT: 'backup-job-progress',
   isBackupJobTerminal: (status: string) =>
     status === 'completed' || status === 'failed' || status === 'cancelled',
+}));
+
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-i18next')>()),
+  useTranslation: () => ({ t: mockTranslate }),
+}));
+
+vi.mock('@/utils/cloudStorageApi', () => ({
+  loadStoredCloudStorageConfigSafe: () => null,
+  loadStoredCloudStorageConfigWithCredentials: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('@/hooks/useBackupJobListener', () => ({
@@ -89,6 +106,22 @@ vi.mock('@/utils/tauriApi', () => ({
 // ============================================================================
 
 import { DataGovernanceDashboard } from '@/features/settings';
+
+beforeEach(() => {
+  mockDataGovernanceApi.listBackupJobs.mockResolvedValue([]);
+  mockDataGovernanceApi.getMaintenanceStatus.mockResolvedValue({
+    is_in_maintenance_mode: false,
+    operation: null,
+  });
+  mockGetBackupConfig.mockResolvedValue({
+    backupDirectory: null,
+    autoBackupEnabled: false,
+    autoBackupIntervalHours: 24,
+    maxBackupCount: null,
+    slimBackup: false,
+  });
+  mockSetBackupConfig.mockResolvedValue(undefined);
+});
 
 // ============================================================================
 // 默认 mock 数据

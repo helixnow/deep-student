@@ -540,9 +540,15 @@ fn is_learner_profile_json_shape(value: &serde_json::Value) -> bool {
     let Some(obj) = value.as_object() else {
         return false;
     };
-    ["version", "updated_at", "weak_points", "preferences", "goals"]
-        .iter()
-        .all(|key| obj.contains_key(*key))
+    [
+        "version",
+        "updated_at",
+        "weak_points",
+        "preferences",
+        "goals",
+    ]
+    .iter()
+    .all(|key| obj.contains_key(*key))
 }
 
 /// 供 sync 引擎 field_merge 调用的画像合并入口（纯函数）。

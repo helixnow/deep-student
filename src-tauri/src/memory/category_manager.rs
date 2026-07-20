@@ -504,10 +504,7 @@ mod tests {
         let member_ids = vec!["note_a".to_string(), "note_b".to_string()];
         let tags = MemoryCategoryManager::build_category_note_tags(&member_ids);
         assert_eq!(tags[0], "_system");
-        assert_eq!(
-            MemoryCategoryManager::extract_member_ids(&tags),
-            member_ids
-        );
+        assert_eq!(MemoryCategoryManager::extract_member_ids(&tags), member_ids);
         // 无成员标签的历史聚合笔记解析为空清单
         assert!(MemoryCategoryManager::extract_member_ids(&["_system".to_string()]).is_empty());
     }

@@ -24,7 +24,9 @@ struct FolderIdCache {
     folder_ids: Vec<String>,
 }
 
-use super::audit_log::{MemoryAuditEntry, MemoryAuditLogger, MemoryOpSource, MemoryOpType, OpTimer};
+use super::audit_log::{
+    MemoryAuditEntry, MemoryAuditLogger, MemoryOpSource, MemoryOpType, OpTimer,
+};
 use super::auto_extractor::MemoryAutoExtractor;
 use super::config::MemoryConfig;
 use super::llm_decision::{
@@ -300,6 +302,9 @@ pub struct MemoryListItem {
     /// 是否被标记为过时（tags 包含 `_stale`）
     #[serde(default)]
     pub is_stale: bool,
+    /// 是否已归档（tags 包含 `_archived`，演化归档后的记忆不参与常规检索/去重）
+    #[serde(default)]
+    pub is_archived: bool,
     /// 是否待去重复核（tags 包含 `_needs_dedup_review`，去重管线不可用时写入的显式记忆）
     #[serde(default)]
     pub needs_dedup_review: bool,
@@ -2487,12 +2492,7 @@ impl MemoryService {
     }
 
     /// 记录 LLM 决策熔断器状态变更（开启/关闭）到 memory_audit_log
-    fn log_decision_breaker_transition(
-        &self,
-        opened: bool,
-        failures: u32,
-        source: MemoryOpSource,
-    ) {
+    fn log_decision_breaker_transition(&self, opened: bool, failures: u32, source: MemoryOpSource) {
         self.audit_logger.log(&MemoryAuditEntry {
             source,
             operation: MemoryOpType::DecisionBreaker,
@@ -4514,10 +4514,7 @@ impl MemoryService {
         };
         if let Err(e) = tx_result {
             let _ = conn.execute_batch("ROLLBACK");
-            warn!(
-                "[Memory] Failed to commit usage signal transaction: {}",
-                e
-            );
+            warn!("[Memory] Failed to commit usage signal transaction: {}", e);
         }
     }
 

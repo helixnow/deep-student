@@ -928,7 +928,7 @@ impl VfsAttachmentRepo {
                 "pptx", // PowerPoint（pptx-to-md）
                 "epub", // 电子书（zip + quick-xml）
                 "rtf",  // 富文本（rtf-parser）
-                "txt", "md", "markdown", "html", "htm", // 文本格式
+                "txt", "md", "markdown", "html", "htm",  // 文本格式
                 "csv",  // CSV 表格（csv crate）
                 "json", // JSON 数据（serde_json）
                 "xml",  // XML 数据（quick-xml）

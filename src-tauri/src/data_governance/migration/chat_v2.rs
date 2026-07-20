@@ -431,6 +431,36 @@ pub const V20260720_COMPACTION_LINEAGE_AND_SYNC: MigrationDef = MigrationDef::ne
 ])
 .idempotent();
 
+/// V20260721: 工作区数据库删除两阶段日志。
+///
+/// 旧队列表继续作为仅包含 ready 项的同步 outbox；DELETE 触发器在云端发布成功、
+/// drain 删除 outbox 行时把持久 journal 原子推进到 published。
+pub const V20260721_WORKSPACE_DELETION_INTENT_JOURNAL: MigrationDef = MigrationDef::new(
+    20260721,
+    "workspace_deletion_intent_journal",
+    include_str!("../../../migrations/chat_v2/V20260721__workspace_deletion_intent_journal.sql"),
+)
+.with_expected_tables(&["__file_deletion_journal"])
+.with_expected_columns(&[
+    ("__file_deletion_journal", "operation_id"),
+    ("__file_deletion_journal", "target_kind"),
+    ("__file_deletion_journal", "entity_key"),
+    ("__file_deletion_journal", "local_path"),
+    ("__file_deletion_journal", "expected_hash"),
+    ("__file_deletion_journal", "state"),
+    ("__file_deletion_journal", "prepared_at"),
+    ("__file_deletion_journal", "ready_at"),
+    ("__file_deletion_journal", "published_at"),
+])
+.with_expected_indexes(&[
+    "idx__file_deletion_journal_recovery",
+    "idx__file_deletion_journal_target",
+])
+.with_expected_queries(&[
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg__workspace_deletion_queue_published'",
+])
+.idempotent();
+
 /// Chat V2 数据库迁移定义列表
 pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -455,6 +485,7 @@ pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260717_GROUP_PREFERRED_RUNTIME_ROOT,
     V20260719_FTS_BLOCKTYPE_COVERAGE,
     V20260720_COMPACTION_LINEAGE_AND_SYNC,
+    V20260721_WORKSPACE_DELETION_INTENT_JOURNAL,
 ];
 
 /// Chat V2 数据库迁移集合
@@ -474,7 +505,7 @@ mod tests {
     #[test]
     fn test_migration_set_structure() {
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
-        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 22); // V20260130 ~ V20260720
+        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 23); // V20260130 ~ V20260721
     }
 
     #[test]

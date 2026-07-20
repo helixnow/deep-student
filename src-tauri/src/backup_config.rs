@@ -8,10 +8,14 @@
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tauri::Manager;
 
 use crate::backup_common::log_and_skip_entry_err;
 use crate::data_governance::backup::zip_export::{export_backup_to_zip, ZipExportOptions};
-use crate::data_governance::backup::{assets::AssetBackupConfig, BackupManager, BackupTier};
+use crate::data_governance::backup::{
+    assets::AssetBackupConfig, BackupKeyPolicy, BackupManager, BackupManifest, BackupTier,
+    CoverageStatus, SnapshotKind,
+};
 use crate::database::{Database, DatabaseManager};
 use crate::models::AppError;
 
@@ -179,7 +183,7 @@ pub async fn clear_backup_directory(state: State<'_, AppState>) -> Result<()> {
 #[tauri::command]
 pub async fn get_default_backup_directory(state: State<'_, AppState>) -> Result<String> {
     let root = state.file_manager.get_writable_app_data_dir();
-    let backups_dir = root.join("backups");
+    let backups_dir = default_recovery_backup_dir(&root);
     Ok(backups_dir.to_string_lossy().to_string())
 }
 
@@ -195,6 +199,39 @@ use tokio::time::{sleep, Duration};
 
 /// 上次自动备份时间存储键
 const LAST_AUTO_BACKUP_KEY: &str = "backup.last_auto_backup_time";
+const AUTO_BACKUP_STATUS_KEY: &str = "backup.auto_backup_status";
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoBackupStatus {
+    pub last_attempt_at: Option<String>,
+    pub last_success_at: Option<String>,
+    pub last_error: Option<String>,
+    pub next_due_at: Option<String>,
+    pub last_job_id: Option<String>,
+}
+
+impl AutoBackupStatus {
+    fn load(database: &Database) -> Result<Self> {
+        match database.get_setting(AUTO_BACKUP_STATUS_KEY)? {
+            Some(value) => serde_json::from_str(&value)
+                .map_err(|e| AppError::internal(format!("解析自动备份状态失败: {}", e))),
+            None => Ok(Self::default()),
+        }
+    }
+
+    fn save(&self, database: &Database) -> Result<()> {
+        let value = serde_json::to_string(self)
+            .map_err(|e| AppError::internal(format!("序列化自动备份状态失败: {}", e)))?;
+        database.save_setting(AUTO_BACKUP_STATUS_KEY, &value)?;
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub async fn get_auto_backup_status(state: State<'_, AppState>) -> Result<AutoBackupStatus> {
+    AutoBackupStatus::load(&state.database)
+}
 
 /// 防止自动备份重入的标志
 static AUTO_BACKUP_RUNNING: AtomicBool = AtomicBool::new(false);
@@ -206,6 +243,34 @@ fn create_auto_backup_staging_dir(app_data_root: &Path) -> Result<tempfile::Temp
         .prefix("auto-backup-staging-")
         .tempdir_in(app_data_root)
         .map_err(|e| AppError::file_system(format!("创建自动备份暂存目录失败: {}", e)))
+}
+
+fn mark_portable_archive_after_secret_stripping(
+    manifest: &mut BackupManifest,
+    backup_subdir: &Path,
+) -> Result<()> {
+    manifest.files.retain(|file| {
+        !crate::backup_common::is_crypto_secret_backup_relative_path(Path::new(&file.path))
+    });
+    manifest.snapshot_kind = SnapshotKind::PartialOverlay;
+    manifest.required_components.clear();
+    manifest
+        .included_components
+        .retain(|component| component != "crypto");
+    manifest.key_policy = BackupKeyPolicy::ExcludedPortable;
+    let crypto = manifest
+        .coverage
+        .as_mut()
+        .and_then(|coverage| coverage.domains.get_mut("crypto"))
+        .ok_or_else(|| AppError::internal("自动备份覆盖账本缺少 crypto 域".to_string()))?;
+    crypto.status = CoverageStatus::Excluded;
+    crypto.paths.clear();
+    crypto.file_count = 0;
+    crypto.total_size = 0;
+    crypto.detail = Some("excluded from unencrypted portable archive".to_string());
+    manifest
+        .save_to_file(&backup_subdir.join("manifest.json"))
+        .map_err(|error| AppError::internal(format!("更新便携归档清单失败: {}", error)))
 }
 
 /// 自动备份调度器 - 在应用启动时调用
@@ -257,11 +322,20 @@ async fn check_and_perform_auto_backup(
     let config = BackupConfig::load(&database)?;
 
     if !config.auto_backup_enabled {
+        let mut status = AutoBackupStatus::load(&database)?;
+        if status.next_due_at.take().is_some() {
+            status.save(&database)?;
+        }
         return Ok(());
     }
 
     let last_backup_time = get_last_auto_backup_time(&database)?;
     let now = Utc::now();
+    let next_due = last_backup_time
+        .map(|last_time| {
+            last_time + chrono::Duration::hours(config.auto_backup_interval_hours as i64)
+        })
+        .unwrap_or(now);
 
     let should_backup = match last_backup_time {
         Some(last_time) => {
@@ -272,112 +346,271 @@ async fn check_and_perform_auto_backup(
     };
 
     if !should_backup {
+        let mut status = AutoBackupStatus::load(&database)?;
+        let next_due_at = next_due.to_rfc3339();
+        if status.next_due_at.as_deref() != Some(next_due_at.as_str()) {
+            status.next_due_at = Some(next_due_at);
+            status.save(&database)?;
+        }
         return Ok(());
     }
 
     tracing::info!("[AutoBackup] 开始执行自动备份...");
+    let job_ctx = app
+        .try_state::<crate::backup_job_manager::BackupJobManagerState>()
+        .map(|state| {
+            state
+                .get()
+                .create_job(crate::backup_job_manager::BackupJobKind::Export)
+        });
+    if let Some(job) = &job_ctx {
+        job.set_params(crate::backup_job_manager::BackupJobParams {
+            backup_type: Some("automatic_backup".to_string()),
+            include_assets: true,
+            ..Default::default()
+        });
+        job.mark_running(
+            crate::backup_job_manager::BackupJobPhase::Scan,
+            2.0,
+            Some("自动灾备：正在建立一致性快照".to_string()),
+            0,
+            4,
+        );
+    }
 
-    let root = file_manager.get_writable_app_data_dir();
-    let backups_dir = get_effective_backup_dir(&config, &root)?;
-    std::fs::create_dir_all(&backups_dir)
-        .map_err(|e| AppError::file_system(format!("创建自动备份输出目录失败: {}", e)))?;
+    let mut status = AutoBackupStatus::load(&database)?;
+    status.last_attempt_at = Some(now.to_rfc3339());
+    status.last_error = None;
+    status.last_job_id = job_ctx.as_ref().map(|job| job.job_id.clone());
+    status.next_due_at = Some(
+        (now + chrono::Duration::hours(config.auto_backup_interval_hours as i64)).to_rfc3339(),
+    );
+    if let Err(error) = status.save(&database) {
+        if let Some(job) = &job_ctx {
+            job.fail(format!("持久化自动备份尝试状态失败: {}", error));
+        }
+        return Err(error);
+    }
 
-    let _permit = crate::backup_common::BACKUP_GLOBAL_LIMITER
+    let attempt_app = app.clone();
+    let attempt_config = config.clone();
+    let attempt_file_manager = file_manager.clone();
+    let attempt_job = job_ctx.clone();
+    let permit_result = crate::backup_common::BACKUP_GLOBAL_LIMITER
         .clone()
         .acquire_owned()
         .await
-        .map_err(|_| AppError::internal("备份信号量已关闭".to_string()))?;
+        .map_err(|_| AppError::internal("备份信号量已关闭".to_string()));
+    let attempt_result: Result<(String, &'static str)> = match permit_result {
+        Err(error) => Err(error),
+        Ok(permit) => {
+            match tokio::task::spawn_blocking(move || -> Result<(String, &'static str)> {
+                let _permit = permit;
+                let root = attempt_file_manager.get_writable_app_data_dir();
+                let backups_dir = get_effective_backup_dir(&attempt_config, &root)?;
+                std::fs::create_dir_all(&backups_dir).map_err(|e| {
+                    AppError::file_system(format!("创建自动备份输出目录失败: {}", e))
+                })?;
 
-    // 原始备份包含 crypto/，只能暂存在本机应用数据目录。自定义目录可能由
-    // WebDAV/网盘客户端同步，因此只允许最终、已剥离密钥的 ZIP 写入那里。
-    let staging_dir = create_auto_backup_staging_dir(&root)?;
+                // 原始备份包含 crypto/，只能暂存在本机应用数据目录。自定义目录可能由
+                // WebDAV/网盘客户端同步，因此只允许最终、已剥离密钥的 ZIP 写入那里。
+                let staging_dir = create_auto_backup_staging_dir(&root)?;
 
-    let manager = BackupManager::with_config(
-        staging_dir.path().to_path_buf(),
-        crate::data_governance::backup::BackupConfig {
-            app_data_dir: root.clone(),
-            app_version: env!("CARGO_PKG_VERSION").to_string(),
-            progress_callback: None,
-        },
-    );
+                let manager = BackupManager::with_config(
+                    staging_dir.path().to_path_buf(),
+                    crate::data_governance::backup::BackupConfig {
+                        app_data_dir: root.clone(),
+                        app_version: env!("CARGO_PKG_VERSION").to_string(),
+                        progress_callback: None,
+                    },
+                );
 
-    let snapshot_barrier =
-        crate::data_governance::commands_backup::BackupSnapshotBarrier::enter(&app)
-            .map_err(|e| AppError::internal(format!("无法建立一致自动备份快照: {}", e)))?;
+                let snapshot_barrier =
+                    crate::data_governance::commands_backup::BackupSnapshotBarrier::enter(
+                        &attempt_app,
+                    )
+                    .map_err(|e| AppError::internal(format!("无法建立一致自动备份快照: {}", e)))?;
 
-    if config.slim_backup || config.backup_tiers.is_some() {
-        tracing::warn!(
+                if attempt_config.slim_backup || attempt_config.backup_tiers.is_some() {
+                    tracing::warn!(
             "[AutoBackup] 已忽略旧版精简/分级自动备份配置：自动恢复点必须是可替换数据槽的完整快照"
         );
-    }
-    let mut asset_config = AssetBackupConfig::default();
-    // 自动恢复点不能因默认体积阈值静默降级为 PartialOverlay。磁盘不足或文件
-    // 无法读取应让本次自动备份明确失败，而不是轮转一个事故时不可恢复的 ZIP。
-    // 同时把产物限制在导入器 20 GiB 的解压预算内，为数据库、manifest 和 ZIP
-    // 元数据保留余量；超限时 backup_with_assets 会标记 partial，下面的完整性校验
-    // 会拒绝发布。
-    const PORTABLE_ASSET_BUDGET: u64 = 16 * 1024 * 1024 * 1024;
-    asset_config.max_file_size = PORTABLE_ASSET_BUDGET;
-    asset_config.max_total_size = PORTABLE_ASSET_BUDGET;
-    let backup_result = manager.backup_with_assets(Some(asset_config));
-    snapshot_barrier
-        .release()
-        .map_err(|e| AppError::internal(format!("自动备份后恢复数据库连接失败: {}", e)))?;
-    let manifest =
-        backup_result.map_err(|e| AppError::internal(format!("完整自动备份失败: {}", e)))?;
-    manifest.validate_for_slot_restore().map_err(|e| {
-        AppError::internal(format!(
-            "自动备份未达到可恢复完整快照要求，已拒绝导出: {}",
-            e
-        ))
-    })?;
-    let database_bytes = manifest.files.iter().try_fold(0u64, |total, file| {
-        total
-            .checked_add(file.size)
-            .ok_or_else(|| AppError::internal("自动备份数据库大小统计溢出".to_string()))
-    })?;
-    let asset_bytes = manifest
-        .assets
-        .as_ref()
-        .map(|assets| assets.total_size)
-        .unwrap_or(0);
-    const PORTABLE_SNAPSHOT_BUDGET: u64 = 19 * 1024 * 1024 * 1024;
-    if database_bytes.saturating_add(asset_bytes) > PORTABLE_SNAPSHOT_BUDGET {
-        return Err(AppError::validation(
-            "自动备份超过 19 GiB 可移植恢复预算，已拒绝发布无法通过 ZIP 导入的恢复点".to_string(),
-        ));
-    }
+                }
+                let mut asset_config = AssetBackupConfig::default();
+                // 自动恢复点不能因默认体积阈值静默降级为 PartialOverlay。磁盘不足或文件
+                // 无法读取应让本次自动备份明确失败，而不是轮转一个事故时不可恢复的 ZIP。
+                // 同时把产物限制在导入器 20 GiB 的解压预算内，为数据库、manifest 和 ZIP
+                // 元数据保留余量；超限时 backup_with_assets 会标记 partial，下面的完整性校验
+                // 会拒绝发布。
+                const PORTABLE_ASSET_BUDGET: u64 = 16 * 1024 * 1024 * 1024;
+                asset_config.max_file_size = PORTABLE_ASSET_BUDGET;
+                asset_config.max_total_size = PORTABLE_ASSET_BUDGET;
+                let backup_result = manager.backup_with_assets(Some(asset_config));
+                snapshot_barrier.release().map_err(|e| {
+                    AppError::internal(format!("自动备份后恢复数据库连接失败: {}", e))
+                })?;
+                let mut manifest = backup_result
+                    .map_err(|e| AppError::internal(format!("完整自动备份失败: {}", e)))?;
+                if let Some(job) = &attempt_job {
+                    job.mark_running(
+            crate::backup_job_manager::BackupJobPhase::Verify,
+            65.0,
+            Some(
+                "一致性屏障已解除；资产与数据库必须同属一个快照，因此快照阶段无法进一步缩短"
+                    .to_string(),
+            ),
+            2,
+            4,
+        );
+                }
+                manifest.validate_for_slot_restore().map_err(|e| {
+                    AppError::internal(format!(
+                        "自动备份未达到可恢复完整快照要求，已拒绝导出: {}",
+                        e
+                    ))
+                })?;
+                let database_bytes = manifest.files.iter().try_fold(0u64, |total, file| {
+                    total
+                        .checked_add(file.size)
+                        .ok_or_else(|| AppError::internal("自动备份数据库大小统计溢出".to_string()))
+                })?;
+                let asset_bytes = manifest
+                    .assets
+                    .as_ref()
+                    .map(|assets| assets.total_size)
+                    .unwrap_or(0);
+                const PORTABLE_SNAPSHOT_BUDGET: u64 = 19 * 1024 * 1024 * 1024;
+                let snapshot_bytes = database_bytes
+                    .checked_add(asset_bytes)
+                    .ok_or_else(|| AppError::internal("自动备份总大小统计溢出".to_string()))?;
+                if snapshot_bytes > PORTABLE_SNAPSHOT_BUDGET {
+                    return Err(AppError::validation(
+                        "自动备份超过 19 GiB 可移植恢复预算，已拒绝发布无法通过 ZIP 导入的恢复点"
+                            .to_string(),
+                    ));
+                }
 
-    let backup_id = &manifest.backup_id;
-    let backup_subdir = staging_dir.path().join(backup_id);
+                let backup_id = &manifest.backup_id;
+                let backup_subdir = staging_dir.path().join(backup_id);
 
-    // 安全修复（审阅 15-backup-dataspace P1-1）：自动备份 ZIP 未加密且可能落在
-    // 网盘同步目录，打包前剥离 crypto/（明文主密钥 + 密钥种子 + 加密凭据），
-    // 避免"密文与解密密钥同渠道泄露"。恢复该 ZIP 后需重新输入 API Key。
-    let stripped = crate::backup_common::strip_crypto_secrets_from_backup_dir(&backup_subdir)?;
-    if stripped > 0 {
-        tracing::info!(
+                // 安全修复（审阅 15-backup-dataspace P1-1）：自动备份 ZIP 未加密且可能落在
+                // 网盘同步目录，打包前剥离 crypto/（明文主密钥 + 密钥种子 + 加密凭据），
+                // 避免"密文与解密密钥同渠道泄露"。恢复该 ZIP 后需重新输入 API Key。
+                let stripped =
+                    crate::backup_common::strip_crypto_secrets_from_backup_dir(&backup_subdir)?;
+                if stripped > 0 {
+                    mark_portable_archive_after_secret_stripping(&mut manifest, &backup_subdir)?;
+                    manager.verify_with_assets(&manifest).map_err(|error| {
+                        AppError::internal(format!("便携归档剥离密钥后校验失败: {}", error))
+                    })?;
+                    tracing::info!(
             "[AutoBackup] 已从备份产物剥离 {} 个敏感密钥条目（ZIP 不包含 API 凭据解密材料）",
             stripped
         );
-    }
+                }
 
-    let zip_name = format!("auto-backup-{}.zip", Utc::now().format("%Y%m%d-%H%M%S"));
-    let zip_options = ZipExportOptions {
-        output_path: Some(backups_dir.join(&zip_name)),
-        ..Default::default()
+                let zip_name = format!("auto-backup-{}.zip", Utc::now().format("%Y%m%d-%H%M%S"));
+                let zip_options = ZipExportOptions {
+                    output_path: Some(backups_dir.join(&zip_name)),
+                    ..Default::default()
+                };
+                if let Some(job) = &attempt_job {
+                    job.mark_running(
+                        crate::backup_job_manager::BackupJobPhase::Compress,
+                        80.0,
+                        Some("一致性屏障已解除；正在压缩并发布自动备份".to_string()),
+                        3,
+                        4,
+                    );
+                }
+                export_backup_to_zip(&backup_subdir, &zip_options)
+                    .map_err(|e| AppError::internal(format!("ZIP 导出失败: {}", e)))?;
+
+                tracing::info!("[AutoBackup] 自动备份完成: {}", zip_name);
+                if let Some(max_count) = attempt_config.max_backup_count {
+                    cleanup_old_backups(&backups_dir, max_count)?;
+                }
+
+                let recovery_kind = if manifest.validate_for_slot_restore().is_ok() {
+                    "disaster_recovery"
+                } else {
+                    "partial_archive"
+                };
+                Ok((zip_name, recovery_kind))
+            })
+            .await
+            {
+                Ok(result) => result,
+                Err(error) => Err(AppError::internal(format!(
+                    "自动备份后台 I/O 任务失败: {}",
+                    error
+                ))),
+            }
+        }
     };
-    export_backup_to_zip(&backup_subdir, &zip_options)
-        .map_err(|e| AppError::internal(format!("ZIP 导出失败: {}", e)))?;
 
-    tracing::info!("[AutoBackup] 自动备份完成: {}", zip_name);
-    save_last_auto_backup_time(&database, now)?;
-
-    if let Some(max_count) = config.max_backup_count {
-        cleanup_old_backups(&backups_dir, max_count)?;
+    match attempt_result {
+        Ok((artifact_name, recovery_kind)) => {
+            let completed_at = Utc::now();
+            if let Err(error) = save_last_auto_backup_time(&database, completed_at) {
+                if let Some(job) = &job_ctx {
+                    job.fail(format!("持久化自动备份成功时间失败: {}", error));
+                }
+                return Err(error);
+            }
+            status.last_success_at = Some(completed_at.to_rfc3339());
+            status.last_error = None;
+            status.next_due_at = Some(
+                (completed_at + chrono::Duration::hours(config.auto_backup_interval_hours as i64))
+                    .to_rfc3339(),
+            );
+            if let Err(error) = status.save(&database) {
+                if let Some(job) = &job_ctx {
+                    job.fail(format!("持久化自动备份成功状态失败: {}", error));
+                }
+                return Err(error);
+            }
+            if let Some(job) = &job_ctx {
+                job.complete(
+                    Some(format!("自动备份完成: {}", artifact_name)),
+                    4,
+                    4,
+                    crate::backup_job_manager::BackupJobResultPayload {
+                        success: true,
+                        output_path: Some(artifact_name.clone()),
+                        resolved_path: None,
+                        message: Some(if recovery_kind == "disaster_recovery" {
+                            "自动灾备恢复点已验证并发布".to_string()
+                        } else {
+                            "自动便携归档已发布（不允许替换完整数据槽）".to_string()
+                        }),
+                        error: None,
+                        duration_ms: None,
+                        stats: Some(serde_json::json!({
+                            "automatic": true,
+                            "recovery_kind": recovery_kind,
+                            "restorable": recovery_kind == "disaster_recovery",
+                        })),
+                        requires_restart: false,
+                        checkpoint_path: None,
+                        resumable_job_id: None,
+                    },
+                );
+            }
+            Ok(())
+        }
+        Err(error) => {
+            status.last_error = Some(error.to_string());
+            status.next_due_at = Some((now + chrono::Duration::hours(1)).to_rfc3339());
+            if let Err(save_error) = status.save(&database) {
+                tracing::error!("[AutoBackup] 持久化失败状态失败: {}", save_error);
+            }
+            if let Some(job) = &job_ctx {
+                job.fail(error.to_string());
+            }
+            Err(error)
+        }
     }
-
-    Ok(())
 }
 
 /// 获取有效的备份目录
@@ -394,8 +627,19 @@ pub(crate) fn get_effective_backup_dir(config: &BackupConfig, root: &Path) -> Re
                 )))
             }
         }
-        None => Ok(root.join("backups")),
+        None => Ok(default_recovery_backup_dir(root)),
     }
+}
+
+/// 默认恢复点必须位于 A/B 槽之外，否则切槽或清理非活动槽会同时丢失灾备。
+pub(crate) fn default_recovery_backup_dir(runtime_root: &Path) -> PathBuf {
+    // 识别 `<base>/slots/slotA|slotB` 形式并还原 base；否则把传入目录视为 base。
+    let base = runtime_root
+        .parent()
+        .filter(|parent| parent.file_name().is_some_and(|name| name == "slots"))
+        .and_then(Path::parent)
+        .unwrap_or(runtime_root);
+    base.join("recovery").join("backups")
 }
 
 /// 清理旧的自动备份，只保留指定数量
@@ -591,7 +835,20 @@ mod tests {
         let root = PathBuf::from("/tmp/test_root");
 
         let result = get_effective_backup_dir(&config, &root).unwrap();
-        assert_eq!(result, root.join("backups"), "无自定义目录时应返回默认路径");
+        assert_eq!(
+            result,
+            root.join("recovery").join("backups"),
+            "无自定义目录时应返回槽外 recovery 路径"
+        );
+    }
+
+    #[test]
+    fn test_default_backup_dir_escapes_runtime_slot() {
+        let root = PathBuf::from("/tmp/app/slots/slotA");
+        assert_eq!(
+            default_recovery_backup_dir(&root),
+            PathBuf::from("/tmp/app/recovery/backups")
+        );
     }
 
     #[test]

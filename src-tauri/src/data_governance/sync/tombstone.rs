@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use super::state::SyncStateStore;
 use super::{parse_flexible_timestamp_public, SyncError};
 use crate::cloud_storage::CloudStorage;
 
@@ -69,6 +70,30 @@ pub const LEGACY_WS_TOMBSTONE_KEY: &str = "data_governance/tombstones/workspaces
 pub const BLOB_TOMBSTONE_PREFIX: &str = "data_governance/tombstones/blobs/";
 pub const ASSET_TOMBSTONE_PREFIX: &str = "data_governance/tombstones/assets/";
 pub const WS_TOMBSTONE_PREFIX: &str = "data_governance/tombstones/workspaces/";
+pub const TOMBSTONE_EVENTS_PREFIX: &str = "data_governance/tombstone-events";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TombstoneEvent {
+    #[serde(default = "tombstone_event_format_version")]
+    pub format_version: u32,
+    pub device_id: String,
+    pub seq: u64,
+    pub operation_id: String,
+    pub kind: String,
+    pub object_id: String,
+    pub deleted_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relative_path: Option<String>,
+    /// 事件语义字段的 SHA-256（不包含本字段），用于 PUT 后回读校验。
+    #[serde(default)]
+    pub payload_hash: String,
+}
+
+fn tombstone_event_format_version() -> u32 {
+    4
+}
 
 /// 兼容旧调用方的 tombstone 保留期参数；当前安全策略不会按时间裁剪。
 pub const DEFAULT_TOMBSTONE_RETENTION_DAYS: u64 = 90;
@@ -134,6 +159,322 @@ fn device_component(device_id: &str) -> String {
     } else {
         cleaned
     }
+}
+
+fn event_operation_id(kind: &str, device_id: &str, object_id: &str, deleted_at: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    for part in [kind, device_id, object_id, deleted_at] {
+        hasher.update((part.len() as u64).to_be_bytes());
+        hasher.update(part.as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn event_payload_hash(event: &TombstoneEvent) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(event.format_version.to_be_bytes());
+    hasher.update(event.seq.to_be_bytes());
+    for value in [
+        event.device_id.as_str(),
+        event.operation_id.as_str(),
+        event.kind.as_str(),
+        event.object_id.as_str(),
+        event.deleted_at.as_str(),
+    ] {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value.as_bytes());
+    }
+    match event.size {
+        Some(size) => {
+            hasher.update([1]);
+            hasher.update(size.to_be_bytes());
+        }
+        None => hasher.update([0]),
+    }
+    match event.relative_path.as_deref() {
+        Some(path) => {
+            hasher.update([1]);
+            hasher.update((path.len() as u64).to_be_bytes());
+            hasher.update(path.as_bytes());
+        }
+        None => hasher.update([0]),
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn event_device_prefix(kind: &str, device_id: &str) -> String {
+    format!(
+        "{}/{}/{}/",
+        TOMBSTONE_EVENTS_PREFIX,
+        kind,
+        device_component(device_id)
+    )
+}
+
+fn event_key(event: &TombstoneEvent) -> String {
+    format!(
+        "{}{:020}-{}.json",
+        event_device_prefix(&event.kind, &event.device_id),
+        event.seq,
+        event.operation_id
+    )
+}
+
+fn event_seq_from_key(key: &str) -> Option<u64> {
+    key.rsplit('/')
+        .next()?
+        .split_once('-')?
+        .0
+        .parse::<u64>()
+        .ok()
+}
+
+fn event_operation_from_key(key: &str) -> Option<String> {
+    key.rsplit('/')
+        .next()?
+        .strip_suffix(".json")?
+        .split_once('-')
+        .map(|(_, operation_id)| operation_id.to_string())
+        .filter(|operation_id| !operation_id.is_empty())
+}
+
+async fn remote_instance_id(storage: &dyn CloudStorage) -> Result<String, SyncError> {
+    use sha2::{Digest, Sha256};
+    // Tombstone API 也被独立测试/调用，不能要求调用方先创建 instance.json。
+    // 使用不含凭据的 provider/root 绑定指纹隔离本地序号；云端 max(seq) 仍是最终防线。
+    let hint = storage.instance_binding_hint();
+    Ok(format!(
+        "tombstone:{}",
+        hex::encode(&Sha256::digest(hint.as_bytes())[..16])
+    ))
+}
+
+async fn list_event_keys(
+    storage: &dyn CloudStorage,
+    prefix: &str,
+) -> Result<Vec<String>, SyncError> {
+    let list = storage
+        .list_outcome(prefix)
+        .await
+        .map_err(|e| SyncError::Network(format!("列举不可变 tombstone 事件失败: {}", e)))?;
+    if list.truncated {
+        return Err(SyncError::Network(
+            "不可变 tombstone 事件列表被截断，拒绝推进水位".to_string(),
+        ));
+    }
+    Ok(list
+        .files
+        .into_iter()
+        .map(|file| file.key)
+        .filter(|key| key.ends_with(".json"))
+        .collect())
+}
+
+async fn put_event_verified(
+    storage: &dyn CloudStorage,
+    codec: &dyn PayloadCodec,
+    event: &TombstoneEvent,
+) -> Result<(), SyncError> {
+    let key = event_key(event);
+    let verify = |bytes: &[u8]| -> Result<bool, SyncError> {
+        let decoded = codec.decode(bytes)?;
+        Ok(serde_json::from_slice::<TombstoneEvent>(&decoded)
+            .map(|existing| {
+                !existing.payload_hash.is_empty()
+                    && event_payload_hash(&existing) == existing.payload_hash
+                    && existing == *event
+            })
+            .unwrap_or(false))
+    };
+    if let Some(existing) = storage
+        .get(&key)
+        .await
+        .map_err(|e| SyncError::Network(format!("回读不可变 tombstone 事件失败: {}", e)))?
+    {
+        if verify(&existing)? {
+            return Ok(());
+        }
+        return Err(SyncError::Network(format!(
+            "不可变 tombstone 事件 key 冲突且内容不同: {}",
+            key
+        )));
+    }
+
+    let json = serde_json::to_vec(event)
+        .map_err(|e| SyncError::Database(format!("序列化 tombstone 事件失败: {}", e)))?;
+    let payload = codec.encode(&json)?;
+    storage
+        .put(&key, &payload)
+        .await
+        .map_err(|e| SyncError::Network(format!("上传不可变 tombstone 事件失败: {}", e)))?;
+    let written = storage
+        .get(&key)
+        .await
+        .map_err(|e| SyncError::Network(format!("上传后回验 tombstone 事件失败: {}", e)))?
+        .ok_or_else(|| SyncError::Network(format!("上传后 tombstone 事件不存在: {}", key)))?;
+    if !verify(&written)? {
+        return Err(SyncError::Network(format!(
+            "上传后 tombstone 事件内容回验失败: {}",
+            key
+        )));
+    }
+    Ok(())
+}
+
+async fn publish_events(
+    storage: &dyn CloudStorage,
+    codec: &dyn PayloadCodec,
+    device_id: &str,
+    kind: &str,
+    entries: Vec<(String, String, Option<u64>, Option<String>)>,
+) -> Result<(), SyncError> {
+    let instance_id = remote_instance_id(storage).await?;
+    let state = SyncStateStore::open_default()?;
+    let cloud_keys = list_event_keys(storage, &event_device_prefix(kind, device_id)).await?;
+    let mut cloud_max = cloud_keys
+        .iter()
+        .filter_map(|key| event_seq_from_key(key))
+        .max()
+        .unwrap_or(0);
+    let mut operation_seqs = HashMap::new();
+    for key in cloud_keys {
+        let (Some(seq), Some(operation_id)) =
+            (event_seq_from_key(&key), event_operation_from_key(&key))
+        else {
+            continue;
+        };
+        if operation_seqs
+            .insert(operation_id.clone(), seq)
+            .is_some_and(|old| old != seq)
+        {
+            return Err(SyncError::Network(format!(
+                "同一 tombstone operation_id 对应多个序号: {}",
+                operation_id
+            )));
+        }
+    }
+    for (object_id, deleted_at, size, relative_path) in entries {
+        let operation_id = event_operation_id(kind, device_id, &object_id, &deleted_at);
+        let cloud_existing_seq = operation_seqs.get(&operation_id).copied();
+        let seq = state.reserve_tombstone_event_seq_with_existing(
+            &instance_id,
+            device_id,
+            kind,
+            &operation_id,
+            cloud_max,
+            cloud_existing_seq,
+        )?;
+        let mut event = TombstoneEvent {
+            format_version: tombstone_event_format_version(),
+            device_id: device_id.to_string(),
+            seq,
+            operation_id,
+            kind: kind.to_string(),
+            object_id,
+            deleted_at,
+            size,
+            relative_path,
+            payload_hash: String::new(),
+        };
+        event.payload_hash = event_payload_hash(&event);
+        put_event_verified(storage, codec, &event).await?;
+        cloud_max = cloud_max.max(seq);
+        operation_seqs.insert(event.operation_id.clone(), seq);
+    }
+    Ok(())
+}
+
+async fn download_events(
+    storage: &dyn CloudStorage,
+    codec: &dyn PayloadCodec,
+    kind: &str,
+) -> Result<Vec<TombstoneEvent>, SyncError> {
+    let prefix = format!("{}/{}/", TOMBSTONE_EVENTS_PREFIX, kind);
+    let mut events = Vec::new();
+    for key in list_event_keys(storage, &prefix).await? {
+        let bytes = storage
+            .get(&key)
+            .await
+            .map_err(|e| SyncError::Network(format!("读取 tombstone 事件失败 {}: {}", key, e)))?
+            .ok_or_else(|| SyncError::Network(format!("已列举的 tombstone 事件消失: {}", key)))?;
+        let decoded = codec.decode(&bytes)?;
+        let event: TombstoneEvent = serde_json::from_slice(&decoded)
+            .map_err(|e| SyncError::Database(format!("解析 tombstone 事件失败 {}: {}", key, e)))?;
+        let expected_operation_id = event_operation_id(
+            &event.kind,
+            &event.device_id,
+            &event.object_id,
+            &event.deleted_at,
+        );
+        if event.format_version != tombstone_event_format_version()
+            || event.kind != kind
+            || event.operation_id != expected_operation_id
+            || event_key(&event) != key
+            || event.payload_hash.is_empty()
+            || event_payload_hash(&event) != event.payload_hash
+        {
+            return Err(SyncError::Database(format!(
+                "tombstone 事件路径与内容不一致: {}",
+                key
+            )));
+        }
+        events.push(event);
+    }
+    events.sort_by(|a, b| {
+        a.device_id
+            .cmp(&b.device_id)
+            .then_with(|| a.seq.cmp(&b.seq))
+            .then_with(|| a.operation_id.cmp(&b.operation_id))
+    });
+    Ok(events)
+}
+
+async fn download_events_after<F>(
+    storage: &dyn CloudStorage,
+    codec: &dyn PayloadCodec,
+    kind: &str,
+    watermark_for: &mut F,
+) -> Result<(Vec<TombstoneEvent>, Vec<TombstoneWatermarkAdvance>), SyncError>
+where
+    F: FnMut(&str) -> Result<u64, SyncError>,
+{
+    let mut grouped: std::collections::BTreeMap<String, Vec<TombstoneEvent>> =
+        std::collections::BTreeMap::new();
+    for event in download_events(storage, codec, kind).await? {
+        grouped
+            .entry(event.device_id.clone())
+            .or_default()
+            .push(event);
+    }
+
+    let mut selected = Vec::new();
+    let mut advances = Vec::new();
+    for (device_id, events) in grouped {
+        let source = format!("event:{}", device_id);
+        let watermark = watermark_for(&source)?;
+        let mut expected = watermark.saturating_add(1);
+        let mut max_seq = watermark;
+        for event in events.into_iter().filter(|event| event.seq > watermark) {
+            if event.seq != expected {
+                return Err(SyncError::Network(format!(
+                    "不可变 tombstone 事件断层：设备 {} 期望 seq={}，实际 seq={}",
+                    device_id, expected, event.seq
+                )));
+            }
+            max_seq = event.seq;
+            expected = expected.saturating_add(1);
+            selected.push(event);
+        }
+        if max_seq > watermark {
+            advances.push(TombstoneWatermarkAdvance {
+                source_device_id: source,
+                last_applied_offset: max_seq,
+            });
+        }
+    }
+    Ok((selected, advances))
 }
 
 pub fn blob_device_tombstone_key(device_id: &str) -> String {
@@ -404,6 +745,25 @@ pub async fn download_blob_tombstones(
             }
         }
     }
+    for event in download_events(storage, codec, "blobs").await? {
+        merge_blob_tombstones(
+            &mut merged,
+            BlobTombstones {
+                entries: [(
+                    event.object_id,
+                    BlobTombstoneEntry {
+                        deleted_at: event.deleted_at,
+                        device_id: event.device_id,
+                        size: event.size,
+                        relative_path: event.relative_path,
+                    },
+                )]
+                .into_iter()
+                .collect(),
+                updated_at: String::new(),
+            },
+        );
+    }
     Ok(merged)
 }
 
@@ -461,6 +821,29 @@ where
         }
     }
 
+    let (events, event_advances) =
+        download_events_after(storage, codec, "blobs", &mut watermark_for).await?;
+    advances.extend(event_advances);
+    for event in events {
+        merge_blob_tombstones(
+            &mut merged,
+            BlobTombstones {
+                entries: [(
+                    event.object_id,
+                    BlobTombstoneEntry {
+                        deleted_at: event.deleted_at,
+                        device_id: event.device_id,
+                        size: event.size,
+                        relative_path: event.relative_path,
+                    },
+                )]
+                .into_iter()
+                .collect(),
+                updated_at: String::new(),
+            },
+        );
+    }
+
     Ok((merged, advances))
 }
 
@@ -512,6 +895,24 @@ pub async fn download_asset_tombstones(
                 merge_asset_tombstones(&mut merged, manifest);
             }
         }
+    }
+    for event in download_events(storage, codec, "assets").await? {
+        merge_asset_tombstones(
+            &mut merged,
+            AssetTombstones {
+                entries: [(
+                    event.object_id,
+                    AssetTombstoneEntry {
+                        deleted_at: event.deleted_at,
+                        device_id: event.device_id,
+                        size: event.size,
+                    },
+                )]
+                .into_iter()
+                .collect(),
+                updated_at: String::new(),
+            },
+        );
     }
     Ok(merged)
 }
@@ -571,6 +972,28 @@ where
         }
     }
 
+    let (events, event_advances) =
+        download_events_after(storage, codec, "assets", &mut watermark_for).await?;
+    advances.extend(event_advances);
+    for event in events {
+        merge_asset_tombstones(
+            &mut merged,
+            AssetTombstones {
+                entries: [(
+                    event.object_id,
+                    AssetTombstoneEntry {
+                        deleted_at: event.deleted_at,
+                        device_id: event.device_id,
+                        size: event.size,
+                    },
+                )]
+                .into_iter()
+                .collect(),
+                updated_at: String::new(),
+            },
+        );
+    }
+
     Ok((merged, advances))
 }
 
@@ -618,6 +1041,23 @@ pub async fn download_workspace_tombstones(
                 merge_workspace_tombstones(&mut merged, manifest);
             }
         }
+    }
+    for event in download_events(storage, codec, "workspaces").await? {
+        merge_workspace_tombstones(
+            &mut merged,
+            WorkspaceTombstones {
+                entries: [(
+                    event.object_id,
+                    WorkspaceTombstoneEntry {
+                        deleted_at: event.deleted_at,
+                        device_id: event.device_id,
+                    },
+                )]
+                .into_iter()
+                .collect(),
+                updated_at: String::new(),
+            },
+        );
     }
     Ok(merged)
 }
@@ -673,6 +1113,27 @@ where
         }
     }
 
+    let (events, event_advances) =
+        download_events_after(storage, codec, "workspaces", &mut watermark_for).await?;
+    advances.extend(event_advances);
+    for event in events {
+        merge_workspace_tombstones(
+            &mut merged,
+            WorkspaceTombstones {
+                entries: [(
+                    event.object_id,
+                    WorkspaceTombstoneEntry {
+                        deleted_at: event.deleted_at,
+                        device_id: event.device_id,
+                    },
+                )]
+                .into_iter()
+                .collect(),
+                updated_at: String::new(),
+            },
+        );
+    }
+
     Ok((merged, advances))
 }
 
@@ -704,6 +1165,26 @@ pub async fn upload_blob_tombstones(
     device_id: &str,
     mut manifest: BlobTombstones,
 ) -> Result<(), SyncError> {
+    publish_events(
+        storage,
+        codec,
+        device_id,
+        "blobs",
+        manifest
+            .entries
+            .iter()
+            .map(|(object_id, entry)| {
+                (
+                    object_id.clone(),
+                    entry.deleted_at.clone(),
+                    entry.size,
+                    entry.relative_path.clone(),
+                )
+            })
+            .collect(),
+    )
+    .await?;
+    // v3 兼容双写：旧客户端继续读取每设备清单；v4 客户端以不可变事件为准并双读。
     manifest.updated_at = Utc::now().to_rfc3339();
     let bytes = serde_json::to_vec(&manifest)
         .map_err(|e| SyncError::Database(format!("序列化 blob tombstone 失败: {}", e)))?;
@@ -722,6 +1203,25 @@ pub async fn upload_asset_tombstones(
     device_id: &str,
     mut manifest: AssetTombstones,
 ) -> Result<(), SyncError> {
+    publish_events(
+        storage,
+        codec,
+        device_id,
+        "assets",
+        manifest
+            .entries
+            .iter()
+            .map(|(object_id, entry)| {
+                (
+                    object_id.clone(),
+                    entry.deleted_at.clone(),
+                    entry.size,
+                    None,
+                )
+            })
+            .collect(),
+    )
+    .await?;
     manifest.updated_at = Utc::now().to_rfc3339();
     let bytes = serde_json::to_vec(&manifest)
         .map_err(|e| SyncError::Database(format!("序列化 asset tombstone 失败: {}", e)))?;
@@ -740,6 +1240,18 @@ pub async fn upload_workspace_tombstones(
     device_id: &str,
     mut manifest: WorkspaceTombstones,
 ) -> Result<(), SyncError> {
+    publish_events(
+        storage,
+        codec,
+        device_id,
+        "workspaces",
+        manifest
+            .entries
+            .iter()
+            .map(|(object_id, entry)| (object_id.clone(), entry.deleted_at.clone(), None, None))
+            .collect(),
+    )
+    .await?;
     manifest.updated_at = Utc::now().to_rfc3339();
     let bytes = serde_json::to_vec(&manifest)
         .map_err(|e| SyncError::Database(format!("序列化 workspace tombstone 失败: {}", e)))?;
@@ -1101,5 +1613,45 @@ mod tests {
         let back: BlobTombstones = serde_json::from_str(&json).unwrap();
         assert_eq!(back.entries.len(), 1);
         assert_eq!(back.entries["hash1"].device_id, "dev1");
+    }
+
+    #[test]
+    fn immutable_event_identity_and_key_are_stable() {
+        let operation_id = event_operation_id(
+            "assets",
+            "device-a",
+            "active/images/a.png",
+            "2026-07-20T00:00:00Z",
+        );
+        assert_eq!(operation_id.len(), 64);
+        assert_eq!(
+            operation_id,
+            event_operation_id(
+                "assets",
+                "device-a",
+                "active/images/a.png",
+                "2026-07-20T00:00:00Z"
+            )
+        );
+        let mut event = TombstoneEvent {
+            format_version: 4,
+            device_id: "device-a".to_string(),
+            seq: 1,
+            operation_id,
+            kind: "assets".to_string(),
+            object_id: "active/images/a.png".to_string(),
+            deleted_at: "2026-07-20T00:00:00Z".to_string(),
+            size: Some(3),
+            relative_path: None,
+            payload_hash: String::new(),
+        };
+        event.payload_hash = event_payload_hash(&event);
+        let key = event_key(&event);
+        assert!(key.starts_with("data_governance/tombstone-events/assets/device-a/"));
+        assert_eq!(event_seq_from_key(&key), Some(1));
+        assert_eq!(
+            serde_json::from_slice::<TombstoneEvent>(&serde_json::to_vec(&event).unwrap()).unwrap(),
+            event
+        );
     }
 }

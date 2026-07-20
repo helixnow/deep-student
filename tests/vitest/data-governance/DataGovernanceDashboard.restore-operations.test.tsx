@@ -29,7 +29,9 @@ const mockDataGovernanceApi = vi.hoisted(() => ({
   getMigrationStatus: vi.fn(),
   runHealthCheck: vi.fn(),
   getBackupList: vi.fn(),
+  listBackupJobs: vi.fn(),
   listResumableJobs: vi.fn(),
+  getMaintenanceStatus: vi.fn(),
   getSyncStatus: vi.fn(),
   getAuditLogs: vi.fn(),
   runBackup: vi.fn(),
@@ -44,6 +46,9 @@ const mockDataGovernanceApi = vi.hoisted(() => ({
   scanAssets: vi.fn(),
   checkDiskSpaceForRestore: vi.fn(),
 }));
+const mockGetBackupConfig = vi.hoisted(() => vi.fn());
+const mockSetBackupConfig = vi.hoisted(() => vi.fn());
+const mockTranslate = vi.hoisted(() => (key: string) => key);
 
 // Mock @tauri-apps/plugin-dialog for importZip file picker
 const mockOpenDialog = vi.hoisted(() => vi.fn());
@@ -56,9 +61,16 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 
 vi.mock('@/api/dataGovernance', () => ({
   DataGovernanceApi: mockDataGovernanceApi,
+  getBackupConfig: mockGetBackupConfig,
+  setBackupConfig: mockSetBackupConfig,
   BACKUP_JOB_PROGRESS_EVENT: 'backup-job-progress',
   isBackupJobTerminal: (status: string) =>
     status === 'completed' || status === 'failed' || status === 'cancelled',
+}));
+
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-i18next')>()),
+  useTranslation: () => ({ t: mockTranslate }),
 }));
 
 const mockRestartApp = vi.hoisted(() => vi.fn());
@@ -81,6 +93,24 @@ vi.mock('@/hooks/useBackupJobListener', () => ({
 
 vi.mock('@/features/settings/components/MediaCacheSection', () => ({
   MediaCacheSection: () => <div data-testid="media-cache-section">cache-section</div>,
+}));
+
+vi.mock('@/utils/cloudStorageApi', () => ({
+  loadStoredCloudStorageConfigSafe: () => null,
+  loadStoredCloudStorageConfigWithCredentials: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock('@/features/settings/components/data-governance/OverviewTab', () => ({
+  OverviewTab: () => <div data-testid="overview-tab" />,
+}));
+vi.mock('@/features/settings/components/data-governance/SyncTab', () => ({
+  SyncTab: () => <div data-testid="sync-tab" />,
+}));
+vi.mock('@/features/settings/components/data-governance/AuditTab', () => ({
+  AuditTab: () => <div data-testid="audit-tab" />,
+}));
+vi.mock('@/features/settings/components/data-governance/ChatSessionArchiveTab', () => ({
+  ChatSessionArchiveTab: () => <div data-testid="archive-tab" />,
 }));
 
 import { DataGovernanceDashboard } from '@/features/settings/components/DataGovernanceDashboard';
@@ -134,6 +164,22 @@ const sampleBackupList = [
 const exportBackupButtonName = /导出备份|data:governance\.export_backup/i;
 const useTieredBackupName = /使用分层备份|data:governance\.use_tiered_backup/i;
 const importButtonName = /导入|data:governance\.import_button/i;
+
+beforeEach(() => {
+  mockDataGovernanceApi.listBackupJobs.mockResolvedValue([]);
+  mockDataGovernanceApi.getMaintenanceStatus.mockResolvedValue({
+    is_in_maintenance_mode: false,
+    operation: null,
+  });
+  mockGetBackupConfig.mockResolvedValue({
+    backupDirectory: null,
+    autoBackupEnabled: false,
+    autoBackupIntervalHours: 24,
+    maxBackupCount: null,
+    slimBackup: false,
+  });
+  mockSetBackupConfig.mockResolvedValue(undefined);
+});
 
 /** 导航到备份 Tab 的辅助函数 */
 async function navigateToBackupTab() {
@@ -1029,18 +1075,11 @@ describe('DataGovernanceDashboard disk space check for restore', () => {
     });
   });
 
-  it('continues restore when disk space check API fails (graceful degradation)', async () => {
+  it('fails closed when disk space check API fails', async () => {
     // 磁盘空间检查 API 失败
     mockDataGovernanceApi.checkDiskSpaceForRestore.mockRejectedValue(
       new Error('Disk space check service unavailable'),
     );
-    mockDataGovernanceApi.restoreBackup.mockResolvedValue({
-      job_id: 'restore-degraded-001',
-      kind: 'import',
-      status: 'queued',
-      message: 'started',
-    });
-
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
@@ -1068,16 +1107,16 @@ describe('DataGovernanceDashboard disk space check for restore', () => {
       expect(mockDataGovernanceApi.checkDiskSpaceForRestore).toHaveBeenCalled();
     });
 
-    // 尽管磁盘空间检查失败，restoreBackup 应仍然被调用（graceful degradation）
-    await waitFor(() => {
-      expect(mockDataGovernanceApi.restoreBackup).toHaveBeenCalledWith(
-        sampleBackupList[0].path,
-      );
-    });
+    // 查询失败意味着无法证明目标卷有足够空间，恢复和监听都不得启动。
+    expect(mockDataGovernanceApi.restoreBackup).not.toHaveBeenCalled();
+    expect(mockStartListening).not.toHaveBeenCalled();
 
-    // startListening 应被调用
     await waitFor(() => {
-      expect(mockStartListening).toHaveBeenCalledWith('restore-degraded-001');
+      expect(
+        screen.getByRole('button', {
+          name: exportBackupButtonName,
+        }),
+      ).toBeEnabled();
     });
   });
 });

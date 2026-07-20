@@ -25,24 +25,96 @@ const MAX_DOCUMENT_SIZE: usize = 200 * 1024 * 1024;
 /// 修改时必须同步前端清单与 docs/design/file-format-registry.md。
 pub const PLAIN_TEXT_CODE_EXTENSIONS: &[&str] = &[
     // 脚本 / 通用语言
-    "py", "pyw", "ipynb", "rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "java", "c", "cpp", "cc",
-    "cxx", "h", "hpp", "hh", "cs", "go", "rb", "php", "swift", "kt", "kts", "scala",
+    "py",
+    "pyw",
+    "ipynb",
+    "rs",
+    "ts",
+    "tsx",
+    "js",
+    "jsx",
+    "mjs",
+    "cjs",
+    "java",
+    "c",
+    "cpp",
+    "cc",
+    "cxx",
+    "h",
+    "hpp",
+    "hh",
+    "cs",
+    "go",
+    "rb",
+    "php",
+    "swift",
+    "kt",
+    "kts",
+    "scala",
     // Shell / 批处理
-    "sh", "bash", "zsh", "fish", "ps1", "bat", "cmd",
+    "sh",
+    "bash",
+    "zsh",
+    "fish",
+    "ps1",
+    "bat",
+    "cmd",
     // 数据 / 配置
-    "sql", "yaml", "yml", "toml", "ini", "cfg", "conf", "properties", "env", "log",
+    "sql",
+    "yaml",
+    "yml",
+    "toml",
+    "ini",
+    "cfg",
+    "conf",
+    "properties",
+    "env",
+    "log",
     // 文档标记
-    "tex", "bib", "rst", "adoc",
+    "tex",
+    "bib",
+    "rst",
+    "adoc",
     // 前端框架单文件组件
-    "vue", "svelte", "astro",
+    "vue",
+    "svelte",
+    "astro",
     // 其他语言
-    "lua", "pl", "pm", "r", "jl", "dart",
+    "lua",
+    "pl",
+    "pm",
+    "r",
+    "jl",
+    "dart",
     // 构建 / 工程配置
-    "gradle", "cmake", "makefile", "mk", "dockerfile", "gitignore", "editorconfig",
+    "gradle",
+    "cmake",
+    "makefile",
+    "mk",
+    "dockerfile",
+    "gitignore",
+    "editorconfig",
     // Schema / 合约
-    "proto", "graphql", "gql", "prisma", "sol",
+    "proto",
+    "graphql",
+    "gql",
+    "prisma",
+    "sol",
     // 汇编与其他
-    "asm", "s", "vb", "fs", "fsx", "ex", "exs", "erl", "hrl", "clj", "cljs", "hs", "elm", "nim",
+    "asm",
+    "s",
+    "vb",
+    "fs",
+    "fsx",
+    "ex",
+    "exs",
+    "erl",
+    "hrl",
+    "clj",
+    "cljs",
+    "hs",
+    "elm",
+    "nim",
     "zig",
 ];
 
@@ -782,13 +854,13 @@ impl DocumentParser {
         // 从文件名确定文件类型
         // ★ 无扩展名文件（如 Makefile/Dockerfile）与点开头文件（.gitignore/.env）：
         //   回退用完整小写文件名（去掉前导点）作为扩展名候选，命中纯文本清单则按 txt 处理
-        let extension = match Path::new(file_name).extension().and_then(|ext| ext.to_str()) {
+        let extension = match Path::new(file_name)
+            .extension()
+            .and_then(|ext| ext.to_str())
+        {
             Some(ext) => ext.to_lowercase(),
             None => {
-                let fallback = file_name
-                    .trim()
-                    .trim_start_matches('.')
-                    .to_lowercase();
+                let fallback = file_name.trim().trim_start_matches('.').to_lowercase();
                 if is_plain_text_code_extension(&fallback) {
                     fallback
                 } else {

@@ -12,7 +12,7 @@ use super::sync::{
     classification::{sync_classification_registry, SyncCategory},
     ChangeOperation, MergeStrategy, SyncChangeWithData, SyncManager,
 };
-use crate::backup_common::BACKUP_GLOBAL_LIMITER;
+use crate::backup_common::{DataGovernanceOperationGuard, DataGovernanceOperationKind};
 use crate::backup_job_manager::{
     BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams, BackupJobPhase,
     BackupJobResultPayload, BackupJobStatus, BackupJobSummary, PersistedJob,
@@ -50,7 +50,40 @@ pub(super) fn get_active_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, Str
 
 /// 获取备份目录
 pub(super) fn get_backup_dir(app_data_dir: &Path) -> PathBuf {
-    app_data_dir.join("backups")
+    crate::backup_config::default_recovery_backup_dir(app_data_dir)
+}
+
+const RECOVERY_KIND_DISASTER: &str = "disaster_recovery";
+const RECOVERY_KIND_PARTIAL_ARCHIVE: &str = "partial_archive";
+
+fn classify_recovery_kind(manifest: &super::backup::BackupManifest) -> (&'static str, bool) {
+    if manifest.validate_for_slot_restore().is_ok() {
+        (RECOVERY_KIND_DISASTER, true)
+    } else {
+        (RECOVERY_KIND_PARTIAL_ARCHIVE, false)
+    }
+}
+
+/// 恢复预算必须使用 checked arithmetic；清单大小一旦溢出就不能证明空间充足。
+pub(super) fn checked_restore_disk_budget<I>(
+    file_sizes: I,
+    asset_size: u64,
+) -> Result<(u64, u64), String>
+where
+    I: IntoIterator<Item = u64>,
+{
+    let files_size = file_sizes.into_iter().try_fold(0u64, |total, size| {
+        total
+            .checked_add(size)
+            .ok_or_else(|| "恢复备份文件大小统计溢出，已拒绝继续".to_string())
+    })?;
+    let backup_size = files_size
+        .checked_add(asset_size)
+        .ok_or_else(|| "恢复备份总大小统计溢出，已拒绝继续".to_string())?;
+    let required_bytes = backup_size
+        .checked_mul(2)
+        .ok_or_else(|| "恢复磁盘预算计算溢出，已拒绝继续".to_string())?;
+    Ok((backup_size, required_bytes))
 }
 
 /// [P0-11/M12] 打开同步路径专用的数据库连接，统一设置 busy_timeout。
@@ -850,6 +883,19 @@ mod tests {
             .unwrap();
         assert_eq!(title, "local-existing");
     }
+
+    #[test]
+    fn restore_disk_budget_uses_checked_arithmetic() {
+        assert_eq!(checked_restore_disk_budget([10, 20], 5).unwrap(), (35, 70));
+        assert!(checked_restore_disk_budget([u64::MAX], 1).is_err());
+        assert!(checked_restore_disk_budget([u64::MAX / 2 + 1], 0).is_err());
+    }
+
+    #[test]
+    fn governance_backup_directory_is_outside_slots() {
+        let base = PathBuf::from("/tmp/deep-student");
+        assert_eq!(get_backup_dir(&base), base.join("recovery").join("backups"));
+    }
 }
 
 pub(super) fn validate_backup_id(raw_backup_id: &str) -> Result<String, String> {
@@ -918,7 +964,7 @@ pub(super) fn ensure_existing_path_within_backup_dir(
 pub(super) async fn acquire_backup_global_permit(
     job_ctx: &BackupJobContext,
     waiting_message: &str,
-) -> Option<tokio::sync::OwnedSemaphorePermit> {
+) -> Option<DataGovernanceOperationGuard> {
     // 向前端暴露“正在等待”状态（不阻塞 UI）
     job_ctx.mark_running(
         BackupJobPhase::Queued,
@@ -928,7 +974,10 @@ pub(super) async fn acquire_backup_global_permit(
         0,
     );
 
-    let fut = BACKUP_GLOBAL_LIMITER.clone().acquire_owned();
+    let fut = DataGovernanceOperationGuard::acquire(
+        DataGovernanceOperationKind::Backup,
+        Some(job_ctx.job_id.clone()),
+    );
     tokio::pin!(fut);
 
     loop {
@@ -1152,17 +1201,18 @@ pub async fn data_governance_get_backup_list(
     // 转换为响应格式
     let backups: Vec<BackupInfoResponse> = manifests
         .iter()
-        .map(|m| {
-            let db_size: u64 = m.files.iter().map(|f| f.size).sum();
+        .map(|m| -> Result<BackupInfoResponse, String> {
             let asset_size: u64 = m.assets.as_ref().map(|a| a.total_size).unwrap_or(0);
-            let size = db_size + asset_size;
+            let (size, _) =
+                checked_restore_disk_budget(m.files.iter().map(|file| file.size), asset_size)?;
             let databases: Vec<String> = m
                 .files
                 .iter()
                 .filter_map(|f| f.database_id.clone())
                 .collect();
+            let (recovery_kind, restorable) = classify_recovery_kind(m);
 
-            BackupInfoResponse {
+            Ok(BackupInfoResponse {
                 path: m.backup_id.clone(),
                 created_at: m.created_at.clone(),
                 size,
@@ -1177,10 +1227,12 @@ pub async fn data_governance_get_backup_list(
                         super::backup::SnapshotKind::LegacyUnknown => "legacy_unknown".to_string(),
                     }
                 },
+                recovery_kind: recovery_kind.to_string(),
+                restorable,
                 databases,
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
 
     info!(
         "[data_governance] 备份列表获取成功: {} 个备份",
@@ -1209,11 +1261,10 @@ pub async fn data_governance_delete_backup(
     info!("[data_governance] 删除备份: {}", validated_backup_id);
 
     // 全局互斥：避免与正在运行的备份/恢复/ZIP 导入导出并发
-    let _permit = BACKUP_GLOBAL_LIMITER
-        .clone()
-        .acquire_owned()
-        .await
-        .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
+    let _operation =
+        DataGovernanceOperationGuard::acquire(DataGovernanceOperationKind::Backup, None)
+            .await
+            .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
 
     let app_data_dir = get_app_data_dir(&app)?;
     let backup_dir = get_backup_dir(&app_data_dir);
@@ -1280,16 +1331,25 @@ pub async fn data_governance_check_disk_space_for_restore(
         .find(|m| m.backup_id == validated_backup_id)
         .ok_or_else(|| format!("未找到备份: {}", validated_backup_id))?;
 
-    let db_size: u64 = manifest.files.iter().map(|f| f.size).sum();
     let asset_size: u64 = manifest.assets.as_ref().map(|a| a.total_size).unwrap_or(0);
-    let backup_size = db_size + asset_size;
+    let (backup_size, required_bytes) =
+        checked_restore_disk_budget(manifest.files.iter().map(|file| file.size), asset_size)?;
 
-    // 所需空间 = 备份大小 × 2（解压 + 恢复预留）
-    let required_bytes = backup_size.saturating_mul(2);
-
-    // 获取应用数据目录所在磁盘的可用空间
+    // 必须查询实际恢复目标槽所在卷。目标槽或 DataSpaceManager 不可用时无法
+    // 证明查询的是正确卷，按 fail-close 处理，禁止回退到根卷或当前工作目录。
+    let data_space = crate::data_space::get_data_space_manager()
+        .ok_or_else(|| "数据空间管理器未初始化，无法确定恢复目标卷".to_string())?;
+    let restore_target = data_space.inactive_dir();
+    if !restore_target.is_dir() {
+        return Err(format!(
+            "恢复目标槽目录不存在或不是目录，无法确定目标卷: {}",
+            sanitize_path_for_user(&restore_target)
+        ));
+    }
+    let restore_target =
+        std::fs::canonicalize(&restore_target).map_err(|e| format!("解析恢复目标卷失败: {}", e))?;
     let available_bytes =
-        crate::backup_common::get_available_disk_space(&app_data_dir).map_err(|e| {
+        crate::backup_common::get_available_disk_space(&restore_target).map_err(|e| {
             error!("[data_governance] 获取可用磁盘空间失败: {}", e);
             format!("获取可用磁盘空间失败: {}", e)
         })?;
@@ -1337,11 +1397,10 @@ pub async fn data_governance_verify_backup(
     let manager = BackupManager::new(backup_dir.clone());
 
     // 全局互斥：避免与正在运行的备份/恢复/ZIP 导入导出并发
-    let _permit = BACKUP_GLOBAL_LIMITER
-        .clone()
-        .acquire_owned()
-        .await
-        .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
+    let _operation =
+        DataGovernanceOperationGuard::acquire(DataGovernanceOperationKind::Verify, None)
+            .await
+            .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
 
     // 获取备份列表并查找指定的备份
     let manifests = manager
@@ -1430,11 +1489,10 @@ pub async fn data_governance_auto_verify_latest_backup(
     let manager = BackupManager::new(backup_dir.clone());
 
     // 全局互斥：避免与正在运行的备份/恢复/ZIP 导入导出并发
-    let _permit = BACKUP_GLOBAL_LIMITER
-        .clone()
-        .acquire_owned()
-        .await
-        .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
+    let _operation =
+        DataGovernanceOperationGuard::acquire(DataGovernanceOperationKind::Verify, None)
+            .await
+            .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
 
     // 获取备份列表并找到最新的备份
     let manifests = manager
@@ -1588,6 +1646,9 @@ pub struct BackupInfoResponse {
     pub created_at: String,
     pub size: u64,
     pub backup_type: String,
+    /// `disaster_recovery` 可替换完整槽；`partial_archive` 仅供检查/导出。
+    pub recovery_kind: String,
+    pub restorable: bool,
     pub databases: Vec<String>,
 }
 
@@ -1890,18 +1951,10 @@ async fn execute_backup_with_progress(
         return;
     }
 
-    let snapshot_barrier = match BackupSnapshotBarrier::enter(&app) {
-        Ok(barrier) => barrier,
-        Err(error) => {
-            job_ctx.fail(format!("无法建立一致备份快照: {}", error));
-            return;
-        }
-    };
-
-    // 执行完整备份（含可选资产）
-    let result = if include_assets {
-        // 构建资产备份配置
-        let mut asset_config = if let Some(types) = asset_types {
+    // 构建资产备份配置。完整复制、哈希和资产扫描都是阻塞 I/O，必须离开
+    // async runtime；为保证数据库与资产属于同一 snapshot，屏障覆盖整个 staging 阶段。
+    let asset_config = if include_assets {
+        let mut config = if let Some(types) = asset_types {
             let parsed_types: Vec<AssetType> = types
                 .iter()
                 .filter_map(|s| AssetType::from_str(s))
@@ -1917,40 +1970,57 @@ async fn execute_backup_with_progress(
         } else {
             AssetBackupConfig::default()
         };
-        if asset_config.asset_types == AssetType::all() {
-            asset_config.max_file_size = u64::MAX;
-            asset_config.max_total_size = u64::MAX;
+        if config.asset_types == AssetType::all() {
+            config.max_file_size = u64::MAX;
+            config.max_total_size = u64::MAX;
         }
-
-        // 阶段 3: 复制数据库和资产
-        job_ctx.mark_running(
-            BackupJobPhase::Compress,
-            30.0,
-            Some("正在备份数据库和资产文件...".to_string()),
-            0,
-            4,
-        );
-
-        manager.backup_with_assets(Some(asset_config))
+        Some(config)
     } else {
-        // 阶段 3: 复制数据库
-        job_ctx.mark_running(
+        None
+    };
+
+    let blocking_app = app.clone();
+    let blocking_job = job_ctx.clone();
+    let blocking_result = tokio::task::spawn_blocking(move || {
+        let snapshot_barrier = BackupSnapshotBarrier::enter(&blocking_app)
+            .map_err(|error| format!("无法建立一致备份快照: {}", error))?;
+        blocking_job.mark_running(
             BackupJobPhase::Compress,
             30.0,
-            Some("正在备份数据库...".to_string()),
+            Some(if include_assets {
+                "一致性屏障内：正在 staging 数据库、资产并计算哈希...".to_string()
+            } else {
+                "一致性屏障内：正在 staging 数据库并计算哈希...".to_string()
+            }),
             0,
             4,
         );
-
-        manager.backup_full()
+        let result = match asset_config {
+            Some(config) => manager.backup_with_assets(Some(config)),
+            None => manager.backup_full(),
+        };
+        snapshot_barrier.release()?;
+        Ok::<_, String>((manager, result))
+    })
+    .await;
+    let (manager, result) = match blocking_result {
+        Ok(Ok(result)) => result,
+        Ok(Err(error)) => {
+            job_ctx.fail(error);
+            return;
+        }
+        Err(error) => {
+            job_ctx.fail(format!("备份阻塞任务异常终止: {}", error));
+            return;
+        }
     };
-    if let Err(error) = snapshot_barrier.release() {
-        job_ctx.fail(error);
-        return;
-    }
 
     let result = result.and_then(|manifest| {
-        manifest.validate_for_slot_restore()?;
+        // 请求包含全部资产时，调用方期待的是灾备恢复点，任何覆盖缺口都必须失败。
+        // 显式不含资产的备份仍可作为 partial archive 发布，但不得进入槽恢复。
+        if include_assets {
+            manifest.validate_for_slot_restore()?;
+        }
         Ok(manifest)
     });
 
@@ -1973,9 +2043,19 @@ async fn execute_backup_with_progress(
     match result {
         Ok(manifest) => {
             // 计算备份大小
-            let db_size: u64 = manifest.files.iter().map(|f| f.size).sum();
             let asset_size: u64 = manifest.assets.as_ref().map(|a| a.total_size).unwrap_or(0);
-            let backup_size = db_size + asset_size;
+            let (backup_size, _) = match checked_restore_disk_budget(
+                manifest.files.iter().map(|file| file.size),
+                asset_size,
+            ) {
+                Ok(budget) => budget,
+                Err(error) => {
+                    job_ctx.fail(error);
+                    return;
+                }
+            };
+            let db_size = backup_size - asset_size;
+            let (recovery_kind, restorable) = classify_recovery_kind(&manifest);
 
             let databases_backed_up: Vec<String> = manifest
                 .files
@@ -2089,6 +2169,8 @@ async fn execute_backup_with_progress(
                     "backup_size": backup_size,
                     "db_files": manifest.files.len(),
                     "asset_files": manifest.assets.as_ref().map(|a| a.total_files).unwrap_or(0),
+                    "recovery_kind": recovery_kind,
+                    "restorable": restorable,
                     "auto_verify": {
                         "is_valid": verify_is_valid,
                         "errors": verify_errors,
@@ -2643,16 +2725,37 @@ async fn execute_tiered_backup_with_progress(
         );
     }
 
-    let snapshot_barrier = match BackupSnapshotBarrier::enter(&app) {
-        Ok(barrier) => barrier,
+    // 分层 staging 同样包含 SQLite copy、文件哈希与资产复制，全部放入
+    // spawn_blocking；当前清单模型要求资产和数据库共享 epoch，因此保持长屏障。
+    let blocking_app = app.clone();
+    let blocking_job = job_ctx.clone();
+    let blocking_result = tokio::task::spawn_blocking(move || {
+        let snapshot_barrier = BackupSnapshotBarrier::enter(&blocking_app)
+            .map_err(|error| format!("无法建立一致备份快照: {}", error))?;
+        blocking_job.mark_running(
+            BackupJobPhase::Compress,
+            20.0,
+            Some("一致性屏障内：正在 staging 分层数据并计算哈希...".to_string()),
+            0,
+            total_databases as u64,
+        );
+        let result = manager.backup_tiered(&selection);
+        snapshot_barrier.release()?;
+        Ok::<_, String>((manager, result))
+    })
+    .await;
+    let (manager, result) = match blocking_result {
+        Ok(Ok(result)) => result,
+        Ok(Err(error)) => {
+            job_ctx.fail(error);
+            return;
+        }
         Err(error) => {
-            job_ctx.fail(format!("无法建立一致备份快照: {}", error));
+            job_ctx.fail(format!("分层备份阻塞任务异常终止: {}", error));
             return;
         }
     };
-
-    // 执行实际的分层备份
-    let result = match manager.backup_tiered(&selection) {
+    let result = match result {
         Ok(r) => r,
         Err(e) => {
             error!("[data_governance] 分层备份失败: {}", e);
@@ -2680,10 +2783,6 @@ async fn execute_tiered_backup_with_progress(
             return;
         }
     };
-    if let Err(error) = snapshot_barrier.release() {
-        job_ctx.fail(error);
-        return;
-    }
 
     // 阶段 4: 资产备份 (80-95%) - 仅在包含资产时
     if include_assets {
@@ -2717,7 +2816,23 @@ async fn execute_tiered_backup_with_progress(
 
     // 构建结果统计
     let duration_ms = start.elapsed().as_millis() as u64;
-    let total_size: u64 = result.manifest.files.iter().map(|f| f.size).sum();
+    let asset_size = result
+        .manifest
+        .assets
+        .as_ref()
+        .map(|assets| assets.total_size)
+        .unwrap_or(0);
+    let (total_size, _) = match checked_restore_disk_budget(
+        result.manifest.files.iter().map(|file| file.size),
+        asset_size,
+    ) {
+        Ok(budget) => budget,
+        Err(error) => {
+            job_ctx.fail(error);
+            return;
+        }
+    };
+    let (recovery_kind, restorable) = classify_recovery_kind(&result.manifest);
 
     // 分层备份成功后自动验证完整性
     let auto_verify_result = manager.verify(&result.manifest);
@@ -2770,6 +2885,8 @@ async fn execute_tiered_backup_with_progress(
         "total_files": result.manifest.files.len(),
         "total_size": total_size,
         "skipped_files_count": result.skipped_files.len(),
+        "recovery_kind": recovery_kind,
+        "restorable": restorable,
         "auto_verify": {
             "is_valid": verify_is_valid,
             "errors": verify_errors,

@@ -1149,8 +1149,7 @@ impl LanceVectorStore {
     #[cfg(feature = "lance")]
     async fn should_bypass_ann(tbl: &Table) -> bool {
         let key = ensured_table_key(tbl.dataset_uri(), tbl.name());
-        let passed_set =
-            ANN_THRESHOLD_PASSED.get_or_init(|| std::sync::Mutex::new(HashSet::new()));
+        let passed_set = ANN_THRESHOLD_PASSED.get_or_init(|| std::sync::Mutex::new(HashSet::new()));
         if passed_set
             .lock()
             .map(|set| set.contains(&key))
@@ -1531,10 +1530,9 @@ impl LanceVectorStore {
         let mut builder = tbl.merge_insert(&["chunk_id"]);
         builder.when_matched_update_all(None);
         builder.when_not_matched_insert_all();
-        builder
-            .execute(Box::new(iter))
-            .await
-            .map_err(|e| AppError::database(format!("写入 Lance 扩展表失败 (merge_insert): {}", e)))?;
+        builder.execute(Box::new(iter)).await.map_err(|e| {
+            AppError::database(format!("写入 Lance 扩展表失败 (merge_insert): {}", e))
+        })?;
         Ok(())
     }
 

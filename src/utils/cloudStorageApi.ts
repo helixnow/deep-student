@@ -61,6 +61,11 @@ export interface CloudStorageConfig {
   ftp?: FtpConfig;
   /** 根目录路径 */
   root?: string;
+  /**
+   * Persisted acknowledgement for public cleartext WebDAV/FTP.
+   * Loopback endpoints never require this override.
+   */
+  allowInsecure?: boolean;
   /** 端到端加密密码（可选）
    *
    * 非空时后端上传 ZIP 前会用 AES-256-GCM + Argon2id 加密，下载时自动解密。
@@ -75,16 +80,19 @@ export type SafeCloudStorageConfig =
       provider: 'webdav';
       webdav: Pick<WebDavConfig, 'endpoint' | 'username'>;
       root?: string;
+      allowInsecure?: boolean;
     }
   | {
       provider: 's3';
       s3: Pick<S3Config, 'endpoint' | 'bucket' | 'accessKeyId' | 'region' | 'pathStyle'>;
       root?: string;
+      allowInsecure?: boolean;
     }
   | {
       provider: 'ftp';
       ftp: Pick<FtpConfig, 'host' | 'port' | 'username' | 'useTls'>;
       root?: string;
+      allowInsecure?: boolean;
     };
 
 export interface CloudConfigSsotResponse {
@@ -110,6 +118,7 @@ export function toSafeCloudStorageConfig(config: CloudStorageConfig): SafeCloudS
           username: config.webdav.username,
         },
         ...(config.root ? { root: config.root } : {}),
+        ...(config.allowInsecure ? { allowInsecure: true } : {}),
       };
     }
     case 's3': {
@@ -124,6 +133,7 @@ export function toSafeCloudStorageConfig(config: CloudStorageConfig): SafeCloudS
           pathStyle: config.s3.pathStyle ?? false,
         },
         ...(config.root ? { root: config.root } : {}),
+        ...(config.allowInsecure ? { allowInsecure: true } : {}),
       };
     }
     case 'ftp': {
@@ -137,15 +147,101 @@ export function toSafeCloudStorageConfig(config: CloudStorageConfig): SafeCloudS
           useTls: config.ftp.useTls ?? false,
         },
         ...(config.root ? { root: config.root } : {}),
+        ...(config.allowInsecure ? { allowInsecure: true } : {}),
       };
     }
   }
+}
+
+/** Rebuild a runtime DTO with explicit empty secret placeholders. */
+export function fromSafeCloudStorageConfig(config: SafeCloudStorageConfig): CloudStorageConfig {
+  switch (config.provider) {
+    case 'webdav':
+      return {
+        provider: 'webdav',
+        webdav: { ...config.webdav, password: '' },
+        root: config.root,
+        allowInsecure: config.allowInsecure ?? false,
+      };
+    case 's3':
+      return {
+        provider: 's3',
+        s3: { ...config.s3, secretAccessKey: '' },
+        root: config.root,
+        allowInsecure: false,
+      };
+    case 'ftp':
+      return {
+        provider: 'ftp',
+        ftp: { ...config.ftp, password: '' },
+        root: config.root,
+        allowInsecure: config.allowInsecure ?? false,
+      };
+  }
+}
+
+/**
+ * The only cloud-config shape permitted on routine IPC calls.
+ * Secrets are absent from the persisted DTO and rebuilt as empty placeholders
+ * solely because the legacy Rust runtime type requires those fields.
+ */
+export function toRuntimeCloudStorageConfig(config: CloudStorageConfig): CloudStorageConfig {
+  const runtime = fromSafeCloudStorageConfig(toSafeCloudStorageConfig(config));
+  // `allowInsecure` is a persisted decision, not an IPC capability. The Rust
+  // runtime rebuilds it from the backend SSOT and rejects forged payload flags.
+  delete runtime.allowInsecure;
+  return runtime;
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.trim().replace(/^\[|\]$/g, '').toLowerCase();
+  if (host === 'localhost' || host === '::1') return true;
+  const octets = host.split('.');
+  return octets.length === 4
+    && octets.every(part => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+    && Number(octets[0]) === 127;
+}
+
+/** Whether an HTTP endpoint targets a non-loopback host. Invalid URLs are false. */
+export function isPublicHttpEndpoint(endpointValue: string): boolean {
+  try {
+    const endpoint = new URL(endpointValue);
+    return endpoint.protocol === 'http:' && !isLoopbackHost(endpoint.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/** Whether this configuration needs a persisted cleartext-transport opt-in. */
+export function requiresInsecureTransportOptIn(config: CloudStorageConfig): boolean {
+  if (config.provider === 'webdav' && config.webdav) {
+    return isPublicHttpEndpoint(config.webdav.endpoint);
+  }
+  if (config.provider === 'ftp' && config.ftp) {
+    return !config.ftp.useTls && !isLoopbackHost(config.ftp.host);
+  }
+  return false;
 }
 
 // ============== 前端本地配置存储（非敏感信息） ==============
 
 /** CloudStorageSection 使用的配置存储 key（仅存储非敏感信息） */
 export const CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY = 'cloud_storage_config_v2';
+export const CLOUD_STORAGE_LEGACY_STORAGE_KEY = 'cloud_storage_config';
+export const CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY = 'cloud_storage_ssot_migrated_v1';
+
+type CloudConfigStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+
+function browserStorage(): CloudConfigStorage | null {
+  return typeof window !== 'undefined' ? window.localStorage : null;
+}
+
+function writeSafeCloudConfigCache(
+  storage: CloudConfigStorage,
+  config: SafeCloudStorageConfig,
+): void {
+  storage.setItem(CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY, JSON.stringify(config));
+}
 
 /**
  * 从 localStorage 读取云存储配置（不包含安全存储中的敏感凭据）
@@ -153,12 +249,15 @@ export const CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY = 'cloud_storage_config_v2';
  * 注意：这里返回的是“安全配置”（password / secretAccessKey 通常为空字符串）。
  */
 export function loadStoredCloudStorageConfigSafe(): CloudStorageConfig | null {
-  const storage = typeof window !== 'undefined' ? window.localStorage : undefined;
+  const storage = browserStorage();
   if (!storage) return null;
   const raw = storage.getItem(CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as CloudStorageConfig;
+    const parsed = JSON.parse(raw) as CloudStorageConfig;
+    const safe = toSafeCloudStorageConfig(parsed);
+    writeSafeCloudConfigCache(storage, safe);
+    return fromSafeCloudStorageConfig(safe);
   } catch {
     return null;
   }
@@ -167,17 +266,91 @@ export function loadStoredCloudStorageConfigSafe(): CloudStorageConfig | null {
 export async function saveCloudConfigSsot(
   config: CloudStorageConfig,
 ): Promise<CloudConfigSsotResponse> {
-  return invoke<CloudConfigSsotResponse>('data_governance_save_cloud_config_ssot', {
+  return invoke<CloudConfigSsotResponse>('cloud_config_ssot_save', {
     config: toSafeCloudStorageConfig(config),
   });
 }
 
 export async function getCloudConfigSsot(): Promise<CloudConfigSsotResponse> {
-  return invoke<CloudConfigSsotResponse>('data_governance_get_cloud_config_ssot');
+  return invoke<CloudConfigSsotResponse>('cloud_config_ssot_get');
 }
 
 export async function clearCloudConfigSsot(): Promise<CloudConfigSsotResponse> {
-  return invoke<CloudConfigSsotResponse>('data_governance_clear_cloud_config_ssot');
+  return invoke<CloudConfigSsotResponse>('cloud_config_ssot_clear');
+}
+
+function credentialsFromLegacyConfig(config: CloudStorageConfig): CloudStorageCredentials {
+  return {
+    webdavPassword: config.webdav?.password || undefined,
+    s3SecretAccessKey: config.s3?.secretAccessKey || undefined,
+    ftpPassword: config.ftp?.password || undefined,
+    encryptionPassword: config.encryptionPassword || undefined,
+  };
+}
+
+function hasCredentials(credentials: CloudStorageCredentials): boolean {
+  return Boolean(
+    credentials.webdavPassword
+    || credentials.s3SecretAccessKey
+    || credentials.ftpPassword
+    || credentials.encryptionPassword,
+  );
+}
+
+/**
+ * Resolve cloud configuration with the backend DB as the only authority.
+ *
+ * localStorage participates only when the backend explicitly returns
+ * `configured: false`. The local candidate is migrated once; credentials are
+ * committed to secure storage before the non-secret DB record is published.
+ * Local secrets are removed only after both writes succeed.
+ */
+export async function resolveCloudStorageConfig(
+  storageOverride?: CloudConfigStorage | null,
+): Promise<CloudStorageConfig | null> {
+  const storage = storageOverride === undefined ? browserStorage() : storageOverride;
+  const backend = await getCloudConfigSsot();
+
+  if (backend.configured) {
+    if (!backend.config) {
+      throw new Error('Backend cloud configuration is marked configured but missing its DTO');
+    }
+    if (storage) {
+      writeSafeCloudConfigCache(storage, backend.config);
+      storage.removeItem(CLOUD_STORAGE_LEGACY_STORAGE_KEY);
+      storage.setItem(CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
+    }
+    return fromSafeCloudStorageConfig(backend.config);
+  }
+
+  if (!storage) return null;
+  if (storage.getItem(CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY) === '1') {
+    // A backend miss after a completed migration/previous backend config is a
+    // real clear, not permission for a stale cache to resurrect configuration.
+    storage.removeItem(CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY);
+    storage.removeItem(CLOUD_STORAGE_LEGACY_STORAGE_KEY);
+    return null;
+  }
+  const current = storage.getItem(CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY);
+  const legacy = storage.getItem(CLOUD_STORAGE_LEGACY_STORAGE_KEY);
+  const raw = current ?? legacy;
+  if (!raw) return null;
+
+  const candidate = JSON.parse(raw) as CloudStorageConfig;
+  const safe = toSafeCloudStorageConfig(candidate);
+  const credentials = credentialsFromLegacyConfig(candidate);
+  if (hasCredentials(credentials)) {
+    await saveCredentials(credentials);
+  }
+  const migrated = await saveCloudConfigSsot(candidate);
+  if (!migrated.configured || !migrated.config) {
+    throw new Error('Backend rejected the migrated cloud configuration');
+  }
+
+  writeSafeCloudConfigCache(storage, migrated.config);
+  storage.removeItem(CLOUD_STORAGE_LEGACY_STORAGE_KEY);
+  storage.setItem(CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
+  return fromSafeCloudStorageConfig(migrated.config);
 }
 
 /**
@@ -191,46 +364,7 @@ export async function clearCloudConfigSsot(): Promise<CloudConfigSsotResponse> {
  * 需要凭据的后端调用"，而非"对象里携带明文凭据"。
  */
 export async function loadStoredCloudStorageConfigWithCredentials(): Promise<CloudStorageConfig | null> {
-  const safe = loadStoredCloudStorageConfigSafe();
-  if (!safe) return null;
-
-  if (safe.provider === 'webdav') {
-    return {
-      ...safe,
-      webdav: safe.webdav
-        ? {
-            ...safe.webdav,
-            // 空串占位：后端 hydrate_cloud_config 会从安全存储补全
-            password: '',
-          }
-        : undefined,
-      encryptionPassword: undefined,
-    };
-  }
-
-  if (safe.provider === 'ftp') {
-    return {
-      ...safe,
-      ftp: safe.ftp
-        ? {
-            ...safe.ftp,
-            password: '',
-          }
-        : undefined,
-      encryptionPassword: undefined,
-    };
-  }
-
-  return {
-    ...safe,
-    s3: safe.s3
-      ? {
-          ...safe.s3,
-          secretAccessKey: '',
-        }
-      : undefined,
-    encryptionPassword: undefined,
-  };
+  return resolveCloudStorageConfig();
 }
 
 /** 文件信息 */
@@ -300,7 +434,9 @@ export interface DownloadResult {
  */
 export async function checkConnection(config: CloudStorageConfig): Promise<boolean> {
   try {
-    return await invoke<boolean>('cloud_storage_check_connection', { config });
+    return await invoke<boolean>('cloud_storage_check_connection', {
+      config: toRuntimeCloudStorageConfig(config),
+    });
   } catch (error: unknown) {
     throw new Error(getErrorMessage(error));
   }
@@ -315,7 +451,11 @@ export async function putFile(
   data: Uint8Array
 ): Promise<void> {
   try {
-    await invoke('cloud_storage_put', { config, key, data: Array.from(data) });
+    await invoke('cloud_storage_put', {
+      config: toRuntimeCloudStorageConfig(config),
+      key,
+      data: Array.from(data),
+    });
   } catch (error: unknown) {
     throw new Error(getErrorMessage(error));
   }
@@ -329,7 +469,10 @@ export async function getFile(
   key: string
 ): Promise<Uint8Array | null> {
   try {
-    const data = await invoke<number[] | null>('cloud_storage_get', { config, key });
+    const data = await invoke<number[] | null>('cloud_storage_get', {
+      config: toRuntimeCloudStorageConfig(config),
+      key,
+    });
     return data ? new Uint8Array(data) : null;
   } catch (error: unknown) {
     throw new Error(getErrorMessage(error));
@@ -344,7 +487,10 @@ export async function listFiles(
   prefix: string
 ): Promise<FileInfo[]> {
   try {
-    return await invoke<FileInfo[]>('cloud_storage_list', { config, prefix });
+    return await invoke<FileInfo[]>('cloud_storage_list', {
+      config: toRuntimeCloudStorageConfig(config),
+      prefix,
+    });
   } catch (error: unknown) {
     throw new Error(getErrorMessage(error));
   }
@@ -358,7 +504,10 @@ export async function deleteFile(
   key: string
 ): Promise<void> {
   try {
-    await invoke('cloud_storage_delete', { config, key });
+    await invoke('cloud_storage_delete', {
+      config: toRuntimeCloudStorageConfig(config),
+      key,
+    });
   } catch (error: unknown) {
     throw new Error(getErrorMessage(error));
   }
@@ -372,7 +521,10 @@ export async function statFile(
   key: string
 ): Promise<FileInfo | null> {
   try {
-    return await invoke<FileInfo | null>('cloud_storage_stat', { config, key });
+    return await invoke<FileInfo | null>('cloud_storage_stat', {
+      config: toRuntimeCloudStorageConfig(config),
+      key,
+    });
   } catch (error: unknown) {
     throw new Error(getErrorMessage(error));
   }
@@ -386,7 +538,10 @@ export async function fileExists(
   key: string
 ): Promise<boolean> {
   try {
-    return await invoke<boolean>('cloud_storage_exists', { config, key });
+    return await invoke<boolean>('cloud_storage_exists', {
+      config: toRuntimeCloudStorageConfig(config),
+      key,
+    });
   } catch (error: unknown) {
     throw new Error(getErrorMessage(error));
   }
@@ -399,7 +554,9 @@ export async function fileExists(
  */
 export async function getSyncStatus(config: CloudStorageConfig): Promise<SyncStatus> {
   try {
-    return await invoke<SyncStatus>('cloud_sync_get_status', { config });
+    return await invoke<SyncStatus>('cloud_sync_get_status', {
+      config: toRuntimeCloudStorageConfig(config),
+    });
   } catch (error: unknown) {
     throw new Error(getErrorMessage(error));
   }
@@ -410,7 +567,9 @@ export async function getSyncStatus(config: CloudStorageConfig): Promise<SyncSta
  */
 export async function listVersions(config: CloudStorageConfig): Promise<BackupVersion[]> {
   try {
-    return await invoke<BackupVersion[]>('cloud_sync_list_versions', { config });
+    return await invoke<BackupVersion[]>('cloud_sync_list_versions', {
+      config: toRuntimeCloudStorageConfig(config),
+    });
   } catch (error: unknown) {
     throw new Error(getErrorMessage(error));
   }
@@ -427,7 +586,7 @@ export async function uploadBackup(
 ): Promise<UploadResult> {
   try {
     return await invoke<UploadResult>('cloud_sync_upload', {
-      config,
+      config: toRuntimeCloudStorageConfig(config),
       zipPath,
       appVersion,
       note,
@@ -449,7 +608,7 @@ export async function downloadBackup(
 ): Promise<DownloadResult> {
   try {
     return await invoke<DownloadResult>('cloud_sync_download', {
-      config,
+      config: toRuntimeCloudStorageConfig(config),
       versionId,
       localDir,
     });
@@ -466,7 +625,10 @@ export async function deleteVersion(
   versionId: string
 ): Promise<void> {
   try {
-    await invoke('cloud_sync_delete_version', { config, versionId });
+    await invoke('cloud_sync_delete_version', {
+      config: toRuntimeCloudStorageConfig(config),
+      versionId,
+    });
   } catch (error: unknown) {
     throw new Error(getErrorMessage(error));
   }
@@ -596,6 +758,14 @@ export interface CloudStorageCredentials {
   encryptionPassword?: string;
 }
 
+/** Secret-presence flags returned by the backend; no credential value is exposed. */
+export interface CloudStorageCredentialStatus {
+  webdavPasswordConfigured: boolean;
+  s3SecretAccessKeyConfigured: boolean;
+  ftpPasswordConfigured: boolean;
+  encryptionPasswordConfigured: boolean;
+}
+
 /**
  * 保存云存储凭据到系统安全存储
  * - macOS: Keychain
@@ -603,17 +773,18 @@ export interface CloudStorageCredentials {
  * - Linux: Secret Service
  * - Android: AES-GCM 加密文件
  */
-export async function saveCredentials(credentials: CloudStorageCredentials): Promise<void> {
+export async function saveCredentials(
+  credentials: CloudStorageCredentials,
+): Promise<CloudStorageCredentialStatus> {
   // 保留后端 CommandError envelope，调用方需要稳定 code 展示可行动的密钥库提示。
-  await invoke('secure_save_cloud_credentials', { credentials });
+  return await invoke<CloudStorageCredentialStatus>('secure_save_cloud_credentials', { credentials });
 }
 
 /**
- * 从系统安全存储获取云存储凭据
+ * 获取系统安全存储中的凭据存在状态。Secret 值永不返回前端。
  */
-export async function getCredentials(): Promise<CloudStorageCredentials | null> {
-  // 读取失败与“尚未保存凭据”语义不同：必须向 UI 传播，不能静默伪装成 null。
-  return await invoke<CloudStorageCredentials | null>('secure_get_cloud_credentials');
+export async function getCredentialStatus(): Promise<CloudStorageCredentialStatus> {
+  return await invoke<CloudStorageCredentialStatus>('secure_get_cloud_credentials');
 }
 
 /**

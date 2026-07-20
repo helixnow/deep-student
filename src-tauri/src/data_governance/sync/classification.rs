@@ -970,10 +970,8 @@ mod tests {
 
         // 注册层与字段合并层保持一致：completed_pomodoros 不允许自动字段级合并
         assert!(
-            !crate::data_governance::sync::field_merge::field_merge_columns_for_table(
-                "todo_items"
-            )
-            .contains(&"completed_pomodoros"),
+            !crate::data_governance::sync::field_merge::field_merge_columns_for_table("todo_items")
+                .contains(&"completed_pomodoros"),
             "completed_pomodoros must stay out of the field merge picklist"
         );
     }

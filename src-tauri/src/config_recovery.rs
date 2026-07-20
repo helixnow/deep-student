@@ -49,6 +49,7 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             is_builtin: false,
             is_read_only: false,
             reasoning_effort: Some("medium".to_string()),
+            reasoning_mode: None,
             thinking_enabled: true,
             thinking_budget: None,
             include_thoughts: true,
@@ -111,6 +112,7 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             is_builtin: false,
             is_read_only: false,
             reasoning_effort: None,
+            reasoning_mode: None,
             // Sonnet 5 服务端默认 adaptive thinking；在适配器支持 adaptive 请求形态前
             // 不在客户端显式开启 thinking，避免发送旧的 enabled+budget_tokens 形态导致 400
             thinking_enabled: false,

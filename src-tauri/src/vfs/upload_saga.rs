@@ -45,10 +45,7 @@ where
     F: FnOnce() -> VfsResult<T>,
 {
     debug_assert!(
-        !name.is_empty()
-            && name
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_'),
+        !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
         "savepoint name must be a valid identifier"
     );
 
@@ -263,17 +260,26 @@ mod tests {
         let hash = VfsBlobRepo::compute_hash(data);
 
         let result: VfsResult<()> = with_savepoint(&conn, "td03_blob_fail", || {
-            VfsBlobRepo::store_blob_with_conn(&conn, blobs_dir, data, Some("application/pdf"), None)?;
+            VfsBlobRepo::store_blob_with_conn(
+                &conn,
+                blobs_dir,
+                data,
+                Some("application/pdf"),
+                None,
+            )?;
             Err(VfsError::Other("injected failure after blob".into()))
         });
         assert!(result.is_err());
 
         // DB 行已随 savepoint 整体回滚
-        assert_eq!(blob_ref_count(&conn, &hash), None, "blobs row must be rolled back");
+        assert_eq!(
+            blob_ref_count(&conn, &hash),
+            None,
+            "blobs row must be rolled back"
+        );
         // 物理文件此刻仍在（rename 已发生，无法回滚）→ 补偿删除
         assert!(blob_file_exists(blobs_dir, &hash));
-        let removed =
-            VfsBlobRepo::remove_unregistered_blob_file(&conn, blobs_dir, &hash).unwrap();
+        let removed = VfsBlobRepo::remove_unregistered_blob_file(&conn, blobs_dir, &hash).unwrap();
         assert!(removed, "orphan physical file must be removed");
         assert!(!blob_file_exists(blobs_dir, &hash));
     }
@@ -320,8 +326,13 @@ mod tests {
         let mut created_flag: Option<bool> = None;
 
         let result: VfsResult<()> = with_savepoint(&conn, "td03_row_fail", || {
-            let blob =
-                VfsBlobRepo::store_blob_with_conn(&conn, blobs_dir, data, Some("application/pdf"), None)?;
+            let blob = VfsBlobRepo::store_blob_with_conn(
+                &conn,
+                blobs_dir,
+                data,
+                Some("application/pdf"),
+                None,
+            )?;
             let (_file, created) = VfsFileRepo::create_file_with_doc_data_in_folder_outcome(
                 &conn,
                 &hash,
@@ -340,20 +351,26 @@ mod tests {
             Err(VfsError::Other("injected failure after file row".into()))
         });
         assert!(result.is_err());
-        assert_eq!(created_flag, Some(true), "file row must have been created before injection");
+        assert_eq!(
+            created_flag,
+            Some(true),
+            "file row must have been created before injection"
+        );
 
         // 所有 DB 写整体回滚
         assert_eq!(count_by_hash(&conn, "files", "sha256", &hash), 0);
         assert_eq!(count_by_hash(&conn, "resources", "hash", &hash), 0);
         assert_eq!(
-            count(&conn, "SELECT COUNT(*) FROM folder_items WHERE item_type = 'file'"),
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM folder_items WHERE item_type = 'file'"
+            ),
             0
         );
         assert_eq!(blob_ref_count(&conn, &hash), None);
 
         // 物理文件补偿删除
-        let removed =
-            VfsBlobRepo::remove_unregistered_blob_file(&conn, blobs_dir, &hash).unwrap();
+        let removed = VfsBlobRepo::remove_unregistered_blob_file(&conn, blobs_dir, &hash).unwrap();
         assert!(removed);
         assert!(!blob_file_exists(blobs_dir, &hash));
     }
@@ -368,8 +385,8 @@ mod tests {
 
         // 页面 A：先前的资源已引用（模拟跨 PDF 去重命中）
         let page_a = b"td03: shared preview page";
-        let blob_a = VfsBlobRepo::store_blob_with_conn(&conn, blobs_dir, page_a, None, Some("png"))
-            .unwrap();
+        let blob_a =
+            VfsBlobRepo::store_blob_with_conn(&conn, blobs_dir, page_a, None, Some("png")).unwrap();
         // 页面 B：仅本次调用产生
         let page_b = b"td03: unique preview page";
 
@@ -427,8 +444,7 @@ mod tests {
         let resource_id = file.resource_id.clone().expect("resource id");
 
         // 新建资源 index_state 为 NULL → 天然在待索引队列中（NULL 视同 pending）
-        let pending =
-            VfsIndexStateRepo::get_pending_resources_with_conn(&conn, 10, 3).unwrap();
+        let pending = VfsIndexStateRepo::get_pending_resources_with_conn(&conn, 10, 3).unwrap();
         assert!(pending.contains(&resource_id));
 
         // 索引同步失败 → 显式可重试状态：failed + 退避 + 计数
@@ -454,8 +470,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let pending =
-            VfsIndexStateRepo::get_pending_resources_with_conn(&conn, 10, 3).unwrap();
+        let pending = VfsIndexStateRepo::get_pending_resources_with_conn(&conn, 10, 3).unwrap();
         assert!(pending.contains(&resource_id));
 
         // 单元同步幂等：重复执行产生相同的 Unit 集合，无重复行
@@ -473,7 +488,10 @@ mod tests {
         let second = index_unit_repo::sync_units(&conn, &resource_id, inputs()).unwrap();
         assert_eq!(first.units.len(), 1);
         assert_eq!(second.units.len(), 1);
-        assert_eq!(first.units[0].id, second.units[0].id, "retry must reuse the same unit");
+        assert_eq!(
+            first.units[0].id, second.units[0].id,
+            "retry must reuse the same unit"
+        );
         assert_eq!(
             count_by_hash(&conn, "vfs_index_units", "resource_id", &resource_id),
             1,

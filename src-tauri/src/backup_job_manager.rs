@@ -99,7 +99,9 @@ impl BackupJobStatus {
     /// - 终态（Completed / Failed / Cancelled）→ 不允许转换
     pub fn can_transition_to(&self, target: BackupJobStatus) -> bool {
         if *self == target {
-            return true; // 同状态幂等更新
+            // 运行态允许幂等进度刷新；终态重复写会再次广播完成/失败事件，
+            // 导致多个前端监听器重复通知。
+            return !self.is_terminal();
         }
         match self {
             BackupJobStatus::Queued => matches!(
@@ -1353,6 +1355,14 @@ impl BackupJobManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_state_reentry_is_rejected_to_deduplicate_notifications() {
+        assert!(!BackupJobStatus::Completed.can_transition_to(BackupJobStatus::Completed));
+        assert!(!BackupJobStatus::Failed.can_transition_to(BackupJobStatus::Failed));
+        assert!(!BackupJobStatus::Cancelled.can_transition_to(BackupJobStatus::Cancelled));
+        assert!(BackupJobStatus::Running.can_transition_to(BackupJobStatus::Running));
+    }
 
     // Note: BackupJobManager::new requires AppHandle<Wry>; tauri::test MockRuntime
     // cannot construct it in unit tests. Behavioral set_params coverage lives in

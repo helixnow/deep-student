@@ -542,7 +542,11 @@ impl MemoryEvolution {
                         warn!("[Evolution] Failed to delete duplicate {}: {}", dup.id, e);
                     } else {
                         if let Some(ref res_id) = resource_id {
-                            self.remove_resource_from_index(&conn, res_id, "evolution merged duplicate");
+                            self.remove_resource_from_index(
+                                &conn,
+                                res_id,
+                                "evolution merged duplicate",
+                            );
                         }
                         folder_merged += 1;
                         debug!(
@@ -597,7 +601,8 @@ impl MemoryEvolution {
                 resource_id, e
             );
         }
-        if let Err(e) = VfsIndexStateRepo::mark_disabled_with_reason(&self.vfs_db, resource_id, reason)
+        if let Err(e) =
+            VfsIndexStateRepo::mark_disabled_with_reason(&self.vfs_db, resource_id, reason)
         {
             warn!(
                 "[Evolution] Failed to mark index disabled for {}: {}",
@@ -804,7 +809,11 @@ impl MemoryEvolution {
                     &mem.title,
                     &format!(
                         "分类 '{}' 活跃记忆 {} 条超出预算 {}，按最弱优先归档（命中 {} 次）",
-                        if folder.is_empty() { "（根目录）" } else { folder },
+                        if folder.is_empty() {
+                            "（根目录）"
+                        } else {
+                            folder
+                        },
                         active.len(),
                         tuning.category_quota,
                         mem.hits

@@ -54,7 +54,7 @@ pub use conflict_resolver::{
 };
 pub use emitter::{OptionalEmitter, SyncProgressCallback, SyncProgressEmitter, EVENT_NAME};
 pub use hlc::{Hlc, MAX_DRIFT_MS};
-pub use progress::{ProgressTracker, SpeedCalculator, SyncPhase, SyncProgress};
+pub use progress::{ProgressTracker, SpeedCalculator, SyncOutcome, SyncPhase, SyncProgress};
 use state::SyncStateStore;
 pub use tombstone::{
     apply_blob_tombstones, AssetTombstoneEntry, AssetTombstones, BlobTombstoneEntry, BlobTombstones,
@@ -461,6 +461,12 @@ pub struct WorkspaceEntry {
     /// Immutable content object. Legacy manifests fall back to `<ws_id>.db`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub object_key: Option<String>,
+    /// 本次发布所基于的上一版内容哈希；用于检测并发分叉，旧清单为 None。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_sha256: Option<String>,
+    /// 每个 workspace 的单调修订号；0 表示 legacy 未知。
+    #[serde(default)]
+    pub revision: u64,
 }
 
 /// VFS blob 云同步清单（内容寻址）
@@ -526,6 +532,14 @@ pub struct AssetFileEntry {
     /// Immutable content-addressed object key. Absent on legacy manifests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub object_key: Option<String>,
+    /// 本次发布基于的上一版内容哈希；并发写前回验使用。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_sha256: Option<String>,
+    /// 单调修订号；0 表示 legacy 未知。
+    #[serde(default)]
+    pub revision: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -596,6 +610,12 @@ impl IntoIterator for DownloadChangesResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ParsedChangeKey {
+    V4Shard {
+        device_id: String,
+        seq: u64,
+        version: u64,
+        operation_id: String,
+    },
     V3 {
         device_id: String,
         seq: u64,
@@ -625,6 +645,72 @@ struct SyncDatabaseSnapshot {
 #[derive(Debug, Clone)]
 struct SnapshotCoverage {
     covered_cursors: HashMap<String, u64>,
+}
+
+/// 云端协议能力描述。v4 先引入安全协商骨架；行变更 payload/manifest 继续双读 v3。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncFormatDescriptor {
+    #[serde(default = "default_remote_format_version")]
+    pub format_version: u32,
+    #[serde(
+        rename = "min_client",
+        alias = "min_reader_version",
+        default = "default_min_reader_version"
+    )]
+    pub min_reader_version: u32,
+    #[serde(default)]
+    pub features: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint: Option<SyncShardCheckpoint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compatibility_lease: Option<SyncCompatibilityLease>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct SyncShardCheckpoint {
+    #[serde(default)]
+    pub generation: u64,
+    #[serde(default)]
+    pub shard_cursors: HashMap<String, u64>,
+    #[serde(default)]
+    pub complete: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compaction_marker_key: Option<String>,
+    #[serde(default)]
+    pub full_listing_verified: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct SyncCompatibilityLease {
+    #[serde(default)]
+    pub holder_device_id: String,
+    #[serde(default)]
+    pub operation_id: String,
+    #[serde(default)]
+    pub expires_at: String,
+    #[serde(default)]
+    pub min_writer_version: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncCompactionMarker {
+    pub format_version: u32,
+    pub generation: u64,
+    pub created_at: String,
+    #[serde(default)]
+    pub shard_cursors: HashMap<String, u64>,
+    #[serde(default)]
+    pub complete: bool,
+    #[serde(default)]
+    pub full_listing_verified: bool,
+}
+
+fn default_remote_format_version() -> u32 {
+    3
+}
+
+fn default_min_reader_version() -> u32 {
+    3
 }
 
 /// 同步管理器
@@ -993,7 +1079,7 @@ impl SyncManager {
             status: SyncTransactionStatus::Complete,
             created_at: chrono::Utc::now().to_rfc3339(),
             device_id: self.device_id.clone(),
-            format_version: 3,
+            format_version: Self::CURRENT_FORMAT_VERSION,
             published_max_seq: 0,
             cursors: HashMap::new(),
             superseded_by: None,
@@ -1011,15 +1097,22 @@ impl SyncManager {
     const MANIFESTS_PREFIX: &'static str = "data_governance/manifests";
     /// 变更数据的云端路径前缀
     const CHANGES_PREFIX: &'static str = "data_governance/changes";
+    /// v4 不可变变更分片。兼容租约期间继续写 v3 root；全量设备升级后才切换。
+    const V4_SHARDS_PREFIX: &'static str = "data_governance/v4/shards";
+    /// v4 不可变压缩完成标记。没有完整 marker 时绝不允许 prune。
+    const V4_COMPACTIONS_PREFIX: &'static str = "data_governance/v4/compactions";
     /// 全量快照路径前缀
     const SNAPSHOTS_PREFIX: &'static str = "data_governance/snapshots";
     /// 明文远端实例标识。用于把本地游标/上传序号与具体云端隔离。
     const INSTANCE_KEY: &'static str = "data_governance/instance.json";
     /// 明文格式协商文件。
     const FORMAT_KEY: &'static str = "data_governance/format.json";
+    pub const CURRENT_FORMAT_VERSION: u32 = 4;
+    pub const MIN_COMPATIBLE_FORMAT_VERSION: u32 = 3;
     const SNAPSHOT_FORMAT_VERSION: u32 = 1;
     const SNAPSHOT_INTERVAL_DAYS: i64 = 7;
     const SNAPSHOT_RETAIN_PER_DB: usize = 2;
+    const COMPATIBILITY_RELEASE_DAYS: i64 = 30;
     /// Current v1 snapshots are UPSERT-only and cannot prove set equality.
     /// They must not advance cursors across a prune gap or authorize pruning.
     const AUTHORITATIVE_SNAPSHOT_REPLACE_ENABLED: bool = false;
@@ -1029,10 +1122,218 @@ impl SyncManager {
         format!("{}/{}.json", Self::MANIFESTS_PREFIX, device_id)
     }
 
+    fn v4_features() -> Vec<String> {
+        vec![
+            "append_only_tombstones".to_string(),
+            "v4_change_shards".to_string(),
+            "verified_compaction_marker".to_string(),
+            "compatibility_lease".to_string(),
+        ]
+    }
+
+    fn new_compatibility_lease(&self) -> SyncCompatibilityLease {
+        SyncCompatibilityLease {
+            holder_device_id: self.device_id.clone(),
+            operation_id: uuid::Uuid::new_v4().to_string(),
+            expires_at: (chrono::Utc::now()
+                + chrono::Duration::days(Self::COMPATIBILITY_RELEASE_DAYS))
+            .to_rfc3339(),
+            min_writer_version: Self::MIN_COMPATIBLE_FORMAT_VERSION,
+        }
+    }
+
+    fn compatibility_lease_expired(lease: &SyncCompatibilityLease) -> bool {
+        Self::parse_flexible_timestamp(&lease.expires_at)
+            .map(|expires_at| expires_at <= chrono::Utc::now())
+            .unwrap_or(false)
+    }
+
+    fn all_known_clients_support_v4(manifests: &HashMap<String, SyncManifest>) -> bool {
+        let mut active_manifests = manifests
+            .values()
+            .filter(|manifest| manifest.superseded_by.is_none())
+            .peekable();
+        active_manifests.peek().is_some()
+            && active_manifests
+                .all(|manifest| manifest.format_version >= Self::CURRENT_FORMAT_VERSION)
+    }
+
+    async fn write_format_descriptor(
+        &self,
+        storage: &dyn CloudStorage,
+        descriptor: &SyncFormatDescriptor,
+    ) -> Result<(), SyncError> {
+        let encoded = serde_json::to_vec_pretty(descriptor)
+            .map_err(|e| SyncError::Database(format!("序列化远端同步格式失败: {}", e)))?;
+        storage
+            .put(Self::FORMAT_KEY, &encoded)
+            .await
+            .map_err(|e| SyncError::Network(format!("写入远端同步格式失败: {}", e)))?;
+        let verified = storage
+            .get(Self::FORMAT_KEY)
+            .await
+            .map_err(|e| SyncError::Network(format!("回验远端同步格式失败: {}", e)))?
+            .ok_or_else(|| SyncError::Network("写入后远端 format.json 不存在".to_string()))?;
+        let verified: SyncFormatDescriptor = serde_json::from_slice(&verified)
+            .map_err(|e| SyncError::Database(format!("回验远端 format.json 失败: {}", e)))?;
+        if &verified != descriptor {
+            return Err(SyncError::Network(
+                "写入后远端 format.json 内容不一致".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn prepare_format_for_write(
+        &self,
+        storage: &dyn CloudStorage,
+        mut descriptor: SyncFormatDescriptor,
+    ) -> Result<SyncFormatDescriptor, SyncError> {
+        let mut changed = false;
+        if descriptor.format_version < Self::CURRENT_FORMAT_VERSION {
+            descriptor.format_version = Self::CURRENT_FORMAT_VERSION;
+            descriptor.min_reader_version = Self::MIN_COMPATIBLE_FORMAT_VERSION;
+            descriptor.features = Self::v4_features();
+            descriptor.checkpoint = Some(SyncShardCheckpoint::default());
+            descriptor.compatibility_lease = Some(self.new_compatibility_lease());
+            changed = true;
+        } else if descriptor.min_reader_version < Self::CURRENT_FORMAT_VERSION
+            && descriptor.compatibility_lease.is_none()
+        {
+            // 旧的 v4 skeleton 没有租约，不能把“字段缺失”误当成兼容期已结束。
+            descriptor.compatibility_lease = Some(self.new_compatibility_lease());
+            changed = true;
+        }
+
+        if descriptor.min_reader_version < Self::CURRENT_FORMAT_VERSION {
+            let lease_expired = descriptor
+                .compatibility_lease
+                .as_ref()
+                .is_some_and(Self::compatibility_lease_expired);
+            let manifests = self.download_device_manifests(storage).await?;
+            let legacy_devices = manifests
+                .values()
+                .filter(|manifest| {
+                    manifest.superseded_by.is_none()
+                        && manifest.format_version < Self::CURRENT_FORMAT_VERSION
+                })
+                .map(|manifest| manifest.device_id.clone())
+                .collect::<Vec<_>>();
+            if lease_expired && Self::all_known_clients_support_v4(&manifests) {
+                descriptor.min_reader_version = Self::CURRENT_FORMAT_VERSION;
+                descriptor.compatibility_lease = None;
+                changed = true;
+                tracing::warn!(
+                    "[sync] v3 双读兼容期已结束，全部已知客户端均支持 v4；后续写入自动迁移到 v4 分片根"
+                );
+            } else {
+                let expires_at = descriptor
+                    .compatibility_lease
+                    .as_ref()
+                    .map(|lease| lease.expires_at.as_str())
+                    .unwrap_or("unknown");
+                tracing::warn!(
+                    "[sync] v3 双读兼容仍启用: lease_expires_at={}, lease_expired={}, legacy_devices={:?}, known_manifests={}; 升级或 supersede 旧设备后才会切换到 v4 分片根",
+                    expires_at,
+                    lease_expired,
+                    legacy_devices,
+                    manifests.len()
+                );
+            }
+        }
+
+        if changed {
+            // 写前重新读取一次，避免把刚出现的未来版本 descriptor 覆盖掉。
+            if let Some(fresh) = storage
+                .get(Self::FORMAT_KEY)
+                .await
+                .map_err(|e| SyncError::Network(format!("写前复核远端同步格式失败: {}", e)))?
+            {
+                let fresh: SyncFormatDescriptor = serde_json::from_slice(&fresh).map_err(|e| {
+                    SyncError::Database(format!("写前复核远端 format.json 失败: {}", e))
+                })?;
+                if fresh.format_version > Self::CURRENT_FORMAT_VERSION
+                    || fresh.min_reader_version > Self::CURRENT_FORMAT_VERSION
+                {
+                    return Err(SyncError::Database(format!(
+                        "远端同步格式在协商期间升级到 v{}（最低 client v{}），拒绝覆盖",
+                        fresh.format_version, fresh.min_reader_version
+                    )));
+                }
+            }
+            self.write_format_descriptor(storage, &descriptor).await?;
+        }
+        Ok(descriptor)
+    }
+
+    /// 每轮同步在任何远端写入之前读取 format.json。
+    ///
+    /// format.json 缺失视为 legacy v3；未来版本或要求更高 reader 的格式 fail-close。
+    pub async fn validate_remote_format(
+        &self,
+        storage: &dyn CloudStorage,
+        will_write: bool,
+    ) -> Result<SyncFormatDescriptor, SyncError> {
+        let Some(bytes) = storage
+            .get(Self::FORMAT_KEY)
+            .await
+            .map_err(|e| SyncError::Network(format!("读取远端同步格式失败: {}", e)))?
+        else {
+            let descriptor = SyncFormatDescriptor {
+                format_version: Self::MIN_COMPATIBLE_FORMAT_VERSION,
+                min_reader_version: Self::MIN_COMPATIBLE_FORMAT_VERSION,
+                features: Vec::new(),
+                checkpoint: None,
+                compatibility_lease: None,
+            };
+            if !will_write {
+                return Ok(descriptor);
+            }
+
+            // 第一次写入先发布 v4 能力描述，但在一个发布周期内继续写 v3 root。
+            let descriptor = SyncFormatDescriptor {
+                format_version: Self::CURRENT_FORMAT_VERSION,
+                min_reader_version: Self::MIN_COMPATIBLE_FORMAT_VERSION,
+                features: Self::v4_features(),
+                checkpoint: Some(SyncShardCheckpoint::default()),
+                compatibility_lease: Some(self.new_compatibility_lease()),
+            };
+            self.write_format_descriptor(storage, &descriptor).await?;
+            return Ok(descriptor);
+        };
+        let descriptor: SyncFormatDescriptor = serde_json::from_slice(&bytes)
+            .map_err(|e| SyncError::Database(format!("远端 format.json 损坏: {}", e)))?;
+        if descriptor.format_version > Self::CURRENT_FORMAT_VERSION
+            || descriptor.min_reader_version > Self::CURRENT_FORMAT_VERSION
+        {
+            return Err(SyncError::Database(format!(
+                "远端同步格式 v{}（最低 reader v{}）高于当前客户端 v{}；为避免旧客户端破坏数据，已在写入前拒绝同步",
+                descriptor.format_version,
+                descriptor.min_reader_version,
+                Self::CURRENT_FORMAT_VERSION
+            )));
+        }
+        if descriptor.format_version < Self::MIN_COMPATIBLE_FORMAT_VERSION {
+            return Err(SyncError::Database(format!(
+                "远端同步格式 v{} 过旧，当前客户端仅兼容 v{}-v{}",
+                descriptor.format_version,
+                Self::MIN_COMPATIBLE_FORMAT_VERSION,
+                Self::CURRENT_FORMAT_VERSION
+            )));
+        }
+        if will_write {
+            self.prepare_format_for_write(storage, descriptor).await
+        } else {
+            Ok(descriptor)
+        }
+    }
+
     async fn ensure_remote_instance_id(
         &self,
         storage: &dyn CloudStorage,
     ) -> Result<String, SyncError> {
+        // 必须先协商格式，再执行 instance/manifest/change/tombstone 等任何写入。
+        self.validate_remote_format(storage, true).await?;
         let provider = storage.provider_name();
         let endpoint_hint = storage.instance_binding_hint();
         if let Some(bytes) = storage
@@ -1055,7 +1356,7 @@ impl SyncManager {
         let instance_id = uuid::Uuid::new_v4().to_string();
         let body = serde_json::json!({
             "instance_id": instance_id,
-            "format_version": 3,
+            "format_version": Self::CURRENT_FORMAT_VERSION,
             "created_at": chrono::Utc::now().to_rfc3339(),
         });
         let bytes = serde_json::to_vec_pretty(&body)
@@ -1064,13 +1365,6 @@ impl SyncManager {
             .put(Self::INSTANCE_KEY, &bytes)
             .await
             .map_err(|e| SyncError::Network(format!("写入远端实例标识失败: {}", e)))?;
-        let format = serde_json::json!({
-            "format_version": 3,
-            "min_client": "deep-student-cloud-sync-v3",
-        });
-        if let Ok(bytes) = serde_json::to_vec_pretty(&format) {
-            let _ = storage.put(Self::FORMAT_KEY, &bytes).await;
-        }
         let store = SyncStateStore::open_default()?;
         store.bind_instance(&instance_id, provider, &endpoint_hint)?;
         Ok(instance_id)
@@ -1084,7 +1378,9 @@ impl SyncManager {
     ) -> Result<(), SyncError> {
         let instance_id = self.ensure_remote_instance_id(storage).await?;
         let mut manifest = manifest.clone();
-        manifest.format_version = 3;
+        // Manifest 字段是 additive 的；兼容期仍写 v3 change root，但用该字段
+        // 发布本设备 reader 能力，供租约到期后的“全设备已升级”判定。
+        manifest.format_version = Self::CURRENT_FORMAT_VERSION;
         manifest.device_id = self.device_id.clone();
         if let Ok(store) = SyncStateStore::open_default() {
             if let Ok(rotations) = store.device_rotations_for_new(&self.device_id) {
@@ -1151,6 +1447,7 @@ impl SyncManager {
         if old_device_id.trim().is_empty() || old_device_id == new_device_id {
             return Ok(());
         }
+        self.validate_remote_format(storage, true).await?;
 
         let key = Self::device_manifest_key(old_device_id);
         let mut manifest = match storage
@@ -1181,7 +1478,7 @@ impl SyncManager {
             return Ok(());
         }
 
-        manifest.format_version = 3;
+        manifest.format_version = Self::CURRENT_FORMAT_VERSION;
         manifest.device_id = old_device_id.to_string();
         manifest.superseded_by = Some(new_device_id.to_string());
         let json = serde_json::to_vec_pretty(&manifest)
@@ -1408,8 +1705,29 @@ impl SyncManager {
                     manifests.insert(device_id.to_string(), manifest);
                 }
                 Err(e) => {
-                    tracing::warn!("[sync] 跳过损坏设备清单: key={}, error={}", file.key, e);
+                    return Err(SyncError::Database(format!(
+                        "设备清单损坏，无法证明全部客户端已升级: {} ({})",
+                        file.key, e
+                    )));
                 }
+            }
+        }
+        if let Some(bytes) = storage
+            .get(Self::LEGACY_MANIFEST_KEY)
+            .await
+            .map_err(|e| SyncError::Network(format!("下载 legacy 清单失败: {}", e)))?
+        {
+            let decoded = self.decode_payload(&bytes).map_err(|e| {
+                SyncError::Database(format!(
+                    "legacy 清单无法解密，无法证明全部客户端已升级: {}",
+                    e
+                ))
+            })?;
+            let legacy = serde_json::from_slice::<SyncManifest>(&decoded).map_err(|e| {
+                SyncError::Database(format!("legacy 清单损坏，无法证明全部客户端已升级: {}", e))
+            })?;
+            if !legacy.device_id.trim().is_empty() {
+                manifests.entry(legacy.device_id.clone()).or_insert(legacy);
             }
         }
         Ok(manifests)
@@ -1436,6 +1754,7 @@ impl SyncManager {
             tracing::debug!("[sync] 没有变更需要上传");
             return Ok(());
         }
+        self.validate_remote_format(storage, true).await?;
 
         // 生成变更数据文件的键（版本使用秒级时间戳，与 legacy 文件同一版本空间）
         // 秒级冲突由 build_change_key 的 UUID nonce 防护
@@ -1483,6 +1802,7 @@ impl SyncManager {
             return Ok(());
         }
 
+        let negotiated = self.validate_remote_format(storage, true).await?;
         let instance_id = self.ensure_remote_instance_id(storage).await?;
         let store = SyncStateStore::open_default()?;
         let cloud_max_seq = self
@@ -1492,16 +1812,26 @@ impl SyncManager {
 
         // 版本使用秒级时间戳，仅作为展示/排序辅助；消费进度由 v3 seq/cursor 承载。
         let version = chrono::Utc::now().timestamp() as u64;
-        let key = self.build_change_key_v3(source_seq, version);
+        let use_v4_shards = negotiated.min_reader_version >= Self::CURRENT_FORMAT_VERSION;
+        let key = if use_v4_shards {
+            self.build_change_key_v4(source_seq, version)
+        } else {
+            self.build_change_key_v3(source_seq, version)
+        };
+        let operation_id = match Self::parse_change_key(&key) {
+            Some(ParsedChangeKey::V4Shard { operation_id, .. }) => Some(operation_id),
+            _ => None,
+        };
 
         // 序列化为带完整数据的新格式
         let payload = SyncChangesPayload {
             changes: changes.to_vec(),
             total_count: changes.len(),
             device_id: self.device_id.clone(),
-            format_version: 3, // v3 = 带完整数据 + per-device seq/cursor
+            format_version: if use_v4_shards { 4 } else { 3 },
             source_seq,
             source_device_id: self.device_id.clone(),
+            operation_id,
         };
 
         // Phase 5 Optimization: Compact JSON + Zstd Compression
@@ -1649,16 +1979,7 @@ impl SyncManager {
         since_version: u64,
         per_db_since: Option<&HashMap<String, u64>>,
     ) -> Result<DownloadChangesResult, SyncError> {
-        let list = storage
-            .list_outcome(Self::CHANGES_PREFIX)
-            .await
-            .map_err(|e| SyncError::Network(format!("列出变更文件失败: {}", e)))?;
-        if list.truncated {
-            return Err(SyncError::Network(
-                "云端变更列表被截断，已停止下载以避免静默漏同步".to_string(),
-            ));
-        }
-        let files = list.files;
+        let files = Self::list_all_change_keys(storage).await?;
         let instance_id = self.ensure_remote_instance_id(storage).await?;
         let store = SyncStateStore::open_default()?;
         let device_manifests = self
@@ -1672,9 +1993,15 @@ impl SyncManager {
 
         let mut v3_files: HashMap<String, Vec<(u64, u64, String)>> = HashMap::new();
         let mut legacy_files: Vec<(String, u64, String)> = Vec::new();
-        for file in files {
-            match Self::parse_change_key(&file.key) {
-                Some(ParsedChangeKey::V3 {
+        for key in files {
+            match Self::parse_change_key(&key) {
+                Some(ParsedChangeKey::V4Shard {
+                    device_id,
+                    seq,
+                    version,
+                    ..
+                })
+                | Some(ParsedChangeKey::V3 {
                     device_id,
                     seq,
                     version,
@@ -1685,7 +2012,7 @@ impl SyncManager {
                     v3_files.entry(device_id).or_default().push((
                         seq,
                         Self::normalize_version_to_seconds(version),
-                        file.key,
+                        key,
                     ));
                 }
                 Some(ParsedChangeKey::Legacy { device_id, version }) => {
@@ -1695,7 +2022,7 @@ impl SyncManager {
                     legacy_files.push((
                         device_id,
                         Self::normalize_version_to_seconds(version),
-                        file.key,
+                        key,
                     ));
                 }
                 None => {}
@@ -1709,11 +2036,19 @@ impl SyncManager {
 
         for (uploader, mut files) in v3_files {
             files.sort_by_key(|(seq, version, key)| (*seq, *version, key.clone()));
+            if let Some(duplicate) = files.windows(2).find(|pair| pair[0].0 == pair[1].0) {
+                return Err(SyncError::Network(format!(
+                    "设备 {} 的不可变变更分片序号 {} 对应多个对象（{} / {}），拒绝选择性覆盖",
+                    uploader, duplicate[0].0, duplicate[0].2, duplicate[1].2
+                )));
+            }
             let mut expected = store.get_cursor(&instance_id, &uploader)?.saturating_add(1);
+            let listed_max = files.iter().map(|(seq, _, _)| *seq).max().unwrap_or(0);
             let published_max = device_manifests
                 .get(&uploader)
                 .map(|m| m.published_max_seq)
-                .unwrap_or_else(|| files.iter().map(|(seq, _, _)| *seq).max().unwrap_or(0));
+                .unwrap_or(0)
+                .max(listed_max);
 
             let mut index = 0usize;
             while index < files.len() {
@@ -1723,7 +2058,7 @@ impl SyncManager {
                     continue;
                 }
                 if seq > expected {
-                    if expected <= published_max {
+                    if Self::missing_sequence_is_proven(expected, seq, published_max) {
                         return Err(SyncError::Network(format!(
                             "云端文件缺失/无法解密，已停在安全点：设备 {} 缺少序号 {}（已发布到 {}）",
                             uploader, expected, published_max
@@ -1732,7 +2067,7 @@ impl SyncManager {
                     break;
                 }
 
-                while index < files.len() && files[index].0 == seq {
+                {
                     let (_, version, key) = files[index].clone();
                     let Some(data) = storage
                         .get(&key)
@@ -1760,6 +2095,32 @@ impl SyncManager {
                                 key, e
                             ))
                         })?;
+                    let expected_operation_id = match Self::parse_change_key(&key) {
+                        Some(ParsedChangeKey::V4Shard { operation_id, .. }) => Some(operation_id),
+                        _ => None,
+                    };
+                    if payload.source_seq != 0 && payload.source_seq != seq {
+                        return Err(SyncError::Network(format!(
+                            "变更分片路径 seq 与 payload 不一致: {}",
+                            key
+                        )));
+                    }
+                    if !payload.source_device_id.is_empty() && payload.source_device_id != uploader
+                    {
+                        return Err(SyncError::Network(format!(
+                            "变更分片路径 device 与 payload 不一致: {}",
+                            key
+                        )));
+                    }
+                    if expected_operation_id.is_some()
+                        && (payload.format_version != Self::CURRENT_FORMAT_VERSION
+                            || payload.operation_id != expected_operation_id)
+                    {
+                        return Err(SyncError::Network(format!(
+                            "v4 变更分片 operation_id/format 与路径不一致: {}",
+                            key
+                        )));
+                    }
                     let source_device = if payload.source_device_id.is_empty() {
                         uploader.clone()
                     } else {
@@ -1907,15 +2268,12 @@ impl SyncManager {
 
     /// 判断变更文件是否属于本设备
     fn is_own_change_file(key: &str, self_device_id: &str) -> bool {
-        // 路径: data_governance/changes/{device_id}/{version}-{nonce}.json[.zst]
-        let parts: Vec<&str> = key.split('/').collect();
-        if parts.len() >= 3 {
-            // parts: ["data_governance", "changes", "{device_id}", "{filename}"]
-            if let Some(device_part) = parts.get(2) {
-                return *device_part == self_device_id;
-            }
+        match Self::parse_change_key(key) {
+            Some(ParsedChangeKey::V4Shard { device_id, .. })
+            | Some(ParsedChangeKey::V3 { device_id, .. })
+            | Some(ParsedChangeKey::Legacy { device_id, .. }) => device_id == self_device_id,
+            None => false,
         }
-        false
     }
 
     /// 从文件路径解析版本号
@@ -1925,6 +2283,7 @@ impl SyncManager {
         // 旧格式: data_governance/changes/{device_id}/{version}-{nonce}.json
         //     或: data_governance/changes/{device_id}/{version}.json
         match Self::parse_change_key(key) {
+            Some(ParsedChangeKey::V4Shard { version, .. }) => Some(version),
             Some(ParsedChangeKey::V3 { version, .. }) => Some(version),
             Some(ParsedChangeKey::Legacy { version, .. }) => Some(version),
             None => None,
@@ -1933,18 +2292,39 @@ impl SyncManager {
 
     fn parse_change_key(key: &str) -> Option<ParsedChangeKey> {
         let parts: Vec<&str> = key.split('/').collect();
-        let device_id = parts.get(2)?.to_string();
+        let is_v4 = parts.starts_with(&["data_governance", "v4", "shards"]);
+        let device_id = if is_v4 {
+            parts.get(3)?
+        } else if parts.starts_with(&["data_governance", "changes"]) {
+            parts.get(2)?
+        } else {
+            return None;
+        }
+        .to_string();
         let filename = parts.last()?;
         let stem = filename
             .strip_suffix(".json.zst")
             .or_else(|| filename.strip_suffix(".json"))?;
-        let mut segments = stem.split('-');
+        let mut segments = stem.splitn(3, '-');
         let first = segments.next()?;
         let second = segments.next();
+        let operation_id = segments.next();
 
         if first.len() == 12 && first.chars().all(|c| c.is_ascii_digit()) {
             if let Some(second) = second {
                 if let (Ok(seq), Ok(version)) = (first.parse::<u64>(), second.parse::<u64>()) {
+                    if is_v4 {
+                        let operation_id = operation_id?.trim();
+                        if operation_id.is_empty() {
+                            return None;
+                        }
+                        return Some(ParsedChangeKey::V4Shard {
+                            device_id,
+                            seq,
+                            version,
+                            operation_id: operation_id.to_string(),
+                        });
+                    }
                     return Some(ParsedChangeKey::V3 {
                         device_id,
                         seq,
@@ -2037,6 +2417,10 @@ impl SyncManager {
         }
     }
 
+    fn missing_sequence_is_proven(expected: u64, observed: u64, published_max: u64) -> bool {
+        observed > expected && expected <= published_max.max(observed)
+    }
+
     /// 构造变更文件 key（避免秒级冲突覆盖）
     fn build_change_key(&self, version: u64) -> String {
         let nonce = uuid::Uuid::new_v4();
@@ -2062,26 +2446,76 @@ impl SyncManager {
         )
     }
 
+    /// v4 变更分片 key。operation_id 使一次逻辑 PUT 的重试可审计且不覆盖其他分片。
+    fn build_change_key_v4(&self, seq: u64, version: u64) -> String {
+        let operation_id = uuid::Uuid::new_v4();
+        format!(
+            "{}/{}/{:012}-{}-{}.json.zst",
+            Self::V4_SHARDS_PREFIX,
+            self.device_id,
+            seq,
+            version,
+            operation_id
+        )
+    }
+
+    async fn list_complete_keys(
+        storage: &dyn CloudStorage,
+        prefix: &str,
+        label: &str,
+    ) -> Result<Vec<String>, SyncError> {
+        let list = storage
+            .list_outcome(prefix)
+            .await
+            .map_err(|e| SyncError::Network(format!("列出{}失败: {}", label, e)))?;
+        if list.truncated {
+            return Err(SyncError::Network(format!(
+                "{}列表被截断，拒绝推进游标或执行清理",
+                label
+            )));
+        }
+        Ok(list.files.into_iter().map(|file| file.key).collect())
+    }
+
+    async fn list_all_change_keys(storage: &dyn CloudStorage) -> Result<Vec<String>, SyncError> {
+        let mut keys =
+            Self::list_complete_keys(storage, Self::CHANGES_PREFIX, "legacy/v3 变更文件").await?;
+        keys.extend(
+            Self::list_complete_keys(storage, Self::V4_SHARDS_PREFIX, "v4 变更分片").await?,
+        );
+        keys.sort();
+        keys.dedup();
+        Ok(keys)
+    }
+
     async fn max_cloud_seq_for_device(
         &self,
         storage: &dyn CloudStorage,
         device_id: &str,
     ) -> Result<u64, SyncError> {
-        let prefix = format!("{}/{}", Self::CHANGES_PREFIX, device_id);
-        let list = storage
-            .list_outcome(&prefix)
-            .await
-            .map_err(|e| SyncError::Network(format!("列出本设备变更文件失败: {}", e)))?;
-        if list.truncated {
-            return Err(SyncError::Network(
-                "云端本设备变更列表被截断，无法安全分配上传序号".to_string(),
-            ));
-        }
-        Ok(list
-            .files
+        let mut keys = Self::list_complete_keys(
+            storage,
+            &format!("{}/{}", Self::CHANGES_PREFIX, device_id),
+            "本设备 v3 变更文件",
+        )
+        .await?;
+        keys.extend(
+            Self::list_complete_keys(
+                storage,
+                &format!("{}/{}", Self::V4_SHARDS_PREFIX, device_id),
+                "本设备 v4 变更分片",
+            )
+            .await?,
+        );
+        Ok(keys
             .iter()
-            .filter_map(|f| match Self::parse_change_key(&f.key) {
-                Some(ParsedChangeKey::V3 {
+            .filter_map(|key| match Self::parse_change_key(key) {
+                Some(ParsedChangeKey::V4Shard {
+                    device_id: parsed,
+                    seq,
+                    ..
+                })
+                | Some(ParsedChangeKey::V3 {
                     device_id: parsed,
                     seq,
                     ..
@@ -2585,6 +3019,52 @@ impl SyncManager {
         Ok(())
     }
 
+    async fn verified_compaction_marker(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<Option<SyncCompactionMarker>, SyncError> {
+        let descriptor = self.validate_remote_format(storage, false).await?;
+        let Some(checkpoint) = descriptor.checkpoint else {
+            return Ok(None);
+        };
+        let Some(marker_key) = checkpoint.compaction_marker_key.as_deref() else {
+            return Ok(None);
+        };
+        if !checkpoint.complete || !checkpoint.full_listing_verified {
+            return Ok(None);
+        }
+        Self::validate_remote_object_key(marker_key, Self::V4_COMPACTIONS_PREFIX)?;
+        let listed =
+            Self::list_complete_keys(storage, Self::V4_COMPACTIONS_PREFIX, "v4 compaction marker")
+                .await?;
+        if !listed.iter().any(|key| key == marker_key) {
+            return Err(SyncError::Network(format!(
+                "format checkpoint 引用的 compaction marker 不在完整列表中: {}",
+                marker_key
+            )));
+        }
+        let bytes = storage
+            .get(marker_key)
+            .await
+            .map_err(|e| SyncError::Network(format!("读取 compaction marker 失败: {}", e)))?
+            .ok_or_else(|| {
+                SyncError::Network(format!("已列举的 compaction marker 消失: {}", marker_key))
+            })?;
+        let marker: SyncCompactionMarker = serde_json::from_slice(&bytes)
+            .map_err(|e| SyncError::Database(format!("compaction marker 损坏: {}", e)))?;
+        if marker.format_version != Self::CURRENT_FORMAT_VERSION
+            || !marker.complete
+            || !marker.full_listing_verified
+            || marker.generation != checkpoint.generation
+            || marker.shard_cursors != checkpoint.shard_cursors
+        {
+            return Err(SyncError::Database(
+                "compaction marker 与 format checkpoint 不一致，拒绝 prune".to_string(),
+            ));
+        }
+        Ok(Some(marker))
+    }
+
     /// 清理云端过期的变更文件
     ///
     /// 两级清理策略：
@@ -2601,30 +3081,34 @@ impl SyncManager {
             tracing::info!("[sync] 自动 prune 已禁用：当前快照不具备权威 replace/delete-set 语义");
             return Ok(0);
         }
-        let list = storage
-            .list_outcome(Self::CHANGES_PREFIX)
-            .await
-            .map_err(|e| SyncError::Network(format!("列出变更文件失败: {}", e)))?;
-        if list.truncated {
-            tracing::warn!("[sync] 云端变更列表被截断，跳过本轮 prune 以避免误删");
+        let Some(marker) = self.verified_compaction_marker(storage).await? else {
+            tracing::info!("[sync] 跳过变更文件 prune：缺少完整且已回验的 compaction marker");
             return Ok(0);
-        }
+        };
         let safe_seq = self
             .safe_prune_seq_for_self(storage, retention_days)
-            .await?;
+            .await?
+            .min(
+                marker
+                    .shard_cursors
+                    .get(&self.device_id)
+                    .copied()
+                    .unwrap_or(0),
+            );
         if safe_seq == 0 {
             tracing::info!("[sync] 跳过变更文件 prune：尚无覆盖本设备变更的安全快照/游标下界");
             return Ok(0);
         }
 
         let mut deleted = 0usize;
-        for file in list.files {
-            match Self::parse_change_key(&file.key) {
-                Some(ParsedChangeKey::V3 { device_id, seq, .. })
+        for key in Self::list_all_change_keys(storage).await? {
+            match Self::parse_change_key(&key) {
+                Some(ParsedChangeKey::V4Shard { device_id, seq, .. })
+                | Some(ParsedChangeKey::V3 { device_id, seq, .. })
                     if device_id == self.device_id && seq <= safe_seq =>
                 {
-                    storage.delete(&file.key).await.map_err(|e| {
-                        SyncError::Network(format!("删除变更文件失败 {}: {}", file.key, e))
+                    storage.delete(&key).await.map_err(|e| {
+                        SyncError::Network(format!("删除变更文件失败 {}: {}", key, e))
                     })?;
                     deleted += 1;
                 }
@@ -5051,6 +5535,9 @@ impl SyncManager {
                 record_id TEXT NOT NULL,
                 operation TEXT NOT NULL,
                 payload_json TEXT,
+                payload_hash TEXT NOT NULL DEFAULT '',
+                baseline_json TEXT,
+                baseline_hash TEXT NOT NULL DEFAULT '',
                 error TEXT NOT NULL,
                 attempts INTEGER NOT NULL DEFAULT 1,
                 first_seen TEXT NOT NULL DEFAULT (datetime('now')),
@@ -5061,7 +5548,33 @@ impl SyncManager {
                 ON __sync_quarantine(last_attempt);
             "#,
         )
-        .map_err(|e| SyncError::Database(format!("创建 __sync_quarantine 失败: {}", e)))
+        .map_err(|e| SyncError::Database(format!("创建 __sync_quarantine 失败: {}", e)))?;
+        for (column, definition) in [
+            ("payload_hash", "TEXT NOT NULL DEFAULT ''"),
+            ("baseline_json", "TEXT"),
+            ("baseline_hash", "TEXT NOT NULL DEFAULT ''"),
+        ] {
+            let exists = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM pragma_table_info('__sync_quarantine') WHERE name=?1)",
+                    params![column],
+                    |row| row.get::<_, bool>(0),
+                )
+                .unwrap_or(false);
+            if !exists {
+                conn.execute(
+                    &format!(
+                        "ALTER TABLE __sync_quarantine ADD COLUMN {} {}",
+                        column, definition
+                    ),
+                    [],
+                )
+                .map_err(|e| {
+                    SyncError::Database(format!("迁移 __sync_quarantine.{} 失败: {}", column, e))
+                })?;
+            }
+        }
+        Ok(())
     }
 
     fn is_transient_apply_error(error: &SyncError) -> bool {
@@ -5101,6 +5614,35 @@ impl SyncManager {
             .unwrap_or(0)
     }
 
+    fn stable_sync_value_hash(value: &serde_json::Value) -> String {
+        use sha2::{Digest, Sha256};
+        let canonical = Self::canonicalize_sync_value_for_compare(value);
+        let encoded = serde_json::to_vec(&canonical).unwrap_or_default();
+        hex::encode(Sha256::digest(encoded))
+    }
+
+    fn sync_payload_hash(payload: &str) -> String {
+        use sha2::{Digest, Sha256};
+        hex::encode(Sha256::digest(payload.as_bytes()))
+    }
+
+    fn quarantine_baseline(
+        conn: &Connection,
+        change: &SyncChangeWithData,
+    ) -> (Option<String>, String) {
+        let baseline = Self::primary_key_columns(conn, &change.table_name)
+            .ok()
+            .and_then(|columns| columns.first().cloned())
+            .and_then(|id_column| {
+                Self::get_record_data(conn, &change.table_name, &change.record_id, &id_column)
+                    .ok()
+                    .flatten()
+            })
+            .unwrap_or(serde_json::Value::Null);
+        let hash = Self::stable_sync_value_hash(&baseline);
+        (serde_json::to_string(&baseline).ok(), hash)
+    }
+
     fn quarantine_change(
         conn: &Connection,
         change: &SyncChangeWithData,
@@ -5108,13 +5650,25 @@ impl SyncManager {
     ) -> Result<(), SyncError> {
         Self::ensure_quarantine_table(conn)?;
         let payload_json = serde_json::to_string(change).ok();
+        let payload_hash = payload_json
+            .as_deref()
+            .map(Self::sync_payload_hash)
+            .unwrap_or_default();
+        let (baseline_json, baseline_hash) = Self::quarantine_baseline(conn, change);
         conn.execute(
             "INSERT INTO __sync_quarantine
-             (source_device_id, source_seq, table_name, record_id, operation, payload_json, error)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             (source_device_id, source_seq, table_name, record_id, operation,
+              payload_json, payload_hash, baseline_json, baseline_hash, error)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
              ON CONFLICT(source_device_id, source_seq, table_name, record_id, operation)
              DO UPDATE SET
                 payload_json = excluded.payload_json,
+                payload_hash = excluded.payload_hash,
+                baseline_json = COALESCE(__sync_quarantine.baseline_json, excluded.baseline_json),
+                baseline_hash = CASE
+                    WHEN __sync_quarantine.baseline_hash = '' THEN excluded.baseline_hash
+                    ELSE __sync_quarantine.baseline_hash
+                END,
                 error = excluded.error,
                 attempts = attempts + 1,
                 last_attempt = datetime('now')",
@@ -5125,11 +5679,94 @@ impl SyncManager {
                 &change.record_id,
                 change.operation.as_str(),
                 payload_json,
+                payload_hash,
+                baseline_json,
+                baseline_hash,
                 error.to_string(),
             ],
         )
         .map_err(|e| SyncError::Database(format!("写入 __sync_quarantine 失败: {}", e)))?;
         Ok(())
+    }
+
+    fn clear_matching_quarantine(
+        conn: &Connection,
+        change: &SyncChangeWithData,
+    ) -> Result<usize, SyncError> {
+        conn.execute(
+            "DELETE FROM __sync_quarantine
+             WHERE source_device_id=?1 AND source_seq=?2
+               AND table_name=?3 AND record_id=?4 AND operation=?5",
+            params![
+                Self::source_device_for_quarantine(change),
+                Self::source_seq_for_quarantine(change),
+                &change.table_name,
+                &change.record_id,
+                change.operation.as_str(),
+            ],
+        )
+        .map_err(|e| SyncError::Database(format!("完成隔离区重放状态迁移失败: {}", e)))
+    }
+
+    fn preserve_quarantine_baseline_conflict(
+        conn: &Connection,
+        quarantine_id: i64,
+        change: &SyncChangeWithData,
+        id_columns: Option<&HashMap<String, String>>,
+    ) -> Result<(), SyncError> {
+        use conflict_resolver::{ConflictRecordToSave, ConflictSide};
+
+        let id_column = id_columns
+            .and_then(|columns| columns.get(&change.table_name))
+            .map(String::as_str)
+            .unwrap_or("id");
+        conn.execute_batch("BEGIN IMMEDIATE;")
+            .map_err(|e| SyncError::Database(format!("开始隔离冲突事务失败: {}", e)))?;
+        let result = (|| {
+            ConflictResolver::ensure_conflict_table(conn)?;
+            let local =
+                Self::get_record_data(conn, &change.table_name, &change.record_id, id_column)?
+                    .unwrap_or(serde_json::Value::Null);
+            let cloud = change.data.clone().unwrap_or(serde_json::Value::Null);
+            let cloud_device = change.source_device_id.as_deref();
+            ConflictResolver::save_conflict_record(
+                conn,
+                ConflictRecordToSave {
+                    table_name: &change.table_name,
+                    record_id: &change.record_id,
+                    side: ConflictSide::Local,
+                    data: &local,
+                    winning_device_id: None,
+                    losing_device_id: cloud_device,
+                },
+            )?;
+            ConflictResolver::save_conflict_record(
+                conn,
+                ConflictRecordToSave {
+                    table_name: &change.table_name,
+                    record_id: &change.record_id,
+                    side: ConflictSide::Cloud,
+                    data: &cloud,
+                    winning_device_id: None,
+                    losing_device_id: cloud_device,
+                },
+            )?;
+            conn.execute(
+                "DELETE FROM __sync_quarantine WHERE id=?1",
+                params![quarantine_id],
+            )
+            .map_err(|e| SyncError::Database(format!("清除已转冲突的隔离项失败: {}", e)))?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => conn
+                .execute_batch("COMMIT;")
+                .map_err(|e| SyncError::Database(format!("提交隔离冲突事务失败: {}", e))),
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                Err(error)
+            }
+        }
     }
 
     fn record_apply_failure(
@@ -5148,6 +5785,111 @@ impl SyncManager {
 
     /// 隔离区自动重放的重试上限：超过后仅保留给手动处理（UI 隔离区）。
     pub const QUARANTINE_AUTO_REPLAY_MAX_ATTEMPTS: i64 = 20;
+
+    fn replay_quarantine_candidate(
+        conn: &Connection,
+        id_columns: Option<&HashMap<String, String>>,
+        quarantine_id: i64,
+        payload_json: String,
+        payload_hash: String,
+        baseline_hash: String,
+    ) -> Result<bool, SyncError> {
+        if payload_hash.is_empty() || Self::sync_payload_hash(&payload_json) != payload_hash {
+            conn.execute(
+                "UPDATE __sync_quarantine
+                 SET attempts = attempts + 1,
+                     error = 'payload hash 缺失或校验失败',
+                     last_attempt = datetime('now')
+                 WHERE id = ?1",
+                params![quarantine_id],
+            )
+            .map_err(|e| SyncError::Database(format!("记录隔离 payload 校验失败: {}", e)))?;
+            return Ok(false);
+        }
+        let change: SyncChangeWithData = match serde_json::from_str(&payload_json) {
+            Ok(change) => change,
+            Err(e) => {
+                conn.execute(
+                    "UPDATE __sync_quarantine
+                     SET attempts = attempts + 1,
+                         error = ?1,
+                         last_attempt = datetime('now')
+                     WHERE id = ?2",
+                    params![format!("payload 解析失败: {}", e), quarantine_id],
+                )
+                .map_err(|update_error| {
+                    SyncError::Database(format!("记录隔离 payload 解析失败: {}", update_error))
+                })?;
+                return Ok(false);
+            }
+        };
+        let current_baseline_hash = Self::quarantine_baseline(conn, &change).1;
+        if baseline_hash.is_empty() || current_baseline_hash != baseline_hash {
+            // baseline 改变后不能把旧 payload 直接覆盖到新本地状态。冲突双边写入与
+            // quarantine 删除在同一个 IMMEDIATE 事务中完成。
+            Self::preserve_quarantine_baseline_conflict(conn, quarantine_id, &change, id_columns)?;
+            return Ok(true);
+        }
+
+        match Self::apply_downloaded_changes_with_conflict_guard(
+            conn,
+            &[change],
+            id_columns,
+            conflict_resolver::ConflictPolicy::KeepLatest,
+            None,
+            None,
+        ) {
+            Ok((result, _)) => Ok(result.failure_count == 0),
+            Err(error) => {
+                conn.execute(
+                    "UPDATE __sync_quarantine
+                     SET attempts = attempts + 1,
+                         error = ?1,
+                         last_attempt = datetime('now')
+                     WHERE id = ?2",
+                    params![error.to_string(), quarantine_id],
+                )
+                .map_err(|e| SyncError::Database(format!("更新隔离重放失败状态失败: {}", e)))?;
+                Err(error)
+            }
+        }
+    }
+
+    /// 手动重试单条隔离记录。与自动重放共用 payload/baseline 校验和 conflict guard；
+    /// 成功应用时业务写入与 quarantine 删除由同一事务提交。
+    pub fn retry_quarantined_change(
+        conn: &Connection,
+        quarantine_id: i64,
+        id_columns: Option<&HashMap<String, String>>,
+    ) -> Result<bool, SyncError> {
+        Self::ensure_quarantine_table(conn)?;
+        let candidate = conn
+            .query_row(
+                "SELECT payload_json, payload_hash, baseline_hash
+                 FROM __sync_quarantine WHERE id=?1",
+                params![quarantine_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|e| SyncError::Database(format!("读取隔离记录失败: {}", e)))?;
+        let Some((payload_json, payload_hash, baseline_hash)) = candidate else {
+            return Ok(false);
+        };
+        Self::replay_quarantine_candidate(
+            conn,
+            id_columns,
+            quarantine_id,
+            payload_json,
+            payload_hash,
+            baseline_hash,
+        )
+    }
 
     /// [P1] 自动重放隔离区中尚有重试余量的变更。
     ///
@@ -5175,17 +5917,23 @@ impl SyncManager {
             return Ok(0);
         }
 
-        let candidates: Vec<(i64, String)> = {
+        Self::ensure_quarantine_table(conn)?;
+        let candidates: Vec<(i64, String, String, String)> = {
             let mut stmt = conn
                 .prepare(
-                    "SELECT id, payload_json FROM __sync_quarantine
+                    "SELECT id, payload_json, payload_hash, baseline_hash FROM __sync_quarantine
                      WHERE payload_json IS NOT NULL AND attempts <= ?1
                      ORDER BY id",
                 )
                 .map_err(|e| SyncError::Database(format!("准备隔离区重放查询失败: {}", e)))?;
             let rows = stmt
                 .query_map(params![max_attempts], |row| {
-                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
                 })
                 .map_err(|e| SyncError::Database(format!("执行隔离区重放查询失败: {}", e)))?;
             rows.filter_map(|r| r.ok()).collect()
@@ -5196,45 +5944,19 @@ impl SyncManager {
         }
 
         let mut replayed = 0usize;
-        for (quarantine_id, payload_json) in candidates {
-            let change: SyncChangeWithData = match serde_json::from_str(&payload_json) {
-                Ok(c) => c,
-                Err(e) => {
-                    // payload 损坏：标记错误并跳出自动重放（保留人工处理）
-                    let _ = conn.execute(
-                        "UPDATE __sync_quarantine
-                         SET attempts = attempts + 1,
-                             error = ?1,
-                             last_attempt = datetime('now')
-                         WHERE id = ?2",
-                        params![format!("payload 解析失败: {}", e), quarantine_id],
-                    );
-                    continue;
-                }
-            };
-            match Self::apply_downloaded_changes(conn, &[change], id_columns) {
-                Ok(result) if result.failure_count == 0 => {
-                    let _ = conn.execute(
-                        "DELETE FROM __sync_quarantine WHERE id = ?1",
-                        params![quarantine_id],
-                    );
-                    replayed += 1;
-                }
-                Ok(_) => {
-                    // 再次失败：apply 内部的 quarantine_change ON CONFLICT 已递增 attempts，
-                    // 这里无需重复处理。
-                }
-                Err(e) => {
-                    // transient 错误：本轮放弃，不再继续重放（环境性问题影响所有条目）
-                    let _ = conn.execute(
-                        "UPDATE __sync_quarantine
-                         SET attempts = attempts + 1,
-                             error = ?1,
-                             last_attempt = datetime('now')
-                         WHERE id = ?2",
-                        params![e.to_string(), quarantine_id],
-                    );
-                    tracing::warn!("[sync] 隔离区自动重放遇到暂时性错误，本轮终止: {}", e);
+        for (quarantine_id, payload_json, payload_hash, baseline_hash) in candidates {
+            match Self::replay_quarantine_candidate(
+                conn,
+                id_columns,
+                quarantine_id,
+                payload_json,
+                payload_hash,
+                baseline_hash,
+            ) {
+                Ok(true) => replayed += 1,
+                Ok(false) => {}
+                Err(error) => {
+                    tracing::warn!("[sync] 隔离区自动重放遇到暂时性错误，本轮终止: {}", error);
                     break;
                 }
             }
@@ -6251,6 +6973,7 @@ impl SyncManager {
                     }
 
                     Self::validate_no_new_fk_violations(conn, &fk_baseline, &fk_batch_tables)?;
+                    Self::clear_matching_quarantine(conn, change)?;
                     Ok(())
                 })();
 
@@ -6346,20 +7069,9 @@ impl SyncManager {
     pub async fn get_min_available_change_version(
         storage: &dyn CloudStorage,
     ) -> Result<Option<u64>, SyncError> {
-        let list = storage
-            .list_outcome(Self::CHANGES_PREFIX)
-            .await
-            .map_err(|e| SyncError::Network(format!("列出变更文件失败: {}", e)))?;
-        if list.truncated {
-            return Err(SyncError::Network(
-                "云端变更列表被截断，无法安全判断最小可用版本".to_string(),
-            ));
-        }
-        let files = list.files;
-
         let mut min_version: Option<u64> = None;
-        for file in &files {
-            if let Some(raw) = Self::parse_version_from_key(&file.key) {
+        for key in Self::list_all_change_keys(storage).await? {
+            if let Some(raw) = Self::parse_version_from_key(&key) {
                 let v = Self::normalize_version_to_seconds(raw);
                 min_version = Some(match min_version {
                     Some(cur) => cur.min(v),
@@ -7968,6 +8680,8 @@ pub struct SyncChangesPayload {
     /// 上传设备 ID（v3，保留 device_id 兼容旧字段）
     #[serde(default)]
     pub source_device_id: String,
+    #[serde(default)]
+    pub operation_id: Option<String>,
 }
 
 fn default_format_version() -> u32 {
@@ -8249,6 +8963,7 @@ impl SyncManager {
         manifest: &T,
         label: &str,
     ) -> Result<(), SyncError> {
+        self.validate_remote_format(storage, true).await?;
         let json = serde_json::to_vec(manifest)
             .map_err(|error| SyncError::Database(format!("序列化{}清单失败: {}", label, error)))?;
         let payload = self.encode_payload(&json)?;
@@ -8628,6 +9343,17 @@ impl SyncManager {
                                     source_sha256: Some(sha256.clone()),
                                     device_id: Some(self.device_id.clone()),
                                     object_key: Some(key.clone()),
+                                    base_sha256: cloud_manifest.entries.get(ws_id).map(|entry| {
+                                        entry
+                                            .source_sha256
+                                            .clone()
+                                            .unwrap_or_else(|| entry.sha256.clone())
+                                    }),
+                                    revision: cloud_manifest
+                                        .entries
+                                        .get(ws_id)
+                                        .map(|entry| entry.revision.saturating_add(1).max(1))
+                                        .unwrap_or(1),
                                 },
                             );
                             tracing::info!("[sync] 工作区数据库已上传: {}", ws_id);
@@ -8736,6 +9462,31 @@ impl SyncManager {
                 if !ours_changed {
                     continue;
                 }
+                if let Some(theirs) = merged.entries.get(ws_id) {
+                    let theirs_hash = theirs.source_sha256.as_deref().unwrap_or(&theirs.sha256);
+                    let base_matches = entry.base_sha256.as_deref() == Some(theirs_hash);
+                    let revision_matches =
+                        theirs.revision == 0 || entry.revision == theirs.revision.saturating_add(1);
+                    if !base_matches || !revision_matches {
+                        if let Some((path, _, _, _)) = local_entries.get(ws_id) {
+                            Self::save_conflict_copy(path, &self.device_id)?;
+                        }
+                        failures.push(format!(
+                            "{}: 云端 base hash/revision 已变化，本地版本保留为冲突副本",
+                            ws_id
+                        ));
+                        continue;
+                    }
+                } else if entry.base_sha256.is_some() {
+                    if let Some((path, _, _, _)) = local_entries.get(ws_id) {
+                        Self::save_conflict_copy(path, &self.device_id)?;
+                    }
+                    failures.push(format!(
+                        "{}: 云端基线已被删除，本地版本保留为冲突副本",
+                        ws_id
+                    ));
+                    continue;
+                }
                 let theirs_newer = merged.entries.get(ws_id).is_some_and(|theirs| {
                     Self::local_file_wins(
                         &theirs.updated_at,
@@ -8831,13 +9582,10 @@ impl SyncManager {
                 let replace = merged
                     .entries
                     .get(&workspace_id)
-                    .map(|current| {
-                        Self::local_file_wins(
-                            &entry.updated_at,
-                            &current.updated_at,
-                            &entry.sha256,
-                            &current.sha256,
-                        )
+                    .map(|current| match entry.revision.cmp(&current.revision) {
+                        std::cmp::Ordering::Greater => true,
+                        std::cmp::Ordering::Less => false,
+                        std::cmp::Ordering::Equal => entry.sha256 > current.sha256,
                     })
                     .unwrap_or(true);
                 if replace {
@@ -9287,6 +10035,16 @@ impl SyncManager {
                                 size: *size,
                                 updated_at: local_updated_at.clone(),
                                 object_key: Some(remote_key.clone()),
+                                base_sha256: cloud_manifest
+                                    .entries
+                                    .get(key)
+                                    .map(|entry| entry.sha256.clone()),
+                                revision: cloud_manifest
+                                    .entries
+                                    .get(key)
+                                    .map(|entry| entry.revision.saturating_add(1).max(1))
+                                    .unwrap_or(1),
+                                device_id: Some(self.device_id.clone()),
                             },
                         );
                         uploaded += 1;
@@ -9368,6 +10126,24 @@ impl SyncManager {
             for (key, entry) in &new_manifest.entries {
                 let ours_changed = cloud_manifest.entries.get(key) != Some(entry);
                 if !ours_changed {
+                    continue;
+                }
+                let base_matches = match merged.entries.get(key) {
+                    Some(theirs) => {
+                        entry.base_sha256.as_deref() == Some(theirs.sha256.as_str())
+                            && (theirs.revision == 0
+                                || entry.revision == theirs.revision.saturating_add(1))
+                    }
+                    None => entry.base_sha256.is_none(),
+                };
+                if !base_matches {
+                    if let Some((path, _, _, _)) = local_files.get(key) {
+                        Self::save_conflict_copy(path, &self.device_id)?;
+                    }
+                    upload_failures.push(format!(
+                        "{}: 云端 base hash/revision 已变化，本地资产保留为冲突副本",
+                        key
+                    ));
                     continue;
                 }
                 let theirs_newer = merged.entries.get(key).is_some_and(|theirs| {
@@ -9461,13 +10237,15 @@ impl SyncManager {
                 let replace = merged
                     .entries
                     .get(&key)
-                    .map(|current| {
-                        Self::local_file_wins(
+                    .map(|current| match entry.revision.cmp(&current.revision) {
+                        std::cmp::Ordering::Greater => true,
+                        std::cmp::Ordering::Less => false,
+                        std::cmp::Ordering::Equal => Self::local_file_wins(
                             &entry.updated_at,
                             &current.updated_at,
                             &entry.sha256,
                             &current.sha256,
-                        )
+                        ),
                     })
                     .unwrap_or(true);
                 if replace {
@@ -9615,6 +10393,7 @@ impl SyncManager {
         relative_path: Option<String>,
         size: Option<u64>,
     ) -> Result<(), SyncError> {
+        self.validate_remote_format(storage, true).await?;
         // [P0-2] tombstone 清单也走 E2EE（self 实现了 PayloadCodec）
         let mut manifest =
             tombstone::download_blob_tombstones_for_device(storage, self, &self.device_id).await?;
@@ -9643,6 +10422,7 @@ impl SyncManager {
         if entries.is_empty() {
             return Ok(());
         }
+        self.validate_remote_format(storage, true).await?;
         let mut manifest =
             tombstone::download_blob_tombstones_for_device(storage, self, &self.device_id).await?;
         for (hash, relative_path, size, deleted_at) in entries {
@@ -9671,6 +10451,7 @@ impl SyncManager {
         key: &str,
         size: Option<u64>,
     ) -> Result<(), SyncError> {
+        self.validate_remote_format(storage, true).await?;
         let mut manifest =
             tombstone::download_asset_tombstones_for_device(storage, self, &self.device_id).await?;
         manifest.entries.insert(
@@ -9697,6 +10478,7 @@ impl SyncManager {
         if entries.is_empty() {
             return Ok(());
         }
+        self.validate_remote_format(storage, true).await?;
         let mut manifest =
             tombstone::download_asset_tombstones_for_device(storage, self, &self.device_id).await?;
         for (key, size, deleted_at) in entries {
@@ -9722,6 +10504,7 @@ impl SyncManager {
         storage: &dyn CloudStorage,
         workspace_id: &str,
     ) -> Result<(), SyncError> {
+        self.validate_remote_format(storage, true).await?;
         let mut manifest =
             tombstone::download_workspace_tombstones_for_device(storage, self, &self.device_id)
                 .await?;
@@ -9749,6 +10532,7 @@ impl SyncManager {
         if entries.is_empty() {
             return Ok(());
         }
+        self.validate_remote_format(storage, true).await?;
         let mut manifest =
             tombstone::download_workspace_tombstones_for_device(storage, self, &self.device_id)
                 .await?;
@@ -10064,6 +10848,10 @@ impl SyncManager {
                 // 本地删除
                 if let Some(local) = local_path {
                     if local.exists() {
+                        // 资产路径不是内容寻址，mtime 不能证明本地内容就是删除所针对
+                        // 的基线。删除前始终保留冲突副本，避免时钟回拨/拷贝保留 mtime
+                        // 时静默丢失本地修改。
+                        Self::save_conflict_copy(&local, &self.device_id)?;
                         std::fs::remove_file(&local)?;
                     }
                 }
@@ -10113,6 +10901,29 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    #[test]
+    fn v3_format_descriptor_defaults_into_v4_compatible_skeleton() {
+        let descriptor: SyncFormatDescriptor =
+            serde_json::from_value(json!({"format_version": 3})).unwrap();
+        assert_eq!(descriptor.format_version, 3);
+        assert_eq!(descriptor.min_reader_version, 3);
+        assert!(descriptor.features.is_empty());
+        assert_eq!(SyncManager::CURRENT_FORMAT_VERSION, 4);
+        let serialized = serde_json::to_value(&descriptor).unwrap();
+        assert_eq!(serialized["min_client"], 3);
+        assert!(serialized.get("min_reader_version").is_none());
+    }
+
+    #[test]
+    fn fresh_device_cursor_zero_is_not_a_prune_gap() {
+        assert!(!SyncManager::has_prune_gap(0, Some(1)));
+        assert!(!SyncManager::has_prune_gap(0, Some(42)));
+        assert!(SyncManager::has_prune_gap(3, Some(4)));
+        assert!(!SyncManager::missing_sequence_is_proven(1, 1, 1));
+        assert!(SyncManager::missing_sequence_is_proven(1, 2, 0));
+        assert!(SyncManager::missing_sequence_is_proven(6, 7, 5));
+    }
+
     fn create_test_manifest(
         device_id: &str,
         databases: Vec<(&str, u32, u64, &str)>,
@@ -10135,7 +10946,7 @@ mod tests {
             status: SyncTransactionStatus::Complete,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             device_id: device_id.to_string(),
-            format_version: 3,
+            format_version: SyncManager::CURRENT_FORMAT_VERSION,
             published_max_seq: 0,
             cursors: HashMap::new(),
             superseded_by: None,
@@ -10181,6 +10992,38 @@ mod tests {
                 version: 1_707_500_000,
             }) if device_id == "device-1"
         ));
+    }
+
+    #[test]
+    fn v4_change_shard_key_is_sequenced_and_parseable() {
+        let manager = SyncManager::new("device-1".to_string());
+        let key = manager.build_change_key_v4(43, 1_707_500_001);
+        assert!(key.starts_with("data_governance/v4/shards/device-1/"));
+        assert!(matches!(
+            SyncManager::parse_change_key(&key),
+            Some(ParsedChangeKey::V4Shard {
+                device_id,
+                seq: 43,
+                version: 1_707_500_001,
+                operation_id,
+            }) if device_id == "device-1" && !operation_id.is_empty()
+        ));
+    }
+
+    #[test]
+    fn v4_migration_requires_every_non_superseded_manifest() {
+        let mut manifests = HashMap::new();
+        assert!(
+            !SyncManager::all_known_clients_support_v4(&manifests),
+            "an empty manifest set cannot prove that every client upgraded"
+        );
+        manifests.insert("new".to_string(), create_test_manifest("new", Vec::new()));
+        manifests.get_mut("new").unwrap().format_version = 4;
+        manifests.insert("old".to_string(), create_test_manifest("old", Vec::new()));
+        manifests.get_mut("old").unwrap().format_version = 3;
+        assert!(!SyncManager::all_known_clients_support_v4(&manifests));
+        manifests.get_mut("old").unwrap().superseded_by = Some("new".to_string());
+        assert!(SyncManager::all_known_clients_support_v4(&manifests));
     }
 
     // ==================== Phase 0 回归测试 ====================
@@ -12476,6 +13319,179 @@ mod tests {
             })
             .unwrap();
         assert_eq!(quarantine_count, 1);
+    }
+
+    #[test]
+    fn quarantine_replay_persists_baseline_and_clears_state_with_guarded_apply() {
+        let conn = create_test_db_with_business_table();
+        conn.execute(
+            "INSERT INTO test_records(id, content, updated_at) VALUES('q-1', 'base', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        let change = SyncChangeWithData {
+            table_name: "test_records".to_string(),
+            record_id: "q-1".to_string(),
+            operation: ChangeOperation::Update,
+            data: Some(json!({
+                "id": "q-1",
+                "content": "cloud",
+                "updated_at": "2026-01-02T00:00:00Z"
+            })),
+            changed_at: "2026-01-02T00:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: None,
+            suppress_change_log: Some(true),
+            source_device_id: Some("remote-a".to_string()),
+            source_seq: Some(1),
+        };
+        SyncManager::quarantine_change(
+            &conn,
+            &change,
+            &SyncError::Database("temporary poison".to_string()),
+        )
+        .unwrap();
+        let hashes: (String, String) = conn
+            .query_row(
+                "SELECT payload_hash, baseline_hash FROM __sync_quarantine",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert!(!hashes.0.is_empty());
+        assert!(!hashes.1.is_empty());
+
+        assert_eq!(
+            SyncManager::replay_quarantined_changes(&conn, None, 20).unwrap(),
+            1
+        );
+        let content: String = conn
+            .query_row(
+                "SELECT content FROM test_records WHERE id='q-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(content, "cloud");
+        let remaining: i64 = conn
+            .query_row("SELECT COUNT(*) FROM __sync_quarantine", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(remaining, 0);
+    }
+
+    #[test]
+    fn quarantine_replay_baseline_mismatch_preserves_both_sides() {
+        let conn = create_test_db_with_business_table();
+        conn.execute(
+            "INSERT INTO test_records(id, content, updated_at) VALUES('q-2', 'base', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        let change = SyncChangeWithData {
+            table_name: "test_records".to_string(),
+            record_id: "q-2".to_string(),
+            operation: ChangeOperation::Update,
+            data: Some(json!({
+                "id": "q-2",
+                "content": "cloud",
+                "updated_at": "2026-01-02T00:00:00Z"
+            })),
+            changed_at: "2026-01-02T00:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: None,
+            suppress_change_log: Some(true),
+            source_device_id: Some("remote-a".to_string()),
+            source_seq: Some(2),
+        };
+        SyncManager::quarantine_change(
+            &conn,
+            &change,
+            &SyncError::Database("temporary poison".to_string()),
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE test_records SET content='local-new', updated_at='2026-01-03T00:00:00Z' WHERE id='q-2'",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(
+            SyncManager::replay_quarantined_changes(&conn, None, 20).unwrap(),
+            1
+        );
+        let content: String = conn
+            .query_row(
+                "SELECT content FROM test_records WHERE id='q-2'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(content, "local-new");
+        let conflicts: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __sync_conflicts WHERE record_id='q-2' AND resolved_at IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(conflicts, 2);
+    }
+
+    #[test]
+    fn quarantine_replay_rejects_payload_hash_mismatch() {
+        let conn = create_test_db_with_business_table();
+        conn.execute(
+            "INSERT INTO test_records(id, content, updated_at) VALUES('q-3', 'base', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        let change = SyncChangeWithData {
+            table_name: "test_records".to_string(),
+            record_id: "q-3".to_string(),
+            operation: ChangeOperation::Update,
+            data: Some(json!({
+                "id": "q-3",
+                "content": "cloud",
+                "updated_at": "2026-01-02T00:00:00Z"
+            })),
+            changed_at: "2026-01-02T00:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: None,
+            suppress_change_log: Some(true),
+            source_device_id: Some("remote-a".to_string()),
+            source_seq: Some(3),
+        };
+        SyncManager::quarantine_change(
+            &conn,
+            &change,
+            &SyncError::Database("temporary poison".to_string()),
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE __sync_quarantine
+             SET payload_json = replace(payload_json, 'cloud', 'tampered')",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(
+            SyncManager::replay_quarantined_changes(&conn, None, 20).unwrap(),
+            0
+        );
+        let content: String = conn
+            .query_row(
+                "SELECT content FROM test_records WHERE id='q-3'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(content, "base");
+        let error: String = conn
+            .query_row("SELECT error FROM __sync_quarantine", [], |row| row.get(0))
+            .unwrap();
+        assert!(error.contains("payload hash"));
     }
 
     #[test]

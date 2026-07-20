@@ -2,7 +2,7 @@
 //!
 //! 负责将同步进度事件发送到前端，支持节流以避免过于频繁的更新。
 
-use super::progress::{SyncPhase, SyncProgress};
+use super::progress::{SyncOutcome, SyncPhase, SyncProgress};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
@@ -27,6 +27,8 @@ pub struct SyncProgressEmitter {
     last_phase: Arc<Mutex<Option<SyncPhase>>>,
     /// 上次已发送的百分比（用于防止 UI 进度回退）
     last_percent: Arc<StdMutex<f32>>,
+    /// 一次同步的稳定关联 ID；clone 后仍共享同一值。
+    operation_id: Arc<String>,
 }
 
 impl SyncProgressEmitter {
@@ -40,6 +42,7 @@ impl SyncProgressEmitter {
             last_emit: Arc::new(Mutex::new(None)),
             last_phase: Arc::new(Mutex::new(None)),
             last_percent: Arc::new(StdMutex::new(0.0)),
+            operation_id: Arc::new(uuid::Uuid::new_v4().to_string()),
         }
     }
 
@@ -97,6 +100,16 @@ impl SyncProgressEmitter {
 
     /// 归一化进度百分比，保证前端看到的同步进度单调前进。
     fn normalize_progress(&self, mut progress: SyncProgress) -> SyncProgress {
+        if progress.operation_id.is_none() {
+            progress.operation_id = Some((*self.operation_id).clone());
+        }
+        if progress.outcome.is_none() {
+            progress.outcome = Some(match progress.phase {
+                SyncPhase::Completed => SyncOutcome::Succeeded,
+                SyncPhase::Failed => SyncOutcome::Failed,
+                _ => SyncOutcome::InProgress,
+            });
+        }
         let mut last_percent = self.last_percent.lock().unwrap_or_else(|e| e.into_inner());
         progress.percent = progress.percent.clamp(0.0, 100.0);
 
@@ -187,6 +200,12 @@ impl SyncProgressEmitter {
         self.emit(SyncProgress::failed(error.into())).await;
     }
 
+    /// 发射部分完成终态（保留 Failed phase 兼容旧前端）。
+    pub async fn emit_partial(&self, error: impl Into<String>) {
+        self.emit(SyncProgress::failed(error.into()).with_outcome(SyncOutcome::Partial))
+            .await;
+    }
+
     /// 发射带速度信息的进度
     ///
     /// # 参数
@@ -226,6 +245,7 @@ impl Clone for SyncProgressEmitter {
             last_emit: Arc::clone(&self.last_emit),
             last_phase: Arc::clone(&self.last_phase),
             last_percent: Arc::clone(&self.last_percent),
+            operation_id: Arc::clone(&self.operation_id),
         }
     }
 }

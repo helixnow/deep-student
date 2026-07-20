@@ -1637,8 +1637,8 @@ impl MigrationCoordinator {
 
                 let mut reason = "baseline_alignment";
                 if !is_baseline {
-                    let allowlisted = LEGACY_CHECKSUM_DRIFT_ALLOWLIST
-                        .contains(&(id.as_str(), version));
+                    let allowlisted =
+                        LEGACY_CHECKSUM_DRIFT_ALLOWLIST.contains(&(id.as_str(), version));
                     if !allowlisted {
                         // 未知 checksum 漂移：可能是脚本被篡改、部分应用或分叉
                         // 版本，静默对齐会掩盖真实的 schema 分歧，必须中止。

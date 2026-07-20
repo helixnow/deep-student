@@ -423,6 +423,14 @@
       "dangers": []
     },
     {
+      "database": "mistakes",
+      "version": 20260724,
+      "name": "anki_dedup_index_exclude_deleted",
+      "path": "mistakes/V20260724__anki_dedup_index_exclude_deleted.sql",
+      "sha256": "99bc6dba815dfa36d11a6ebf6e6b453b15f536adb9a257d5f9e265bc4fb03302",
+      "dangers": []
+    },
+    {
       "database": "vfs",
       "version": 20260130,
       "name": "init",

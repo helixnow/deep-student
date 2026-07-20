@@ -282,7 +282,10 @@ mod tests {
         let lease = pool.get().expect("lease");
         let err = drain_pool_until_idle(&pool, Duration::from_millis(120))
             .expect_err("outstanding lease must block the barrier");
-        assert!(err.contains("1 个租约"), "error should report lease count: {err}");
+        assert!(
+            err.contains("1 个租约"),
+            "error should report lease count: {err}"
+        );
 
         drop(lease);
         drain_pool_until_idle(&pool, Duration::from_millis(500))
@@ -294,8 +297,10 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("chk.db");
         let conn = Connection::open(&path).expect("open");
-        conn.pragma_update(None, "journal_mode", "WAL").expect("wal");
-        conn.execute("CREATE TABLE t (id INTEGER)", []).expect("ddl");
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .expect("wal");
+        conn.execute("CREATE TABLE t (id INTEGER)", [])
+            .expect("ddl");
         conn.execute("INSERT INTO t VALUES (1)", []).expect("dml");
         checkpoint_truncate_strict(&conn).expect("healthy checkpoint must pass");
     }

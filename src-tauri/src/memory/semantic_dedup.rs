@@ -449,10 +449,7 @@ impl SemanticDedup {
 
     /// 常规抽查：取最近更新的 N 条 fact 类记忆
     /// （list 已按 updated_at DESC 排序、排除 `__*__` 系统笔记；归档记忆不抽查）
-    fn sample_recent_facts(
-        memory_service: &MemoryService,
-        limit: usize,
-    ) -> VfsResult<Vec<String>> {
+    fn sample_recent_facts(memory_service: &MemoryService, limit: usize) -> VfsResult<Vec<String>> {
         let page = memory_service.list(None, (limit * 3) as u32, 0)?;
         Ok(page
             .into_iter()
@@ -775,11 +772,13 @@ mod tests {
         ];
         let b_tags = vec!["_hits:7".to_string()];
         assert_eq!(
-            extract_tag_count(&a_tags, TAG_HITS_PREFIX).max(extract_tag_count(&b_tags, TAG_HITS_PREFIX)),
+            extract_tag_count(&a_tags, TAG_HITS_PREFIX)
+                .max(extract_tag_count(&b_tags, TAG_HITS_PREFIX)),
             7
         );
         assert_eq!(
-            extract_tag_count(&a_tags, TAG_USED_PREFIX).max(extract_tag_count(&b_tags, TAG_USED_PREFIX)),
+            extract_tag_count(&a_tags, TAG_USED_PREFIX)
+                .max(extract_tag_count(&b_tags, TAG_USED_PREFIX)),
             2
         );
         assert_eq!(extract_tag_count(&[], TAG_HITS_PREFIX), 0);

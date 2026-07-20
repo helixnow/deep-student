@@ -174,9 +174,7 @@ impl From<ErrorDetails> for CommandError {
         Self {
             code,
             message: details.message,
-            data: details
-                .context
-                .map(|context| serde_json::json!(context)),
+            data: details.context.map(|context| serde_json::json!(context)),
             trace_id: details.trace_id,
         }
     }

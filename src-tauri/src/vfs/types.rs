@@ -748,7 +748,7 @@ pub struct VfsUpdateMindMapParams {
 
 /// 待办列表元数据（todo_lists 表）
 ///
-/// 独立于 VFS 资源系统，类比 Todoist 的"项目"概念。
+/// 独立于 VFS 资源系统的任务分组（项目）概念。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VfsTodoList {

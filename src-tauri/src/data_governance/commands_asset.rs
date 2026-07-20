@@ -3,7 +3,7 @@
 use tracing::{error, info};
 
 use super::backup::{AssetType, AssetTypeStats, BackupManager};
-use crate::backup_common::BACKUP_GLOBAL_LIMITER;
+use crate::backup_common::{DataGovernanceOperationGuard, DataGovernanceOperationKind};
 
 use super::commands_backup::{
     ensure_existing_path_within_backup_dir, get_active_data_dir, get_app_data_dir, get_backup_dir,
@@ -157,11 +157,10 @@ pub async fn data_governance_verify_backup_with_assets(
     manager.set_app_data_dir(app_data_dir.clone());
 
     // 全局互斥：避免与正在运行的备份/恢复/ZIP 导入导出并发
-    let _permit = BACKUP_GLOBAL_LIMITER
-        .clone()
-        .acquire_owned()
-        .await
-        .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
+    let _operation =
+        DataGovernanceOperationGuard::acquire(DataGovernanceOperationKind::Verify, None)
+            .await
+            .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
 
     // 获取备份列表并查找指定的备份
     let manifests = manager

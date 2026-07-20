@@ -112,9 +112,7 @@ impl VfsError {
             }
             VfsError::InvalidArgument { .. }
             | VfsError::PathParse { .. }
-            | VfsError::InvalidParent { .. } => {
-                "VFS_INVALID_ARGUMENT"
-            }
+            | VfsError::InvalidParent { .. } => "VFS_INVALID_ARGUMENT",
             VfsError::InvalidOperation { .. } | VfsError::InvalidState { .. } => {
                 "VFS_INVALID_OPERATION"
             }
@@ -138,9 +136,7 @@ impl VfsError {
         use crate::error_details::CommandError;
         let envelope = CommandError::new(self.stable_code(), self.to_string());
         match self {
-            VfsError::Conflict { key, .. } => {
-                envelope.with_data(serde_json::json!({ "key": key }))
-            }
+            VfsError::Conflict { key, .. } => envelope.with_data(serde_json::json!({ "key": key })),
             VfsError::NotFound { resource_type, id } => envelope.with_data(serde_json::json!({
                 "resourceType": resource_type,
                 "id": id,
@@ -240,7 +236,11 @@ impl fmt::Display for VfsError {
                 write!(f, "INVALID_STATE: {}", message)
             }
             VfsError::Maintenance { component } => {
-                write!(f, "MAINTENANCE_MODE: {} is temporarily unavailable", component)
+                write!(
+                    f,
+                    "MAINTENANCE_MODE: {} is temporarily unavailable",
+                    component
+                )
             }
             VfsError::Conflict { key, message } => {
                 write!(f, "CONFLICT({}): {}", key, message)

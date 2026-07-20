@@ -17,17 +17,17 @@ import {
 import { cn } from '../lib/utils';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/shad/Card';
 import { Alert, AlertDescription } from './ui/shad/Alert';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { Checkbox } from './ui/shad/Checkbox';
 import {
-  NotionDialog,
-  NotionDialogHeader,
-  NotionDialogTitle,
-  NotionDialogDescription,
-  NotionDialogBody,
-  NotionDialogFooter,
-} from './ui/NotionDialog';
+  DsDialog,
+  DsDialogHeader,
+  DsDialogTitle,
+  DsDialogDescription,
+  DsDialogBody,
+  DsDialogFooter,
+} from './ui/DsDialog';
 import { Badge } from './ui/shad/Badge';
 import { Tabs, TabsList, TabsTrigger } from './ui/shad/Tabs';
 import { Input } from './ui/shad/Input';
@@ -63,7 +63,7 @@ import {
 } from 'recharts';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 
-// Notion 风格设计系统 - 使用 CSS 变量，支持亮暗模式
+// 简洁风格设计系统 - 使用 CSS 变量，支持亮暗模式
 const DESIGN = {
   // 图表颜色使用柔和的色调
   chart: [
@@ -98,6 +98,8 @@ interface GovernanceBackupInfo {
   size: number;
   created_at: string;
   is_auto_backup: boolean;
+  recovery_kind: 'disaster_recovery' | 'partial_archive';
+  restorable: boolean;
 }
 
 // 备份列表项组件
@@ -138,6 +140,11 @@ const BackupListItem: React.FC<{
               {t('data:backup_list.auto_badge')}
             </Badge>
           )}
+          {backup.recovery_kind === 'partial_archive' && (
+            <Badge variant="outline" className="text-xs">
+              {t('data:governance.partial_archive', { defaultValue: 'Partial archive' })}
+            </Badge>
+          )}
         </div>
         <div className="mt-1.5 flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
@@ -151,7 +158,7 @@ const BackupListItem: React.FC<{
           触屏没有 hover —— 备份恢复入口完全不可达。<md 常显，桌面保持 hover 交互。 */}
       <div className="flex gap-2 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
         {onSave && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => onSave(backup.backup_id)}
@@ -160,23 +167,31 @@ const BackupListItem: React.FC<{
           >
             <FloppyDisk className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
             {t('data:backup_list.save_button')}
-          </NotionButton>
+          </DsButton>
         )}
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => onRestore(backup.backup_id)}
+          disabled={!backup.restorable}
+          title={
+            backup.restorable
+              ? undefined
+              : t('data:governance.partial_archive_not_restorable', {
+                  defaultValue: 'Partial archives cannot replace the data slot',
+                })
+          }
           className="h-11 px-3 md:h-9"
         >
           <DownloadSimple className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
           {t('data:backup_list.restore_button')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );
 };
 
-// Notion 风格统计卡片组件 - 简洁扁平
+// 简洁风格统计卡片组件 - 简洁
 const StatCard = ({
   title,
   value,
@@ -255,7 +270,7 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
   useMobileHeader('data-management', {
     title: t('common:navigation.data_management'),
     rightActions: (
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         iconOnly
@@ -263,12 +278,13 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
         onClick={() => handleExportRef.current()}
       >
         <DownloadSimple size={18} />
-      </NotionButton>
+      </DsButton>
     ),
   }, [t]);
-  const { enterMaintenanceMode, exitMaintenanceMode } = useSystemStatusStore(
+  const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
     useShallow((state) => ({
       enterMaintenanceMode: state.enterMaintenanceMode,
+      requireMaintenanceRestart: state.requireMaintenanceRestart,
       exitMaintenanceMode: state.exitMaintenanceMode,
     }))
   );
@@ -420,8 +436,10 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
   const mapUiTiersToGovernance = useCallback((tiers: BackupTier[]): Array<'core' | 'important' | 'rebuildable' | 'large_assets'> => {
     const mapped = new Set<'core' | 'important' | 'rebuildable' | 'large_assets'>(['core']);
     for (const tier of tiers) {
-      if (tier === 'core_config_chat' || tier === 'vfs_full') {
+      if (tier === 'core_config_chat') {
         mapped.add('core');
+      } else if (tier === 'vfs_full') {
+        mapped.add('important');
       } else if (tier === 'rebuildable') {
         mapped.add('rebuildable');
       } else if (tier === 'large_files') {
@@ -611,6 +629,10 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
           size: item.size,
           created_at: item.created_at,
           is_auto_backup: backupId.startsWith('auto-backup-'),
+          recovery_kind:
+            item.recovery_kind ??
+            (item.backup_type === 'full' ? 'disaster_recovery' : 'partial_archive'),
+          restorable: item.restorable ?? item.backup_type === 'full',
         } satisfies GovernanceBackupInfo;
       });
       normalized.sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -816,6 +838,7 @@ ${resolvedPath}`);
     setIsExporting(true);
     setRestoreProgress(null);
     enterMaintenanceMode(t('data:governance.maintenance_restore'));
+    let restoreRequiresRestart = false;
     try {
       const spaceCheck = await DataGovernanceApi.checkDiskSpaceForRestore(backupId);
       if (!spaceCheck.has_enough_space) {
@@ -830,6 +853,8 @@ ${resolvedPath}`);
       const restoreResult = await waitForJobTerminal(restoreJob.job_id, 'import', 600000, handleRestoreProgress);
       showGlobalNotification('success', t('data:restore_complete'));
       if (restoreResult.result?.requires_restart || restoreResult.result?.requiresRestart) {
+        restoreRequiresRestart = true;
+        requireMaintenanceRestart(t('common:maintenance.recovery_required'));
         showGlobalNotification('warning', t('data:governance.restore_restart_required'));
       }
     } catch (error) {
@@ -838,7 +863,9 @@ ${resolvedPath}`);
     } finally {
       setIsExporting(false);
       setRestoreProgress(null);
-      exitMaintenanceMode();
+      if (!restoreRequiresRestart) {
+        exitMaintenanceMode();
+      }
     }
   };
 
@@ -848,6 +875,7 @@ ${resolvedPath}`);
   const handleImportZipBackup = async () => {
     setIsExporting(true);
     let maintenanceModeEntered = false;
+    let restoreRequiresRestart = false;
     try {
       const zipPath = await fileManager.pickSingleFile({
         title: t('data:dialogs.select_zip_title'),
@@ -920,6 +948,8 @@ ${resolvedPath}`);
 
       showGlobalNotification('success', t('data:restore_complete'));
       if (restoreResult.result?.requires_restart || restoreResult.result?.requiresRestart) {
+        restoreRequiresRestart = true;
+        requireMaintenanceRestart(t('common:maintenance.recovery_required'));
         showGlobalNotification('warning', t('data:governance.restore_restart_required'));
       }
       await loadBackupList();
@@ -931,7 +961,7 @@ ${resolvedPath}`);
     } finally {
       setIsExporting(false);
       setRestoreProgress(null);
-      if (maintenanceModeEntered) {
+      if (maintenanceModeEntered && !restoreRequiresRestart) {
         exitMaintenanceMode();
       }
     }
@@ -1337,9 +1367,9 @@ ${resolvedPath}`);
                   <Badge variant="outline" className={`border-transparent ring-1 ring-border/40 ${isRefreshing ? 'text-primary bg-primary/10' : 'text-muted-foreground bg-muted/50'}`}>
                     {t('data:auto_refresh_label')} {isRefreshing ? t('data:auto_refresh_in_progress') : t('data:auto_refresh_interval')}
                   </Badge>
-                  <NotionButton variant="ghost" size="sm" onClick={exportStatsData} disabled={!statsData} className="flex items-center gap-1">
+                  <DsButton variant="ghost" size="sm" onClick={exportStatsData} disabled={!statsData} className="flex items-center gap-1">
                     <DownloadSimple className={DATA_CENTER_ICON_SM_CLASS} /> {t('data:export_stats_button')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               </div>
               {/* Chat V2 统计部分 - 2026-01: 错题系统已废弃，只显示 Chat V2 统计 */}
@@ -1402,9 +1432,9 @@ ${resolvedPath}`);
             </div>
           </CardContent>
             <CardFooter>
-              <NotionButton variant="ghost" size="sm" onClick={handleExport} disabled={isExporting}>
+              <DsButton variant="ghost" size="sm" onClick={handleExport} disabled={isExporting}>
                 {isExporting ? t('data:actions.exporting') : t('data:actions.export_button')}
-              </NotionButton>
+              </DsButton>
             </CardFooter>
             {(exportJob || exportError) && (
               <CardContent className="pt-0 pb-4 space-y-3">
@@ -1449,14 +1479,14 @@ ${resolvedPath}`);
                   <Alert variant="destructive" className="py-2">
                     <AlertDescription className="text-xs">
                       {exportError}
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         className="ml-2 h-6 px-2 text-xs"
                         onClick={handleExport}
                       >
                         {t('data:actions.retry_button')}
-                      </NotionButton>
+                      </DsButton>
                     </AlertDescription>
                   </Alert>
                 )}
@@ -1474,13 +1504,13 @@ ${resolvedPath}`);
               <CardDescription>{t('data:actions.import_description')}</CardDescription>
             </CardHeader>
             <CardFooter>
-              <NotionButton variant="ghost" size="sm" onClick={handleImportZipBackup} disabled={isExporting}>
+              <DsButton variant="ghost" size="sm" onClick={handleImportZipBackup} disabled={isExporting}>
                 {isExporting && restoreProgress ? (
                   <><SpinnerGap size={16} className="mr-1.5 animate-spin" />{t('data:governance.restore_in_progress')}</>
                 ) : (
                   t('data:actions.import_button')
                 )}
-              </NotionButton>
+              </DsButton>
             </CardFooter>
             {restoreProgress && (
               <CardContent className="pt-0 pb-4 space-y-2">
@@ -1510,7 +1540,7 @@ ${resolvedPath}`);
               </CardDescription>
             </CardHeader>
             <CardFooter>
-              <NotionButton 
+              <DsButton 
                 variant="ghost" 
                 size="sm" 
                 onClick={() => {
@@ -1520,7 +1550,7 @@ ${resolvedPath}`);
               >
                 <Upload size={16} className="mr-1.5" />
                 {t('chat_host:actions.import_chat')}
-              </NotionButton>
+              </DsButton>
             </CardFooter>
           </Card>
 
@@ -1537,7 +1567,7 @@ ${resolvedPath}`);
               </CardDescription>
             </CardHeader>
             <CardFooter>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={() => {
@@ -1546,7 +1576,7 @@ ${resolvedPath}`);
               >
                 <Cloud size={16} className="mr-1.5" />
                 {t('common:actions.open')}
-              </NotionButton>
+              </DsButton>
             </CardFooter>
           </Card>
 
@@ -1581,9 +1611,9 @@ ${resolvedPath}`);
                       <HardDrive className={DATA_CENTER_ICON_SM_CLASS} />
                       <span>{t('data:backup_list.total_count', { count: backupList.length })}</span>
                     </div>
-                    <NotionButton onClick={handleAutoBackup} disabled={isExporting}>
+                    <DsButton onClick={handleAutoBackup} disabled={isExporting}>
                       {isExporting ? t('data:backup_list.backup_in_progress') : t('data:auto_backup')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
 
                   <CustomScrollArea className="backup-list-container flex max-h-[300px] flex-col gap-2" viewportClassName="pb-1 pr-2 pt-1">
@@ -1666,11 +1696,11 @@ ${resolvedPath}`);
                       <div className="mt-4 text-sm text-muted-foreground">{t('data:data_space.loading')}</div>
                     )}
                     <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                      <NotionButton variant="default" onClick={loadDataSpaceInfo} className="sm:w-auto">
+                      <DsButton variant="default" onClick={loadDataSpaceInfo} className="sm:w-auto">
                         <ArrowsClockwise className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:data_space.refresh_button')}
-                      </NotionButton>
-                      <NotionButton
+                      </DsButton>
+                      <DsButton
                         className="sm:w-auto"
                         onClick={async () => {
                           try {
@@ -1684,7 +1714,7 @@ ${resolvedPath}`);
                         }}
                       >
                         {t('data:data_space.switch_button')}
-                      </NotionButton>
+                      </DsButton>
                     </div>
                   </div>
 
@@ -1694,19 +1724,19 @@ ${resolvedPath}`);
                       <p className="mt-1 text-sm text-muted-foreground">
                         {t('data:integrity.description')}
                       </p>
-                      <NotionButton variant="default" onClick={handleRunIntegrityCheck} className="mt-4">
+                      <DsButton variant="default" onClick={handleRunIntegrityCheck} className="mt-4">
                         <FileText className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:integrity.run_button')}
-                      </NotionButton>
+                      </DsButton>
                     </div>
 
                     <div className="rounded-xl border border-transparent ring-1 ring-border/40 bg-muted/30 p-6">
                       <h3 className="text-base font-medium text-foreground">{t('data:clear_section.title')}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">{t('data:clear_section.description')}</p>
-                      <NotionButton variant="danger" onClick={handleClearAllData} className="mt-4">
+                      <DsButton variant="danger" onClick={handleClearAllData} className="mt-4">
                         <Trash className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:clear_section.button')}
-                      </NotionButton>
+                      </DsButton>
                     </div>
                   </div>
                 </div>
@@ -1721,55 +1751,55 @@ ${resolvedPath}`);
     </div>
 
         {/* 清空数据确认对话框 */}
-        <NotionDialog open={showClearDataDialog} onOpenChange={setShowClearDataDialog} maxWidth="max-w-md" closeOnOverlay={false} showClose={false}>
+        <DsDialog open={showClearDataDialog} onOpenChange={setShowClearDataDialog} maxWidth="max-w-md" closeOnOverlay={false} showClose={false}>
             {clearDataStep === 0 && (
               <>
-                <NotionDialogHeader>
-                  <NotionDialogTitle className="flex items-center gap-3">
+                <DsDialogHeader>
+                  <DsDialogTitle className="flex items-center gap-3">
                     <Warning className={DATA_CENTER_ICON_LG_CLASS} />
                     {t('data:clear_dialog.step0_title')}
-                  </NotionDialogTitle>
-                  <NotionDialogDescription>
+                  </DsDialogTitle>
+                  <DsDialogDescription>
                     {t('data:clear_dialog.step0_desc_prefix')}<strong>{t('data:clear_dialog.step0_desc_bold')}</strong>{'\n'}{t('data:clear_dialog.step0_desc_items').split('\n').map((line, i) => (<span key={i}><br />{line}</span>))}
                     <br />
                     <strong>{t('data:clear_dialog.step0_desc_warning')}</strong>{'\u3001'}{t('data:clear_dialog.step0_desc_advice')}
-                  </NotionDialogDescription>
-                </NotionDialogHeader>
-                <NotionDialogFooter>
-                  <NotionButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step0_cancel')}</NotionButton>
-                  <NotionButton variant="danger" size="sm" onClick={handleNextStep}>{t('data:clear_dialog.step0_confirm')}</NotionButton>
-                </NotionDialogFooter>
+                  </DsDialogDescription>
+                </DsDialogHeader>
+                <DsDialogFooter>
+                  <DsButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step0_cancel')}</DsButton>
+                  <DsButton variant="danger" size="sm" onClick={handleNextStep}>{t('data:clear_dialog.step0_confirm')}</DsButton>
+                </DsDialogFooter>
               </>
             )}
 
             {clearDataStep === 1 && (
               <>
-                <NotionDialogHeader>
-                  <NotionDialogTitle className="flex items-center gap-3">
+                <DsDialogHeader>
+                  <DsDialogTitle className="flex items-center gap-3">
                     <Clock className={DATA_CENTER_ICON_LG_CLASS} />
                     {t('data:clear_dialog.step1_title')}
-                  </NotionDialogTitle>
-                  <NotionDialogDescription>
+                  </DsDialogTitle>
+                  <DsDialogDescription>
                     {t('data:clear_dialog.step1_wait')} <strong className="text-base">{countdown}</strong> {t('data:clear_dialog.step1_seconds')}
                     <br />{t('data:clear_dialog.step1_hint')}
-                  </NotionDialogDescription>
-                </NotionDialogHeader>
-                <NotionDialogFooter>
-                  <NotionButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step1_cancel')}</NotionButton>
-                </NotionDialogFooter>
+                  </DsDialogDescription>
+                </DsDialogHeader>
+                <DsDialogFooter>
+                  <DsButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step1_cancel')}</DsButton>
+                </DsDialogFooter>
               </>
             )}
 
             {clearDataStep === 2 && (
               <>
-                <NotionDialogHeader>
-                  <NotionDialogTitle className="flex items-center gap-3">
+                <DsDialogHeader>
+                  <DsDialogTitle className="flex items-center gap-3">
                     <Trash className={DATA_CENTER_ICON_LG_CLASS} />
                     {t('data:clear_dialog.step2_title')}
-                  </NotionDialogTitle>
-                  <NotionDialogDescription>{t('data:clear_dialog.step2_description')}</NotionDialogDescription>
-                </NotionDialogHeader>
-                <NotionDialogBody>
+                  </DsDialogTitle>
+                  <DsDialogDescription>{t('data:clear_dialog.step2_description')}</DsDialogDescription>
+                </DsDialogHeader>
+                <DsDialogBody>
                   <p className="text-base font-semibold text-foreground bg-muted p-3 rounded-md text-center mb-4">
                     {t('data:clear_dialog.step2_confirm_text')}
                   </p>
@@ -1779,16 +1809,16 @@ ${resolvedPath}`);
                     onChange={handleConfirmTextChange}
                     placeholder={t('data:clear_dialog.step2_placeholder')}
 />
-                </NotionDialogBody>
-                <NotionDialogFooter>
-                  <NotionButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step2_cancel')}</NotionButton>
-                  <NotionButton variant="danger" size="sm" onClick={handleNextStep} disabled={confirmText !== t('data:clear_dialog.step2_confirm_text')}>
+                </DsDialogBody>
+                <DsDialogFooter>
+                  <DsButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step2_cancel')}</DsButton>
+                  <DsButton variant="danger" size="sm" onClick={handleNextStep} disabled={confirmText !== t('data:clear_dialog.step2_confirm_text')}>
                     {t('data:clear_dialog.step2_confirm_button')}
-                  </NotionButton>
-                </NotionDialogFooter>
+                  </DsButton>
+                </DsDialogFooter>
               </>
             )}
-        </NotionDialog>
+        </DsDialog>
       </div>
     </>
   );

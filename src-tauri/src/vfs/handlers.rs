@@ -705,12 +705,10 @@ fn cleanup_deleted_memory_note(
 ) {
     match vfs_db.get_conn_safe() {
         Ok(conn) => {
-            if let Err(e) =
-                crate::vfs::repos::index_unit_repo::purge_index_artifacts_by_resource(
-                    &conn,
-                    resource_id,
-                )
-            {
+            if let Err(e) = crate::vfs::repos::index_unit_repo::purge_index_artifacts_by_resource(
+                &conn,
+                resource_id,
+            ) {
                 log::warn!(
                     "[VFS::handlers] Failed to purge index artifacts for deleted memory note {}: {}",
                     note_id,
@@ -1645,7 +1643,11 @@ fn spawn_audio_transcription_if_applicable(
                 }
             }
             Ok(_) => {
-                mark_audio_processing_note(&vfs_db, &file_id, "音频转写结果为空（可能是无语音内容）");
+                mark_audio_processing_note(
+                    &vfs_db,
+                    &file_id,
+                    "音频转写结果为空（可能是无语音内容）",
+                );
             }
             Err(e) => {
                 log::warn!(
@@ -1656,7 +1658,10 @@ fn spawn_audio_transcription_if_applicable(
                 mark_audio_processing_note(
                     &vfs_db,
                     &file_id,
-                    &format!("音频自动转写失败：{}。可在对话中调用 media_transcribe 工具重试", e.message),
+                    &format!(
+                        "音频自动转写失败：{}。可在对话中调用 media_transcribe 工具重试",
+                        e.message
+                    ),
                 );
             }
         }
@@ -2664,36 +2669,37 @@ pub async fn vfs_upload_file(
 
     // ★ TD-03：主 blob 落库 + 文件三表写入在同一连接的 SAVEPOINT 内，失败整体回滚。
     // 闭包内无 .await、无其他连接写入（避免持写锁期间跨连接死锁）。
-    let saga_result = crate::vfs::upload_saga::with_savepoint(&conn, "vfs_upload_file_saga", || {
-        let blob_hash = if is_image || size >= 1024 * 1024 {
-            let blob = VfsBlobRepo::store_blob_with_conn(
-                &conn,
-                blobs_dir,
-                &content,
-                Some(&params.mime_type),
-                None,
-            )?;
-            Some(blob.hash)
-        } else {
-            None
-        };
+    let saga_result =
+        crate::vfs::upload_saga::with_savepoint(&conn, "vfs_upload_file_saga", || {
+            let blob_hash = if is_image || size >= 1024 * 1024 {
+                let blob = VfsBlobRepo::store_blob_with_conn(
+                    &conn,
+                    blobs_dir,
+                    &content,
+                    Some(&params.mime_type),
+                    None,
+                )?;
+                Some(blob.hash)
+            } else {
+                None
+            };
 
-        let (file, created) = VfsFileRepo::create_file_with_doc_data_in_folder_outcome(
-            &conn,
-            &sha256,
-            &params.name,
-            size,
-            &file_type,
-            Some(&params.mime_type),
-            blob_hash.as_deref(),
-            None,
-            target_folder_id.as_deref(),
-            preview_json.as_deref(),
-            extracted_text.as_deref(),
-            page_count,
-        )?;
-        Ok((blob_hash, file, created))
-    });
+            let (file, created) = VfsFileRepo::create_file_with_doc_data_in_folder_outcome(
+                &conn,
+                &sha256,
+                &params.name,
+                size,
+                &file_type,
+                Some(&params.mime_type),
+                blob_hash.as_deref(),
+                None,
+                target_folder_id.as_deref(),
+                preview_json.as_deref(),
+                extracted_text.as_deref(),
+                page_count,
+            )?;
+            Ok((blob_hash, file, created))
+        });
 
     let (blob_hash, file, created) = match saga_result {
         Ok(v) => v,

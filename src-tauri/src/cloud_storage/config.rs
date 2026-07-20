@@ -154,6 +154,15 @@ pub struct CloudStorageConfig {
     /// 留空则上传明文（向后兼容）。密码错了下载会失败（不会静默得到垃圾）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encryption_password: Option<String>,
+    /// Backend-only capability proving that a public cleartext transport came
+    /// from the persisted, validated SSOT record.
+    ///
+    /// This field is public only to preserve construction compatibility for
+    /// integration tests and trusted Rust callers. Serde never accepts or
+    /// emits it, so an IPC payload cannot manufacture the capability.
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub insecure_transport_authorized: bool,
 }
 
 impl std::fmt::Debug for CloudStorageConfig {
@@ -191,6 +200,15 @@ impl CloudStorageConfig {
             .to_string()
     }
 
+    /// 精确判断主机名/IP 是否为 loopback。
+    fn is_loopback_host(host: &str) -> bool {
+        let host = host.trim().trim_matches(['[', ']']);
+        host.eq_ignore_ascii_case("localhost")
+            || host
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|address| address.is_loopback())
+    }
+
     /// 通过 URL 解析精确判断 endpoint 是否为本地地址。
     ///
     /// 使用 `url::Url` 解析后对 host 做精确匹配，
@@ -198,9 +216,7 @@ impl CloudStorageConfig {
     fn is_local_endpoint(endpoint: &str) -> bool {
         Url::parse(endpoint.trim())
             .ok()
-            .and_then(|u| u.host_str().map(|h| h.to_lowercase()))
-            .map(|host| host.trim_matches(['[', ']']).to_string())
-            .map(|host| matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1"))
+            .and_then(|url| url.host_str().map(Self::is_loopback_host))
             .unwrap_or(false)
     }
 
@@ -212,11 +228,29 @@ impl CloudStorageConfig {
                 if config.endpoint.trim().is_empty() {
                     return Err("WebDAV endpoint 不能为空".into());
                 }
+                let endpoint = Url::parse(config.endpoint.trim())
+                    .map_err(|_| "WebDAV endpoint 必须是有效 URL")?;
+                if !matches!(endpoint.scheme(), "http" | "https") || endpoint.host_str().is_none() {
+                    return Err("WebDAV endpoint 必须使用 HTTP(S) 且包含主机".into());
+                }
+                if !endpoint.username().is_empty() || endpoint.password().is_some() {
+                    return Err("WebDAV endpoint 不得内嵌凭据".into());
+                }
                 if config.username.trim().is_empty() {
                     return Err("WebDAV 用户名不能为空".into());
                 }
                 if config.password.trim().is_empty() {
                     return Err("WebDAV 密码不能为空".into());
+                }
+                let is_loopback = endpoint.host_str().is_some_and(Self::is_loopback_host);
+                if endpoint.scheme() == "http"
+                    && !is_loopback
+                    && !self.insecure_transport_authorized
+                {
+                    return Err(
+                        "公网 WebDAV 必须使用 HTTPS；HTTP 仅允许 loopback 或已持久化的 allowInsecure 授权"
+                            .into(),
+                    );
                 }
                 Ok(())
             }
@@ -254,11 +288,27 @@ impl CloudStorageConfig {
                 if config.host.trim().is_empty() {
                     return Err("FTP host 不能为空".into());
                 }
+                if config.host.contains("://")
+                    || config.host.contains('/')
+                    || config.host.contains('@')
+                    || config.host.contains(char::is_whitespace)
+                {
+                    return Err("FTP host 必须是无 scheme/凭据的主机名或 IP".into());
+                }
                 if config.username.trim().is_empty() {
                     return Err("FTP 用户名不能为空".into());
                 }
                 if config.password.trim().is_empty() {
                     return Err("FTP 密码不能为空".into());
+                }
+                if !config.use_tls
+                    && !Self::is_loopback_host(&config.host)
+                    && !self.insecure_transport_authorized
+                {
+                    return Err(
+                        "公网 FTP 必须启用 TLS；明文 FTP 仅允许 loopback 或已持久化的 allowInsecure 授权"
+                            .into(),
+                    );
                 }
                 Ok(())
             }
@@ -312,7 +362,6 @@ mod tests {
 
     #[test]
     fn test_https_enforcement_webdav() {
-        // HTTP 非 localhost 现已允许（与 FTP 行为一致，前端会弹不安全警告）
         let config = CloudStorageConfig {
             provider: StorageProvider::WebDav,
             webdav: Some(WebDavConfig {
@@ -323,8 +372,27 @@ mod tests {
             ..Default::default()
         };
         assert!(
-            config.validate().is_ok(),
-            "HTTP WebDAV should now be allowed"
+            config.validate().is_err(),
+            "public HTTP WebDAV must be rejected without a persisted opt-in"
+        );
+
+        let forged: CloudStorageConfig = serde_json::from_str(
+            r#"{
+                "provider":"webdav",
+                "webdav":{
+                    "endpoint":"http://dav.example.com",
+                    "username":"user",
+                    "password":"pass"
+                },
+                "allowInsecure":true,
+                "insecureTransportAuthorized":true
+            }"#,
+        )
+        .expect("legacy runtime DTO ignores unknown capability-shaped fields");
+        assert!(!forged.insecure_transport_authorized);
+        assert!(
+            forged.validate().is_err(),
+            "IPC must not be able to forge the persisted transport capability"
         );
 
         let config = CloudStorageConfig {
@@ -339,6 +407,20 @@ mod tests {
         assert!(
             config.validate().is_ok(),
             "localhost HTTP should be allowed"
+        );
+
+        let config = CloudStorageConfig {
+            provider: StorageProvider::WebDav,
+            webdav: Some(WebDavConfig {
+                endpoint: "http://127.42.0.1:8080/dav".into(),
+                username: "user".into(),
+                password: "pass".into(),
+            }),
+            ..Default::default()
+        };
+        assert!(
+            config.validate().is_ok(),
+            "the full IPv4 loopback range should be allowed"
         );
     }
 
@@ -470,8 +552,8 @@ mod tests {
             ..Default::default()
         };
         assert!(
-            config.validate().is_ok(),
-            "http://localhost.evil.com should now be allowed (frontend shows warning)"
+            config.validate().is_err(),
+            "http://localhost.evil.com must be rejected without persisted opt-in"
         );
 
         let config = CloudStorageConfig {
@@ -532,10 +614,10 @@ mod tests {
         config.ftp.as_mut().unwrap().password = "".into();
         assert!(config.validate().is_err());
 
-        // 非 localhost 不使用 TLS 现在应该被允许
+        // 公网 FTP 不使用 TLS 必须被后端拒绝
         config.ftp.as_mut().unwrap().password = "pass".into();
         config.ftp.as_mut().unwrap().use_tls = false;
-        assert!(config.validate().is_ok());
+        assert!(config.validate().is_err());
 
         // localhost 不使用 TLS 也应该被允许
         config.ftp.as_mut().unwrap().host = "localhost".into();

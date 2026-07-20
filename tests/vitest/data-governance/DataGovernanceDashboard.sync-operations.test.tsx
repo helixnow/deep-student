@@ -33,12 +33,17 @@ let capturedListenerCallbacks: {
 
 const mockStartListening = vi.hoisted(() => vi.fn());
 const mockStopListening = vi.hoisted(() => vi.fn());
+const mockGetBackupConfig = vi.hoisted(() => vi.fn());
+const mockSetBackupConfig = vi.hoisted(() => vi.fn());
+const mockTranslate = vi.hoisted(() => (key: string) => key);
 
 const mockDataGovernanceApi = vi.hoisted(() => ({
   getMigrationStatus: vi.fn(),
   runHealthCheck: vi.fn(),
   getBackupList: vi.fn(),
+  listBackupJobs: vi.fn(),
   listResumableJobs: vi.fn(),
+  getMaintenanceStatus: vi.fn(),
   getSyncStatus: vi.fn(),
   detectPruneGap: vi.fn(),
   getAuditLogs: vi.fn(),
@@ -75,9 +80,16 @@ vi.mock('@/utils/cloudStorageApi', () => ({
 
 vi.mock('@/api/dataGovernance', () => ({
   DataGovernanceApi: mockDataGovernanceApi,
+  getBackupConfig: mockGetBackupConfig,
+  setBackupConfig: mockSetBackupConfig,
   BACKUP_JOB_PROGRESS_EVENT: 'backup-job-progress',
   isBackupJobTerminal: (status: string) =>
     status === 'completed' || status === 'failed' || status === 'cancelled',
+}));
+
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-i18next')>()),
+  useTranslation: () => ({ t: mockTranslate }),
 }));
 
 vi.mock('@/hooks/useBackupJobListener', () => ({
@@ -195,7 +207,12 @@ function setupDefaultMocks(opts?: { cloudConfigured?: boolean }) {
   mockDataGovernanceApi.getMigrationStatus.mockResolvedValue(healthyMigrationStatus);
   mockDataGovernanceApi.runHealthCheck.mockResolvedValue(healthyHealthCheck);
   mockDataGovernanceApi.getBackupList.mockResolvedValue([]);
+  mockDataGovernanceApi.listBackupJobs.mockResolvedValue([]);
   mockDataGovernanceApi.listResumableJobs.mockResolvedValue([]);
+  mockDataGovernanceApi.getMaintenanceStatus.mockResolvedValue({
+    is_in_maintenance_mode: false,
+    operation: null,
+  });
   mockDataGovernanceApi.getSyncStatus.mockResolvedValue(sampleSyncStatus);
   mockDataGovernanceApi.detectPruneGap.mockResolvedValue({
     has_gap: false,
@@ -203,6 +220,14 @@ function setupDefaultMocks(opts?: { cloudConfigured?: boolean }) {
     min_available_version: null,
   });
   mockDataGovernanceApi.getAuditLogs.mockResolvedValue({ logs: [], total: 0 });
+  mockGetBackupConfig.mockResolvedValue({
+    backupDirectory: null,
+    autoBackupEnabled: false,
+    autoBackupIntervalHours: 24,
+    maxBackupCount: null,
+    slimBackup: false,
+  });
+  mockSetBackupConfig.mockResolvedValue(undefined);
 
   if (opts?.cloudConfigured) {
     mockLoadStoredCloudStorageConfigSafe.mockReturnValue({

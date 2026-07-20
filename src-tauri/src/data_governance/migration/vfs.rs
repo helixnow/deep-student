@@ -869,6 +869,37 @@ pub const V20260807_QUESTION_STRUCTURED_DATA: MigrationDef = MigrationDef::new(
 )
 .with_expected_columns(&[("questions", "structured_data")]);
 
+/// V20260808: blob/asset 文件删除两阶段日志。
+///
+/// 旧队列表继续作为仅包含 ready 项的同步 outbox；DELETE 触发器在云端发布成功、
+/// drain 删除 outbox 行时把持久 journal 原子推进到 published。
+pub const V20260808_FILE_DELETION_INTENT_JOURNAL: MigrationDef = MigrationDef::new(
+    20260808,
+    "file_deletion_intent_journal",
+    include_str!("../../../migrations/vfs/V20260808__file_deletion_intent_journal.sql"),
+)
+.with_expected_tables(&["__file_deletion_journal"])
+.with_expected_columns(&[
+    ("__file_deletion_journal", "operation_id"),
+    ("__file_deletion_journal", "target_kind"),
+    ("__file_deletion_journal", "entity_key"),
+    ("__file_deletion_journal", "local_path"),
+    ("__file_deletion_journal", "expected_hash"),
+    ("__file_deletion_journal", "state"),
+    ("__file_deletion_journal", "prepared_at"),
+    ("__file_deletion_journal", "ready_at"),
+    ("__file_deletion_journal", "published_at"),
+])
+.with_expected_indexes(&[
+    "idx__file_deletion_journal_recovery",
+    "idx__file_deletion_journal_target",
+])
+.with_expected_queries(&[
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg__blob_deletion_queue_published'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg__asset_deletion_queue_published'",
+])
+.idempotent();
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -926,6 +957,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260801_TODO_POMODORO_STATS_INDEXES,
     V20260806_MINDMAP_VERSIONS_LOOKUP_INDEX,
     V20260807_QUESTION_STRUCTURED_DATA,
+    V20260808_FILE_DELETION_INTENT_JOURNAL,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -993,6 +1025,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     // 本地辅助队列
     "__blob_deletion_queue",
     "__asset_deletion_queue",
+    "__file_deletion_journal",
     "__lance_orphan_queue",
     // FTS5 虚拟表
     "questions_fts",
@@ -1003,7 +1036,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 41;
+pub const VFS_TABLE_COUNT: usize = 42;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;

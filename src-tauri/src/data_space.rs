@@ -9,6 +9,18 @@ use tracing::{error, info, warn};
 const LEGACY_MIGRATION_PENDING_FILE: &str = ".legacy_migration_pending";
 const LEGACY_MIGRATION_COMPLETE_FILE: &str = ".legacy_migration_complete";
 const PURGE_MARKER_FILE: &str = ".purge_on_next_start";
+const RECOVERY_DIR: &str = "recovery";
+const RECOVERY_BACKUPS_DIR: &str = "backups";
+const SLOT_BACKUP_MIGRATION_JOURNAL: &str = ".slot_backup_migration.json";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RestoreCutoverLease {
+    pub target_slot: String,
+    pub backup_id: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub activation_committed: bool,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Slot {
@@ -52,6 +64,8 @@ impl Slot {
 struct SlotState {
     active: String,
     pending: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    restore_cutover_pending: Option<RestoreCutoverLease>,
 }
 
 impl Default for SlotState {
@@ -59,6 +73,7 @@ impl Default for SlotState {
         Self {
             active: "slotA".to_string(),
             pending: None,
+            restore_cutover_pending: None,
         }
     }
 }
@@ -98,6 +113,10 @@ impl DataSpaceManager {
         &self.base_dir
     }
 
+    pub fn recovery_backups_dir(&self) -> PathBuf {
+        self.base_dir.join(RECOVERY_DIR).join(RECOVERY_BACKUPS_DIR)
+    }
+
     pub fn ensure_layout(&self) -> std::io::Result<()> {
         // 创建生产插槽 A/B
         fs::create_dir_all(self.slot_dir(Slot::A))?;
@@ -135,7 +154,10 @@ impl DataSpaceManager {
                 let should_migrate = {
                     let name = entry.file_name();
                     let name = name.to_string_lossy();
-                    name != "slots" && name != "logs" && name != PURGE_MARKER_FILE
+                    name != "slots"
+                        && name != "logs"
+                        && name != RECOVERY_DIR
+                        && name != PURGE_MARKER_FILE
                 };
                 if should_migrate {
                     legacy_entries.push(entry);
@@ -147,6 +169,7 @@ impl DataSpaceManager {
                 if pending_path.exists() {
                     fs::remove_file(&pending_path)?;
                 }
+                self.migrate_legacy_slot_backups()?;
                 return Ok(());
             }
 
@@ -257,6 +280,94 @@ impl DataSpaceManager {
                 info!("[DataSpace] 数据迁移完成");
             }
         }
+        self.migrate_legacy_slot_backups()?;
+        Ok(())
+    }
+
+    /// 把旧版槽内备份移到不参与 A/B 切槽的 recovery/backups。
+    ///
+    /// 每个顶层产物都按 copy -> byte verify -> fsync -> journal -> delete-source
+    /// 的顺序迁移。任一步崩溃后重跑都会先核对既有目标，因此不会覆盖另一份
+    /// 同名但内容不同的备份，也不会在目标未持久化前删除唯一源。
+    fn migrate_legacy_slot_backups(&self) -> std::io::Result<()> {
+        use std::collections::BTreeSet;
+
+        let recovery_dir = self.base_dir.join(RECOVERY_DIR);
+        let destination_root = self.recovery_backups_dir();
+        fs::create_dir_all(&destination_root)?;
+        sync_directory(&recovery_dir)?;
+
+        let journal_path = recovery_dir.join(SLOT_BACKUP_MIGRATION_JOURNAL);
+        let mut journal: BTreeSet<String> = if journal_path.exists() {
+            serde_json::from_slice(&fs::read(&journal_path)?).map_err(|error| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("解析槽内备份迁移日志失败: {}", error),
+                )
+            })?
+        } else {
+            BTreeSet::new()
+        };
+
+        for slot in [Slot::A, Slot::B] {
+            let source_root = self.slot_dir(slot).join("backups");
+            if !source_root.is_dir() {
+                continue;
+            }
+
+            for entry in fs::read_dir(&source_root)? {
+                let entry = entry?;
+                let source = entry.path();
+                let destination = destination_root.join(entry.file_name());
+                let journal_key =
+                    format!("{}/{}", slot.name(), entry.file_name().to_string_lossy());
+
+                if destination.exists() {
+                    if !paths_equal(&source, &destination)? {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::AlreadyExists,
+                            format!(
+                                "槽内备份迁移发现同名异内容产物，拒绝覆盖: {} -> {}",
+                                source.display(),
+                                destination.display()
+                            ),
+                        ));
+                    }
+                } else {
+                    let temporary = destination_root.join(format!(
+                        ".migrating-{}-{}",
+                        slot.name(),
+                        entry.file_name().to_string_lossy()
+                    ));
+                    if temporary.exists() {
+                        remove_path(&temporary)?;
+                    }
+                    copy_path_durable(&source, &temporary)?;
+                    if !paths_equal(&source, &temporary)? {
+                        remove_path(&temporary)?;
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!("槽内备份复制校验失败: {}", source.display()),
+                        ));
+                    }
+                    fs::rename(&temporary, &destination)?;
+                    sync_directory(&destination_root)?;
+                }
+
+                if journal.insert(journal_key) {
+                    atomic_write_json(&journal_path, &journal)?;
+                    sync_directory(&recovery_dir)?;
+                }
+                remove_path(&source)?;
+                sync_directory(&source_root)?;
+            }
+
+            if fs::read_dir(&source_root)?.next().is_none() {
+                fs::remove_dir(&source_root)?;
+                sync_directory(&self.slot_dir(slot))?;
+            }
+        }
+
         Ok(())
     }
 
@@ -367,6 +478,7 @@ impl DataSpaceManager {
         SlotState {
             active: active.to_string(),
             pending: None,
+            restore_cutover_pending: None,
         }
     }
 
@@ -594,6 +706,17 @@ impl DataSpaceManager {
             }
             self.write_state(&st)?;
         }
+        if let Some(lease) = &st.restore_cutover_pending {
+            if st.active != lease.target_slot {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "恢复维护租约目标 {} 未激活（当前 {}），拒绝在不确定数据槽上启动",
+                        lease.target_slot, st.active
+                    ),
+                ));
+            }
+        }
         // pending 已原子提交后，匹配当前活动槽的 rollback 才失去恢复价值。
         // 失败恢复只会在非活动槽留下 trash，因此这里不会误删尚未提交的回滚点。
         if let Some(active_slot) = Slot::from_name(&st.active) {
@@ -774,6 +897,104 @@ impl DataSpaceManager {
         self.write_state(&st)
     }
 
+    /// 原子登记恢复切槽及其跨进程维护租约。
+    pub fn mark_restore_cutover_pending(
+        &self,
+        target: Slot,
+        backup_id: &str,
+    ) -> std::io::Result<()> {
+        let target_dir = self.slot_dir(target);
+        if !target_dir.is_dir() || !Self::dir_has_data(&target_dir) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("恢复目标插槽 {} 不存在或为空", target.name()),
+            ));
+        }
+        if backup_id.trim().is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "恢复维护租约缺少 backup_id",
+            ));
+        }
+
+        let mut state = self.read_state()?;
+        if let Some(existing) = &state.restore_cutover_pending {
+            if existing.target_slot != target.name() || existing.backup_id != backup_id {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!(
+                        "已有恢复维护租约: backup={}, target={}",
+                        existing.backup_id, existing.target_slot
+                    ),
+                ));
+            }
+        }
+        state.pending = Some(target.name().to_string());
+        state.restore_cutover_pending = Some(RestoreCutoverLease {
+            target_slot: target.name().to_string(),
+            backup_id: backup_id.to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            activation_committed: false,
+        });
+        self.write_state(&state)
+    }
+
+    pub fn restore_cutover_pending(&self) -> std::io::Result<Option<RestoreCutoverLease>> {
+        Ok(self.read_state()?.restore_cutover_pending)
+    }
+
+    /// 激活后的迁移、校验和身份轮换均完成后，先把租约推进到 committed。
+    pub fn mark_restore_activation_committed(
+        &self,
+        active_dir: &Path,
+        backup_id: &str,
+    ) -> std::io::Result<()> {
+        let mut state = self.read_state()?;
+        let active_slot = Slot::from_name(&state.active).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "活动槽名称无效")
+        })?;
+        if self.slot_dir(active_slot) != active_dir {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "恢复维护租约的活动槽路径不匹配",
+            ));
+        }
+        let lease = state.restore_cutover_pending.as_mut().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "恢复维护租约不存在")
+        })?;
+        if lease.target_slot != state.active || lease.backup_id != backup_id {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "恢复维护租约与已激活槽不匹配",
+            ));
+        }
+        lease.activation_committed = true;
+        self.write_state(&state)
+    }
+
+    /// 仅允许新进程在恢复槽已激活且 activation committed 后解除持久租约。
+    pub fn complete_restore_cutover(&self, active_dir: &Path) -> std::io::Result<bool> {
+        let mut state = self.read_state()?;
+        let Some(lease) = state.restore_cutover_pending.as_ref() else {
+            return Ok(false);
+        };
+        let active_slot = Slot::from_name(&state.active).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "活动槽名称无效")
+        })?;
+        if lease.target_slot != state.active
+            || self.slot_dir(active_slot) != active_dir
+            || !lease.activation_committed
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "恢复槽尚未完成激活、迁移与校验，拒绝解除维护租约",
+            ));
+        }
+        state.restore_cutover_pending = None;
+        self.write_state(&state)?;
+        Ok(true)
+    }
+
     // ========================================================================
     // 测试插槽专用方法
     // ========================================================================
@@ -822,6 +1043,131 @@ impl DataSpaceManager {
             _ => None, // 生产插槽不返回测试配对
         }
     }
+}
+
+fn remove_path(path: &Path) -> std::io::Result<()> {
+    if path.is_dir() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    }
+}
+
+fn sync_directory(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        fs::File::open(path)?.sync_all()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Ok(())
+    }
+}
+
+fn copy_path_durable(source: &Path, destination: &Path) -> std::io::Result<()> {
+    let metadata = fs::symlink_metadata(source)?;
+    if metadata.file_type().is_symlink() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("拒绝迁移符号链接备份条目: {}", source.display()),
+        ));
+    }
+    if metadata.is_dir() {
+        fs::create_dir_all(destination)?;
+        for entry in fs::read_dir(source)? {
+            let entry = entry?;
+            copy_path_durable(&entry.path(), &destination.join(entry.file_name()))?;
+        }
+        sync_directory(destination)
+    } else if metadata.is_file() {
+        fs::copy(source, destination)?;
+        fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(destination)?
+            .sync_all()
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("不支持的备份条目类型: {}", source.display()),
+        ))
+    }
+}
+
+fn paths_equal(left: &Path, right: &Path) -> std::io::Result<bool> {
+    use std::io::Read;
+
+    let left_meta = fs::symlink_metadata(left)?;
+    let right_meta = fs::symlink_metadata(right)?;
+    if left_meta.file_type().is_symlink() || right_meta.file_type().is_symlink() {
+        return Ok(false);
+    }
+    if left_meta.is_file() && right_meta.is_file() {
+        if left_meta.len() != right_meta.len() {
+            return Ok(false);
+        }
+        let mut left_file = fs::File::open(left)?;
+        let mut right_file = fs::File::open(right)?;
+        let mut left_buffer = [0u8; 64 * 1024];
+        let mut right_buffer = [0u8; 64 * 1024];
+        loop {
+            let left_read = left_file.read(&mut left_buffer)?;
+            let right_read = right_file.read(&mut right_buffer)?;
+            if left_read != right_read || left_buffer[..left_read] != right_buffer[..right_read] {
+                return Ok(false);
+            }
+            if left_read == 0 {
+                return Ok(true);
+            }
+        }
+    }
+    if !left_meta.is_dir() || !right_meta.is_dir() {
+        return Ok(false);
+    }
+
+    let mut left_names = fs::read_dir(left)?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    let mut right_names = fs::read_dir(right)?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    left_names.sort();
+    right_names.sort();
+    if left_names != right_names {
+        return Ok(false);
+    }
+    for name in left_names {
+        if !paths_equal(&left.join(&name), &right.join(&name))? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn atomic_write_json<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("持久化路径缺少父目录"))?;
+    let payload = serde_json::to_vec_pretty(value).map_err(|error| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("序列化持久化数据失败: {}", error),
+        )
+    })?;
+    let mut temporary = tempfile::Builder::new()
+        .prefix(".durable-")
+        .suffix(".tmp")
+        .tempfile_in(parent)?;
+    temporary.write_all(&payload)?;
+    temporary.as_file().sync_all()?;
+    temporary
+        .into_temp_path()
+        .persist(path)
+        .map_err(|error| error.error)?;
+    sync_directory(parent)
 }
 
 static DATA_SPACE: OnceLock<DataSpaceManager> = OnceLock::new();
@@ -1101,6 +1447,7 @@ mod tests {
         let state = SlotState {
             active: "slotB".to_string(),
             pending: Some("slotA".to_string()),
+            ..SlotState::default()
         };
         mgr.write_state(&state).expect("write_state 应成功");
 
@@ -1121,6 +1468,7 @@ mod tests {
         let state = SlotState {
             active: "slotA".to_string(),
             pending: None,
+            ..SlotState::default()
         };
         mgr.write_state(&state).unwrap();
 
@@ -1149,6 +1497,7 @@ mod tests {
         let valid_state = SlotState {
             active: "slotB".to_string(),
             pending: None,
+            ..SlotState::default()
         };
         let valid_json = serde_json::to_string_pretty(&valid_state).unwrap();
         fs::write(&tmp_path, &valid_json).unwrap();
@@ -1233,6 +1582,7 @@ mod tests {
         let state = SlotState {
             active: "slotA".to_string(),
             pending: Some("slotB".to_string()),
+            ..SlotState::default()
         };
         mgr.write_state(&state).unwrap();
 
@@ -1257,6 +1607,7 @@ mod tests {
         let state = SlotState {
             active: "slotA".to_string(),
             pending: Some("slotZ_nonexistent".to_string()),
+            ..SlotState::default()
         };
         mgr.write_state(&state).unwrap();
 
@@ -1280,6 +1631,7 @@ mod tests {
         let state = SlotState {
             active: "slotA".to_string(),
             pending: Some("slotB".to_string()),
+            ..SlotState::default()
         };
         mgr.write_state(&state).unwrap();
 
@@ -1492,6 +1844,7 @@ mod tests {
         let state = SlotState {
             active: "slotB".to_string(),
             pending: None,
+            ..SlotState::default()
         };
         mgr.write_state(&state).unwrap();
         assert_eq!(mgr.active_slot(), Slot::B);
@@ -1562,6 +1915,52 @@ mod tests {
             .expect("空插槽清空应成功");
         assert!(trash.is_none(), "空插槽不应产生 trash 目录");
         assert!(mgr.slot_dir(Slot::B).is_dir(), "插槽目录应仍存在");
+    }
+
+    #[test]
+    fn restore_cutover_lease_survives_restart_until_activation_commit() {
+        let (_tmp, mgr) = make_manager();
+        mgr.ensure_layout().unwrap();
+        populate_slot_with_db(&mgr, Slot::B);
+
+        mgr.mark_restore_cutover_pending(Slot::B, "backup-1")
+            .unwrap();
+        let before = mgr.restore_cutover_pending().unwrap().unwrap();
+        assert_eq!(before.target_slot, "slotB");
+        assert!(!before.activation_committed);
+
+        mgr.initialize_on_start().unwrap();
+        assert_eq!(mgr.active_slot(), Slot::B);
+        assert!(
+            mgr.complete_restore_cutover(&mgr.active_dir()).is_err(),
+            "迁移校验提交前不得解除维护租约"
+        );
+
+        mgr.mark_restore_activation_committed(&mgr.active_dir(), "backup-1")
+            .unwrap();
+        assert!(mgr.complete_restore_cutover(&mgr.active_dir()).unwrap());
+        assert!(mgr.restore_cutover_pending().unwrap().is_none());
+    }
+
+    #[test]
+    fn legacy_slot_backups_are_durably_migrated_and_idempotent() {
+        let (_tmp, mgr) = make_manager();
+        mgr.ensure_layout().unwrap();
+        let source = mgr.slot_dir(Slot::A).join("backups").join("backup-1");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("manifest.json"),
+            b"{\"backup_id\":\"backup-1\"}",
+        )
+        .unwrap();
+
+        mgr.migrate_legacy_slot_backups().unwrap();
+        let destination = mgr.recovery_backups_dir().join("backup-1");
+        assert!(destination.join("manifest.json").is_file());
+        assert!(!source.exists());
+
+        mgr.migrate_legacy_slot_backups().unwrap();
+        assert!(destination.join("manifest.json").is_file());
     }
 
     // -----------------------------------------------------------------------

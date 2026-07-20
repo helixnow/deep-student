@@ -1499,11 +1499,34 @@ describe('DataGovernanceApi.checkDiskSpaceForRestore() contract', () => {
     mockInvoke.mockRejectedValue(new Error('Command not found'));
     const result = await checkDiskSpaceForRestore('any-backup');
 
-    // The API has a try-catch that returns a safe fallback
+    // 仅明确的旧后端 CommandNotFound 可兼容放行。
     expect(result.has_enough_space).toBe(true);
     expect(result.available_bytes).toBe(0);
     expect(result.required_bytes).toBe(0);
     expect(result.backup_size).toBe(0);
+  });
+
+  it('returns fallback only for an explicit command-not-found code', async () => {
+    mockInvoke.mockRejectedValue({ code: 'TAURI_COMMAND_NOT_FOUND', message: 'missing' });
+
+    await expect(checkDiskSpaceForRestore('any-backup')).resolves.toMatchObject({
+      has_enough_space: true,
+      available_bytes: 0,
+    });
+  });
+
+  it('fails closed when the disk-space check itself fails', async () => {
+    const error = new Error('permission denied while reading filesystem statistics');
+    mockInvoke.mockRejectedValue(error);
+
+    await expect(checkDiskSpaceForRestore('any-backup')).rejects.toBe(error);
+  });
+
+  it('does not treat an embedded unknown-command phrase as CommandNotFound', async () => {
+    const error = new Error('filesystem probe returned an unknown command response');
+    mockInvoke.mockRejectedValue(error);
+
+    await expect(checkDiskSpaceForRestore('any-backup')).rejects.toBe(error);
   });
 });
 

@@ -9,8 +9,8 @@ import {
 } from "@phosphor-icons/react";
 import * as DataGovernanceApi from "@/api/dataGovernance";
 import type { SyncQuarantineRow } from "@/api/dataGovernance";
-import { NotionButton } from "@/components/ui/NotionButton";
-import { NotionAlertDialog } from "@/components/ui/NotionDialog";
+import { DsButton } from "@/components/ui/DsButton";
+import { DsAlertDialog } from "@/components/ui/DsDialog";
 import { useBreakpoint } from "@/hooks/useBreakpoint";
 import {
   Card,
@@ -187,7 +187,7 @@ export const SyncQuarantinePanel: React.FC<{
         <div className="flex gap-2">
           {rows.length > 0 && (
             <>
-              <NotionButton
+              <DsButton
                 variant={isSmallScreen && confirmingBatch === "retryAll" ? "primary" : "ghost"}
                 size="sm"
                 onClick={() => {
@@ -214,8 +214,8 @@ export const SyncQuarantinePanel: React.FC<{
                 {isSmallScreen && confirmingBatch === "retryAll"
                   ? t("common:actions.retry")
                   : t("data:governance.quarantine_retry_all")}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant={isSmallScreen && confirmingBatch === "discardAll" ? "danger" : "ghost"}
                 size="sm"
                 onClick={() => {
@@ -239,10 +239,10 @@ export const SyncQuarantinePanel: React.FC<{
                 {isSmallScreen && confirmingBatch === "discardAll"
                   ? t("data:governance.quarantine_discard_all_confirm")
                   : t("data:governance.quarantine_discard_all")}
-              </NotionButton>
+              </DsButton>
             </>
           )}
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={refresh}
@@ -255,7 +255,7 @@ export const SyncQuarantinePanel: React.FC<{
               <ArrowClockwise size={14} className="mr-1.5" />
             )}
             {t("common:actions.refresh")}
-          </NotionButton>
+          </DsButton>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -290,7 +290,7 @@ export const SyncQuarantinePanel: React.FC<{
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={() => handleRetry(row)}
@@ -303,8 +303,8 @@ export const SyncQuarantinePanel: React.FC<{
                       <ArrowClockwise size={13} className="mr-1" />
                     )}
                     {t("common:actions.retry")}
-                  </NotionButton>
-                  <NotionButton
+                  </DsButton>
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={() => handleDiscard(row)}
@@ -313,7 +313,7 @@ export const SyncQuarantinePanel: React.FC<{
                   >
                     <Trash size={13} className="mr-1" />
                     {t("data:governance.quarantine_discard")}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               </div>
               <div className="rounded-md bg-muted/40 p-2 text-xs text-destructive/90 break-words">
@@ -335,7 +335,7 @@ export const SyncQuarantinePanel: React.FC<{
       </CardContent>
 
       {/* 批量重试确认对话框（仅桌面；移动端用按钮两段式行内确认） */}
-      <NotionAlertDialog
+      <DsAlertDialog
         open={!isSmallScreen && showRetryAllDialog}
         onOpenChange={(open) => { if (!open) setShowRetryAllDialog(false); }}
         title={t("data:governance.quarantine_retry_all_confirm_title")}
@@ -349,7 +349,7 @@ export const SyncQuarantinePanel: React.FC<{
       />
 
       {/* 批量清除确认对话框（仅桌面；移动端用按钮两段式行内确认） */}
-      <NotionAlertDialog
+      <DsAlertDialog
         open={!isSmallScreen && showDiscardAllDialog}
         onOpenChange={(open) => { if (!open) setShowDiscardAllDialog(false); }}
         title={t("data:governance.quarantine_discard_all_confirm_title")}

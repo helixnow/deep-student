@@ -8,6 +8,8 @@ pub struct MaintenanceStatusResponse {
     pub is_in_maintenance_mode: bool,
     /// 仍处于排空/维护状态的数据库组件（稳定内部标识，供前端诊断与提示）。
     pub blocked_components: Vec<String>,
+    /// 当前持有全局数据治理租约的操作；旧客户端可安全忽略该 additive 字段。
+    pub current_operation: Option<crate::backup_common::DataGovernanceOperationSnapshot>,
 }
 
 /// Schema 注册表响应

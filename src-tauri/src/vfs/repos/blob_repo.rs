@@ -12,21 +12,28 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use tracing::{debug, error, info, warn};
+use std::sync::{Mutex, MutexGuard};
+use tracing::{debug, error, info};
 
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::types::VfsBlob;
 
-/// Log row-parse errors instead of silently discarding them.
-fn log_and_skip_err<T>(result: Result<T, rusqlite::Error>) -> Option<T> {
-    match result {
-        Ok(v) => Some(v),
-        Err(e) => {
-            warn!("[VFS::BlobRepo] Row parse error (skipped): {}", e);
-            None
-        }
-    }
+static BLOB_FILE_MUTATION_LOCK: Mutex<()> = Mutex::new(());
+
+fn lock_blob_file_mutation() -> VfsResult<MutexGuard<'static, ()>> {
+    BLOB_FILE_MUTATION_LOCK
+        .lock()
+        .map_err(|_| VfsError::Internal("blob file mutation lock poisoned".to_string()))
+}
+
+#[derive(Debug, Clone)]
+struct BlobDeletionIntent {
+    operation_id: String,
+    hash: String,
+    relative_path: String,
+    expected_hash: Option<String>,
+    size: Option<i64>,
 }
 
 /// VFS Blob 表 Repo
@@ -72,9 +79,33 @@ impl VfsBlobRepo {
         mime_type: Option<&str>,
         extension: Option<&str>,
     ) -> VfsResult<VfsBlob> {
+        // 与物理删除的 quarantine 阶段串行，避免 ref_count 复活与文件 claim
+        // 交错后产生有 metadata、无文件的悬挂 blob。
+        let _file_guard = lock_blob_file_mutation()?;
+
         // 1. 计算哈希
         let hash = Self::compute_hash(data);
         debug!("[VFS::BlobRepo] Computed hash: {}", hash);
+
+        let pending: bool = conn.query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM __file_deletion_journal
+                  WHERE target_kind = 'blob'
+                    AND entity_key = ?1
+                    AND state = 'prepared'
+             )",
+            params![&hash],
+            |row| row.get(0),
+        )?;
+        if pending {
+            return Err(VfsError::Conflict {
+                key: "blob.deletion_prepared".to_string(),
+                message: format!(
+                    "Blob {} has a prepared deletion; retry after deletion recovery",
+                    hash
+                ),
+            });
+        }
 
         // 2. 构建存储路径
         // ★ 2026-06-12（审阅问题 M1）：同 hash 已有记录时必须复用已登记的
@@ -174,23 +205,50 @@ impl VfsBlobRepo {
         let now = chrono::Utc::now().timestamp_millis();
         let size = data.len() as i64;
 
-        let (final_ref_count, final_created_at): (i32, i64) = conn.query_row(
-            r#"
-            INSERT INTO blobs (hash, relative_path, size, mime_type, ref_count, created_at)
-            VALUES (?1, ?2, ?3, ?4, 1, ?5)
-            ON CONFLICT(hash) DO UPDATE SET ref_count = ref_count + 1
-            RETURNING ref_count, created_at
-            "#,
-            params![hash, relative_path, size, mime_type, now],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
+        conn.execute_batch("SAVEPOINT blob_store_metadata")?;
+        let stored = (|| -> VfsResult<(i32, i64)> {
+            let result = conn.query_row(
+                r#"
+                INSERT INTO blobs (hash, relative_path, size, mime_type, ref_count, created_at)
+                VALUES (?1, ?2, ?3, ?4, 1, ?5)
+                ON CONFLICT(hash) DO UPDATE SET ref_count = ref_count + 1
+                RETURNING ref_count, created_at
+                "#,
+                params![hash, relative_path, size, mime_type, now],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )?;
 
-        // 重新导入同一内容表示本机撤销了此前的物理删除意图；清掉本地待传播队列，
-        // 避免下一轮云同步又把刚恢复的 blob tombstone 发布出去。
-        let _ = conn.execute(
-            "DELETE FROM __blob_deletion_queue WHERE hash = ?1",
-            params![&hash],
-        );
+            // 重新导入同一内容撤销尚未发布的 tombstone。先取消 journal，
+            // 再删除 ready-only outbox，避免 DELETE trigger 误标 published。
+            conn.execute(
+                "UPDATE __file_deletion_journal
+                    SET state = 'cancelled',
+                        cancelled_at = ?2,
+                        last_error = 'blob recreated before deletion was published'
+                  WHERE target_kind = 'blob'
+                    AND entity_key = ?1
+                    AND state IN ('prepared', 'ready')",
+                params![&hash, chrono::Utc::now().to_rfc3339()],
+            )?;
+            conn.execute(
+                "DELETE FROM __blob_deletion_queue WHERE hash = ?1",
+                params![&hash],
+            )?;
+            Ok(result)
+        })();
+        let (final_ref_count, final_created_at) = match stored {
+            Ok(result) => {
+                conn.execute_batch("RELEASE SAVEPOINT blob_store_metadata")?;
+                result
+            }
+            Err(error) => {
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT blob_store_metadata;
+                     RELEASE SAVEPOINT blob_store_metadata;",
+                );
+                return Err(error);
+            }
+        };
 
         let is_new = final_ref_count == 1;
         if is_new {
@@ -373,55 +431,367 @@ impl VfsBlobRepo {
         blobs_dir: &Path,
         hash: &str,
     ) -> VfsResult<bool> {
-        // 检查引用计数
-        let ref_count: i32 = conn
-            .query_row(
-                "SELECT ref_count FROM blobs WHERE hash = ?1",
-                params![hash],
-                |row| row.get(0),
-            )
-            .optional()?
-            .unwrap_or(0);
+        Self::ensure_deletion_transaction_boundary(conn)?;
+        Self::recover_prepared_blob_deletions(conn, blobs_dir)?;
+        Self::cleanup_blob_after_recovery(conn, blobs_dir, hash)
+    }
 
-        if ref_count > 0 {
+    fn cleanup_blob_after_recovery(
+        conn: &Connection,
+        blobs_dir: &Path,
+        hash: &str,
+    ) -> VfsResult<bool> {
+        let Some(blob) = Self::get_blob_with_conn(conn, hash)? else {
+            return Ok(false);
+        };
+        if blob.ref_count > 0 {
             return Ok(false);
         }
 
-        // 获取文件路径（为 tombstone 队列保留）
-        let (relative_path, file_size) = if let Some(blob) = Self::get_blob_with_conn(conn, hash)? {
-            let rel = blob.relative_path.clone();
-            let file_path = blobs_dir.join(&blob.relative_path);
-            let size = fs::metadata(&file_path).ok().map(|m| m.len() as i64);
-            if file_path.exists() {
-                fs::remove_file(&file_path).map_err(|e| {
-                    error!("[VFS::BlobRepo] Failed to delete blob file: {}", e);
-                    VfsError::Io(format!("Failed to delete blob file: {}", e))
-                })?;
-            }
-            (Some(rel), size)
+        let Some(intent) = Self::prepare_blob_deletion(conn, blobs_dir, &blob)? else {
+            return Ok(false);
+        };
+        Self::finish_blob_deletion(conn, blobs_dir, &intent)?;
+        info!(
+            "[VFS::BlobRepo] Cleaned up blob {} via operation {}",
+            hash, intent.operation_id
+        );
+        Ok(true)
+    }
+
+    fn ensure_deletion_transaction_boundary(conn: &Connection) -> VfsResult<()> {
+        if conn.is_autocommit() {
+            conn.pragma_update(None, "synchronous", "FULL")?;
+            Ok(())
         } else {
-            (None, None)
+            Err(VfsError::InvalidState {
+                message:
+                    "blob physical deletion requires an autocommit connection after metadata commit"
+                        .to_string(),
+            })
+        }
+    }
+
+    fn prepare_blob_deletion(
+        conn: &Connection,
+        blobs_dir: &Path,
+        blob: &VfsBlob,
+    ) -> VfsResult<Option<BlobDeletionIntent>> {
+        Self::ensure_deletion_transaction_boundary(conn)?;
+        let file_path = Self::safe_blob_path(blobs_dir, &blob.relative_path)?;
+        let (expected_hash, size) = if file_path.try_exists().map_err(|e| {
+            VfsError::Io(format!(
+                "Failed to inspect blob {} before deletion: {}",
+                blob.hash, e
+            ))
+        })? {
+            let actual = Self::compute_file_hash(&file_path)?;
+            let size = fs::metadata(&file_path)
+                .ok()
+                .map(|metadata| metadata.len() as i64);
+            (Some(actual), size)
+        } else {
+            (None, Some(blob.size))
+        };
+        let intent = BlobDeletionIntent {
+            operation_id: uuid::Uuid::new_v4().to_string(),
+            hash: blob.hash.clone(),
+            relative_path: blob.relative_path.clone(),
+            expected_hash,
+            size,
+        };
+        let prepared_at = chrono::Utc::now().to_rfc3339();
+
+        conn.execute_batch("SAVEPOINT blob_deletion_prepare")?;
+        let prepared = (|| -> VfsResult<bool> {
+            conn.execute(
+                "INSERT INTO __file_deletion_journal (
+                     operation_id, target_kind, entity_key, local_path,
+                     expected_hash, size, state, prepared_at
+                 ) VALUES (?1, 'blob', ?2, ?3, ?4, ?5, 'prepared', ?6)",
+                params![
+                    intent.operation_id,
+                    intent.hash,
+                    intent.relative_path,
+                    intent.expected_hash,
+                    intent.size,
+                    prepared_at
+                ],
+            )?;
+            let deleted = conn.execute(
+                "DELETE FROM blobs WHERE hash = ?1 AND ref_count = 0",
+                params![intent.hash],
+            )?;
+            Ok(deleted == 1)
+        })();
+
+        match prepared {
+            Ok(true) => {
+                conn.execute_batch("RELEASE SAVEPOINT blob_deletion_prepare")?;
+                Ok(Some(intent))
+            }
+            Ok(false) => {
+                conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT blob_deletion_prepare;
+                     RELEASE SAVEPOINT blob_deletion_prepare;",
+                )?;
+                Ok(None)
+            }
+            Err(error) => {
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT blob_deletion_prepare;
+                     RELEASE SAVEPOINT blob_deletion_prepare;",
+                );
+                Err(error)
+            }
+        }
+    }
+
+    pub(crate) fn recover_prepared_blob_deletions(
+        conn: &Connection,
+        blobs_dir: &Path,
+    ) -> VfsResult<u32> {
+        Self::ensure_deletion_transaction_boundary(conn)?;
+        Self::recover_prepared_blob_deletions_locked(conn, blobs_dir)
+    }
+
+    fn recover_prepared_blob_deletions_locked(
+        conn: &Connection,
+        blobs_dir: &Path,
+    ) -> VfsResult<u32> {
+        let mut statement = conn.prepare(
+            "SELECT operation_id, entity_key, local_path, expected_hash, size
+               FROM __file_deletion_journal
+              WHERE target_kind = 'blob' AND state = 'prepared'
+              ORDER BY prepared_at, operation_id",
+        )?;
+        let intents = statement
+            .query_map([], |row| {
+                Ok(BlobDeletionIntent {
+                    operation_id: row.get(0)?,
+                    hash: row.get(1)?,
+                    relative_path: row.get(2)?,
+                    expected_hash: row.get(3)?,
+                    size: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(statement);
+
+        let mut recovered = 0;
+        for intent in intents {
+            Self::finish_blob_deletion(conn, blobs_dir, &intent)?;
+            recovered += 1;
+        }
+        Ok(recovered)
+    }
+
+    fn finish_blob_deletion(
+        conn: &Connection,
+        blobs_dir: &Path,
+        intent: &BlobDeletionIntent,
+    ) -> VfsResult<()> {
+        Self::ensure_deletion_transaction_boundary(conn)?;
+        let file_path = Self::safe_blob_path(blobs_dir, &intent.relative_path)?;
+        let quarantine_path = Self::blob_quarantine_path(&file_path, &intent.operation_id)?;
+
+        let conflict = {
+            let _file_guard = lock_blob_file_mutation()?;
+            if quarantine_path
+                .try_exists()
+                .map_err(|e| VfsError::Io(format!("Failed to inspect blob quarantine: {}", e)))?
+            {
+                if let Some(conflict) = Self::blob_baseline_conflict(intent, &quarantine_path)? {
+                    Some((quarantine_path, conflict))
+                } else {
+                    fs::remove_file(&quarantine_path).map_err(|e| {
+                        VfsError::Io(format!(
+                            "Failed to delete claimed blob {}: {}",
+                            intent.hash, e
+                        ))
+                    })?;
+                    None
+                }
+            } else if file_path
+                .try_exists()
+                .map_err(|e| VfsError::Io(format!("Failed to inspect blob deletion path: {}", e)))?
+            {
+                if let Some(conflict) = Self::blob_baseline_conflict(intent, &file_path)? {
+                    Some((file_path, conflict))
+                } else {
+                    fs::rename(&file_path, &quarantine_path).map_err(|e| {
+                        VfsError::Io(format!(
+                            "Failed to claim blob {} for deletion: {}",
+                            intent.hash, e
+                        ))
+                    })?;
+                    fs::remove_file(&quarantine_path).map_err(|e| {
+                        VfsError::Io(format!(
+                            "Failed to delete claimed blob {}: {}",
+                            intent.hash, e
+                        ))
+                    })?;
+                    None
+                }
+            } else {
+                None
+            }
         };
 
-        // 删除数据库记录
-        conn.execute("DELETE FROM blobs WHERE hash = ?1", params![hash])?;
-
-        // 入删除传播队列（尽力，失败不阻塞 blob 清理）
-        // `__blob_deletion_queue` 在 V20260312 迁移中创建。老数据库没有此表时忽略错误。
-        let deleted_at = chrono::Utc::now().to_rfc3339();
-        if let Err(e) = conn.execute(
-            "INSERT OR REPLACE INTO __blob_deletion_queue (hash, relative_path, size, deleted_at, retry_count)
-             VALUES (?1, ?2, ?3, ?4, 0)",
-            params![hash, relative_path, file_size, deleted_at],
-        ) {
-            warn!(
-                "[VFS::BlobRepo] Failed to enqueue blob deletion (may be old schema): {}",
-                e
-            );
+        if let Some((path, (expected, actual))) = conflict {
+            return Self::cancel_blob_baseline_conflict(conn, intent, &path, &expected, &actual);
         }
 
-        info!("[VFS::BlobRepo] Cleaned up blob: {}", hash);
-        Ok(true)
+        Self::mark_blob_deletion_ready(conn, intent)
+    }
+
+    fn blob_baseline_conflict(
+        intent: &BlobDeletionIntent,
+        path: &Path,
+    ) -> VfsResult<Option<(String, String)>> {
+        let actual = Self::compute_file_hash(path)?;
+        match intent.expected_hash.as_deref() {
+            Some(expected) if expected == actual => Ok(None),
+            expected => Ok(Some((
+                expected.unwrap_or("<missing baseline>").to_string(),
+                actual,
+            ))),
+        }
+    }
+
+    fn cancel_blob_baseline_conflict(
+        conn: &Connection,
+        intent: &BlobDeletionIntent,
+        path: &Path,
+        expected: &str,
+        actual: &str,
+    ) -> VfsResult<()> {
+        let message = format!(
+            "blob content changed after prepare: expected={}, actual={}",
+            expected, actual
+        );
+        conn.execute(
+            "UPDATE __file_deletion_journal
+                SET state = 'cancelled',
+                    cancelled_at = ?2,
+                    last_error = ?3
+              WHERE operation_id = ?1 AND state = 'prepared'",
+            params![
+                intent.operation_id,
+                chrono::Utc::now().to_rfc3339(),
+                message
+            ],
+        )?;
+        Err(VfsError::Conflict {
+            key: "blob.deletion_content_changed".to_string(),
+            message: format!(
+                "Blob deletion {} cancelled because {} changed (expected {}, actual {})",
+                intent.operation_id,
+                path.display(),
+                expected,
+                actual
+            ),
+        })
+    }
+
+    fn mark_blob_deletion_ready(conn: &Connection, intent: &BlobDeletionIntent) -> VfsResult<()> {
+        let ready_at = chrono::Utc::now().to_rfc3339();
+        conn.execute_batch("SAVEPOINT blob_deletion_ready")?;
+        let result = (|| -> VfsResult<()> {
+            conn.execute(
+                "INSERT INTO __blob_deletion_queue (
+                     hash, relative_path, size, deleted_at, retry_count
+                 ) VALUES (?1, ?2, ?3, ?4, 0)
+                 ON CONFLICT(hash) DO UPDATE SET
+                     relative_path = excluded.relative_path,
+                     size = excluded.size,
+                     deleted_at = excluded.deleted_at,
+                     retry_count = 0",
+                params![intent.hash, intent.relative_path, intent.size, ready_at],
+            )?;
+            let updated = conn.execute(
+                "UPDATE __file_deletion_journal
+                    SET state = 'ready',
+                        ready_at = ?2,
+                        last_error = NULL
+                  WHERE operation_id = ?1
+                    AND state IN ('prepared', 'ready')",
+                params![intent.operation_id, ready_at],
+            )?;
+            if updated != 1 {
+                return Err(VfsError::InvalidState {
+                    message: format!(
+                        "blob deletion operation {} cannot advance to ready",
+                        intent.operation_id
+                    ),
+                });
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(()) => {
+                conn.execute_batch("RELEASE SAVEPOINT blob_deletion_ready")?;
+                Ok(())
+            }
+            Err(error) => {
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT blob_deletion_ready;
+                     RELEASE SAVEPOINT blob_deletion_ready;",
+                );
+                Err(error)
+            }
+        }
+    }
+
+    fn safe_blob_path(blobs_dir: &Path, relative_path: &str) -> VfsResult<PathBuf> {
+        let relative = Path::new(relative_path);
+        if relative.as_os_str().is_empty()
+            || relative.is_absolute()
+            || relative.components().any(|component| {
+                matches!(
+                    component,
+                    std::path::Component::ParentDir
+                        | std::path::Component::RootDir
+                        | std::path::Component::Prefix(_)
+                )
+            })
+        {
+            return Err(VfsError::PathParse {
+                path: relative_path.to_string(),
+                reason: "blob deletion path must remain relative to vfs_blobs".to_string(),
+            });
+        }
+        Ok(blobs_dir.join(relative))
+    }
+
+    fn blob_quarantine_path(path: &Path, operation_id: &str) -> VfsResult<PathBuf> {
+        let file_name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| VfsError::PathParse {
+                path: path.display().to_string(),
+                reason: "blob deletion target has no UTF-8 file name".to_string(),
+            })?;
+        Ok(path.with_file_name(format!("{}.deleting-{}", file_name, operation_id)))
+    }
+
+    fn compute_file_hash(path: &Path) -> VfsResult<String> {
+        use std::io::Read;
+
+        let mut file = fs::File::open(path)
+            .map_err(|e| VfsError::Io(format!("Failed to open {}: {}", path.display(), e)))?;
+        let mut hasher = Sha256::new();
+        let mut buffer = [0u8; 64 * 1024];
+        loop {
+            let read = file
+                .read(&mut buffer)
+                .map_err(|e| VfsError::Io(format!("Failed to hash {}: {}", path.display(), e)))?;
+            if read == 0 {
+                break;
+            }
+            hasher.update(&buffer[..read]);
+        }
+        Ok(hex::encode(hasher.finalize()))
     }
 
     /// TD-03：删除"无 DB 行登记"的孤儿物理文件（savepoint 回滚后的补偿）。
@@ -452,12 +822,27 @@ impl VfsBlobRepo {
         }
 
         let prefix_dir = blobs_dir.join(&hash[..2]);
-        let Ok(entries) = fs::read_dir(&prefix_dir) else {
-            return Ok(false);
+        let entries = match fs::read_dir(&prefix_dir) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => {
+                return Err(VfsError::Io(format!(
+                    "Failed to enumerate orphan blob directory {}: {}",
+                    prefix_dir.display(),
+                    error
+                )))
+            }
         };
 
         let mut removed = false;
-        for entry in entries.flatten() {
+        for entry in entries {
+            let entry = entry.map_err(|error| {
+                VfsError::Io(format!(
+                    "Failed to enumerate orphan blob entry in {}: {}",
+                    prefix_dir.display(),
+                    error
+                ))
+            })?;
             let name = entry.file_name();
             let name = name.to_string_lossy();
             if !name.starts_with(hash) || name.ends_with(".tmp") {
@@ -471,21 +856,17 @@ impl VfsBlobRepo {
                 );
                 return Ok(removed);
             }
-            match fs::remove_file(entry.path()) {
-                Ok(()) => {
-                    info!(
-                        "[VFS::BlobRepo] Removed unregistered orphan blob file: {}",
-                        name
-                    );
-                    removed = true;
-                }
-                Err(e) => {
-                    warn!(
-                        "[VFS::BlobRepo] Failed to remove orphan blob file {}: {}",
-                        name, e
-                    );
-                }
-            }
+            fs::remove_file(entry.path()).map_err(|error| {
+                VfsError::Io(format!(
+                    "Failed to remove unregistered orphan blob file {}: {}",
+                    name, error
+                ))
+            })?;
+            info!(
+                "[VFS::BlobRepo] Removed unregistered orphan blob file: {}",
+                name
+            );
+            removed = true;
         }
         Ok(removed)
     }
@@ -500,59 +881,21 @@ impl VfsBlobRepo {
     ///
     /// 每个被删除的 blob 也会入 `__blob_deletion_queue` 供云同步传播。
     pub fn cleanup_unreferenced_with_conn(conn: &Connection, blobs_dir: &Path) -> VfsResult<u32> {
-        // 获取所有无引用的 Blob
-        let mut stmt = conn.prepare("SELECT hash, relative_path FROM blobs WHERE ref_count = 0")?;
+        Self::ensure_deletion_transaction_boundary(conn)?;
+        Self::recover_prepared_blob_deletions(conn, blobs_dir)?;
 
-        let blobs: Vec<(String, String)> = stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-            .filter_map(log_and_skip_err)
-            .collect();
+        // 获取所有无引用的 Blob
+        let mut stmt = conn.prepare("SELECT hash FROM blobs WHERE ref_count = 0")?;
+        let hashes: Vec<String> = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(stmt);
 
         let mut cleaned = 0u32;
-
-        for (hash, relative_path) in blobs {
-            // ★ 2026-06-13（审阅 R2-2）：先做带 `ref_count = 0` 守卫的原子删行，再删文件，
-            // 与单 blob 版 `cleanup_blob_with_conn` 一致。上面的 SELECT 与此处删除之间，
-            // 可能有并发 `store_blob_with_conn` 复活该 blob（INSERT ON CONFLICT ref_count+1）；
-            // 旧实现无条件删行+删文件，会误删已被重新引用的 blob → 悬挂引用/数据丢失。
-            // 守卫删行受影响行数为 0 即说明已被复活，跳过物理删除。
-            let deleted = conn.execute(
-                "DELETE FROM blobs WHERE hash = ?1 AND ref_count = 0",
-                params![hash],
-            )?;
-            if deleted == 0 {
-                debug!(
-                    "[VFS::BlobRepo] Blob {} re-referenced during sweep; skip physical delete",
-                    hash
-                );
-                continue;
+        for hash in hashes {
+            if Self::cleanup_blob_after_recovery(conn, blobs_dir, &hash)? {
+                cleaned += 1;
             }
-
-            // 行已确认 ref_count=0 并删除，再删物理文件。
-            // 注意：此时若物理删除失败，行已删除 → 残留孤儿文件（磁盘泄漏，远轻于数据丢失，
-            // 且极罕见）；不再因文件删除失败而保留行（保留会与已删行语义不一致）。
-            let file_path = blobs_dir.join(&relative_path);
-            let file_size = fs::metadata(&file_path).ok().map(|m| m.len() as i64);
-            if file_path.exists() {
-                if let Err(e) = fs::remove_file(&file_path) {
-                    error!("[VFS::BlobRepo] Failed to delete blob file {}: {}", hash, e);
-                }
-            }
-
-            // 入删除队列（老 schema 下失败不阻塞）
-            let deleted_at = chrono::Utc::now().to_rfc3339();
-            if let Err(e) = conn.execute(
-                "INSERT OR REPLACE INTO __blob_deletion_queue (hash, relative_path, size, deleted_at, retry_count)
-                 VALUES (?1, ?2, ?3, ?4, 0)",
-                params![hash, relative_path, file_size, deleted_at],
-            ) {
-                warn!(
-                    "[VFS::BlobRepo] Failed to enqueue blob deletion (may be old schema): {}",
-                    e
-                );
-            }
-
-            cleaned += 1;
         }
 
         // ★ 2026-06-12（审阅问题 M 类）：清理进程崩溃残留的临时写入文件。
@@ -794,5 +1137,109 @@ mod tests {
 
         assert_eq!(relative, "ab/abcdef1234567890.pdf");
         assert_eq!(absolute, blobs_dir.join("ab/abcdef1234567890.pdf"));
+    }
+
+    #[test]
+    fn deletion_prepare_failure_keeps_blob_metadata_and_file() {
+        let (_temp, db) = setup_test_db();
+        let blob = VfsBlobRepo::store_blob(&db, b"prepare failure", None, None).unwrap();
+        VfsBlobRepo::decrement_ref(&db, &blob.hash).unwrap();
+        let conn = db.get_conn_safe().unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_blob_prepare
+             BEFORE INSERT ON __file_deletion_journal
+             WHEN NEW.target_kind = 'blob'
+             BEGIN
+                 SELECT RAISE(FAIL, 'injected blob prepare failure');
+             END;",
+        )
+        .unwrap();
+
+        let error =
+            VfsBlobRepo::cleanup_blob_with_conn(&conn, db.blobs_dir(), &blob.hash).unwrap_err();
+        assert!(error.to_string().contains("injected blob prepare failure"));
+        assert!(VfsBlobRepo::blob_exists_with_conn(&conn, &blob.hash).unwrap());
+        assert!(db.blobs_dir().join(&blob.relative_path).exists());
+    }
+
+    #[test]
+    fn recovers_blob_crash_after_prepare() {
+        let (_temp, db) = setup_test_db();
+        let blob = VfsBlobRepo::store_blob(&db, b"prepared crash", None, None).unwrap();
+        VfsBlobRepo::decrement_ref(&db, &blob.hash).unwrap();
+        let conn = db.get_conn_safe().unwrap();
+        let current = VfsBlobRepo::get_blob_with_conn(&conn, &blob.hash)
+            .unwrap()
+            .unwrap();
+        let intent = VfsBlobRepo::prepare_blob_deletion(&conn, db.blobs_dir(), &current)
+            .unwrap()
+            .unwrap();
+
+        assert!(!VfsBlobRepo::blob_exists_with_conn(&conn, &blob.hash).unwrap());
+        assert!(db.blobs_dir().join(&blob.relative_path).exists());
+        assert_eq!(
+            VfsBlobRepo::recover_prepared_blob_deletions(&conn, db.blobs_dir()).unwrap(),
+            1
+        );
+        assert!(!db.blobs_dir().join(&blob.relative_path).exists());
+        let state: String = conn
+            .query_row(
+                "SELECT state FROM __file_deletion_journal WHERE operation_id = ?1",
+                params![intent.operation_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(state, "ready");
+    }
+
+    #[test]
+    fn blob_ready_outbox_failure_is_visible_and_recoverable() {
+        let (_temp, db) = setup_test_db();
+        let blob = VfsBlobRepo::store_blob(&db, b"outbox failure", None, None).unwrap();
+        VfsBlobRepo::decrement_ref(&db, &blob.hash).unwrap();
+        let conn = db.get_conn_safe().unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_blob_outbox
+             BEFORE INSERT ON __blob_deletion_queue
+             BEGIN
+                 SELECT RAISE(FAIL, 'injected blob outbox failure');
+             END;",
+        )
+        .unwrap();
+
+        let error =
+            VfsBlobRepo::cleanup_blob_with_conn(&conn, db.blobs_dir(), &blob.hash).unwrap_err();
+        assert!(error.to_string().contains("injected blob outbox failure"));
+        assert!(!VfsBlobRepo::blob_exists_with_conn(&conn, &blob.hash).unwrap());
+        assert!(!db.blobs_dir().join(&blob.relative_path).exists());
+        let state: String = conn
+            .query_row(
+                "SELECT state FROM __file_deletion_journal
+                  WHERE target_kind = 'blob' AND entity_key = ?1",
+                params![blob.hash],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(state, "prepared");
+
+        conn.execute_batch("DROP TRIGGER fail_blob_outbox").unwrap();
+        assert_eq!(
+            VfsBlobRepo::recover_prepared_blob_deletions(&conn, db.blobs_dir()).unwrap(),
+            1
+        );
+        conn.execute(
+            "DELETE FROM __blob_deletion_queue WHERE hash = ?1",
+            params![blob.hash],
+        )
+        .unwrap();
+        let state: String = conn
+            .query_row(
+                "SELECT state FROM __file_deletion_journal
+                  WHERE target_kind = 'blob' AND entity_key = ?1",
+                params![blob.hash],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(state, "published");
     }
 }

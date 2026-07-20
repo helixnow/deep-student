@@ -25,12 +25,15 @@ import { fireEvent, render, screen, waitFor, act } from '@testing-library/react'
 
 const mockGetBackupConfig = vi.hoisted(() => vi.fn());
 const mockSetBackupConfig = vi.hoisted(() => vi.fn());
+const mockTranslate = vi.hoisted(() => (key: string) => key);
 
 const mockDataGovernanceApi = vi.hoisted(() => ({
   getMigrationStatus: vi.fn(),
   runHealthCheck: vi.fn(),
   getBackupList: vi.fn(),
+  listBackupJobs: vi.fn(),
   listResumableJobs: vi.fn(),
+  getMaintenanceStatus: vi.fn(),
   getSyncStatus: vi.fn(),
   getAuditLogs: vi.fn(),
   runBackup: vi.fn(),
@@ -56,6 +59,16 @@ vi.mock('@/api/dataGovernance', () => ({
   BACKUP_JOB_PROGRESS_EVENT: 'backup-job-progress',
   isBackupJobTerminal: (status: string) =>
     status === 'completed' || status === 'failed' || status === 'cancelled',
+}));
+
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-i18next')>()),
+  useTranslation: () => ({ t: mockTranslate }),
+}));
+
+vi.mock('@/utils/cloudStorageApi', () => ({
+  loadStoredCloudStorageConfigSafe: () => null,
+  loadStoredCloudStorageConfigWithCredentials: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('@/hooks/useBackupJobListener', () => ({
@@ -113,6 +126,14 @@ const defaultBackupConfig = {
   maxBackupCount: null,
   slimBackup: false,
 };
+
+beforeEach(() => {
+  mockDataGovernanceApi.listBackupJobs.mockResolvedValue([]);
+  mockDataGovernanceApi.getMaintenanceStatus.mockResolvedValue({
+    is_in_maintenance_mode: false,
+    operation: null,
+  });
+});
 
 const enabledAutoBackupConfig = {
   backupDirectory: null,
@@ -541,8 +562,7 @@ describe('DataGovernanceDashboard backup config error handling', () => {
     });
   });
 
-  it('handles config load failure gracefully without crashing', async () => {
-    // 第一次调用失败，之后恢复正常（useEffect 会在失败后重试）
+  it('stops automatic retries after a permanent load failure and retries manually', async () => {
     mockGetBackupConfig
       .mockRejectedValueOnce(new Error('Config file corrupted'))
       .mockResolvedValue(defaultBackupConfig);
@@ -551,18 +571,20 @@ describe('DataGovernanceDashboard backup config error handling', () => {
     await navigateToBackupTab();
     await expandSettingsPanel();
 
-    // getBackupConfig 应被调用（至少一次失败 + 一次成功重试）
     await waitFor(() => {
-      expect(mockGetBackupConfig).toHaveBeenCalled();
+      expect(mockGetBackupConfig).toHaveBeenCalledTimes(1);
     });
 
-    // 组件不应崩溃，备份设置标题仍可见
-    expect(
-      screen.getByText(/备份设置$|data:governance\.backup_settings$/i),
-    ).toBeInTheDocument();
+    // 即使后端随后可用，effect 也不能因 null 配置自动形成请求循环。
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mockGetBackupConfig).toHaveBeenCalledTimes(1);
 
-    // 重试成功后配置项应可见
+    fireEvent.click(
+      screen.getByRole('button', { name: /重试|retry|common:actions\.retry/i }),
+    );
+
     await waitFor(() => {
+      expect(mockGetBackupConfig).toHaveBeenCalledTimes(2);
       expect(
         screen.getByText(/精简备份模式|data:governance\.slim_backup$/i),
       ).toBeInTheDocument();

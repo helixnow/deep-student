@@ -172,6 +172,14 @@ export interface BackupConfig {
   backupTiers?: BackupTier[];
 }
 
+export interface AutoBackupStatus {
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+  nextDueAt: string | null;
+  lastJobId: string | null;
+}
+
 /**
  * 获取备份配置
  */
@@ -185,6 +193,10 @@ export async function getBackupConfig(): Promise<BackupConfig> {
  */
 export async function setBackupConfig(config: BackupConfig): Promise<void> {
   return invoke<void>("set_backup_config", { config });
+}
+
+export async function getAutoBackupStatus(): Promise<AutoBackupStatus> {
+  return invoke<AutoBackupStatus>("get_auto_backup_status");
 }
 
 // ==================== 备份 API ====================
@@ -1227,6 +1239,18 @@ export interface DiskSpaceCheckResponse {
   backup_size: number;
 }
 
+function isTauriCommandNotFound(error: unknown): boolean {
+  if (error && typeof error === "object") {
+    const code = "code" in error ? String((error as { code?: unknown }).code) : "";
+    if (code === "COMMAND_NOT_FOUND" || code === "TAURI_COMMAND_NOT_FOUND") {
+      return true;
+    }
+  }
+
+  const message = (error instanceof Error ? error.message : String(error)).trim();
+  return /^(?:command not found|unknown command)(?::|\s+-|$)/i.test(message);
+}
+
 export interface SlotMigrationTestResponse {
   success: boolean;
   report: string;
@@ -1251,14 +1275,18 @@ export async function checkDiskSpaceForRestore(
         backupId,
       },
     );
-  } catch {
-    // 如果后端尚未实现该命令，返回"空间足够"以不阻塞流程
-    return {
-      has_enough_space: true,
-      available_bytes: 0,
-      required_bytes: 0,
-      backup_size: 0,
-    };
+  } catch (error) {
+    // 仅兼容确实缺少命令的旧后端。权限、I/O、清单损坏等检查错误必须
+    // fail-close，不能伪装成“空间足够”继续执行破坏性恢复。
+    if (isTauriCommandNotFound(error)) {
+      return {
+        has_enough_space: true,
+        available_bytes: 0,
+        required_bytes: 0,
+        backup_size: 0,
+      };
+    }
+    throw error;
   }
 }
 
@@ -1516,6 +1544,7 @@ export const DataGovernanceApi = {
   // 备份配置
   getBackupConfig,
   setBackupConfig,
+  getAutoBackupStatus,
 
   // 备份管理
   runBackup,

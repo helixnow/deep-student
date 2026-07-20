@@ -7,7 +7,7 @@
  * - 采用云端：本地值被覆盖
  * - 手动合并：编辑 JSON，写回作为最终值
  *
- * 这是 Obsidian 风格"冲突副本"的替代方案——在行级 LWW 架构下
+ * 这是 简洁风格"冲突副本"的替代方案——在行级 LWW 架构下
  * 让用户能看到并手动决策原本会被 LWW 丢弃的数据。
  */
 
@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { Warning, CheckCircle, PencilSimple, CircleNotch, ArrowClockwise, Trash } from '@phosphor-icons/react';
 import * as DataGovernanceApi from '@/api/dataGovernance';
 import type { RecordConflictRow } from '@/api/dataGovernance';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -260,7 +260,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
           </CardDescription>
         </div>
         <div className="flex flex-wrap gap-2">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => void handleBulkResolve('keep_local')}
@@ -268,8 +268,8 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             className="h-8 [@media(pointer:coarse)]:h-10"
           >
             {t('data:governance.conflict_bulk_keep_local')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => void handleBulkResolve('keep_cloud')}
@@ -277,8 +277,8 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             className="h-8 [@media(pointer:coarse)]:h-10"
           >
             {t('data:governance.conflict_bulk_use_cloud')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={refresh}
@@ -291,8 +291,8 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
               <ArrowClockwise size={14} className="mr-1.5" />
             )}
             {t('common:actions.refresh')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handlePurgeResolved}
@@ -302,7 +302,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
           >
             <Trash size={14} className="mr-1.5" />
             {t('data:governance.conflict_purge_button')}
-          </NotionButton>
+          </DsButton>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -313,7 +313,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
           </div>
         )}
         {pairs.length < totalGroups && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => void loadMore()}
@@ -325,7 +325,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
               shown: pairs.length,
               total: totalGroups,
             })}
-          </NotionButton>
+          </DsButton>
         )}
         {pairs.map((p) => {
           const key = pairKey(p);
@@ -348,7 +348,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                   <span className="font-semibold">{p.recordId}</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={() => handleResolve(p, 'keep_local')}
@@ -356,8 +356,8 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     className="h-7 text-xs [@media(pointer:coarse)]:h-10"
                   >
                     {t('data:governance.keep_local')}
-                  </NotionButton>
-                  <NotionButton
+                  </DsButton>
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={() => handleResolve(p, 'keep_cloud')}
@@ -366,8 +366,8 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     title={p.clouds.length > 1 ? t('data:governance.use_cloud_latest', { suffix: '（最新候选）' }) : undefined}
                   >
                     {t('data:governance.use_cloud_latest', { suffix: p.clouds.length > 1 ? `（最新/${p.clouds.length}）` : '' })}
-                  </NotionButton>
-                  <NotionButton
+                  </DsButton>
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={() => handleStartMerge(p)}
@@ -376,7 +376,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                   >
                      <PencilSimple size={12} className="mr-1" />
                     {t('data:governance.manual_merge')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               </div>
               {/* local/cloud 对比：<sm 上下堆叠（400px 双列每列仅 ~160px，JSON 不可读） */}
@@ -426,7 +426,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     spellCheck={false}
                   />
                   <div className="flex gap-2 justify-end">
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       onClick={() => {
@@ -436,8 +436,8 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                       className="h-7 text-xs [@media(pointer:coarse)]:h-10"
                     >
                       {t('common:actions.cancel')}
-                    </NotionButton>
-                    <NotionButton
+                    </DsButton>
+                    <DsButton
                       variant="default"
                       size="sm"
                       onClick={() => {
@@ -453,7 +453,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                       className="h-7 text-xs [@media(pointer:coarse)]:h-10"
                     >
                       {t('data:governance.write_back')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
               )}

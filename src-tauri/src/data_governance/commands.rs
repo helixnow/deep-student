@@ -464,6 +464,7 @@ pub fn data_governance_get_maintenance_status(
     Ok(MaintenanceStatusResponse {
         is_in_maintenance_mode: !blocked_components.is_empty(),
         blocked_components,
+        current_operation: crate::backup_common::current_data_governance_operation(),
     })
 }
 

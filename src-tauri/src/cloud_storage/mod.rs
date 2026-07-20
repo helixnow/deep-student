@@ -52,6 +52,8 @@ use webdav::WebDavStorage;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CloudSyncProgressEvent {
+    /// 关联一次完整操作，避免并发/迟到事件串台。
+    operation_id: String,
     /// 操作类型: "upload" | "download"
     operation: &'static str,
     /// 阶段标识: "transferring" | "done"
@@ -248,10 +250,11 @@ pub async fn cloud_sync_upload(
     note: Option<String>,
 ) -> Result<UploadResult> {
     crate::secure_store::hydrate_cloud_config(&app_handle, &mut config);
-    let _operation_permit = crate::backup_common::BACKUP_GLOBAL_LIMITER
-        .clone()
-        .try_acquire_owned()
-        .map_err(|_| AppError::internal("另一个备份、恢复或云同步操作正在进行".to_string()))?;
+    let _operation = crate::backup_common::DataGovernanceOperationGuard::try_acquire(
+        crate::backup_common::DataGovernanceOperationKind::Backup,
+        None,
+    )?;
+    let operation_id = _operation.operation_id().to_string();
 
     // 如果配置了加密密码，先把 ZIP 加密到临时文件再上传
     // 临时文件在 ZIP 附近创建，上传成功后删除
@@ -284,8 +287,13 @@ pub async fn cloud_sync_upload(
     };
 
     let file_size = std::fs::metadata(&actual_upload_path)
-        .map(|m| m.len())
-        .unwrap_or(0);
+        .map_err(|error| {
+            AppError::file_system(format!(
+                "读取待上传备份大小失败 {:?}: {}",
+                actual_upload_path, error
+            ))
+        })?
+        .len();
 
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
@@ -293,6 +301,7 @@ pub async fn cloud_sync_upload(
     emit_sync_progress(
         &app_handle,
         CloudSyncProgressEvent {
+            operation_id: operation_id.clone(),
             operation: "upload",
             stage: "transferring",
             stage_label: "正在上传文件...",
@@ -303,6 +312,7 @@ pub async fn cloud_sync_upload(
     );
 
     let handle = app_handle.clone();
+    let progress_operation_id = operation_id.clone();
     let progress_cb: traits::UploadProgressCallback = Box::new(move |done, total| {
         let pct = if total > 0 {
             (done as f32 / total as f32 * 95.0).min(95.0)
@@ -312,6 +322,7 @@ pub async fn cloud_sync_upload(
         emit_sync_progress(
             &handle,
             CloudSyncProgressEvent {
+                operation_id: progress_operation_id.clone(),
                 operation: "upload",
                 stage: "transferring",
                 stage_label: "正在上传文件...",
@@ -334,6 +345,7 @@ pub async fn cloud_sync_upload(
     emit_sync_progress(
         &app_handle,
         CloudSyncProgressEvent {
+            operation_id,
             operation: "upload",
             stage: "done",
             stage_label: "上传完成",
@@ -357,16 +369,18 @@ pub async fn cloud_sync_download(
     local_dir: String,
 ) -> Result<DownloadResult> {
     crate::secure_store::hydrate_cloud_config(&app_handle, &mut config);
-    let _operation_permit = crate::backup_common::BACKUP_GLOBAL_LIMITER
-        .clone()
-        .try_acquire_owned()
-        .map_err(|_| AppError::internal("另一个备份、恢复或云同步操作正在进行".to_string()))?;
+    let _operation = crate::backup_common::DataGovernanceOperationGuard::try_acquire(
+        crate::backup_common::DataGovernanceOperationKind::Restore,
+        None,
+    )?;
+    let operation_id = _operation.operation_id().to_string();
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
 
     emit_sync_progress(
         &app_handle,
         CloudSyncProgressEvent {
+            operation_id: operation_id.clone(),
             operation: "download",
             stage: "transferring",
             stage_label: "正在下载备份...",
@@ -377,6 +391,7 @@ pub async fn cloud_sync_download(
     );
 
     let handle = app_handle.clone();
+    let progress_operation_id = operation_id.clone();
     let progress_cb: traits::DownloadProgressCallback = Box::new(move |done, total| {
         let pct = if total > 0 {
             (done as f32 / total as f32 * 95.0).min(95.0)
@@ -386,6 +401,7 @@ pub async fn cloud_sync_download(
         emit_sync_progress(
             &handle,
             CloudSyncProgressEvent {
+                operation_id: progress_operation_id.clone(),
                 operation: "download",
                 stage: "transferring",
                 stage_label: "正在下载备份...",
@@ -408,11 +424,20 @@ pub async fn cloud_sync_download(
     // 支持"用户上传时加密，下载设备未配置密码"的场景：返回明确错误
     let downloaded_path = std::path::Path::new(&result.local_path);
     let head = {
-        let mut buf = vec![0u8; 4];
-        if let Ok(mut f) = std::fs::File::open(downloaded_path) {
-            use std::io::Read;
-            let _ = f.read(&mut buf);
-        }
+        use std::io::Read;
+        let mut buf = [0u8; 4];
+        let mut file = std::fs::File::open(downloaded_path).map_err(|error| {
+            AppError::file_system(format!(
+                "打开已下载备份进行格式识别失败 {:?}: {}",
+                downloaded_path, error
+            ))
+        })?;
+        file.read_exact(&mut buf).map_err(|error| {
+            AppError::validation(format!(
+                "已下载备份过短或无法读取 {:?}: {}",
+                downloaded_path, error
+            ))
+        })?;
         buf
     };
     let is_encrypted = crate::crypto::backup_crypto::is_encrypted_backup(&head);
@@ -451,6 +476,7 @@ pub async fn cloud_sync_download(
     emit_sync_progress(
         &app_handle,
         CloudSyncProgressEvent {
+            operation_id,
             operation: "download",
             stage: "done",
             stage_label: "下载完成",
@@ -471,10 +497,10 @@ pub async fn cloud_sync_delete_version(
     version_id: String,
 ) -> Result<()> {
     crate::secure_store::hydrate_cloud_config(&app, &mut config);
-    let _operation_permit = crate::backup_common::BACKUP_GLOBAL_LIMITER
-        .clone()
-        .try_acquire_owned()
-        .map_err(|_| AppError::internal("另一个备份、恢复或云同步操作正在进行".to_string()))?;
+    let _operation = crate::backup_common::DataGovernanceOperationGuard::try_acquire(
+        crate::backup_common::DataGovernanceOperationKind::Prune,
+        None,
+    )?;
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
     manager.delete_version(&version_id).await

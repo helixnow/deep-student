@@ -131,6 +131,17 @@ impl AuditLog {
         self
     }
 
+    /// 标记为部分成功。
+    ///
+    /// 任何 skipped/warning/error_message 都不应伪装成 Completed；调用方可将
+    /// 脱敏后的原因写入 error_message，并在 details 中记录结构化计数。
+    pub fn partial(mut self, reason: impl Into<String>, duration_ms: u64) -> Self {
+        self.status = AuditStatus::Partial;
+        self.duration_ms = Some(duration_ms);
+        self.error_message = Some(reason.into());
+        self
+    }
+
     /// 添加详细信息
     pub fn with_details(mut self, details: serde_json::Value) -> Self {
         self.details = details;

@@ -63,8 +63,7 @@ fn cmd_err(command: &'static str, err: VfsError) -> CommandError {
 
 /// 非 VfsError 来源（业务校验/LLM 调用等）的 envelope 构造，行为同 `cmd_err`
 fn cmd_err_custom(command: &'static str, code: &'static str, message: String) -> CommandError {
-    let envelope =
-        CommandError::new(code, message).with_trace_id(uuid::Uuid::new_v4().to_string());
+    let envelope = CommandError::new(code, message).with_trace_id(uuid::Uuid::new_v4().to_string());
     log::warn!(
         "[todo_handlers] {} failed: code={} trace_id={} message={}",
         command,
@@ -248,8 +247,7 @@ pub fn todo_update_list(app: AppHandle, input: UpdateTodoListInput) -> CmdResult
 #[tauri::command]
 pub fn todo_delete_list(app: AppHandle, list_id: String) -> CmdResult<()> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
-    VfsTodoRepo::delete_todo_list(&vfs_db, &list_id)
-        .map_err(|e| cmd_err("todo_delete_list", e))?;
+    VfsTodoRepo::delete_todo_list(&vfs_db, &list_id).map_err(|e| cmd_err("todo_delete_list", e))?;
     emit_todo_changed(&app, "delete_list", std::slice::from_ref(&list_id));
     Ok(())
 }
@@ -460,8 +458,7 @@ pub fn todo_toggle_item(
 #[tauri::command]
 pub fn todo_delete_item(app: AppHandle, item_id: String) -> CmdResult<()> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
-    VfsTodoRepo::delete_todo_item(&vfs_db, &item_id)
-        .map_err(|e| cmd_err("todo_delete_item", e))?;
+    VfsTodoRepo::delete_todo_item(&vfs_db, &item_id).map_err(|e| cmd_err("todo_delete_item", e))?;
     emit_todo_changed(&app, "delete", std::slice::from_ref(&item_id));
     Ok(())
 }
@@ -544,15 +541,11 @@ pub fn todo_list_reminders(app: AppHandle) -> CmdResult<Vec<VfsTodoItem>> {
 #[tauri::command]
 pub fn todo_list_all_pending(app: AppHandle) -> CmdResult<Vec<VfsTodoItem>> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
-    VfsTodoRepo::list_all_pending_items(&vfs_db)
-        .map_err(|e| cmd_err("todo_list_all_pending", e))
+    VfsTodoRepo::list_all_pending_items(&vfs_db).map_err(|e| cmd_err("todo_list_all_pending", e))
 }
 
 #[tauri::command]
-pub fn todo_list_completed(
-    app: AppHandle,
-    list_id: Option<String>,
-) -> CmdResult<Vec<VfsTodoItem>> {
+pub fn todo_list_completed(app: AppHandle, list_id: Option<String>) -> CmdResult<Vec<VfsTodoItem>> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
     VfsTodoRepo::list_completed_items(&vfs_db, list_id.as_deref())
         .map_err(|e| cmd_err("todo_list_completed", e))
@@ -583,8 +576,7 @@ pub fn todo_search(
 #[tauri::command]
 pub fn todo_get_active_summary(app: AppHandle) -> CmdResult<Option<TodoActiveSummary>> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
-    VfsTodoRepo::get_active_todo_summary(&vfs_db)
-        .map_err(|e| cmd_err("todo_get_active_summary", e))
+    VfsTodoRepo::get_active_todo_summary(&vfs_db).map_err(|e| cmd_err("todo_get_active_summary", e))
 }
 
 /// 计数快照：侧栏/徽标一次性拉取全部视图计数（聚合 COUNT，不拉行数据）。
@@ -677,10 +669,7 @@ pub fn todo_batch_move(
 
 /// 批量软删除（连同子树，进入回收站）
 #[tauri::command]
-pub fn todo_batch_delete(
-    app: AppHandle,
-    item_ids: Vec<String>,
-) -> CmdResult<TodoBatchIdsResult> {
+pub fn todo_batch_delete(app: AppHandle, item_ids: Vec<String>) -> CmdResult<TodoBatchIdsResult> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
     let result = VfsTodoRepo::batch_delete_items(&vfs_db, &item_ids)
         .map_err(|e| cmd_err("todo_batch_delete", e))?;
@@ -708,10 +697,7 @@ pub fn todo_batch_restore(
 
 /// 批量彻底删除（仅回收站中的条目；不可恢复）
 #[tauri::command]
-pub fn todo_batch_purge(
-    app: AppHandle,
-    item_ids: Vec<String>,
-) -> CmdResult<TodoBatchIdsResult> {
+pub fn todo_batch_purge(app: AppHandle, item_ids: Vec<String>) -> CmdResult<TodoBatchIdsResult> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
     let result = VfsTodoRepo::batch_purge_items(&vfs_db, &item_ids)
         .map_err(|e| cmd_err("todo_batch_purge", e))?;

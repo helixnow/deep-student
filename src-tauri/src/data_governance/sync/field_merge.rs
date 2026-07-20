@@ -160,9 +160,7 @@ fn merge_conflicting(
         }
         Some(FieldMergeStrategy::MaxValue) => merge_max_value(local, remote),
         Some(FieldMergeStrategy::BooleanOr) => merge_boolean_or(local, remote),
-        Some(FieldMergeStrategy::LearnerProfileData) => {
-            merge_learner_profile_data(local, remote)
-        }
+        Some(FieldMergeStrategy::LearnerProfileData) => merge_learner_profile_data(local, remote),
         None => (remote.clone(), false, true),
     }
 }
@@ -601,8 +599,19 @@ mod tests {
         let (result, changed, conflict) = merge_field(
             "notes",
             "tags",
-            Some(&json!(["math", "_hits:3", "_last_hit:1730000000000", "_used:2", "_stale"])),
-            Some(&json!(["math", "_hits:10", "_last_hit:1731000000000", "_used:5"])),
+            Some(&json!([
+                "math",
+                "_hits:3",
+                "_last_hit:1730000000000",
+                "_used:2",
+                "_stale"
+            ])),
+            Some(&json!([
+                "math",
+                "_hits:10",
+                "_last_hit:1731000000000",
+                "_used:5"
+            ])),
         );
         assert!(changed);
         assert!(!conflict);
@@ -627,10 +636,7 @@ mod tests {
         );
         let tags = tags_of(&result);
         // 枚举冲突取字典序第一条（确定性），_purpose 两侧一致不受影响
-        assert_eq!(
-            tags.iter().filter(|t| t.starts_with("_type:")).count(),
-            1
-        );
+        assert_eq!(tags.iter().filter(|t| t.starts_with("_type:")).count(), 1);
         assert!(tags.contains(&"_type:fact".to_string()));
         assert!(tags.contains(&"_purpose:memorized".to_string()));
     }
@@ -672,10 +678,12 @@ mod tests {
             updated_at: "2026-07-19T10:00:00+00:00".to_string(),
             ..Default::default()
         };
-        local.goals.push(crate::memory::learner_profile::LearningGoal {
-            goal: "本地目标".to_string(),
-            deadline: None,
-        });
+        local
+            .goals
+            .push(crate::memory::learner_profile::LearningGoal {
+                goal: "本地目标".to_string(),
+                deadline: None,
+            });
         let mut remote = LearnerProfile {
             version: 4,
             updated_at: "2026-07-19T11:00:00+00:00".to_string(),

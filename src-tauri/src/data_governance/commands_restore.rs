@@ -14,8 +14,9 @@ use crate::backup_job_manager::{
 #[cfg(feature = "data_governance")]
 use super::commands::try_save_audit_log;
 use super::commands_backup::{
-    acquire_backup_global_permit, ensure_existing_path_within_backup_dir, get_app_data_dir,
-    get_backup_dir, open_sync_connection, validate_backup_id, BackupJobStartResponse,
+    acquire_backup_global_permit, checked_restore_disk_budget,
+    ensure_existing_path_within_backup_dir, get_app_data_dir, get_backup_dir, open_sync_connection,
+    validate_backup_id, BackupJobStartResponse,
 };
 
 const RESTORE_ACTIVATION_MARKER: &str = ".restore_activation_pending.json";
@@ -78,6 +79,22 @@ fn write_restore_activation_marker(
 pub(crate) fn finalize_restore_activation(active_dir: &Path) -> Result<bool, String> {
     let marker_path = active_dir.join(RESTORE_ACTIVATION_MARKER);
     if !marker_path.exists() {
+        if let Some(manager) = crate::data_space::get_data_space_manager() {
+            if let Some(lease) = manager
+                .restore_cutover_pending()
+                .map_err(|e| format!("读取恢复维护租约失败: {}", e))?
+            {
+                if lease.activation_committed {
+                    return manager
+                        .complete_restore_cutover(active_dir)
+                        .map_err(|e| format!("解除已提交恢复维护租约失败: {}", e));
+                }
+                return Err(format!(
+                    "恢复维护租约仍在但激活标记缺失: backup={}, target={}",
+                    lease.backup_id, lease.target_slot
+                ));
+            }
+        }
         return Ok(false);
     }
     let marker_bytes =
@@ -115,7 +132,15 @@ pub(crate) fn finalize_restore_activation(active_dir: &Path) -> Result<bool, Str
         .map_err(|e| format!("激活恢复槽后重置同步游标失败: {}", e))?;
     crate::cloud_storage::persist_device_id_after_restore(&new_device_id)
         .map_err(|e| format!("激活恢复槽后轮换设备 ID 失败: {}", e))?;
+    let manager = crate::data_space::get_data_space_manager()
+        .ok_or_else(|| "恢复槽激活后 DataSpaceManager 不可用".to_string())?;
+    manager
+        .mark_restore_activation_committed(active_dir, &marker.backup_id)
+        .map_err(|e| format!("提交恢复维护租约失败: {}", e))?;
     std::fs::remove_file(&marker_path).map_err(|e| format!("清理恢复激活标记失败: {}", e))?;
+    manager
+        .complete_restore_cutover(active_dir)
+        .map_err(|e| format!("解除恢复维护租约失败: {}", e))?;
     info!(
         "[data_governance] 恢复槽激活提交完成: backup_id={}, epoch={}, old_device={}, new_device={}",
         marker.backup_id, marker.snapshot_epoch, old_device_id, new_device_id
@@ -413,10 +438,8 @@ async fn execute_restore_with_progress(
         }
     };
 
-    let manifest_dir = app_data_dir.join("backups").join(&manifest.backup_id);
-    if let Err(e) =
-        ensure_existing_path_within_backup_dir(&manifest_dir, &app_data_dir.join("backups"))
-    {
+    let manifest_dir = backup_dir.join(&manifest.backup_id);
+    if let Err(e) = ensure_existing_path_within_backup_dir(&manifest_dir, &backup_dir) {
         job_ctx.fail(format!("备份路径校验失败: {}", e));
         return;
     }
@@ -428,6 +451,10 @@ async fn execute_restore_with_progress(
     }
     if let Err(e) = manifest.validate_for_slot_restore() {
         job_ctx.fail(format!("备份不能用于完整恢复: {}", e));
+        return;
+    }
+    if restore_assets == Some(false) {
+        job_ctx.fail("完整快照恢复不能跳过资产；partial archive 不能替换数据槽".to_string());
         return;
     }
     match manager.verify_with_assets(&manifest) {
@@ -619,24 +646,47 @@ async fn execute_restore_with_progress(
 
     // 磁盘空间预检查：备份大小 × 2 作为安全余量（Android 设备存储较紧张）
     {
-        let db_size: u64 = manifest.files.iter().map(|f| f.size).sum();
         let asset_size: u64 = manifest.assets.as_ref().map(|a| a.total_size).unwrap_or(0);
-        let required = (db_size + asset_size).saturating_mul(2);
-        match crate::backup_common::get_available_disk_space(&app_data_dir) {
-            Ok(available) if available < required => {
-                let msg = format!(
-                    "磁盘空间不足：需要 {:.1} MB，仅剩 {:.1} MB。请清理存储空间后重试",
-                    required as f64 / 1024.0 / 1024.0,
-                    available as f64 / 1024.0 / 1024.0
-                );
-                error!("[data_governance] {}", msg);
-                job_ctx.fail(msg);
+        let (_, required) = match checked_restore_disk_budget(
+            manifest.files.iter().map(|file| file.size),
+            asset_size,
+        ) {
+            Ok(budget) => budget,
+            Err(error) => {
+                job_ctx.fail(error);
                 return;
             }
-            Err(e) => {
-                warn!("[data_governance] 磁盘空间检查失败（继续恢复）: {}", e);
+        };
+        if !inactive_dir.is_dir() {
+            job_ctx.fail(format!(
+                "恢复目标槽目录不存在或不是目录，无法确定目标卷: {}",
+                inactive_dir.display()
+            ));
+            return;
+        }
+        let target_volume = match std::fs::canonicalize(&inactive_dir) {
+            Ok(path) => path,
+            Err(error) => {
+                job_ctx.fail(format!("解析恢复目标卷失败: {}", error));
+                return;
             }
-            _ => {}
+        };
+        let available = match crate::backup_common::get_available_disk_space(&target_volume) {
+            Ok(available) => available,
+            Err(error) => {
+                job_ctx.fail(format!("获取恢复目标卷可用空间失败: {}", error));
+                return;
+            }
+        };
+        if available < required {
+            let msg = format!(
+                "磁盘空间不足：需要 {:.1} MB，仅剩 {:.1} MB。请清理存储空间后重试",
+                required as f64 / 1024.0 / 1024.0,
+                available as f64 / 1024.0 / 1024.0
+            );
+            error!("[data_governance] {}", msg);
+            job_ctx.fail(msg);
+            return;
         }
     }
 
@@ -1038,7 +1088,7 @@ async fn execute_restore_with_progress(
         job_ctx.fail("DataSpaceManager 不可用，无法原子登记恢复切槽".to_string());
         return;
     };
-    if let Err(e) = mgr.mark_pending_switch(slot) {
+    if let Err(e) = mgr.mark_restore_cutover_pending(slot, &backup_id) {
         let _ = set_restore_cutover_maintenance(&app, false);
         let _ = std::fs::remove_file(inactive_dir.join(RESTORE_ACTIVATION_MARKER));
         job_ctx.fail(format!("登记恢复切槽失败: {}", e));

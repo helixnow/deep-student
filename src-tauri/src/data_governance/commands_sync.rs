@@ -16,10 +16,8 @@ use super::sync::{
     SyncExecutionResult, SyncManager, SyncManifest, SyncPhase, SyncProgress, SyncProgressEmitter,
 };
 use crate::backup_common::BACKUP_GLOBAL_LIMITER;
-use crate::cloud_storage::{
-    create_storage, CloudStorage, CloudStorageConfig, FtpConfig, S3Config, StorageProvider,
-    WebDavConfig,
-};
+use crate::cloud_config_commands::{load_hydrated_cloud_config_ssot, CloudConfigSsotError};
+use crate::cloud_storage::{create_storage, CloudStorage, CloudStorageConfig};
 
 use super::commands::{check_maintenance_mode, try_save_audit_log, SYNC_LOCK_TIMEOUT_SECS};
 use super::commands_backup::{
@@ -27,388 +25,6 @@ use super::commands_backup::{
     get_app_data_dir, open_sync_connection, resolve_database_path, validate_user_path,
     ApplyToDbsResult,
 };
-
-/// Backend SSOT for the non-secret half of cloud-sync configuration.
-///
-/// Credentials deliberately live in `secure_store` and are never accepted by
-/// the DTOs below. Keeping a separate key also prevents the generic settings
-/// tool from accidentally exposing this configuration.
-pub const CLOUD_CONFIG_SSOT_SETTING_KEY: &str = "cloud_storage.config.safe_v1";
-
-const MAX_ENDPOINT_CHARS: usize = 2_048;
-const MAX_IDENTITY_CHARS: usize = 512;
-const MAX_ROOT_CHARS: usize = 256;
-const MAX_STORED_CONFIG_BYTES: usize = 16 * 1_024;
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SafeWebDavConfig {
-    pub endpoint: String,
-    pub username: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SafeS3Config {
-    pub endpoint: String,
-    pub bucket: String,
-    pub access_key_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub region: Option<String>,
-    #[serde(default)]
-    pub path_style: bool,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SafeFtpConfig {
-    pub host: String,
-    #[serde(default = "safe_default_ftp_port")]
-    pub port: u16,
-    pub username: String,
-    #[serde(default)]
-    pub use_tls: bool,
-}
-
-fn safe_default_ftp_port() -> u16 {
-    21
-}
-
-/// Credential-free cloud configuration accepted from Settings.
-///
-/// The internally tagged enum makes the active provider exclusive: a WebDAV
-/// payload cannot also smuggle an S3/FTP block. `deny_unknown_fields` on both
-/// levels rejects `password`, `secretAccessKey`, `encryptionPassword`, tokens,
-/// and any future field until it is reviewed explicitly.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[serde(tag = "provider", rename_all = "lowercase", deny_unknown_fields)]
-pub enum SafeCloudStorageConfig {
-    Webdav {
-        webdav: SafeWebDavConfig,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        root: Option<String>,
-    },
-    S3 {
-        s3: SafeS3Config,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        root: Option<String>,
-    },
-    Ftp {
-        ftp: SafeFtpConfig,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        root: Option<String>,
-    },
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CloudConfigSsotResponse {
-    pub configured: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub root: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub config: Option<SafeCloudStorageConfig>,
-}
-
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum CloudConfigSsotError {
-    #[error("cloud sync is not configured in the backend SSOT")]
-    NotConfigured,
-    #[error("invalid non-secret cloud configuration: {0}")]
-    Invalid(String),
-    #[error("cloud configuration storage failed: {0}")]
-    Storage(String),
-    #[error("cloud credentials are unavailable or incomplete: {0}")]
-    CredentialsUnavailable(String),
-}
-
-fn bounded_config_text(
-    value: &str,
-    field: &str,
-    max_chars: usize,
-) -> Result<String, CloudConfigSsotError> {
-    let value = value.trim();
-    if value.is_empty() {
-        return Err(CloudConfigSsotError::Invalid(format!(
-            "{field} must not be blank"
-        )));
-    }
-    if value.chars().count() > max_chars {
-        return Err(CloudConfigSsotError::Invalid(format!(
-            "{field} exceeds {max_chars} characters"
-        )));
-    }
-    if value.chars().any(char::is_control) {
-        return Err(CloudConfigSsotError::Invalid(format!(
-            "{field} contains control characters"
-        )));
-    }
-    Ok(value.to_string())
-}
-
-fn validated_http_endpoint(value: &str, field: &str) -> Result<String, CloudConfigSsotError> {
-    let value = bounded_config_text(value, field, MAX_ENDPOINT_CHARS)?;
-    let url = url::Url::parse(&value)
-        .map_err(|_| CloudConfigSsotError::Invalid(format!("{field} must be a valid URL")))?;
-    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
-        return Err(CloudConfigSsotError::Invalid(format!(
-            "{field} must use http or https and include a host"
-        )));
-    }
-    if !url.username().is_empty() || url.password().is_some() {
-        return Err(CloudConfigSsotError::Invalid(format!(
-            "{field} must not embed credentials"
-        )));
-    }
-    Ok(value)
-}
-
-fn validated_root(root: Option<String>) -> Result<Option<String>, CloudConfigSsotError> {
-    let Some(root) = root else {
-        return Ok(None);
-    };
-    let root = root.trim().trim_matches('/').trim();
-    if root.is_empty() {
-        return Ok(None);
-    }
-    if root.chars().count() > MAX_ROOT_CHARS
-        || root.chars().any(char::is_control)
-        || root.contains('\\')
-        || root
-            .split('/')
-            .any(|component| component.is_empty() || matches!(component, "." | ".."))
-    {
-        return Err(CloudConfigSsotError::Invalid(
-            "root must be a bounded relative cloud key without traversal".to_string(),
-        ));
-    }
-    Ok(Some(root.to_string()))
-}
-
-impl SafeCloudStorageConfig {
-    pub fn provider_name(&self) -> &'static str {
-        match self {
-            Self::Webdav { .. } => "webdav",
-            Self::S3 { .. } => "s3",
-            Self::Ftp { .. } => "ftp",
-        }
-    }
-
-    pub fn root(&self) -> Option<&str> {
-        match self {
-            Self::Webdav { root, .. } | Self::S3 { root, .. } | Self::Ftp { root, .. } => {
-                root.as_deref()
-            }
-        }
-    }
-
-    fn validate_and_normalize(self) -> Result<Self, CloudConfigSsotError> {
-        match self {
-            Self::Webdav { webdav, root } => Ok(Self::Webdav {
-                webdav: SafeWebDavConfig {
-                    endpoint: validated_http_endpoint(&webdav.endpoint, "webdav.endpoint")?,
-                    username: bounded_config_text(
-                        &webdav.username,
-                        "webdav.username",
-                        MAX_IDENTITY_CHARS,
-                    )?,
-                },
-                root: validated_root(root)?,
-            }),
-            Self::S3 { s3, root } => Ok(Self::S3 {
-                s3: SafeS3Config {
-                    endpoint: validated_http_endpoint(&s3.endpoint, "s3.endpoint")?,
-                    bucket: bounded_config_text(&s3.bucket, "s3.bucket", MAX_IDENTITY_CHARS)?,
-                    access_key_id: bounded_config_text(
-                        &s3.access_key_id,
-                        "s3.accessKeyId",
-                        MAX_IDENTITY_CHARS,
-                    )?,
-                    region: s3
-                        .region
-                        .map(|region| bounded_config_text(&region, "s3.region", MAX_IDENTITY_CHARS))
-                        .transpose()?,
-                    path_style: s3.path_style,
-                },
-                root: validated_root(root)?,
-            }),
-            Self::Ftp { ftp, root } => {
-                if ftp.port == 0 {
-                    return Err(CloudConfigSsotError::Invalid(
-                        "ftp.port must be between 1 and 65535".to_string(),
-                    ));
-                }
-                let host = bounded_config_text(&ftp.host, "ftp.host", MAX_ENDPOINT_CHARS)?;
-                if host.contains("://") || host.contains('/') || host.contains('@') {
-                    return Err(CloudConfigSsotError::Invalid(
-                        "ftp.host must be a hostname or IP address without scheme or credentials"
-                            .to_string(),
-                    ));
-                }
-                Ok(Self::Ftp {
-                    ftp: SafeFtpConfig {
-                        host,
-                        port: ftp.port,
-                        username: bounded_config_text(
-                            &ftp.username,
-                            "ftp.username",
-                            MAX_IDENTITY_CHARS,
-                        )?,
-                        use_tls: ftp.use_tls,
-                    },
-                    root: validated_root(root)?,
-                })
-            }
-        }
-    }
-
-    fn into_runtime_config(self) -> CloudStorageConfig {
-        match self {
-            Self::Webdav { webdav, root } => CloudStorageConfig {
-                provider: StorageProvider::WebDav,
-                webdav: Some(WebDavConfig {
-                    endpoint: webdav.endpoint,
-                    username: webdav.username,
-                    password: String::new(),
-                }),
-                s3: None,
-                ftp: None,
-                root,
-                encryption_password: None,
-            },
-            Self::S3 { s3, root } => CloudStorageConfig {
-                provider: StorageProvider::S3,
-                webdav: None,
-                s3: Some(S3Config {
-                    endpoint: s3.endpoint,
-                    bucket: s3.bucket,
-                    access_key_id: s3.access_key_id,
-                    secret_access_key: String::new(),
-                    region: s3.region,
-                    path_style: s3.path_style,
-                }),
-                ftp: None,
-                root,
-                encryption_password: None,
-            },
-            Self::Ftp { ftp, root } => CloudStorageConfig {
-                provider: StorageProvider::Ftp,
-                webdav: None,
-                s3: None,
-                ftp: Some(FtpConfig {
-                    host: ftp.host,
-                    port: ftp.port,
-                    username: ftp.username,
-                    password: String::new(),
-                    use_tls: ftp.use_tls,
-                }),
-                root,
-                encryption_password: None,
-            },
-        }
-    }
-}
-
-pub fn save_cloud_config_ssot(
-    database: &crate::database::Database,
-    config: SafeCloudStorageConfig,
-) -> Result<SafeCloudStorageConfig, CloudConfigSsotError> {
-    let config = config.validate_and_normalize()?;
-    let encoded = serde_json::to_string(&config)
-        .map_err(|_| CloudConfigSsotError::Invalid("configuration is not serializable".into()))?;
-    if encoded.len() > MAX_STORED_CONFIG_BYTES {
-        return Err(CloudConfigSsotError::Invalid(
-            "serialized configuration is too large".to_string(),
-        ));
-    }
-    database
-        .save_setting(CLOUD_CONFIG_SSOT_SETTING_KEY, &encoded)
-        .map_err(|error| CloudConfigSsotError::Storage(error.to_string()))?;
-    Ok(config)
-}
-
-pub fn load_cloud_config_ssot(
-    database: &crate::database::Database,
-) -> Result<SafeCloudStorageConfig, CloudConfigSsotError> {
-    let encoded = database
-        .get_setting(CLOUD_CONFIG_SSOT_SETTING_KEY)
-        .map_err(|error| CloudConfigSsotError::Storage(error.to_string()))?
-        .ok_or(CloudConfigSsotError::NotConfigured)?;
-    if encoded.len() > MAX_STORED_CONFIG_BYTES {
-        return Err(CloudConfigSsotError::Invalid(
-            "stored configuration is too large".to_string(),
-        ));
-    }
-    serde_json::from_str::<SafeCloudStorageConfig>(&encoded)
-        .map_err(|_| CloudConfigSsotError::Invalid("stored configuration is malformed".into()))?
-        .validate_and_normalize()
-}
-
-pub fn load_hydrated_cloud_config_ssot(
-    app: &tauri::AppHandle,
-    database: &crate::database::Database,
-) -> Result<CloudStorageConfig, CloudConfigSsotError> {
-    let mut config = load_cloud_config_ssot(database)?.into_runtime_config();
-    crate::secure_store::hydrate_cloud_config(app, &mut config);
-    config
-        .validate()
-        .map_err(CloudConfigSsotError::CredentialsUnavailable)?;
-    Ok(config)
-}
-
-#[tauri::command]
-pub async fn data_governance_save_cloud_config_ssot(
-    state: tauri::State<'_, crate::commands::AppState>,
-    config: SafeCloudStorageConfig,
-) -> Result<CloudConfigSsotResponse, String> {
-    let config =
-        save_cloud_config_ssot(&state.database, config).map_err(|error| error.to_string())?;
-    Ok(CloudConfigSsotResponse {
-        configured: true,
-        provider: Some(config.provider_name().to_string()),
-        root: config.root().map(str::to_string),
-        config: Some(config),
-    })
-}
-
-#[tauri::command]
-pub async fn data_governance_get_cloud_config_ssot(
-    state: tauri::State<'_, crate::commands::AppState>,
-) -> Result<CloudConfigSsotResponse, String> {
-    match load_cloud_config_ssot(&state.database) {
-        Ok(config) => Ok(CloudConfigSsotResponse {
-            configured: true,
-            provider: Some(config.provider_name().to_string()),
-            root: config.root().map(str::to_string),
-            config: Some(config),
-        }),
-        Err(CloudConfigSsotError::NotConfigured) => Ok(CloudConfigSsotResponse {
-            configured: false,
-            provider: None,
-            root: None,
-            config: None,
-        }),
-        Err(error) => Err(error.to_string()),
-    }
-}
-
-#[tauri::command]
-pub async fn data_governance_clear_cloud_config_ssot(
-    state: tauri::State<'_, crate::commands::AppState>,
-) -> Result<CloudConfigSsotResponse, String> {
-    state
-        .database
-        .delete_setting(CLOUD_CONFIG_SSOT_SETTING_KEY)
-        .map_err(|error| CloudConfigSsotError::Storage(error.to_string()).to_string())?;
-    Ok(CloudConfigSsotResponse {
-        configured: false,
-        provider: None,
-        root: None,
-        config: None,
-    })
-}
 
 /// 便捷函数：获取各表主键列名映射
 fn id_column_map() -> HashMap<String, String> {
@@ -1030,6 +646,8 @@ impl FileLevelProgress<'_> {
             SyncDirection::Upload | SyncDirection::Bidirectional => SyncPhase::Uploading,
         };
         self.emitter.emit_force_sync(SyncProgress {
+            operation_id: None,
+            outcome: None,
             phase,
             percent,
             current,
@@ -1078,6 +696,8 @@ impl FileLevelProgress<'_> {
             let stage = (step as f32 + inner) / total_steps as f32;
             let percent = start + (end - start) * stage.clamp(0.0, 1.0);
             emitter.emit_force_sync(SyncProgress {
+                operation_id: None,
+                outcome: None,
                 phase,
                 percent,
                 current: done,
@@ -1310,6 +930,7 @@ pub async fn data_governance_get_sync_status(
     let mut databases_status: Vec<DatabaseSyncStatusResponse> = Vec::new();
     let mut total_pending_changes = 0usize;
     let mut total_synced_changes = 0usize;
+    let mut status_errors = Vec::new();
 
     // 遍历所有数据库获取同步状态
     for db_id in DatabaseId::all_ordered() {
@@ -1320,13 +941,27 @@ pub async fn data_governance_get_sync_status(
             match open_sync_connection(&db_path) {
                 Ok(conn) => {
                     // 检查 __change_log 表是否存在
-                    let table_exists: bool = conn
-                        .query_row(
+                    let table_exists: bool = match conn.query_row(
                             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='__change_log')",
                             [],
                             |row| row.get(0),
-                        )
-                        .unwrap_or(false);
+                        ) {
+                            Ok(exists) => exists,
+                            Err(error) => {
+                                let message = format!("检查变更日志表失败: {}", error);
+                                status_errors.push(format!("{}: {}", db_id.as_str(), message));
+                                databases_status.push(DatabaseSyncStatusResponse {
+                                    id: db_id.as_str().to_string(),
+                                    knowledge: SyncStatusKnowledge::Unknown,
+                                    error: Some(message),
+                                    has_change_log: false,
+                                    pending_changes: 0,
+                                    synced_changes: 0,
+                                    last_sync_at: None,
+                                });
+                                continue;
+                            }
+                        };
 
                     if table_exists {
                         // 获取变更日志统计
@@ -1336,17 +971,29 @@ pub async fn data_governance_get_sync_status(
                                 total_synced_changes += stats.synced_count;
 
                                 // 获取上次同步时间：取 __change_log 中最新已同步记录的时间戳
-                                let last_sync: Option<String> = conn
+                                let last_sync_result: rusqlite::Result<Option<String>> = conn
                                     .query_row(
                                         "SELECT MAX(changed_at) FROM __change_log WHERE sync_version > 0",
                                         [],
                                         |row| row.get(0),
-                                    )
-                                    .ok()
-                                    .flatten();
+                                    );
+                                let (knowledge, status_error, last_sync) = match last_sync_result {
+                                    Ok(last_sync) => (SyncStatusKnowledge::Known, None, last_sync),
+                                    Err(error) => {
+                                        let message = format!("读取最后同步时间失败: {}", error);
+                                        status_errors.push(format!(
+                                            "{}: {}",
+                                            db_id.as_str(),
+                                            message
+                                        ));
+                                        (SyncStatusKnowledge::Unknown, Some(message), None)
+                                    }
+                                };
 
                                 databases_status.push(DatabaseSyncStatusResponse {
                                     id: db_id.as_str().to_string(),
+                                    knowledge,
+                                    error: status_error,
                                     has_change_log: true,
                                     pending_changes: stats.pending_count,
                                     synced_changes: stats.synced_count,
@@ -1360,16 +1007,25 @@ pub async fn data_governance_get_sync_status(
                                 );
                                 databases_status.push(DatabaseSyncStatusResponse {
                                     id: db_id.as_str().to_string(),
+                                    knowledge: SyncStatusKnowledge::Unknown,
+                                    error: Some(e.to_string()),
                                     has_change_log: true,
                                     pending_changes: 0,
                                     synced_changes: 0,
                                     last_sync_at: None,
                                 });
+                                status_errors.push(format!(
+                                    "{}: 读取变更日志统计失败: {}",
+                                    db_id.as_str(),
+                                    e
+                                ));
                             }
                         }
                     } else {
                         databases_status.push(DatabaseSyncStatusResponse {
                             id: db_id.as_str().to_string(),
+                            knowledge: SyncStatusKnowledge::Known,
+                            error: None,
                             has_change_log: false,
                             pending_changes: 0,
                             synced_changes: 0,
@@ -1379,6 +1035,16 @@ pub async fn data_governance_get_sync_status(
                 }
                 Err(e) => {
                     debug!("[data_governance] 打开数据库 {:?} 失败: {}", db_id, e);
+                    status_errors.push(format!("{}: 打开数据库失败: {}", db_id.as_str(), e));
+                    databases_status.push(DatabaseSyncStatusResponse {
+                        id: db_id.as_str().to_string(),
+                        knowledge: SyncStatusKnowledge::Unknown,
+                        error: Some(e.to_string()),
+                        has_change_log: false,
+                        pending_changes: 0,
+                        synced_changes: 0,
+                        last_sync_at: None,
+                    });
                 }
             }
         }
@@ -1402,6 +1068,8 @@ pub async fn data_governance_get_sync_status(
     );
 
     Ok(SyncStatusResponse {
+        partial: !status_errors.is_empty(),
+        errors: status_errors,
         has_pending_changes,
         total_pending_changes,
         total_synced_changes,
@@ -1448,6 +1116,10 @@ fn get_device_id(app: &tauri::AppHandle) -> String {
 /// 同步状态响应
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SyncStatusResponse {
+    /// 任一数据库无法读取时为 true；此时汇总计数只是已知部分，不代表完整的 0。
+    pub partial: bool,
+    /// 状态不可知的数据库及原因。
+    pub errors: Vec<String>,
     /// 是否有待同步的变更
     pub has_pending_changes: bool,
     /// 待同步变更总数
@@ -1462,11 +1134,22 @@ pub struct SyncStatusResponse {
     pub device_id: String,
 }
 
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncStatusKnowledge {
+    Known,
+    Unknown,
+}
+
 /// 数据库同步状态响应
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DatabaseSyncStatusResponse {
     /// 数据库 ID
     pub id: String,
+    /// 计数是否可信；Unknown 时数字字段仅为兼容占位。
+    pub knowledge: SyncStatusKnowledge,
+    /// Unknown 的具体原因。
+    pub error: Option<String>,
     /// 是否有变更日志表
     pub has_change_log: bool,
     /// 待同步变更数量
@@ -1911,6 +1594,10 @@ pub async fn data_governance_run_sync(
     // [P0-2] 透传加密密码，让所有上传/下载走 DSBK 容器
     let manager =
         SyncManager::with_encryption(device_id.clone(), config.encryption_password.clone());
+    manager
+        .validate_remote_format(storage.as_ref(), sync_direction != SyncDirection::Download)
+        .await
+        .map_err(|e| format!("同步格式协商失败: {}", e))?;
 
     validate_sync_registry_drift(&active_dir)?;
 
@@ -2938,9 +2625,6 @@ pub async fn data_governance_run_sync_with_progress(
     // 创建进度发射器
     let emitter = SyncProgressEmitter::new(app.clone());
 
-    // 发送准备中状态
-    emitter.emit_preparing().await;
-
     // 解析同步方向
     let sync_direction = match SyncDirection::from_str(&direction) {
         Some(d) => d,
@@ -2970,13 +2654,32 @@ pub async fn data_governance_run_sync_with_progress(
         }
     };
 
-    // 获取云存储配置
+    // 获取云存储配置：显式入参优先；否则回落后端 SSOT。
     let mut config = match cloud_config {
         Some(cfg) => cfg,
         None => {
-            let error_msg = "未提供云存储配置。请在调用前配置云存储。".to_string();
-            emitter.emit_failed(&error_msg).await;
-            return Err(error_msg);
+            let Some(state) = app.try_state::<crate::commands::AppState>() else {
+                let error_msg =
+                    "Cloud storage is not configured. Save a cloud config in Settings first."
+                        .to_string();
+                emitter.emit_failed(&error_msg).await;
+                return Err(error_msg);
+            };
+            match load_hydrated_cloud_config_ssot(&app, &state.database) {
+                Ok(cfg) => cfg,
+                Err(CloudConfigSsotError::NotConfigured) => {
+                    let error_msg =
+                        "Cloud storage is not configured. Save a cloud config in Settings first."
+                            .to_string();
+                    emitter.emit_failed(&error_msg).await;
+                    return Err(error_msg);
+                }
+                Err(error) => {
+                    let error_msg = error.to_string();
+                    emitter.emit_failed(&error_msg).await;
+                    return Err(error_msg);
+                }
+            }
         }
     };
     // [P0-3A] 空白凭据由后端从安全存储补全
@@ -3027,6 +2730,9 @@ pub async fn data_governance_run_sync_with_progress(
         }
     };
 
+    // 只有拿到全局锁后才宣告本次操作开始，避免第二个请求制造幽灵 preparing 事件。
+    emitter.emit_preparing().await;
+
     // 发送检测变更状态
     emitter.emit_detecting_changes().await;
 
@@ -3053,6 +2759,14 @@ pub async fn data_governance_run_sync_with_progress(
     // [P0-2] 透传加密密码
     let manager =
         SyncManager::with_encryption(device_id.clone(), config.encryption_password.clone());
+    if let Err(e) = manager
+        .validate_remote_format(storage.as_ref(), sync_direction != SyncDirection::Download)
+        .await
+    {
+        let error_msg = format!("同步格式协商失败: {}", e);
+        emitter.emit_failed(&error_msg).await;
+        return Err(error_msg);
+    }
 
     if let Err(e) = validate_sync_registry_drift(&active_dir) {
         emitter.emit_failed(&e).await;
@@ -3092,6 +2806,8 @@ pub async fn data_governance_run_sync_with_progress(
         // 每处理一个 DB 就推送一次 detecting_changes 进度，消除大批量富化时的静默窗口
         emitter
             .emit(SyncProgress {
+                operation_id: None,
+                outcome: None,
                 phase: SyncPhase::DetectingChanges,
                 percent: 5.0,
                 current: db_index as u64 + 1,
@@ -3238,7 +2954,7 @@ pub async fn data_governance_run_sync_with_progress(
                 let warn_msg = exec_result.error_message.clone().unwrap_or_else(|| {
                     "同步未完全成功：部分步骤失败或有变更被跳过，请检查同步详情。".to_string()
                 });
-                emitter.emit_failed(&warn_msg).await;
+                emitter.emit_partial(&warn_msg).await;
             }
 
             info!(
@@ -3446,6 +3162,8 @@ async fn execute_upload_with_progress_v2(
                     };
                     let pct = batch_progress_base + inner_pct * batch_progress_span;
                     emitter_cb.emit_force_sync(SyncProgress {
+                        operation_id: None,
+                        outcome: None,
                         phase: SyncPhase::Uploading,
                         percent: pct,
                         current: done,
@@ -3567,8 +3285,9 @@ async fn enforce_prune_gap_check(
         .map(|s| s.data_version)
         .min()
         .unwrap_or(0);
-    let needs_bootstrap = SyncManager::has_prune_gap(since_version, min_available)
-        || (since_version == 0 && min_available.is_some_and(|v| v > 1));
+    // 新设备的合法游标是 0，v3 按上传设备从 seq=1 连续消费。全局最小
+    // wall-clock 文件名不具备跨设备序列语义，不能据此把 fresh device 误判为断层。
+    let needs_bootstrap = SyncManager::has_prune_gap(since_version, min_available);
     if needs_bootstrap {
         return Err(format!(
             "检测到云端变更断层：本设备本地版本为 {}，云端最早可用版本为 {}。\
@@ -3653,8 +3372,7 @@ async fn apply_snapshot_bootstrap_if_needed(
         .map(|s| s.data_version)
         .min()
         .unwrap_or(0);
-    let has_gap = SyncManager::has_prune_gap(since_version, min_available)
-        || (since_version == 0 && min_available.is_some_and(|v| v > 1));
+    let has_gap = SyncManager::has_prune_gap(since_version, min_available);
     if has_gap {
         return Err(
             "检测到云端变更断层；UPSERT-only 快照无法证明本地集合相等，已拒绝推进游标。请使用完整 ZIP 恢复。"
@@ -3916,6 +3634,8 @@ async fn execute_bidirectional_with_progress_v2(
                     60.0
                 };
                 emitter_cb.emit_force_sync(SyncProgress {
+                    operation_id: None,
+                    outcome: None,
                     phase: SyncPhase::Uploading,
                     percent: pct,
                     current: done,
@@ -4208,55 +3928,8 @@ pub async fn data_governance_retry_quarantine(
         return Ok(false);
     }
 
-    let payload_json: Option<String> = conn
-        .query_row(
-            "SELECT payload_json FROM __sync_quarantine WHERE id=?1",
-            rusqlite::params![quarantine_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => "该隔离记录不存在".to_string(),
-            other => format!("读取隔离记录失败: {}", other),
-        })?;
-    let payload_json =
-        payload_json.ok_or_else(|| "该隔离记录缺少 payload，无法重试".to_string())?;
-    let change: SyncChangeWithData = serde_json::from_str(&payload_json)
-        .map_err(|e| format!("解析隔离记录 payload 失败: {}", e))?;
-
-    match SyncManager::apply_downloaded_changes(&conn, &[change], Some(&id_column_map())) {
-        Ok(result) if result.failure_count == 0 => {
-            let deleted = conn
-                .execute(
-                    "DELETE FROM __sync_quarantine WHERE id=?1",
-                    rusqlite::params![quarantine_id],
-                )
-                .map_err(|e| format!("清理隔离记录失败: {}", e))?;
-            Ok(deleted > 0)
-        }
-        Ok(result) => {
-            let error = result
-                .failures
-                .first()
-                .map(|f| f.error.clone())
-                .unwrap_or_else(|| "重试后仍未能应用".to_string());
-            let _ = conn.execute(
-                "UPDATE __sync_quarantine
-                 SET attempts = attempts + 1, error = ?1, last_attempt = datetime('now')
-                 WHERE id=?2",
-                rusqlite::params![error, quarantine_id],
-            );
-            Ok(false)
-        }
-        Err(e) => {
-            let _ = conn.execute(
-                "UPDATE __sync_quarantine
-                 SET attempts = attempts + 1, error = ?1, last_attempt = datetime('now')
-                 WHERE id=?2",
-                rusqlite::params![e.to_string(), quarantine_id],
-            );
-            Err(format!("重试隔离记录失败: {}", e))
-        }
-    }
+    SyncManager::retry_quarantined_change(&conn, quarantine_id, Some(&id_column_map()))
+        .map_err(|e| format!("重试隔离记录失败: {}", e))
 }
 
 /// 丢弃一条检疫记录（不会写入业务表）。
@@ -4322,53 +3995,24 @@ pub async fn data_governance_retry_all_quarantine(
 
         // 获取所有检疫记录
         let mut stmt = conn
-            .prepare(
-                "SELECT id, payload_json FROM __sync_quarantine WHERE payload_json IS NOT NULL",
-            )
+            .prepare("SELECT id FROM __sync_quarantine ORDER BY id")
             .map_err(|e| format!("准备批量查询失败: {}", e))?;
 
-        let rows: Vec<(i64, String)> = stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        let rows: Vec<i64> = stmt
+            .query_map([], |row| row.get(0))
             .map_err(|e| format!("执行批量查询失败: {}", e))?
             .filter_map(|r| r.ok())
             .collect();
 
-        for (quarantine_id, payload_json) in rows {
-            let change: SyncChangeWithData = match serde_json::from_str(&payload_json) {
-                Ok(c) => c,
-                Err(e) => {
-                    errors.push(format!("记录 {}: 解析失败 - {}", quarantine_id, e));
-                    failed += 1;
-                    continue;
-                }
-            };
-
-            match SyncManager::apply_downloaded_changes(&conn, &[change], Some(&id_column_map())) {
-                Ok(result) if result.failure_count == 0 => {
-                    let _ = conn.execute(
-                        "DELETE FROM __sync_quarantine WHERE id=?1",
-                        rusqlite::params![quarantine_id],
-                    );
-                    success += 1;
-                }
-                Ok(result) => {
-                    let error = result
-                        .failures
-                        .first()
-                        .map(|f| f.error.clone())
-                        .unwrap_or_else(|| "重试后仍未能应用".to_string());
-                    let _ = conn.execute(
-                        "UPDATE __sync_quarantine SET attempts = attempts + 1, error = ?1, last_attempt = datetime('now') WHERE id=?2",
-                        rusqlite::params![error, quarantine_id],
-                    );
-                    errors.push(format!("记录 {}: {}", quarantine_id, error));
+        let columns = id_column_map();
+        for quarantine_id in rows {
+            match SyncManager::retry_quarantined_change(&conn, quarantine_id, Some(&columns)) {
+                Ok(true) => success += 1,
+                Ok(false) => {
+                    errors.push(format!("记录 {}: 重试后仍未能应用", quarantine_id));
                     failed += 1;
                 }
                 Err(e) => {
-                    let _ = conn.execute(
-                        "UPDATE __sync_quarantine SET attempts = attempts + 1, error = ?1, last_attempt = datetime('now') WHERE id=?2",
-                        rusqlite::params![e.to_string(), quarantine_id],
-                    );
                     errors.push(format!("记录 {}: {}", quarantine_id, e));
                     failed += 1;
                 }
