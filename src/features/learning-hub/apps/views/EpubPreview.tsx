@@ -1,34 +1,55 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  ArrowCounterClockwise,
+  CaretDown,
   CaretLeft,
   CaretRight,
+  CaretUp,
   CircleNotch,
   List,
   MagnifyingGlass,
   Minus,
   Plus,
   SidebarSimple,
+  TextAa,
 } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
+  EPUB_SEARCH_RESULT_LIMIT,
   loadEpubBook,
   renderEpubChapter,
   resolveEpubNavigation,
   searchEpubBook,
   type EpubBookModel,
+  type EpubReaderFontFamily,
+  type EpubSearchResult,
 } from './epubReaderModel';
 import { PreviewStatus } from './PreviewStatus';
 import './EpubPreview.css';
 
-type ReaderTheme = 'light' | 'sepia' | 'dark';
+type ReaderTheme = 'light' | 'sepia' | 'dark' | 'app';
+
+const THEME_OPTIONS: ReaderTheme[] = ['app', 'light', 'sepia', 'dark'];
+const FONT_FAMILY_OPTIONS: EpubReaderFontFamily[] = ['book', 'serif', 'sans'];
+const MIN_FONT_SCALE = 0.75;
+const MAX_FONT_SCALE = 1.8;
+const DEFAULT_LINE_HEIGHT = 1.75;
+const MIN_LINE_HEIGHT = 1.3;
+const MAX_LINE_HEIGHT = 2.2;
+const DEFAULT_PAGE_MARGIN = 0.4;
+const MAX_FRAME_MARKS = 400;
 
 interface PersistedReaderState {
   chapterIndex: number;
   chapterProgress: number;
   theme: ReaderTheme;
   fontScale: number;
+  fontFamily: EpubReaderFontFamily;
+  lineHeight: number;
+  pageMargin: number;
 }
 
 export interface EpubPreviewProps {
@@ -38,17 +59,36 @@ export interface EpubPreviewProps {
 }
 
 function loadReaderState(key: string): PersistedReaderState {
+  const fallback: PersistedReaderState = {
+    chapterIndex: 0,
+    chapterProgress: 0,
+    theme: 'light',
+    fontScale: 1,
+    fontFamily: 'book',
+    lineHeight: DEFAULT_LINE_HEIGHT,
+    pageMargin: DEFAULT_PAGE_MARGIN,
+  };
   try {
     const value = JSON.parse(localStorage.getItem(key) ?? '{}') as Partial<PersistedReaderState>;
+    // Older persisted payloads only carried {chapterIndex, chapterProgress,
+    // theme, fontScale}; every field falls back independently so they still load.
+    const pageMargin = Number(value.pageMargin);
     return {
-      chapterIndex: Math.max(0, Number(value.chapterIndex) || 0),
+      chapterIndex: Math.max(0, Math.floor(Number(value.chapterIndex) || 0)),
       chapterProgress: Math.min(1, Math.max(0, Number(value.chapterProgress) || 0)),
-      theme: value.theme === 'dark' || value.theme === 'sepia' ? value.theme : 'light',
-      fontScale: Math.min(1.8, Math.max(0.75, Number(value.fontScale) || 1)),
+      theme: value.theme === 'dark' || value.theme === 'sepia' || value.theme === 'app' ? value.theme : 'light',
+      fontScale: Math.min(MAX_FONT_SCALE, Math.max(MIN_FONT_SCALE, Number(value.fontScale) || 1)),
+      fontFamily: value.fontFamily === 'serif' || value.fontFamily === 'sans' ? value.fontFamily : 'book',
+      lineHeight: Math.min(MAX_LINE_HEIGHT, Math.max(MIN_LINE_HEIGHT, Number(value.lineHeight) || DEFAULT_LINE_HEIGHT)),
+      pageMargin: Number.isFinite(pageMargin) ? Math.min(1, Math.max(0, pageMargin)) : DEFAULT_PAGE_MARGIN,
     };
   } catch {
-    return { chapterIndex: 0, chapterProgress: 0, theme: 'light', fontScale: 1 };
+    return fallback;
   }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, resourceId }) => {
@@ -57,25 +97,49 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
   const initialState = useMemo(() => loadReaderState(storageKey), [storageKey]);
   const rootRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const tocRef = useRef<HTMLElement>(null);
   const iframeCleanupRef = useRef<(() => void) | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
   const pendingFragmentRef = useRef<string | null>(null);
-  const pendingSearchRef = useRef<string | null>(null);
+  const pendingSearchRef = useRef<{ query: string; matchIndex: number } | null>(null);
   const restoreProgressRef = useRef(initialState.chapterProgress);
+  const chapterProgressRef = useRef(initialState.chapterProgress);
+  const renderedChapterRef = useRef<number | null>(null);
+  const frameMarksRef = useRef<HTMLElement[]>([]);
+  const persistStateRef = useRef<PersistedReaderState>({ ...initialState });
+  const persistTimerRef = useRef(0);
   const [book, setBook] = useState<EpubBookModel | null>(null);
   const [srcDoc, setSrcDoc] = useState('');
+  const [frameGeneration, setFrameGeneration] = useState(0);
   const [chapterIndex, setChapterIndex] = useState(initialState.chapterIndex);
   const [chapterProgress, setChapterProgress] = useState(initialState.chapterProgress);
   const [theme, setTheme] = useState<ReaderTheme>(initialState.theme);
   const [fontScale, setFontScale] = useState(initialState.fontScale);
+  const [fontFamily, setFontFamily] = useState<EpubReaderFontFamily>(initialState.fontFamily);
+  const [lineHeight, setLineHeight] = useState(initialState.lineHeight);
+  const [pageMargin, setPageMargin] = useState(initialState.pageMargin);
+  const [appDark, setAppDark] = useState(() => document.documentElement.classList.contains('dark'));
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarMode, setSidebarMode] = useState<'toc' | 'search'>('toc');
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Array<{ chapterIndex: number; title: string; excerpt: string }>>([]);
+  const [searchResults, setSearchResults] = useState<EpubSearchResult[]>([]);
+  const [activeResultIndex, setActiveResultIndex] = useState(-1);
+  const [frameMatch, setFrameMatch] = useState<{ current: number; total: number } | null>(null);
   const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadGeneration, setReloadGeneration] = useState(0);
+
+  const resolvedTheme: 'light' | 'sepia' | 'dark' = theme === 'app' ? (appDark ? 'dark' : 'light') : theme;
+
+  // Follow app theme (html.dark) for the "auto" reading theme.
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setAppDark(document.documentElement.classList.contains('dark'));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,7 +151,14 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
     setChapterProgress(initialState.chapterProgress);
     setTheme(initialState.theme);
     setFontScale(initialState.fontScale);
+    setFontFamily(initialState.fontFamily);
+    setLineHeight(initialState.lineHeight);
+    setPageMargin(initialState.pageMargin);
+    setFrameMatch(null);
+    frameMarksRef.current = [];
     restoreProgressRef.current = initialState.chapterProgress;
+    chapterProgressRef.current = initialState.chapterProgress;
+    renderedChapterRef.current = null;
     void loadEpubBook(base64Content)
       .then((loadedBook) => {
         if (cancelled) return;
@@ -101,20 +172,25 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [
-    base64Content,
-    initialState.chapterIndex,
-    initialState.chapterProgress,
-    initialState.fontScale,
-    initialState.theme,
-    reloadGeneration,
-  ]);
+  }, [base64Content, initialState, reloadGeneration]);
 
   useEffect(() => {
     if (!book) return;
     let cancelled = false;
+    // Re-render of the same chapter (theme/typography change): remember the
+    // current scroll progress so it can be restored after the iframe reloads.
+    if (renderedChapterRef.current === chapterIndex) {
+      restoreProgressRef.current = chapterProgressRef.current;
+    }
+    renderedChapterRef.current = chapterIndex;
     setLoading(true);
-    void renderEpubChapter(book, chapterIndex, theme, fontScale)
+    void renderEpubChapter(book, chapterIndex, {
+      theme: resolvedTheme,
+      fontScale,
+      fontFamily,
+      lineHeight,
+      pageMargin,
+    })
       .then((rendered) => {
         if (cancelled) {
           rendered.objectUrls.forEach(URL.revokeObjectURL);
@@ -123,6 +199,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
         objectUrlsRef.current.forEach(URL.revokeObjectURL);
         objectUrlsRef.current = rendered.objectUrls;
         setSrcDoc(rendered.srcDoc);
+        setFrameGeneration((generation) => generation + 1);
       })
       .catch((reason: unknown) => {
         if (!cancelled) setError(getErrorMessage(reason));
@@ -131,16 +208,50 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [book, chapterIndex, fontScale, theme]);
+  }, [book, chapterIndex, resolvedTheme, fontScale, fontFamily, lineHeight, pageMargin]);
 
   useEffect(() => () => {
     iframeCleanupRef.current?.();
     objectUrlsRef.current.forEach(URL.revokeObjectURL);
   }, []);
 
+  // Debounced persistence: scroll progress updates at rAF frequency, so the
+  // localStorage write is delayed and flushed on unmount / window unload.
+  const flushPersist = useCallback(() => {
+    if (persistTimerRef.current) {
+      window.clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = 0;
+    }
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(persistStateRef.current));
+    } catch {
+      // Quota errors are non-fatal for reading.
+    }
+  }, [storageKey]);
+
   useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify({ chapterIndex, chapterProgress, theme, fontScale }));
-  }, [chapterIndex, chapterProgress, fontScale, storageKey, theme]);
+    persistStateRef.current = { chapterIndex, chapterProgress, theme, fontScale, fontFamily, lineHeight, pageMargin };
+    if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = window.setTimeout(() => {
+      persistTimerRef.current = 0;
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(persistStateRef.current));
+      } catch {
+        // Quota errors are non-fatal for reading.
+      }
+    }, 500);
+  }, [chapterIndex, chapterProgress, theme, fontScale, fontFamily, lineHeight, pageMargin, storageKey]);
+
+  useEffect(() => {
+    // Flushing pending reading progress on window close cannot go through the
+    // app-level event registry (it must run during unload).
+    // eslint-disable-next-line no-restricted-syntax
+    window.addEventListener('beforeunload', flushPersist);
+    return () => {
+      window.removeEventListener('beforeunload', flushPersist);
+      flushPersist();
+    };
+  }, [flushPersist]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -152,10 +263,95 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
     return () => root?.removeEventListener('epub-preview-open-search', openSearch);
   }, []);
 
+  const clearFrameHighlights = useCallback(() => {
+    frameMarksRef.current = [];
+    setFrameMatch(null);
+    const document = iframeRef.current?.contentDocument;
+    if (!document) return;
+    document.querySelectorAll('mark[data-epub-search]').forEach((mark) => {
+      const parent = mark.parentNode;
+      mark.replaceWith(...Array.from(mark.childNodes));
+      parent?.normalize();
+    });
+  }, []);
+
+  const setCurrentFrameMatch = useCallback((index: number, smooth = true) => {
+    const marks = frameMarksRef.current;
+    if (!marks.length) return;
+    const bounded = ((index % marks.length) + marks.length) % marks.length;
+    marks.forEach((mark, markIndex) => {
+      if (markIndex === bounded) mark.setAttribute('data-current', '');
+      else mark.removeAttribute('data-current');
+    });
+    marks[bounded].scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'center' });
+    setFrameMatch({ current: bounded, total: marks.length });
+  }, []);
+
+  const highlightFrameText = useCallback((query: string, targetIndex = 0) => {
+    clearFrameHighlights();
+    const document = iframeRef.current?.contentDocument;
+    const trimmed = query.trim();
+    if (!document?.body || !trimmed) return;
+    let pattern: RegExp;
+    try {
+      pattern = new RegExp(escapeRegExp(trimmed), 'gi');
+    } catch {
+      return;
+    }
+    // SVG subtrees stay searchable at the chapter level, but wrapping their
+    // text nodes in an HTML <mark> would drop them from SVG rendering.
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) =>
+        node.parentElement?.closest('style, script, title, svg, mark[data-epub-search]')
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT,
+    });
+    const textNodes: Text[] = [];
+    let node = walker.nextNode();
+    while (node) {
+      textNodes.push(node as Text);
+      node = walker.nextNode();
+    }
+    const marks: HTMLElement[] = [];
+    for (const textNode of textNodes) {
+      if (marks.length >= MAX_FRAME_MARKS) break;
+      const text = textNode.textContent ?? '';
+      pattern.lastIndex = 0;
+      const ranges: Array<[number, number]> = [];
+      let match = pattern.exec(text);
+      while (match) {
+        if (!match[0]) break;
+        ranges.push([match.index, match[0].length]);
+        match = pattern.exec(text);
+      }
+      // Wrap from the last range to the first so earlier offsets stay valid
+      // while the text node is being split.
+      const nodeMarks: HTMLElement[] = [];
+      for (const [start, length] of ranges.reverse()) {
+        try {
+          const target = textNode.splitText(start);
+          target.splitText(Math.min(length, target.length));
+          const mark = document.createElement('mark');
+          mark.setAttribute('data-epub-search', '');
+          target.replaceWith(mark);
+          mark.append(target);
+          nodeMarks.unshift(mark);
+        } catch {
+          // Skip a hit that cannot be wrapped instead of failing the search.
+        }
+      }
+      marks.push(...nodeMarks);
+    }
+    frameMarksRef.current = marks;
+    if (marks.length) setCurrentFrameMatch(targetIndex, false);
+  }, [clearFrameHighlights, setCurrentFrameMatch]);
+
   useEffect(() => {
+    setActiveResultIndex(-1);
     if (!book || !searchQuery.trim()) {
       setSearchResults([]);
       setSearching(false);
+      clearFrameHighlights();
       return;
     }
     let cancelled = false;
@@ -171,52 +367,63 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [book, searchQuery]);
+  }, [book, searchQuery, clearFrameHighlights]);
 
-  const highlightFrameText = useCallback((query: string) => {
-    const document = iframeRef.current?.contentDocument;
-    if (!document || !query.trim()) return;
-    document.querySelectorAll('mark[data-epub-search-current]').forEach((mark) => mark.replaceWith(...mark.childNodes));
-    const normalized = query.toLocaleLowerCase();
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    let node = walker.nextNode();
-    while (node) {
-      const offset = (node.textContent ?? '').toLocaleLowerCase().indexOf(normalized);
-      if (offset >= 0) {
-        const range = document.createRange();
-        range.setStart(node, offset);
-        range.setEnd(node, offset + query.length);
-        const mark = document.createElement('mark');
-        mark.dataset.epubSearchCurrent = 'true';
-        range.surroundContents(mark);
-        mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const navigateToChapter = useCallback((
+    nextIndex: number,
+    fragment?: string,
+    search?: { query: string; matchIndex: number }
+  ) => {
+    if (!book) return;
+    // Any explicit navigation replaces a not-yet-applied search focus so a
+    // stale highlight cannot fire on the next frame load.
+    pendingSearchRef.current = search ?? null;
+    const bounded = Math.max(0, Math.min(book.chapters.length - 1, nextIndex));
+    if (bounded === chapterIndex) {
+      pendingSearchRef.current = null;
+      if (search) {
+        highlightFrameText(search.query, search.matchIndex);
         return;
       }
-      node = walker.nextNode();
-    }
-  }, []);
-
-  const navigateToChapter = useCallback((nextIndex: number, fragment?: string) => {
-    if (!book) return;
-    const bounded = Math.max(0, Math.min(book.chapters.length - 1, nextIndex));
-    pendingFragmentRef.current = fragment ?? null;
-    restoreProgressRef.current = 0;
-    setChapterProgress(0);
-    if (bounded === chapterIndex) {
       const document = iframeRef.current?.contentDocument;
-      if (fragment) document?.getElementById(fragment)?.scrollIntoView({ block: 'start' });
-      else iframeRef.current?.contentWindow?.scrollTo({ top: 0 });
-      if (pendingSearchRef.current) highlightFrameText(pendingSearchRef.current);
-      pendingSearchRef.current = null;
+      if (fragment) document?.getElementById(fragment)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      else iframeRef.current?.contentWindow?.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
+    pendingFragmentRef.current = fragment ?? null;
+    restoreProgressRef.current = 0;
+    chapterProgressRef.current = 0;
+    setChapterProgress(0);
     setChapterIndex(bounded);
   }, [book, chapterIndex, highlightFrameText]);
 
-  const navigateToSearchResult = useCallback((nextChapterIndex: number) => {
-    pendingSearchRef.current = searchQuery;
-    navigateToChapter(nextChapterIndex);
+  const navigateToSearchResult = useCallback((result: EpubSearchResult, resultIndex: number) => {
+    setActiveResultIndex(resultIndex);
+    navigateToChapter(result.chapterIndex, undefined, {
+      query: searchQuery,
+      matchIndex: result.matchIndex,
+    });
   }, [navigateToChapter, searchQuery]);
+
+  const pageBy = useCallback((direction: 1 | -1) => {
+    const lastChapter = (book?.chapters.length ?? 1) - 1;
+    const frameWindow = iframeRef.current?.contentWindow;
+    const document = iframeRef.current?.contentDocument;
+    if (!frameWindow || !document) {
+      navigateToChapter(chapterIndex + direction);
+      return;
+    }
+    const maxScroll = Math.max(0, document.documentElement.scrollHeight - frameWindow.innerHeight);
+    if (direction > 0 && frameWindow.scrollY >= maxScroll - 2) {
+      // At the very end/start of the book there is nowhere to go; do not fall
+      // into the same-chapter branch, which would scroll back to the top.
+      if (chapterIndex < lastChapter) navigateToChapter(chapterIndex + 1);
+    } else if (direction < 0 && frameWindow.scrollY <= 2) {
+      if (chapterIndex > 0) navigateToChapter(chapterIndex - 1);
+    } else {
+      frameWindow.scrollBy({ top: direction * frameWindow.innerHeight * 0.88, behavior: 'smooth' });
+    }
+  }, [book, chapterIndex, navigateToChapter]);
 
   const handleFrameLoad = useCallback(() => {
     iframeCleanupRef.current?.();
@@ -224,6 +431,8 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
     const frameWindow = frame?.contentWindow;
     const document = frame?.contentDocument;
     if (!frameWindow || !document) return;
+    frameMarksRef.current = [];
+    setFrameMatch(null);
 
     const fragment = pendingFragmentRef.current;
     pendingFragmentRef.current = null;
@@ -244,9 +453,10 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
       restoreTimer = frameWindow.setTimeout(restorePosition, 500);
       restoreProgressRef.current = 0;
     }
-    if (pendingSearchRef.current) {
-      highlightFrameText(pendingSearchRef.current);
-      pendingSearchRef.current = null;
+    const pendingSearch = pendingSearchRef.current;
+    pendingSearchRef.current = null;
+    if (pendingSearch) {
+      highlightFrameText(pendingSearch.query, pendingSearch.matchIndex);
     }
 
     let frameRequest = 0;
@@ -255,7 +465,9 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
       frameRequest = frameWindow.requestAnimationFrame(() => {
         frameRequest = 0;
         const maxScroll = Math.max(0, document.documentElement.scrollHeight - frameWindow.innerHeight);
-        setChapterProgress(maxScroll > 0 ? Math.min(1, frameWindow.scrollY / maxScroll) : 1);
+        const progress = maxScroll > 0 ? Math.min(1, frameWindow.scrollY / maxScroll) : 1;
+        chapterProgressRef.current = progress;
+        setChapterProgress(progress);
       });
     };
     const updateSelection = () => {
@@ -285,6 +497,28 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
         event.preventDefault();
         setSidebarOpen(true);
         setSidebarMode('search');
+        return;
+      }
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const maxScroll = Math.max(0, document.documentElement.scrollHeight - frameWindow.innerHeight);
+      switch (event.key) {
+        case 'ArrowRight':
+          event.preventDefault();
+          pageBy(1);
+          break;
+        case 'ArrowLeft':
+          event.preventDefault();
+          pageBy(-1);
+          break;
+        case 'Home':
+          event.preventDefault();
+          frameWindow.scrollTo({ top: 0, behavior: 'smooth' });
+          break;
+        case 'End':
+          event.preventDefault();
+          frameWindow.scrollTo({ top: maxScroll, behavior: 'smooth' });
+          break;
+        default:
       }
     };
     frameWindow.addEventListener('scroll', updateProgress, { passive: true });
@@ -304,11 +538,82 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
       if (restoreFrame) frameWindow.cancelAnimationFrame(restoreFrame);
       if (restoreTimer) frameWindow.clearTimeout(restoreTimer);
     };
-  }, [book, chapterIndex, highlightFrameText, navigateToChapter]);
+  }, [book, chapterIndex, highlightFrameText, navigateToChapter, pageBy]);
+
+  const handleRootKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const target = event.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable) return;
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      pageBy(1);
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      pageBy(-1);
+    } else if (event.key === 'Home' || event.key === 'End') {
+      const frameWindow = iframeRef.current?.contentWindow;
+      const document = iframeRef.current?.contentDocument;
+      if (!frameWindow || !document) return;
+      event.preventDefault();
+      const maxScroll = Math.max(0, document.documentElement.scrollHeight - frameWindow.innerHeight);
+      frameWindow.scrollTo({ top: event.key === 'Home' ? 0 : maxScroll, behavior: 'smooth' });
+    }
+  }, [pageBy]);
+
+  const handleSearchInputKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter' || !searchResults.length) return;
+    event.preventDefault();
+    const step = event.shiftKey ? -1 : 1;
+    const next = activeResultIndex < 0
+      ? (step > 0 ? 0 : searchResults.length - 1)
+      : ((activeResultIndex + step) % searchResults.length + searchResults.length) % searchResults.length;
+    navigateToSearchResult(searchResults[next], next);
+  }, [activeResultIndex, navigateToSearchResult, searchResults]);
+
+  // Keep the active TOC entry visible while reading.
+  useEffect(() => {
+    if (!sidebarOpen || sidebarMode !== 'toc') return;
+    tocRef.current?.querySelector('.is-active')?.scrollIntoView({ block: 'nearest' });
+  }, [chapterIndex, sidebarMode, sidebarOpen, book]);
+
+  const resetTypography = useCallback(() => {
+    setFontScale(1);
+    setFontFamily('book');
+    setLineHeight(DEFAULT_LINE_HEIGHT);
+    setPageMargin(DEFAULT_PAGE_MARGIN);
+  }, []);
+
+  const renderExcerpt = useCallback((excerpt: string) => {
+    const query = searchQuery.trim();
+    if (!query) return excerpt;
+    const lower = excerpt.toLocaleLowerCase();
+    if (lower.length !== excerpt.length) return excerpt;
+    const index = lower.indexOf(query.toLocaleLowerCase());
+    if (index < 0) return excerpt;
+    return (
+      <>
+        {excerpt.slice(0, index)}
+        <mark>{excerpt.slice(index, index + query.length)}</mark>
+        {excerpt.slice(index + query.length)}
+      </>
+    );
+  }, [searchQuery]);
 
   const overallProgress = book
     ? Math.round(((chapterIndex + chapterProgress) / book.chapters.length) * 100)
     : 0;
+
+  const themeLabels: Record<ReaderTheme, string> = {
+    app: t('learningHub:epubPreview.themeAuto'),
+    light: t('learningHub:epubPreview.themeLight'),
+    sepia: t('learningHub:epubPreview.themeSepia'),
+    dark: t('learningHub:epubPreview.themeDark'),
+  };
+  const fontFamilyLabels: Record<EpubReaderFontFamily, string> = {
+    book: t('learningHub:epubPreview.fontFamilyBook'),
+    serif: t('learningHub:epubPreview.fontFamilySerif'),
+    sans: t('learningHub:epubPreview.fontFamilySans'),
+  };
 
   if (error) {
     return (
@@ -338,43 +643,130 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
   }
 
   return (
-    <div ref={rootRef} className={`epub-preview epub-preview-${theme}`} data-epub-preview>
+    <div
+      ref={rootRef}
+      className={`epub-preview epub-preview-${resolvedTheme}`}
+      data-epub-preview
+      onKeyDown={handleRootKeyDown}
+    >
       <div className="epub-preview-toolbar" role="toolbar" aria-label={t('learningHub:epubPreview.readerToolbar')}>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSidebarOpen((value) => !value)} title={t('learningHub:epubPreview.toggleSidebar')} aria-label={t('learningHub:epubPreview.toggleSidebar')}>
-          <SidebarSimple size={17} />
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSidebarOpen((value) => !value)} title={t('learningHub:epubPreview.toggleSidebar')} aria-label={t('learningHub:epubPreview.toggleSidebar')} aria-expanded={sidebarOpen}>
+          <SidebarSimple size={16} />
         </NotionButton>
         <div className="epub-preview-book-title" title={`${book.title}${book.author ? ` - ${book.author}` : ''}`}>
           <strong>{book.title || fileName}</strong>
           {book.author && <span>{book.author}</span>}
         </div>
         <div className="epub-preview-toolbar-spacer" />
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((value) => Math.max(0.75, Number((value - 0.1).toFixed(2))))} disabled={fontScale <= 0.75} title={t('learningHub:previewToolbar.fontDecrease')} aria-label={t('learningHub:previewToolbar.fontDecrease')}>
-          <Minus size={16} />
-        </NotionButton>
-        <span className="epub-preview-font-value" aria-live="polite">{Math.round(fontScale * 100)}%</span>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((value) => Math.min(1.8, Number((value + 0.1).toFixed(2))))} disabled={fontScale >= 1.8} title={t('learningHub:previewToolbar.fontIncrease')} aria-label={t('learningHub:previewToolbar.fontIncrease')}>
-          <Plus size={16} />
-        </NotionButton>
-        <select className="epub-preview-theme" value={theme} onChange={(event) => setTheme(event.target.value as ReaderTheme)} aria-label={t('learningHub:epubPreview.theme')}>
-          <option value="light">{t('learningHub:epubPreview.themeLight')}</option>
-          <option value="sepia">{t('learningHub:epubPreview.themeSepia')}</option>
-          <option value="dark">{t('learningHub:epubPreview.themeDark')}</option>
-        </select>
+        <div className="epub-preview-theme-seg" role="radiogroup" aria-label={t('learningHub:epubPreview.theme')}>
+          {THEME_OPTIONS.map((option) => (
+            <NotionButton
+              key={option}
+              variant="ghost"
+              size="icon"
+              iconOnly
+              role="radio"
+              aria-checked={theme === option}
+              className="epub-preview-theme-btn"
+              onClick={() => setTheme(option)}
+              title={themeLabels[option]}
+              aria-label={themeLabels[option]}
+            >
+              <span className={`epub-preview-theme-dot epub-preview-theme-dot-${option}`} aria-hidden="true" />
+            </NotionButton>
+          ))}
+        </div>
+        <Popover>
+          <PopoverTrigger asChild>
+            <NotionButton variant="ghost" size="icon" iconOnly title={t('learningHub:epubPreview.displaySettings')} aria-label={t('learningHub:epubPreview.displaySettings')}>
+              <TextAa size={16} />
+            </NotionButton>
+          </PopoverTrigger>
+          <PopoverContent align="end" sideOffset={6} className="epub-preview-settings" aria-label={t('learningHub:epubPreview.displaySettings')}>
+            <div className="epub-preview-settings-row">
+              <span className="epub-preview-settings-label">{t('learningHub:epubPreview.fontSize')}</span>
+              <div className="epub-preview-settings-stepper">
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((value) => Math.max(MIN_FONT_SCALE, Number((value - 0.1).toFixed(2))))} disabled={fontScale <= MIN_FONT_SCALE} title={t('learningHub:previewToolbar.fontDecrease')} aria-label={t('learningHub:previewToolbar.fontDecrease')}>
+                  <Minus size={16} />
+                </NotionButton>
+                <span className="epub-preview-font-value" aria-live="polite">{Math.round(fontScale * 100)}%</span>
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((value) => Math.min(MAX_FONT_SCALE, Number((value + 0.1).toFixed(2))))} disabled={fontScale >= MAX_FONT_SCALE} title={t('learningHub:previewToolbar.fontIncrease')} aria-label={t('learningHub:previewToolbar.fontIncrease')}>
+                  <Plus size={16} />
+                </NotionButton>
+              </div>
+            </div>
+            <div className="epub-preview-settings-row">
+              <span className="epub-preview-settings-label">{t('learningHub:epubPreview.fontFamily')}</span>
+              <div className="epub-preview-settings-seg" role="radiogroup" aria-label={t('learningHub:epubPreview.fontFamily')}>
+                {FONT_FAMILY_OPTIONS.map((option) => (
+                  <NotionButton
+                    key={option}
+                    variant={fontFamily === option ? 'default' : 'ghost'}
+                    size="sm"
+                    role="radio"
+                    aria-checked={fontFamily === option}
+                    className={`epub-preview-font-option epub-preview-font-option-${option}`}
+                    onClick={() => setFontFamily(option)}
+                  >
+                    {fontFamilyLabels[option]}
+                  </NotionButton>
+                ))}
+              </div>
+            </div>
+            <label className="epub-preview-settings-row">
+              <span className="epub-preview-settings-label">{t('learningHub:epubPreview.lineHeight')}</span>
+              <input
+                type="range"
+                min={MIN_LINE_HEIGHT}
+                max={MAX_LINE_HEIGHT}
+                step={0.05}
+                value={lineHeight}
+                onChange={(event) => setLineHeight(Number(event.target.value))}
+                aria-label={t('learningHub:epubPreview.lineHeight')}
+              />
+              <span className="epub-preview-settings-value">{lineHeight.toFixed(2)}</span>
+            </label>
+            <label className="epub-preview-settings-row">
+              <span className="epub-preview-settings-label">{t('learningHub:epubPreview.pageMargin')}</span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={pageMargin}
+                onChange={(event) => setPageMargin(Number(event.target.value))}
+                aria-label={t('learningHub:epubPreview.pageMargin')}
+              />
+              <span className="epub-preview-settings-value">{Math.round(pageMargin * 100)}%</span>
+            </label>
+            <div className="epub-preview-settings-footer">
+              <NotionButton variant="ghost" size="sm" onClick={resetTypography}>
+                <ArrowCounterClockwise size={16} />
+                {t('learningHub:epubPreview.resetTypography')}
+              </NotionButton>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="epub-preview-body">
-        {sidebarOpen && (
-          <aside className="epub-preview-sidebar" aria-label={t('learningHub:epubPreview.navigation')}>
+        <aside
+          className="epub-preview-sidebar"
+          data-open={sidebarOpen}
+          aria-hidden={!sidebarOpen}
+          aria-label={t('learningHub:epubPreview.navigation')}
+        >
+          <div className="epub-preview-sidebar-inner">
             <div className="epub-preview-sidebar-tabs">
-              <NotionButton variant={sidebarMode === 'toc' ? 'default' : 'ghost'} size="sm" onClick={() => setSidebarMode('toc')}>
-                <List size={15} />{t('learningHub:epubPreview.contents')}
+              <NotionButton variant={sidebarMode === 'toc' ? 'default' : 'ghost'} size="sm" className="ui-state-colors" onClick={() => setSidebarMode('toc')}>
+                <List size={16} />{t('learningHub:epubPreview.contents')}
               </NotionButton>
-              <NotionButton variant={sidebarMode === 'search' ? 'default' : 'ghost'} size="sm" onClick={() => setSidebarMode('search')}>
-                <MagnifyingGlass size={15} />{t('common:search')}
+              <NotionButton variant={sidebarMode === 'search' ? 'default' : 'ghost'} size="sm" className="ui-state-colors" onClick={() => setSidebarMode('search')}>
+                <MagnifyingGlass size={16} />{t('common:search')}
               </NotionButton>
             </div>
             {sidebarMode === 'toc' ? (
-              <nav className="epub-preview-toc">
+              <nav ref={tocRef} className="epub-preview-toc ui-rise-in">
                 {book.toc.map((entry, index) => (
                   <NotionButton
                     key={`${entry.chapterIndex}:${entry.fragment ?? ''}:${index}`}
@@ -389,34 +781,65 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
                 ))}
               </nav>
             ) : (
-              <div className="epub-preview-search">
+              <div className="epub-preview-search ui-rise-in">
                 <label className="epub-preview-search-input">
-                  <MagnifyingGlass size={15} aria-hidden="true" />
-                  <input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t('learningHub:epubPreview.searchPlaceholder')} autoFocus />
+                  <MagnifyingGlass size={16} aria-hidden="true" />
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    onKeyDown={handleSearchInputKeyDown}
+                    placeholder={t('learningHub:epubPreview.searchPlaceholder')}
+                    autoFocus
+                  />
                 </label>
                 <div className="epub-preview-search-summary">
                   {searching
                     ? t('learningHub:epubPreview.searching')
-                    : searchQuery.trim() && t('learningHub:epubPreview.searchCount', { count: searchResults.length })}
+                    : searchQuery.trim()
+                      ? searchResults.length
+                        ? searchResults.length >= EPUB_SEARCH_RESULT_LIMIT
+                          ? t('learningHub:epubPreview.searchCapped', { count: searchResults.length })
+                          : t('learningHub:epubPreview.searchCount', { count: searchResults.length })
+                        : t('learningHub:epubPreview.searchNoResults')
+                      : null}
                 </div>
+                {frameMatch && frameMatch.total > 0 && (
+                  <div className="epub-preview-match-nav ui-rise-in">
+                    <span>{t('learningHub:epubPreview.matchPosition', { current: frameMatch.current + 1, total: frameMatch.total })}</span>
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setCurrentFrameMatch(frameMatch.current - 1)} title={t('learningHub:epubPreview.previousMatch')} aria-label={t('learningHub:epubPreview.previousMatch')}>
+                      <CaretUp size={16} />
+                    </NotionButton>
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setCurrentFrameMatch(frameMatch.current + 1)} title={t('learningHub:epubPreview.nextMatch')} aria-label={t('learningHub:epubPreview.nextMatch')}>
+                      <CaretDown size={16} />
+                    </NotionButton>
+                  </div>
+                )}
                 <div className="epub-preview-search-results">
                   {searchResults.map((result, index) => (
-                    <NotionButton key={`${result.chapterIndex}:${index}`} variant="ghost" size="sm" onClick={() => navigateToSearchResult(result.chapterIndex)}>
+                    <NotionButton
+                      key={`${result.chapterIndex}:${result.matchIndex}:${index}`}
+                      variant="ghost"
+                      size="sm"
+                      className={index === activeResultIndex ? 'is-active' : ''}
+                      onClick={() => navigateToSearchResult(result, index)}
+                    >
                       <strong>{result.title}</strong>
-                      <span>{result.excerpt}</span>
+                      <span>{renderExcerpt(result.excerpt)}</span>
                     </NotionButton>
                   ))}
                 </div>
               </div>
             )}
-          </aside>
-        )}
+          </div>
+        </aside>
 
         <main className="epub-preview-reader">
           {loading && <div className="epub-preview-loading"><CircleNotch className="animate-spin" size={28} /></div>}
           <iframe
+            key={frameGeneration}
             ref={iframeRef}
-            className="epub-preview-frame"
+            className="epub-preview-frame ui-fade-in"
             title={`${fileName}: ${book.chapters[chapterIndex]?.title ?? ''}`}
             sandbox="allow-same-origin"
             srcDoc={srcDoc}
@@ -424,14 +847,14 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
           />
           <footer className="epub-preview-footer">
             <NotionButton variant="ghost" size="icon" iconOnly disabled={chapterIndex === 0} onClick={() => navigateToChapter(chapterIndex - 1)} title={t('learningHub:epubPreview.previousChapter')} aria-label={t('learningHub:epubPreview.previousChapter')}>
-              <CaretLeft size={18} />
+              <CaretLeft size={16} />
             </NotionButton>
             <div className="epub-preview-progress" aria-label={t('learningHub:epubPreview.progress', { progress: overallProgress })}>
               <div><span style={{ width: `${overallProgress}%` }} /></div>
               <span>{chapterIndex + 1} / {book.chapters.length} · {overallProgress}%</span>
             </div>
             <NotionButton variant="ghost" size="icon" iconOnly disabled={chapterIndex >= book.chapters.length - 1} onClick={() => navigateToChapter(chapterIndex + 1)} title={t('learningHub:epubPreview.nextChapter')} aria-label={t('learningHub:epubPreview.nextChapter')}>
-              <CaretRight size={18} />
+              <CaretRight size={16} />
             </NotionButton>
           </footer>
         </main>

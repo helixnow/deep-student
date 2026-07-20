@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { handleMentionLinkClick } from '../click';
 import { applyMentionInsert } from '../insertMention';
-import { buildNoteHref, parseNoteHref } from '../protocol';
+import { buildNoteHref, parseNoteHref, parseNoteHrefHeading } from '../protocol';
 import { MENTION_EVENTS } from '../types';
 
 const schema = new Schema({
@@ -57,6 +57,15 @@ describe('protocol note://', () => {
     expect(parseNoteHref('note://note_abc?x=1')).toBe('note_abc');
     expect(parseNoteHref('https://example.com')).toBeNull();
     expect(parseNoteHref('note://')).toBeNull();
+  });
+
+  // B10 联动：hash 段解析为笔记内标题
+  it('parses the heading fragment from note:// hrefs', () => {
+    expect(parseNoteHrefHeading('note://note_abc#Methods')).toBe('Methods');
+    expect(parseNoteHrefHeading('note://note_abc#Sec%20One')).toBe('Sec One');
+    expect(parseNoteHrefHeading('note://note_abc')).toBeNull();
+    expect(parseNoteHrefHeading('note://note_abc#')).toBeNull();
+    expect(parseNoteHrefHeading('https://example.com#x')).toBeNull();
   });
 });
 
@@ -133,6 +142,33 @@ describe('handleMentionLinkClick', () => {
     expect(event.defaultPrevented).toBe(true);
     expect(events).toHaveLength(1);
     expect(events[0]!.detail).toEqual({ noteId: 'note_99', source: 'mention' });
+  });
+
+  it('carries the href heading fragment into the open event detail', () => {
+    const root = document.createElement('div');
+    const a = document.createElement('a');
+    a.setAttribute('href', 'note://note_42#Sec%20One');
+    root.appendChild(a);
+
+    const view = { dom: root } as unknown as import('@milkdown/prose/view').EditorView;
+    const events: CustomEvent[] = [];
+    const onOpen = (e: Event) => {
+      events.push(e as CustomEvent);
+    };
+    window.addEventListener(MENTION_EVENTS.OPEN_NOTE, onOpen);
+
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'target', { value: a });
+    const handled = handleMentionLinkClick(view, event);
+    window.removeEventListener(MENTION_EVENTS.OPEN_NOTE, onOpen);
+
+    expect(handled).toBe(true);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.detail).toEqual({
+      noteId: 'note_42',
+      source: 'mention',
+      heading: 'Sec One',
+    });
   });
 
   it('ignores non-note links', () => {

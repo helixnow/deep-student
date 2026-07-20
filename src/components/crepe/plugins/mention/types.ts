@@ -8,6 +8,10 @@ import type { DstuOpenNoteDetail } from '@/features/notes/openNoteEvent';
 export interface MentionNoteCandidate {
   id: string;
   title: string;
+  /** 可选：DSTU 路径（如 `/folder/note_1`），用于候选行元信息展示 */
+  path?: string;
+  /** 可选：最近编辑时间戳 */
+  updatedAt?: number;
 }
 
 /**
@@ -35,10 +39,11 @@ export const MENTION_EVENTS = {
 
 export const NOTE_HREF_PROTOCOL = 'note://';
 
-export function dispatchOpenMentionNote(noteId: string): void {
+export function dispatchOpenMentionNote(noteId: string, heading?: string): void {
   window.dispatchEvent(
     new CustomEvent<DstuOpenNoteDetail>(MENTION_EVENTS.OPEN_NOTE, {
-      detail: { noteId, source: 'mention' },
+      // heading 为可选附加字段（note://id#heading，B10）；无 heading 时 detail 形状不变
+      detail: { noteId, source: 'mention', ...(heading ? { heading } : {}) },
     }),
   );
 }

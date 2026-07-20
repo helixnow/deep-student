@@ -39,9 +39,48 @@ function stateWithSelection(text: string, from: number, to: number, linked = fal
 }
 
 describe('resolveLinkKeymapAction', () => {
-  it('returns null for empty selection (no-op)', () => {
-    const state = stateWithSelection('hello', 3, 3);
+  it('expands caret to the current word (add)', () => {
+    const state = stateWithSelection('hello world', 3, 3);
+    expect(resolveLinkKeymapAction(state)).toEqual({ type: 'add', from: 1, to: 6 });
+  });
+
+  it('expands caret in the second word to its own boundaries', () => {
+    const state = stateWithSelection('hello world', 9, 9);
+    expect(resolveLinkKeymapAction(state)).toEqual({ type: 'add', from: 7, to: 12 });
+  });
+
+  it('returns null when caret sits in whitespace with no word around', () => {
+    const doc = schema.node('doc', null, [
+      schema.node('paragraph', null, [schema.text('a  b')]),
+    ]);
+    const state = EditorState.create({
+      schema,
+      doc,
+      selection: TextSelection.create(doc, 3),
+    });
     expect(resolveLinkKeymapAction(state)).toBeNull();
+  });
+
+  it('returns null for caret in an empty paragraph', () => {
+    const doc = schema.node('doc', null, [schema.node('paragraph', null, [])]);
+    const state = EditorState.create({
+      schema,
+      doc,
+      selection: TextSelection.create(doc, 1),
+    });
+    expect(resolveLinkKeymapAction(state)).toBeNull();
+  });
+
+  it('edits the whole link when caret is inside a link', () => {
+    const state = stateWithSelection('hello', 3, 3, true);
+    const action = resolveLinkKeymapAction(state);
+    expect(action).not.toBeNull();
+    expect(action!.type).toBe('edit');
+    if (action!.type === 'edit') {
+      expect(action.from).toBe(1);
+      expect(action.to).toBe(6);
+      expect(action.mark.attrs.href).toBe('https://example.com');
+    }
   });
 
   it('returns add for non-empty selection without link', () => {
@@ -68,13 +107,32 @@ describe('createLinkKeymapBindings / Mod-k', () => {
     expect(Object.keys(bindings)).toEqual(['Mod-k']);
   });
 
-  it('Mod-k no-ops on empty selection', () => {
+  it('Mod-k expands caret to word and calls addLink', () => {
     const addLink = vi.fn();
     const editLink = vi.fn();
     const cmd = createModKLinkCommand({
       get: () => ({ addLink, editLink }),
     } as never);
     const state = stateWithSelection('hello', 2, 2);
+    const dispatch = vi.fn();
+    expect(cmd(state, dispatch)).toBe(true);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(addLink).toHaveBeenCalledWith(1, 6);
+    expect(editLink).not.toHaveBeenCalled();
+  });
+
+  it('Mod-k no-ops when caret has no word around', () => {
+    const addLink = vi.fn();
+    const editLink = vi.fn();
+    const cmd = createModKLinkCommand({
+      get: () => ({ addLink, editLink }),
+    } as never);
+    const doc = schema.node('doc', null, [schema.node('paragraph', null, [])]);
+    const state = EditorState.create({
+      schema,
+      doc,
+      selection: TextSelection.create(doc, 1),
+    });
     expect(cmd(state)).toBe(false);
     expect(addLink).not.toHaveBeenCalled();
     expect(editLink).not.toHaveBeenCalled();

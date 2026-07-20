@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from "react-i18next";
-import { TextAlignLeft, Calendar, Tag, Clock, X, Plus } from "@phosphor-icons/react";
+import { TextAlignLeft, Calendar, CaretRight, Tag, Clock, X, Plus, PencilSimple, Check } from "@phosphor-icons/react";
 import { useNotesOptional } from "./NotesContext";
 import { CustomScrollArea } from "@/components/custom-scroll-area";
 import { Separator } from "@/components/ui/shad/Separator";
@@ -9,6 +9,7 @@ import { cn } from "../../lib/utils";
 import { Input } from "@/components/ui/shad/Input";
 import { Badge } from "@/components/ui/shad/Badge";
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { dstu } from '@/dstu';
 
 const normalizeHeadingText = (raw: string) => {
     const withoutLinks = raw.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
@@ -19,7 +20,23 @@ const normalizeHeadingText = (raw: string) => {
 
 const isFenceLine = (line: string) => /^(```|~~~)/.test(line.trim());
 
+/** 大纲 hover 预览：剥掉行首列表/引用/任务标记与行内格式 */
+const normalizePreviewLine = (raw: string) => {
+    const withoutBlockMarkers = raw.replace(/^\s*(?:>\s*)*(?:[-*+]\s+(?:\[[ xX]\]\s*)?|\d+[.)]\s+)?/, '');
+    return normalizeHeadingText(withoutBlockMarkers).slice(0, 120);
+};
+
+interface OutlineHeading {
+    level: number;
+    text: string;
+    searchText: string;
+    id: string;
+    /** 标题后的首行正文（hover 预览用），可能为空 */
+    preview: string;
+}
+
 import { emitOutlineDebugLog, emitOutlineDebugSnapshot } from '../../debug-panel/events/NotesOutlineDebugChannel';
+import './NotesContextPanel.css';
 
 // ============================================================================
 // DSTU 模式 Props 接口
@@ -66,6 +83,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     const notesContext = useNotesOptional();
     const contextActive = notesContext?.active;
     const updateNoteTags = notesContext?.updateNoteTags;
+    const renameTagAcrossNotes = notesContext?.renameTagAcrossNotes;
     
     // ========== 数据来源判断 ==========
     // DSTU 模式：使用传入的 props
@@ -86,6 +104,10 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     const [isAddingTag, setIsAddingTag] = useState(false);
     const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
     const tagInputRef = useRef<HTMLInputElement>(null);
+    // 标签行内重命名（双击 chip / 铅笔按钮进入；跨笔记全局传播）
+    const [editingTag, setEditingTag] = useState<string | null>(null);
+    const [renameValue, setRenameValue] = useState("");
+    const [isRenamingTag, setIsRenamingTag] = useState(false);
     
     // 实时内容缓存（用于大纲实时更新）
     const [liveContent, setLiveContent] = useState<string | null>(null);
@@ -98,6 +120,9 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
 
     const tags = effectiveActive?.tags || [];
     const hasTags = tags.length > 0;
+    // 标签是否可编辑：DSTU 模式看是否提供 onTagsChange（只读消费者传 undefined），
+    // Context 模式看 updateNoteTags 是否可用
+    const canEditTags = isDstuMode ? Boolean(props.onTagsChange) : Boolean(updateNoteTags);
 
     // 解析标题的工具函数
     const parseHeadings = useCallback((content: string) => {
@@ -172,6 +197,8 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         setActiveHeadingId(null);
         setIsAddingTag(false);
         setTagInput("");
+        setEditingTag(null);
+        setRenameValue("");
     }, [effectiveActive?.id]);
 
     // Parse headings from active note content (支持 1-6 级标题)
@@ -312,6 +339,106 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         }
     };
 
+    /**
+     * DSTU 模式下的跨笔记标签重命名回退实现。
+     * 与 NotesContext.renameTagAcrossNotes 走同一 DSTU 协议
+     * （dstu.list 分页 + dstu.setMetadata），仅在无 NotesProvider 时使用。
+     */
+    const renameTagAcrossNotesDstu = useCallback(async (
+        oldName: string,
+        newName: string,
+        skipId: string
+    ): Promise<number> => {
+        const pageSize = 200;
+        let offset = 0;
+        let updatedCount = 0;
+
+        while (true) {
+            const result = await dstu.list('/', { typeFilter: 'note', limit: pageSize, offset });
+            if (!result.ok) {
+                throw new Error(result.error.toUserMessage());
+            }
+
+            for (const node of result.value) {
+                if (node.id === skipId) continue;
+                const nodeTags = (node.metadata?.tags as string[] | undefined) || [];
+                if (!nodeTags.includes(oldName)) continue;
+
+                const nextTags = nodeTags.map(tag => (tag === oldName ? newName : tag));
+                const setResult = await dstu.setMetadata(`/${node.id}`, { tags: nextTags });
+                if (!setResult.ok) {
+                    throw new Error(setResult.error.toUserMessage());
+                }
+                updatedCount += 1;
+            }
+
+            if (result.value.length < pageSize) break;
+            offset += pageSize;
+        }
+
+        return updatedCount;
+    }, []);
+
+    const handleStartRenameTag = (tag: string) => {
+        setEditingTag(tag);
+        setRenameValue(tag);
+    };
+
+    const handleCancelRenameTag = () => {
+        setEditingTag(null);
+        setRenameValue("");
+    };
+
+    const handleRenameTag = async () => {
+        if (!effectiveActive) return;
+        const oldName = editingTag;
+        const normalizedNewName = renameValue.trim();
+
+        if (!oldName || !normalizedNewName || oldName === normalizedNewName) {
+            handleCancelRenameTag();
+            return;
+        }
+
+        const currentTags = effectiveActive.tags || [];
+        if (currentTags.includes(normalizedNewName)) {
+            showGlobalNotification('warning', t('notes:header.tag_exists'));
+            return;
+        }
+
+        setIsRenamingTag(true);
+        try {
+            // 1. 更新当前笔记的标签
+            const newTags = currentTags.map(tag => (tag === oldName ? normalizedNewName : tag));
+            if (isDstuMode) {
+                if (props.onTagsChange) {
+                    await props.onTagsChange(newTags);
+                }
+            } else if (updateNoteTags) {
+                await updateNoteTags(effectiveActive.id, newTags);
+            }
+
+            // 2. 跨笔记全局传播（Context 模式复用 renameTagAcrossNotes；DSTU 模式走同协议回退）
+            const updatedCount = renameTagAcrossNotes
+                ? await renameTagAcrossNotes(oldName, normalizedNewName, effectiveActive.id)
+                : await renameTagAcrossNotesDstu(oldName, normalizedNewName, effectiveActive.id);
+
+            if (updatedCount > 0) {
+                showGlobalNotification(
+                    'success',
+                    t('notes:header.rename_tag_success'),
+                    t('notes:header.rename_tag_count', { count: updatedCount })
+                );
+            }
+
+            handleCancelRenameTag();
+        } catch (error: unknown) {
+            console.error("Failed to rename tag", error);
+            showGlobalNotification('error', t('notes:header.rename_failed'));
+        } finally {
+            setIsRenamingTag(false);
+        }
+    };
+
     useEffect(() => {
         if (isAddingTag && tagInputRef.current) {
             tagInputRef.current.focus();
@@ -373,24 +500,76 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                             <Badge
                                 key={tag}
                                 variant="secondary"
-                                className="group h-5 gap-1 rounded-sm px-1.5 text-[11px] font-normal transition-colors hover:bg-[var(--interactive-hover)]"
+                                className="group h-5 gap-1 rounded-sm px-1.5 text-[11px] font-normal transition-colors duration-150 hover:bg-[var(--interactive-hover)]"
                             >
-                                {tag}
-                                <NotionButton
-                                    variant="ghost" iconOnly size="sm"
-                                    className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleRemoveTag(tag);
-                                    }}
-                                    aria-label={`${t('notes:context.tag_remove')} ${tag}`}
-                                >
-                                    <X className="w-3 h-3" aria-hidden="true" />
-                                </NotionButton>
+                                {canEditTags && editingTag === tag ? (
+                                    <span className="flex items-center gap-1">
+                                        <Input
+                                            className="h-4 w-20 px-1 py-0 text-[11px]"
+                                            value={renameValue}
+                                            onChange={e => setRenameValue(e.target.value)}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter') handleRenameTag();
+                                                if (e.key === 'Escape') handleCancelRenameTag();
+                                            }}
+                                            aria-label={t('notes:header.rename_tag')}
+                                            autoFocus
+                                        />
+                                        <NotionButton
+                                            variant="ghost" iconOnly size="sm"
+                                            className="!h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40"
+                                            onClick={handleRenameTag}
+                                            disabled={isRenamingTag}
+                                            aria-label={t('notes:header.confirm_rename')}
+                                        >
+                                            <Check className="w-3 h-3" aria-hidden="true" />
+                                        </NotionButton>
+                                        <NotionButton
+                                            variant="ghost" iconOnly size="sm"
+                                            className="!h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40"
+                                            onClick={handleCancelRenameTag}
+                                            disabled={isRenamingTag}
+                                            aria-label={t('notes:header.cancel_rename')}
+                                        >
+                                            <X className="w-3 h-3" aria-hidden="true" />
+                                        </NotionButton>
+                                    </span>
+                                ) : (
+                                    <>
+                                        <span onDoubleClick={canEditTags ? () => handleStartRenameTag(tag) : undefined}>{tag}</span>
+                                        {canEditTags && (
+                                            <>
+                                                <NotionButton
+                                                    variant="ghost" iconOnly size="sm"
+                                                    className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleStartRenameTag(tag);
+                                                    }}
+                                                    title={t('notes:header.rename_tag')}
+                                                    aria-label={`${t('notes:header.rename_tag')}: ${tag}`}
+                                                >
+                                                    <PencilSimple className="w-3 h-3" aria-hidden="true" />
+                                                </NotionButton>
+                                                <NotionButton
+                                                    variant="ghost" iconOnly size="sm"
+                                                    className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleRemoveTag(tag);
+                                                    }}
+                                                    aria-label={`${t('notes:context.tag_remove')} ${tag}`}
+                                                >
+                                                    <X className="w-3 h-3" aria-hidden="true" />
+                                                </NotionButton>
+                                            </>
+                                        )}
+                                    </>
+                                )}
                             </Badge>
                         ))}
 
-                        {isAddingTag ? (
+                        {!canEditTags ? null : isAddingTag ? (
                             <Input
                                 ref={tagInputRef}
                                 className="h-6 w-28 text-[11px] px-2 py-0"
@@ -452,18 +631,13 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                         key={heading.id}
                                         variant="ghost" size="sm"
                                         className={cn(
-                                            "!h-7 !w-full !justify-start !rounded-sm !px-2 !py-1 !text-left text-xs truncate",
+                                            "!h-7 !w-full !justify-start !rounded-sm !px-2 !py-1 !text-left text-xs",
                                             "[@media(pointer:coarse)]:!py-2.5",
                                             heading.level === 1 && "font-medium",
-                                            heading.level === 2 && "!pl-4",
-                                            heading.level === 3 && "!pl-6",
-                                            heading.level === 4 && "!pl-8",
-                                            heading.level === 5 && "!pl-10",
-                                            heading.level === 6 && "!pl-12",
                                             isActive
-                                                ? "bg-[var(--interactive-hover)] text-foreground font-medium"
+                                                ? "bg-[var(--interactive-hover)] text-foreground font-medium shadow-[inset_2px_0_0_hsl(var(--primary))]"
                                                 : cn(
-                                                    "hover:bg-[var(--interactive-hover)]",
+                                                    "hover:bg-[var(--interactive-hover)] hover:text-foreground",
                                                     heading.level === 1 && "text-foreground",
                                                     heading.level === 2 && "text-muted-foreground",
                                                     heading.level === 3 && "text-muted-foreground/80",
@@ -474,8 +648,17 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                         )}
                                         onClick={() => handleHeadingClick(heading)}
                                         title={heading.text}
+                                        aria-current={isActive ? 'true' : undefined}
                                     >
-                                        {heading.text}
+                                        {/* 层级缩进线：每深一级增加一条竖向导轨 */}
+                                        {heading.level > 1 && Array.from({ length: heading.level - 1 }).map((_, guideIndex) => (
+                                            <span
+                                                key={guideIndex}
+                                                className="w-2 shrink-0 self-stretch border-l border-border/50 ml-[3px]"
+                                                aria-hidden="true"
+                                            />
+                                        ))}
+                                        <span className="min-w-0 flex-1 truncate">{heading.text}</span>
                                     </NotionButton>
                                 );
                             })

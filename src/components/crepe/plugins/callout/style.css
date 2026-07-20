@@ -1,6 +1,6 @@
 /* Obsidian/Notion-style callout blocks — colors use global design tokens.
  *
- * 与 toggle（.milkdown-toggle）同族：圆角 --notes-radius-popup、
+ * 与 toggle（.milkdown-toggle）同族：块级容器圆角 --notes-radius-control、
  * 内边距节奏 gap 0.35em、图标触控区 1.25em×1.5em。
  */
 
@@ -11,9 +11,16 @@
   gap: 0.35em;
   margin: 0.5em 0;
   padding: 0.75em 0.85em;
-  border-radius: var(--notes-radius-popup, 0.5rem);
+  border-radius: var(--notes-radius-control, 8px);
   border-left: 3px solid transparent;
   background: hsl(var(--muted) / 0.45);
+  transition:
+    box-shadow 150ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    gap 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.crepe-callout:hover {
+  box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.06);
 }
 
 .crepe-callout__header {
@@ -57,6 +64,8 @@
 }
 
 .crepe-callout__title {
+  flex: 1 1 auto;
+  min-width: 0;
   font-weight: 600;
   font-size: 0.95em;
   line-height: 1.35;
@@ -67,8 +76,83 @@
   opacity: 0.92;
 }
 
+/* 折叠 chevron：默认弱化，hover 块或聚焦时显现 */
+.crepe-callout__fold {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.25em;
+  height: 1.5em;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: var(--notes-radius-control, 0.35rem);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  line-height: 0;
+  opacity: 0;
+  transition:
+    opacity 150ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    background-color var(--notes-hover-transition, 120ms ease);
+}
+
+.crepe-callout:hover .crepe-callout__fold,
+.crepe-callout__fold:focus-visible,
+.crepe-callout[data-callout-collapsed='true'] .crepe-callout__fold {
+  opacity: 0.75;
+}
+
+.crepe-callout__fold:hover {
+  opacity: 1;
+  background: hsl(var(--foreground) / 0.06);
+}
+
+.crepe-callout__fold:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.crepe-callout__fold-svg {
+  display: block;
+  width: 0.85em;
+  height: 0.85em;
+  transform: rotate(90deg);
+  transition: transform 150ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.crepe-callout[data-callout-collapsed='true'] .crepe-callout__fold-svg {
+  transform: rotate(0deg);
+}
+
+/* 内容折叠：grid 0fr↔1fr + opacity，200ms */
+.crepe-callout__body {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.crepe-callout[data-callout-collapsed='true'] .crepe-callout__body {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+.crepe-callout[data-callout-collapsed='true'] .crepe-callout__content {
+  pointer-events: none;
+}
+
+.crepe-callout[data-callout-collapsed='true'] {
+  gap: 0;
+}
+
 .crepe-callout__content {
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .crepe-callout__content > :first-child {
@@ -158,4 +242,17 @@
 
 :is(.dark, [data-theme='dark']) .crepe-callout--info {
   background: hsl(var(--primary) / 0.15);
+}
+
+:is(.dark, [data-theme='dark']) .crepe-callout:hover {
+  box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crepe-callout,
+  .crepe-callout__fold,
+  .crepe-callout__fold-svg,
+  .crepe-callout__body {
+    transition: none;
+  }
 }

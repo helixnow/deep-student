@@ -238,6 +238,7 @@ function DesktopContextMenu({
   return createPortal(
     <div
       ref={menuRef}
+      data-wb-blur-surface
       className={cn(
         'fixed min-w-[160px] overflow-hidden rounded-lg',
         'bg-popover/95 backdrop-blur-md text-popover-foreground',

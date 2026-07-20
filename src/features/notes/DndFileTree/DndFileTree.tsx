@@ -12,12 +12,18 @@ import {
   DragOverlay,
   defaultDropAnimationSideEffects,
   DropAnimation,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
 } from '@dnd-kit/core';
 import {
   SortableContext,
+  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from '@/hooks/useTouchFriendlyDndSensors';
+import { SHELL_SAFE_AUTO_SCROLL } from '@/hooks/useTouchFriendlyDndSensors';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Folder, FileText, Star } from '@phosphor-icons/react';
 import { ReferenceIcon } from './ReferenceIcon';
@@ -32,6 +38,8 @@ const LEVEL_INDENT = 20;
 const BASE_INDENT = 16;
 const DROP_INDICATOR_SIDE_GAP = 12;
 const AUTO_EXPAND_DELAY_MS = 420;
+/** 触屏拖拽激活 delay：必须大于 TreeNode 的 LONG_PRESS_MS(500)，见 sensors 注释 */
+export const TREE_TOUCH_DRAG_DELAY_MS = 600;
 
 const dropAnimationConfig: DropAnimation = {
   sideEffects: defaultDropAnimationSideEffects({
@@ -68,6 +76,8 @@ interface DndFileTreeProps {
   onDoubleClick?: (id: string) => void;
   onContextMenu?: (id: string, event: React.MouseEvent) => void;
   onDelete?: (ids: string[]) => void;
+  /** hover 行内「+」：在文件夹下新建子项 */
+  onCreateChild?: (folderId: string) => void;
   disableDrag?: boolean;
 }
 
@@ -91,12 +101,15 @@ export function DndFileTree({
   onDoubleClick,
   onContextMenu,
   onDelete,
+  onCreateChild,
   disableDrag = false,
 }: DndFileTreeProps) {
   const { t } = useTranslation('notes');
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [overId, setOverId] = useState<UniqueIdentifier | null>(null);
   const [dropPosition, setDropPosition] = useState<'before' | 'after' | 'inside'>('inside');
+  // 拖入自身/自身后代时的禁入态（用于灰化指示线 + not-allowed 光标）
+  const [dropInvalid, setDropInvalid] = useState(false);
   const treeRef = useRef<HTMLDivElement | null>(null);
   const dropIndicatorRef = useRef<HTMLDivElement | null>(null);
   const autoExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -139,8 +152,24 @@ export function DndFileTree({
     onCollapse?.(id);
   }, [onCollapse]);
 
-  // 配置拖拽传感器（触屏长按激活）
-  const sensors = useTouchFriendlyDndSensors();
+  // 配置拖拽传感器（P1-9 长按菜单 vs 拖拽冲突）。
+  // 统一配置（useTouchFriendlyDndSensors）触摸 250ms 即激活拖拽，早于 TreeNode
+  // 500ms 长按菜单：按住不动时先进入拖拽、又在拖拽中弹出菜单，两手势打架。
+  // 取舍：触屏以「长按 = 菜单」为唯一 hold 语义——
+  // - 菜单 500ms 先触发，并派发 touchcancel 中止仍在计时的拖拽待激活（见 TreeNode）；
+  // - 拖拽 delay 提到 600ms 仅作兜底排序，保证任何时序下菜单先赢；
+  // - 触屏整理层级请走长按菜单动作；鼠标 / 键盘拖拽排序不受影响。
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: TREE_TOUCH_DRAG_DELAY_MS, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   const flattenedNodes = useMemo(() => {
     const expandedSet = new Set(effectiveExpandedIds);
@@ -259,6 +288,28 @@ export function DndFileTree({
     }
   }, [treeData, effectiveExpandedIds]);
 
+  // 判断拖放目标是否非法：拖入自身（inside）或拖入自身后代（任意位置都会落入被拖子树）
+  const isInvalidDropTarget = useCallback((targetId: string, position: 'before' | 'after' | 'inside'): boolean => {
+    const dragged = draggedIdsRef.current.length
+      ? draggedIdsRef.current
+      : (activeId ? [String(activeId)] : []);
+    if (dragged.length === 0) return false;
+    if (position === 'inside' && dragged.includes(targetId)) return true;
+
+    const stack = dragged.filter((id) => treeData[id]?.isFolder);
+    const visited = new Set<string>();
+    while (stack.length > 0) {
+      const cur = stack.pop() as string;
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      for (const child of treeData[cur]?.children ?? []) {
+        if (child === targetId) return true;
+        stack.push(child);
+      }
+    }
+    return false;
+  }, [treeData, activeId]);
+
   // 处理拖拽开始
   const handleDragStart = (event: DragStartEvent) => {
     if (disableDrag) return;
@@ -285,6 +336,7 @@ export function DndFileTree({
     if (!over) {
       setOverId(null);
       setDropPosition('inside');
+      setDropInvalid(false);
       cancelAutoExpand();
       return;
     }
@@ -292,9 +344,11 @@ export function DndFileTree({
     setOverId(over.id);
     const position = calculateDropPosition(event);
     setDropPosition(position);
+    const invalid = isInvalidDropTarget(String(over.id), position);
+    setDropInvalid(invalid);
 
     const overNode = treeData[String(over.id)];
-    if (overNode?.isFolder && position === 'inside' && !interactionsLocked) {
+    if (overNode?.isFolder && position === 'inside' && !interactionsLocked && !invalid) {
       scheduleAutoExpand(String(over.id));
     } else {
       cancelAutoExpand();
@@ -320,6 +374,17 @@ export function DndFileTree({
         indicator.style.display = 'none';
       }
 
+      // 禁入视觉：指示线灰化并去掉主色发光（内联样式覆盖 CSS，恢复时置空回退）
+      if (invalid) {
+        indicator.style.background = 'hsl(var(--muted-foreground) / 0.45)';
+        indicator.style.boxShadow = 'none';
+        indicator.style.opacity = '0.6';
+      } else {
+        indicator.style.background = '';
+        indicator.style.boxShadow = '';
+        indicator.style.opacity = '';
+      }
+
       if (indicator.style.display === 'block') {
         const targetItem = treeRef.current?.querySelector<HTMLElement>(`[data-tree-id="${String(over.id)}"]`);
         if (targetItem) {
@@ -336,21 +401,30 @@ export function DndFileTree({
     }
   };
 
+  const resetDropIndicator = () => {
+    if (dropIndicatorRef.current) {
+      const indicator = dropIndicatorRef.current;
+      indicator.style.display = 'none';
+      indicator.style.background = '';
+      indicator.style.boxShadow = '';
+      indicator.style.opacity = '';
+    }
+  };
+
   // 处理拖拽结束
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    // 在清空状态前捕获非法落点判断，禁入目标直接丢弃本次拖放
+    const invalidDrop = over ? isInvalidDropTarget(String(over.id), dropPosition) : false;
 
     setActiveId(null);
     setOverId(null);
     setDropPosition('inside');
+    setDropInvalid(false);
     cancelAutoExpand();
+    resetDropIndicator();
 
-    // 隐藏拖放指示器
-    if (dropIndicatorRef.current) {
-      dropIndicatorRef.current.style.display = 'none';
-    }
-    
-    if (!over || active.id === over.id) {
+    if (!over || active.id === over.id || invalidDrop) {
       draggedIdsRef.current = [];
       return;
     }
@@ -375,10 +449,9 @@ export function DndFileTree({
     setActiveId(null);
     setOverId(null);
     setDropPosition('inside');
+    setDropInvalid(false);
     cancelAutoExpand();
-    if (dropIndicatorRef.current) {
-      dropIndicatorRef.current.style.display = 'none';
-    }
+    resetDropIndicator();
     draggedIdsRef.current = [];
   };
 
@@ -396,6 +469,7 @@ export function DndFileTree({
     onDoubleClick,
     onContextMenu,
     onDelete,
+    onCreateChild,
   };
 
 
@@ -479,6 +553,7 @@ export function DndFileTree({
                     draggingId={activeId ? String(activeId) : null}
                     overId={overId ? String(overId) : null}
                     dropPosition={dropPosition}
+                    dropInvalid={dropInvalid}
                     status={noteStatus?.[item.id]}
                     searchTerm={normalizedSearchTerm}
                     isSearchMatch={isMatch}
@@ -503,7 +578,10 @@ export function DndFileTree({
               const previewType = node.referenceData?.referenceNode?.previewType;
               const dragCount = draggedIdsRef.current.length;
               return (
-                <div className="dnd-drag-overlay">
+                <div
+                  className="dnd-drag-overlay"
+                  style={dropInvalid ? { cursor: 'not-allowed', opacity: 0.7 } : undefined}
+                >
                   <span className="dnd-drag-overlay-icon">
                     {node.isFolder ? (
                       <Folder className="w-4 h-4 text-primary fill-primary/20" />

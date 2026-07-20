@@ -5,6 +5,8 @@ const MAX_ARCHIVE_ENTRIES = 10_000;
 const MAX_EXPANDED_BYTES = 128 * 1024 * 1024;
 const MAX_COMPRESSION_RATIO = 250;
 const MAX_CHAPTER_BYTES = 12 * 1024 * 1024;
+/** Hard cap on book-wide search hits; the UI tells the user when it is reached. */
+export const EPUB_SEARCH_RESULT_LIMIT = 200;
 
 interface ManifestItem {
   id: string;
@@ -37,6 +39,27 @@ export interface EpubBookModel {
 export interface RenderedEpubChapter {
   srcDoc: string;
   objectUrls: string[];
+}
+
+export type EpubReaderThemeName = 'light' | 'sepia' | 'dark';
+export type EpubReaderFontFamily = 'book' | 'serif' | 'sans';
+
+export interface EpubRenderOptions {
+  theme: EpubReaderThemeName;
+  fontScale: number;
+  /** 'book' keeps the publisher font; 'serif' / 'sans' force a reader stack. */
+  fontFamily?: EpubReaderFontFamily;
+  lineHeight?: number;
+  /** 0..1, mapped to the horizontal page padding inside the reading column. */
+  pageMargin?: number;
+}
+
+export interface EpubSearchResult {
+  chapterIndex: number;
+  title: string;
+  excerpt: string;
+  /** Ordinal of this match inside its chapter (0-based), used to focus the hit. */
+  matchIndex: number;
 }
 
 type ZipEntryWithSizes = JSZipObject & {
@@ -141,7 +164,9 @@ function chapterTitle(html: string, fallback: string): string {
 
 function chapterText(html: string): string {
   const document = new DOMParser().parseFromString(html, 'text/html');
-  document.querySelectorAll('script, style, svg').forEach((node) => node.remove());
+  // Keep <svg> subtrees: publishers put real text inside SVG (cover titles,
+  // decorated headings) and it must stay searchable.
+  document.querySelectorAll('script, style').forEach((node) => node.remove());
   return textContent(document.body);
 }
 
@@ -293,12 +318,55 @@ async function rewriteCssUrls(css: string, zip: JSZip, cssPath: string, urls: st
   return rewritten.replace(/expression\s*\(|behavior\s*:|-moz-binding\s*:/gi, 'blocked(');
 }
 
+/**
+ * Reading paper palettes. These are deliberate product colors (paper tones)
+ * rendered inside the sandboxed iframe, which cannot read app-level tokens.
+ * Keep them in sync with the `--epub-paper` custom properties in EpubPreview.css.
+ */
+const READER_PALETTES: Record<EpubReaderThemeName, {
+  background: string;
+  foreground: string;
+  link: string;
+  highlight: string;
+  activeHighlight: string;
+}> = {
+  light: {
+    background: '#ffffff',
+    foreground: '#202124',
+    link: '#2457a7',
+    highlight: 'rgba(255, 204, 0, 0.32)',
+    activeHighlight: 'rgba(255, 165, 0, 0.55)',
+  },
+  sepia: {
+    background: '#f4ecd8',
+    foreground: '#3d3528',
+    link: '#735c2e',
+    highlight: 'rgba(206, 137, 44, 0.28)',
+    activeHighlight: 'rgba(196, 112, 22, 0.5)',
+  },
+  dark: {
+    background: '#18191b',
+    foreground: '#e8e8e8',
+    link: '#8ab4f8',
+    highlight: 'rgba(255, 200, 87, 0.26)',
+    activeHighlight: 'rgba(255, 200, 87, 0.52)',
+  },
+};
+
+const READER_FONT_STACKS: Record<Exclude<EpubReaderFontFamily, 'book'>, string> = {
+  serif: "Georgia, 'Iowan Old Style', 'Times New Roman', 'Songti SC', 'Source Han Serif SC', serif",
+  sans: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
+};
+
 export async function renderEpubChapter(
   book: EpubBookModel,
   chapterIndex: number,
-  theme: 'light' | 'sepia' | 'dark',
-  fontScale: number
+  options: EpubRenderOptions
 ): Promise<RenderedEpubChapter> {
+  const { theme, fontScale } = options;
+  const fontFamily = options.fontFamily ?? 'book';
+  const lineHeight = options.lineHeight ?? 1.75;
+  const pageMargin = Math.min(1, Math.max(0, options.pageMargin ?? 0.4));
   const chapter = book.chapters[chapterIndex];
   if (!chapter) throw new Error('EPUB chapter is unavailable');
   const chapterHtml = await readZipText(book.zip, chapter.path);
@@ -323,11 +391,22 @@ export async function renderEpubChapter(
   }
 
   const resourceAttributes: Array<[string, string]> = [
-    ['img[src]', 'src'], ['image[href]', 'href'], ['source[src]', 'src'],
+    ['img[src]', 'src'], ['source[src]', 'src'],
     ['audio[src]', 'src'], ['video[src]', 'src'], ['video[poster]', 'poster'],
   ];
   for (const [selector, attribute] of resourceAttributes) {
     for (const element of Array.from(document.querySelectorAll(selector))) {
+      const href = element.getAttribute(attribute);
+      if (!href) continue;
+      const url = await resourceUrl(book.zip, chapter.path, href, objectUrls);
+      if (url) element.setAttribute(attribute, url);
+      else element.removeAttribute(attribute);
+    }
+  }
+  // SVG <image> may reference bitmaps via either `href` (SVG 2) or the legacy
+  // namespaced `xlink:href`; both must be rewritten to blob URLs.
+  for (const element of Array.from(document.querySelectorAll('image'))) {
+    for (const attribute of ['href', 'xlink:href']) {
       const href = element.getAttribute(attribute);
       if (!href) continue;
       const url = await resourceUrl(book.zip, chapter.path, href, objectUrls);
@@ -344,19 +423,24 @@ export async function renderEpubChapter(
     }
   }
 
-  const palette = theme === 'dark'
-    ? { background: '#18191b', foreground: '#e8e8e8', link: '#8ab4f8' }
-    : theme === 'sepia'
-      ? { background: '#f4ecd8', foreground: '#3d3528', link: '#735c2e' }
-      : { background: '#ffffff', foreground: '#202124', link: '#2457a7' };
+  const palette = READER_PALETTES[theme];
+  const paddingInline = (1 + pageMargin * 5).toFixed(2);
+  const fontFamilyCss = fontFamily === 'book' ? '' : `
+    body { font-family: ${READER_FONT_STACKS[fontFamily]} !important; }
+    body * { font-family: inherit !important; }
+    body :where(pre, code, kbd, samp, tt), body :where(pre, code, kbd, samp, tt) * { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace !important; }`;
   const readerStyle = document.createElement('style');
   readerStyle.textContent = `
     :root { color-scheme: ${theme === 'dark' ? 'dark' : 'light'}; }
-    html { background: ${palette.background}; color: ${palette.foreground}; font-size: ${fontScale * 100}%; }
-    body { max-width: 48rem; margin: 0 auto; padding: 2.5rem 3rem 5rem; line-height: 1.75; overflow-wrap: anywhere; }
+    html { background: ${palette.background}; color: ${palette.foreground}; font-size: ${Math.round(fontScale * 100)}%; }
+    body { max-width: 48rem; margin: 0 auto; padding: 2.75rem ${paddingInline}rem 5.5rem; overflow-wrap: anywhere; text-rendering: optimizeLegibility; }
+    body, body :where(p, li, blockquote, dd) { line-height: ${lineHeight} !important; }${fontFamilyCss}
     img, svg, video { max-width: 100%; height: auto; }
     table { max-width: 100%; border-collapse: collapse; }
     a { color: ${palette.link}; }
+    ::selection { background: ${palette.highlight}; }
+    mark[data-epub-search] { padding: 0 1px; border-radius: 2px; color: inherit; background: ${palette.highlight}; }
+    mark[data-epub-search][data-current] { background: ${palette.activeHighlight}; }
     @media (max-width: 640px) { body { padding: 1.5rem 1.25rem 4rem; } }
   `;
   document.head.append(readerStyle);
@@ -368,22 +452,44 @@ export async function renderEpubChapter(
   return { srcDoc: `<!doctype html>${document.documentElement.outerHTML}`, objectUrls };
 }
 
-export async function searchEpubBook(book: EpubBookModel, query: string): Promise<Array<{ chapterIndex: number; title: string; excerpt: string }>> {
+const chapterTextCache = new WeakMap<JSZip, Map<string, string>>();
+
+async function cachedChapterText(zip: JSZip, path: string): Promise<string> {
+  let cache = chapterTextCache.get(zip);
+  if (!cache) {
+    cache = new Map();
+    chapterTextCache.set(zip, cache);
+  }
+  const hit = cache.get(path);
+  if (hit !== undefined) return hit;
+  const text = chapterText(await readZipText(zip, path));
+  cache.set(path, text);
+  return text;
+}
+
+export async function searchEpubBook(book: EpubBookModel, query: string): Promise<EpubSearchResult[]> {
   const normalized = query.trim().toLocaleLowerCase();
   if (!normalized) return [];
-  const results: Array<{ chapterIndex: number; title: string; excerpt: string }> = [];
+  const results: EpubSearchResult[] = [];
   for (const [chapterIndex, chapter] of book.chapters.entries()) {
-    const text = chapterText(await readZipText(book.zip, chapter.path));
+    if (results.length >= EPUB_SEARCH_RESULT_LIMIT) break;
+    const text = await cachedChapterText(book.zip, chapter.path);
     const lower = text.toLocaleLowerCase();
+    // Locale lowercasing can change string length; when it does, slice excerpts
+    // from the lowercased text so offsets always stay valid.
+    const source = lower.length === text.length ? text : lower;
+    let matchIndex = 0;
     let offset = lower.indexOf(normalized);
-    while (offset >= 0 && results.length < 200) {
+    while (offset >= 0 && results.length < EPUB_SEARCH_RESULT_LIMIT) {
       const start = Math.max(0, offset - 50);
-      const end = Math.min(text.length, offset + normalized.length + 90);
+      const end = Math.min(source.length, offset + normalized.length + 90);
       results.push({
         chapterIndex,
         title: chapter.title,
-        excerpt: `${start > 0 ? '...' : ''}${text.slice(start, end)}${end < text.length ? '...' : ''}`,
+        excerpt: `${start > 0 ? '...' : ''}${source.slice(start, end)}${end < source.length ? '...' : ''}`,
+        matchIndex,
       });
+      matchIndex += 1;
       offset = lower.indexOf(normalized, offset + Math.max(1, normalized.length));
     }
   }

@@ -54,11 +54,31 @@
 @keyframes crepe-lightbox-img-in {
   from {
     opacity: 0;
-    transform: scale(0.98);
+    transform: scale(0.96);
   }
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@keyframes crepe-lightbox-backdrop-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes crepe-lightbox-img-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
   }
 }
 
@@ -75,12 +95,28 @@
 .crepe-image-lightbox__backdrop {
   position: absolute;
   inset: 0;
-  /* 刻意硬编码：主题无关全屏遮罩 */
+  /* 刻意硬编码：主题无关全屏影院黑遮罩 */
   background: rgba(0, 0, 0, 0.8);
   cursor: zoom-out;
-  animation: crepe-lightbox-backdrop-in
-    var(--notes-popup-enter-duration, 150ms)
-    var(--notes-popup-enter-easing, cubic-bezier(0.16, 1, 0.3, 1));
+  animation: crepe-lightbox-backdrop-in 200ms
+    var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+/* 退场：opacity + scale，200ms（DOM 在 animationend 后移除） */
+.crepe-image-lightbox--closing {
+  pointer-events: none;
+}
+
+.crepe-image-lightbox--closing .crepe-image-lightbox__backdrop {
+  animation: crepe-lightbox-backdrop-out 200ms
+    var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.crepe-image-lightbox--closing .crepe-image-lightbox__img,
+.crepe-image-lightbox--closing .crepe-image-lightbox__toolbar,
+.crepe-image-lightbox--closing .crepe-image-lightbox__counter {
+  animation: crepe-lightbox-img-out 200ms
+    var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
 }
 
 .crepe-image-lightbox__toolbar {
@@ -98,7 +134,7 @@
   border: 1px solid rgba(255, 255, 255, 0.28);
   background: rgba(20, 20, 20, 0.55);
   color: #f5f5f5;
-  border-radius: 8px;
+  border-radius: var(--notes-radius-control, 8px);
   padding: 8px 12px;
   font-size: 13px;
   line-height: 1.2;
@@ -135,9 +171,55 @@
   display: block;
   user-select: none;
   -webkit-user-drag: none;
-  animation: crepe-lightbox-img-in
-    var(--notes-popup-enter-duration, 150ms)
-    var(--notes-popup-enter-easing, cubic-bezier(0.16, 1, 0.3, 1));
+  animation: crepe-lightbox-img-in 200ms
+    var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+/* ---- 加载态 ---- */
+@keyframes crepe-lightbox-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.crepe-image-lightbox__spinner {
+  display: none;
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  /* 刻意硬编码：影院黑遮罩上的浅色 spinner */
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  animation: crepe-lightbox-spin 0.8s linear infinite;
+  pointer-events: none;
+}
+
+.crepe-image-lightbox[data-loading='true'] .crepe-image-lightbox__spinner {
+  display: block;
+}
+
+/* visibility 不受入场动画 fill-mode 干扰 */
+.crepe-image-lightbox[data-loading='true'] .crepe-image-lightbox__img {
+  visibility: hidden;
+}
+
+/* ---- 多图计数（← → 切换时显示） ---- */
+.crepe-image-lightbox__counter {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  padding: 4px 10px;
+  /* 刻意硬编码：影院黑遮罩上的浅色计数 */
+  background: rgba(20, 20, 20, 0.55);
+  color: #f5f5f5;
+  border-radius: var(--notes-radius-control, 8px);
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
 }
 
 .crepe-image-lightbox__img--contain {
@@ -157,7 +239,11 @@
 
 @media (prefers-reduced-motion: reduce) {
   .crepe-image-lightbox__backdrop,
-  .crepe-image-lightbox__img {
+  .crepe-image-lightbox__img,
+  .crepe-image-lightbox--closing .crepe-image-lightbox__backdrop,
+  .crepe-image-lightbox--closing .crepe-image-lightbox__img,
+  .crepe-image-lightbox--closing .crepe-image-lightbox__toolbar,
+  .crepe-image-lightbox--closing .crepe-image-lightbox__counter {
     animation: none;
   }
 

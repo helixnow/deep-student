@@ -4,7 +4,7 @@
 
 import type { EditorView } from '@milkdown/prose/view';
 
-import { parseNoteHref } from './protocol';
+import { parseNoteHref, parseNoteHrefHeading } from './protocol';
 import { dispatchOpenMentionNote } from './types';
 
 /**
@@ -22,11 +22,13 @@ export function handleMentionLinkClick(
   if (!(anchor instanceof HTMLAnchorElement)) return false;
   if (!view.dom.contains(anchor)) return false;
 
-  const noteId = parseNoteHref(anchor.getAttribute('href'));
+  const href = anchor.getAttribute('href');
+  const noteId = parseNoteHref(href);
   if (!noteId) return false;
 
   event.preventDefault();
   event.stopPropagation();
-  dispatchOpenMentionNote(noteId);
+  // note://id#heading 的 hash 段透传为 heading，供 heading 跳转桥消费
+  dispatchOpenMentionNote(noteId, parseNoteHrefHeading(href) ?? undefined);
   return true;
 }

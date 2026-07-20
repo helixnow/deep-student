@@ -1,5 +1,11 @@
 /**
  * 输入 [[ 触发笔记标题补全浮层（共享 suggestOverlay 定位）
+ *
+ * 对齐 Obsidian 的补全语法：
+ * - `[[query`            → 笔记标题补全（按 匹配档位 → 最近编辑 → 标题 排序）
+ * - `[[target|label`     → 别名编辑：仍按 target 匹配，选中后写入 label
+ * - `[[target#heading`   → 标题补全：target 可解析时异步读取该笔记的标题列表
+ * 候选行展示所在文件夹路径；同名笔记附 ID 尾缀消歧。
  */
 
 import i18next from 'i18next';
@@ -9,17 +15,38 @@ import { $prose } from '@milkdown/utils';
 
 import {
   anchorRectFromView,
+  appendHighlightedText,
   createSuggestOverlay,
 } from '../shared/suggestOverlay';
+import { shouldSkipWikilinkContext } from './codeContext';
 import { fuzzyMatchNotes } from './fuzzy';
+import { loadNoteHeadings } from './noteContent';
 import { WIKILINK_NODE_NAME } from './schema';
-import type { WikilinkNoteCandidate, WikilinkPluginConfig } from './types';
+import {
+  normalizeResolve,
+  type WikilinkNoteCandidate,
+  type WikilinkPluginConfig,
+} from './types';
 
 export const wikilinkAutocompleteKey = new PluginKey('crepeWikilinkAutocomplete');
 
-type MenuItem =
-  | { kind: 'note'; note: WikilinkNoteCandidate }
-  | { kind: 'create'; title: string };
+/** 选中候选后写入 atom 的目标 / 别名 */
+export interface WikilinkInsertSpec {
+  target: string;
+  label: string;
+}
+
+export type WikilinkMenuItem =
+  | {
+    kind: 'note';
+    note: WikilinkNoteCandidate;
+    insert: WikilinkInsertSpec;
+    meta?: string;
+    /** 触发高亮的查询子串（target 段） */
+    query?: string;
+  }
+  | { kind: 'heading'; heading: string; insert: WikilinkInsertSpec; meta?: string; query?: string }
+  | { kind: 'create'; title: string; insert: WikilinkInsertSpec };
 
 interface ActiveTrigger {
   from: number;
@@ -40,22 +67,72 @@ export function detectWikilinkTrigger(
   return { triggerStartInText: open, query: after };
 }
 
+export interface WikilinkQueryParts {
+  /** `#` 与 `|` 之前的目标文本（未 trim，匹配时再 trim） */
+  target: string;
+  /** `#` 之后、`|` 之前的标题查询；未输入 `#` 时为 null */
+  heading: string | null;
+  /** 第一个 `|` 之后的别名文本；未输入 `|` 时为 null */
+  label: string | null;
+}
+
+/** 与 format.ts 的 `target#heading|label` 语义一致地切分补全查询。 */
+export function parseWikilinkQuery(query: string): WikilinkQueryParts {
+  const pipe = query.indexOf('|');
+  const beforePipe = pipe === -1 ? query : query.slice(0, pipe);
+  const label = pipe === -1 ? null : query.slice(pipe + 1);
+  const hash = beforePipe.indexOf('#');
+  const target = hash === -1 ? beforePipe : beforePipe.slice(0, hash);
+  const heading = hash === -1 ? null : beforePipe.slice(hash + 1);
+  return { target, heading, label };
+}
+
 const CLASS = 'crepe-wikilink-suggest';
 
+/** '/folder/sub/note_1' → '/folder/sub'；根目录或缺失时返回 '' */
+function folderFromPath(path: string | undefined): string {
+  if (!path) return '';
+  const cut = path.lastIndexOf('/');
+  return cut > 0 ? path.slice(0, cut) : '';
+}
+
+function noteMeta(note: WikilinkNoteCandidate, titleIsDuplicated: boolean): string | undefined {
+  const parts: string[] = [];
+  const folder = folderFromPath(note.path);
+  if (folder) parts.push(folder);
+  if (titleIsDuplicated && note.id) parts.push(`…${note.id.slice(-6)}`);
+  return parts.length > 0 ? parts.join(' · ') : undefined;
+}
+
 function createOverlay() {
-  return createSuggestOverlay<MenuItem>({
+  return createSuggestOverlay<WikilinkMenuItem>({
     className: CLASS,
     decorateItem(row, item) {
-      if (item.kind === 'note') {
-        row.textContent = item.note.title;
-        row.dataset.kind = 'note';
-      } else {
+      if (item.kind === 'create') {
         row.classList.add(`${CLASS}__item--create`);
         row.textContent = i18next.t('notes:wikilink.create', {
           defaultValue: '创建 "{{title}}"',
           title: item.title,
         });
         row.dataset.kind = 'create';
+        return;
+      }
+
+      row.dataset.kind = item.kind;
+      const title = document.createElement('span');
+      title.className = `${CLASS}__item-title`;
+      const text = item.kind === 'heading' ? item.heading : item.note.title;
+      if (item.kind === 'heading') {
+        row.classList.add(`${CLASS}__item--heading`);
+      }
+      appendHighlightedText(title, text, item.query ?? '', `${CLASS}__item-match`);
+      row.appendChild(title);
+
+      if (item.meta) {
+        const meta = document.createElement('span');
+        meta.className = `${CLASS}__item-meta`;
+        meta.textContent = item.meta;
+        row.appendChild(meta);
       }
     },
     renderPlaceholder() {
@@ -84,17 +161,98 @@ export function buildAutocompleteItems(
   notes: readonly WikilinkNoteCandidate[],
   query: string,
   maxSuggestions: number,
-): MenuItem[] {
-  const matched = fuzzyMatchNotes(notes, query, maxSuggestions);
-  const items: MenuItem[] = matched.map((note) => ({ kind: 'note', note }));
-  const q = query.trim();
+): WikilinkMenuItem[] {
+  const parts = parseWikilinkQuery(query);
+  // `#` 标题模式需要异步内容，由 buildHeadingAutocompleteItems 处理
+  if (parts.heading !== null) return [];
+
+  const label = (parts.label ?? '').trim();
+  const matched = fuzzyMatchNotes(notes, parts.target, maxSuggestions);
+
+  // 同名判定基于全量数据源而非截断后的 matched，
+  // 否则重名笔记恰好只有一篇进入前 N 条时会误判为唯一而写入 title
+  const titleCounts = new Map<string, number>();
+  for (const note of notes) {
+    if (typeof note?.title !== 'string') continue;
+    const key = note.title.trim().toLocaleLowerCase();
+    titleCounts.set(key, (titleCounts.get(key) ?? 0) + 1);
+  }
+
+  const items: WikilinkMenuItem[] = matched.map((note) => {
+    const duplicated = (titleCounts.get(note.title.trim().toLocaleLowerCase()) ?? 0) > 1;
+    // 同名笔记：title target 消歧后仍歧义，改写稳定的 note id 作 target，
+    // title（或用户别名）作 label 显示，渲染与 markdown 阅读均不受影响
+    const insert: WikilinkInsertSpec = duplicated && note.id
+      ? { target: note.id, label: label || note.title.trim() }
+      : { target: note.title.trim(), label };
+    return {
+      kind: 'note',
+      note,
+      insert,
+      meta: noteMeta(note, duplicated),
+      query: parts.target.trim(),
+    };
+  });
+
+  const q = parts.target.trim();
   if (q) {
     const exact = matched.some((n) => n.title.trim() === q);
     if (!exact) {
-      items.push({ kind: 'create', title: q });
+      items.push({ kind: 'create', title: q, insert: { target: q, label } });
     }
   }
   return items;
+}
+
+/** `[[target#heading` 模式：从目标笔记标题列表构建候选；始终允许插入手输标题。 */
+export function buildHeadingAutocompleteItems(
+  headings: readonly string[],
+  parts: WikilinkQueryParts,
+  maxSuggestions: number,
+): WikilinkMenuItem[] {
+  const target = parts.target.trim();
+  if (!target) return [];
+  const label = (parts.label ?? '').trim();
+  const typed = (parts.heading ?? '').trim();
+  const headingQuery = typed.toLocaleLowerCase();
+
+  const matched = headings
+    .filter((heading) => !headingQuery || heading.toLocaleLowerCase().includes(headingQuery))
+    .slice(0, Math.max(0, maxSuggestions));
+
+  const items: WikilinkMenuItem[] = matched.map((heading) => ({
+    kind: 'heading',
+    heading,
+    insert: { target: `${target}#${heading}`, label },
+    meta: target,
+    query: typed,
+  }));
+
+  if (typed && !matched.includes(typed)) {
+    items.push({
+      kind: 'heading',
+      heading: typed,
+      insert: { target: `${target}#${typed}`, label },
+      meta: target,
+      query: typed,
+    });
+  }
+  return items;
+}
+
+/** '|别名' / '#标题' 模式的浮层底部提示文案；普通模式返回 null。 */
+export function buildModeHint(parts: WikilinkQueryParts): string | null {
+  if (parts.label !== null) {
+    const label = parts.label.trim() || '…';
+    const fallback = `别名模式：插入后显示「${label}」`;
+    return i18next.t('notes:wikilink.aliasHint', { defaultValue: fallback, label }) || fallback;
+  }
+  if (parts.heading !== null) {
+    const target = parts.target.trim();
+    const fallback = `标题模式：链接到「${target}」中的标题`;
+    return i18next.t('notes:wikilink.headingHint', { defaultValue: fallback, target }) || fallback;
+  }
+  return null;
 }
 
 export function insertWikilink(
@@ -113,6 +271,21 @@ export function insertWikilink(
 export function createWikilinkAutocompletePlugin(config: WikilinkPluginConfig = {}) {
   const maxSuggestions = config.maxSuggestions ?? 8;
 
+  const loadItems = async (query: string): Promise<WikilinkMenuItem[]> => {
+    const parts = parseWikilinkQuery(query);
+    if (parts.heading !== null) {
+      const target = parts.target.trim();
+      if (!target) return [];
+      const resolution = normalizeResolve(config.resolve, target);
+      const headings = resolution.resolved && resolution.noteId
+        ? await loadNoteHeadings(resolution.noteId)
+        : [];
+      return buildHeadingAutocompleteItems(headings, parts, maxSuggestions);
+    }
+    const notes = await loadNotes(config.getNotes);
+    return buildAutocompleteItems(notes, query, maxSuggestions);
+  };
+
   return $prose(() => {
     const overlay = createOverlay();
     let active: ActiveTrigger | null = null;
@@ -126,15 +299,11 @@ export function createWikilinkAutocompletePlugin(config: WikilinkPluginConfig = 
       lastSignature = '';
     };
 
-    const applyPick = (view: EditorView, item: MenuItem) => {
+    const applyPick = (view: EditorView, item: WikilinkMenuItem) => {
       if (!active) return;
       const from = active.from;
       const to = view.state.selection.from;
-      if (item.kind === 'note') {
-        insertWikilink(view, from, to, item.note.title, '');
-      } else {
-        insertWikilink(view, from, to, item.title, '');
-      }
+      insertWikilink(view, from, to, item.insert.target, item.insert.label);
       closeAll();
     };
 
@@ -151,6 +320,12 @@ export function createWikilinkAutocompletePlugin(config: WikilinkPluginConfig = 
           const { state } = editorView;
           const { selection } = state;
           if (!(selection instanceof TextSelection) || !selection.empty) {
+            if (overlay.isOpen()) closeAll();
+            return;
+          }
+
+          // 代码块 / 行内 code 中不补全（与解析层跳过一致）
+          if (shouldSkipWikilinkContext(state)) {
             if (overlay.isOpen()) closeAll();
             return;
           }
@@ -175,11 +350,10 @@ export function createWikilinkAutocompletePlugin(config: WikilinkPluginConfig = 
           lastSignature = signature;
 
           const myRequest = ++requestId;
-          void loadNotes(config.getNotes).then((notes) => {
+          void loadItems(query).then((items) => {
             if (myRequest !== requestId) return;
             if (!editorView.dom.isConnected) return;
 
-            const items = buildAutocompleteItems(notes, query, maxSuggestions);
             const rect = anchorRectFromView(editorView, editorView.state.selection.from);
 
             if (overlay.isOpen()) {
@@ -188,6 +362,7 @@ export function createWikilinkAutocompletePlugin(config: WikilinkPluginConfig = 
             } else {
               overlay.open(rect, items, (item) => applyPick(editorView, item));
             }
+            overlay.setHint(buildModeHint(parseWikilinkQuery(query)));
           });
         };
 
@@ -216,11 +391,13 @@ export function createWikilinkAutocompletePlugin(config: WikilinkPluginConfig = 
             return true;
           }
           if (event.key === 'ArrowDown') {
+            if (overlay.getItems().length === 0) return false;
             event.preventDefault();
             overlay.setSelected(overlay.getSelectedIndex() + 1);
             return true;
           }
           if (event.key === 'ArrowUp') {
+            if (overlay.getItems().length === 0) return false;
             event.preventDefault();
             overlay.setSelected(overlay.getSelectedIndex() - 1);
             return true;

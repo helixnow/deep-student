@@ -13,8 +13,11 @@ export const CREATE_FROM_WIKILINK_EVENT = 'notes:create-from-wikilink';
 
 type CreateFromWikilinkDetail = { title: string };
 
-let inflight: Promise<string | null> | null = null;
-let inflightTitle: string | null = null;
+/**
+ * B1：按 trimmed title 建 in-flight 表。此前是单槽 `inflight` / `inflightTitle`，
+ * 标题 A 创建中再创建 B 会互相覆盖 / 在 finally 里误清对方，导致重复 create。
+ */
+const inflightByTitle = new Map<string, Promise<string | null>>();
 
 interface WikilinkCreateContext {
   folderId: string | null;
@@ -39,12 +42,10 @@ export async function createNoteFromWikilinkTitle(title: string): Promise<string
   const trimmed = title.trim();
   if (!trimmed) return null;
 
-  if (inflight && inflightTitle === trimmed) {
-    return inflight;
-  }
+  const existing = inflightByTitle.get(trimmed);
+  if (existing) return existing;
 
-  inflightTitle = trimmed;
-  inflight = (async () => {
+  const inflight: Promise<string | null> = (async () => {
     try {
       const context = activeCreateContext;
       const result = context?.folderId
@@ -63,23 +64,39 @@ export async function createNoteFromWikilinkTitle(title: string): Promise<string
           detail: { noteId, title: trimmed, source: 'wikilink' },
         }),
       );
-      await context?.onCreated?.(noteId, trimmed);
-      window.dispatchEvent(
-        new CustomEvent('DSTU_OPEN_NOTE', {
-          detail: { noteId, source: 'wikilink', target: trimmed },
-        }),
-      );
+
+      // B2：宿主 onCreated（NotesWorkspaceApp.openResource）成功打开后不再派发
+      // DSTU_OPEN_NOTE，否则 WorkbenchEventBridge 会对同一笔记二次导航（双开）。
+      let openedByHost = false;
+      if (context?.onCreated) {
+        try {
+          await context.onCreated(noteId, trimmed);
+          openedByHost = true;
+        } catch (error: unknown) {
+          console.warn('[createNoteFromWikilinkTitle] onCreated failed, falling back to DSTU_OPEN_NOTE:', error);
+        }
+      }
+      if (!openedByHost) {
+        window.dispatchEvent(
+          new CustomEvent('DSTU_OPEN_NOTE', {
+            detail: { noteId, source: 'wikilink', target: trimmed },
+          }),
+        );
+      }
       return noteId;
     } catch (error: unknown) {
       console.error('[createNoteFromWikilinkTitle] failed:', error);
       showGlobalNotification('error', `创建笔记「${trimmed}」失败`);
       return null;
     } finally {
-      inflight = null;
-      inflightTitle = null;
+      // 只清理自己这个槽位，不影响其它标题的 in-flight 创建
+      if (inflightByTitle.get(trimmed) === inflight) {
+        inflightByTitle.delete(trimmed);
+      }
     }
   })();
 
+  inflightByTitle.set(trimmed, inflight);
   return inflight;
 }
 

@@ -72,6 +72,14 @@ export function usePdfFocusListener({
 
       const requestId = ++focusRequestIdRef.current;
       if (customEvent.detail?.acknowledge) {
+        // 防泄漏兜底：未被 handleFocusHandled 消费的旧 ack 只保留有限个。
+        // 静默丢弃是安全的——派发方（pdfFocusAck.requestPdfPageFocus）自带
+        // 1.5s 超时兜底，且 finish 有幂等保护。
+        while (pendingAcksRef.current.size >= 8) {
+          const oldestKey = pendingAcksRef.current.keys().next().value;
+          if (oldestKey === undefined) break;
+          pendingAcksRef.current.delete(oldestKey);
+        }
         pendingAcksRef.current.set(requestId, customEvent.detail.acknowledge);
       }
       setFocusRequest({
@@ -85,8 +93,15 @@ export function usePdfFocusListener({
     document.addEventListener('pdf-ref:focus', handler);
     return () => {
       document.removeEventListener('pdf-ref:focus', handler);
-      for (const acknowledge of pendingAcksRef.current.values()) acknowledge(false);
-      pendingAcksRef.current.clear();
+      // ★ 卸载/依赖变化重订阅时对 pending ack 保持静默（不回 false）：
+      // - 立即回 false 会在视图切换 / StrictMode 重挂载时误报"跳转失败"，
+      //   即使跳转随后被重挂载的实例正常完成；
+      // - 唯一带 acknowledge 的派发方 requestPdfPageFocus（pdfFocusAck.ts）
+      //   自带 1.5s 超时兜底并对 resolve 做了幂等保护，静默等价于
+      //   "让真实结果（或超时）说话"；
+      // - 其余派发方（useChatPageEvents / WorkbenchEventBridge）不传
+      //   acknowledge，无影响。
+      // pendingAcksRef 存于 ref，重订阅后 handleFocusHandled 仍可回 true。
     };
   }, [enabled, nodeId, nodeSourceId, nodePath, nodeName]);
 

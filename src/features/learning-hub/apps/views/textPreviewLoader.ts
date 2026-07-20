@@ -28,38 +28,54 @@ export function needsBackendTextExtraction(fileName: string): boolean {
   return BACKEND_EXTRACTED_EXTENSIONS.has(getExtension(fileName));
 }
 
+/** 文本解码可能使用的编码标签 */
+export type TextPreviewEncoding = 'utf-8' | 'utf-16le' | 'utf-16be' | 'gbk' | 'utf-8 (lossy)';
+
+/** 解码结果 + 实际使用的编码（供状态条等 UI 展示） */
+export interface DecodedTextPreview {
+  text: string;
+  encoding: TextPreviewEncoding;
+}
+
 /**
- * BOM / 内容感知的文本解码。
+ * BOM / 内容感知的文本解码（富返回：携带实际使用的编码）。
  * - UTF-16 LE/BE 通过 BOM 识别
  * - 其余先按严格 UTF-8 解码（TextDecoder 默认剥离 UTF-8 BOM）
  * - 严格解码失败 → 尝试 GBK（中文环境遗留编码最常见），再退化为有损 UTF-8
  */
-export function decodeTextPreviewBytes(bytes: Uint8Array): string {
+export function decodeTextPreviewBytesDetailed(bytes: Uint8Array): DecodedTextPreview {
   if (bytes.length >= 2) {
     if (bytes[0] === 0xff && bytes[1] === 0xfe) {
-      return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+      return { text: new TextDecoder('utf-16le').decode(bytes.subarray(2)), encoding: 'utf-16le' };
     }
     if (bytes[0] === 0xfe && bytes[1] === 0xff) {
-      return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+      return { text: new TextDecoder('utf-16be').decode(bytes.subarray(2)), encoding: 'utf-16be' };
     }
   }
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), encoding: 'utf-8' };
   } catch {
     try {
       // GBK 解码不抛错（非法序列替换为 U+FFFD）；catch 覆盖环境不支持 gbk 标签的情况
-      return new TextDecoder('gbk').decode(bytes);
+      return { text: new TextDecoder('gbk').decode(bytes), encoding: 'gbk' };
     } catch {
-      return new TextDecoder('utf-8').decode(bytes);
+      return { text: new TextDecoder('utf-8').decode(bytes), encoding: 'utf-8 (lossy)' };
     }
   }
 }
 
-function decodeRawBase64(rawBase64: string): string | null {
+/**
+ * BOM / 内容感知的文本解码（保留原签名的兼容包装）。
+ */
+export function decodeTextPreviewBytes(bytes: Uint8Array): string {
+  return decodeTextPreviewBytesDetailed(bytes).text;
+}
+
+function decodeRawBase64(rawBase64: string): DecodedTextPreview | null {
   const bytes = base64ToUint8Array(rawBase64);
   if (!bytes) return null;
   try {
-    return decodeTextPreviewBytes(bytes);
+    return decodeTextPreviewBytesDetailed(bytes);
   } catch (err: unknown) {
     console.error('[textPreviewLoader] Decode failed:', err);
     return null;
@@ -95,8 +111,42 @@ async function resolveTextViaBackend(options: {
   return null;
 }
 
+/** 富加载结果：文本 + 编码（后端提取的文本无原始字节，encoding 为 null） */
+export interface LoadedTextPreview {
+  text: string;
+  /** 实际解码使用的编码；后端提取（epub/xls 等）或原样透传时为 null */
+  encoding: TextPreviewEncoding | null;
+}
+
 /**
- * 加载文本预览内容
+ * 加载文本预览内容（富返回：携带解码编码信息）。
+ * 语义与 loadTextPreviewContent 一致：未找到时返回 null，空文件返回 text 为空字符串。
+ */
+export async function loadTextPreviewContentDetailed(options: {
+  nodeId: string;
+  fileName: string;
+  contentHash?: string;
+  rawBase64?: string | null;
+}): Promise<LoadedTextPreview | null> {
+  const { nodeId, fileName, contentHash, rawBase64 } = options;
+
+  if (needsBackendTextExtraction(fileName)) {
+    const text = await resolveTextViaBackend({ nodeId, fileName, contentHash });
+    return text !== null ? { text, encoding: null } : null;
+  }
+
+  if (rawBase64) {
+    // 解码失败时原样返回：调用方传入的可能已是纯文本而非 base64
+    return decodeRawBase64(rawBase64) ?? { text: rawBase64, encoding: null };
+  }
+
+  // 无本地 base64 时仍尝试后端（兼容仅有 VFS 内容的场景）
+  const text = await resolveTextViaBackend({ nodeId, fileName, contentHash });
+  return text !== null ? { text, encoding: null } : null;
+}
+
+/**
+ * 加载文本预览内容（保留原签名的兼容包装）
  * @param rawBase64 可选：已加载的 base64（纯文本格式直接解码；其他格式忽略）
  * @returns 文本内容（可能为空字符串，表示文件为空）；未找到时返回 null
  */
@@ -106,17 +156,6 @@ export async function loadTextPreviewContent(options: {
   contentHash?: string;
   rawBase64?: string | null;
 }): Promise<string | null> {
-  const { nodeId, fileName, contentHash, rawBase64 } = options;
-
-  if (needsBackendTextExtraction(fileName)) {
-    return resolveTextViaBackend({ nodeId, fileName, contentHash });
-  }
-
-  if (rawBase64) {
-    // 解码失败时原样返回：调用方传入的可能已是纯文本而非 base64
-    return decodeRawBase64(rawBase64) ?? rawBase64;
-  }
-
-  // 无本地 base64 时仍尝试后端（兼容仅有 VFS 内容的场景）
-  return resolveTextViaBackend({ nodeId, fileName, contentHash });
+  const result = await loadTextPreviewContentDetailed(options);
+  return result ? result.text : null;
 }

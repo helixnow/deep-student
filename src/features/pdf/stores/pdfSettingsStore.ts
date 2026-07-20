@@ -7,12 +7,15 @@
 import { create } from 'zustand';
 import { subscribeWithSelector, persist } from 'zustand/middleware';
 
+/** 缩放适配模式：custom = 使用 defaultScale 数值 */
+export type PdfFitMode = 'custom' | 'fitWidth' | 'fitPage' | 'actualSize';
+
 /** PDF 阅读器设置接口 */
 export interface PdfSettings {
   // ========== 渲染性能 ==========
-  /** 最大设备像素比（1.0-3.0，默认 1.5） */
+  /** 最大设备像素比（1.0-3.0，默认 2.0，保证 Retina 清晰度） */
   maxDevicePixelRatio: number;
-  /** 滚动时降级渲染（滚动中使用低 DPR，停止后恢复） */
+  /** 滚动时降级渲染（滚动中使用低 DPR，停止 250ms 后恢复高清重渲；DPR 切换伴随 canvas 重绘，默认关闭） */
   enableScrollDprDowngrade: boolean;
   /** 滚动降级时的 DPR（默认 1.0） */
   scrollDpr: number;
@@ -40,8 +43,10 @@ export interface PdfSettings {
   thumbnailOverscan: number;
 
   // ========== 默认视图 ==========
-  /** 默认缩放比例（0.5-3.0） */
+  /** 默认缩放比例（0.5-3.0，仅 defaultFitMode 为 custom 时生效） */
   defaultScale: number;
+  /** 默认缩放适配模式（custom 时使用 defaultScale 数值） */
+  defaultFitMode: PdfFitMode;
   /** 默认视图模式 */
   defaultViewMode: 'single' | 'dual';
 }
@@ -49,14 +54,14 @@ export interface PdfSettings {
 /** 默认设置 */
 export const DEFAULT_PDF_SETTINGS: PdfSettings = {
   // 渲染性能
-  maxDevicePixelRatio: 1.5,
-  enableScrollDprDowngrade: true,
+  maxDevicePixelRatio: 2.0, // Retina 清晰度；虚拟化下仅渲染可见页，开销可控
+  enableScrollDprDowngrade: false, // DPR 切换会导致 canvas 重渲染闪烁，作为可选优化默认关闭
   scrollDpr: 1.0,
   virtualizerOverscan: 2,
 
   // 文本层
-  enableTextLayerByDefault: false, // 默认关闭以提升性能
-  textLayerRange: 1,
+  enableTextLayerByDefault: true, // 默认可选择/复制文本（虚拟化下仅可见页渲染文本层）
+  textLayerRange: 2,
 
   // 批注层
   enableAnnotationLayerByDefault: false, // 默认关闭
@@ -69,6 +74,7 @@ export const DEFAULT_PDF_SETTINGS: PdfSettings = {
 
   // 默认视图
   defaultScale: 1.0,
+  defaultFitMode: 'custom',
   defaultViewMode: 'single',
 };
 
@@ -88,6 +94,16 @@ const PDF_SETTING_CONSTRAINTS: Record<string, [number, number]> = {
 interface PdfSettingsStore {
   settings: PdfSettings;
 
+  /**
+   * 批注模式运行时开关（不持久化）：
+   * - null：跟随 settings.enableTextLayerByDefault；
+   * - true/false：本次会话内覆盖默认值（移动端进入批注模式时临时开启文本层）。
+   */
+  annotationMode: boolean | null;
+
+  /** 设置批注模式运行时开关（null 表示恢复跟随默认设置） */
+  setAnnotationMode: (value: boolean | null) => void;
+
   /** 更新单个设置 */
   updateSetting: <K extends keyof PdfSettings>(key: K, value: PdfSettings[K]) => void;
 
@@ -106,6 +122,12 @@ export const usePdfSettingsStore = create<PdfSettingsStore>()(
     persist(
       (set, get) => ({
         settings: { ...DEFAULT_PDF_SETTINGS },
+
+        annotationMode: null,
+
+        setAnnotationMode: (value) => {
+          set({ annotationMode: value });
+        },
 
         updateSetting: (key, value) => {
           let validated = value;
@@ -152,8 +174,29 @@ export const usePdfSettingsStore = create<PdfSettingsStore>()(
       }),
       {
         name: 'pdf-settings',
-        version: 1,
+        version: 2,
         partialize: (state) => ({ settings: state.settings }),
+        // v1 → v2：把仍处于旧默认值的字段升级为新默认值（视为用户未主动修改过），
+        // 并补齐新字段。显式改过的自定义值保持不动。
+        // 注意：persist 的 merge 阶段会用 DEFAULT_PDF_SETTINGS 浅合并补齐缺失字段。
+        migrate: (persisted: unknown, version: number): { settings: PdfSettings } => {
+          const state = persisted as { settings?: Partial<PdfSettings> } | undefined;
+          if (!state?.settings) {
+            return { settings: { ...DEFAULT_PDF_SETTINGS } };
+          }
+          if (version < 2) {
+            const s = state.settings as Record<string, unknown>;
+            const upgradeDefault = (key: string, oldDefault: unknown, newDefault: unknown) => {
+              if (s[key] === oldDefault) s[key] = newDefault;
+            };
+            upgradeDefault('maxDevicePixelRatio', 1.5, 2.0);
+            upgradeDefault('enableTextLayerByDefault', false, true);
+            upgradeDefault('textLayerRange', 1, 2);
+            upgradeDefault('enableScrollDprDowngrade', true, false);
+            if (s.defaultFitMode === undefined) s.defaultFitMode = 'custom';
+          }
+          return { settings: { ...DEFAULT_PDF_SETTINGS, ...state.settings } };
+        },
       }
     )
   )

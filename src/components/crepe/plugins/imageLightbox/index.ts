@@ -14,15 +14,20 @@ import { Plugin, PluginKey } from '@milkdown/prose/state';
 import { $prose } from '@milkdown/utils';
 
 import './imageLightbox.css';
+import { collectLightboxGallery } from './collectGallery';
 import { closeImageLightbox, openImageLightbox } from './lightboxDom';
 import { resolveLightboxImageTarget } from './resolveImageTarget';
 
 export {
+  clampGalleryIndex,
   closeImageLightbox,
   openImageLightbox,
   nextLightboxFitMode,
   shouldCloseLightboxFromClick,
+  type LightboxGalleryItem,
+  type OpenImageLightboxOptions,
 } from './lightboxDom';
+export { collectLightboxGallery } from './collectGallery';
 export { resolveLightboxImageTarget } from './resolveImageTarget';
 export { isNonEmptyHref } from './nonEmptyHref';
 
@@ -43,7 +48,12 @@ export function imageLightboxPlugin() {
 
             event.preventDefault();
             event.stopPropagation();
-            openImageLightbox(src, img.getAttribute('alt') || '');
+
+            const { gallery, startIndex } = collectLightboxGallery(view.dom, img);
+            openImageLightbox(src, img.getAttribute('alt') || '', {
+              gallery,
+              startIndex,
+            });
             return true;
           },
         },

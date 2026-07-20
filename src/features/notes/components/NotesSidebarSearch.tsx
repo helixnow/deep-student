@@ -14,11 +14,21 @@ import { NotesAPI } from "../../../utils/notesApi";
 import { useDebounce } from "../../../hooks/useDebounce";
 import { showGlobalNotification } from "@/components/UnifiedNotification";
 
-export const NotesSidebarSearch: React.FC = () => {
+export interface NotesSidebarSearchProps {
+    /** ↑/↓ 在搜索结果列表中移动高亮项（-1 向上 / 1 向下） */
+    onResultNavigate?: (delta: 1 | -1) => void;
+    /** Enter 打开当前高亮的搜索结果 */
+    onResultSubmit?: () => void;
+}
+
+export const NotesSidebarSearch: React.FC<NotesSidebarSearchProps> = ({
+    onResultNavigate,
+    onResultSubmit,
+}) => {
     const { t } = useTranslation(['notes', 'common']);
     const { performSearch, setSearchQuery, searchQuery } = useNotes();
     const [localTerm, setLocalTerm] = useState(searchQuery);
-    const debouncedTerm = useDebounce(localTerm, 500);
+    const debouncedTerm = useDebounce(localTerm, 250);
     const inputRef = useRef<HTMLInputElement>(null);
     const [highlight, setHighlight] = useState(false);
     const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -99,8 +109,23 @@ export const NotesSidebarSearch: React.FC = () => {
         };
     }, []);
 
+    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (!localTerm.trim()) return;
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            onResultNavigate?.(1);
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            onResultNavigate?.(-1);
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+            onResultSubmit?.();
+        }
+    }, [localTerm, onResultNavigate, onResultSubmit]);
+
     return (
-        <div className="space-y-2">
+        // notes-sidebar-search：命令面板 NOTES_FOCUS_SEARCH 依赖此 class 定位输入框，勿删
+        <div className="notes-sidebar-search space-y-2">
             {/* 搜索输入框 */}
             <div className="relative px-0 group">
                 <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />
@@ -112,6 +137,7 @@ export const NotesSidebarSearch: React.FC = () => {
                     placeholder={t('notes:sidebar.search.search_placeholder')}
                     value={localTerm}
                     onChange={(e) => setLocalTerm(e.target.value)}
+                    onKeyDown={handleKeyDown}
                 />
                 <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
                     {/* 标签过滤器按钮 */}

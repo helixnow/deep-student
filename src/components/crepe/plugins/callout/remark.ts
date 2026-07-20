@@ -27,6 +27,7 @@ export function promoteBlockquoteToCallout(node: MarkdownNode): boolean {
   node.type = 'callout';
   node.calloutType = marker.type;
   node.calloutTitle = marker.title;
+  node.calloutCollapsed = marker.collapsed;
   node.children = rest.length > 0 ? rest : [{ type: 'paragraph', children: [] }];
   return true;
 }

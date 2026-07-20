@@ -7,6 +7,8 @@ interface UseSlashMenuCustomScrollbarOptions {
 
 const HIDE_DELAY_MS = 700;
 const MIN_THUMB_SIZE = 36;
+const WHEEL_SMOOTH_FACTOR = 0.32; // 每帧向目标推进的比例（指数趋近）
+const WHEEL_SETTLE_EPSILON = 0.5;
 
 export function useSlashMenuCustomScrollbar({
   wrapperRef,
@@ -17,6 +19,10 @@ export function useSlashMenuCustomScrollbar({
 
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
+
+    const reducedMotionQuery = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)')
+      : null;
 
     const cleanupMap = new Map<HTMLElement, () => void>();
 
@@ -53,6 +59,8 @@ export function useSlashMenuCustomScrollbar({
       let dragStartY = 0;
       let dragStartScrollTop = 0;
       let pointerId: number | null = null;
+      let wheelTarget: number | null = null;
+      let wheelFrame: number | null = null;
 
       const clearHideTimer = () => {
         if (hideTimer === null) return;
@@ -61,6 +69,64 @@ export function useSlashMenuCustomScrollbar({
       };
 
       const hasOverflow = () => menuGroups.scrollHeight > menuGroups.clientHeight + 1;
+
+      // 样式表给 menu-groups 设了 scroll-behavior:smooth，直接赋值 scrollTop
+      // 会触发浏览器自身的平滑动画，与逐帧驱动叠加产生迟滞；程序化滚动
+      // 期间临时切到 auto，结束后恢复。
+      const suppressNativeSmooth = () => {
+        menuGroups.style.scrollBehavior = 'auto';
+      };
+
+      const restoreNativeSmooth = () => {
+        if (!isDragging && wheelFrame === null) {
+          menuGroups.style.scrollBehavior = '';
+        }
+      };
+
+      const stopWheelAnimation = () => {
+        if (wheelFrame !== null) {
+          cancelAnimationFrame(wheelFrame);
+          wheelFrame = null;
+        }
+        wheelTarget = null;
+        restoreNativeSmooth();
+      };
+
+      const wheelTick = () => {
+        wheelFrame = null;
+        if (wheelTarget === null) {
+          restoreNativeSmooth();
+          return;
+        }
+        const current = menuGroups.scrollTop;
+        const delta = wheelTarget - current;
+        if (Math.abs(delta) <= WHEEL_SETTLE_EPSILON) {
+          menuGroups.scrollTop = wheelTarget;
+          wheelTarget = null;
+          restoreNativeSmooth();
+          return;
+        }
+        menuGroups.scrollTop = current + delta * WHEEL_SMOOTH_FACTOR;
+        wheelFrame = requestAnimationFrame(wheelTick);
+      };
+
+      const handleWheel = (event: WheelEvent) => {
+        if (!hasOverflow()) return;
+        if (isDragging) return;
+        // 减动效偏好或非像素滚动（行/页模式）交给原生处理
+        if (reducedMotionQuery?.matches) return;
+        if (event.deltaMode !== 0) return;
+        if (event.ctrlKey) return;
+
+        event.preventDefault();
+        const maxScrollTop = menuGroups.scrollHeight - menuGroups.clientHeight;
+        const base = wheelTarget ?? menuGroups.scrollTop;
+        wheelTarget = Math.max(0, Math.min(base + event.deltaY, maxScrollTop));
+        suppressNativeSmooth();
+        if (wheelFrame === null) {
+          wheelFrame = requestAnimationFrame(wheelTick);
+        }
+      };
 
       const updateTrackLayout = () => {
         const top = menuGroups.offsetTop;
@@ -128,17 +194,20 @@ export function useSlashMenuCustomScrollbar({
         }
         isDragging = false;
         pointerId = null;
+        restoreNativeSmooth();
         scheduleHide();
       };
 
       const handleThumbPointerDown = (event: PointerEvent) => {
         event.preventDefault();
         event.stopPropagation();
+        stopWheelAnimation();
         isDragging = true;
         pointerId = event.pointerId;
         dragStartY = event.clientY;
         dragStartScrollTop = menuGroups.scrollTop;
         clearHideTimer();
+        suppressNativeSmooth();
         track.dataset.visible = 'true';
         thumb.setPointerCapture(pointerId);
       };
@@ -152,6 +221,7 @@ export function useSlashMenuCustomScrollbar({
       resizeObserver.observe(menuRoot);
 
       menuGroups.addEventListener('scroll', handleScroll, { passive: true });
+      menuGroups.addEventListener('wheel', handleWheel, { passive: false });
       menuGroups.addEventListener('pointerenter', showTrack);
       menuGroups.addEventListener('pointerleave', scheduleHide);
       thumb.addEventListener('pointermove', handlePointerMove);
@@ -165,8 +235,11 @@ export function useSlashMenuCustomScrollbar({
       const cleanup = () => {
         clearHideTimer();
         stopDragging();
+        stopWheelAnimation();
+        menuGroups.style.scrollBehavior = '';
         resizeObserver.disconnect();
         menuGroups.removeEventListener('scroll', handleScroll);
+        menuGroups.removeEventListener('wheel', handleWheel);
         menuGroups.removeEventListener('pointerenter', showTrack);
         menuGroups.removeEventListener('pointerleave', scheduleHide);
         thumb.removeEventListener('pointermove', handlePointerMove);

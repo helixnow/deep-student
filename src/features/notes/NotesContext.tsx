@@ -344,6 +344,11 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [searchError, setSearchError] = useState<string | null>(null);
     const searchReqSeqRef = useRef(0);
 
+    // 标签页偏好是否已从磁盘加载完成（加载前禁止回写，避免初次 [] 覆盖磁盘偏好）
+    const tabsPrefLoadedRef = useRef(false);
+    // ensureNoteContent 并发去重：同一 noteId 的 in-flight 加载 Promise
+    const inflightContentRef = useRef<Map<string, Promise<void>>>(new Map());
+
     // Sidebar Control
     const [sidebarRevealId, setSidebarRevealId] = useState<string | null>(null);
 
@@ -473,7 +478,11 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     const note = (items || []).find(n => n.id === act) || null;
                     if (note) setActive(note);
                 }
-            } catch {}
+            } catch {
+            } finally {
+                // 无论读取成功与否，磁盘偏好加载流程已结束，允许后续回写
+                tabsPrefLoadedRef.current = true;
+            }
         } else {
             reportError(result.error, t('notes:errors.load_notes_list'));
             console.error("[notes] load notes failed", result.error.toUserMessage());
@@ -490,42 +499,55 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const ensureNoteContent = useCallback(async (noteId: string) => {
         if (loadedContentIds.has(noteId)) return;
 
-        console.log('[NotesContext] Using DSTU API to get note content:', noteId);
-        const dstuPath = `/${noteId}`;
-        const contentResult = await dstu.getContent(dstuPath);
-        const nodeResult = await dstu.get(dstuPath);
+        // 竞态防护：同一 noteId 的并发加载复用同一个 in-flight Promise，避免双写
+        const inflight = inflightContentRef.current.get(noteId);
+        if (inflight) return inflight;
 
-        if (contentResult.ok && nodeResult.ok) {
-            // 合并节点信息和内容
-            const full: NoteItem = {
-                ...dstuNodeToNoteItem(nodeResult.value),
-                content_md: typeof contentResult.value === 'string' ? contentResult.value : '',
-            };
+        const load = (async () => {
+            console.log('[NotesContext] Using DSTU API to get note content:', noteId);
+            const dstuPath = `/${noteId}`;
+            const contentResult = await dstu.getContent(dstuPath);
+            const nodeResult = await dstu.get(dstuPath);
 
-            setNotes(prev => {
-                const exists = prev.some(n => n.id === noteId);
-                if (exists) {
-                    return prev.map(n => n.id === noteId ? full : n);
+            if (contentResult.ok && nodeResult.ok) {
+                // 合并节点信息和内容
+                const full: NoteItem = {
+                    ...dstuNodeToNoteItem(nodeResult.value),
+                    content_md: typeof contentResult.value === 'string' ? contentResult.value : '',
+                };
+
+                setNotes(prev => {
+                    const exists = prev.some(n => n.id === noteId);
+                    if (exists) {
+                        return prev.map(n => n.id === noteId ? full : n);
+                    }
+                    return [...prev, full];
+                });
+                setLoadedContentIds(prev => {
+                    const next = new Set(prev);
+                    next.add(noteId);
+                    return next;
+                });
+                if (active?.id === noteId) {
+                    setActive(full);
                 }
-                return [...prev, full];
-            });
-            setLoadedContentIds(prev => {
-                const next = new Set(prev);
-                next.add(noteId);
-                return next;
-            });
-            if (active?.id === noteId) {
-                setActive(full);
+            } else {
+                const error = !contentResult.ok ? contentResult.error : nodeResult.error;
+                reportError(error, t('notes:errors.load_note_content'));
+                console.error("[notes] load note content failed", error.toUserMessage());
+                notify({
+                    title: t('notes:notifications.loadFailed'),
+                    description: error.toUserMessage(),
+                    variant: "destructive",
+                });
             }
-        } else {
-            const error = !contentResult.ok ? contentResult.error : nodeResult.error;
-            reportError(error, t('notes:errors.load_note_content'));
-            console.error("[notes] load note content failed", error.toUserMessage());
-            notify({
-                title: t('notes:notifications.loadFailed'),
-                description: error.toUserMessage(),
-                variant: "destructive",
-            });
+        })();
+
+        inflightContentRef.current.set(noteId, load);
+        try {
+            await load;
+        } finally {
+            inflightContentRef.current.delete(noteId);
         }
     }, [active?.id, loadedContentIds, notify, t]);
 
@@ -677,13 +699,15 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const closeTab = useCallback((noteId: string) => {
         setOpenTabs(prev => {
+            const closedIndex = prev.indexOf(noteId);
+            if (closedIndex === -1) return prev;
             const newTabs = prev.filter(id => id !== noteId);
             if (activeTabId === noteId) {
-                // If closing active tab, activate the last one or null
-                const lastTab = newTabs.length > 0 ? newTabs[newTabs.length - 1] : null;
-                setActiveTabId(lastTab);
-                if (lastTab) {
-                    const note = notes.find(n => n.id === lastTab);
+                // 关闭激活标签时，优先激活右侧邻近标签，否则左侧（对齐 Chrome/Obsidian 习惯）
+                const neighborTab = newTabs[closedIndex] ?? newTabs[closedIndex - 1] ?? null;
+                setActiveTabId(neighborTab);
+                if (neighborTab) {
+                    const note = notes.find(n => n.id === neighborTab);
                     if (note) setActive(note);
                     else setActive(null);
                 } else {
@@ -1340,6 +1364,8 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, [active, openTabs, activeTabId, openTab]);
 
     useEffect(() => {
+        // 竞态防护：磁盘偏好尚未加载完成时不回写，避免初始空 openTabs 覆盖用户偏好
+        if (!tabsPrefLoadedRef.current) return;
         const payload = JSON.stringify({ openTabs, activeId: activeTabId });
         void invoke<boolean>('notes_set_pref', { key: 'notes_tabs', value: payload });
     }, [openTabs, activeTabId]);

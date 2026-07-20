@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNotesOptional } from '../NotesContext';
-import { getPathToNote } from '../notesUtils';
-import { CaretRight, Folder, FileText } from '@phosphor-icons/react';
+import { getPathToNote, estimateReadingMinutes, type NoteContentStats } from '../notesUtils';
+import { CaretRight, Check, Folder, FileText, WarningCircle, Tag as TagIcon, X, Plus } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { Input } from '@/components/ui/shad/Input';
 import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import './NotesEditorHeader.css';
 
 export type NotesSaveStatus = 'saved' | 'saving' | 'unsaved' | 'failed' | 'conflict';
 
@@ -19,6 +20,11 @@ interface NotesEditorHeaderProps {
     onRetrySave?: () => void | Promise<void>;
     /** 字数统计（非空白字符数） */
     charCount?: number;
+    /**
+     * 完整文档统计（字数/词数/阅读时间，用 notesUtils.computeNoteStats 生成）。
+     * 未提供时回退到 charCount：仅展示字数并按 300 字/分估算阅读时间。
+     */
+    stats?: NoteContentStats;
     // ========== DSTU 模式 Props ==========
     /** DSTU 模式：初始标题 */
     initialTitle?: string;
@@ -28,6 +34,13 @@ interface NotesEditorHeaderProps {
     noteId?: string;
     /** 是否只读 */
     readOnly?: boolean;
+    /**
+     * P1-10：标题下方内联标签行。
+     * DSTU 模式由宿主传入（NoteContentView）；Context 模式缺省时回退 active.tags。
+     */
+    tags?: string[];
+    /** 标签变更回调（DSTU 模式必传才可编辑；Context 模式回退 updateNoteTags） */
+    onTagsChange?: (tags: string[]) => Promise<void> | void;
 }
 
 export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({ 
@@ -36,12 +49,16 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     saveStatus: saveStatusProp,
     onRetrySave,
     charCount,
+    stats,
     initialTitle,
     onTitleChange: dstuOnTitleChange,
     noteId: dstuNoteId,
     readOnly = false,
+    tags: tagsProp,
+    onTagsChange,
 }) => {
-    const { t } = useTranslation(['notes', 'common']);
+    const { t, i18n } = useTranslation(['notes', 'common']);
+    const isZh = (i18n.language || '').startsWith('zh');
     
     // ========== 模式判断 ==========
     const isDstuMode = initialTitle !== undefined;
@@ -54,12 +71,15 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     const notes = notesContext?.notes ?? [];
     const activateTab = notesContext?.activateTab;
     const setSidebarRevealId = notesContext?.setSidebarRevealId;
+    const updateNoteTags = notesContext?.updateNoteTags;
     
     // Local state for input value to allow typing before commit
     const [titleInput, setTitleInput] = useState("");
     const [isEditing, setIsEditing] = useState(false);
     // Track pending title to prevent useEffect from reverting to old value
     const pendingTitleRef = useRef<string | null>(null);
+    // Esc 还原时跳过随后 blur 触发的提交
+    const escapeRevertRef = useRef(false);
 
     // ========== 根据模式选择数据源 ==========
     const noteId = isDstuMode ? dstuNoteId : contextActive?.id;
@@ -90,6 +110,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     // Only show breadcrumbs if not in root (length > 1 means it has parents)
     const showBreadcrumbs = breadcrumbs.length > 1;
 
+    // isSaving 仅在此处做 deprecated 兼容映射，组件内部一律消费 saveStatus
     const saveStatus: NotesSaveStatus =
         saveStatusProp ??
         (isSaving ? 'saving' : 'saved');
@@ -133,6 +154,11 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
 
     const handleTitleSubmit = async () => {
         if (readOnly) return;
+        if (escapeRevertRef.current) {
+            // Esc 还原：不提交，状态已在 keydown 中回滚
+            escapeRevertRef.current = false;
+            return;
+        }
         setIsEditing(false);
         if (!noteId) return;
 
@@ -179,6 +205,14 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
             e.currentTarget.blur(); // Triggers onBlur -> handleTitleSubmit
+        } else if (e.key === 'Escape') {
+            // Esc 还原为已保存标题并退出编辑（blur 提交由 escapeRevertRef 短路）
+            e.preventDefault();
+            escapeRevertRef.current = true;
+            pendingTitleRef.current = null;
+            setTitleInput(displayTitle);
+            setIsEditing(false);
+            e.currentTarget.blur();
         }
     };
 
@@ -238,12 +272,107 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         }
     })();
 
+    // 状态点颜色（.notes-save-status-dot 用 currentcolor 填充，这里按五态给 token 色）
+    const statusDotClassName = (() => {
+        switch (saveStatus) {
+            case 'saved':
+                return 'text-[hsl(var(--success))]';
+            case 'saving':
+                return 'text-[hsl(var(--info))]';
+            case 'unsaved':
+                return 'text-[hsl(var(--warning))]';
+            case 'failed':
+            case 'conflict':
+            default:
+                return 'text-destructive';
+        }
+    })();
+
     // 仅 transient 失败提供重试。冲突时外部版本通常已胜出，盲目 flush 会再次撞锁；
     // 恢复入口在 NoteContentView 的冲突通知「恢复我的版本」。
     const showRetry =
         !readOnly &&
         !!onRetrySave &&
         saveStatus === 'failed';
+
+    // ========== 文档统计（字数 / 词数 / 阅读时间） ==========
+    // stats 未接线时回退 charCount：词数未知，阅读时间按字符数近似（同 300/分口径）。
+    const displayCharCount = stats?.charCount ?? charCount;
+    const readingMinutes = stats
+        ? stats.readingMinutes
+        : estimateReadingMinutes(charCount ?? 0);
+    const showStats = typeof displayCharCount === 'number' && displayCharCount > 0;
+    const statsRows: Array<{ key: string; label: string; value: string }> = showStats
+        ? [
+            {
+                key: 'chars',
+                label: t('notes:editor.stats.chars_label', { defaultValue: isZh ? '字数' : 'Characters' }),
+                value: String(displayCharCount),
+            },
+            ...(stats
+                ? [{
+                    key: 'words',
+                    label: t('notes:editor.stats.words_label', { defaultValue: isZh ? '词数' : 'Words' }),
+                    value: String(stats.wordCount),
+                }]
+                : []),
+            {
+                key: 'reading',
+                label: t('notes:editor.stats.reading_label', { defaultValue: isZh ? '阅读时间' : 'Reading time' }),
+                value: t('notes:editor.stats.reading_value', {
+                    defaultValue: isZh ? '约 {{minutes}} 分钟' : '~{{minutes}} min',
+                    minutes: readingMinutes,
+                }),
+            },
+        ]
+        : [];
+
+    // ========== P1-10：内联标签行（chips + 内联展开输入，不用 Popover） ==========
+    const effectiveTags = tagsProp ?? (isDstuMode ? [] : ((contextActive?.tags as string[] | undefined) ?? []));
+    const commitTags = onTagsChange
+        ?? (!isDstuMode && noteId && updateNoteTags
+            ? (next: string[]) => updateNoteTags(noteId, next)
+            : undefined);
+    const canEditTags = !readOnly && Boolean(noteId) && Boolean(commitTags);
+    const [tagInputOpen, setTagInputOpen] = useState(false);
+    const [tagInput, setTagInput] = useState('');
+    const [isSavingTags, setIsSavingTags] = useState(false);
+    const tagInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (tagInputOpen) tagInputRef.current?.focus();
+    }, [tagInputOpen]);
+
+    const applyTags = async (next: string[]) => {
+        if (!commitTags || isSavingTags) return;
+        setIsSavingTags(true);
+        try {
+            await commitTags(next);
+        } catch (error: unknown) {
+            console.error('[NotesEditorHeader] Failed to update tags:', error);
+            showGlobalNotification('error', t('notes:header.tags_save_failed', '标签保存失败'));
+        } finally {
+            setIsSavingTags(false);
+        }
+    };
+
+    const handleAddTag = async () => {
+        const normalized = tagInput.trim();
+        if (!normalized) {
+            setTagInputOpen(false);
+            return;
+        }
+        if (effectiveTags.includes(normalized)) {
+            setTagInput('');
+            return;
+        }
+        await applyTags([...effectiveTags, normalized]);
+        setTagInput('');
+    };
+
+    const handleRemoveTag = (tag: string) => {
+        void applyTags(effectiveTags.filter((item) => item !== tag));
+    };
 
     if (!noteId) return null;
 
@@ -264,33 +393,45 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
              <div className="mt-2 flex min-h-5 items-center gap-4">
                 {/* Breadcrumbs (Left aligned) - Only show if nested in folders */}
                 {showBreadcrumbs && (
-                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 overflow-hidden whitespace-nowrap mask-linear-fade select-none mr-auto">
-                        {breadcrumbs.map((item, index) => (
-                            <React.Fragment key={item.id}>
-                                {index > 0 && <CaretRight className="h-3 w-3 opacity-40" />}
-                                <div 
-                                    className={`flex items-center gap-1 ${
-                                    index === breadcrumbs.length - 1 
-                                        ? 'text-foreground/70 font-medium' 
-                                        : 'text-muted-foreground/60 hover:text-foreground/80 transition-colors cursor-pointer'
-                                }`}
-                                    onClick={() => handleBreadcrumbClick(item)}
-                                >
-                                    {item.type === 'folder' ? (
-                                        <>
-                                            <Folder className="h-3 w-3 opacity-70" />
-                                            <span className="truncate max-w-[100px]">{item.title}</span>
-                                        </>
+                    <nav className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 overflow-hidden whitespace-nowrap mask-linear-fade select-none mr-auto">
+                        {breadcrumbs.map((item, index) => {
+                            const isCurrent = index === breadcrumbs.length - 1;
+                            const icon = item.type === 'folder' ? (
+                                <Folder className="h-3 w-3 opacity-70" aria-hidden="true" />
+                            ) : (
+                                <FileText className="h-3 w-3 opacity-70" aria-hidden="true" />
+                            );
+                            const label = (
+                                <span className={`truncate ${item.type === 'folder' ? 'max-w-[100px]' : 'max-w-[150px]'}`}>
+                                    {item.title}
+                                </span>
+                            );
+                            return (
+                                <React.Fragment key={item.id}>
+                                    {index > 0 && <CaretRight className="h-3 w-3 shrink-0 opacity-40" aria-hidden="true" />}
+                                    {isCurrent ? (
+                                        <span
+                                            className="flex items-center gap-1 text-foreground/70 font-medium"
+                                            aria-current="page"
+                                        >
+                                            {icon}
+                                            {label}
+                                        </span>
                                     ) : (
-                                        <>
-                                            <FileText className="h-3 w-3 opacity-70" />
-                                            <span className="truncate max-w-[150px]">{item.title}</span>
-                                        </>
+                                        <button
+                                            type="button"
+                                            className="flex items-center gap-1 rounded-sm text-muted-foreground/60 hover:text-foreground/80 transition-colors duration-150 cursor-pointer"
+                                            onClick={() => handleBreadcrumbClick(item)}
+                                            title={item.title}
+                                        >
+                                            {icon}
+                                            {label}
+                                        </button>
                                     )}
-                                </div>
-                            </React.Fragment>
-                        ))}
-                    </div>
+                                </React.Fragment>
+                            );
+                        })}
+                    </nav>
                 )}
 
                 {/* Save status & word count (Right aligned) */}
@@ -298,28 +439,136 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                     className={`notes-document-meta shrink-0 ${showBreadcrumbs ? 'ml-auto' : 'ml-0'} flex items-center gap-2 text-[11px] ${saveStatus === 'saved' ? 'notes-document-meta-saved' : ''}`}
                     aria-live="polite"
                 >
-                    {typeof charCount === 'number' && charCount > 0 && (
-                        <span className="text-muted-foreground/70 tabular-nums">
-                            {t('notes:common.char_count', { count: charCount })}
+                    {showStats && (
+                        <span className="notes-doc-stats">
+                            <span
+                                className="notes-doc-stats-trigger text-muted-foreground/60 tabular-nums outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]"
+                                tabIndex={0}
+                                aria-label={statsRows.map((row) => `${row.label} ${row.value}`).join(', ')}
+                            >
+                                {t('notes:common.char_count', { count: displayCharCount })}
+                                {saveStatus !== 'conflict' && (
+                                    <span className="ml-2 opacity-50 select-none" aria-hidden="true">·</span>
+                                )}
+                            </span>
+                            <dl className="notes-doc-stats-detail" aria-hidden="true">
+                                {statsRows.map((row) => (
+                                    <div key={row.key} className="notes-doc-stats-row">
+                                        <dt>{row.label}</dt>
+                                        <dd>{row.value}</dd>
+                                    </div>
+                                ))}
+                            </dl>
                         </span>
                     )}
-                    <span className={`inline-flex items-center gap-1.5 ${statusClassName}`}>
-                        <span className="notes-save-status-dot" data-status={saveStatus} aria-hidden="true" />
-                        <span>{statusLabel}</span>
-                        {showRetry && (
-                            <button
-                                type="button"
-                                className="underline underline-offset-2 hover:text-destructive/90 transition-colors"
-                                onClick={() => {
-                                    void onRetrySave?.();
-                                }}
-                            >
-                                {t('notes:editor.save_status.retry')}
-                            </button>
-                        )}
-                    </span>
+                    {saveStatus !== 'conflict' && (
+                        <span className={`inline-flex items-center gap-1.5 ${statusClassName}`}>
+                            {saveStatus === 'saved' ? (
+                                <span className="notes-save-status-check" aria-hidden="true">
+                                    <Check className="h-3 w-3" weight="bold" />
+                                </span>
+                            ) : saveStatus === 'failed' ? (
+                                <span className="notes-save-status-warn" aria-hidden="true">
+                                    <WarningCircle className="h-3 w-3" weight="bold" />
+                                </span>
+                            ) : (
+                                <span className={`notes-save-status-dot ${statusDotClassName}`} data-status={saveStatus} aria-hidden="true" />
+                            )}
+                            <span>{statusLabel}</span>
+                            {showRetry && (
+                                <button
+                                    type="button"
+                                    className="underline underline-offset-2 hover:text-destructive/90 transition-colors duration-150"
+                                    onClick={() => {
+                                        void onRetrySave?.();
+                                    }}
+                                >
+                                    {t('notes:editor.save_status.retry')}
+                                </button>
+                            )}
+                        </span>
+                    )}
                 </div>
             </div>
+
+            {/* P1-10：标签 chips + 内联展开输入（触屏可达；桌面同样可用，不再依赖 lg 断点） */}
+            {(effectiveTags.length > 0 || canEditTags) && (
+                <div
+                    className="notes-document-tags mt-2 flex flex-wrap items-center gap-1.5"
+                    data-testid="notes-editor-tags"
+                >
+                    <TagIcon className="h-3 w-3 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+                    {effectiveTags.map((tag) => (
+                        <span
+                            key={tag}
+                            className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 py-0.5 pl-2 pr-1 text-[11px] leading-none text-primary [@media(pointer:coarse)]:py-1.5"
+                        >
+                            <span className="max-w-[140px] truncate">{tag}</span>
+                            {canEditTags ? (
+                                <button
+                                    type="button"
+                                    className="inline-flex h-4 w-4 items-center justify-center rounded-full text-primary/60 transition-colors duration-150 hover:bg-primary/15 hover:text-primary [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6"
+                                    onClick={() => handleRemoveTag(tag)}
+                                    disabled={isSavingTags}
+                                    aria-label={t('notes:header.remove_tag')}
+                                    title={t('notes:header.remove_tag')}
+                                >
+                                    <X className="h-2.5 w-2.5" aria-hidden="true" />
+                                </button>
+                            ) : (
+                                <span className="w-1" aria-hidden="true" />
+                            )}
+                        </span>
+                    ))}
+                    {canEditTags && (tagInputOpen ? (
+                        <input
+                            ref={tagInputRef}
+                            value={tagInput}
+                            onChange={(e) => setTagInput(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    void handleAddTag();
+                                } else if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    setTagInput('');
+                                    setTagInputOpen(false);
+                                }
+                            }}
+                            onBlur={() => {
+                                // 失焦提交已输入内容；为空则收起
+                                void handleAddTag();
+                            }}
+                            placeholder={t('notes:header.tag_placeholder')}
+                            aria-label={t('notes:header.add_tags')}
+                            disabled={isSavingTags}
+                            className="h-6 w-32 rounded-full border border-border/60 bg-transparent px-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[hsl(var(--ring))] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-40"
+                        />
+                    ) : (
+                        <button
+                            type="button"
+                            className="inline-flex h-6 items-center gap-0.5 rounded-full border border-dashed border-border/70 px-2 text-[11px] leading-none text-muted-foreground/70 transition-colors duration-150 hover:border-border hover:text-foreground [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:px-3"
+                            onClick={() => setTagInputOpen(true)}
+                            aria-label={t('notes:header.add_tags')}
+                        >
+                            <Plus className="h-3 w-3" aria-hidden="true" />
+                            <span>{t('notes:header.add_tags')}</span>
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {/* 冲突态：整行内联说明（避免挤在右侧元信息里被截断） */}
+            {saveStatus === 'conflict' && (
+                <div
+                    className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-snug text-destructive"
+                    role="status"
+                    aria-live="polite"
+                >
+                    <WarningCircle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span>{statusLabel}</span>
+                </div>
+            )}
         </header>
     );
 };

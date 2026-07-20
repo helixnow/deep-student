@@ -3,7 +3,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 
 import { cn } from '@/lib/utils';
 
 import { UnifiedPreviewToolbar, type ToolbarPreviewType, type SlideNavInfo } from './UnifiedPreviewToolbar';
-import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, clampNumber } from './previewUtils';
+import { ZOOM_MIN, ZOOM_MAX, stepZoom, clampNumber } from './previewUtils';
 
 const DocxPreview = lazy(() => import('./DocxPreview'));
 const XlsxPreview = lazy(() => import('./XlsxPreview'));
@@ -30,6 +30,9 @@ interface RichDocumentPreviewProps {
 
 type SlideNavState = SlideNavInfo | null;
 
+/** Ctrl+滚轮的缩放灵敏度：deltaY(px) -> 乘法缩放指数 */
+const WHEEL_ZOOM_SENSITIVITY = 0.0022;
+
 export const RichDocumentPreview: React.FC<RichDocumentPreviewProps> = ({
   kind,
   base64Content,
@@ -55,27 +58,96 @@ export const RichDocumentPreview: React.FC<RichDocumentPreviewProps> = ({
   // React 的 onWheel 是被动监听器，无法 preventDefault 阻止浏览器整页缩放，
   // 因此使用原生非被动监听器；用 ref 保存最新值避免反复解绑/重绑
   const rootRef = useRef<HTMLDivElement>(null);
-  const zoomRef = useRef({ zoomScale, onZoomChange });
-  zoomRef.current = { zoomScale, onZoomChange };
+  const zoomRef = useRef({ zoomScale, onZoomChange, onZoomReset });
+  zoomRef.current = { zoomScale, onZoomChange, onZoomReset };
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
 
-    const handleWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey || e.deltaY === 0) return;
-      e.preventDefault();
+    // rAF 节流：一帧内累积滚轮增量，按指数曲线一次性应用，
+    // 快速滚动时平滑跟手且不会每个 wheel 事件都触发一次 React 更新
+    let pendingDelta = 0;
+    let rafId: number | null = null;
+
+    const applyPendingZoom = () => {
+      rafId = null;
+      const delta = pendingDelta;
+      pendingDelta = 0;
+      if (delta === 0) return;
       const { zoomScale: current, onZoomChange: change } = zoomRef.current;
-      const step = e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
-      const next = Number(clampNumber(current + step, ZOOM_MIN, ZOOM_MAX).toFixed(2));
+      // 乘法缩放：低倍区步幅小、高倍区步幅大，视觉速度恒定
+      const factor = Math.exp(-delta * WHEEL_ZOOM_SENSITIVITY);
+      // 保留 4 位小数：低倍区（如 25%）乘法步幅小于 0.01，取 2 位会卡死不动
+      const next = Number(clampNumber(current * factor, ZOOM_MIN, ZOOM_MAX).toFixed(4));
       if (next !== current) {
         change(next);
+      }
+    };
+
+    const handleWheel = (e: WheelEvent) => {
+      // ctrlKey 同时覆盖触控板捏合手势（浏览器映射为 ctrl+wheel）
+      if (!e.ctrlKey || e.deltaY === 0) return;
+      e.preventDefault();
+      pendingDelta += e.deltaY;
+      if (rafId === null) {
+        rafId = requestAnimationFrame(applyPendingZoom);
       }
     };
 
     root.addEventListener('wheel', handleWheel, { passive: false });
     return () => {
       root.removeEventListener('wheel', handleWheel);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+    };
+  }, []);
+
+  // 键盘快捷键：Ctrl/⌘ + = / − 沿档位缩放，Ctrl/⌘ + 0 重置。
+  // 监听 document 而非依赖容器焦点（预览区通常不含可聚焦元素），
+  // 仅在指针悬停于本预览或焦点位于其内部时响应，避免多预览实例互相抢键
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 不排除 shift：US 键盘上 Ctrl + "+" 实际是 Ctrl+Shift+=（key 为 "+"）
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+
+      const root = rootRef.current;
+      if (!root) return;
+      const isHovered = root.matches(':hover');
+      const containsFocus = root.contains(document.activeElement);
+      if (!isHovered && !containsFocus) return;
+
+      // 不劫持输入框中的快捷键
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+
+      const { zoomScale: current, onZoomChange: change, onZoomReset: reset } = zoomRef.current;
+      switch (e.key) {
+        case '=':
+        case '+':
+          e.preventDefault();
+          change(stepZoom(current, 1));
+          break;
+        case '-':
+        case '_':
+          e.preventDefault();
+          change(stepZoom(current, -1));
+          break;
+        case '0':
+          e.preventDefault();
+          reset();
+          break;
+        default:
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 

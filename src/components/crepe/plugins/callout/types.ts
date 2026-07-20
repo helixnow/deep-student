@@ -24,12 +24,16 @@ export function nextCalloutType(current: string): CalloutType {
 /**
  * Match Obsidian callout marker at the start of a blockquote's first paragraph.
  * Examples: `[!note]`, `[!tip] Title`, `[!warning]  注意`
+ * 容错：全角感叹号 `！`、类型任意大小写、`]` 后可跟半/全角冒号、
+ * Obsidian 折叠后缀 `-`（collapsed）/ `+`（展开）。
  */
-export const CALLOUT_MARKER_RE = /^\[!([a-zA-Z]+)](?:\s+(.*))?$/;
+export const CALLOUT_MARKER_RE =
+  /^\[[!！]([a-zA-Z]+)\]([+-])?(?:[:：]\s*(.*)|\s+(.*))?$/;
 
 export interface ParsedCalloutMarker {
   type: CalloutType;
   title: string;
+  collapsed: boolean;
 }
 
 export function parseCalloutMarker(text: string): ParsedCalloutMarker | null {
@@ -40,6 +44,7 @@ export function parseCalloutMarker(text: string): ParsedCalloutMarker | null {
   if (!isCalloutType(rawType)) return null;
   return {
     type: rawType.toLowerCase() as CalloutType,
-    title: (match[2] ?? '').trim(),
+    title: (match[3] ?? match[4] ?? '').trim(),
+    collapsed: match[2] === '-',
   };
 }

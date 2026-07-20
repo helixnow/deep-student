@@ -7,7 +7,7 @@ const STYLE_ID = 'milkdown-toggle-styles'
 export const TOGGLE_STYLE = `
 .milkdown-toggle {
   margin: 0.5em 0;
-  border-radius: var(--notes-radius-popup, 0.5rem);
+  border-radius: var(--notes-radius-control, 8px);
 }
 .milkdown-toggle__header {
   display: flex;
@@ -26,13 +26,23 @@ export const TOGGLE_STYLE = `
   margin: 0;
   padding: 0;
   border: none;
+  border-radius: var(--notes-radius-control, 0.35rem);
   background: transparent;
   color: hsl(var(--muted-foreground, 215 16% 47%));
   cursor: pointer;
   line-height: 1;
   transform: rotate(0deg);
-  /* 与文件树 .nwt-caret 一致：150ms ease */
-  transition: transform 150ms ease;
+  transition:
+    transform 150ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    background-color var(--notes-hover-transition, 120ms ease);
+}
+.milkdown-toggle__arrow:hover {
+  background: hsl(var(--foreground) / 0.06);
+  color: hsl(var(--foreground));
+}
+.milkdown-toggle__arrow:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
 }
 .milkdown-toggle[data-open="true"] .milkdown-toggle__arrow {
   transform: rotate(90deg);
@@ -57,17 +67,28 @@ export const TOGGLE_STYLE = `
   grid-template-rows: 0fr;
   opacity: 0;
   /* 内容展开：grid 行高 + opacity 200ms（等效 max-height 折叠节奏） */
-  transition: grid-template-rows 200ms ease, opacity 200ms ease;
+  transition:
+    grid-template-rows 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 .milkdown-toggle[data-open="true"] .milkdown-toggle__body {
   grid-template-rows: 1fr;
   opacity: 1;
 }
 .milkdown-toggle__body-inner {
+  position: relative;
   overflow: hidden;
   min-height: 0;
 }
 .milkdown-toggle[data-open="false"] .milkdown-toggle__body-inner {
+  pointer-events: none;
+}
+/* 空 toggle：展开且内容为单个空块时提示可输入 */
+.milkdown-toggle[data-open="true"][data-empty="true"] .milkdown-toggle__body-inner::before {
+  content: attr(data-empty-placeholder);
+  position: absolute;
+  inset: 0 auto auto 0;
+  color: hsl(var(--muted-foreground, 215 16% 47%) / 0.75);
   pointer-events: none;
 }
 @media (prefers-reduced-motion: reduce) {

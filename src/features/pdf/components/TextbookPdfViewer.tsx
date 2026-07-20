@@ -61,51 +61,46 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
 }) => {
   const { t } = useTranslation(['pdf', 'common', 'textbook']);
   const { isDarkMode } = useTheme();
-  
+
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(1);
-  const [scale, setScale] = useState<number>(1.0);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  
-  const containerRef = useRef<HTMLDivElement>(null);
+
   const viewerCommandsRef = useRef<{ jumpToPage: (pageIndex: number) => void } | null>(null);
   const pendingFocusRef = useRef<{ path?: string; name?: string; pageNumber: number; requestId: number } | null>(null);
-  const progressSaveTimerRef = useRef<number | null>(null);
-  const lastSavedPageRef = useRef<number | null>(null);
-  
-  // 缓存 blob URL，避免每次渲染都重新创建
-  const fileBlobUrlRef = useRef<string | null>(null);
-  // 追踪当前 file 对象，用于检测变化
-  const lastFileRef = useRef<File | null>(null);
+  const lastReportedPageRef = useRef<number | null>(null);
 
-  // ★ 生成 viewer URL（纯计算，无副作用）
-  const viewerUrl = useMemo(() => {
-    // 检测 file 是否真的变化了（对象引用不同）
-    if (file !== lastFileRef.current) {
-      // 释放旧的 Blob URL（只有当旧的 file 存在时才释放）
-      if (lastFileRef.current && fileBlobUrlRef.current) {
-        URL.revokeObjectURL(fileBlobUrlRef.current);
-        fileBlobUrlRef.current = null;
-      }
-      lastFileRef.current = file;
+  // ★ Blob URL 生命周期由 effect 管理（而非 useMemo 副作用）：
+  // StrictMode / 并发渲染下 useMemo 可能重复执行或结果被丢弃，
+  // 在其中 create/revoke 会误 revoke 仍在使用的 URL。
+  // state 同时记录 URL 所属的 File：file prop 变化到新 URL 就绪之间有一次
+  // 中间渲染，若只存 URL 会把上一个（已 revoke 的）blob URL 交给 viewer。
+  const [fileBlob, setFileBlob] = useState<{ file: File; url: string } | null>(null);
+  useEffect(() => {
+    if (!file) {
+      setFileBlob(null);
+      return;
     }
-    
+    const url = URL.createObjectURL(file);
+    setFileBlob({ file, url });
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [file]);
+
+  // 生成 viewer URL（纯计算，无副作用）
+  const viewerUrl = useMemo(() => {
     if (file) {
-      if (!fileBlobUrlRef.current) {
-        fileBlobUrlRef.current = URL.createObjectURL(file);
-      }
-      return fileBlobUrlRef.current as string;
+      // blob URL 尚未就绪（或还挂着旧 file 的 URL）时返回空串，渲染层会等待
+      return fileBlob && fileBlob.file === file ? fileBlob.url : '';
     }
     // 如果有 filePath，转换为 pdfstream:// 协议 URL
+    // Windows WebView2: http://pdfstream.localhost/<encoded_path>
+    // macOS/Linux:      pdfstream://localhost/<encoded_path>
     if (filePath) {
-      // 使用 Tauri 官方 API 构建跨平台协议 URL
-      // Windows WebView2: http://pdfstream.localhost/<encoded_path>
-      // macOS/Linux:      pdfstream://localhost/<encoded_path>
       return convertFileSrc(filePath, 'pdfstream');
     }
     return '';
-  }, [file, filePath]);
+  }, [file, fileBlob, filePath]);
 
 
   // 渲染追踪
@@ -114,32 +109,9 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
     fileName,
     numPages,
     pageNumber,
-    scale,
-    isLoading,
-    hasError: !!error,
     selectedPagesCount: selectedPages.size,
     maxSelections,
   });
-
-  useEffect(() => {
-    return () => {
-      if (fileBlobUrlRef.current) {
-        URL.revokeObjectURL(fileBlobUrlRef.current);
-        fileBlobUrlRef.current = null;
-      }
-      // 清理进度保存定时器
-      if (progressSaveTimerRef.current) {
-        window.clearTimeout(progressSaveTimerRef.current);
-        progressSaveTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  const onDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }) => {
-    setNumPages(numPages);
-    setIsLoading(false);
-    setError(null);
-  }, []);
 
   const clearPendingFocus = useCallback((requestId?: number) => {
     const current = pendingFocusRef.current;
@@ -149,33 +121,8 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
     try { onFocusHandled?.(current.requestId); } catch { /* 非关键：焦点回调通知失败不影响核心功能 */ }
   }, [onFocusHandled]);
 
-  const onDocumentLoadError = useCallback((error: Error) => {
-    console.error('PDF 加载失败:', getErrorMessage(error));
-    setError(t('pdf:errors.load_failed'));
-    setIsLoading(false);
-    clearPendingFocus();
-  }, [t, clearPendingFocus]);
-
-  const changePage = useCallback((offset: number) => {
-    setPageNumber((prevPageNumber) => {
-      const newPage = prevPageNumber + offset;
-      if (numPages && newPage >= 1 && newPage <= numPages) {
-        return newPage;
-      }
-      return prevPageNumber;
-    });
-  }, [numPages]);
-
-  const previousPage = useCallback(() => changePage(-1), [changePage]);
-  const nextPage = useCallback(() => changePage(1), [changePage]);
-
-  const handleZoomIn = useCallback(() => {
-    setScale((prev) => Math.min(prev + 0.25, 3.0));
-  }, []);
-
-  const handleZoomOut = useCallback(() => {
-    setScale((prev) => Math.max(prev - 0.25, 0.5));
-  }, []);
+  // 注：文档加载失败的分类文案与重试 UI 由 EnhancedPdfViewer 内部
+  // （classifyPdfLoadError + 内联错误面板）负责，本包装层不再重复维护错误态。
 
   const tryHandlePendingFocus = useCallback(() => {
     const request = pendingFocusRef.current;
@@ -232,34 +179,21 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
     onPageSelectionChange(newSelection);
   }, [selectedPages, onPageSelectionChange, maxSelections, t]);
 
-
-  // 清空选择
-  const handleClearSelection = useCallback(() => {
-    onPageSelectionChange(new Set());
-  }, [onPageSelectionChange]);
-
-  const isPageSelected = selectedPages.has(pageNumber);
-
-  // 稳定传入 EnhancedPdfViewer 的回调，避免每次渲染创建新函数
+  // ★ 阅读进度直通上报（同页去重）：
+  // 防抖统一收敛到 previewPersistence（1s + dispose flush），
+  // 避免 Viewer 层 + persistence 层双重防抖叠加导致最坏 3s 才落盘。
   const handleViewerPageChange = useCallback((idx: number) => {
     const newPage = idx + 1;
     setPageNumber(newPage);
-    
-    // 防抖保存阅读进度
-    if (onProgressChange && newPage !== lastSavedPageRef.current) {
-      if (progressSaveTimerRef.current) {
-        window.clearTimeout(progressSaveTimerRef.current);
-      }
-      progressSaveTimerRef.current = window.setTimeout(() => {
-        progressSaveTimerRef.current = null;
-        lastSavedPageRef.current = newPage;
-        onProgressChange({
-          page: newPage,
-          lastReadAt: Date.now(),
-        });
-      }, 1000); // 1秒防抖
+    if (onProgressChange && newPage !== lastReportedPageRef.current) {
+      lastReportedPageRef.current = newPage;
+      onProgressChange({
+        page: newPage,
+        lastReadAt: Date.now(),
+      });
     }
   }, [onProgressChange]);
+
   const handleViewerDocumentLoad = useCallback((pages: number) => {
     setNumPages(pages);
     setTimeout(() => {
@@ -274,14 +208,8 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
 
   return (
     <div className="textbook-pdf-viewer">
-      {error && (
-        <div className="textbook-error-message">
-          <span>{error}</span>
-        </div>
-      )}
-
-      {!file && !filePath && !error && (
-        <div className="textbook-empty-state">
+      {!file && !filePath && (
+        <div className="textbook-empty-state ui-rise-in">
           <BookOpen size={48} className="textbook-empty-icon" />
           <p className="textbook-empty-title">{t('textbook:no_textbook_loaded')}</p>
           <p className="textbook-empty-hint">{t('textbook:select_textbook_hint')}</p>
@@ -292,7 +220,7 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
         </div>
       )}
 
-      {(file || (filePath && filePath.trim())) && (
+      {viewerUrl && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <EnhancedPdfViewer
             url={viewerUrl}

@@ -17,7 +17,12 @@ import { toggleSchema } from './schema'
 import { toggleView } from './view'
 
 export { applyToggleInputRule, createEmptyToggleNode, toggleInputRule } from './input-rule'
-export { tryExitToggleOnEnter, toggleKeymap, toggleKeymapKey } from './keymap'
+export {
+  tryExitToggleOnEnter,
+  tryUnwrapEmptyToggleOnBackspace,
+  toggleKeymap,
+  toggleKeymapKey,
+} from './keymap'
 export {
   formatToggleMarker,
   isToggleMarkerText,

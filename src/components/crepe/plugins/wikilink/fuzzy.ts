@@ -38,7 +38,10 @@ export function fuzzyMatchNotes(
   return ranked
     .sort(
       (a, b) =>
-        a.rank - b.rank || a.note.title.localeCompare(b.note.title, undefined, { sensitivity: 'base' }),
+        a.rank - b.rank
+        // 同档命中按最近编辑优先（对齐 Obsidian quick-open 心智；无时间戳的排后）
+        || (b.note.updatedAt ?? 0) - (a.note.updatedAt ?? 0)
+        || a.note.title.localeCompare(b.note.title, undefined, { sensitivity: 'base' }),
     )
     .slice(0, Math.max(0, maxResults))
     .map(({ note }) => note);

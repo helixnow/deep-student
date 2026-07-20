@@ -66,14 +66,13 @@ describe('MobileEditorToolbar', () => {
     expect(screen.getByTestId('mobile-editor-toolbar-scroller')).toBeInTheDocument();
   });
 
-  it('按钮按逻辑分组顺序：撤销重做 | 缩进 | B/I/S | 标题列表 | 图片/slash', () => {
+  it('按钮按逻辑分组顺序：插入开关 | 撤销重做 | B/I/S | 标题列表 | 缩进', () => {
     const commands = mockCommands();
     render(<MobileEditorToolbar commands={commands} visible />);
     expect(actionOrder()).toEqual([
+      'insert-toggle',
       'undo',
       'redo',
-      'outdent',
-      'indent',
       'bold',
       'italic',
       'strikethrough',
@@ -82,10 +81,10 @@ describe('MobileEditorToolbar', () => {
       'h3',
       'bullet',
       'task',
-      'image',
-      'slash',
+      'outdent',
+      'indent',
     ]);
-    // 4 组分隔线（5 组 → 4 sep）
+    // 每组前一条分隔线（4 组 → 4 sep）
     expect(screen.getAllByTestId('mobile-editor-toolbar-sep')).toHaveLength(4);
   });
 
@@ -128,12 +127,64 @@ describe('MobileEditorToolbar', () => {
 
     fireEvent.click(byAction('task'));
     expect(commands.toggleTaskList).toHaveBeenCalledTimes(1);
+  });
+
+  it('插入条：展开后含 image/slash，点击后触发回调并收起', () => {
+    const commands = mockCommands();
+    render(<MobileEditorToolbar commands={commands} visible />);
+
+    expect(screen.queryByTestId('mobile-editor-toolbar-insert-row')).not.toBeInTheDocument();
+    fireEvent.click(byAction('insert-toggle'));
+    expect(screen.getByTestId('mobile-editor-toolbar-insert-row')).toBeInTheDocument();
 
     fireEvent.click(byAction('image'));
     expect(commands.insertImage).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('mobile-editor-toolbar-insert-row')).not.toBeInTheDocument();
 
+    fireEvent.click(byAction('insert-toggle'));
     fireEvent.click(byAction('slash'));
     expect(commands.openSlash).toHaveBeenCalledTimes(1);
+  });
+
+  it('可选插入命令（link/table）注入后出现在插入条', () => {
+    const commands: MobileEditorToolbarCommands = {
+      ...mockCommands(),
+      insertLink: vi.fn(),
+      insertTable: vi.fn(),
+    };
+    render(<MobileEditorToolbar commands={commands} visible />);
+
+    fireEvent.click(byAction('insert-toggle'));
+    fireEvent.click(byAction('link'));
+    expect(commands.insertLink).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(byAction('insert-toggle'));
+    fireEvent.click(byAction('table'));
+    expect(commands.insertTable).toHaveBeenCalledTimes(1);
+  });
+
+  it('未注入可选命令时不渲染对应按钮', () => {
+    const commands = mockCommands();
+    render(<MobileEditorToolbar commands={commands} visible />);
+    fireEvent.click(byAction('insert-toggle'));
+    expect(byAction('link')).toBeNull();
+    expect(byAction('table')).toBeNull();
+    expect(byAction('codeblock')).toBeNull();
+    expect(byAction('find')).toBeNull();
+  });
+
+  it('openFind 注入后展示查找入口并触发回调', () => {
+    const commands: MobileEditorToolbarCommands = {
+      ...mockCommands(),
+      openFind: vi.fn(),
+    };
+    render(<MobileEditorToolbar commands={commands} visible />);
+
+    const find = byAction('find');
+    expect(find).toBeTruthy();
+    expect(find.getAttribute('aria-label')).toBe('查找');
+    fireEvent.click(find);
+    expect(commands.openFind).toHaveBeenCalledTimes(1);
   });
 
   it('toggleStrikethrough 未注入时点击删除线不抛错', () => {

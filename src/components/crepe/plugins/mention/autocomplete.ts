@@ -27,7 +27,7 @@ export function createMentionAutocompletePlugin(config: MentionPluginConfig = {}
   const searchNotes = config.searchNotes ?? defaultSearchNotes;
 
   return $prose(() => {
-    const overlay = createMentionOverlay();
+    const overlay = createMentionOverlay(() => active?.query ?? '');
     let active: ActiveTrigger | null = null;
     let requestId = 0;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;

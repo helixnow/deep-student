@@ -15,11 +15,10 @@ import {
   BookOpen,
   Link,
   FileText,
+  PencilSimple,
 } from "@phosphor-icons/react";
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Z_INDEX } from '@/config/zIndex';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
-import { Input } from "@/components/ui/shad/Input";
 import {
   AppMenu,
   AppMenuContent,
@@ -30,7 +29,6 @@ import {
 import {
   UnifiedSidebar,
   UnifiedSidebarHeader,
-  useUnifiedSidebar,
 } from "@/components/ui/unified-sidebar";
 import { DndFileTree, type TreeData, type DragInfo } from "./DndFileTree";
 import { useNotes } from "./NotesContext";
@@ -38,6 +36,7 @@ import { buildTreeData, getPathToNote } from "./notesUtils";
 import { cn } from "../../lib/utils";
 import { NotesSidebarSearch } from "./components/NotesSidebarSearch";
 import { AddReferenceDropdown } from "./components/AddReferenceDropdown";
+import { ReferenceSelector, type ReferenceSelectResult } from "./reference-selector";
 import { invoke } from '@tauri-apps/api/core';
 import { isReferenceId } from "./types/reference";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -49,6 +48,19 @@ import { showGlobalNotification } from "@/components/UnifiedNotification";
 import { useBreakpoint } from "@/hooks/useBreakpoint";
 
 const stripHtml = (raw: string) => raw.replace(/<[^>]*>/g, '');
+
+/** 骨架屏行条：替代 daisyUI spinner，与全局 Notion 风格一致 */
+const SidebarSkeletonRows: React.FC<{ rows?: number }> = ({ rows = 8 }) => (
+  <div className="absolute inset-0 px-3 py-2 space-y-2 overflow-hidden" aria-hidden="true">
+    {Array.from({ length: rows }).map((_, i) => (
+      <div
+        key={i}
+        className="h-6 rounded-md bg-muted/40 animate-pulse"
+        style={{ width: `${88 - ((i * 19) % 42)}%` }}
+      />
+    ))}
+  </div>
+);
 
 interface NotesSidebarV2Props {
   className?: string;
@@ -70,10 +82,12 @@ interface NotesSidebarV2Props {
 // 内部组件：笔记列表内容
 // ============================================================================
 
-const NotesSidebarContent: React.FC = () => {
+const NotesSidebarContent: React.FC<{
+  /** 选中笔记后关闭侧栏（移动推拉布局；P1-11 选笔记直达编辑器） */
+  onNoteSelected?: () => void;
+}> = ({ onNoteSelected }) => {
   const { t } = useTranslation(['notes', 'common']);
-  const { searchQuery } = useUnifiedSidebar();
-  
+
   const {
     notes,
     folders,
@@ -81,7 +95,6 @@ const NotesSidebarContent: React.FC = () => {
     loading,
     active,
     setActive,
-    refreshNotes,
     createNote,
     createFolder,
     moveItem,
@@ -106,15 +119,17 @@ const NotesSidebarContent: React.FC = () => {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string } | null>(null);
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
-  const [referenceDialog, setReferenceDialog] = useState<{
+  // 右键菜单「添加教材引用」：复用 ReferenceSelector 非模态内联面板（无锚点回退顶部居中）
+  const [folderRefPicker, setFolderRefPicker] = useState<{
     open: boolean;
-    type: 'textbook';
     folderId: string | null;
-  }>({ open: false, type: 'textbook', folderId: null });
-  const [referenceValue, setReferenceValue] = useState('');
-  const [referenceSubmitting, setReferenceSubmitting] = useState(false);
+  }>({ open: false, folderId: null });
+  // 搜索结果键盘导航：当前高亮索引（-1 = 未选中）
+  const [activeResultIndex, setActiveResultIndex] = useState(-1);
   const searchListRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  // 展开状态持久化：磁盘偏好加载完成前禁止回写
+  const expandedPrefLoadedRef = useRef(false);
 
   useLayoutEffect(() => {
     if (!contextMenu || !contextMenuRef.current) {
@@ -139,35 +154,29 @@ const NotesSidebarContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [contextMenu]);
 
-  const openReferenceDialog = useCallback((type: 'textbook', folderId: string) => {
-    setReferenceValue('');
-    setReferenceDialog({ open: true, type, folderId });
+  const openFolderRefPicker = useCallback((folderId: string) => {
+    setFolderRefPicker({ open: true, folderId });
   }, []);
 
-  const closeReferenceDialog = useCallback(() => {
-    setReferenceDialog(prev => ({ ...prev, open: false }));
-    setReferenceValue('');
-    setReferenceSubmitting(false);
+  const setFolderRefPickerOpen = useCallback((open: boolean) => {
+    setFolderRefPicker(prev => (open ? { ...prev, open: true } : { open: false, folderId: null }));
   }, []);
 
-  const submitReference = useCallback(async () => {
-    if (!referenceDialog.folderId || referenceSubmitting) return;
-    const value = referenceValue.trim();
-    if (!value) {
-      showGlobalNotification('warning', t('notes:reference.empty_id'));
-      return;
-    }
+  // 已存在的引用（选择器中禁用已引用的教材）
+  const existingRefs = useMemo(
+    () => Object.values(references).map(ref => ({ sourceDb: ref.sourceDb, sourceId: ref.sourceId })),
+    [references]
+  );
 
-    setReferenceSubmitting(true);
+  const handleFolderRefSelect = useCallback(async (result: ReferenceSelectResult) => {
+    const folderId = folderRefPicker.folderId ?? undefined;
     try {
-      await addTextbookRef(value, referenceDialog.folderId);
-      closeReferenceDialog();
+      await addTextbookRef(result.sourceId, folderId);
     } catch (error: unknown) {
       console.error('[NotesSidebarV2] Failed to add reference', error);
       showGlobalNotification('error', t('notes:reference.add_failed'));
-      setReferenceSubmitting(false);
     }
-  }, [referenceDialog, referenceSubmitting, referenceValue, addTextbookRef, closeReferenceDialog, t]);
+  }, [folderRefPicker.folderId, addTextbookRef, t]);
 
   // Virtualizer for search results
   const rowVirtualizer = useVirtualizer({
@@ -302,7 +311,8 @@ const NotesSidebarContent: React.FC = () => {
     moveItem(draggedIds, parentId, index);
   }, [treeData, moveItem]);
 
-  const showSearchResults = Boolean(contextSearchQuery && (isSearching || searchResults.length > 0));
+  // 只要有搜索词就进入搜索视图；加载中/无结果/有结果三种子状态在渲染处区分
+  const hasSearchQuery = Boolean((contextSearchQuery || '').trim());
 
   const renderHighlight = useCallback((raw: string) => {
     const q = (contextSearchQuery || '').trim();
@@ -334,8 +344,65 @@ const NotesSidebarContent: React.FC = () => {
     await invoke<boolean>('notes_set_pref', { key: 'notes_sort:default', value: next });
   };
 
-  const referenceDialogTitle = t('notes:reference.add_textbook');
-  const referenceDialogPlaceholder = t('notes:reference.enter_textbook_id');
+  // 文件树展开状态持久化：启动时恢复，变化时回写（加载完成前不写，避免覆盖磁盘偏好）
+  useEffect(() => {
+    let cancelled = false;
+    const loadExpandedPref = async () => {
+      try {
+        const raw = await invoke<string | null>('notes_get_pref', { key: 'notes_tree_expanded:default' });
+        if (!cancelled && raw) {
+          const ids = JSON.parse(raw);
+          if (Array.isArray(ids)) {
+            setExpandedIds(prev => Array.from(new Set([...prev, ...ids.filter((id): id is string => typeof id === 'string')])));
+          }
+        }
+      } catch {
+      } finally {
+        if (!cancelled) expandedPrefLoadedRef.current = true;
+      }
+    };
+    void loadExpandedPref();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!expandedPrefLoadedRef.current) return;
+    void invoke<boolean>('notes_set_pref', {
+      key: 'notes_tree_expanded:default',
+      value: JSON.stringify(expandedIds),
+    });
+  }, [expandedIds]);
+
+  // 打开一条搜索结果（点击与键盘 Enter 共用）
+  const openSearchResult = useCallback((resultId: string) => {
+    const note = notes.find(n => n.id === resultId);
+    if (note) setActive(note);
+    void ensureNoteContent(resultId);
+    if (note) onNoteSelected?.();
+  }, [notes, setActive, ensureNoteContent, onNoteSelected]);
+
+  // 搜索词变化时重置键盘高亮
+  useEffect(() => {
+    setActiveResultIndex(-1);
+  }, [contextSearchQuery]);
+
+  const handleResultNavigate = useCallback((delta: 1 | -1) => {
+    if (searchResults.length === 0) return;
+    setActiveResultIndex(prev => {
+      const next = prev === -1
+        ? (delta === 1 ? 0 : searchResults.length - 1)
+        : Math.min(Math.max(prev + delta, 0), searchResults.length - 1);
+      rowVirtualizer.scrollToIndex(next);
+      return next;
+    });
+  }, [searchResults.length, rowVirtualizer]);
+
+  const handleResultSubmit = useCallback(() => {
+    if (searchResults.length === 0) return;
+    const index = activeResultIndex === -1 ? 0 : activeResultIndex;
+    const res = searchResults[index];
+    if (res) openSearchResult(res.id);
+  }, [searchResults, activeResultIndex, openSearchResult]);
 
   return (
     <div className="flex flex-col h-full">
@@ -391,23 +458,27 @@ const NotesSidebarContent: React.FC = () => {
                 className="h-8 px-2 text-[11px] text-muted-foreground/70 hover:text-foreground"
                 title={t('notes:sidebar.actions.sort')}
               >
-                {t('notes:sidebar.actions.sort_name_asc')}
+                {/* 显示当前排序方式，而非写死首项 */}
+                {t(`notes:sidebar.actions.sort_${sortMethod}`, t('notes:sidebar.actions.sort'))}
               </NotionButton>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={160}>
-              <AppMenuItem onClick={() => changeSort('name_asc')}>{t('notes:sidebar.actions.sort_name_asc')}</AppMenuItem>
-              <AppMenuItem onClick={() => changeSort('name_desc')}>{t('notes:sidebar.actions.sort_name_desc')}</AppMenuItem>
+              <AppMenuItem checked={sortMethod === 'name_asc'} onClick={() => changeSort('name_asc')}>{t('notes:sidebar.actions.sort_name_asc')}</AppMenuItem>
+              <AppMenuItem checked={sortMethod === 'name_desc'} onClick={() => changeSort('name_desc')}>{t('notes:sidebar.actions.sort_name_desc')}</AppMenuItem>
               <AppMenuSeparator />
-              <AppMenuItem onClick={() => changeSort('modified_desc')}>{t('notes:sidebar.actions.sort_modified_desc')}</AppMenuItem>
-              <AppMenuItem onClick={() => changeSort('modified_asc')}>{t('notes:sidebar.actions.sort_modified_asc')}</AppMenuItem>
+              <AppMenuItem checked={sortMethod === 'modified_desc'} onClick={() => changeSort('modified_desc')}>{t('notes:sidebar.actions.sort_modified_desc')}</AppMenuItem>
+              <AppMenuItem checked={sortMethod === 'modified_asc'} onClick={() => changeSort('modified_asc')}>{t('notes:sidebar.actions.sort_modified_asc')}</AppMenuItem>
               <AppMenuSeparator />
-              <AppMenuItem onClick={() => changeSort('created_desc')}>{t('notes:sidebar.actions.sort_created_desc')}</AppMenuItem>
-              <AppMenuItem onClick={() => changeSort('created_asc')}>{t('notes:sidebar.actions.sort_created_asc')}</AppMenuItem>
+              <AppMenuItem checked={sortMethod === 'created_desc'} onClick={() => changeSort('created_desc')}>{t('notes:sidebar.actions.sort_created_desc')}</AppMenuItem>
+              <AppMenuItem checked={sortMethod === 'created_asc'} onClick={() => changeSort('created_asc')}>{t('notes:sidebar.actions.sort_created_asc')}</AppMenuItem>
             </AppMenuContent>
           </AppMenu>
         </div>
         
-        <NotesSidebarSearch />
+        <NotesSidebarSearch
+          onResultNavigate={handleResultNavigate}
+          onResultSubmit={handleResultSubmit}
+        />
       </div>
       
       {/* Section Divider */}
@@ -419,21 +490,18 @@ const NotesSidebarContent: React.FC = () => {
 
       {/* Tree Area */}
       <div className="flex-1 min-h-0 relative" onContextMenu={(e) => e.preventDefault()}>
-        {(loading || (isSearching && searchResults.length === 0 && contextSearchQuery)) ? (
-          isSearching ? (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="loading loading-spinner loading-sm text-muted-foreground/30" />
+        {loading ? (
+          <SidebarSkeletonRows />
+        ) : hasSearchQuery ? (
+          isSearching && searchResults.length === 0 ? (
+            <SidebarSkeletonRows rows={5} />
+          ) : searchResults.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+              <p className="text-sm text-muted-foreground">
+                {t('notes:search.no_results')}
+              </p>
             </div>
-          ) : loading ? (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="loading loading-spinner loading-sm text-muted-foreground/30" />
-            </div>
-          ) : showSearchResults ? (
-            <div className="p-4 text-center text-sm text-muted-foreground">
-              {t('notes:search.no_results')}
-            </div>
-          ) : null
-        ) : showSearchResults ? (
+          ) : (
           <CustomScrollArea className="absolute inset-0" viewportRef={searchListRef} viewportClassName="p-2">
             <div
               style={{
@@ -446,6 +514,7 @@ const NotesSidebarContent: React.FC = () => {
                 const res = searchResults[virtualRow.index];
                 const path = getPathToNote(res.id, folders, notes);
                 const folderPath = path.slice(0, -1).map(p => p.title).join(' / ');
+                const isKeyboardActive = virtualRow.index === activeResultIndex;
 
                 return (
                   <div
@@ -461,12 +530,12 @@ const NotesSidebarContent: React.FC = () => {
                     className="p-1"
                   >
                     <div 
-                      className="sidebar-shell-item p-2 cursor-pointer text-sm group transition-colors h-full"
-                      onClick={() => {
-                        const note = notes.find(n => n.id === res.id);
-                        if (note) setActive(note);
-                        void ensureNoteContent(res.id);
-                      }}
+                      className={cn(
+                        "sidebar-shell-item p-2 cursor-pointer text-sm group transition-colors h-full",
+                        isKeyboardActive && "bg-[var(--interactive-hover)] ring-1 ring-inset ring-[hsl(var(--ring)/0.4)]"
+                      )}
+                      onClick={() => openSearchResult(res.id)}
+                      onMouseEnter={() => setActiveResultIndex(virtualRow.index)}
                     >
                       <div className="font-medium truncate text-foreground/80 group-hover:text-foreground">
                         {renderHighlight(res.title)}
@@ -488,6 +557,7 @@ const NotesSidebarContent: React.FC = () => {
               })}
             </div>
           </CustomScrollArea>
+          )
         ) : showFavoritesOnly && filteredNotes.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full p-4 text-center">
             <Star className="h-8 w-8 text-muted-foreground/30 mb-3" />
@@ -497,6 +567,24 @@ const NotesSidebarContent: React.FC = () => {
             <p className="text-xs text-muted-foreground/60 mt-1">
               {t('notes:sidebar.favorites.empty_hint')}
             </p>
+          </div>
+        ) : notes.length === 0 && rootChildren.length === 0 ? (
+          /* 空库引导：提供创建 CTA，而非裸「暂无数据」 */
+          <div className="flex flex-col items-center justify-center h-full p-4 text-center ui-rise-in">
+            <FileText className="h-8 w-8 text-muted-foreground/30 mb-3" />
+            <p className="text-sm text-muted-foreground mb-3">
+              {t('notes:tree.empty')}
+            </p>
+            <div className="flex items-center gap-2">
+              <NotionButton variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={handleCreateNote}>
+                <FileText className="h-3.5 w-3.5 mr-1" />
+                {t('notes:sidebar.actions.new_note')}
+              </NotionButton>
+              <NotionButton variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground" onClick={handleCreateFolder}>
+                <FolderPlus className="h-3.5 w-3.5 mr-1" />
+                {t('notes:sidebar.actions.new_folder')}
+              </NotionButton>
+            </div>
           </div>
         ) : (
           <CustomScrollArea className="h-full" viewportClassName="pl-1 pr-1">
@@ -510,6 +598,8 @@ const NotesSidebarContent: React.FC = () => {
                 if (note) setActive(note);
                 if (note) void ensureNoteContent(note.id);
                 if (isReferenceId(id)) void validateReference(id);
+                // 选中的是笔记（非文件夹/引用）时收起移动侧栏，直达编辑器
+                if (note) onNoteSelected?.();
               }}
               onDoubleClick={async (id) => {
                 if (isReferenceId(id)) return;
@@ -544,7 +634,6 @@ const NotesSidebarContent: React.FC = () => {
                 }
               }}
               onCollapse={(id) => setExpandedIds(prev => prev.filter(p => p !== id))}
-              searchTerm={isSearching ? "searching..." : ""}
               onDrop={handleDrop}
               renamingId={renamingId}
               onRename={(id, name) => {
@@ -553,55 +642,28 @@ const NotesSidebarContent: React.FC = () => {
               }}
               onDelete={(ids) => deleteItems(ids)}
               onContextMenu={handleContextMenu}
+              onCreateChild={async (folderId) => {
+                setExpandedIds(prev => prev.includes(folderId) ? prev : [...prev, folderId]);
+                const id = await createNote(folderId);
+                if (id) setRenamingId(id);
+              }}
               disableDrag={showFavoritesOnly}
             />
           </CustomScrollArea>
         )}
       </div>
 
-      {/* Context Menu */}
-      <NotionDialog
-        open={referenceDialog.open}
-        onOpenChange={(open) => {
-          if (!open) closeReferenceDialog();
-        }}
-        maxWidth="max-w-md"
-      >
-        <NotionDialogHeader>
-          <NotionDialogTitle>{referenceDialogTitle}</NotionDialogTitle>
-        </NotionDialogHeader>
-        <NotionDialogBody>
-          <div className="space-y-2">
-            <Input
-              value={referenceValue}
-              onChange={(e) => setReferenceValue(e.target.value)}
-              placeholder={referenceDialogPlaceholder}
-              className="h-9"
-              autoFocus
-            />
-          </div>
-        </NotionDialogBody>
-        <NotionDialogFooter>
-          <NotionButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={closeReferenceDialog}
-            disabled={referenceSubmitting}
-          >
-            {t('common:actions.cancel')}
-          </NotionButton>
-          <NotionButton
-            type="button"
-            variant="primary"
-            size="sm"
-            onClick={submitReference}
-            disabled={referenceSubmitting || referenceValue.trim().length === 0}
-          >
-            {t('common:actions.confirm')}
-          </NotionButton>
-        </NotionDialogFooter>
-      </NotionDialog>
+      {/* 右键菜单「添加教材引用」内联选择面板（非模态，无锚点回退顶部居中） */}
+      <ReferenceSelector
+        open={folderRefPicker.open}
+        onOpenChange={setFolderRefPickerOpen}
+        type="textbook"
+        onSelect={handleFolderRefSelect}
+        existingRefs={existingRefs}
+        hint={folderRefPicker.folderId
+          ? t('notes:reference.add_to_folder')
+          : t('notes:reference.add_to_root')}
+      />
 
       {contextMenu && createPortal(
         <>
@@ -613,7 +675,9 @@ const NotesSidebarContent: React.FC = () => {
           />
           <div
             ref={contextMenuRef}
-            className="app-menu-content fixed"
+            className="app-menu-content notes-tree-context-menu ui-zoom-fade-in fixed"
+            role="menu"
+            aria-label={t('notes:tree.aria.tree')}
             style={{
               left: (contextMenuPosition ?? contextMenu).x,
               top: (contextMenuPosition ?? contextMenu).y,
@@ -658,6 +722,7 @@ const NotesSidebarContent: React.FC = () => {
             
             {treeData[contextMenu.id]?.canRename !== false && (
               <NotionButton variant="ghost" size="sm" className="app-menu-item" onClick={() => { setRenamingId(contextMenu.id); setContextMenu(null); }}>
+                <span className="app-menu-item-icon"><PencilSimple className="h-4 w-4" /></span>
                 <span className="app-menu-item-content">{t('notes:tree.context_menu.rename')}</span>
               </NotionButton>
             )}
@@ -721,11 +786,11 @@ export const NotesSidebarV2: React.FC<NotesSidebarV2Props> = ({
       width={width}
       onClose={onClose}
     >
+      {/* 头部搜索关闭：与 NotesSidebarSearch 并存会形成第二个断连的搜索框 */}
       <UnifiedSidebarHeader
         title={t('notes:sidebar.title')}
         icon={FileText}
-        showSearch
-        searchPlaceholder={t('notes:search.placeholder')}
+        showSearch={false}
         showRefresh
         refreshTitle={t('notes:sidebar.actions.refresh')}
         onRefreshClick={() => refreshNotes()}
@@ -742,7 +807,7 @@ export const NotesSidebarV2: React.FC<NotesSidebarV2Props> = ({
           </NotionButton>
         }
       />
-      <NotesSidebarContent />
+      <NotesSidebarContent onNoteSelected={isSmallScreen ? onClose : undefined} />
     </UnifiedSidebar>
   );
 };

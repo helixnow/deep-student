@@ -6,6 +6,7 @@ export type PdfLoadErrorKind =
   | 'password'
   | 'invalid'
   | 'network'
+  | 'too-large'
   | 'unknown';
 
 export interface ClassifiedPdfLoadError {
@@ -26,6 +27,15 @@ export function classifyPdfLoadError(error: unknown): ClassifiedPdfLoadError {
     normalized.includes('encrypt')
   ) {
     return { kind: 'password', rawMessage };
+  }
+
+  // 超大文件熔断（usePdfLoader 100MB 拒绝路径）：单独分类，便于 UI 给出
+  // "换阅读器打开"引导而非通用"重试"
+  if (
+    normalized.includes('too large') ||
+    normalized.includes('过大')
+  ) {
+    return { kind: 'too-large', rawMessage };
   }
 
   // 文件取不到 / 流式响应异常：属于路径失效或访问被拒，走"重新关联"引导

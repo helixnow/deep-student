@@ -753,6 +753,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
     <div
       ref={menuRef}
       role="menu"
+      data-wb-blur-surface
       className={cn(
         'fixed min-w-[180px] rounded-lg',
         // ★ 小视口下限制高度并允许内部滚动，避免长菜单被裁剪不可达

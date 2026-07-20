@@ -18,6 +18,16 @@ export interface PreviewPanelProps {
   referenceNode?: ReferenceNode;
   /** 自定义样式类 */
   className?: string;
+  /**
+   * 引用确认失效时的「删除引用」回调（可选）。
+   * 提供后失效空状态卡片会展示删除按钮。
+   */
+  onRemoveReference?: () => void;
+  /**
+   * 引用的「刷新标题」回调（可选）。
+   * 提供后失效空状态卡片会展示刷新标题按钮。
+   */
+  onRefreshReferenceTitle?: () => void | Promise<void>;
 }
 
 /**
@@ -41,6 +51,10 @@ export interface PreviewContent {
   fileSize?: number;
   /** 图片 URL（type='image' 时） */
   imageUrl?: string;
+  /** 媒体 URL（type='audio' | 'video' 时） */
+  mediaUrl?: string;
+  /** 媒体 MIME 类型（type='audio' | 'video' 时，可选） */
+  mimeType?: string;
 }
 
 /**

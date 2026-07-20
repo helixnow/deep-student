@@ -7,8 +7,12 @@ import type {
 } from '@milkdown/prose/view';
 import { $view } from '@milkdown/utils';
 
-import { tCalloutCycleAriaLabel, tCalloutTitlePlaceholder } from './i18n';
-import { createCalloutIconSvg } from './icons';
+import {
+  tCalloutCycleAriaLabel,
+  tCalloutFoldAriaLabel,
+  tCalloutTitlePlaceholder,
+} from './i18n';
+import { createCalloutFoldChevronSvg, createCalloutIconSvg } from './icons';
 import { CALLOUT_DATA_TYPE, calloutSchema } from './schema';
 import { nextCalloutType, normalizeCalloutType, type CalloutType } from './types';
 
@@ -17,7 +21,9 @@ class CalloutNodeView implements NodeView {
   contentDOM: HTMLDivElement;
 
   private readonly iconButton: HTMLButtonElement;
+  private readonly foldButton: HTMLButtonElement;
   private readonly titleEl: HTMLDivElement;
+  private readonly bodyEl: HTMLDivElement;
   private node: ProseNode;
   private readonly view: EditorView;
   private readonly getPos: () => number | undefined;
@@ -37,22 +43,33 @@ class CalloutNodeView implements NodeView {
     this.iconButton = document.createElement('button');
     this.iconButton.type = 'button';
     this.iconButton.className = 'crepe-callout__icon';
-    this.iconButton.addEventListener('mousedown', this.onIconMouseDown);
+    this.iconButton.addEventListener('mousedown', this.onButtonMouseDown);
     this.iconButton.addEventListener('click', this.onIconClick);
 
     this.titleEl = document.createElement('div');
     this.titleEl.className = 'crepe-callout__title';
 
-    header.append(this.iconButton, this.titleEl);
+    this.foldButton = document.createElement('button');
+    this.foldButton.type = 'button';
+    this.foldButton.className = 'crepe-callout__fold';
+    this.foldButton.appendChild(createCalloutFoldChevronSvg());
+    this.foldButton.addEventListener('mousedown', this.onButtonMouseDown);
+    this.foldButton.addEventListener('click', this.onFoldClick);
+
+    header.append(this.iconButton, this.titleEl, this.foldButton);
+
+    this.bodyEl = document.createElement('div');
+    this.bodyEl.className = 'crepe-callout__body';
 
     this.contentDOM = document.createElement('div');
     this.contentDOM.className = 'crepe-callout__content';
+    this.bodyEl.appendChild(this.contentDOM);
 
-    this.dom.append(header, this.contentDOM);
+    this.dom.append(header, this.bodyEl);
     this.bindAttrs(node);
   }
 
-  private onIconMouseDown = (event: MouseEvent) => {
+  private onButtonMouseDown = (event: MouseEvent) => {
     // Prevent editor from taking focus / selecting the node before click.
     event.preventDefault();
   };
@@ -74,17 +91,39 @@ class CalloutNodeView implements NodeView {
     );
   };
 
+  private onFoldClick = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!this.view.editable) return;
+
+    const pos = this.getPos();
+    if (pos == null) return;
+
+    this.view.dispatch(
+      this.view.state.tr.setNodeMarkup(pos, undefined, {
+        ...this.node.attrs,
+        collapsed: !this.node.attrs.collapsed,
+      }),
+    );
+  };
+
   private bindAttrs(node: ProseNode) {
     const type = normalizeCalloutType(String(node.attrs.type ?? 'note'));
     const title = String(node.attrs.title ?? '').trim();
+    const collapsed = Boolean(node.attrs.collapsed);
 
     this.dom.className = `crepe-callout crepe-callout--${type}`;
     this.dom.dataset.calloutType = type;
     this.dom.dataset.calloutTitle = title;
+    this.dom.dataset.calloutCollapsed = collapsed ? 'true' : 'false';
 
     this.iconButton.replaceChildren(createCalloutIconSvg(type));
     this.iconButton.setAttribute('aria-label', tCalloutCycleAriaLabel());
     this.iconButton.title = tCalloutCycleAriaLabel();
+
+    this.foldButton.setAttribute('aria-label', tCalloutFoldAriaLabel());
+    this.foldButton.title = tCalloutFoldAriaLabel();
+    this.foldButton.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
 
     this.titleEl.textContent = title || tCalloutTitlePlaceholder(type as CalloutType);
     this.titleEl.classList.toggle('crepe-callout__title--placeholder', !title);
@@ -100,7 +139,7 @@ class CalloutNodeView implements NodeView {
   stopEvent(event: Event): boolean {
     const target = event.target;
     if (!(target instanceof Element)) return false;
-    return this.iconButton.contains(target);
+    return this.iconButton.contains(target) || this.foldButton.contains(target);
   }
 
   ignoreMutation(mutation: ViewMutationRecord): boolean {
@@ -112,8 +151,10 @@ class CalloutNodeView implements NodeView {
   }
 
   destroy() {
-    this.iconButton.removeEventListener('mousedown', this.onIconMouseDown);
+    this.iconButton.removeEventListener('mousedown', this.onButtonMouseDown);
     this.iconButton.removeEventListener('click', this.onIconClick);
+    this.foldButton.removeEventListener('mousedown', this.onButtonMouseDown);
+    this.foldButton.removeEventListener('click', this.onFoldClick);
   }
 }
 

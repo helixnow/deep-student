@@ -5,7 +5,12 @@ import { getMarkdown } from '@milkdown/utils'
 import { describe, expect, it } from 'vitest'
 
 import { applyToggleInputRule } from '../input-rule'
-import { TOGGLE_TYPE, togglePlugin, tryExitToggleOnEnter } from '../index'
+import {
+  TOGGLE_TYPE,
+  togglePlugin,
+  tryExitToggleOnEnter,
+  tryUnwrapEmptyToggleOnBackspace,
+} from '../index'
 
 async function createToggleEditor(markdown: string) {
   const root = document.createElement('div')
@@ -135,6 +140,77 @@ describe('toggle interaction', () => {
       expect(el.dataset.open).toBe('false')
       expect(el.querySelector('.milkdown-toggle__body')).toBeTruthy()
       expect(document.getElementById('milkdown-toggle-styles')).toBeTruthy()
+    } finally {
+      await destroy()
+    }
+  })
+
+  it('Backspace in the only empty block unwraps the toggle keeping the title', async () => {
+    const source = `> [!toggle] 标题在
+> 正文
+`
+    const { view, destroy } = await createToggleEditor(source)
+    try {
+      const togglePos = findTogglePos(view.state.doc)
+      expect(togglePos).not.toBeNull()
+
+      // 清空内容区，只留一个空段落
+      const toggle = view.state.doc.nodeAt(togglePos!)
+      const contentFrom = togglePos! + 1
+      const contentTo = togglePos! + toggle!.nodeSize - 1
+      const paragraph = view.state.schema.nodes.paragraph!
+      view.dispatch(
+        view.state.tr.replaceWith(contentFrom, contentTo, paragraph.create()),
+      )
+      view.dispatch(
+        view.state.tr.setSelection(
+          TextSelection.create(view.state.doc, togglePos! + 2),
+        ),
+      )
+
+      const handled = tryUnwrapEmptyToggleOnBackspace(view)
+      expect(handled).toBe(true)
+
+      const first = view.state.doc.nodeAt(togglePos!)
+      expect(first?.type.name).toBe('paragraph')
+      expect(first?.textContent).toBe('标题在')
+    } finally {
+      await destroy()
+    }
+  })
+
+  it('Backspace is a no-op when the toggle still has content', async () => {
+    const source = `> [!toggle] 有货
+> 正文
+`
+    const { view, destroy } = await createToggleEditor(source)
+    try {
+      const togglePos = findTogglePos(view.state.doc)
+      view.dispatch(
+        view.state.tr.setSelection(
+          TextSelection.create(view.state.doc, togglePos! + 2),
+        ),
+      )
+      expect(tryUnwrapEmptyToggleOnBackspace(view)).toBe(false)
+      expect(view.state.doc.nodeAt(togglePos!)?.type.name).toBe(TOGGLE_TYPE)
+    } finally {
+      await destroy()
+    }
+  })
+
+  it('marks empty toggles with data-empty for the placeholder hint', async () => {
+    const { root, view, destroy } = await createToggleEditor(`> [!toggle] 空的
+>
+`)
+    try {
+      const el = root.querySelector('.milkdown-toggle') as HTMLElement
+      expect(el.dataset.empty).toBe('true')
+      const inner = el.querySelector('.milkdown-toggle__body-inner') as HTMLElement
+      expect(inner.dataset.emptyPlaceholder).toBeTruthy()
+
+      const togglePos = findTogglePos(view.state.doc)
+      view.dispatch(view.state.tr.insertText('内容', togglePos! + 2))
+      expect(el.dataset.empty).toBe('false')
     } finally {
       await destroy()
     }

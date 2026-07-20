@@ -1,9 +1,12 @@
 /**
  * Small, UI-independent helpers for Obsidian-style wiki links.
  *
- * A target first resolves to a note ID. If no ID matches, an exact trimmed
- * title match is used. Duplicate titles resolve to the lexicographically
- * smallest note ID so every caller gets the same graph.
+ * A target first resolves to a note ID (exact, case-sensitive — autocomplete
+ * writes IDs verbatim). If no ID matches, a trimmed, case-insensitive title
+ * match is used so `[[calculus]]` still resolves to the note titled
+ * "Calculus" while the original casing is preserved for display. Titles that
+ * collide case-insensitively resolve to the lexicographically smallest note
+ * ID so every caller gets the same graph.
  */
 
 export interface WikiLink {
@@ -76,10 +79,12 @@ export interface WikiLinkIndex {
   resolve(target: string): WikiLinkTargetResolution;
 }
 
-interface TextRange {
+export interface MarkdownTextRange {
   start: number;
   end: number;
 }
+
+type TextRange = MarkdownTextRange;
 
 interface OpenFence {
   marker: '`' | '~';
@@ -88,7 +93,11 @@ interface OpenFence {
 }
 
 const WIKI_LINK_PATTERN = /\[\[([^\]\r\n]+?)\]\]/g;
-const NOTE_MENTION_PATTERN = /\[([^\]\r\n]+)\]\(note:\/\/([^\s)]+)(?:[?#][^\s)]*)?\)/g;
+/**
+ * `[label](note://id?query#heading)`：id 不吃 `?` / `#`，heading 捕获进第 3 组，
+ * 供 `WikiLink.heading` 使用（B10：此前 hash 被并入 id，导致解析失败且丢失 heading）。
+ */
+const NOTE_MENTION_PATTERN = /\[([^\]\r\n]+)\]\(note:\/\/([^\s)?#]+)(?:\?[^\s)#]*)?(?:#([^\s)]*))?\)/g;
 
 const compareIds = (left: string, right: string): number => {
   if (left < right) return -1;
@@ -153,26 +162,101 @@ function isEscaped(markdown: string, start: number): boolean {
 }
 
 /**
- * Parses inline wiki links while leaving fenced Markdown code blocks alone.
- * Inline code remains eligible because it is regular prose from the parser's
- * perspective; callers that need a different policy can filter the result.
+ * Inline code spans (`` `...` ``) that appear outside fenced code blocks.
+ * Follows the CommonMark pairing rule: a run of N backticks opens a span and
+ * the next run of exactly N backticks closes it; unmatched runs stay literal.
+ */
+function inlineCodeRanges(markdown: string, fencedRanges: TextRange[]): TextRange[] {
+  const ranges: TextRange[] = [];
+  let fenceIndex = 0;
+  let cursor = 0;
+
+  while (cursor < markdown.length) {
+    while (fenceIndex < fencedRanges.length && fencedRanges[fenceIndex].end <= cursor) {
+      fenceIndex += 1;
+    }
+    if (
+      fenceIndex < fencedRanges.length
+      && cursor >= fencedRanges[fenceIndex].start
+      && cursor < fencedRanges[fenceIndex].end
+    ) {
+      cursor = fencedRanges[fenceIndex].end;
+      continue;
+    }
+
+    if (markdown[cursor] !== '`' || isEscaped(markdown, cursor)) {
+      cursor += 1;
+      continue;
+    }
+
+    let openerEnd = cursor;
+    while (openerEnd < markdown.length && markdown[openerEnd] === '`') openerEnd += 1;
+    const runLength = openerEnd - cursor;
+
+    // A code span never crosses into a fenced block or across a blank line
+    // (CommonMark)；避免游离反引号把后续大段文本误判为 code。
+    const fenceLimit = fenceIndex < fencedRanges.length
+      ? fencedRanges[fenceIndex].start
+      : markdown.length;
+    const blankOffset = markdown.slice(openerEnd, fenceLimit).search(/\n[ \t]*\r?\n/);
+    const searchLimit = blankOffset >= 0 ? openerEnd + blankOffset : fenceLimit;
+    let probe = openerEnd;
+    let closerEnd = -1;
+    while (probe < searchLimit) {
+      if (markdown[probe] !== '`') {
+        probe += 1;
+        continue;
+      }
+      let runEnd = probe;
+      while (runEnd < searchLimit && markdown[runEnd] === '`') runEnd += 1;
+      if (runEnd - probe === runLength) {
+        closerEnd = runEnd;
+        break;
+      }
+      probe = runEnd;
+    }
+
+    if (closerEnd >= 0) {
+      ranges.push({ start: cursor, end: closerEnd });
+      cursor = closerEnd;
+    } else {
+      cursor = openerEnd;
+    }
+  }
+
+  return ranges;
+}
+
+/** Fenced blocks plus inline code spans, sorted; links inside never parse. */
+export function markdownCodeRanges(markdown: string): MarkdownTextRange[] {
+  const fencedRanges = fencedCodeRanges(markdown);
+  return [...fencedRanges, ...inlineCodeRanges(markdown, fencedRanges)]
+    .sort((left, right) => left.start - right.start);
+}
+
+const codeRanges = markdownCodeRanges;
+
+/**
+ * Parses inline wiki links while leaving Markdown code alone: both fenced
+ * blocks and inline code spans are skipped, matching the editor's remark
+ * layer (which only visits plain text nodes) and Obsidian behaviour.
  */
 export function parseWikiLinks(markdown: string): WikiLink[] {
   const links: WikiLink[] = [];
-  const fencedRanges = fencedCodeRanges(markdown);
+  const skippedRanges = codeRanges(markdown);
   let rangeIndex = 0;
 
   WIKI_LINK_PATTERN.lastIndex = 0;
   for (let match = WIKI_LINK_PATTERN.exec(markdown); match; match = WIKI_LINK_PATTERN.exec(markdown)) {
     const start = match.index;
-    while (rangeIndex < fencedRanges.length && fencedRanges[rangeIndex].end <= start) {
+    while (rangeIndex < skippedRanges.length && skippedRanges[rangeIndex].end <= start) {
       rangeIndex += 1;
     }
     if (
       isEscaped(markdown, start)
-      || (rangeIndex < fencedRanges.length
-        && start >= fencedRanges[rangeIndex].start
-        && start < fencedRanges[rangeIndex].end)
+      || (rangeIndex < skippedRanges.length
+        && start >= skippedRanges[rangeIndex].start
+        && start < skippedRanges[rangeIndex].end)
     ) {
       continue;
     }
@@ -205,25 +289,27 @@ export function parseWikiLinks(markdown: string): WikiLink[] {
  */
 export function parseNoteMentions(markdown: string): WikiLink[] {
   const links: WikiLink[] = [];
-  const fencedRanges = fencedCodeRanges(markdown);
+  const skippedRanges = codeRanges(markdown);
   let rangeIndex = 0;
 
   NOTE_MENTION_PATTERN.lastIndex = 0;
   for (let match = NOTE_MENTION_PATTERN.exec(markdown); match; match = NOTE_MENTION_PATTERN.exec(markdown)) {
     const start = match.index;
-    while (rangeIndex < fencedRanges.length && fencedRanges[rangeIndex].end <= start) rangeIndex += 1;
+    while (rangeIndex < skippedRanges.length && skippedRanges[rangeIndex].end <= start) rangeIndex += 1;
     if (
       isEscaped(markdown, start)
-      || (rangeIndex < fencedRanges.length
-        && start >= fencedRanges[rangeIndex].start
-        && start < fencedRanges[rangeIndex].end)
+      || (rangeIndex < skippedRanges.length
+        && start >= skippedRanges[rangeIndex].start
+        && start < skippedRanges[rangeIndex].end)
     ) continue;
 
     const target = match[2]?.trim();
     if (!target) continue;
+    const heading = decodeMentionHeading(match[3]);
     links.push({
       raw: match[0],
       target,
+      ...(heading ? { heading } : {}),
       label: match[1]?.trim() || undefined,
       start,
       end: start + match[0].length,
@@ -232,15 +318,32 @@ export function parseNoteMentions(markdown: string): WikiLink[] {
   return links;
 }
 
+/** URL fragments may arrive percent-encoded; fall back to the raw text. */
+function decodeMentionHeading(fragment: string | undefined): string {
+  const trimmed = fragment?.trim() ?? '';
+  if (!trimmed) return '';
+  try {
+    return decodeURIComponent(trimmed).trim();
+  } catch {
+    return trimmed;
+  }
+}
+
 /** All first-class note references, ordered by their source position. */
 export function parseNoteLinks(markdown: string): WikiLink[] {
   return [...parseWikiLinks(markdown), ...parseNoteMentions(markdown)]
     .sort((left, right) => left.start - right.start);
 }
 
+/** Shared title normalization: trim + case fold, aligned with autocomplete. */
+export function normalizeWikiLinkTitle(title: string): string {
+  return title.trim().toLocaleLowerCase();
+}
+
 /**
- * Builds a reusable resolver. IDs are matched before titles, and matching is
- * exact after trimming the user-provided target and stored title.
+ * Builds a reusable resolver. IDs are matched before titles (exact match, so
+ * autocomplete-written IDs always win), then titles are matched after
+ * trimming and case folding both the user-provided target and stored title.
  */
 export function createWikiLinkIndex(notes: Iterable<WikiLinkNoteReference>): WikiLinkIndex {
   const notesById = new Map<string, WikiLinkNoteReference>();
@@ -251,11 +354,12 @@ export function createWikiLinkIndex(notes: Iterable<WikiLinkNoteReference>): Wik
 
   const titleToIds = new Map<string, string[]>();
   for (const id of Array.from(notesById.keys()).sort(compareIds)) {
-    const title = notesById.get(id)?.title.trim();
-    if (!title) continue;
-    const ids = titleToIds.get(title) ?? [];
+    const title = notesById.get(id)?.title;
+    const titleKey = title ? normalizeWikiLinkTitle(title) : '';
+    if (!titleKey) continue;
+    const ids = titleToIds.get(titleKey) ?? [];
     ids.push(id);
-    titleToIds.set(title, ids);
+    titleToIds.set(titleKey, ids);
   }
 
   return {
@@ -281,7 +385,7 @@ export function createWikiLinkIndex(notes: Iterable<WikiLinkNoteReference>): Wik
         };
       }
 
-      const candidateIds = titleToIds.get(normalizedTarget) ?? [];
+      const candidateIds = titleToIds.get(normalizeWikiLinkTitle(normalizedTarget)) ?? [];
       return {
         target: normalizedTarget,
         noteId: candidateIds[0] ?? null,

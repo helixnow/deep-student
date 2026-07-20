@@ -2,7 +2,13 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import type { CrepeEditorApi } from '@/components/crepe';
-import { useAIEditState, type CanvasAIEditRequest, type CanvasAIEditResult, type AIEditState } from './useAIEditState';
+import {
+  useAIEditState,
+  computeProposedContent,
+  type CanvasAIEditRequest,
+  type CanvasAIEditResult,
+  type AIEditState,
+} from './useAIEditState';
 
 interface UseCanvasAIEditHandlerOptions {
   noteId: string | null | undefined;
@@ -104,7 +110,8 @@ export function useCanvasAIEditHandler({
     const acceptResult = accept({ clear: false });
     if (!acceptResult) return;
 
-    const { proposedContent, result } = acceptResult;
+    const { result, originalContent, request } = acceptResult;
+    let { proposedContent } = acceptResult;
     const editor = editorApiRef.current;
     isApplyingRef.current = true;
     setIsApplying(true);
@@ -121,6 +128,26 @@ export function useCanvasAIEditHandler({
 
       // ★ 2.1 接受前记录检查点（编辑前全文），接受后仍可整轮回滚
       const contentBeforeApply = editor.getFullMarkdown?.() ?? editor.getMarkdown();
+
+      // 内联 diff 下编辑器保持可编辑：若等待确认期间用户改了文档，
+      // 按最新全文重算建议，避免整体覆盖时吃掉用户编辑。
+      if (contentBeforeApply !== originalContent) {
+        const recomputed = computeProposedContent(request, contentBeforeApply);
+        if (recomputed.error) {
+          clear();
+          pendingRequestRef.current = null;
+          await sendResult({
+            requestId: result.requestId,
+            success: false,
+            error: `文档在等待确认期间已被修改，建议无法应用：${recomputed.error}`,
+          });
+          return;
+        }
+        proposedContent = recomputed.content;
+        if (recomputed.replaceCount !== undefined) {
+          result.replaceCount = recomputed.replaceCount;
+        }
+      }
 
       try {
         if (editor.replaceFullMarkdown) {

@@ -919,6 +919,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             onEditorReady={handleEditorReady}
             onEditorApiReady={handleEditorApiReady}
             onSaveStateChange={(state) => onSaveStateChangeRef.current?.(state)}
+            tags={tags}
+            onTagsChange={readOnly ? undefined : handleTagsChange}
             dirtyRegistryKey={{ typeId: 'note', instanceKey: node.id }}
             acrWindowId={hostWindowId}
             focusModeScopeId={hostWindowId}

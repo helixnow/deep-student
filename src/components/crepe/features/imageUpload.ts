@@ -38,6 +38,33 @@ interface ImageBlockFeatureConfig {
 import i18next from 'i18next';
 
 /**
+ * 降级路径 blob URL 的实例级注册表。
+ * blob URL 仅当前会话有效且不会被 GC 自动回收；编辑器实例销毁时统一 revoke，
+ * 避免长会话内反复降级上传导致的内存泄漏。
+ */
+export interface TransientBlobUrlRegistry {
+  register: (url: string) => void;
+  releaseAll: () => void;
+}
+
+export const createTransientBlobUrlRegistry = (): TransientBlobUrlRegistry => {
+  const urls = new Set<string>();
+  return {
+    register: (url: string) => {
+      urls.add(url);
+    },
+    releaseAll: () => {
+      urls.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch { /* URL 可能已随文档卸载失效 */ }
+      });
+      urls.clear();
+    },
+  };
+};
+
+/**
  * 将 File 转换为 base64 字符串
  */
 export const fileToBase64 = (file: File): Promise<string> => {
@@ -59,9 +86,11 @@ export const fileToBase64 = (file: File): Promise<string> => {
 
 /**
  * 创建图片上传处理函数
+ * @param blobRegistry 可选；降级路径创建的 blob URL 会登记于此，由宿主在销毁时统一 revoke
  */
 export const createImageUploader = (
-  noteId: string | undefined
+  noteId: string | undefined,
+  blobRegistry?: TransientBlobUrlRegistry
 ): ((file: File) => Promise<string>) => {
   return async (file: File): Promise<string> => {
     const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -167,6 +196,7 @@ export const createImageUploader = (
       i18next.t('notes:editor.image_upload.not_persisted')
     );
     const blobUrl = URL.createObjectURL(file);
+    blobRegistry?.register(blobUrl);
     emitImageUploadDebug('upload_complete', 'info', '使用 blob URL（降级方案）', {
       blobUrl,
       fileName: file.name,
@@ -179,9 +209,10 @@ export const createImageUploader = (
  * 创建图片块功能配置
  */
 export const createImageBlockConfig = (
-  noteId: string | undefined
+  noteId: string | undefined,
+  blobRegistry?: TransientBlobUrlRegistry
 ): ImageBlockFeatureConfig => {
-  const uploader = createImageUploader(noteId);
+  const uploader = createImageUploader(noteId, blobRegistry);
 
   return {
     // 块级图片上传

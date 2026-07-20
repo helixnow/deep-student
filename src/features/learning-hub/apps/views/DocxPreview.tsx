@@ -1,15 +1,22 @@
 /**
  * DOCX 富文本预览组件
  * 使用 docx-preview 库将 DOCX 文档渲染为 HTML
- * 
+ *
+ * 观感对标 Word 网页版 / macOS Quick Look：
+ * - 灰色台面 + 白纸页面 + 柔和投影（暗色模式保持浅色纸面，文档原色不做重写，
+ *   与 Word/快速查看的行为一致，彩色文字、品牌色完整保真）
+ * - 字号缩放通过 calc(原字号 × --docx-font-scale) 实现，不破坏文档内部字号层级
+ * - 所有组件样式以实例唯一的 data-docx-instance 属性作用域隔离，多实例互不影响
+ *
  * 工具栏已移至 FileContentView 统一管理
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { renderAsync } from 'docx-preview';
-import { CircleNotch } from '@phosphor-icons/react';
+import { FileX } from '@phosphor-icons/react';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { Skeleton } from '@/components/ui/shad/Skeleton';
 import {
   normalizeBase64,
   decodeBase64ToArrayBuffer,
@@ -31,6 +38,32 @@ function detectContainerIssue(buffer: ArrayBuffer): 'encrypted-or-legacy' | 'inv
   }
   return 'invalid';
 }
+
+/** 字号缩放变量名：生成样式与内联样式统一改写为 calc(原值 × var(FONT_SCALE_VAR)) */
+const FONT_SCALE_VAR = '--docx-font-scale';
+
+/** 台面四周留白（px）；autoScale 计算时需从可用宽度中扣除水平部分 */
+const DESK_PADDING_X = 32;
+const DESK_PADDING_Y = 28;
+
+/**
+ * 将 docx-preview 写在元素内联样式里的 font-size 改写为
+ * calc(原值 × var(--docx-font-scale))，与生成样式的改写策略保持一致，
+ * 这样字号缩放对"直接格式化"的文本段同样生效且不抹平层级。
+ */
+function applyInlineFontScale(root: HTMLElement): void {
+  for (const el of Array.from(root.querySelectorAll<HTMLElement>('[style*="font-size"]'))) {
+    const value = el.style.fontSize;
+    if (!value || value.includes(FONT_SCALE_VAR)) continue;
+    el.style.fontSize = `calc(${value} * var(${FONT_SCALE_VAR}, 1))`;
+  }
+}
+
+/** 加载骨架屏的"纸面文本行"宽度序列（模拟标题 + 段落节奏） */
+const SKELETON_LINES = [
+  'w-3/5', 'w-full', 'w-full', 'w-11/12', 'w-full', 'w-4/5',
+  'w-full', 'w-2/3', 'w-full', 'w-full', 'w-5/6', 'w-1/2',
+] as const;
 
 interface DocxPreviewProps {
   /** Base64 编码的 DOCX 文件内容 */
@@ -67,7 +100,15 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [autoScale, setAutoScale] = useState(1);
-  const [docxBaseFontSize, setDocxBaseFontSize] = useState<number | null>(null);
+  const [pageInfo, setPageInfo] = useState<{ current: number; total: number }>({ current: 1, total: 0 });
+  const [indicatorVisible, setIndicatorVisible] = useState(false);
+  const indicatorTimerRef = useRef<number | undefined>(undefined);
+
+  // 实例级作用域标识：组件样式与文档生成样式都以此属性隔离，
+  // 多个 DocxPreview 并存（分屏、多窗口）时互不污染
+  const reactId = useId();
+  const instanceId = useMemo(() => `docx-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`, [reactId]);
+  const scopeSelector = `[data-docx-instance="${instanceId}"]`;
 
   // 使用外部控制值，未提供则使用默认值 1
   const zoomScale = externalZoomScale ?? 1;
@@ -89,6 +130,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
     const renderDocx = async () => {
       setIsLoading(true);
       setError(null);
+      setPageInfo({ current: 1, total: 0 });
 
       try {
         setAutoScale(1);
@@ -127,10 +169,14 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
         container.innerHTML = '';
         if (styleContainer) styleContainer.innerHTML = '';
 
-        // Render styles off-DOM first. They are scoped and sanitized before
-        // entering the application document.
+        // ★ 内容与样式都渲染进离屏容器（experimental=false 时 renderAsync
+        //   不做布局测量，离屏渲染安全）。这样进行中的旧 renderAsync 永远
+        //   触碰不到真实 DOM：切换文件时若旧文档解析得慢、在新渲染开始后才
+        //   完成，其"未经消毒"的输出只会写进已被丢弃的离屏节点，而不会
+        //   晚到覆盖页面（消毒步骤因 token 过期被跳过的竞态由此根除）
+        const detachedContent = document.createElement('div');
         const detachedStyleContainer = document.createElement('div');
-        await renderAsync(arrayBuffer, container, detachedStyleContainer, {
+        await renderAsync(arrayBuffer, detachedContent, detachedStyleContainer, {
           className: 'docx-preview',
           inWrapper: true,
           ignoreWidth: false,
@@ -151,9 +197,16 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
 
         if (isMounted && renderToken === renderTokenRef.current) {
           // ★ 渲染后使用 DOMPurify 进行完整安全消毒（移除危险标签+属性+协议）
-          sanitizeRenderedDom(container);
+          sanitizeRenderedDom(detachedContent);
+          // 字号缩放：内联 font-size 改写为 calc(原值 × 缩放变量)，保留文档层级
+          applyInlineFontScale(detachedContent);
+          // 消毒完成后才一次性提交进真实 DOM
+          container.replaceChildren(...Array.from(detachedContent.childNodes));
           if (styleContainer) {
-            styleContainer.replaceChildren(...sanitizeDocxGeneratedStyles(detachedStyleContainer));
+            styleContainer.replaceChildren(...sanitizeDocxGeneratedStyles(detachedStyleContainer, {
+              scope: scopeSelector,
+              fontScaleVar: FONT_SCALE_VAR,
+            }));
           }
           setIsLoading(false);
         }
@@ -178,14 +231,18 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
       container.innerHTML = '';
       if (styleContainer) styleContainer.innerHTML = '';
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- t 不加入依赖：语言切换不应重新渲染文档
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- t/scopeSelector 不加入依赖：语言切换不应重新渲染文档，实例作用域在组件生命周期内恒定
   }, [base64Content]);
 
+  // 自适应宽度：ResizeObserver 监听视口与内容尺寸变化；
+  // MutationObserver 仅在结构变化时兜底，且做 150ms 防抖收敛
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     let frame = 0;
+    let debounceTimer = 0;
+    let observedTarget: HTMLElement | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let mutationObserver: MutationObserver | null = null;
 
@@ -197,22 +254,21 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
       const viewport = viewportRef.current;
       const target = getScaleTarget();
       if (!viewport || !target) return;
-      const availableWidth = viewport.clientWidth;
+      // 内容尺寸变化（如图片异步加载）直接由 ResizeObserver 捕获，
+      // 无需依赖 DOM 变更事件
+      if (resizeObserver && target !== observedTarget) {
+        if (observedTarget) resizeObserver.unobserve(observedTarget);
+        resizeObserver.observe(target);
+        observedTarget = target;
+      }
+      const availableWidth = viewport.clientWidth - DESK_PADDING_X * 2;
       const contentWidth = target.scrollWidth || target.clientWidth;
-      if (!availableWidth || !contentWidth) return;
+      if (availableWidth <= 0 || !contentWidth) return;
       const nextAutoScale = Math.min(1, availableWidth / contentWidth);
       setAutoScale((prev) => {
         if (Math.abs(prev - nextAutoScale) < 0.01) return prev;
         return Number(nextAutoScale.toFixed(3));
       });
-
-      const section = (container.querySelector('section.docx-preview') ?? container.querySelector('section.docx')) as HTMLElement | null;
-      if (section) {
-        const fontSize = Number.parseFloat(getComputedStyle(section).fontSize);
-        if (!Number.isNaN(fontSize)) {
-          setDocxBaseFontSize((prev) => (prev === fontSize ? prev : fontSize));
-        }
-      }
     };
 
     const scheduleUpdate = () => {
@@ -220,11 +276,18 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
       frame = requestAnimationFrame(updateScale);
     };
 
-    mutationObserver = new MutationObserver(scheduleUpdate);
+    // 结构性变更（renderAsync 批量插入节点、sanitize 重写等）会触发
+    // 大量 mutation 记录，这里做时间防抖，收敛为一次测量
+    const debouncedSchedule = () => {
+      window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(scheduleUpdate, 150);
+    };
+
+    mutationObserver = new MutationObserver(debouncedSchedule);
     mutationObserver.observe(container, { childList: true, subtree: true });
 
+    resizeObserver = new ResizeObserver(scheduleUpdate);
     if (viewportRef.current) {
-      resizeObserver = new ResizeObserver(scheduleUpdate);
       resizeObserver.observe(viewportRef.current);
     }
 
@@ -232,10 +295,52 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
 
     return () => {
       if (frame) cancelAnimationFrame(frame);
+      window.clearTimeout(debounceTimer);
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
     };
   }, [base64Content]);
+
+  // 页码跟踪：IntersectionObserver 用视口中线判定当前页
+  useEffect(() => {
+    if (isLoading || error) return;
+    const container = containerRef.current;
+    const viewport = viewportRef.current;
+    if (!container || !viewport) return;
+
+    const sections = Array.from(
+      container.querySelectorAll<HTMLElement>('section.docx-preview, section.docx')
+    );
+    setPageInfo({ current: 1, total: sections.length });
+    if (sections.length < 2) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const index = sections.indexOf(entry.target as HTMLElement);
+          if (index < 0) continue;
+          setPageInfo((prev) =>
+            prev.current === index + 1 ? prev : { ...prev, current: index + 1 }
+          );
+        }
+      },
+      // 收窄根边界为视口中部的窄带，与其相交的 section 即"当前页"
+      { root: viewport, rootMargin: '-45% 0px -45% 0px', threshold: 0 }
+    );
+    sections.forEach((section) => observer.observe(section));
+
+    return () => observer.disconnect();
+  }, [isLoading, error, base64Content]);
+
+  // 页码浮标：翻页时短暂浮现，随后淡出（不打断阅读）
+  useEffect(() => {
+    if (isLoading || error || pageInfo.total <= 1) return;
+    setIndicatorVisible(true);
+    window.clearTimeout(indicatorTimerRef.current);
+    indicatorTimerRef.current = window.setTimeout(() => setIndicatorVisible(false), 1600);
+    return () => window.clearTimeout(indicatorTimerRef.current);
+  }, [pageInfo, isLoading, error]);
 
   // 键盘滚动支持：OverlayScrollbars 的视口不在焦点链上，浏览器不会自动
   // 将按键滚动路由过去，这里手动映射 PageUp/PageDown/Home/End
@@ -267,18 +372,50 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
   return (
     <div
       className={`relative ${className}`}
+      data-docx-instance={instanceId}
       aria-busy={isLoading && !error}
       tabIndex={0}
       onKeyDown={handleKeyDown}
     >
       {isLoading && !error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
-          <CircleNotch size={32} className="animate-spin text-primary" />
+        <div
+          className="absolute inset-0 z-10 flex justify-center overflow-hidden"
+          style={{
+            background: 'var(--docx-desk)',
+            padding: `${DESK_PADDING_Y}px ${DESK_PADDING_X}px 0`,
+          }}
+          role="status"
+          aria-label={t('learningHub:docPreview.loadingDocument')}
+        >
+          {/* 纸张形状的骨架屏：与真实页面同款台面留白/纸面/投影，
+              宽度对齐 A4 默认页宽（794px@96dpi），加载完成后无缝过渡 */}
+          <div
+            className="flex aspect-[210/297] w-full max-w-[794px] flex-col gap-3 rounded-[2px] px-10 py-12"
+            style={{ background: 'var(--docx-paper)', boxShadow: 'var(--docx-page-shadow)' }}
+            aria-hidden="true"
+          >
+            {SKELETON_LINES.map((width, index) => (
+              <Skeleton
+                key={index}
+                className={`${index === 0 ? 'mb-3 h-5' : 'h-3'} ${width}`}
+              />
+            ))}
+          </div>
         </div>
       )}
       {error && (
-        <div className="absolute inset-0 flex items-center justify-center p-8 text-destructive bg-background z-10" role="alert">
-          <p>{t('learningHub:docPreview.cannotPreviewDoc')}: {error}</p>
+        <div
+          className="absolute inset-0 z-10 flex items-center justify-center p-8"
+          style={{ background: 'var(--docx-desk)' }}
+          role="alert"
+        >
+          <div className="flex max-w-sm flex-col items-center gap-2 text-center">
+            <FileX size={40} weight="thin" className="mb-1 text-muted-foreground" aria-hidden="true" />
+            <p className="text-sm font-medium text-foreground">
+              {t('learningHub:docPreview.cannotPreviewDoc')}
+            </p>
+            <p className="text-xs text-muted-foreground">{error}</p>
+          </div>
         </div>
       )}
       {/* docx-preview 生成的文档样式（<style> 标签），与被消毒的内容容器隔离 */}
@@ -290,23 +427,53 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
       >
         <div
           ref={containerRef}
-          className="docx-content-wrapper"
+          className={`docx-content-wrapper${!isLoading && !error ? ' ui-rise-in' : ''}`}
           aria-label={fileName ? t('learningHub:docPreview.docxPreviewLabel', { name: fileName }) : t('learningHub:docPreview.docxPreviewDefault')}
           style={{
             ['--docx-scale' as string]: effectiveScale.toString(),
-            ['--docx-font-scale' as string]: fontScale.toString(),
-            ['--docx-base-font-size' as string]: docxBaseFontSize ? `${docxBaseFontSize}px` : undefined,
+            [FONT_SCALE_VAR as string]: fontScale.toString(),
           } as React.CSSProperties}
         />
       </CustomScrollArea>
+      {/* 页码浮标：内联小浮标（非模态），翻页时浮现后自动淡出 */}
+      {!isLoading && !error && pageInfo.total > 1 && (
+        <div
+          data-wb-blur-surface
+          className={`pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-background/90 px-3 py-1 text-xs tabular-nums text-muted-foreground shadow-sm backdrop-blur-sm transition-opacity duration-150 ${indicatorVisible ? 'opacity-100' : 'opacity-0'}`}
+          aria-hidden={!indicatorVisible}
+        >
+          {t('learningHub:docPreview.pageIndicator', { current: pageInfo.current, total: pageInfo.total })}
+        </div>
+      )}
       <style>{`
-        /* 整体容器 - 适配亮暗主题 */
-        .docx-container .docx-content-wrapper {
+        /* ============ 台面 / 纸面 / 墨色（语义变量组合，无硬编码色值） ============
+           暗色模式沿用 Word 网页版与 macOS Quick Look 的策略：纸面保持浅色，
+           文档原有的彩色文字、品牌色、高亮不做任何重写，保真且天然可读 */
+        ${scopeSelector} {
+          --docx-desk: hsl(var(--muted));
+          --docx-paper: hsl(var(--background));
+          --docx-ink: hsl(var(--foreground));
+          --docx-page-shadow:
+            0 1px 2px hsl(var(--foreground) / 0.08),
+            0 8px 24px hsl(var(--foreground) / 0.08);
+          background: var(--docx-desk);
+        }
+        :root.dark ${scopeSelector} {
+          --docx-desk: hsl(var(--card));
+          --docx-paper: hsl(var(--foreground));
+          --docx-ink: hsl(var(--background));
+          --docx-page-shadow:
+            0 1px 3px hsl(var(--background) / 0.7),
+            0 10px 28px hsl(var(--background) / 0.55);
+        }
+
+        /* 内容容器：台面留白 + 水平居中 */
+        ${scopeSelector} .docx-content-wrapper {
           min-height: 200px;
-          border-radius: 8px;
           overflow: visible;
           width: max-content;
           margin: 0 auto;
+          padding: ${DESK_PADDING_Y}px ${DESK_PADDING_X}px;
         }
 
         /* docx-preview 外层包装（可能带内联 padding）
@@ -317,12 +484,11 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
            缩放使用 zoom 而非 transform:scale——zoom 参与布局，
            垂直/水平滚动范围随缩放同步变化，不会出现
            缩小后残留空白滚动区域、放大后底部内容无法滚动到的问题 */
-        .docx-container .docx-preview-wrapper,
-        .docx-container .docx-wrapper {
+        ${scopeSelector} .docx-preview-wrapper,
+        ${scopeSelector} .docx-wrapper {
           padding: 0 !important;
           margin: 0;
           background: transparent !important;
-          border-radius: 8px;
           box-shadow: none !important;
           width: max-content;
           max-width: none;
@@ -331,118 +497,39 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
           zoom: var(--docx-scale, 1);
         }
 
-        /* 页面分节
-           docx-preview 生成 section.{className}，即 section.docx-preview */
-        .docx-container .docx-preview-wrapper > section.docx-preview,
-        .docx-container .docx-wrapper > section.docx {
-          margin-bottom: 24px;
-          background: hsl(var(--background)) !important;
-          border-radius: 6px;
-          border: 1px solid hsl(var(--border));
+        /* 页面分节 = 一张白纸：柔和投影 + 页间距 + 渐进渲染
+           （content-visibility 让离屏页面跳过排版渲染，大文档滚动丝滑；
+           选择器特异度需压过库注入的默认 section 样式，保证暗色纸面生效） */
+        ${scopeSelector} .docx-preview-wrapper > section.docx-preview,
+        ${scopeSelector} .docx-wrapper > section.docx {
+          background: var(--docx-paper);
+          box-shadow: var(--docx-page-shadow);
+          border: none;
+          border-radius: 2px;
+          margin-bottom: 28px;
           box-sizing: border-box;
-          font-size: calc(var(--docx-font-scale, 1) * var(--docx-base-font-size, 16px));
+          overflow-wrap: break-word;
+          content-visibility: auto;
+          contain-intrinsic-size: auto 794px auto 1123px;
         }
 
-        .docx-container .docx-preview-wrapper > section.docx-preview p,
-        .docx-container .docx-preview-wrapper > section.docx-preview li,
-        .docx-container .docx-preview-wrapper > section.docx-preview td,
-        .docx-container .docx-preview-wrapper > section.docx-preview th,
-        .docx-container .docx-wrapper > section.docx p,
-        .docx-container .docx-wrapper > section.docx li,
-        .docx-container .docx-wrapper > section.docx td,
-        .docx-container .docx-wrapper > section.docx th {
-          font-size: inherit !important;
+        /* 默认墨色与基准字号：:where() 保持零特异度，
+           任何文档自带的颜色/字号规则（生成样式、内联样式）都优先生效——
+           这是"亮色保留原色、字号不抹平层级"的关键 */
+        ${scopeSelector} :where(section.docx-preview, section.docx) {
+          color: var(--docx-ink);
+          font-size: calc(12pt * var(${FONT_SCALE_VAR}, 1));
         }
 
-        /* ★ 文字颜色适配主题 - 通配符覆盖所有子元素 + 内联样式覆盖
-           但排除有高亮背景色的元素（如黄色标注），这些元素保持深色文字以确保在彩色背景上可读 */
-        .docx-container .docx-preview-wrapper,
-        .docx-container .docx-preview-wrapper *:not([style*="background"]),
-        .docx-container .docx-wrapper,
-        .docx-container .docx-wrapper *:not([style*="background"]) {
-          color: hsl(var(--foreground)) !important;
-        }
-        /* 有高亮背景的元素保持深色文字 */
-        .docx-container .docx-preview-wrapper [style*="background"],
-        .docx-container .docx-wrapper [style*="background"] {
-          color: #000 !important;
-        }
-        /* 覆盖 docx-preview 库注入的内联 color 样式（如 style="color: #000000"），
-           同样排除有高亮背景的元素 */
-        .docx-container .docx-preview-wrapper [style*="color"]:not([style*="background"]),
-        .docx-container .docx-wrapper [style*="color"]:not([style*="background"]) {
-          color: hsl(var(--foreground)) !important;
-        }
-
-        /* 标题样式 */
-        .docx-container h1, .docx-container h2, .docx-container h3,
-        .docx-container h4, .docx-container h5, .docx-container h6 {
-          color: hsl(var(--foreground)) !important;
-          font-weight: 600;
-          margin-bottom: 0.5em;
-        }
-
-        /* 段落间距 */
-        .docx-container p {
-          line-height: 1.7;
-          margin-bottom: 0.8em;
-          word-break: break-word;
-          overflow-wrap: anywhere;
-        }
-
-        /* 表格样式 */
-        .docx-container table {
-          border-collapse: collapse;
-          width: 100%;
-          margin: 16px 0;
-          background: hsl(var(--card));
-          border-radius: 6px;
-          overflow: hidden;
-        }
-        .docx-container td, .docx-container th {
-          border: 1px solid hsl(var(--border));
-          padding: 10px 12px;
-          color: hsl(var(--foreground)) !important;
-        }
-        .docx-container th {
-          background: hsl(var(--muted));
-          font-weight: 600;
-        }
-        .docx-container tr:nth-child(even) td {
-          background: hsl(var(--muted) / 0.3);
-        }
-
-        /* 图片样式 */
-        .docx-container img {
+        /* 图片安全约束：不超出纸面（文档内显式尺寸仍然生效） */
+        ${scopeSelector} :where(section.docx-preview, section.docx) img {
           max-width: 100%;
           height: auto;
-          border-radius: 4px;
-          margin: 8px 0;
         }
 
-        /* 列表样式 */
-        .docx-container ul, .docx-container ol {
-          padding-left: 24px;
-          margin: 12px 0;
-        }
-        .docx-container li {
-          margin-bottom: 6px;
-          line-height: 1.6;
-        }
-
-        /* 链接样式 */
-        .docx-container a {
-          color: hsl(var(--primary)) !important;
-          text-decoration: underline;
-        }
-
-        /* 代码/引用块 */
-        .docx-container pre, .docx-container code {
-          background: hsl(var(--muted));
-          padding: 2px 6px;
-          border-radius: 4px;
-          font-family: ui-monospace, monospace;
-          font-size: 0.9em;
+        /* 被安全策略拦截的链接：明确的禁用观感 */
+        ${scopeSelector} a[data-blocked] {
+          text-decoration: line-through;
         }
       `}</style>
     </div>

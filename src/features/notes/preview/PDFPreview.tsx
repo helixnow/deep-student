@@ -172,7 +172,7 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
     const hasViewerData = Boolean((pdfUrl && !dataUrlTooLarge) || pdfBytes);
     return (
       <div className={cn('flex h-full flex-col', className)}>
-        <div className="flex items-center justify-between border-b border-border bg-background/95 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div data-wb-blur-surface className="flex items-center justify-between border-b border-border bg-background/95 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <span className="text-sm font-medium text-foreground truncate">{displayName}</span>
           <div className="flex items-center gap-2">
             {canOpenSystem && (

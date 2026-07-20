@@ -23,6 +23,7 @@ import {
 } from '@/stores/questionBankStore';
 import { useReviewPlanStore } from '@/stores/reviewPlanStore';
 import { cn } from '@/lib/utils';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import SyncConflictDialog from '@/components/SyncConflictDialog';
 import { AppSelect, AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem, AppMenuSeparator } from '@/components/ui/app-menu';
@@ -248,6 +249,9 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     () => (generatedPaper?.exam_id === sessionId ? generatedPaper : null),
     [generatedPaper, sessionId],
   );
+
+  // 移动端（<768）：确认改行内条、导出/冲突面板改全屏内联子屏
+  const { isSmallScreen } = useBreakpoint();
 
   // UI 状态（保留在组件内）
   const [sessionDetail, setSessionDetail] = useState<ExamSheetSessionDetail | null>(null);
@@ -1598,8 +1602,32 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     );
   }
 
+  // 退出复习 / 丢弃草稿确认的共享动作（移动端行内确认条与桌面模态 Alert 复用）
+  const confirmReviewExit = () => {
+    const nextView = pendingReviewExitView;
+    setPendingReviewExitView(null);
+    endReviewSession();
+    if (nextView) switchViewMode(nextView);
+    if (nextView === 'practice' && pendingSettingsOpen) {
+      setSettingsPanelOpen(true);
+      setPendingSettingsOpen(false);
+    }
+  };
+  const cancelReviewExit = () => {
+    setPendingReviewExitView(null);
+    setPendingSettingsOpen(false);
+  };
+  const confirmDiscardDraft = () => {
+    const pending = pendingDraftNavigation;
+    setPendingDraftNavigation(null);
+    if (!pending || pending.examId !== sessionId) return;
+    clearCurrentExamDraft();
+    pending.proceed();
+  };
+  const cancelDiscardDraft = () => setPendingDraftNavigation(null);
+
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="relative flex flex-col h-full bg-background">
       {/* ★ 断点续导：importing 状态横幅 */}
       {isImportingSession && (
         <div className="flex-shrink-0 border-b border-warning/30 bg-warning/10 px-3 py-2 sm:px-4">
@@ -1788,6 +1816,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 size="sm"
                 onClick={() => setShowExportDialog(true)}
                 aria-label={t('learningHub:exam.tab.export')}
+                title={t('learningHub:exam.tab.export')}
                 className="h-7 gap-1.5 px-2.5 sm:px-3"
               >
                 <Download size={14} />
@@ -1801,6 +1830,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     variant={viewMode === 'upload' ? 'default' : 'ghost'}
                     size="sm"
                     aria-label={t('learningHub:exam.tab.addQuestion')}
+                    title={t('learningHub:exam.tab.addQuestion')}
                     className="h-7 gap-1.5 px-2.5 sm:px-3"
                   >
                     <Plus size={14} />
@@ -1834,6 +1864,54 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 移动端行内确认条：退出复习 / 丢弃草稿（桌面端为模态 AlertDialog，见文末） */}
+      {isSmallScreen && pendingReviewExitView !== null && (
+        <div
+          className="flex-shrink-0 border-b border-warning/30 bg-warning/10 px-3 py-2"
+          role="alert"
+          aria-label={t('review:session.exitTitle')}
+        >
+          <div className="flex items-start gap-2">
+            <WarningCircle size={16} className="mt-0.5 flex-shrink-0 text-warning" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium text-foreground">{t('review:session.exitTitle')}</div>
+              <p className="mt-0.5 text-xs text-muted-foreground">{t('review:session.exitDescription')}</p>
+            </div>
+          </div>
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <NotionButton variant="ghost" size="sm" className="!h-9 px-3 text-xs" onClick={cancelReviewExit}>
+              {t('common:cancel')}
+            </NotionButton>
+            <NotionButton variant="warning" size="sm" className="!h-9 px-3 text-xs" onClick={confirmReviewExit}>
+              {t('review:session.exitConfirm')}
+            </NotionButton>
+          </div>
+        </div>
+      )}
+      {isSmallScreen && pendingDraftNavigation !== null && (
+        <div
+          className="flex-shrink-0 border-b border-destructive/30 bg-destructive/5 px-3 py-2"
+          role="alert"
+          aria-label={t('editor.discardDraftTitle')}
+        >
+          <div className="flex items-start gap-2">
+            <WarningCircle size={16} className="mt-0.5 flex-shrink-0 text-destructive" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium text-foreground">{t('editor.discardDraftTitle')}</div>
+              <p className="mt-0.5 text-xs text-muted-foreground">{t('editor.discardDraftDescription')}</p>
+            </div>
+          </div>
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <NotionButton variant="ghost" size="sm" className="!h-9 px-3 text-xs" onClick={cancelDiscardDraft}>
+              {t('common:cancel')}
+            </NotionButton>
+            <NotionButton variant="danger" size="sm" className="!h-9 px-3 text-xs" onClick={confirmDiscardDraft}>
+              {t('common:actions.discard')}
+            </NotionButton>
+          </div>
+        </div>
+      )}
 
       {/* 内容区 */}
       <div className="flex-1 overflow-hidden">
@@ -1985,53 +2063,41 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         examId={sessionId}
         conflicts={syncConflicts}
         onResolved={handleSyncConflictResolved}
+        inline={isSmallScreen}
       />
 
-      <NotionAlertDialog
-        open={pendingReviewExitView !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setPendingReviewExitView(null);
-            setPendingSettingsOpen(false);
-          }
-        }}
-        icon={<WarningCircle size={20} className="text-warning" />}
-        title={t('review:session.exitTitle')}
-        description={t('review:session.exitDescription')}
-        confirmText={t('review:session.exitConfirm')}
-        cancelText={t('common:cancel')}
-        confirmVariant="warning"
-        onConfirm={() => {
-          const nextView = pendingReviewExitView;
-          setPendingReviewExitView(null);
-          endReviewSession();
-          if (nextView) switchViewMode(nextView);
-          if (nextView === 'practice' && pendingSettingsOpen) {
-            setSettingsPanelOpen(true);
-            setPendingSettingsOpen(false);
-          }
-        }}
-      />
+      {/* 桌面端模态确认；移动端改为 Tab 栏下方的行内确认条（见上方） */}
+      {!isSmallScreen && (
+        <NotionAlertDialog
+          open={pendingReviewExitView !== null}
+          onOpenChange={(open) => {
+            if (!open) cancelReviewExit();
+          }}
+          icon={<WarningCircle size={20} className="text-warning" />}
+          title={t('review:session.exitTitle')}
+          description={t('review:session.exitDescription')}
+          confirmText={t('review:session.exitConfirm')}
+          cancelText={t('common:cancel')}
+          confirmVariant="warning"
+          onConfirm={confirmReviewExit}
+        />
+      )}
 
-      <NotionAlertDialog
-        open={pendingDraftNavigation !== null}
-        onOpenChange={(open) => {
-          if (!open) setPendingDraftNavigation(null);
-        }}
-        icon={<WarningCircle size={20} className="text-warning" />}
-        title={t('editor.discardDraftTitle')}
-        description={t('editor.discardDraftDescription')}
-        confirmText={t('common:actions.discard')}
-        cancelText={t('common:cancel')}
-        confirmVariant="danger"
-        onConfirm={() => {
-          const pending = pendingDraftNavigation;
-          setPendingDraftNavigation(null);
-          if (!pending || pending.examId !== sessionId) return;
-          clearCurrentExamDraft();
-          pending.proceed();
-        }}
-      />
+      {!isSmallScreen && (
+        <NotionAlertDialog
+          open={pendingDraftNavigation !== null}
+          onOpenChange={(open) => {
+            if (!open) cancelDiscardDraft();
+          }}
+          icon={<WarningCircle size={20} className="text-warning" />}
+          title={t('editor.discardDraftTitle')}
+          description={t('editor.discardDraftDescription')}
+          confirmText={t('common:actions.discard')}
+          cancelText={t('common:cancel')}
+          confirmVariant="danger"
+          onConfirm={confirmDiscardDraft}
+        />
+      )}
 
       <Suspense fallback={null}>
         <QuestionBankExportDialog
@@ -2040,11 +2106,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           questions={questions}
           examName={sessionDetail?.summary?.exam_name || node.name}
           examId={sessionId}
+          inline={isSmallScreen}
         />
         <QuestionHistoryView
           questionId={historyQuestionId}
           open={showHistoryDialog}
           onOpenChange={handleHistoryOpenChange}
+          inline={isSmallScreen}
         />
       </Suspense>
     </div>

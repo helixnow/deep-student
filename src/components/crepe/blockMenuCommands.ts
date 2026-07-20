@@ -1,4 +1,5 @@
 import type { EditorView } from '@milkdown/prose/view';
+import type { Attrs, NodeType } from '@milkdown/prose/model';
 import { TextSelection } from '@milkdown/prose/state';
 import { lift, setBlockType, wrapIn } from '@milkdown/prose/commands';
 
@@ -9,7 +10,11 @@ export type CrepeBlockTurnInto =
   | 'heading-3'
   | 'bullet-list'
   | 'ordered-list'
-  | 'quote';
+  | 'task-list'
+  | 'quote'
+  | 'code-block'
+  | 'callout'
+  | 'toggle';
 
 function clampTopLevelPos(view: EditorView, pos: number): number | null {
   const { doc } = view.state;
@@ -70,13 +75,42 @@ export function deleteCrepeBlock(view: EditorView, pos: number): boolean {
   return true;
 }
 
+/**
+ * 转换完成后把光标放回块内原来的相对位置。
+ * offset 基于旧块结构，wrap/lift 会平移 1~2 个 token；TextSelection.near
+ * 会把落在非文本位置的目标吸附到最近合法点，误差可接受。
+ */
+function restoreCaretInCurrentBlock(view: EditorView, caretOffset: number | null): void {
+  if (caretOffset === null) return;
+  const { $from } = view.state.selection;
+  const blockStart = $from.depth > 0 ? $from.before(1) : $from.pos;
+  const blockNode = view.state.doc.nodeAt(blockStart);
+  if (!blockNode) return;
+  const targetPos = Math.max(
+    blockStart + 1,
+    Math.min(blockStart + caretOffset, blockStart + blockNode.nodeSize - 1),
+  );
+  const selection = TextSelection.near(view.state.doc.resolve(targetPos));
+  view.dispatch(view.state.tr.setSelection(selection));
+}
+
 export function turnCrepeBlockInto(
   view: EditorView,
   pos: number,
   target: CrepeBlockTurnInto,
 ): boolean {
   const blockPos = clampTopLevelPos(view, pos);
-  if (blockPos === null || !selectBlockText(view, blockPos)) return false;
+  if (blockPos === null) return false;
+  const blockNode = view.state.doc.nodeAt(blockPos);
+  if (!blockNode) return false;
+
+  // 光标原本就在该块内时记录相对偏移，转换后还原
+  const { from, empty } = view.state.selection;
+  const caretOffset = empty && from > blockPos && from < blockPos + blockNode.nodeSize
+    ? from - blockPos
+    : null;
+
+  if (!selectBlockText(view, blockPos)) return false;
   liftToDocument(view);
 
   const { nodes } = view.state.schema;
@@ -86,14 +120,39 @@ export function turnCrepeBlockInto(
   } else if (target.startsWith('heading-')) {
     const level = Number(target.slice(-1));
     if (nodes.heading) applied = setBlockType(nodes.heading, { level })(view.state, view.dispatch);
+  } else if (target === 'code-block') {
+    const codeBlock = nodes.code_block ?? nodes.codeBlock;
+    if (codeBlock) applied = setBlockType(codeBlock)(view.state, view.dispatch);
   } else {
-    const wrapper = target === 'quote'
-      ? nodes.blockquote
-      : target === 'bullet-list'
-        ? nodes.bullet_list ?? nodes.bulletList
-        : nodes.ordered_list ?? nodes.orderedList;
-    if (wrapper) applied = wrapIn(wrapper)(view.state, view.dispatch);
+    let wrapper: NodeType | undefined;
+    let attrs: Attrs | undefined;
+    switch (target) {
+      case 'quote':
+        wrapper = nodes.blockquote;
+        break;
+      case 'bullet-list':
+        wrapper = nodes.bullet_list ?? nodes.bulletList;
+        break;
+      case 'ordered-list':
+        wrapper = nodes.ordered_list ?? nodes.orderedList;
+        break;
+      case 'task-list':
+        // Milkdown 任务列表 = checked 属性的 list_item；findWrapping 会自动补外层 bullet_list。
+        wrapper = nodes.list_item ?? nodes.listItem;
+        attrs = { checked: false };
+        break;
+      case 'callout':
+        wrapper = nodes.callout;
+        attrs = { type: 'note', title: '' };
+        break;
+      case 'toggle':
+        wrapper = nodes.toggle;
+        attrs = { title: '', open: true };
+        break;
+    }
+    if (wrapper) applied = wrapIn(wrapper, attrs)(view.state, view.dispatch);
   }
+  if (applied) restoreCaretInCurrentBlock(view, caretOffset);
   view.focus();
   return applied;
 }

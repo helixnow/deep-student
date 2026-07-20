@@ -70,6 +70,7 @@ const schema = new Schema({
       toDOM: (mark) => ['a', { href: mark.attrs.href, title: mark.attrs.title }, 0],
     },
     strong: { toDOM: () => ['strong', 0] },
+    inlineCode: { toDOM: () => ['code', 0] },
   },
 });
 
@@ -176,6 +177,51 @@ describe('shouldSkipPasteLinkContext', () => {
   it('does not skip in normal paragraph', () => {
     const state = stateWithSelection(paraDoc('hi'), 1, 1);
     expect(shouldSkipPasteLinkContext(state)).toBe(false);
+  });
+
+  it('skips when selection end reaches into a table cell', () => {
+    const doc = schema.node('doc', null, [
+      schema.node('paragraph', null, [schema.text('before')]),
+      schema.node('table', null, [
+        schema.node('table_row', null, [
+          schema.node('table_cell', null, [schema.text('cell')]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({
+      schema,
+      doc,
+      selection: TextSelection.create(doc, 1, 11),
+    });
+    expect(shouldSkipPasteLinkContext(state)).toBe(true);
+  });
+
+  it('skips when selection text carries an inline code mark', () => {
+    const doc = schema.node('doc', null, [
+      schema.node('paragraph', null, [
+        schema.text('code', [schema.marks.inlineCode.create()]),
+      ]),
+    ]);
+    const state = EditorState.create({
+      schema,
+      doc,
+      selection: TextSelection.create(doc, 1, 5),
+    });
+    expect(shouldSkipPasteLinkContext(state)).toBe(true);
+  });
+
+  it('skips when caret marks include inline code', () => {
+    const doc = schema.node('doc', null, [
+      schema.node('paragraph', null, [
+        schema.text('code', [schema.marks.inlineCode.create()]),
+      ]),
+    ]);
+    const state = EditorState.create({
+      schema,
+      doc,
+      selection: TextSelection.create(doc, 3),
+    });
+    expect(shouldSkipPasteLinkContext(state)).toBe(true);
   });
 });
 

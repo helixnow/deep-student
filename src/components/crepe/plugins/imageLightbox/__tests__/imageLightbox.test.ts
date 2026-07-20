@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { nextLightboxFitMode, shouldCloseLightboxFromClick } from '../lightboxDom';
+import { collectLightboxGallery } from '../collectGallery';
+import {
+  clampGalleryIndex,
+  nextLightboxFitMode,
+  shouldCloseLightboxFromClick,
+} from '../lightboxDom';
 import { resolveLightboxImageTarget } from '../resolveImageTarget';
 import { isNonEmptyHref } from '../nonEmptyHref';
 
@@ -86,5 +91,62 @@ describe('resolveLightboxImageTarget', () => {
     root.appendChild(host);
 
     expect(resolveLightboxImageTarget(img, root)).toBe(img);
+  });
+});
+
+describe('clampGalleryIndex', () => {
+  it('moves within bounds and clamps at edges', () => {
+    expect(clampGalleryIndex(1, 1, 3)).toBe(2);
+    expect(clampGalleryIndex(1, -1, 3)).toBe(0);
+    expect(clampGalleryIndex(0, -1, 3)).toBe(0);
+    expect(clampGalleryIndex(2, 1, 3)).toBe(2);
+  });
+});
+
+describe('collectLightboxGallery', () => {
+  function makeImage(root: HTMLElement, src: string, alt = ''): HTMLImageElement {
+    const host = document.createElement('div');
+    host.className = 'milkdown-image-block';
+    const img = document.createElement('img');
+    img.src = src;
+    if (alt) img.alt = alt;
+    host.appendChild(img);
+    root.appendChild(host);
+    return img;
+  }
+
+  it('collects document images in order and points at the clicked one', () => {
+    const root = document.createElement('div');
+    makeImage(root, 'https://example.com/a.png', 'A');
+    const second = makeImage(root, 'https://example.com/b.png', 'B');
+    makeImage(root, 'https://example.com/c.png');
+
+    const { gallery, startIndex } = collectLightboxGallery(root, second);
+    expect(gallery.map((g) => g.alt)).toEqual(['A', 'B', '']);
+    expect(startIndex).toBe(1);
+  });
+
+  it('skips broken placeholders and images outside hosts', () => {
+    const root = document.createElement('div');
+    const ok = makeImage(root, 'https://example.com/a.png');
+    const broken = makeImage(root, 'https://example.com/broken.png');
+    broken.classList.add('crepe-image--broken');
+    const loose = document.createElement('img');
+    loose.src = 'https://example.com/loose.png';
+    root.appendChild(loose);
+
+    const { gallery, startIndex } = collectLightboxGallery(root, ok);
+    expect(gallery).toHaveLength(1);
+    expect(startIndex).toBe(0);
+  });
+
+  it('falls back to the clicked image when nothing resolves', () => {
+    const root = document.createElement('div');
+    const orphan = document.createElement('img');
+    orphan.src = 'https://example.com/x.png';
+
+    const { gallery, startIndex } = collectLightboxGallery(root, orphan);
+    expect(gallery).toHaveLength(1);
+    expect(startIndex).toBe(0);
   });
 });

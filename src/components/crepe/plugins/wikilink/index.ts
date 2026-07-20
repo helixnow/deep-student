@@ -34,7 +34,27 @@ export {
   findWikiLinksInText,
 } from './format';
 export { fuzzyMatchNotes } from './fuzzy';
-export { detectWikilinkTrigger, buildAutocompleteItems, wikilinkAutocompleteKey } from './autocomplete';
+export {
+  detectWikilinkTrigger,
+  parseWikilinkQuery,
+  buildAutocompleteItems,
+  buildHeadingAutocompleteItems,
+  buildModeHint,
+  wikilinkAutocompleteKey,
+} from './autocomplete';
+export type { WikilinkMenuItem, WikilinkInsertSpec, WikilinkQueryParts } from './autocomplete';
+export { isInCodeContext, shouldSkipWikilinkContext } from './codeContext';
+export {
+  extractMarkdownHeadings,
+  buildPreviewSnippet,
+  stripMarkdownLight,
+  invalidateNoteContentCache,
+} from './noteContent';
+export {
+  openWikilinkCandidatePicker,
+  closeWikilinkCandidatePicker,
+  closeWikilinkCandidatePickerFor,
+} from './candidatePicker';
 export { wikilinkSchema, WIKILINK_NODE_NAME } from './schema';
 export { remarkWikilinkPlugin } from './remark';
 export { wikilinkInputRule } from './inputRule';

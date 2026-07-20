@@ -6,6 +6,20 @@ import { calloutSchema } from './schema';
 import { isCalloutType, type CalloutType } from './types';
 
 /**
+ * 触发正则（供 InputRule 与单测共用）。
+ * 容错：全角 `！`、可选 `-`/`+` 折叠后缀、终止符可为空白或半/全角冒号。
+ */
+export const CALLOUT_INPUT_RULE_RE =
+  /^\[[!！](note|tip|warning|danger|info)\]([+-])?(?:\s|[:：])$/i;
+
+export const CALLOUT_FULL_LINE_INPUT_RULE_RE =
+  /^>\s*\[[!！](note|tip|warning|danger|info)\]([+-])?(?:\s|[:：])$/i;
+
+function matchedCollapsed(match: RegExpMatchArray): boolean {
+  return match[2] === '-';
+}
+
+/**
  * Convert a block starting with `[!type] ` (typically inside a blockquote after
  * typing `> `) into a callout node.
  */
@@ -22,6 +36,7 @@ export function applyCalloutInputRule(
   if (!isCalloutType(rawType)) return null;
 
   const type = rawType as CalloutType;
+  const collapsed = matchedCollapsed(match);
   const $start = state.doc.resolve(start);
   if ($start.start() !== start) return null;
 
@@ -41,7 +56,7 @@ export function applyCalloutInputRule(
     if (!updated || updated.type.name !== 'blockquote') return null;
 
     const callout = calloutNodeType.create(
-      { type, title: '' },
+      { type, title: '', collapsed },
       updated.content,
     );
     return tr.replaceWith(bqPos, bqPos + updated.nodeSize, callout);
@@ -52,7 +67,7 @@ export function applyCalloutInputRule(
   const $pos = tr.doc.resolve(start);
   const blockStart = $pos.before();
   const blockNode = $pos.parent;
-  const callout = calloutNodeType.create({ type, title: '' }, [blockNode]);
+  const callout = calloutNodeType.create({ type, title: '', collapsed }, [blockNode]);
   return tr.replaceWith(blockStart, blockStart + blockNode.nodeSize, callout);
 }
 
@@ -70,6 +85,7 @@ export function applyFullLineCalloutInputRule(
   if (!isCalloutType(rawType)) return null;
 
   const type = rawType as CalloutType;
+  const collapsed = matchedCollapsed(match);
   const $start = state.doc.resolve(start);
   if ($start.start() !== start) return null;
 
@@ -77,20 +93,20 @@ export function applyFullLineCalloutInputRule(
   const $pos = tr.doc.resolve(start);
   const blockStart = $pos.before();
   const blockNode = $pos.parent;
-  const callout = calloutNodeType.create({ type, title: '' }, [blockNode]);
+  const callout = calloutNodeType.create({ type, title: '', collapsed }, [blockNode]);
   return tr.replaceWith(blockStart, blockStart + blockNode.nodeSize, callout);
 }
 
 export const calloutInputRule = $inputRule((ctx) => {
   const type = calloutSchema.type(ctx);
-  return new InputRule(/^\[!(note|tip|warning|danger|info)]\s$/i, (state, match, start, end) =>
+  return new InputRule(CALLOUT_INPUT_RULE_RE, (state, match, start, end) =>
     applyCalloutInputRule(state, match, start, end, type),
   );
 });
 
 export const calloutFullLineInputRule = $inputRule((ctx) => {
   const type = calloutSchema.type(ctx);
-  return new InputRule(/^>\s*\[!(note|tip|warning|danger|info)]\s$/i, (state, match, start, end) =>
+  return new InputRule(CALLOUT_FULL_LINE_INPUT_RULE_RE, (state, match, start, end) =>
     applyFullLineCalloutInputRule(state, match, start, end, type),
   );
 });

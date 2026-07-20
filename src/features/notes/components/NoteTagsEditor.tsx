@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { X, Plus, Tag as TagIcon, CircleNotch, PencilSimple, Check, WarningCircle } from "@phosphor-icons/react";
+import { X, Plus, Tag as TagIcon, CircleNotch, PencilSimple, Check } from "@phosphor-icons/react";
 import {
     Popover,
     PopoverContent,
@@ -9,7 +9,6 @@ import {
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from "@/components/ui/shad/Input";
 import { Badge } from "@/components/ui/shad/Badge";
-import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/shad/Command";
 import { NotesAPI } from "../../../utils/notesApi";
 import { useNotes } from "../NotesContext";
 import { showGlobalNotification } from "@/components/UnifiedNotification";
@@ -38,7 +37,10 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
     const [editingTag, setEditingTag] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState("");
     const [isRenaming, setIsRenaming] = useState(false);
-    
+    // 建议列表键盘高亮（-1 = 未进入列表，Enter 直接添加输入值）
+    const [suggestionIndex, setSuggestionIndex] = useState(-1);
+    const suggestionsListId = useRef(`note-tags-suggestions-${Math.random().toString(36).slice(2, 9)}`).current;
+
     const loadAvailableTags = useCallback(async () => {
         setIsLoading(true);
         try {
@@ -56,13 +58,32 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
     useEffect(() => {
         if (open) {
             void loadAvailableTags();
+        } else {
+            setInputValue("");
+            setSuggestionIndex(-1);
+            setEditingTag(null);
+            setRenameValue("");
         }
     }, [open, loadAvailableTags]);
+
+    // 输入即时过滤建议
+    const filteredSuggestions = useMemo(() => {
+        const query = inputValue.trim().toLowerCase();
+        return availableTags
+            .filter(tag => !query || tag.toLowerCase().includes(query))
+            .slice(0, 8);
+    }, [availableTags, inputValue]);
+
+    // 建议集合变化后收敛高亮
+    useEffect(() => {
+        setSuggestionIndex(prev => (prev >= filteredSuggestions.length ? -1 : prev));
+    }, [filteredSuggestions]);
 
     const handleAddTag = async (tag: string) => {
         const normalizedTag = tag.trim();
         if (!normalizedTag || initialTags.includes(normalizedTag)) {
             setInputValue("");
+            setSuggestionIndex(-1);
             return;
         }
 
@@ -71,8 +92,12 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
         try {
             await onTagsChange(newTags);
             setInputValue("");
+            setSuggestionIndex(-1);
             // Update available tags list locally
             setAvailableTags(prev => prev.filter(t => t !== normalizedTag));
+        } catch (error: unknown) {
+            console.error("Failed to add tag", error);
+            showGlobalNotification('error', t('notes:context.tag_add_failed'));
         } finally {
             setIsSaving(false);
         }
@@ -83,17 +108,40 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
         const newTags = initialTags.filter(t => t !== tagToRemove);
         try {
             await onTagsChange(newTags);
-            // Add back to available if it was a known tag? 
-            // For simplicity we just reload or let it be.
+        } catch (error: unknown) {
+            console.error("Failed to remove tag", error);
+            showGlobalNotification('error', t('notes:context.tag_remove_failed'));
         } finally {
             setIsSaving(false);
         }
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            handleAddTag(inputValue);
+        switch (e.key) {
+            case 'Enter':
+                e.preventDefault();
+                if (suggestionIndex >= 0 && suggestionIndex < filteredSuggestions.length) {
+                    void handleAddTag(filteredSuggestions[suggestionIndex]);
+                } else {
+                    void handleAddTag(inputValue);
+                }
+                break;
+            case 'ArrowDown':
+                if (filteredSuggestions.length > 0) {
+                    e.preventDefault();
+                    setSuggestionIndex(prev => (prev + 1) % filteredSuggestions.length);
+                }
+                break;
+            case 'ArrowUp':
+                if (filteredSuggestions.length > 0) {
+                    e.preventDefault();
+                    setSuggestionIndex(prev =>
+                        prev <= 0 ? filteredSuggestions.length - 1 : prev - 1
+                    );
+                }
+                break;
+            default:
+                break;
         }
     };
 
@@ -154,39 +202,44 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
     };
 
     return (
-        <Popover open={open} onOpenChange={setOpen}>
+        <Popover open={open} onOpenChange={readonly ? undefined : setOpen}>
             <PopoverTrigger asChild>
-                <div 
+                <button
+                    type="button"
+                    disabled={readonly}
                     className={cn(
-                        "flex items-center gap-1 transition-colors rounded-md px-2 py-1 -ml-2",
-                        readonly ? "opacity-70 cursor-default" : "hover:bg-[var(--interactive-hover)] cursor-pointer"
+                        "flex items-center gap-1 rounded-md px-2 py-1 -ml-2 text-left transition-colors duration-150",
+                        readonly
+                            ? "opacity-70 cursor-default"
+                            : "hover:bg-[var(--interactive-hover)] cursor-pointer"
                     )}
-                    role="button"
                     aria-label={t('notes:header.manage_tags')}
+                    aria-haspopup="dialog"
+                    aria-expanded={open}
                 >
-                    <TagIcon className="h-3 w-3 text-muted-foreground" />
+                    <TagIcon className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
                     {initialTags.length > 0 ? (
-                        <div className="flex gap-1 flex-wrap max-w-[200px] overflow-hidden h-5">
+                        <span className="flex min-w-0 flex-wrap items-center gap-1">
                             {initialTags.map(tag => (
-                                <span key={tag} className="text-[10px] bg-primary/10 text-primary px-1 rounded-sm whitespace-nowrap">
+                                <span key={tag} className="rounded-sm bg-primary/10 px-1 text-[10px] text-primary">
                                     {tag}
                                 </span>
                             ))}
-                        </div>
+                        </span>
                     ) : (
                         <span className="text-[10px] text-muted-foreground/70">
                             {t('notes:header.add_tags')}
                         </span>
                     )}
-                </div>
+                </button>
             </PopoverTrigger>
             {!readonly && (
                 <PopoverContent className="w-80 p-3" align="start">
                     <div className="space-y-3">
                         <div className="flex items-center gap-2 border-b border-border/50 pb-2">
-                            <TagIcon className="h-4 w-4 text-muted-foreground" />
+                            <TagIcon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                             <span className="text-sm font-medium">{t('notes:header.tags')}</span>
-                            {isSaving && <CircleNotch className="h-3 w-3 animate-spin ml-auto text-muted-foreground" />}
+                            {isSaving && <CircleNotch className="h-3 w-3 animate-spin ml-auto text-muted-foreground" aria-hidden="true" />}
                         </div>
 
                         {/* Current Tags */}
@@ -198,7 +251,7 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
                                 <Badge
                                     key={tag}
                                     variant="secondary"
-                                    className="h-6 px-1.5 text-xs gap-1 hover:bg-destructive/10 hover:text-destructive transition-colors group cursor-default"
+                                    className="h-6 px-1.5 text-xs gap-1 transition-colors duration-150 group cursor-default"
                                 >
                                     {editingTag === tag ? (
                                         <div className="flex items-center gap-1">
@@ -210,28 +263,25 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
                                                     if (e.key === 'Escape') handleCancelRename();
                                                 }}
                                                 className="h-5 text-[10px] px-1 py-0 w-24"
+                                                aria-label={t('notes:header.rename_tag')}
                                                 autoFocus
                                             />
                                             <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRenameTag} disabled={isRenaming} className="!h-auto !w-auto !p-0 opacity-70 hover:opacity-100 disabled:opacity-50" aria-label={t('notes:header.confirm_rename')}>
-                                                <Check className="h-3 w-3" />
+                                                <Check className="h-3 w-3" aria-hidden="true" />
                                             </NotionButton>
                                             <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCancelRename} disabled={isRenaming} className="!h-auto !w-auto !p-0 opacity-70 hover:opacity-100 disabled:opacity-50" aria-label={t('notes:header.cancel_rename')}>
-                                                <X className="h-3 w-3" />
+                                                <X className="h-3 w-3" aria-hidden="true" />
                                             </NotionButton>
                                         </div>
                                     ) : (
                                         <>
-                                            <span onClick={() => !readonly && handleStartRename(tag)} className="cursor-pointer">{tag}</span>
-                                            {!readonly && (
-                                                <>
-                                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleStartRename(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-70 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity" title={t('notes:header.rename_tag')} aria-label={t('notes:header.rename_tag')}>
-                                                        <PencilSimple className="h-3 w-3" />
-                                                    </NotionButton>
-                                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveTag(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity" title={t('notes:header.remove_tag')} aria-label={t('notes:header.remove_tag')}>
-                                                        <X className="h-3 w-3" />
-                                                    </NotionButton>
-                                                </>
-                                            )}
+                                            <span onDoubleClick={() => handleStartRename(tag)}>{tag}</span>
+                                            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleStartRename(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity" title={t('notes:header.rename_tag')} aria-label={`${t('notes:header.rename_tag')}: ${tag}`}>
+                                                <PencilSimple className="h-3 w-3" aria-hidden="true" />
+                                            </NotionButton>
+                                            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveTag(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity" title={t('notes:header.remove_tag')} aria-label={`${t('notes:header.remove_tag')}: ${tag}`}>
+                                                <X className="h-3 w-3" aria-hidden="true" />
+                                            </NotionButton>
                                         </>
                                     )}
                                 </Badge>
@@ -239,30 +289,55 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
                         </div>
 
                         <div className="space-y-2 pt-2">
-                            <Input 
+                            <Input
                                 placeholder={t('notes:header.tag_placeholder')}
                                 value={inputValue}
                                 onChange={e => setInputValue(e.target.value)}
                                 onKeyDown={handleKeyDown}
                                 className="h-8 text-xs"
+                                role="combobox"
+                                aria-expanded={filteredSuggestions.length > 0}
+                                aria-controls={suggestionsListId}
+                                aria-activedescendant={
+                                    suggestionIndex >= 0 && suggestionIndex < filteredSuggestions.length
+                                        ? `${suggestionsListId}-${suggestionIndex}`
+                                        : undefined
+                                }
+                                aria-autocomplete="list"
                             />
-                            
+
                             {/* Suggestions */}
-                            {availableTags.length > 0 && (
+                            {isLoading ? (
+                                <div className="flex items-center gap-1.5 px-1 py-1 text-[10px] text-muted-foreground">
+                                    <CircleNotch className="h-3 w-3 animate-spin" aria-hidden="true" />
+                                    {t('common:loading')}
+                                </div>
+                            ) : filteredSuggestions.length > 0 && (
                                 <div className="border rounded-md max-h-[150px] overflow-y-auto">
                                     <div className="p-1.5">
                                         <div className="text-[10px] text-muted-foreground mb-1 px-1">{t('notes:header.suggestions')}</div>
-                                        <div className="grid grid-cols-1 gap-0.5">
-                                            {availableTags
-                                                .filter(t => t.toLowerCase().includes(inputValue.toLowerCase()))
-                                                .slice(0, 8) // Limit suggestions
-                                                .map(tag => (
-                                                <div 
+                                        <div
+                                            id={suggestionsListId}
+                                            role="listbox"
+                                            aria-label={t('notes:header.suggestions')}
+                                            className="grid grid-cols-1 gap-0.5"
+                                        >
+                                            {filteredSuggestions.map((tag, index) => (
+                                                <div
                                                     key={tag}
-                                                    className="flex items-center gap-2 px-2 py-1.5 hover:bg-[var(--interactive-hover)] rounded-sm cursor-pointer text-xs"
+                                                    id={`${suggestionsListId}-${index}`}
+                                                    role="option"
+                                                    aria-selected={suggestionIndex === index}
+                                                    className={cn(
+                                                        "flex items-center gap-2 px-2 py-1.5 rounded-sm cursor-pointer text-xs transition-colors duration-150",
+                                                        suggestionIndex === index
+                                                            ? "bg-[var(--interactive-hover)]"
+                                                            : "hover:bg-[var(--interactive-hover)]"
+                                                    )}
                                                     onClick={() => handleAddTag(tag)}
+                                                    onMouseEnter={() => setSuggestionIndex(index)}
                                                 >
-                                                    <Plus className="h-3 w-3 text-muted-foreground" />
+                                                    <Plus className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
                                                     {tag}
                                                 </div>
                                             ))}

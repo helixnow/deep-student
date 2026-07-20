@@ -8,6 +8,10 @@ import type { DstuOpenNoteDetail } from '@/features/notes/openNoteEvent';
 export interface WikilinkNoteCandidate {
   id: string;
   title: string;
+  /** 可选：DSTU 路径（如 `/folder/note_1`），用于补全 / 消歧 UI 展示 */
+  path?: string;
+  /** 可选：最近编辑时间戳，用于补全按最近排序 */
+  updatedAt?: number;
 }
 
 export interface WikilinkResolveResult {
@@ -15,6 +19,10 @@ export interface WikilinkResolveResult {
   resolved: boolean;
   /** 已解析时用于 DSTU_OPEN_NOTE 的 noteId；缺省则回退为 target */
   noteId?: string | null;
+  /** 可选：标题命中多篇笔记（宿主静默选了最小 ID）时为 true */
+  ambiguous?: boolean;
+  /** 可选：歧义时的全部候选 ID（确定性排序） */
+  candidateIds?: readonly string[];
 }
 
 /**
@@ -68,6 +76,10 @@ export function normalizeResolve(
   return {
     resolved: result.resolved,
     noteId: result.noteId ?? (result.resolved ? target : null),
+    // 扩展字段仅在真正歧义时透传，保持既有 { resolved, noteId } 形状断言不变
+    ...(result.ambiguous && (result.candidateIds?.length ?? 0) > 1
+      ? { ambiguous: true, candidateIds: result.candidateIds }
+      : {}),
   };
 }
 

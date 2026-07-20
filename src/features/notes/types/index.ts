@@ -6,10 +6,16 @@
 export {
   // 核心类型
   type SourceDatabase,
+  type ExtendedSourceDatabase,
   type PreviewType,
   type ReferenceNode,
   type ExtendedFolderStructure,
   type CreateReferenceNodeParams,
+
+  // 联合常量（与类型同源，供运行时枚举）
+  SOURCE_DATABASES,
+  EXTENDED_SOURCE_DATABASES,
+  PREVIEW_TYPES,
 
   // ID 前缀常量
   NOTE_ID_PREFIX,
@@ -33,6 +39,7 @@ export {
 
   // 类型守卫
   isValidSourceDatabase,
+  isExtendedSourceDatabase,
   isValidPreviewType,
   isValidReferenceNode,
 

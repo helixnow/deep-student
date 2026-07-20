@@ -42,6 +42,15 @@ function isUnsafeHref(href: string): boolean {
 }
 
 /**
+ * 判断 href 是否指向外部资源（http/https）——这类链接需要 rel=noopener 加固，
+ * 防止目标页面通过 window.opener 反向操纵应用窗口
+ */
+function isExternalHref(href: string): boolean {
+  const normalized = href.trim().toLowerCase();
+  return normalized.startsWith('http:') || normalized.startsWith('https:');
+}
+
+/**
  * 使用 DOMPurify 对容器内容进行完整消毒
  *
  * 这是主要的安全防线，处理所有已知的 XSS 向量：
@@ -137,6 +146,9 @@ export function sanitizeRenderedLinks(container: HTMLElement): void {
         el.setAttribute('data-blocked', 'unsafe-protocol');
         (el as HTMLElement).style.cursor = 'not-allowed';
         (el as HTMLElement).style.opacity = '0.6';
+      } else if (isExternalHref(href)) {
+        // 外链加固：切断 window.opener 反向引用
+        el.setAttribute('rel', 'noopener noreferrer');
       }
     }
 

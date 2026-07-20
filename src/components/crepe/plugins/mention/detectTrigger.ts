@@ -4,6 +4,8 @@
 
 import type { EditorState } from '@milkdown/prose/state';
 
+import { isInCodeContext } from '../wikilink/codeContext';
+
 /**
  * 从光标前回溯，检测未完成的 `@query`。
  *
@@ -40,11 +42,7 @@ function isWordChar(ch: string): boolean {
   return /[\w\u3400-\u9fff\uf900-\ufaff]/.test(ch);
 }
 
-/** 代码块内不触发（含嵌套 code） */
+/** 代码块（含嵌套 code）与行内 code mark 内不触发（与 wikilink 共用同一判定） */
 export function shouldSkipMentionContext(state: EditorState): boolean {
-  const $from = state.selection.$from;
-  for (let depth = $from.depth; depth > 0; depth -= 1) {
-    if ($from.node(depth).type.spec.code) return true;
-  }
-  return false;
+  return isInCodeContext(state, state.selection.from);
 }

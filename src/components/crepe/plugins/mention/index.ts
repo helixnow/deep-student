@@ -25,7 +25,7 @@ export {
   NOTE_HREF_PROTOCOL,
   dispatchOpenMentionNote,
 } from './types';
-export { buildNoteHref, parseNoteHref } from './protocol';
+export { buildNoteHref, parseNoteHref, parseNoteHrefHeading } from './protocol';
 export {
   detectMentionTrigger,
   shouldSkipMentionContext,

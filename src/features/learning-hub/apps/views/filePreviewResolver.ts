@@ -69,7 +69,17 @@ export function resolveFilePreviewMode(
     normalizedMime.startsWith('text/') ||
     normalizedMime.includes('json') ||
     normalizedMime.includes('xml') ||
-    normalizedMime.includes('rtf')
+    normalizedMime.includes('rtf') ||
+    // ★ 2026-07-19（预览器改造）：常见代码/配置类 MIME（导入器可能给出
+    // application/javascript、application/x-yaml、application/x-sh 等）也走文本预览
+    normalizedMime.includes('javascript') ||
+    normalizedMime.includes('ecmascript') ||
+    normalizedMime.includes('typescript') ||
+    normalizedMime.includes('yaml') ||
+    normalizedMime.includes('toml') ||
+    normalizedMime.includes('x-sh') ||
+    normalizedMime.includes('shellscript') ||
+    normalizedMime.includes('x-python')
   ) {
     return 'text';
   }

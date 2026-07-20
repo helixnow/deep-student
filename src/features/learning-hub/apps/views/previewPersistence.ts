@@ -6,6 +6,13 @@
  *
  * NOTE(backend): dstu_set_metadata persists files readingProgress / bookmarks
  * to the shared files table and file_to_dstu_node exposes the values on reload.
+ * （2026-07-19 核实：src-tauri/src/dstu/handlers.rs 对 textbook 与 file 分支均
+ * 落库 readingProgress.page / bookmarks；node_converters.rs 在 textbook 与 file
+ * 的 metadata 中回读 readingProgress / bookmarks。）
+ *
+ * 防抖契约：阅读进度防抖只在本层做一次（默认 1s），Viewer 包装层
+ * （TextbookPdfViewer）为直通上报——不要再在调用侧叠加防抖。
+ * 关 tab / 切换 node 时由 dispose() 内的 flush 兜底落盘。
  */
 
 import { dstu } from '@/dstu';
@@ -45,7 +52,8 @@ export function createPreviewPersistController(
   target: PreviewPersistTarget,
   options?: PreviewPersistOptions,
 ): PreviewPersistController {
-  const progressDebounceMs = options?.progressDebounceMs ?? 2000;
+  // 1s：Viewer 层已改为直通上报，这里是链路上唯一一层防抖
+  const progressDebounceMs = options?.progressDebounceMs ?? 1000;
   const bookmarksDebounceMs = options?.bookmarksDebounceMs ?? 1000;
 
   let progressTimer: number | null = null;
@@ -77,6 +85,40 @@ export function createPreviewPersistController(
     return merged;
   };
 
+  /**
+   * setMetadata 写失败不再静默吞掉首错：console.warn 后原样重试一次，
+   * 仍失败才走 reportError + 调用方错误回调。
+   */
+  const setMetadataWithRetry = async (
+    metadata: Record<string, unknown>,
+    label: string,
+  ): Promise<{ ok: true } | { ok: false; error: unknown }> => {
+    const first = await dstu.setMetadata(currentTarget.nodePath, metadata);
+    if (first.ok) return { ok: true };
+    console.warn(
+      `[previewPersistence] ${label} write failed, retrying once:`,
+      currentTarget.nodePath,
+      first.error,
+    );
+    const second = await dstu.setMetadata(currentTarget.nodePath, metadata);
+    if (second.ok) return { ok: true };
+    return { ok: false, error: second.error };
+  };
+
+  /** textbook 双写通道同样重试一次（幂等的整表覆盖写） */
+  const updateBookmarksWithRetry = async (bookmarks: Bookmark[]): Promise<void> => {
+    try {
+      await vfsFileApi.updateBookmarks(currentTarget.nodeId, bookmarks);
+    } catch (firstErr: unknown) {
+      console.warn(
+        '[previewPersistence] updateBookmarks write failed, retrying once:',
+        currentTarget.nodeId,
+        firstErr,
+      );
+      await vfsFileApi.updateBookmarks(currentTarget.nodeId, bookmarks);
+    }
+  };
+
   const persistProgress = async (progress: ReadingProgress) => {
     latestProgress = progress;
     const newMetadata = {
@@ -86,7 +128,7 @@ export function createPreviewPersistController(
         lastReadAt: progress.lastReadAt,
       },
     };
-    const result = await dstu.setMetadata(currentTarget.nodePath, newMetadata);
+    const result = await setMetadataWithRetry(newMetadata, 'readingProgress');
     if (!result.ok) {
       reportError(result.error, '保存阅读进度');
       options?.onProgressError?.(result.error);
@@ -102,7 +144,7 @@ export function createPreviewPersistController(
 
     if (currentTarget.kind === 'textbook') {
       try {
-        await vfsFileApi.updateBookmarks(currentTarget.nodeId, bookmarks);
+        await updateBookmarksWithRetry(bookmarks);
       } catch (err: unknown) {
         options?.onBookmarksError?.(err);
         throw err;
@@ -110,7 +152,7 @@ export function createPreviewPersistController(
     }
     // file：仅 DSTU metadata（见文件头 NOTE(backend)）
 
-    const result = await dstu.setMetadata(currentTarget.nodePath, newMetadata);
+    const result = await setMetadataWithRetry(newMetadata, 'bookmarks');
     if (!result.ok) {
       reportError(result.error, '保存书签');
       options?.onBookmarksError?.(result.error);
@@ -157,15 +199,17 @@ export function createPreviewPersistController(
         mergedMetadata.bookmarks = bookmarks;
         if (currentTarget.kind === 'textbook') {
           try {
-            await vfsFileApi.updateBookmarks(currentTarget.nodeId, bookmarks);
+            await updateBookmarksWithRetry(bookmarks);
           } catch (err: unknown) {
+            // ★ flush 常在关窗/切 node 前的最后一次落盘：书签双写通道失败
+            // 不能连带丢掉 pending 的阅读进度，继续走 setMetadata。
+            reportError(err, '保存书签');
             options?.onBookmarksError?.(err);
-            throw err;
           }
         }
       }
 
-      const result = await dstu.setMetadata(currentTarget.nodePath, mergedMetadata);
+      const result = await setMetadataWithRetry(mergedMetadata, 'flush');
       if (!result.ok) {
         reportError(result.error, '保存未持久化的阅读进度/书签');
         if (progress) options?.onProgressError?.(result.error);

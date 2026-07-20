@@ -1,27 +1,15 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-// 临时保留 react-pdf 实现，后续将迁移到 BasePdfViewer（react-pdf-viewer）
 import { useTranslation } from 'react-i18next';
-import { 
-  UploadSimple, 
-  CaretLeft, 
-  CaretRight, 
-  MagnifyingGlassPlus, 
-  MagnifyingGlassMinus, 
-  ArrowClockwise,
-  Download,
-  X
-} from '@phosphor-icons/react';
+import { UploadSimple, WarningCircle, X } from '@phosphor-icons/react';
 import useTheme from '@/hooks/useTheme';
 import { useMobileHeader } from '@/components/layout';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { TauriAPI } from '@/utils/tauriApi';
-import { fileManager } from '@/utils/fileManager';
-import 'react-pdf/dist/Page/AnnotationLayer.css';
-import 'react-pdf/dist/Page/TextLayer.css';
 import '../styles/pdf-reader.css';
 import { EnhancedPdfViewer } from './EnhancedPdfViewer';
 import { usePdfRenderTracker } from '@/utils/pdfDebug';
+import { classifyPdfLoadError } from '@/features/learning-hub/apps/views/pdfLoadErrors';
 
 export const PdfReader: React.FC = () => {
   const { t } = useTranslation(['pdf', 'common']);
@@ -47,57 +35,47 @@ export const PdfReader: React.FC = () => {
       </NotionButton>
     ),
   }, [t]);
-  
+
   const [file, setFile] = useState<File | null>(null);
   const [externalUrl, setExternalUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('document.pdf');
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(1);
-  const [scale, setScale] = useState<number>(1.0);
-  const [rotation, setRotation] = useState<number>(0);
-  // 更细粒度的加载阶段：reading=从磁盘/tauri读取；parsing=pdf.js 解析；idle=就绪
-  const [loadingStage, setLoadingStage] = useState<'idle' | 'reading' | 'parsing'>('idle');
+  // 加载阶段：parsing=pdf.js 解析中；idle=就绪
+  const [loadingStage, setLoadingStage] = useState<'idle' | 'parsing'>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [expectedSize, setExpectedSize] = useState<number | null>(null);
-  
+  const [errorHint, setErrorHint] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  
-  // 缓存 blob URL，避免每次渲染都重新创建
-  const fileBlobUrlRef = useRef<string | null>(null);
-  // 追踪当前 file 对象，用于检测变化
-  const lastFileRef = useRef<File | null>(null);
 
-  // ★ 生成 viewer URL（包含 Blob URL 管理）
-  const viewerUrl = React.useMemo(() => {
-    // 检测 file 是否真的变化了（对象引用不同）
-    if (file !== lastFileRef.current) {
-      // 释放旧的 Blob URL（只有当旧的 file 存在时才释放）
-      if (lastFileRef.current && fileBlobUrlRef.current) {
-        URL.revokeObjectURL(fileBlobUrlRef.current);
-        fileBlobUrlRef.current = null;
-      }
-      lastFileRef.current = file;
-    }
-    
-    if (file) {
-      if (!fileBlobUrlRef.current) {
-        fileBlobUrlRef.current = URL.createObjectURL(file);
-      }
-      return fileBlobUrlRef.current;
-    }
-    // 外部路径已转为 asset:// 协议 URL，可直接使用
-    return externalUrl ?? undefined;
-  }, [file, externalUrl]);
-
+  // ★ Blob URL 生命周期由 effect 管理（而非 useMemo 副作用）：
+  // StrictMode / 并发渲染下 useMemo 可能重复执行或结果被丢弃，
+  // 在其中 create/revoke 会误 revoke 仍在使用的 URL。
+  // state 同时记录 URL 所属的 File：file 切换到新 URL 就绪之间有一次
+  // 中间渲染，若只存 URL 会把上一个（将被 revoke 的）blob URL 交给 viewer。
+  const [fileBlob, setFileBlob] = useState<{ file: File; url: string } | null>(null);
   React.useEffect(() => {
+    if (!file) {
+      setFileBlob(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setFileBlob({ file, url });
     return () => {
-      if (fileBlobUrlRef.current) {
-        URL.revokeObjectURL(fileBlobUrlRef.current);
-        fileBlobUrlRef.current = null;
-      }
+      URL.revokeObjectURL(url);
     };
-  }, []);
+  }, [file]);
+
+  // 生成 viewer URL（纯计算，无副作用）
+  const viewerUrl = React.useMemo(() => {
+    if (file) {
+      // blob URL 尚未就绪（或还挂着旧 file 的 URL）时返回 undefined，渲染层会等待
+      return fileBlob && fileBlob.file === file ? fileBlob.url : undefined;
+    }
+    // 外部路径已转为 pdfstream:// 协议 URL，可直接使用
+    return externalUrl ?? undefined;
+  }, [file, fileBlob, externalUrl]);
 
   // 渲染追踪
   usePdfRenderTracker('PdfReader', {
@@ -105,73 +83,55 @@ export const PdfReader: React.FC = () => {
     fileName,
     numPages,
     pageNumber,
-    scale,
-    rotation,
     loadingStage,
     hasError: !!error,
   });
 
-  const onFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0];
-    if (selectedFile && selectedFile.type === 'application/pdf') {
-      // 清理旧的 blob URL
-      if (fileBlobUrlRef.current) {
-        URL.revokeObjectURL(fileBlobUrlRef.current);
-        fileBlobUrlRef.current = null;
-      }
-      
-      setFile(selectedFile);
-      setExternalUrl(null);
-      setPageNumber(1);
-      setScale(1.0);
-      setRotation(0);
-      setError(null);
-    } else {
-      setError(t('pdf:errors.invalid_file'));
+  const clearError = useCallback(() => {
+    setError(null);
+    setErrorHint(null);
+  }, []);
+
+  /** 分类加载错误 → 语义化文案 + 提示（与 EnhancedPdfViewer 内部错误面板同一分类源） */
+  const applyClassifiedError = useCallback((err: unknown) => {
+    const classified = classifyPdfLoadError(err);
+    switch (classified.kind) {
+      case 'password':
+        setError(t('pdf:errors.password_protected'));
+        setErrorHint(t('pdf:errors.password_protected_hint'));
+        break;
+      case 'invalid':
+        setError(t('pdf:errors.invalid_pdf'));
+        setErrorHint(t('pdf:errors.invalid_pdf_hint'));
+        break;
+      case 'network':
+        setError(t('pdf:errors.stream_failed'));
+        setErrorHint(t('pdf:errors.stream_failed_hint'));
+        break;
+      case 'too-large':
+        setError(t('pdf:errors.too_large_simple'));
+        setErrorHint(t('pdf:errors.too_large_hint'));
+        break;
+      default:
+        setError(t('pdf:errors.load_failed'));
+        setErrorHint(classified.rawMessage || null);
+        break;
     }
   }, [t]);
 
-  const onDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }) => {
-    setNumPages(numPages);
-    setLoadingStage('idle');
-    setError(null);
-  }, []);
-
-  const onDocumentLoadError = useCallback((error: Error) => {
-    console.error('PDF 加载失败:', error);
-    setError(t('pdf:errors.load_failed'));
-    setLoadingStage('idle');
-  }, [t]);
-
-  const changePage = useCallback((offset: number) => {
-    setPageNumber((prevPageNumber) => {
-      const newPage = prevPageNumber + offset;
-      if (numPages && newPage >= 1 && newPage <= numPages) {
-        return newPage;
-      }
-      return prevPageNumber;
-    });
-  }, [numPages]);
-
-  const previousPage = useCallback(() => changePage(-1), [changePage]);
-  const nextPage = useCallback(() => changePage(1), [changePage]);
-
-  const handleZoomIn = useCallback(() => {
-    setScale((prev) => Math.min(prev + 0.25, 3.0));
-  }, []);
-
-  const handleZoomOut = useCallback(() => {
-    setScale((prev) => Math.max(prev - 0.25, 0.5));
-  }, []);
-
-  const handleRotate = useCallback(() => {
-    setRotation((prev) => (prev + 90) % 360);
-  }, []);
-
-  const handleReset = useCallback(() => {
-    setScale(1.0);
-    setRotation(0);
-  }, []);
+  const onFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0];
+    if (selectedFile && selectedFile.type === 'application/pdf') {
+      setFile(selectedFile);
+      setFileName(selectedFile.name || 'document.pdf');
+      setExternalUrl(null);
+      setPageNumber(1);
+      clearError();
+    } else {
+      setError(t('pdf:errors.invalid_file'));
+      setErrorHint(null);
+    }
+  }, [t, clearError]);
 
   const handleViewerPageChange = useCallback((idx: number) => {
     setPageNumber(idx + 1);
@@ -179,6 +139,7 @@ export const PdfReader: React.FC = () => {
 
   const handleViewerDocumentLoad = useCallback((n: number) => {
     setNumPages(n);
+    setLoadingStage('idle');
   }, []);
 
   const handleSelectFile = useCallback(async () => {
@@ -190,11 +151,6 @@ export const PdfReader: React.FC = () => {
         filters: [{ name: 'PDF', extensions: ['pdf'] }],
       });
       if (selected && typeof selected === 'string') {
-        // 清理旧的 blob URL
-        if (fileBlobUrlRef.current) {
-          URL.revokeObjectURL(fileBlobUrlRef.current);
-          fileBlobUrlRef.current = null;
-        }
         // 通过后端读取文件字节
         const bytes = await TauriAPI.readFileAsBytes(selected);
         const blob = new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], { type: 'application/pdf' });
@@ -202,37 +158,30 @@ export const PdfReader: React.FC = () => {
         const name = extractFileName(selected) || 'document.pdf';
         const pdfFile = new File([blob], name, { type: 'application/pdf' });
         setFile(pdfFile);
+        setFileName(name);
         setExternalUrl(null);
         setPageNumber(1);
-        setScale(1.0);
-        setRotation(0);
-        setError(null);
+        clearError();
       }
     } catch (err) {
       console.warn('[PdfReader] Tauri dialog failed, falling back to file input:', err);
       fileInputRef.current?.click();
     }
-  }, []);
+  }, [clearError]);
   handleSelectFileRef.current = handleSelectFile;
 
   const handleClearFile = useCallback(() => {
-    // 清理 blob URL
-    if (fileBlobUrlRef.current) {
-      URL.revokeObjectURL(fileBlobUrlRef.current);
-      fileBlobUrlRef.current = null;
-    }
-    
+    // blob URL 由 [file] effect 的 cleanup 负责 revoke
     setFile(null);
     setExternalUrl(null);
     setNumPages(null);
     setPageNumber(1);
-    setScale(1.0);
-    setRotation(0);
-    setError(null);
+    setLoadingStage('idle');
+    clearError();
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, []);
+  }, [clearError]);
 
   // 支持从外部事件打开 PDF（使用 pdfstream:// 协议实现流式加载）
   React.useEffect(() => {
@@ -242,14 +191,10 @@ export const PdfReader: React.FC = () => {
         const path: string | undefined = typeof detail.path === 'string' ? detail.path : undefined;
         const name: string | undefined = typeof detail.name === 'string' ? detail.name : undefined;
         const data: Uint8Array | undefined = detail.data instanceof Uint8Array ? detail.data : undefined;
-        const size: number | undefined = typeof detail.size === 'number' ? detail.size : undefined;
-        setExpectedSize(typeof size === 'number' && size >= 0 ? size : null);
-        setError(null);
+        clearError();
         const safeName = name && /\.pdf$/i.test(name) ? name : (name ? `${name}.pdf` : 'document.pdf');
         setFileName(safeName);
         setPageNumber(1);
-        setScale(1.0);
-        setRotation(0);
 
         // 1) 如果事件直接给了数据，转为 blob URL
         if (data && data.byteLength) {
@@ -274,7 +219,7 @@ export const PdfReader: React.FC = () => {
           // Windows WebView2: http://pdfstream.localhost/<encoded_path>
           // macOS/Linux:      pdfstream://localhost/<encoded_path>
           const pdfstreamUrl = convertFileSrc(path, 'pdfstream');
-          
+
           setFile(null);
           setExternalUrl(pdfstreamUrl);
           setLoadingStage('idle'); // pdfstream:// 直接由 PDF.js 按需加载，无需前端 loading
@@ -282,30 +227,15 @@ export const PdfReader: React.FC = () => {
         }
 
         setError(t('pdf:errors.invalid_file'));
+        setErrorHint(null);
       } catch (err: unknown) {
         console.error('OPEN_PDF_FILE 处理失败:', err);
-        setError(t('pdf:errors.load_failed'));
+        applyClassifiedError(err);
       }
     };
     try { window.addEventListener('OPEN_PDF_FILE' as any, handler as any); } catch {}
     return () => { try { window.removeEventListener('OPEN_PDF_FILE' as any, handler as any); } catch {} };
-  }, [t]);
-
-  const handleDownload = useCallback(async () => {
-    if (!file) return;
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const ext = file.name.split('.').pop() || 'pdf';
-      await fileManager.saveBinaryFile({
-        title: file.name,
-        defaultFileName: file.name,
-        data: new Uint8Array(arrayBuffer),
-        filters: [{ name: 'PDF', extensions: [ext] }],
-      });
-    } catch (error) {
-      console.error('[PdfReader] Download failed:', error);
-    }
-  }, [file]);
+  }, [t, clearError, applyClassifiedError]);
 
   return (
     <div className={`pdf-reader-container ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
@@ -319,25 +249,35 @@ export const PdfReader: React.FC = () => {
       />
 
       {error && (
-        <div className="pdf-error-message">
-          <span>{error}</span>
+        <div className="pdf-reader-status ui-drop-in" role="alert">
+          <WarningCircle size={20} className="pdf-reader-status__icon" aria-hidden />
+          <div className="pdf-reader-status__body">
+            <p className="pdf-reader-status__title">{error}</p>
+            {errorHint && <p className="pdf-reader-status__hint">{errorHint}</p>}
+          </div>
+          <div className="pdf-reader-status__actions">
+            <NotionButton variant="ghost" size="sm" onClick={handleSelectFile} className="gap-1.5">
+              <UploadSimple size={14} />
+              {t('pdf:empty.select_button')}
+            </NotionButton>
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              iconOnly
+              aria-label={t('pdf:a11y.close')}
+              onClick={clearError}
+            >
+              <X size={14} />
+            </NotionButton>
+          </div>
         </div>
       )}
 
-      {loadingStage === 'reading' && (
-        <div className="pdf-loading" style={{ flex: 1 }}>
-          <div className="pdf-loading-spinner"></div>
-          <p>
-            {expectedSize != null
-              ? t('pdf:loading_reading', { mb: (expectedSize / (1024 * 1024)).toFixed(1) })
-              : t('pdf:loading_reading_simple')}
-          </p>
-        </div>
-      )}
-
-      {!viewerUrl && !error && loadingStage === 'idle' && (
-        <div className="pdf-empty-state">
-          <UploadSimple size={64} className="empty-icon" />
+      {!viewerUrl && !file && !error && loadingStage === 'idle' && (
+        <div className="pdf-empty-state ui-rise-in">
+          <div className="pdf-empty-state__icon-wrap">
+            <UploadSimple size={32} className="empty-icon" />
+          </div>
           <h2>{t('pdf:empty.title')}</h2>
           <p>{t('pdf:empty.description')}</p>
           <NotionButton variant="primary" size="sm" onClick={handleSelectFile} className="mt-4 gap-1.5">
@@ -351,7 +291,7 @@ export const PdfReader: React.FC = () => {
         <div className="pdf-viewer-container" ref={containerRef}>
           <EnhancedPdfViewer
             data={undefined}
-            url={viewerUrl as string}
+            url={viewerUrl}
             fileName={file ? file.name : (fileName || 'document.pdf')}
             onPageChange={handleViewerPageChange}
             onDocumentLoad={handleViewerDocumentLoad}
@@ -367,4 +307,3 @@ export const PdfReader: React.FC = () => {
 };
 
 export default PdfReader;
-

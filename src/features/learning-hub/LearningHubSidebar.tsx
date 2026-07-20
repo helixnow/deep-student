@@ -2929,7 +2929,7 @@ export function LearningHubSidebar({
 
         {/* ★ Canvas 模式顶部工具栏：多选模式 + 关闭按钮 */}
         {mode === 'canvas' && (
-          <div className="study-shell-toolbar study-shell-toolbar--floating flex items-center justify-between px-2 py-1.5 border-b backdrop-blur-lg shrink-0">
+          <div data-wb-blur-surface className="study-shell-toolbar study-shell-toolbar--floating flex items-center justify-between px-2 py-1.5 border-b backdrop-blur-lg shrink-0">
             <div className="flex items-center gap-1.5 min-w-0">
               {isMultiSelectMode ? (
                 // 多选模式下显示选中信息和操作
@@ -3349,7 +3349,8 @@ export function LearningHubSidebar({
         onMoveTo={canMoveInCurrentView ? handleMoveTo : undefined}
       />
       
-      {/* Folder Picker Dialog for Batch Move */}
+      {/* Folder Picker for Batch Move
+          📱 移动端契约：走 inline 全屏子屏（挂在中屏容器 absolute inset-0），桌面保留 Dialog */}
       <FolderPickerDialog
         open={moveDialogOpen}
         onOpenChange={(open) => {
@@ -3361,6 +3362,7 @@ export function LearningHubSidebar({
         )}
         onConfirm={handleBatchMoveConfirm}
         title={t('finder.batch.moveDialogTitle')}
+        inline={isSmallScreen}
       />
 
       {/* ★ 删除确认对话框 - 替代原生 window.confirm */}
@@ -3396,7 +3398,7 @@ export function LearningHubSidebar({
 
       {/* ★ 2026-06-12（审阅问题 FE-M5）：附件批量导入进度横幅（非模态，不阻塞操作） */}
       {attachImportProgress && (
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-3.5 py-2 rounded-lg bg-background/95 backdrop-blur-lg border shadow-notion-lg">
+        <div data-wb-blur-surface className="absolute bottom-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-3.5 py-2 rounded-lg bg-background/95 backdrop-blur-lg border shadow-notion-lg">
           <CircleNotch className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
           <span className="text-xs whitespace-nowrap">
             {t('finder.dragDrop.importing', {

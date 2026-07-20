@@ -15,15 +15,47 @@ import { nanoid } from 'nanoid';
 // ============================================================================
 
 /**
- * 来源数据库类型
+ * 引用节点支持的来源数据库（窄集合）
+ *
+ * 这是「引用节点 UI」（侧栏引用、图标、显示名等）当前支持的来源集合，
+ * 由 reference.test.ts 合同锁定：`isValidSourceDatabase('notes')` 必须为 false。
  *
  * | 值              | 实际数据库              | 数据类型       |
  * |-----------------|------------------------|----------------|
  * | 'textbooks'     | textbooks.db           | Textbook       |
  * | 'chat_v2'       | chat_v2.db             | Resource       |
  * | 'exam_sessions' | app.exam_sheet_sessions| ExamSession ★  |
+ *
+ * 如需 DSTU 全量支持面（含 notes/translations/essays 等），
+ * 使用 {@link ExtendedSourceDatabase}。
  */
-export type SourceDatabase = 'textbooks' | 'chat_v2' | 'exam_sessions';
+export const SOURCE_DATABASES = ['textbooks', 'chat_v2', 'exam_sessions'] as const;
+
+export type SourceDatabase = (typeof SOURCE_DATABASES)[number];
+
+/**
+ * DSTU 层可寻址的来源数据库全量集合（宽集合）
+ *
+ * `SourceDatabase` 的超集。learningHubApi（DSTU 内容获取封装）按此集合工作：
+ * 后端 dstu_get / dstu_get_content 按资源 ID 前缀全局寻址，任何这些库的
+ * 资源都可以通过 `/${sourceId}` 取到。
+ *
+ * 历史说明（B8 修复，2026-07）：此前 learningHubApi.ts 与本文件各自维护一套
+ * `SourceDatabase` 并已漂移。现统一以本文件为单一来源，learningHubApi 从这里
+ * re-export，既有 `import { SourceDatabase } from '../learningHubApi'` 不受影响。
+ */
+export const EXTENDED_SOURCE_DATABASES = [
+  'notes',
+  'textbooks',
+  'chat_v2',
+  'exam_sessions',
+  'translations',
+  'essays',
+  'attachments',
+  'mindmaps',
+] as const;
+
+export type ExtendedSourceDatabase = (typeof EXTENDED_SOURCE_DATABASES)[number];
 
 /**
  * 预览类型
@@ -48,7 +80,23 @@ export type SourceDatabase = 'textbooks' | 'chat_v2' | 'exam_sessions';
  * ★ 2026-01 添加：docx/xlsx/pptx/text 类型，与后端 DstuPreviewType 对齐
  * ★ 2026-01 添加：audio/video 类型，支持音视频预览
  */
-export type PreviewType = 'markdown' | 'pdf' | 'image' | 'exam' | 'docx' | 'xlsx' | 'pptx' | 'epub' | 'text' | 'audio' | 'video' | 'mindmap' | 'none';
+export const PREVIEW_TYPES = [
+  'markdown',
+  'pdf',
+  'image',
+  'exam',
+  'docx',
+  'xlsx',
+  'pptx',
+  'epub',
+  'text',
+  'audio',
+  'video',
+  'mindmap',
+  'none',
+] as const;
+
+export type PreviewType = (typeof PREVIEW_TYPES)[number];
 
 /**
  * 引用节点
@@ -216,12 +264,26 @@ export function getSourceDbPreviewType(sourceDb: SourceDatabase): PreviewType {
 // ============================================================================
 
 /**
- * 检查值是否为有效的 SourceDatabase
+ * 检查值是否为有效的 SourceDatabase（窄集合，引用节点 UI 支持面）
+ *
+ * 注意：`'notes'` 等 DSTU 可寻址库在此返回 false（合同测试锁定）。
+ * 需要宽集合判定时使用 {@link isExtendedSourceDatabase}。
+ *
  * @param value 待检查的值
  * @returns 是否为有效的 SourceDatabase
  */
 export function isValidSourceDatabase(value: unknown): value is SourceDatabase {
-  return value === 'textbooks' || value === 'chat_v2' || value === 'exam_sessions';
+  return (SOURCE_DATABASES as readonly string[]).includes(value as string);
+}
+
+/**
+ * 检查值是否为 DSTU 层可寻址的来源数据库（宽集合）
+ *
+ * @param value 待检查的值
+ * @returns 是否为有效的 ExtendedSourceDatabase
+ */
+export function isExtendedSourceDatabase(value: unknown): value is ExtendedSourceDatabase {
+  return (EXTENDED_SOURCE_DATABASES as readonly string[]).includes(value as string);
 }
 
 /**
@@ -231,22 +293,11 @@ export function isValidSourceDatabase(value: unknown): value is SourceDatabase {
  *
  * ★ 2026-01 清理：移除 'card' 类型（错题系统废弃）
  * ★ 2026-01 添加：docx/xlsx/pptx/text 类型
+ * ★ 2026-07 修复：改为由 PREVIEW_TYPES 派生，消除此前守卫漏掉 'epub'
+ *   而类型联合含 'epub' 的漂移（守卫与类型不一致会让合法节点校验失败）。
  */
 export function isValidPreviewType(value: unknown): value is PreviewType {
-  return (
-    value === 'markdown' ||
-    value === 'pdf' ||
-    value === 'image' ||
-    value === 'exam' ||
-    value === 'docx' ||
-    value === 'xlsx' ||
-    value === 'pptx' ||
-    value === 'text' ||
-    value === 'audio' ||
-    value === 'video' ||
-    value === 'mindmap' ||
-    value === 'none'
-  );
+  return (PREVIEW_TYPES as readonly string[]).includes(value as string);
 }
 
 /**

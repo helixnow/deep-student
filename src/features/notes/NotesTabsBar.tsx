@@ -74,6 +74,14 @@ const SortableTab: React.FC<SortableTabProps> = ({ tab, active, onClose }) => {
           "data-[state=active]:bg-[hsl(var(--titlebar-background)/0.9)] data-[state=active]:text-foreground data-[state=active]:border-x-border/40 data-[state=active]:font-semibold",
           isDragging && "shadow-lg bg-[hsl(var(--titlebar-background)/0.6)]",
         )}
+        onAuxClick={(event) => {
+          // 中键关闭标签（对齐浏览器习惯）
+          if (event.button === 1) {
+            event.preventDefault();
+            event.stopPropagation();
+            onClose?.(tab.id);
+          }
+        }}
       >
         <span className="truncate" title={tab.title}>
           {tab.title}
@@ -191,11 +199,20 @@ const NotesTabsBar: React.FC<NotesTabsBarProps> = ({
 
     const onScroll = () => updateArrows();
     el.addEventListener("scroll", onScroll, { passive: true });
+    // 滚轮横向滚动：垂直滚轮转为标签条横滚（需非 passive 才能 preventDefault）
+    const onWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      if (el.scrollWidth <= el.clientWidth) return;
+      event.preventDefault();
+      el.scrollLeft += event.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
     const ro = new ResizeObserver(updateArrows);
     ro.observe(el);
     return () => {
       cancelAnimationFrame(rafId);
       el.removeEventListener("scroll", onScroll as any);
+      el.removeEventListener("wheel", onWheel);
       ro.disconnect();
     };
   }, [updateArrows]);
@@ -238,17 +255,19 @@ const NotesTabsBar: React.FC<NotesTabsBarProps> = ({
 
   // 监听窗口尺寸变化
   React.useEffect(() => {
+    let disposed = false;
     const handleResize = () => updateArrows();
     window.addEventListener('resize', handleResize, { passive: true });
 
-    // 字体加载完成后再计算一次
+    // 字体加载完成后再计算一次（卸载后忽略回调，避免对已卸载组件更新）
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(() => {
-        updateArrows();
+        if (!disposed) updateArrows();
       }).catch((err) => { console.warn('[NotesTabsBar] fonts.ready failed:', err); });
     }
 
     return () => {
+      disposed = true;
       window.removeEventListener('resize', handleResize);
     };
   }, [updateArrows]);
@@ -287,8 +306,8 @@ const NotesTabsBar: React.FC<NotesTabsBarProps> = ({
               className="notes-tabs-scroll flex h-full w-full items-stretch gap-0 overflow-x-auto overflow-y-hidden rounded-none border-none bg-transparent px-7 !justify-start"
             >
               {tabs.length === 0 ? (
-                <div className="px-3 py-2 text-sm text-muted-foreground">
-                  {t('notes:common.untitledNote')}
+                <div className="px-3 py-2 text-sm text-muted-foreground/60">
+                  {t('notes:editor.empty_state.title')}
                 </div>
               ) : (
                 tabs.map((tab) => (

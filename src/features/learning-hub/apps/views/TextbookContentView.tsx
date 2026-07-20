@@ -378,7 +378,8 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
           });
 
           if (!isMounted) return;
-          if (text) {
+          // ★ 空字符串是合法内容（空文件），只有 null 才代表"未找到"（与 FileContentView 一致）
+          if (text !== null) {
             setFileContent(text);
             setContentLoading(false);
           } else {
@@ -731,7 +732,8 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
 
   // 纯文本预览
   if (isText) {
-    if (!fileContent) {
+    // ★ 空字符串是合法内容（空文件），由 TextFilePreview 渲染空状态；仅 null 表示仍在加载
+    if (fileContent === null) {
       return contentLoadingView;
     }
     return (

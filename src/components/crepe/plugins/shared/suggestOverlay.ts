@@ -49,10 +49,40 @@ export interface SuggestOverlay<T> {
   /** 仅重定位锚点（签名未变、光标移动时） */
   moveAnchor: (rect: AnchorRect) => void;
   setSelected: (index: number) => void;
+  /** 列表底部的模式提示行（如别名 / 标题模式）；null 隐藏 */
+  setHint: (hint: string | null) => void;
   close: () => void;
   isOpen: () => boolean;
   getSelectedIndex: () => number;
   getItems: () => T[];
+}
+
+/**
+ * 将 text 追加到 parent，query 命中的首个子串（大小写不敏感）包 <mark>。
+ * 供 decorateItem 高亮匹配子串使用。
+ */
+export function appendHighlightedText(
+  parent: HTMLElement,
+  text: string,
+  query: string,
+  matchClass: string,
+): void {
+  const q = query.trim().toLocaleLowerCase();
+  const index = q ? text.toLocaleLowerCase().indexOf(q) : -1;
+  if (index < 0) {
+    parent.appendChild(document.createTextNode(text));
+    return;
+  }
+  if (index > 0) {
+    parent.appendChild(document.createTextNode(text.slice(0, index)));
+  }
+  const mark = document.createElement('mark');
+  mark.className = matchClass;
+  mark.textContent = text.slice(index, index + q.length);
+  parent.appendChild(mark);
+  if (index + q.length < text.length) {
+    parent.appendChild(document.createTextNode(text.slice(index + q.length)));
+  }
 }
 
 /** 从编辑器位置换算锚点矩形 */
@@ -72,6 +102,7 @@ export function createSuggestOverlay<T>(
   let items: T[] = [];
   let selectedIndex = 0;
   let placeholder: PlaceholderKind = 'empty';
+  let hint: string | null = null;
   let onPick: ((item: T) => void) | null = null;
 
   const ensureRoot = (): HTMLDivElement => {
@@ -106,6 +137,8 @@ export function createSuggestOverlay<T>(
     cleanupAutoUpdate?.();
     cleanupAutoUpdate = autoUpdate(anchor, floating, () => {
       void computePosition(anchor, floating, {
+        // 浮层 CSS 为 position: fixed，strategy 必须一致，否则页面滚动后错位
+        strategy: 'fixed',
         placement: 'bottom-start',
         middleware: [offset(6), flip(), shift({ padding: 8 })],
       }).then(({ x, y }) => {
@@ -130,22 +163,28 @@ export function createSuggestOverlay<T>(
     if (items.length === 0) {
       const node = renderPlaceholder(placeholder);
       if (node) el.appendChild(node);
-      return;
+    } else {
+      items.forEach((item, index) => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = `${className}__item`;
+        if (index === selectedIndex) {
+          row.classList.add(`${className}__item--active`);
+        }
+        row.setAttribute('role', 'option');
+        row.setAttribute('aria-selected', index === selectedIndex ? 'true' : 'false');
+        decorateItem(row, item);
+        row.addEventListener('click', () => onPick?.(item));
+        el.appendChild(row);
+      });
     }
 
-    items.forEach((item, index) => {
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = `${className}__item`;
-      if (index === selectedIndex) {
-        row.classList.add(`${className}__item--active`);
-      }
-      row.setAttribute('role', 'option');
-      row.setAttribute('aria-selected', index === selectedIndex ? 'true' : 'false');
-      decorateItem(row, item);
-      row.addEventListener('click', () => onPick?.(item));
-      el.appendChild(row);
-    });
+    if (hint) {
+      const hintEl = document.createElement('div');
+      hintEl.className = `${className}__hint`;
+      hintEl.textContent = hint;
+      el.appendChild(hintEl);
+    }
   };
 
   const replayEnterAnimation = (el: HTMLElement) => {
@@ -186,6 +225,11 @@ export function createSuggestOverlay<T>(
       selectedIndex = ((index % items.length) + items.length) % items.length;
       if (root) render();
     },
+    setHint(nextHint) {
+      if (hint === nextHint) return;
+      hint = nextHint;
+      if (root && root.style.display !== 'none') render();
+    },
     close() {
       cleanupAutoUpdate?.();
       cleanupAutoUpdate = null;
@@ -201,6 +245,7 @@ export function createSuggestOverlay<T>(
       items = [];
       selectedIndex = 0;
       placeholder = 'empty';
+      hint = null;
     },
     isOpen: () => Boolean(root && root.style.display !== 'none' && root.isConnected),
     getSelectedIndex: () => selectedIndex,

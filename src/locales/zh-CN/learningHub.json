@@ -211,7 +211,12 @@
     "renderFailed": "图片无法显示",
     "unsupportedFormatHint": "当前系统的内置浏览器不支持该格式（如 HEIC/HEIF）。可保存到本地后用系统图片查看器打开。",
     "renderFailedHint": "图片数据可能已损坏或格式不受支持。可尝试保存到本地查看。",
-    "saveToDevice": "保存到本地"
+    "saveToDevice": "保存到本地",
+    "fitToWindow": "适应窗口",
+    "actualSize": "实际大小",
+    "zoomLevel": "缩放比例",
+    "imageInfo": "图片信息",
+    "toolbarLabel": "图片工具栏"
   },
   "file": {
     "noPreview": "此文件类型不支持预览",
@@ -228,8 +233,39 @@
     "savedSuccessfully": "文件已保存",
     "contentNotFound": "未找到文件内容 (id: {{id}})"
   },
+  "mediaPreview": {
+    "play": "播放",
+    "pause": "暂停",
+    "skipBackward": "后退 10 秒",
+    "skipForward": "前进 10 秒",
+    "mute": "静音",
+    "unmute": "取消静音",
+    "volume": "音量",
+    "playbackRate": "播放速度",
+    "loop": "循环播放",
+    "fullscreen": "全屏",
+    "exitFullscreen": "退出全屏",
+    "progress": "播放进度"
+  },
   "filePreview": {
-    "textTruncated": "文件过大，仅显示开头部分内容，可下载文件查看完整内容"
+    "textTruncated": "文件过大，仅显示开头部分内容，可下载文件查看完整内容",
+    "textTruncatedDetail": "文件过大，已显示 {{shown}} / 共 {{total}} 字符，可将文件另存到本地查看完整内容",
+    "emptyFile": "文件内容为空",
+    "whitespaceOnly": "文件仅包含空白字符",
+    "copy": "复制",
+    "copied": "已复制",
+    "metaLines": "{{value}} 行",
+    "metaChars": "{{value}} 字符",
+    "metaTable": "{{rows}} 行 × {{cols}} 列",
+    "delimiterComma": "逗号分隔",
+    "delimiterSemicolon": "分号分隔",
+    "delimiterTab": "制表符分隔",
+    "csvHeaderRow": "首行为表头",
+    "csvColumn": "列 {{index}}",
+    "csvRowNumber": "行号",
+    "sortAsc": "点击升序排序",
+    "sortDesc": "点击降序排序",
+    "sortNone": "点击取消排序"
   },
   "epubPreview": {
     "loadFailed": "无法打开 EPUB",
@@ -247,17 +283,39 @@
     "searching": "搜索中...",
     "previousChapter": "上一章",
     "nextChapter": "下一章",
-    "progress": "阅读进度 {{progress}}%"
+    "progress": "阅读进度 {{progress}}%",
+    "themeAuto": "跟随应用",
+    "displaySettings": "排版设置",
+    "fontSize": "字号",
+    "fontFamily": "字体",
+    "fontFamilyBook": "原书",
+    "fontFamilySerif": "衬线",
+    "fontFamilySans": "无衬线",
+    "lineHeight": "行距",
+    "pageMargin": "页边距",
+    "resetTypography": "恢复默认排版",
+    "searchNoResults": "没有找到匹配内容",
+    "searchCapped": "结果过多，仅显示前 {{count}} 个",
+    "matchPosition": "第 {{current}} / {{total}} 处",
+    "previousMatch": "上一处",
+    "nextMatch": "下一处"
   },
   "officePreview": {
     "toolbarLabel": "预览工具栏",
     "prevSheet": "上一个工作表",
     "nextSheet": "下一个工作表",
     "sheetTabs": "工作表列表",
-    "xlsxColsTruncated": "列数过多，仅显示前 {{shown}} 列（其余 {{hidden}} 列未渲染）",
     "noSheets": "该工作簿不包含可预览的工作表",
     "encryptedOrLegacy": "文件已加密（受密码保护）或为旧版二进制格式（.doc/.xls/.ppt），无法在线预览，可下载后用 Office 打开",
-    "invalidFormat": "文件不是有效的 Office 文档，可能已损坏"
+    "invalidFormat": "文件不是有效的 Office 文档，可能已损坏",
+    "rowsTruncatedInfo": "已显示前 {{shown}} 行 / 共 {{total}} 行",
+    "colsTruncatedInfo": "已显示前 {{shown}} 列 / 共 {{total}} 列",
+    "emptySheet": "此工作表没有可显示的单元格内容（可能为空白或仅包含图表）",
+    "selectionLabel": "已选择单元格 {{range}}",
+    "loadingWorkbook": "正在加载工作簿",
+    "truncatedNotice": "超出部分未渲染，可下载文件查看完整内容",
+    "sheetTruncatedHint": "工作表过大，预览时将被截断",
+    "dimensions": "{{rows}} 行 × {{cols}} 列"
   },
   "previewToolbar": {
     "zoomOut": "缩小视图",
@@ -269,7 +327,12 @@
     "currentZoom": "当前缩放: {{value}}",
     "currentFont": "当前字号: {{value}}",
     "prevSlide": "上一页",
-    "nextSlide": "下一页"
+    "nextSlide": "下一页",
+    "zoomMenu": "缩放档位",
+    "zoomTo": "缩放至 {{value}}",
+    "resetDefault": "恢复默认缩放",
+    "slideNavGroup": "幻灯片导航",
+    "fontGroup": "字号调节"
   },
   "docPreview": {
     "emptyContent": "文件内容为空，无法预览",
@@ -291,7 +354,12 @@
     "docTypeText": "文本文件",
     "documentHint": "双击或在右侧面板中查看完整内容",
     "xlsxTruncated": "表格过大，仅显示前 {{shown}} 行（其余 {{hidden}} 行未渲染，可下载文件查看完整内容）",
-    "csvTruncated": "表格过大，仅显示前 {{shown}} 行（其余 {{hidden}} 行未渲染）"
+    "csvTruncated": "表格过大，仅显示前 {{shown}} 行（其余 {{hidden}} 行未渲染）",
+    "pptxLoading": "正在渲染演示文稿…",
+    "pptxThumbnails": "幻灯片缩略图",
+    "pptxThumbnailItem": "跳转到第 {{index}} 页",
+    "loadingDocument": "正在加载文档预览",
+    "pageIndicator": "第 {{current}} 页 / 共 {{total}} 页"
   },
   "textbook": {
     "import": "导入教材",
@@ -833,7 +901,13 @@
       "reason": "原因",
       "session": "会话"
     },
-    "open_folder": "打开文件夹"
+    "open_folder": "打开文件夹",
+    "confirm_delete": "确认删除？",
+    "filter_folders": "筛选文件夹…",
+    "load_more": "加载更多",
+    "profile_load_error": "画像加载失败",
+    "show_full": "展开全文",
+    "show_less": "收起"
   },
   "desktop": {
     "title": "桌面",
@@ -901,7 +975,8 @@
       "text": "文本:",
       "items": "项",
       "staleHint": "{{count}} 个资源内容已更新，索引需要刷新",
-      "recordCount": "{{count}} 条记录"
+      "recordCount": "{{count}} 条记录",
+      "indexingCount": "正在索引 {{current}}/{{total}}"
     },
     "stats": {
       "totalVectors": "总向量数",
@@ -922,8 +997,24 @@
       "retry": "重试",
       "search": "搜索",
       "update": "更新",
-      "reindex": "待索引",
+      "reindex": "重新索引",
+      "retryAllFailed": "重试全部失败项",
+      "loadMore": "加载更多",
       "clearOcrAndReindex": "清除 OCR 数据并重新识别"
+    },
+    "confirm": {
+      "resetTitle": "确认重置全部索引？",
+      "resetDescription": "该操作将删除所有向量数据（segments、units），并把所有资源重置为待索引。此操作不可撤销。",
+      "confirmReset": "确认重置",
+      "retryFailedTitle": "重试全部失败项？",
+      "retryFailedDescription": "将对 {{count}} 个索引失败的资源重新执行索引。",
+      "confirmRetry": "开始重试",
+      "cancel": "取消"
+    },
+    "list": {
+      "showingPartial": "已加载 {{shown}} / {{total}} 条资源",
+      "loadingMore": "加载中…",
+      "retrySummary": "重试完成：{{success}} 成功，{{fail}} 失败"
     },
     "notification": {
       "resetDisabledSuccess": "已重置 {{count}} 个不适用资源，将重新索引",
@@ -951,7 +1042,6 @@
       "noMmResources": "没有支持原生多模态索引的资源（教材/题目集/图片/含预览的文件）",
       "mmIndexCompleted": "原生多模态索引完成",
       "waitForCurrent": "请等待当前操作完成",
-      "confirmResetAll": "确定要重置所有索引状态吗？\n\n这将：\n- 删除所有索引数据（segments、units）\n- 重置所有资源为待索引状态\n- 清空维度统计\n\n此操作不可撤销！",
       "resetSuccess": "重置成功",
       "resetSuccessDetail": "已重置 {{count}} 个资源的索引状态",
       "resetFailed": "重置失败",
@@ -975,12 +1065,12 @@
     },
     "mmProgress": {
       "preparing": "{{prefix}}准备中... ({{pages}} 页)",
-      "vlSummary": "{{prefix}}🔍 VL摘要生成: {{indexed}}/{{total}} 页 (当前: 第{{current}}页)",
-      "textEmbedding": "{{prefix}}📊 文本嵌入: {{indexed}}/{{total}}",
-      "embedding": "{{prefix}}⚡ 向量生成: {{indexed}}/{{total}} 页",
-      "saving": "{{prefix}}💾 保存索引: {{indexed}}/{{total}} 页",
-      "completed": "{{prefix}}✅ 完成！已索引 {{indexed}} 页，跳过 {{skipped}} 页",
-      "failed": "{{prefix}}❌ 失败: {{message}}"
+      "vlSummary": "{{prefix}}VL 摘要生成: {{indexed}}/{{total}} 页 (当前: 第{{current}}页)",
+      "textEmbedding": "{{prefix}}文本嵌入: {{indexed}}/{{total}}",
+      "embedding": "{{prefix}}向量生成: {{indexed}}/{{total}} 页",
+      "saving": "{{prefix}}保存索引: {{indexed}}/{{total}} 页",
+      "completed": "{{prefix}}完成，已索引 {{indexed}} 页，跳过 {{skipped}} 页",
+      "failed": "{{prefix}}失败: {{message}}"
     },
     "detail": {
       "chunks": "{{count}} 块",
@@ -1016,6 +1106,8 @@
       "noDataFound": "没有找到数据",
       "nativeMmIndex": "原生多模态索引",
       "indexMode": "索引模式",
+      "modeVlEmbed": "VL 嵌入",
+      "modeVlText": "VL+文本",
       "pureText": "纯文本",
       "notIndexed": "未索引",
       "resourceId": "资源 ID",
@@ -1031,6 +1123,7 @@
       "viewOcrText": "查看 OCR 文本",
       "viewTextChunks": "查看文本块 ({{count}})",
       "indexUnitCount": "共 {{count}} 个索引单元",
+      "unitLabel": "单元 #{{n}}",
       "ocrAndExtractedTitle": "OCR 文本 / 提取文本",
       "ocrText": "OCR 文本"
     },
@@ -1048,7 +1141,10 @@
     },
     "empty": {
       "noMatchingResources": "没有符合条件的资源",
-      "adjustFilters": "尝试调整筛选条件"
+      "adjustFilters": "尝试调整筛选条件",
+      "noResourcesTitle": "还没有可索引的内容",
+      "noResourcesDesc": "把笔记、教材或文件加入学习中心后，这里会展示它们的索引状态。",
+      "configureEmbeddingHint": "尚未配置嵌入模型：请先到 设置 → 模型 → RAG 与知识库 配置嵌入模型，才能建立索引。"
     },
     "test": {
       "title": "召回测试",

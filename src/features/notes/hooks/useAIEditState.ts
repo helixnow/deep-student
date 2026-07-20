@@ -48,15 +48,29 @@ export interface AIEditState {
   replaceCount?: number;
 }
 
+export interface AIEditAcceptPayload {
+  proposedContent: string;
+  result: CanvasAIEditResult;
+  /** diff 展示所基于的原文（供调用方检测等待期间的用户编辑） */
+  originalContent: string;
+  /** 原始请求（供调用方按最新全文重算建议） */
+  request: CanvasAIEditRequest;
+}
+
 export interface UseAIEditStateReturn {
   state: AIEditState;
   startEdit: (request: CanvasAIEditRequest, originalContent: string) => CanvasAIEditResult | null;
-  accept: (options?: { clear?: boolean }) => { proposedContent: string; result: CanvasAIEditResult } | null;
+  accept: (options?: { clear?: boolean }) => AIEditAcceptPayload | null;
   reject: () => CanvasAIEditResult | null;
   clear: () => void;
 }
 
-function computeProposedContent(
+/**
+ * 由请求与给定原文推导建议后的全文。
+ * 导出给 useCanvasAIEditHandler：内联 diff 下编辑器保持可编辑，
+ * Accept 时可按最新全文重算，避免回滚等待期间的用户编辑。
+ */
+export function computeProposedContent(
   request: CanvasAIEditRequest,
   originalContent: string
 ): { content: string; replaceCount?: number; error?: string } {
@@ -250,7 +264,7 @@ export function useAIEditState(): UseAIEditStateReturn {
     return null;
   }, []);
 
-  const accept = useCallback((options?: { clear?: boolean }): { proposedContent: string; result: CanvasAIEditResult } | null => {
+  const accept = useCallback((options?: { clear?: boolean }): AIEditAcceptPayload | null => {
     const current = stateRef.current;
     if (!current.isActive || !current.request) {
       return null;
@@ -282,6 +296,8 @@ export function useAIEditState(): UseAIEditStateReturn {
     };
     
     const proposedContent = current.proposedContent;
+    const originalContent = current.originalContent;
+    const request = current.request;
     
     if (options?.clear !== false) {
       setState(initialState);
@@ -289,7 +305,7 @@ export function useAIEditState(): UseAIEditStateReturn {
     
     console.log('[useAIEditState] Accepted edit:', result.requestId);
     
-    return { proposedContent, result };
+    return { proposedContent, result, originalContent, request };
   }, []);
 
   const reject = useCallback((): CanvasAIEditResult | null => {

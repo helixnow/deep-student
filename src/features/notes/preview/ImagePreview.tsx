@@ -143,7 +143,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
         )}
       >
         {/* 工具栏 */}
-        <div className="flex items-center justify-between border-b border-border bg-background/95 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div data-wb-blur-surface className="flex items-center justify-between border-b border-border bg-background/95 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <span className="text-sm text-muted-foreground line-clamp-1">
             {title || t('notes:previewPanel.image.preview')}
           </span>

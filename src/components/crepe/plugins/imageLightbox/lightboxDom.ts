@@ -1,6 +1,6 @@
 /**
  * 图片全屏预览（portal 到 document.body）
- * 原尺寸 / 适应屏幕切换；Esc 或点击遮罩关闭。
+ * 原尺寸 / 适应屏幕切换；Esc 或点击遮罩关闭；← → 切换同文档图片。
  */
 
 import i18next from 'i18next';
@@ -11,6 +11,16 @@ export interface LightboxState {
   src: string;
   alt: string;
   mode: LightboxFitMode;
+}
+
+export interface LightboxGalleryItem {
+  src: string;
+  alt: string;
+}
+
+export interface OpenImageLightboxOptions {
+  gallery?: LightboxGalleryItem[];
+  startIndex?: number;
 }
 
 let activeRoot: HTMLDivElement | null = null;
@@ -45,20 +55,64 @@ export function shouldCloseLightboxFromClick(
   );
 }
 
+/** 供单测：夹取相邻图片下标（不循环，越界返回原下标） */
+export function clampGalleryIndex(current: number, delta: number, length: number): number {
+  const next = current + delta;
+  if (next < 0 || next >= length) return current;
+  return next;
+}
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
+function removeRootWithExitAnimation(root: HTMLDivElement): void {
+  if (prefersReducedMotion()) {
+    root.remove();
+    return;
+  }
+
+  root.classList.add('crepe-image-lightbox--closing');
+  let timer: number | null = null;
+  const remove = () => {
+    if (timer != null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    root.remove();
+  };
+  root.addEventListener('animationend', remove, { once: true });
+  // 兜底：animationend 丢失（如 display:none 祖先）时仍能移除
+  timer = window.setTimeout(remove, 280);
+}
+
 export function closeImageLightbox(): void {
   if (keyHandler) {
     document.removeEventListener('keydown', keyHandler, true);
     keyHandler = null;
   }
-  if (activeRoot) {
-    activeRoot.remove();
-    activeRoot = null;
+  const root = activeRoot;
+  activeRoot = null;
+  if (root) {
+    removeRootWithExitAnimation(root);
   }
 }
 
-export function openImageLightbox(src: string, alt = ''): void {
+export function openImageLightbox(
+  src: string,
+  alt = '',
+  options: OpenImageLightboxOptions = {},
+): void {
   if (typeof document === 'undefined') return;
   closeImageLightbox();
+
+  const gallery = options.gallery?.length ? options.gallery : [{ src, alt }];
+  let index = options.startIndex ?? gallery.findIndex((item) => item.src === src);
+  if (index < 0 || index >= gallery.length) index = 0;
 
   const root = document.createElement('div');
   root.className = 'crepe-image-lightbox';
@@ -72,11 +126,17 @@ export function openImageLightbox(src: string, alt = ''): void {
   const stage = document.createElement('div');
   stage.className = 'crepe-image-lightbox__stage';
 
+  const spinner = document.createElement('div');
+  spinner.className = 'crepe-image-lightbox__spinner';
+  spinner.setAttribute('aria-hidden', 'true');
+
   const img = document.createElement('img');
   img.className = 'crepe-image-lightbox__img crepe-image-lightbox__img--contain';
-  img.src = src;
-  img.alt = alt || t('notes:editor.image.lightbox_alt');
   img.draggable = false;
+
+  const counter = document.createElement('div');
+  counter.className = 'crepe-image-lightbox__counter';
+  counter.setAttribute('aria-hidden', 'true');
 
   const toolbar = document.createElement('div');
   toolbar.className = 'crepe-image-lightbox__toolbar';
@@ -101,6 +161,31 @@ export function openImageLightbox(src: string, alt = ''): void {
     fitBtn.setAttribute('aria-label', label);
   };
   syncFitLabel();
+
+  const onImgLoad = () => {
+    root.dataset.loading = 'false';
+  };
+  const onImgError = () => {
+    root.dataset.loading = 'false';
+    root.dataset.error = 'true';
+  };
+  img.addEventListener('load', onImgLoad);
+  img.addEventListener('error', onImgError);
+
+  const showAt = (nextIndex: number) => {
+    index = nextIndex;
+    const item = gallery[index]!;
+    delete root.dataset.error;
+    root.dataset.loading = 'true';
+    img.src = item.src;
+    img.alt = item.alt || t('notes:editor.image.lightbox_alt');
+    if (img.complete && img.naturalWidth > 0) {
+      root.dataset.loading = 'false';
+    }
+    counter.textContent = `${index + 1} / ${gallery.length}`;
+    counter.style.display = gallery.length > 1 ? '' : 'none';
+  };
+  showAt(index);
 
   fitBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -139,13 +224,21 @@ export function openImageLightbox(src: string, alt = ''): void {
       e.preventDefault();
       e.stopPropagation();
       closeImageLightbox();
+      return;
+    }
+    if (gallery.length > 1 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      e.preventDefault();
+      e.stopPropagation();
+      const delta = e.key === 'ArrowLeft' ? -1 : 1;
+      const next = clampGalleryIndex(index, delta, gallery.length);
+      if (next !== index) showAt(next);
     }
   };
   document.addEventListener('keydown', keyHandler, true);
 
   toolbar.append(fitBtn, closeBtn);
-  stage.append(img);
-  root.append(backdrop, toolbar, stage);
+  stage.append(spinner, img);
+  root.append(backdrop, toolbar, stage, counter);
   document.body.appendChild(root);
   activeRoot = root;
 

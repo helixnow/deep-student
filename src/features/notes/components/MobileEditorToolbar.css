@@ -14,12 +14,14 @@
   bottom: 0;
   z-index: 40;
   display: flex;
+  flex-direction: column;
   align-items: stretch;
   box-sizing: border-box;
   border-top: 1px solid hsl(var(--border) / 0.8);
   background: hsl(var(--background) / 0.86);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  /* 毛玻璃对齐 composer/menu 契约（blur 18px + saturate 140%） */
+  backdrop-filter: var(--composer-panel-backdrop-filter, blur(18px) saturate(140%));
+  -webkit-backdrop-filter: var(--composer-panel-backdrop-filter, blur(18px) saturate(140%));
   padding-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px));
   /* 键盘贴合：用 transform 抬升，避免 bottom 跳变 */
   --mobile-toolbar-keyboard-offset: 0px;
@@ -31,6 +33,40 @@
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .mobile-editor-toolbar {
     background: hsl(var(--background));
+  }
+}
+
+/* 「+」展开的内联块插入条：与主行同宽横滑，popup enter 节奏入场 */
+.mobile-editor-toolbar__insert-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 4px 6px 0;
+  overscroll-behavior-x: contain;
+  border-bottom: 1px solid hsl(var(--border) / 0.5);
+  padding-bottom: 4px;
+  animation: mobile-toolbar-insert-enter var(--notes-popup-enter-duration, 150ms)
+    var(--notes-popup-enter-easing, var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)));
+}
+
+.mobile-editor-toolbar__insert-row::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes mobile-toolbar-insert-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -89,7 +125,8 @@
   margin: 0;
   padding: 0;
   border: none;
-  border-radius: var(--notes-radius-popup, 8px);
+  /* fallback 与 token 真值（12px）保持一致，避免 token 缺省时圆角漂移 */
+  border-radius: var(--notes-radius-popup, 12px);
   background: transparent;
   color: hsl(var(--foreground));
   cursor: pointer;
@@ -98,17 +135,23 @@
   user-select: none;
   transition:
     background-color var(--notes-hover-transition, 120ms ease),
-    color var(--notes-hover-transition, 120ms ease);
+    color var(--notes-hover-transition, 120ms ease),
+    scale var(--m-press-dur, 120ms) var(--m-press-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
 .mobile-editor-toolbar__btn:hover {
-  background: hsl(var(--foreground) / 0.06);
+  background: var(--interactive-hover, hsl(var(--foreground) / 0.06));
 }
 
 .mobile-editor-toolbar__btn:active,
 .mobile-editor-toolbar__btn[data-active='true'],
 .mobile-editor-toolbar__btn.is-active {
-  background: hsl(var(--foreground) / 0.12);
+  background: var(--interactive-selected, hsl(var(--foreground) / 0.12));
+}
+
+/* 触屏按压反馈：token 化时长/缓动的轻微缩放 */
+.mobile-editor-toolbar__btn:active {
+  scale: var(--m-press-scale, 0.94);
 }
 
 .mobile-editor-toolbar__btn:focus-visible {
@@ -123,5 +166,13 @@
 
   .mobile-editor-toolbar__btn {
     transition: none;
+  }
+
+  .mobile-editor-toolbar__btn:active {
+    scale: 1;
+  }
+
+  .mobile-editor-toolbar__insert-row {
+    animation: none;
   }
 }

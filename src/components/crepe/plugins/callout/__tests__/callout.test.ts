@@ -7,6 +7,8 @@ import { describe, expect, it } from 'vitest';
 import {
   applyCalloutInputRule,
   applyFullLineCalloutInputRule,
+  CALLOUT_FULL_LINE_INPUT_RULE_RE,
+  CALLOUT_INPUT_RULE_RE,
   CALLOUT_TYPES,
   calloutPlugin,
   nextCalloutType,
@@ -33,11 +35,44 @@ function normalizeMd(md: string): string {
 
 describe('parseCalloutMarker / remark', () => {
   it('parses supported markers with optional title', () => {
-    expect(parseCalloutMarker('[!note]')).toEqual({ type: 'note', title: '' });
-    expect(parseCalloutMarker('[!tip] 小提示')).toEqual({ type: 'tip', title: '小提示' });
+    expect(parseCalloutMarker('[!note]')).toEqual({ type: 'note', title: '', collapsed: false });
+    expect(parseCalloutMarker('[!tip] 小提示')).toEqual({
+      type: 'tip',
+      title: '小提示',
+      collapsed: false,
+    });
     expect(parseCalloutMarker('[!WARNING] Careful')).toEqual({
       type: 'warning',
       title: 'Careful',
+      collapsed: false,
+    });
+  });
+
+  it('tolerates full-width bang / colon separators and fold suffix', () => {
+    expect(parseCalloutMarker('[！note] 全角叹号')).toEqual({
+      type: 'note',
+      title: '全角叹号',
+      collapsed: false,
+    });
+    expect(parseCalloutMarker('[!tip]：中文冒号标题')).toEqual({
+      type: 'tip',
+      title: '中文冒号标题',
+      collapsed: false,
+    });
+    expect(parseCalloutMarker('[!warning]: colon title')).toEqual({
+      type: 'warning',
+      title: 'colon title',
+      collapsed: false,
+    });
+    expect(parseCalloutMarker('[!danger]- 默认折叠')).toEqual({
+      type: 'danger',
+      title: '默认折叠',
+      collapsed: true,
+    });
+    expect(parseCalloutMarker('[!info]+ 显式展开')).toEqual({
+      type: 'info',
+      title: '显式展开',
+      collapsed: false,
     });
   });
 
@@ -167,7 +202,7 @@ describe('callout input rules', () => {
     // Positions: doc(0) blockquote(0) paragraph(0) text — start of text is 2
     const start = 2;
     const end = start + '[!note] '.length;
-    const match = /^\[!(note|tip|warning|danger|info)]\s$/i.exec('[!note] ');
+    const match = CALLOUT_INPUT_RULE_RE.exec('[!note] ');
     expect(match).toBeTruthy();
 
     const tr = applyCalloutInputRule(state2, match!, start, end, schema.nodes.callout);
@@ -192,7 +227,7 @@ describe('callout input rules', () => {
     });
     const start = 1;
     const end = start + text.length;
-    const match = /^>\s*\[!(note|tip|warning|danger|info)]\s$/i.exec(text);
+    const match = CALLOUT_FULL_LINE_INPUT_RULE_RE.exec(text);
     expect(match).toBeTruthy();
 
     const tr = applyFullLineCalloutInputRule(state, match!, start, end, schema.nodes.callout);
@@ -227,6 +262,37 @@ describe('callout render classes', () => {
     icon!.click();
     expect(view.state.doc.firstChild?.attrs.type).toBe('tip');
     expect(view.dom.querySelector('.crepe-callout--tip')).toBeTruthy();
+    await editor.destroy();
+  });
+
+  it('toggles collapsed attr via fold button and persists marker suffix', async () => {
+    const editor = await createCalloutEditor('> [!note] 可折叠\n>\n> body\n');
+    const view = editor.ctx.get(editorViewCtx);
+    const serializer = editor.ctx.get(serializerCtx);
+
+    const fold = view.dom.querySelector('.crepe-callout__fold') as HTMLButtonElement | null;
+    expect(fold).toBeTruthy();
+    expect(fold!.getAttribute('aria-expanded')).toBe('true');
+
+    fold!.click();
+    expect(view.state.doc.firstChild?.attrs.collapsed).toBe(true);
+    const el = view.dom.querySelector('.crepe-callout') as HTMLElement;
+    expect(el.dataset.calloutCollapsed).toBe('true');
+    expect(normalizeMd(serializer(view.state.doc))).toContain('> [!note]- 可折叠');
+
+    fold!.click();
+    expect(view.state.doc.firstChild?.attrs.collapsed).toBe(false);
+    expect(normalizeMd(serializer(view.state.doc))).toContain('> [!note] 可折叠');
+    await editor.destroy();
+  });
+
+  it('parses collapsed marker from markdown', async () => {
+    const editor = await createCalloutEditor('> [!warning]- 先折叠\n>\n> hidden\n');
+    const view = editor.ctx.get(editorViewCtx);
+    const node = view.state.doc.firstChild;
+    expect(node?.type.name).toBe('callout');
+    expect(node?.attrs.collapsed).toBe(true);
+    expect(node?.attrs.title).toBe('先折叠');
     await editor.destroy();
   });
 });

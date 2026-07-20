@@ -18,12 +18,38 @@ vi.mock('../../../../debug-panel/plugins/CrepeImageUploadDebugPlugin', () => ({
   emitImageUploadDebug: vi.fn(),
 }));
 
-import { createImageUploader } from '../imageUpload';
+import { createImageUploader, createTransientBlobUrlRegistry } from '../imageUpload';
 
 describe('createImageUploader', () => {
   beforeEach(() => {
     invokeMock.mockReset();
     notificationMock.mockReset();
+  });
+
+  it('registers fallback blob URLs so hosts can revoke them on destroy', async () => {
+    const createObjectUrl = vi.fn(() => 'blob:mock-url');
+    const revokeObjectUrl = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: createObjectUrl,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: revokeObjectUrl,
+    });
+    const registry = createTransientBlobUrlRegistry();
+    const upload = createImageUploader(undefined, registry);
+
+    const result = await upload(new File(['image'], 'diagram.png', { type: 'image/png' }));
+
+    expect(result).toBe('blob:mock-url');
+    expect(invokeMock).not.toHaveBeenCalled();
+
+    registry.releaseAll();
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:mock-url');
+
+    registry.releaseAll();
+    expect(revokeObjectUrl).toHaveBeenCalledTimes(1);
   });
 
   it('does not persist a transient blob URL when note asset storage fails', async () => {

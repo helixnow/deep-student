@@ -25,6 +25,8 @@ export async function defaultSearchNotes(
       .map((node) => ({
         id: node.id,
         title: (node.name || node.id).trim() || node.id,
+        ...(node.path ? { path: node.path } : {}),
+        ...(typeof node.updatedAt === 'number' ? { updatedAt: node.updatedAt } : {}),
       }));
   } catch {
     return [];

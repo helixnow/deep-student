@@ -2,7 +2,8 @@
  * Crepe Mod-K 链接快捷键插件
  *
  * 对当前选区打开 LinkTooltip 编辑流程（addLink / editLink）。
- * 无选区时 no-op。
+ * 无选区时：光标在链接内编辑整段链接，否则扩选当前词再 addLink；
+ * 光标处无词可扩时 no-op。
  *
  * 注册（由接线代理完成，本代理不改 plugins/index.ts）：
  *   import { linkKeymapPlugin } from './linkKeymap';
@@ -14,21 +15,31 @@ import type { Ctx } from '@milkdown/ctx';
 import { linkTooltipAPI } from '@milkdown/kit/component/link-tooltip';
 import { keymap } from '@milkdown/prose/keymap';
 import type { Command } from '@milkdown/prose/state';
+import { TextSelection } from '@milkdown/prose/state';
 import { $prose } from '@milkdown/utils';
 
 import { resolveLinkKeymapAction } from './resolveLinkAction';
 
-export { resolveLinkKeymapAction } from './resolveLinkAction';
+export { findWordRangeAtCaret, resolveLinkKeymapAction } from './resolveLinkAction';
 export type { LinkKeymapAction } from './resolveLinkAction';
 
 /** 供单测：构造 Mod-k Command（不经 $prose） */
 export function createModKLinkCommand(ctx: Ctx): Command {
-  return (state) => {
+  return (state, dispatch) => {
     const action = resolveLinkKeymapAction(state);
     if (!action) return false;
 
     try {
       const api = ctx.get(linkTooltipAPI.key);
+
+      // 扩选后的范围与当前选区不同：先选中，LinkTooltip 锚定更自然
+      const { from, to } = state.selection;
+      if (dispatch && (action.from !== from || action.to !== to)) {
+        dispatch(
+          state.tr.setSelection(TextSelection.create(state.doc, action.from, action.to)),
+        );
+      }
+
       if (action.type === 'edit') {
         api.editLink(action.mark, action.from, action.to);
       } else {

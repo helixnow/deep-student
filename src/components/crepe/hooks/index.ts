@@ -8,3 +8,4 @@ export type {
   UseCrepeBlockDragOptions, 
   UseCrepeBlockDragReturn 
 } from './useCrepeBlockDrag';
+export { useSlashMenuCustomScrollbar } from './useSlashMenuCustomScrollbar';

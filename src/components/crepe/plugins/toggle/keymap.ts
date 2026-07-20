@@ -1,6 +1,7 @@
 /**
  * Toggle 键盘行为：
  * - 内容区末尾空段落再按 Enter → 跳出 toggle（在其后插入新段落）
+ * - 内容区仅剩一个空块时按 Backspace → 整个 toggle 还原为段落（保留标题文本）
  *
  * 标题行 Enter 进入内容区：由 NodeView 处理。
  */
@@ -62,15 +63,57 @@ export function tryExitToggleOnEnter(view: EditorView): boolean {
   return true
 }
 
+/**
+ * 内容区仅剩一个空块时的 Backspace：把 toggle 整体还原成段落。
+ * 标题非空时还原为含标题文本的段落（Notion 拆 toggle 手感），避免误删标题。
+ */
+export function tryUnwrapEmptyToggleOnBackspace(view: EditorView): boolean {
+  const { state } = view
+  const { selection } = state
+  if (!(selection instanceof TextSelection) || !selection.empty) return false
+
+  const { $from } = selection
+  if ($from.parentOffset !== 0) return false
+
+  const toggleDepth = findToggleDepth($from)
+  if (toggleDepth < 0) return false
+  if ($from.depth !== toggleDepth + 1) return false
+
+  const toggle = $from.node(toggleDepth)
+  if (toggle.childCount !== 1) return false
+  if ($from.parent.content.size > 0) return false
+
+  const paragraphType = state.schema.nodes.paragraph
+  if (!paragraphType) return false
+
+  const title = String(toggle.attrs.title ?? '').trim()
+  const from = $from.before(toggleDepth)
+  const to = $from.after(toggleDepth)
+  const paragraph = title
+    ? paragraphType.create(null, state.schema.text(title))
+    : paragraphType.create()
+
+  let tr = state.tr.replaceWith(from, to, paragraph)
+  tr = tr.setSelection(TextSelection.near(tr.doc.resolve(from + 1 + title.length)))
+  view.dispatch(tr.scrollIntoView())
+  return true
+}
+
 export const toggleKeymap = $prose(() => {
   return new Plugin({
     key: toggleKeymapKey,
     props: {
       handleKeyDown(view, event) {
-        if (event.key !== 'Enter' || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) {
+        if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) {
           return false
         }
-        return tryExitToggleOnEnter(view)
+        if (event.key === 'Enter') {
+          return tryExitToggleOnEnter(view)
+        }
+        if (event.key === 'Backspace') {
+          return tryUnwrapEmptyToggleOnBackspace(view)
+        }
+        return false
       },
     },
   })

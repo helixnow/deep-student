@@ -1,16 +1,23 @@
 /**
  * PPTX 演示文稿预览组件
  * 使用 pptx-preview 库将 PPTX 文档渲染为 HTML
- * 
+ *
  * 工具栏已移至 FileContentView 统一管理
  * 幻灯片导航已移至底部 UnifiedPreviewToolbar
+ *
+ * 布局：左侧内联缩略图导航栏（文档流内收缩主内容区，md 及以上显示）
+ * + 主滚动区（幻灯片卡片纵向堆叠）+ 右下角当前页浮标（滚动时淡入淡出）。
+ *
+ * 样式存活说明：pptx-preview 库的所有幻灯片样式均通过
+ * element.style.setProperty 以行内样式写入（不注入 <style> 标签），
+ * 而 sanitizeRenderedDom 的 ALLOWED_ATTR 包含 style，因此消毒后视觉不丢失。
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { init as initPptxPreview } from 'pptx-preview';
-import { CircleNotch } from '@phosphor-icons/react';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { Skeleton } from '@/components/ui/shad/Skeleton';
 import {
   normalizeBase64,
   decodeBase64ToArrayBuffer,
@@ -21,6 +28,20 @@ import type { SlideNavInfo } from './UnifiedPreviewToolbar';
 
 // PPTX 幻灯片选择器（pptx-preview 库生成的结构）
 const PPTX_SLIDE_SELECTOR = '.pptx-preview-slide-wrapper';
+
+/** 缩略图画布固定宽度（px），克隆节点按此宽度等比缩放 */
+const THUMB_WIDTH = 104;
+
+/** 当前页浮标在最后一次滚动/跳转后保持可见的时长（ms） */
+const PAGE_BADGE_LINGER_MS = 1400;
+
+/** 程序化平滑滚动的静止判定窗口（ms）：超过该时长无滚动事件即视为到位 */
+const PROGRAMMATIC_SCROLL_SETTLE_MS = 160;
+
+/** 用户偏好减少动画时退化为瞬时跳转 */
+const prefersReducedMotion = (): boolean =>
+  typeof window !== 'undefined' &&
+  !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /**
  * 检查解码后的二进制是否为合法的 OOXML（ZIP）容器。
@@ -36,6 +57,15 @@ function detectContainerIssue(buffer: ArrayBuffer): 'encrypted-or-legacy' | 'inv
   return 'invalid';
 }
 
+/** 缩略图元数据：原始幻灯片尺寸（未缩放的 CSS 像素）。克隆节点惰性生成 */
+interface SlideThumbMeta {
+  width: number;
+  height: number;
+}
+
+/** 缩略图惰性挂载的预取边距：进入该范围才克隆 DOM，离开则卸载回收 */
+const THUMB_LAZY_ROOT_MARGIN = '160px 0px';
+
 interface PptxPreviewProps {
   /** Base64 编码的 PPTX 文件内容 */
   base64Content: string;
@@ -48,6 +78,111 @@ interface PptxPreviewProps {
   /** 幻灯片导航信息变更回调（用于底部工具栏显示页码控制） */
   onSlideInfoChange?: (info: SlideNavInfo | null) => void;
 }
+
+/**
+ * 单个幻灯片缩略图按钮
+ *
+ * 缩略图通过克隆主内容 DOM + CSS transform 缩放实现（成本最低，
+ * 无需 canvas 快照）。克隆惰性进行：仅当缩略图滚入预取范围时才
+ * 从主渲染区克隆对应幻灯片，滚出后立即卸载回收——大型演示文稿
+ * （上百页）的活跃克隆体因此恒定在可视区规模，不随页数线性增长。
+ * 克隆节点去除了 pptx-preview-slide-wrapper 类，避免污染选区定位契约
+ * （FilePreviewAppWindow.getPreviewSelectionMetadata 依赖该类）。
+ */
+const SlideThumbnail: React.FC<{
+  index: number;
+  isActive: boolean;
+  meta: SlideThumbMeta | undefined;
+  cloneSlide: (index: number) => HTMLElement | null;
+  onSelect: (index: number) => void;
+  label: string;
+}> = ({ index, isActive, meta, cloneSlide, onSelect, label }) => {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+
+  const thumbWidth = meta?.width || 960;
+  const thumbHeight = meta
+    ? Math.max(1, Math.round((THUMB_WIDTH / meta.width) * meta.height))
+    : Math.round((THUMB_WIDTH * 9) / 16);
+
+  // 惰性挂载哨兵：观察按钮自身是否接近可视区（含祖先滚动容器裁剪）
+  useEffect(() => {
+    const button = buttonRef.current;
+    if (!button) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          setInView(entry.isIntersecting);
+        }
+      },
+      { rootMargin: THUMB_LAZY_ROOT_MARGIN }
+    );
+    observer.observe(button);
+    return () => observer.disconnect();
+  }, []);
+
+  // 进入预取范围时克隆并挂载（受控 DOM 注入，源节点已消毒），离开时卸载
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.replaceChildren();
+    if (!inView || !meta) return;
+    const node = cloneSlide(index);
+    if (!node) return;
+    const scale = THUMB_WIDTH / thumbWidth;
+    node.style.position = 'absolute';
+    node.style.top = '0';
+    node.style.left = '0';
+    node.style.transform = `scale(${scale})`;
+    node.style.transformOrigin = 'top left';
+    canvas.appendChild(node);
+    return () => {
+      canvas.replaceChildren();
+    };
+  }, [inView, meta, index, cloneSlide, thumbWidth]);
+
+  // 当前页变化时让活动缩略图保持在可视范围内
+  useEffect(() => {
+    if (!isActive) return;
+    buttonRef.current?.scrollIntoView({
+      block: 'nearest',
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    });
+  }, [isActive]);
+
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      onClick={() => onSelect(index)}
+      aria-label={label}
+      aria-current={isActive ? 'true' : undefined}
+      className={`group relative shrink-0 self-center overflow-hidden rounded-md border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ${
+        isActive
+          ? 'border-primary shadow-sm ring-1 ring-primary'
+          : 'border-border/60 hover:border-border hover:shadow-sm'
+      }`}
+    >
+      <div
+        ref={canvasRef}
+        aria-hidden
+        className="pptx-thumb-canvas relative overflow-hidden bg-white"
+        style={{ width: THUMB_WIDTH, height: thumbHeight }}
+      />
+      <span
+        aria-hidden
+        className={`absolute left-1 top-1 rounded px-1 text-[10px] font-medium leading-4 tabular-nums shadow-sm transition-colors duration-150 ${
+          isActive
+            ? 'bg-primary text-primary-foreground'
+            : 'bg-background/85 text-muted-foreground'
+        }`}
+      >
+        {index + 1}
+      </span>
+    </button>
+  );
+};
 
 /**
  * PPTX 演示文稿预览组件
@@ -64,11 +199,30 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const renderTokenRef = useRef(0);
+  const previewerRef = useRef<ReturnType<typeof initPptxPreview> | null>(null);
+  const thumbMetasRef = useRef<SlideThumbMeta[]>([]);
+  const [thumbsVersion, setThumbsVersion] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [totalSlides, setTotalSlides] = useState(0);
   const [autoScale, setAutoScale] = useState(1);
+  const [badgeVisible, setBadgeVisible] = useState(false);
+  const badgeTimerRef = useRef<number | null>(null);
+  // ★ 程序化跳转期间抑制 IntersectionObserver 回写 currentSlide：
+  //   平滑滚动途经的中间幻灯片不应闪烁高亮（缩略图会跟着逐张 scrollIntoView 抖动）
+  const programmaticScrollRef = useRef(false);
+  const programmaticSettleTimerRef = useRef<number | null>(null);
+
+  const armProgrammaticSettleTimer = useCallback(() => {
+    if (programmaticSettleTimerRef.current) {
+      window.clearTimeout(programmaticSettleTimerRef.current);
+    }
+    programmaticSettleTimerRef.current = window.setTimeout(() => {
+      programmaticScrollRef.current = false;
+      programmaticSettleTimerRef.current = null;
+    }, PROGRAMMATIC_SCROLL_SETTLE_MS);
+  }, []);
 
   // 使用外部控制的缩放值（由 FileContentView 统一管理）
   const zoomScale = externalZoomScale ?? 1;
@@ -77,6 +231,25 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
     () => Number((autoScale * zoomScale).toFixed(3)),
     [autoScale, zoomScale]
   );
+
+  // 当前页浮标：滚动/跳转时短暂显示，随后淡出
+  const flashBadge = useCallback(() => {
+    setBadgeVisible(true);
+    if (badgeTimerRef.current) window.clearTimeout(badgeTimerRef.current);
+    badgeTimerRef.current = window.setTimeout(
+      () => setBadgeVisible(false),
+      PAGE_BADGE_LINGER_MS
+    );
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (badgeTimerRef.current) window.clearTimeout(badgeTimerRef.current);
+      if (programmaticSettleTimerRef.current) {
+        window.clearTimeout(programmaticSettleTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -92,6 +265,8 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
       // 切换文件时立即清除旧的幻灯片导航信息，避免工具栏显示过期页码
       setTotalSlides(0);
       setCurrentSlide(0);
+      thumbMetasRef.current = [];
+      setThumbsVersion((v) => v + 1);
 
       try {
         const normalizedBase64 = normalizeBase64(base64Content);
@@ -135,6 +310,9 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
         const previewer = initPptxPreview(container, {
           width: 960,
         });
+        // ★ 持有实例引用：cleanup 时必须调用 destroy() 释放库内部
+        //   注册的图表（echarts）实例，否则跨挂载周期泄漏
+        previewerRef.current = previewer;
         await previewer.preview(arrayBuffer);
 
         if (isMounted && renderToken === renderTokenRef.current) {
@@ -142,6 +320,22 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
           sanitizeRenderedDom(container);
           // 统计幻灯片数量（使用精确选择器）
           const slides = container.querySelectorAll(PPTX_SLIDE_SELECTOR);
+
+          // 记录缩略图元数据（仅尺寸数字，克隆惰性进行——见 SlideThumbnail）。
+          // 高度用 rect 宽高比换算，与祖先 zoom 缩放无关（比例不变量）
+          const metas: SlideThumbMeta[] = [];
+          slides.forEach((slide) => {
+            const el = slide as HTMLElement;
+            const rect = el.getBoundingClientRect();
+            const width = parseFloat(el.style.width) || 960;
+            const height =
+              parseFloat(el.style.height) ||
+              (rect.width > 0 ? (rect.height / rect.width) * width : (width * 9) / 16);
+            metas.push({ width, height });
+          });
+          thumbMetasRef.current = metas;
+          setThumbsVersion((v) => v + 1);
+
           setTotalSlides(slides?.length || 0);
           setCurrentSlide(0);
           setIsLoading(false);
@@ -162,6 +356,15 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
     return () => {
       isMounted = false;
       renderTokenRef.current += 1;
+      // ★ 内存泄漏修复：销毁 previewer 实例（释放库内部注册的
+      //   echarts 等图表实例），再清空容器 DOM
+      try {
+        previewerRef.current?.destroy();
+      } catch {
+        // destroy 失败不应阻断卸载流程
+      }
+      previewerRef.current = null;
+      thumbMetasRef.current = [];
       // 清空容器内容（使用 effect 内捕获的引用，避免 cleanup 时 ref 已变化）
       container.innerHTML = '';
     };
@@ -174,6 +377,7 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
     if (!container) return;
 
     let frame = 0;
+    let debounceTimer = 0;
     let resizeObserver: ResizeObserver | null = null;
     let mutationObserver: MutationObserver | null = null;
 
@@ -199,10 +403,18 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
       frame = requestAnimationFrame(updateScale);
     };
 
-    mutationObserver = new MutationObserver(scheduleUpdate);
+    // ★ 渲染大 PPT 时整树 mutation 非常频繁，防抖收敛为尾沿触发，
+    //   避免逐条 mutation 反复 schedule 造成 rAF 抖动
+    const debouncedSchedule = () => {
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(scheduleUpdate, 120);
+    };
+
+    mutationObserver = new MutationObserver(debouncedSchedule);
     mutationObserver.observe(container, { childList: true, subtree: true });
 
     if (viewportRef.current) {
+      // 视口尺寸变化需要即时响应（rAF 已合并同帧多次触发）
       resizeObserver = new ResizeObserver(scheduleUpdate);
       resizeObserver.observe(viewportRef.current);
     }
@@ -211,6 +423,7 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
 
     return () => {
       if (frame) cancelAnimationFrame(frame);
+      if (debounceTimer) window.clearTimeout(debounceTimer);
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
     };
@@ -234,6 +447,8 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
         for (const entry of entries) {
           ratios.set(entry.target, entry.isIntersecting ? entry.intersectionRatio : 0);
         }
+        // 程序化跳转途中不回写：目标页已在 navigateToSlide 中同步设置
+        if (programmaticScrollRef.current) return;
         let bestIndex = -1;
         let bestRatio = 0;
         slides.forEach((slide, index) => {
@@ -254,14 +469,47 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
     return () => observer.disconnect();
   }, [totalSlides]);
 
-  // 导航到指定幻灯片
+  // 滚动主视口时显示当前页浮标；程序化滚动期间持续顺延静止判定计时
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || totalSlides === 0) return;
+    const handleScroll = () => {
+      flashBadge();
+      if (programmaticScrollRef.current) armProgrammaticSettleTimer();
+    };
+    viewport.addEventListener('scroll', handleScroll, { passive: true });
+    return () => viewport.removeEventListener('scroll', handleScroll);
+  }, [totalSlides, flashBadge, armProgrammaticSettleTimer]);
+
+  // 导航到指定幻灯片（平滑滚动，reduced-motion 时退化为瞬时跳转）
   const navigateToSlide = useCallback((index: number) => {
     if (!containerRef.current) return;
     const slides = containerRef.current.querySelectorAll(PPTX_SLIDE_SELECTOR);
     if (slides[index]) {
-      slides[index].scrollIntoView({ behavior: 'smooth', block: 'start' });
+      programmaticScrollRef.current = true;
+      // 目标已在可视位置时不会产生滚动事件，兜底计时器保证标志位释放
+      armProgrammaticSettleTimer();
+      slides[index].scrollIntoView({
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+        block: 'start',
+      });
       setCurrentSlide(index);
+      flashBadge();
     }
+  }, [flashBadge, armProgrammaticSettleTimer]);
+
+  // 惰性克隆指定幻灯片：从主渲染区（已消毒）取源节点。
+  // 去除幻灯片选择器类：选区定位（getPreviewSelectionMetadata）与
+  // IntersectionObserver 都不应命中缩略图克隆体
+  const cloneSlide = useCallback((index: number): HTMLElement | null => {
+    const container = containerRef.current;
+    if (!container) return null;
+    const slide = container.querySelectorAll(PPTX_SLIDE_SELECTOR)[index];
+    if (!slide) return null;
+    const clone = slide.cloneNode(true) as HTMLElement;
+    clone.classList.remove('pptx-preview-slide-wrapper');
+    clone.classList.add('pptx-thumb-slide');
+    return clone;
   }, []);
 
   // 向父组件报告幻灯片导航信息（用于底部工具栏页码控制）
@@ -287,6 +535,14 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
   // 键盘导航：PageUp/PageDown/方向左右 = 上/下一张；Home/End = 首/末张
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (totalSlides === 0 || e.ctrlKey || e.metaKey || e.altKey) return;
+    // 防御：不吞可编辑目标内的按键（方向键/Home/End 在输入框内是光标移动）
+    const target = e.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+    ) {
+      return;
+    }
     switch (e.key) {
       case 'PageDown':
       case 'ArrowRight':
@@ -308,6 +564,8 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
     e.preventDefault();
   };
 
+  const showThumbRail = !error && totalSlides > 0;
+
   // 注意：出错时不能整体卸载渲染容器（containerRef 需保持挂载，
   // 否则切换到正常文件后 effect 因拿不到容器而无法恢复渲染）
   return (
@@ -318,8 +576,18 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
       onKeyDown={handleKeyDown}
     >
       {isLoading && !error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
-          <CircleNotch size={32} className="animate-spin text-primary" />
+        <div
+          className="absolute inset-0 z-10 flex flex-col items-center gap-6 overflow-hidden bg-background/90 px-8 py-10"
+          role="status"
+          aria-label={t('learningHub:docPreview.pptxLoading')}
+        >
+          {[0, 1, 2].map((i) => (
+            <Skeleton
+              key={i}
+              className="aspect-video w-full max-w-xl shrink-0 rounded-lg"
+              style={{ opacity: 1 - i * 0.28 }}
+            />
+          ))}
         </div>
       )}
       {error && (
@@ -328,20 +596,61 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
         </div>
       )}
 
-      <CustomScrollArea
-        className="pptx-container flex-1"
-        viewportRef={viewportRef}
-        orientation="both"
-      >
-        <div
-          ref={containerRef}
-          className="pptx-content-wrapper"
-          style={{
-            ['--pptx-scale' as string]: effectiveScale,
-          }}
-          aria-label={fileName ? t('learningHub:docPreview.pptxPreviewLabel', { name: fileName }) : t('learningHub:docPreview.pptxPreviewDefault')}
-        />
-      </CustomScrollArea>
+      <div className="flex min-h-0 flex-1 flex-row">
+        {/* 幻灯片缩略图导航栏：文档流内的内联侧栏（非覆盖式），md 及以上显示 */}
+        {showThumbRail && (
+          <nav
+            className="pptx-thumb-rail ui-rise-in hidden w-[8.5rem] shrink-0 flex-col border-r border-border/60 bg-muted/20 md:flex"
+            aria-label={t('learningHub:docPreview.pptxThumbnails')}
+          >
+            <CustomScrollArea className="flex-1" orientation="vertical">
+              <div className="flex flex-col items-center gap-2.5 px-3 py-3">
+                {Array.from({ length: totalSlides }, (_, index) => (
+                  <SlideThumbnail
+                    key={`${thumbsVersion}-${index}`}
+                    index={index}
+                    isActive={index === currentSlide}
+                    meta={thumbMetasRef.current[index]}
+                    cloneSlide={cloneSlide}
+                    onSelect={navigateToSlide}
+                    label={t('learningHub:docPreview.pptxThumbnailItem', { index: index + 1 })}
+                  />
+                ))}
+              </div>
+            </CustomScrollArea>
+          </nav>
+        )}
+
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          <CustomScrollArea
+            className="pptx-container flex-1"
+            viewportRef={viewportRef}
+            orientation="both"
+          >
+            <div
+              ref={containerRef}
+              className="pptx-content-wrapper"
+              style={{
+                ['--pptx-scale' as string]: effectiveScale,
+              }}
+              aria-label={fileName ? t('learningHub:docPreview.pptxPreviewLabel', { name: fileName }) : t('learningHub:docPreview.pptxPreviewDefault')}
+            />
+          </CustomScrollArea>
+
+          {/* 当前页浮标：滚动/跳转时淡入，静止后淡出（信息已由底部工具栏承载，浮标仅作视觉辅助） */}
+          {showThumbRail && (
+            <div
+              aria-hidden
+              data-wb-blur-surface
+              className={`pointer-events-none absolute bottom-3 right-4 z-10 select-none rounded-full border border-border/60 bg-background/90 px-2.5 py-1 text-xs font-medium tabular-nums text-foreground shadow-sm backdrop-blur transition-opacity duration-150 ${
+                badgeVisible ? 'opacity-100' : 'opacity-0'
+              }`}
+            >
+              {currentSlide + 1} / {totalSlides}
+            </div>
+          )}
+        </div>
+      </div>
       <style>{`
         /* 整体容器 */
         .pptx-container .pptx-content-wrapper {
@@ -367,7 +676,7 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
           width: max-content;
         }
         
-        /* 每个幻灯片容器 */
+        /* 每个幻灯片容器：白底卡片 + 柔投影 + 圆角，hover 态微妙边框 */
         .pptx-container .pptx-preview-wrapper > .pptx-preview-slide-wrapper,
         .pptx-container .pptx-preview-wrapper > div[class*="slide"] {
           background: #ffffff !important;
@@ -378,6 +687,15 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
             0 0 0 1px hsl(var(--border) / 0.5);
           overflow: hidden;
           flex-shrink: 0;
+          scroll-margin-top: 16px;
+          transition: box-shadow 150ms ease;
+        }
+        .pptx-container .pptx-preview-wrapper > .pptx-preview-slide-wrapper:hover,
+        .pptx-container .pptx-preview-wrapper > div[class*="slide"]:hover {
+          box-shadow: 
+            0 8px 18px -4px hsl(var(--foreground) / 0.12),
+            0 2px 4px -2px hsl(var(--foreground) / 0.06),
+            0 0 0 1px hsl(var(--ring) / 0.35);
         }
         
         /* 幻灯片内容区域白色背景 */
@@ -406,6 +724,13 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
         .pptx-container td, .pptx-container th {
           border: 1px solid hsl(var(--border));
           padding: 8px;
+        }
+
+        /* 缩略图克隆体：纯展示，不参与交互与选区 */
+        .pptx-thumb-canvas .pptx-thumb-slide {
+          background: #ffffff !important;
+          pointer-events: none;
+          user-select: none;
         }
       `}</style>
     </div>

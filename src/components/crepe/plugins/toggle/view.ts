@@ -20,6 +20,16 @@ function syncOpenDom(root: HTMLElement, open: boolean): void {
   root.setAttribute('data-open', open ? 'true' : 'false')
 }
 
+function isToggleContentEmpty(node: Node): boolean {
+  if (node.childCount !== 1) return false
+  const first = node.firstChild
+  return Boolean(first && first.isTextblock && first.content.size === 0)
+}
+
+function syncEmptyDom(root: HTMLElement, node: Node): void {
+  root.dataset.empty = isToggleContentEmpty(node) ? 'true' : 'false'
+}
+
 function createToggleNodeView(
   initialNode: Node,
   view: EditorView,
@@ -33,6 +43,7 @@ function createToggleNodeView(
   dom.className = 'milkdown-toggle'
   dom.dataset.type = TOGGLE_DATA_TYPE
   syncOpenDom(dom, Boolean(node.attrs.open))
+  syncEmptyDom(dom, node)
   dom.setAttribute('data-title', String(node.attrs.title ?? ''))
 
   const header = document.createElement('div')
@@ -62,6 +73,10 @@ function createToggleNodeView(
 
   const bodyInner = document.createElement('div')
   bodyInner.className = 'milkdown-toggle__body-inner'
+  bodyInner.dataset.emptyPlaceholder = t(
+    'notes:toggle.emptyPlaceholder',
+    '空的折叠块，输入内容…',
+  )
   body.appendChild(bodyInner)
 
   dom.append(header, body)
@@ -80,11 +95,13 @@ function createToggleNodeView(
     setAttrs({ open: !node.attrs.open })
   }
 
-  arrow.addEventListener('mousedown', onArrowPointerDown)
-  arrow.addEventListener('click', (event) => {
+  const onArrowClick = (event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
-  })
+  }
+
+  arrow.addEventListener('mousedown', onArrowPointerDown)
+  arrow.addEventListener('click', onArrowClick)
 
   const commitTitle = () => {
     const next = titleEl.textContent ?? ''
@@ -93,14 +110,14 @@ function createToggleNodeView(
     dom.setAttribute('data-title', next)
   }
 
-  titleEl.addEventListener('blur', commitTitle)
-  titleEl.addEventListener('keydown', (event) => {
+  const onTitleKeydown = (event: KeyboardEvent) => {
     if (event.key === 'Enter') {
       event.preventDefault()
       commitTitle()
       const pos = getPos()
       if (pos == null) return
-      // 进入内容区首块
+      // 进入内容区首块（折叠态先展开再进入）
+      if (!node.attrs.open) setAttrs({ open: true })
       const $pos = view.state.doc.resolve(pos + 1)
       const selection = TextSelection.near($pos, 1)
       view.dispatch(view.state.tr.setSelection(selection))
@@ -112,7 +129,10 @@ function createToggleNodeView(
       titleEl.textContent = String(node.attrs.title ?? '')
       view.focus()
     }
-  })
+  }
+
+  titleEl.addEventListener('blur', commitTitle)
+  titleEl.addEventListener('keydown', onTitleKeydown)
 
   return {
     dom,
@@ -121,6 +141,7 @@ function createToggleNodeView(
       if (updated.type !== node.type) return false
       node = updated
       syncOpenDom(dom, Boolean(updated.attrs.open))
+      syncEmptyDom(dom, updated)
       dom.setAttribute('data-title', String(updated.attrs.title ?? ''))
       titleEl.contentEditable = view.editable ? 'true' : 'false'
       // 避免覆盖用户正在编辑的标题
@@ -147,6 +168,9 @@ function createToggleNodeView(
     },
     destroy: () => {
       arrow.removeEventListener('mousedown', onArrowPointerDown)
+      arrow.removeEventListener('click', onArrowClick)
+      titleEl.removeEventListener('blur', commitTitle)
+      titleEl.removeEventListener('keydown', onTitleKeydown)
       dom.remove()
     },
   }

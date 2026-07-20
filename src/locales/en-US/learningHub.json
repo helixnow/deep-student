@@ -211,7 +211,12 @@
     "renderFailed": "Image cannot be displayed",
     "unsupportedFormatHint": "The built-in browser does not support this format (e.g. HEIC/HEIF). Save it locally and open with your system image viewer.",
     "renderFailedHint": "The image data may be corrupted or in an unsupported format. Try saving it locally.",
-    "saveToDevice": "Save to device"
+    "saveToDevice": "Save to device",
+    "fitToWindow": "Fit to Window",
+    "actualSize": "Actual Size",
+    "zoomLevel": "Zoom level",
+    "imageInfo": "Image info",
+    "toolbarLabel": "Image toolbar"
   },
   "file": {
     "noPreview": "Preview not available for this file type",
@@ -228,8 +233,39 @@
     "savedSuccessfully": "File saved successfully",
     "contentNotFound": "File content not found (id: {{id}})"
   },
+  "mediaPreview": {
+    "play": "Play",
+    "pause": "Pause",
+    "skipBackward": "Back 10 seconds",
+    "skipForward": "Forward 10 seconds",
+    "mute": "Mute",
+    "unmute": "Unmute",
+    "volume": "Volume",
+    "playbackRate": "Playback speed",
+    "loop": "Loop",
+    "fullscreen": "Full screen",
+    "exitFullscreen": "Exit full screen",
+    "progress": "Seek"
+  },
   "filePreview": {
-    "textTruncated": "File is too large; only the beginning is shown. Download the file to view the full content."
+    "textTruncated": "File is too large; only the beginning is shown. Download the file to view the full content.",
+    "textTruncatedDetail": "File is too large; showing {{shown}} of {{total}} characters. Save the file locally to view the full content.",
+    "emptyFile": "This file is empty",
+    "whitespaceOnly": "This file only contains whitespace",
+    "copy": "Copy",
+    "copied": "Copied",
+    "metaLines": "{{value}} lines",
+    "metaChars": "{{value}} chars",
+    "metaTable": "{{rows}} rows × {{cols}} cols",
+    "delimiterComma": "Comma-separated",
+    "delimiterSemicolon": "Semicolon-separated",
+    "delimiterTab": "Tab-separated",
+    "csvHeaderRow": "First row is header",
+    "csvColumn": "Column {{index}}",
+    "csvRowNumber": "Row number",
+    "sortAsc": "Click to sort ascending",
+    "sortDesc": "Click to sort descending",
+    "sortNone": "Click to clear sorting"
   },
   "epubPreview": {
     "loadFailed": "Unable to open EPUB",
@@ -247,17 +283,39 @@
     "searching": "Searching...",
     "previousChapter": "Previous chapter",
     "nextChapter": "Next chapter",
-    "progress": "Reading progress {{progress}}%"
+    "progress": "Reading progress {{progress}}%",
+    "themeAuto": "Match app",
+    "displaySettings": "Display options",
+    "fontSize": "Font size",
+    "fontFamily": "Font",
+    "fontFamilyBook": "Publisher",
+    "fontFamilySerif": "Serif",
+    "fontFamilySans": "Sans-serif",
+    "lineHeight": "Line spacing",
+    "pageMargin": "Margins",
+    "resetTypography": "Reset typography",
+    "searchNoResults": "No matches found",
+    "searchCapped": "Too many matches. Showing first {{count}}",
+    "matchPosition": "Match {{current}} of {{total}}",
+    "previousMatch": "Previous match",
+    "nextMatch": "Next match"
   },
   "officePreview": {
     "toolbarLabel": "Preview toolbar",
     "prevSheet": "Previous sheet",
     "nextSheet": "Next sheet",
     "sheetTabs": "Sheet tabs",
-    "xlsxColsTruncated": "Too many columns. Showing first {{shown}} columns ({{hidden}} more columns not rendered)",
     "noSheets": "This workbook contains no previewable sheets",
     "encryptedOrLegacy": "This file is encrypted (password-protected) or uses a legacy binary format (.doc/.xls/.ppt) and cannot be previewed. Download it and open with Office",
-    "invalidFormat": "This file is not a valid Office document and may be corrupted"
+    "invalidFormat": "This file is not a valid Office document and may be corrupted",
+    "rowsTruncatedInfo": "Showing first {{shown}} of {{total}} rows",
+    "colsTruncatedInfo": "Showing first {{shown}} of {{total}} columns",
+    "emptySheet": "This sheet has no displayable cell content (it may be blank or contain only charts)",
+    "selectionLabel": "Selected cells {{range}}",
+    "loadingWorkbook": "Loading workbook",
+    "truncatedNotice": "The rest is not rendered; download the file for full content",
+    "sheetTruncatedHint": "Sheet is too large and will be truncated in preview",
+    "dimensions": "{{rows}} rows × {{cols}} columns"
   },
   "previewToolbar": {
     "zoomOut": "Zoom Out",
@@ -269,7 +327,12 @@
     "currentZoom": "Current zoom: {{value}}",
     "currentFont": "Current font size: {{value}}",
     "prevSlide": "Previous Slide",
-    "nextSlide": "Next Slide"
+    "nextSlide": "Next Slide",
+    "zoomMenu": "Zoom Level",
+    "zoomTo": "Zoom to {{value}}",
+    "resetDefault": "Reset to Default Zoom",
+    "slideNavGroup": "Slide navigation",
+    "fontGroup": "Font size"
   },
   "docPreview": {
     "emptyContent": "File content is empty",
@@ -291,7 +354,12 @@
     "docTypeText": "Text File",
     "documentHint": "Double-click or view in the side panel",
     "xlsxTruncated": "Sheet is too large. Showing first {{shown}} rows ({{hidden}} more rows not rendered; download the file for full content)",
-    "csvTruncated": "Table is too large. Showing first {{shown}} rows ({{hidden}} more rows not rendered)"
+    "csvTruncated": "Table is too large. Showing first {{shown}} rows ({{hidden}} more rows not rendered)",
+    "pptxLoading": "Rendering presentation…",
+    "pptxThumbnails": "Slide thumbnails",
+    "pptxThumbnailItem": "Go to slide {{index}}",
+    "loadingDocument": "Loading document preview",
+    "pageIndicator": "Page {{current}} of {{total}}"
   },
   "textbook": {
     "import": "Import Textbook",
@@ -833,7 +901,13 @@
       "reason": "Reason",
       "session": "Session"
     },
-    "open_folder": "Open folder"
+    "open_folder": "Open folder",
+    "confirm_delete": "Confirm delete?",
+    "filter_folders": "Filter folders…",
+    "load_more": "Load more",
+    "profile_load_error": "Failed to load profile",
+    "show_full": "Show full text",
+    "show_less": "Show less"
   },
   "desktop": {
     "title": "Desktop",
@@ -901,7 +975,8 @@
       "text": "Text:",
       "items": "items",
       "staleHint": "{{count}} resource(s) have updated content, index needs refresh",
-      "recordCount": "{{count}} records"
+      "recordCount": "{{count}} records",
+      "indexingCount": "Indexing {{current}}/{{total}}"
     },
     "stats": {
       "totalVectors": "Total Vectors",
@@ -923,7 +998,23 @@
       "search": "Search",
       "update": "Update",
       "reindex": "Reindex",
+      "retryAllFailed": "Retry all failed",
+      "loadMore": "Load more",
       "clearOcrAndReindex": "Clear OCR and re-identify"
+    },
+    "confirm": {
+      "resetTitle": "Reset all index states?",
+      "resetDescription": "This deletes all vector data (segments, units) and resets every resource to pending. This cannot be undone.",
+      "confirmReset": "Reset all",
+      "retryFailedTitle": "Retry all failed items?",
+      "retryFailedDescription": "This will re-index {{count}} resource(s) that failed to index.",
+      "confirmRetry": "Start retry",
+      "cancel": "Cancel"
+    },
+    "list": {
+      "showingPartial": "Showing {{shown}} of {{total}} resources",
+      "loadingMore": "Loading…",
+      "retrySummary": "Retry finished: {{success}} succeeded, {{fail}} failed"
     },
     "notification": {
       "resetDisabledSuccess": "Reset {{count}} disabled resource(s), will be re-indexed",
@@ -951,7 +1042,6 @@
       "noMmResources": "No resources support native multimodal indexing (textbooks/question sets/images/files with preview)",
       "mmIndexCompleted": "Native MM indexing completed",
       "waitForCurrent": "Please wait for the current operation to complete",
-      "confirmResetAll": "Reset all index states?\n\nThis will:\n- Delete all index data (segments, units)\n- Reset all resources to pending\n- Clear dimension statistics\n\nThis cannot be undone!",
       "resetSuccess": "Reset successful",
       "resetSuccessDetail": "Reset index state for {{count}} resource(s)",
       "resetFailed": "Reset failed",
@@ -975,12 +1065,12 @@
     },
     "mmProgress": {
       "preparing": "{{prefix}}Preparing... ({{pages}} pages)",
-      "vlSummary": "{{prefix}}🔍 VL Summary: {{indexed}}/{{total}} pages (current: page {{current}})",
-      "textEmbedding": "{{prefix}}📊 Text Embedding: {{indexed}}/{{total}}",
-      "embedding": "{{prefix}}⚡ Embedding: {{indexed}}/{{total}} pages",
-      "saving": "{{prefix}}💾 Saving Index: {{indexed}}/{{total}} pages",
-      "completed": "{{prefix}}✅ Done! Indexed {{indexed}} pages, skipped {{skipped}} pages",
-      "failed": "{{prefix}}❌ Failed: {{message}}"
+      "vlSummary": "{{prefix}}VL summary: {{indexed}}/{{total}} pages (current: page {{current}})",
+      "textEmbedding": "{{prefix}}Text embedding: {{indexed}}/{{total}}",
+      "embedding": "{{prefix}}Embedding: {{indexed}}/{{total}} pages",
+      "saving": "{{prefix}}Saving index: {{indexed}}/{{total}} pages",
+      "completed": "{{prefix}}Done, indexed {{indexed}} pages, skipped {{skipped}} pages",
+      "failed": "{{prefix}}Failed: {{message}}"
     },
     "detail": {
       "chunks": "{{count}} chunks",
@@ -1016,6 +1106,8 @@
       "noDataFound": "No data found",
       "nativeMmIndex": "Native MM Index",
       "indexMode": "Index Mode",
+      "modeVlEmbed": "VL Embed",
+      "modeVlText": "VL+Text",
       "pureText": "Text Only",
       "notIndexed": "Not Indexed",
       "resourceId": "Resource ID",
@@ -1031,6 +1123,7 @@
       "viewOcrText": "View OCR text",
       "viewTextChunks": "View text chunks ({{count}})",
       "indexUnitCount": "{{count}} index units",
+      "unitLabel": "Unit #{{n}}",
       "ocrAndExtractedTitle": "OCR text / Extracted text",
       "ocrText": "OCR text"
     },
@@ -1048,7 +1141,10 @@
     },
     "empty": {
       "noMatchingResources": "No matching resources",
-      "adjustFilters": "Try adjusting your filters"
+      "adjustFilters": "Try adjusting your filters",
+      "noResourcesTitle": "Nothing to index yet",
+      "noResourcesDesc": "Add notes, textbooks or files to the Learning Hub and their index status will show up here.",
+      "configureEmbeddingHint": "No embedding model configured: go to Settings → Models → RAG & Knowledge Base to configure one before indexing."
     },
     "test": {
       "title": "Recall Test",

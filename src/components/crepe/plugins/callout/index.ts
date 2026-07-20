@@ -22,6 +22,8 @@ import './style.css';
 export {
   applyCalloutInputRule,
   applyFullLineCalloutInputRule,
+  CALLOUT_FULL_LINE_INPUT_RULE_RE,
+  CALLOUT_INPUT_RULE_RE,
   calloutFullLineInputRule,
   calloutInputRule,
 } from './inputRule';

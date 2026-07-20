@@ -1,10 +1,12 @@
 /**
- * 添加引用下拉菜单组件
+ * 添加引用入口按钮
  *
- * 根据文档19《Prompt 6》实现：
- * - 在工具栏提供"添加引用"入口
- * - 下拉菜单包含"添加教材引用"选项
- * - 点击后打开对应的选择器（ReferenceSelector，由 Prompt 7 实现）
+ * 改造说明（对齐 Notion 内联体验）：
+ * - 原为 AppMenu 二级菜单（仅一项"添加教材引用"）→ 现在按钮直接展开
+ *   锚定在按钮下方的 ReferenceSelector 内联面板，少一次点击。
+ * - 添加失败时给出 toast 反馈（原先仅 console.error 吞错）。
+ * - 题目集（exam_session）类型：ReferenceSelector 已支持列表，但 NotesContext
+ *   尚无 addExamRef 写入路径，故本入口暂只提供教材引用。
  *
  * 约束：
  * - 使用 i18n 国际化
@@ -12,18 +14,10 @@
  * - 根据当前选中的文件夹决定引用添加位置
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { LinkSimple, BookOpen, CaretDown } from '@phosphor-icons/react';
+import { LinkSimple, CaretDown } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
-import {
-    AppMenu,
-    AppMenuContent,
-    AppMenuItem,
-    AppMenuTrigger,
-    AppMenuGroup,
-    AppMenuSeparator,
-} from '@/components/ui/app-menu';
 import { useNotes } from '../NotesContext';
 import { cn } from '../../../lib/utils';
 import { ReferenceSelector, type ReferenceSelectResult } from '../reference-selector';
@@ -40,7 +34,7 @@ interface AddReferenceDropdownProps {
 }
 
 /**
- * 添加引用下拉菜单
+ * 添加引用按钮（单击直接展开锚定的引用选择面板）
  */
 export const AddReferenceDropdown: React.FC<AddReferenceDropdownProps> = ({
     selectedFolderId,
@@ -51,8 +45,8 @@ export const AddReferenceDropdown: React.FC<AddReferenceDropdownProps> = ({
     const { t } = useTranslation(['notes', 'common']);
     const { addTextbookRef, notify, references } = useNotes();
 
-    // 选择器对话框状态（由 Prompt 7 的 ReferenceSelector 组件提供）
-    const [textbookSelectorOpen, setTextbookSelectorOpen] = useState(false);
+    const [selectorOpen, setSelectorOpen] = useState(false);
+    const triggerRef = useRef<HTMLButtonElement | null>(null);
 
     // 已存在的引用列表（用于在选择器中禁用已引用的资源）
     const existingRefs = useMemo(() => {
@@ -61,13 +55,6 @@ export const AddReferenceDropdown: React.FC<AddReferenceDropdownProps> = ({
             sourceId: ref.sourceId,
         }));
     }, [references]);
-
-    /**
-     * 处理添加教材引用 - 打开选择器
-     */
-    const handleAddTextbook = useCallback(() => {
-        setTextbookSelectorOpen(true);
-    }, []);
 
     /**
      * 处理教材选择
@@ -81,64 +68,59 @@ export const AddReferenceDropdown: React.FC<AddReferenceDropdownProps> = ({
             });
         } catch (error: unknown) {
             console.error('Failed to add textbook ref:', error);
+            notify({
+                title: t('notes:reference.add_failed'),
+                variant: 'destructive',
+            });
         }
     }, [selectedFolderId, addTextbookRef, notify, t]);
 
     return (
         <>
-        <AppMenu>
-            <AppMenuTrigger asChild>
-                <NotionButton
-                    variant="ghost"
-                    size={compact ? 'icon' : 'sm'}
-                    className={cn(
-                        'text-muted-foreground/70 hover:text-foreground',
-                        compact ? 'h-8 w-8' : 'h-8 px-2 gap-1',
-                        className
-                    )}
-                    disabled={disabled}
-                    title={t('notes:reference.add_reference')}
-                >
-                    <LinkSimple className="h-4 w-4" />
-                    {!compact && (
-                        <>
-                            <span className="text-xs hidden sm:inline">
-                                {t('notes:reference.add_reference')}
-                            </span>
-                            <CaretDown className="h-3 w-3 opacity-50" />
-                        </>
-                    )}
-                </NotionButton>
-            </AppMenuTrigger>
-            <AppMenuContent align="start" width={200}>
-                <AppMenuGroup label={t('notes:reference.add_reference')}>
-                    <AppMenuItem
-                        icon={<BookOpen className="h-4 w-4" />}
-                        onClick={handleAddTextbook}
-                    >
-                        {t('notes:reference.add_textbook')}
-                    </AppMenuItem>
-                </AppMenuGroup>
+            <NotionButton
+                ref={triggerRef}
+                variant="ghost"
+                size={compact ? 'icon' : 'sm'}
+                className={cn(
+                    'text-muted-foreground/70 hover:text-foreground',
+                    compact ? 'h-8 w-8' : 'h-8 px-2 gap-1',
+                    className
+                )}
+                disabled={disabled}
+                title={t('notes:reference.add_textbook')}
+                aria-haspopup="dialog"
+                aria-expanded={selectorOpen}
+                onClick={() => setSelectorOpen(prev => !prev)}
+            >
+                <LinkSimple className="h-4 w-4" aria-hidden="true" />
+                {!compact && (
+                    <>
+                        <span className="text-xs hidden sm:inline">
+                            {t('notes:reference.add_reference')}
+                        </span>
+                        <CaretDown
+                            className={cn(
+                                'h-3 w-3 opacity-50 transition-transform duration-150',
+                                selectorOpen && 'rotate-180'
+                            )}
+                            aria-hidden="true"
+                        />
+                    </>
+                )}
+            </NotionButton>
 
-                <AppMenuSeparator />
-
-                <div className="px-2 py-1.5 text-[10px] text-muted-foreground/60">
-                    {selectedFolderId
-                        ? t('notes:reference.add_to_folder')
-                        : t('notes:reference.add_to_root')
-                    }
-                </div>
-            </AppMenuContent>
-        </AppMenu>
-
-        {/* 教材选择器弹窗 */}
-        <ReferenceSelector
-            open={textbookSelectorOpen}
-            onOpenChange={setTextbookSelectorOpen}
-            type="textbook"
-            onSelect={handleTextbookSelect}
-            existingRefs={existingRefs}
-        />
+            {/* 教材选择内联面板（锚定在按钮下方展开） */}
+            <ReferenceSelector
+                open={selectorOpen}
+                onOpenChange={setSelectorOpen}
+                type="textbook"
+                onSelect={handleTextbookSelect}
+                existingRefs={existingRefs}
+                anchorRef={triggerRef}
+                hint={selectedFolderId
+                    ? t('notes:reference.add_to_folder')
+                    : t('notes:reference.add_to_root')}
+            />
         </>
     );
 };

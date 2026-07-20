@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { NotesLibraryManager, ImportConflictStrategy, ImportProgress } from "../NotesLibraryManager";
+import { NotesLibraryManager, NOTES_LIBRARY_LAST_EXPORT_PREF, ImportConflictStrategy, ImportProgress } from "../NotesLibraryManager";
 import { useNotes } from "../NotesContext";
 import { NotesAPI } from "../../../utils/notesApi";
 import { getErrorMessage } from "../../../utils/errorUtils";
@@ -71,6 +71,9 @@ export function NotesLibraryDialog() {
                 outputPath: exportTargetPath,
                 includeVersions: true,
             });
+
+            // Remember when the library was last exported (shown inside the panel).
+            void NotesAPI.setPref(NOTES_LIBRARY_LAST_EXPORT_PREF, String(Date.now())).catch(() => {});
 
             notify({
                 title: t('notes:export.success'), // success_title was likely wrong, using 'success' from notes.json

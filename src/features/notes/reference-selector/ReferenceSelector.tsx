@@ -1,25 +1,27 @@
 /**
- * 引用选择器弹窗
+ * 引用选择器 —— 锚定内联面板（非模态）
  *
- * 用于选择要引用的教材/题目集识别资源
- *
- * 功能特性：
- * 1. 支持搜索过滤
- * 2. 显示资源预览（教材显示封面缩略图）
- * 3. 单选模式
- * 4. 选择后返回 ReferenceNode 所需信息
+ * 从触发按钮下方展开的 Popover 式浮层（360px），替代原先的 NotionDialog 居中模态：
+ * 1. 搜索过滤（单一防抖加载路径，打开即拉取、输入 300ms 防抖）
+ * 2. 资源预览（教材封面缩略图，无封面回退类型图标）
+ * 3. 单击条目即选中并确认（无二步 Confirm）
+ * 4. 列表 role=listbox，↑↓ 移动高亮、Enter 确认、Esc 收起
  * 5. 已被引用的资源显示禁用状态
- * 6. 使用 i18n 国际化
- * 7. 支持亮色/暗色模式
+ * 6. i18n / 亮暗主题 / prefers-reduced-motion（经 .ui-zoom-fade-in）
+ *
+ * 对外契约：open / onOpenChange / type / onSelect / existingRefs 保持不变；
+ * 新增可选 anchorRef 用于锚定触发元素（缺省时回退为顶部居中浮层，仍非模态）。
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { MagnifyingGlass, X, BookOpen, Table, CircleNotch, WarningCircle } from '@phosphor-icons/react';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody } from '@/components/ui/NotionDialog';
+import { resolvePopoverPosition, type PopoverPosition } from '@/components/ui/shad/Popover';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Input } from '@/components/ui/shad/Input';
+import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '../../../lib/utils';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { listTextbooks, listExamSessions } from './api';
@@ -31,6 +33,9 @@ import type {
   TextbookListItem,
   ExamSessionListItem,
 } from './types';
+
+const PANEL_WIDTH = 360;
+const SEARCH_DEBOUNCE_MS = 300;
 
 /**
  * 将教材列表项转换为统一资源项
@@ -55,12 +60,11 @@ function examSessionToUnified(
   item: ExamSessionListItem,
   fallbackTitle: string
 ): UnifiedResourceItem {
-  // 标题优先使用 examName，否则使用国际化的回退标题 + ID 前 8 位
   const title = item.examName || `${fallbackTitle} ${item.id.substring(0, 8)}`;
   return {
     id: item.id,
     title,
-    updatedAt: item.createdAt, // 题目集使用 createdAt
+    updatedAt: item.createdAt,
     thumbnail: undefined,
     sourceDb: 'exam_sessions',
     previewType: 'exam',
@@ -73,6 +77,8 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
   type,
   onSelect,
   existingRefs = [],
+  anchorRef,
+  hint,
 }) => {
   const { t } = useTranslation(['notes', 'common']);
 
@@ -81,21 +87,20 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
   const [items, setItems] = useState<UnifiedResourceItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeIndex, setActiveIndex] = useState(-1);
+
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const [position, setPosition] = useState<PopoverPosition | null>(null);
+  // 单一加载路径：首次打开立即加载，后续搜索输入防抖
+  const hasLoadedOnOpenRef = useRef(false);
+  // 请求序号防竞态：慢的旧响应不覆盖新响应
+  const requestSeqRef = useRef(0);
+  const listboxId = useRef(`ref-selector-listbox-${Math.random().toString(36).slice(2, 9)}`).current;
 
   // 已引用的资源 ID 集合（用于快速查找）
   const existingRefIds = useMemo(() => {
-    let sourceDb: string;
-    switch (type) {
-      case 'textbook':
-        sourceDb = 'textbooks';
-        break;
-      case 'exam_session':
-        sourceDb = 'exam_sessions';
-        break;
-      default:
-        sourceDb = 'textbooks';
-    }
+    const sourceDb = type === 'exam_session' ? 'exam_sessions' : 'textbooks';
     return new Set(
       existingRefs
         .filter(ref => ref.sourceDb === sourceDb)
@@ -105,12 +110,14 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
 
   // 加载数据
   const loadData = useCallback(async () => {
+    const seq = ++requestSeqRef.current;
     setLoading(true);
     setError(null);
 
     try {
       if (type === 'textbook') {
         const result = await listTextbooks(searchQuery || undefined);
+        if (seq !== requestSeqRef.current) return;
         if (!result.ok) {
           setError(result.error.toUserMessage());
           setItems([]);
@@ -119,6 +126,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
         setItems(result.value.map(textbookToUnified));
       } else if (type === 'exam_session') {
         const result = await listExamSessions();
+        if (seq !== requestSeqRef.current) return;
         if (!result.ok) {
           setError(result.error.toUserMessage());
           setItems([]);
@@ -128,64 +136,180 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
         setItems(result.value.map(s => examSessionToUnified(s, fallbackTitle)));
       }
     } catch (err: unknown) {
+      if (seq !== requestSeqRef.current) return;
       setError(getErrorMessage(err));
       setItems([]);
     } finally {
-      setLoading(false);
+      if (seq === requestSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [type, searchQuery, t]);
 
-  // 打开时加载数据
+  // 打开时重置状态；关闭时清空搜索（避免重开时旧关键词触发双请求）
   useEffect(() => {
     if (open) {
-      setSelectedId(null);
+      setActiveIndex(-1);
+    } else {
+      hasLoadedOnOpenRef.current = false;
       setSearchQuery('');
-      loadData();
+      setItems([]);
+      setError(null);
+      setPosition(null);
     }
-  }, [open, type]); // 不依赖 loadData 避免循环
+  }, [open]);
 
-  // 搜索防抖
+  // 单一加载路径：首次打开立即执行（0ms，可被 StrictMode 双调用清理），
+  // searchQuery 变化时 300ms 防抖
   useEffect(() => {
     if (!open) return;
 
+    const immediate = !hasLoadedOnOpenRef.current;
     const timer = setTimeout(() => {
-      loadData();
-    }, 300);
-
+      hasLoadedOnOpenRef.current = true;
+      void loadData();
+    }, immediate ? 0 : SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [searchQuery, open, loadData]);
+  }, [open, loadData]);
 
-  // 处理选择
+  // 数据刷新后收敛键盘高亮
+  useEffect(() => {
+    setActiveIndex(prev => (prev >= items.length ? -1 : prev));
+  }, [items]);
+
+  // 单击条目即选中确认（去掉两步 Confirm）
   const handleSelect = useCallback((item: UnifiedResourceItem) => {
     if (existingRefIds.has(item.id)) return;
-    setSelectedId(item.id);
-  }, [existingRefIds]);
-
-  // 确认选择
-  const handleConfirm = useCallback(() => {
-    if (!selectedId) return;
-
-    const selectedItem = items.find(item => item.id === selectedId);
-    if (!selectedItem) return;
 
     const result: ReferenceSelectResult = {
-      sourceDb: selectedItem.sourceDb,
-      sourceId: selectedItem.id,
-      title: selectedItem.title,
-      previewType: selectedItem.previewType,
+      sourceDb: item.sourceDb,
+      sourceId: item.id,
+      title: item.title,
+      previewType: item.previewType,
     };
 
     onSelect(result);
     onOpenChange(false);
-  }, [selectedId, items, onSelect, onOpenChange]);
+  }, [existingRefIds, onSelect, onOpenChange]);
+
+  // 键盘导航：跳过已引用（禁用）项
+  const moveActive = useCallback((direction: 1 | -1) => {
+    if (items.length === 0) return;
+    setActiveIndex(prev => {
+      let next = prev;
+      for (let step = 0; step < items.length; step++) {
+        next = (next + direction + items.length) % items.length;
+        if (!existingRefIds.has(items[next].id)) return next;
+      }
+      return prev;
+    });
+  }, [items, existingRefIds]);
+
+  const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        moveActive(1);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        moveActive(-1);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (activeIndex >= 0 && activeIndex < items.length) {
+          handleSelect(items[activeIndex]);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        onOpenChange(false);
+        break;
+      default:
+        break;
+    }
+  }, [moveActive, activeIndex, items, handleSelect, onOpenChange]);
+
+  // 打开时：Esc 收起 + 点击面板/锚点以外收起 + 聚焦搜索框
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onOpenChange(false);
+    };
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (panelRef.current?.contains(target)) return;
+      if (anchorRef?.current?.contains(target)) return;
+      onOpenChange(false);
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handlePointerDown);
+
+    const focusTimer = requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handlePointerDown);
+      cancelAnimationFrame(focusTimer);
+    };
+  }, [open, onOpenChange, anchorRef]);
+
+  // 锚定定位：跟随触发按钮，处理视口碰撞；resize/scroll/尺寸变化时重算
+  const updatePosition = useCallback(() => {
+    const anchor = anchorRef?.current;
+    const panel = panelRef.current;
+    if (!anchor || !panel) {
+      setPosition(null);
+      return;
+    }
+    const next = resolvePopoverPosition({
+      triggerRect: anchor.getBoundingClientRect(),
+      contentWidth: panel.offsetWidth || PANEL_WIDTH,
+      contentHeight: panel.offsetHeight || 420,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      align: 'start',
+      side: 'bottom',
+      sideOffset: 6,
+      collisionPadding: 8,
+    });
+    setPosition(prev =>
+      prev && prev.left === next.left && prev.top === next.top ? prev : next
+    );
+  }, [anchorRef]);
+
+  useEffect(() => {
+    if (!open || typeof window === 'undefined') return;
+
+    const frameId = requestAnimationFrame(updatePosition);
+    const handleReposition = () => updatePosition();
+    window.addEventListener('resize', handleReposition, { passive: true });
+    window.addEventListener('scroll', handleReposition, { passive: true, capture: true });
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && panelRef.current) {
+      resizeObserver = new ResizeObserver(handleReposition);
+      resizeObserver.observe(panelRef.current);
+    }
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, { capture: true } as EventListenerOptions);
+    };
+  }, [open, updatePosition]);
 
   // 获取标题
-  const dialogTitle = useMemo(() => {
+  const panelTitle = useMemo(() => {
     switch (type) {
-      case 'textbook':
-        return t('notes:reference.selectTextbook');
       case 'exam_session':
         return t('notes:reference.selectExamSession');
+      case 'textbook':
       default:
         return t('notes:reference.selectTextbook');
     }
@@ -194,130 +318,193 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
   // 获取空状态文案
   const emptyText = useMemo(() => {
     switch (type) {
-      case 'textbook':
-        return t('notes:reference.noTextbooks');
       case 'exam_session':
         return t('notes:reference.noExamSessions');
+      case 'textbook':
       default:
         return t('notes:reference.noTextbooks');
     }
   }, [type, t]);
 
-  return (
-    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-lg" showClose={false}>
-        {/* 头部 */}
-        <NotionDialogHeader>
-          <div className="flex items-center justify-between">
-            <NotionDialogTitle className="flex items-center gap-2">
-              {type === 'textbook' && (
-                <BookOpen className="h-5 w-5 text-purple-500" />
-              )}
-              {type === 'exam_session' && (
-                <Table className="h-5 w-5 text-green-500" />
-              )}
-              {dialogTitle}
-            </NotionDialogTitle>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onOpenChange(false)} className="!rounded-full !p-1 hover:bg-[var(--interactive-hover)]" aria-label={t('notes:a11y.close')}>
-              <X className="h-4 w-4 text-muted-foreground" />
-            </NotionButton>
-          </div>
-        </NotionDialogHeader>
+  if (!open || typeof document === 'undefined') return null;
 
-        {/* 搜索框 */}
-        <div className="px-4 pb-3">
-          <div className="relative">
-            <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t('notes:reference.searchPlaceholder')}
-              className="w-full h-10 pl-9 pr-4"
-            />
-            {searchQuery && (
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 !p-0.5 !rounded-full hover:bg-[var(--interactive-hover)]" aria-label={t('notes:a11y.clear')}>
-                <X className="h-3.5 w-3.5 text-muted-foreground" />
+  const hasAnchor = Boolean(anchorRef?.current);
+  const panelStyle: React.CSSProperties = hasAnchor
+    ? {
+        position: 'fixed',
+        zIndex: Z_INDEX.popover,
+        width: PANEL_WIDTH,
+        left: position?.left ?? anchorRef!.current!.getBoundingClientRect().left,
+        top: position?.top ?? anchorRef!.current!.getBoundingClientRect().bottom + 6,
+        boxShadow: 'var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 0.15))',
+      }
+    : {
+        // 无锚点回退：顶部居中非模态浮层（无遮罩，Esc/点击外部仍可收起）
+        position: 'fixed',
+        zIndex: Z_INDEX.popover,
+        width: PANEL_WIDTH,
+        left: '50%',
+        top: 96,
+        transform: 'translateX(-50%)',
+        boxShadow: 'var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 0.15))',
+      };
+
+  const activeItem = activeIndex >= 0 ? items[activeIndex] : undefined;
+
+  const panel = (
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="false"
+      aria-label={panelTitle}
+      className="ui-zoom-fade-in flex max-h-[70vh] flex-col overflow-hidden rounded-control border border-border/60 bg-popover text-popover-foreground"
+      style={panelStyle}
+    >
+      {/* 头部：标题 + 关闭 */}
+      <div className="flex items-center justify-between gap-2 px-3 pb-1.5 pt-2.5">
+        <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          {type === 'exam_session' ? (
+            <Table className="h-4 w-4 shrink-0 text-green-500" aria-hidden="true" />
+          ) : (
+            <BookOpen className="h-4 w-4 shrink-0 text-purple-500" aria-hidden="true" />
+          )}
+          <span className="truncate">{panelTitle}</span>
+        </span>
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={() => onOpenChange(false)}
+          className="!h-6 !w-6 !rounded-full hover:bg-[var(--interactive-hover)]"
+          aria-label={t('notes:a11y.close')}
+        >
+          <X className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+        </NotionButton>
+      </div>
+
+      {/* 搜索框 */}
+      <div className="px-3 pb-2">
+        <div className="relative">
+          <MagnifyingGlass className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input
+            ref={searchInputRef}
+            type="search"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls={listboxId}
+            aria-activedescendant={activeItem ? `${listboxId}-${activeItem.id}` : undefined}
+            aria-autocomplete="list"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder={t('notes:reference.searchPlaceholder')}
+            className="h-8 w-full pl-8 pr-8 text-sm"
+          />
+          {searchQuery && (
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2 top-1/2 !h-5 !w-5 -translate-y-1/2 !rounded-full !p-0.5 hover:bg-[var(--interactive-hover)]"
+              aria-label={t('notes:a11y.clear')}
+            >
+              <X className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+            </NotionButton>
+          )}
+        </div>
+      </div>
+
+      {/* 列表区域 */}
+      <div className="min-h-0 flex-1 border-t border-border/60">
+        <CustomScrollArea className="h-[280px]" viewportClassName="px-2 py-1.5">
+          {loading ? (
+            <div className="flex h-full flex-col items-center justify-center py-10">
+              <CircleNotch className="h-6 w-6 animate-spin text-primary" aria-hidden="true" />
+              <p className="mt-2 text-xs text-muted-foreground">
+                {t('common:loading')}
+              </p>
+            </div>
+          ) : error ? (
+            <div className="flex h-full flex-col items-center justify-center py-10">
+              <WarningCircle className="h-6 w-6 text-destructive" aria-hidden="true" />
+              <p className="mt-2 px-4 text-center text-xs text-destructive">{error}</p>
+              <NotionButton variant="ghost" size="sm" onClick={loadData} className="mt-2 text-xs text-primary hover:underline">
+                {t('common:actions.retry')}
               </NotionButton>
-            )}
-          </div>
-        </div>
-
-        {/* 列表区域 */}
-        <div className="border-t border-border">
-          <CustomScrollArea
-            className="h-[320px]"
-            viewportClassName="px-4 py-2"
-          >
-            {loading ? (
-              // 加载状态
-              <div className="flex flex-col items-center justify-center h-full py-12">
-                <CircleNotch className="h-8 w-8 text-primary animate-spin" />
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {t('common:loading')}
-                </p>
-              </div>
-            ) : error ? (
-              // 错误状态
-              <div className="flex flex-col items-center justify-center h-full py-12">
-                <WarningCircle className="h-8 w-8 text-destructive" />
-                <p className="mt-2 text-sm text-destructive">{error}</p>
-                <NotionButton variant="ghost" size="sm" onClick={loadData} className="mt-3 text-sm text-primary hover:underline">
-                  {t('common:actions.retry')}
+            </div>
+          ) : items.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center py-10">
+              {type === 'exam_session' ? (
+                <Table className="h-10 w-10 text-muted-foreground/30" aria-hidden="true" />
+              ) : (
+                <BookOpen className="h-10 w-10 text-muted-foreground/30" aria-hidden="true" />
+              )}
+              <p className="mt-2 text-xs text-muted-foreground">{emptyText}</p>
+              {searchQuery && (
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSearchQuery('')}
+                  className="mt-1.5 text-xs text-primary hover:underline"
+                >
+                  {t('notes:a11y.clear')}
                 </NotionButton>
-              </div>
-            ) : items.length === 0 ? (
-              // 空状态
-              <div className="flex flex-col items-center justify-center h-full py-12">
-                {type === 'textbook' && (
-                  <BookOpen className="h-12 w-12 text-muted-foreground/30" />
-                )}
-                {type === 'exam_session' && (
-                  <Table className="h-12 w-12 text-muted-foreground/30" />
-                )}
-                <p className="mt-3 text-sm text-muted-foreground">{emptyText}</p>
-              </div>
-            ) : (
-              // 列表
-              <div className="space-y-1">
-                {items.map((item) => (
-                  <ReferenceSelectorItem
-                    key={item.id}
-                    item={item}
-                    isReferenced={existingRefIds.has(item.id)}
-                    isSelected={selectedId === item.id}
-                    onClick={() => handleSelect(item)}
-                  />
-                ))}
-              </div>
-            )}
-          </CustomScrollArea>
-        </div>
+              )}
+            </div>
+          ) : (
+            <div id={listboxId} role="listbox" aria-label={panelTitle} className="space-y-0.5">
+              {items.map((item, index) => (
+                <ReferenceSelectorItem
+                  key={item.id}
+                  id={`${listboxId}-${item.id}`}
+                  item={item}
+                  isReferenced={existingRefIds.has(item.id)}
+                  isSelected={activeIndex === index}
+                  isActive={activeIndex === index}
+                  onClick={() => handleSelect(item)}
+                  onHover={() => setActiveIndex(index)}
+                />
+              ))}
+            </div>
+          )}
+        </CustomScrollArea>
+      </div>
 
-        {/* 底部操作栏 */}
-        <div className="border-t border-border px-4 py-3 flex items-center justify-between bg-muted/30">
-          <div className="text-xs text-muted-foreground">
-            {items.length > 0 && (
-              <>
-                {t('notes:reference.itemCount', { count: items.length })}
-                {existingRefIds.size > 0 && (
-                  <span className="ml-2">
-                    ({t('notes:reference.referencedCount', { count: existingRefIds.size })})
-                  </span>
-                )}
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <NotionButton variant="default" size="sm" onClick={() => onOpenChange(false)} className="text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
-              {t('common:cancel')}
-            </NotionButton>
-            <NotionButton variant="primary" size="sm" onClick={handleConfirm} disabled={!selectedId} className="font-medium">
-              {t('notes:reference.confirm')}
-            </NotionButton>
-          </div>
+      {/* 底部信息栏：计数 + 位置提示 + 取消 */}
+      <div className="flex items-center justify-between gap-2 border-t border-border/60 bg-muted/30 px-3 py-2">
+        <div className="min-w-0 text-[11px] text-muted-foreground">
+          {items.length > 0 ? (
+            <>
+              {t('notes:reference.itemCount', { count: items.length })}
+              {existingRefIds.size > 0 && (
+                <span className="ml-1.5">
+                  ({t('notes:reference.referencedCount', { count: existingRefIds.size })})
+                </span>
+              )}
+            </>
+          ) : hint ? (
+            <span className="truncate">{hint}</span>
+          ) : null}
         </div>
-    </NotionDialog>
+        <div className="flex shrink-0 items-center gap-2">
+          {items.length > 0 && hint && (
+            <span className="hidden text-[11px] text-muted-foreground/70 sm:inline">{hint}</span>
+          )}
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            className="!h-6 text-[11px] text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
+          >
+            {t('common:cancel')}
+          </NotionButton>
+        </div>
+      </div>
+    </div>
   );
+
+  return createPortal(panel, document.body);
 };
 
 export default ReferenceSelector;

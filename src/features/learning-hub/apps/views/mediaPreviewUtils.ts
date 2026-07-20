@@ -9,11 +9,24 @@ const AUDIO_EXT_MIME: Record<string, string> = {
   ogg: 'audio/ogg',
   oga: 'audio/ogg',
   m4a: 'audio/mp4',
+  m4b: 'audio/mp4',
   flac: 'audio/flac',
   aac: 'audio/aac',
   wma: 'audio/x-ms-wma',
   opus: 'audio/opus',
   weba: 'audio/webm',
+  aiff: 'audio/aiff',
+  aif: 'audio/aiff',
+  aifc: 'audio/aiff',
+  caf: 'audio/x-caf',
+  amr: 'audio/amr',
+  mka: 'audio/x-matroska',
+  mid: 'audio/midi',
+  midi: 'audio/midi',
+  ape: 'audio/x-ape',
+  au: 'audio/basic',
+  snd: 'audio/basic',
+  wv: 'audio/x-wavpack',
 };
 
 const VIDEO_EXT_MIME: Record<string, string> = {
@@ -29,11 +42,51 @@ const VIDEO_EXT_MIME: Record<string, string> = {
   mpg: 'video/mpeg',
   mpeg: 'video/mpeg',
   '3gp': 'video/3gpp',
+  '3g2': 'video/3gpp2',
+  ts: 'video/mp2t',
+  m2ts: 'video/mp2t',
+  mts: 'video/mp2t',
+  asf: 'video/x-ms-asf',
+  vob: 'video/mpeg',
+  rm: 'video/vnd.rn-realvideo',
+  rmvb: 'video/vnd.rn-realvideo',
 };
 
-/** WebView 通常无法原生解码的容器/编码（预览可能失败，需提示保存到本地） */
-const LIKELY_UNSUPPORTED_AUDIO = new Set(['wma']);
-const LIKELY_UNSUPPORTED_VIDEO = new Set(['mkv', 'avi', 'wmv', 'flv']);
+/**
+ * WebView 通常无法原生解码的容器/编码（预览可能失败，需提示保存到本地）。
+ *
+ * 收录标准：在 WKWebView（macOS）或 WebView2（Windows/Chromium）任一主流
+ * WebView 上大概率失败的格式。flac/aiff/caf 在现代 WebView 已广泛支持，
+ * 故不收录，避免对可正常播放的文件误报。
+ */
+const LIKELY_UNSUPPORTED_AUDIO = new Set([
+  'wma',
+  'amr',
+  'ape',
+  'mka',
+  'mid',
+  'midi',
+  'au',
+  'snd',
+  'wv',
+  // WKWebView 不支持裸 .opus 容器（仅支持 caf 封装）
+  'opus',
+]);
+const LIKELY_UNSUPPORTED_VIDEO = new Set([
+  'mkv',
+  'avi',
+  'wmv',
+  'flv',
+  'rm',
+  'rmvb',
+  'asf',
+  'vob',
+  'ts',
+  'm2ts',
+  'mts',
+  '3gp',
+  '3g2',
+]);
 
 function getExtension(fileName: string): string {
   const trimmed = fileName.trim();

@@ -376,6 +376,26 @@ export function itemTypeToPreviewType(itemType: FolderItemType): ResourceListIte
 }
 
 /**
+ * 文本预览可识别的扩展名（用于 file 资源兜底推断）。
+ * ★ 2026-07-19（B6）：补充常见代码扩展名与 tsv——这类文件的 MIME 常被标为
+ * application/octet-stream，此前不在列表中会被误判为"无法预览"。
+ */
+const TEXT_PREVIEW_EXTENSIONS = new Set([
+  // 纯文本 / 文档
+  'txt', 'md', 'markdown', 'html', 'htm', 'csv', 'tsv', 'json', 'xml', 'rtf',
+  'log', 'tex',
+  // 后端可提取文本的老格式电子表格
+  'xls', 'xlsb', 'ods',
+  // 配置 / 数据
+  'jsonc', 'jsonl', 'yaml', 'yml', 'toml', 'ini', 'conf', 'cfg', 'env', 'properties',
+  // 代码
+  'js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'css', 'scss', 'less',
+  'py', 'rs', 'go', 'java', 'kt', 'kts', 'c', 'h', 'cpp', 'hpp', 'cc', 'cxx', 'hh', 'cs',
+  'sql', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'rb', 'php', 'swift', 'lua',
+  'vue', 'svelte', 'graphql', 'diff', 'patch', 'dockerfile', 'makefile',
+]);
+
+/**
  * 从文件名推断预览类型（用于 file 资源兜底）
  */
 export function inferFilePreviewTypeFromName(fileName: string): ResourceListItem['previewType'] {
@@ -393,7 +413,7 @@ export function inferFilePreviewTypeFromName(fileName: string): ResourceListItem
   if (ext === 'pptx') return 'pptx';
   if (ext === 'epub') return 'epub';
 
-  if (['txt', 'md', 'markdown', 'html', 'htm', 'csv', 'json', 'xml', 'rtf', 'xls', 'xlsb', 'ods'].includes(ext)) {
+  if (TEXT_PREVIEW_EXTENSIONS.has(ext)) {
     return 'text';
   }
 

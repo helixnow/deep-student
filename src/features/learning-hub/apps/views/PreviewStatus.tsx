@@ -2,6 +2,10 @@
  * PreviewStatus — Learning Hub 预览区统一空态 / 加载 / 错误占位
  *
  * 替换各 ContentView 内联的 spinner / WarningCircle / FileText 混用失败隐喻。
+ *
+ * - 加载态支持 delayMs 延迟显示（与 UnifiedAppPanel 的 150ms 策略一致）：
+ *   短加载不闪烁 spinner，超时后淡入。
+ * - 非加载态带轻微 rise-in 入场动画；图标置于柔和的圆形底座上。
  */
 
 import React from 'react';
@@ -36,6 +40,11 @@ export interface PreviewStatusProps {
   actions?: PreviewStatusAction[];
   className?: string;
   children?: React.ReactNode;
+  /**
+   * 仅 tone="loading" 生效：延迟该毫秒数后再显示加载指示，
+   * 快速加载（< delayMs）不会闪现 spinner。延迟期间容器仍占满高度，布局不跳动。
+   */
+  delayMs?: number;
 }
 
 function defaultIconForTone(tone: PreviewStatusTone): PreviewStatusIcon {
@@ -61,7 +70,7 @@ function StatusIcon({
   if (tone === 'loading') {
     return (
       <CircleNotch
-        className="h-8 w-8 animate-spin text-primary"
+        className="h-7 w-7 animate-spin text-primary"
         aria-hidden="true"
       />
     );
@@ -69,37 +78,38 @@ function StatusIcon({
 
   if (icon === 'none') return null;
 
+  let glyph: React.ReactNode;
+  let glyphClass: string;
+  let plateClass: string;
+
   if (icon === 'brokenImage') {
-    return (
-      <ImageBroken
-        size={40}
-        className="text-muted-foreground"
-        aria-hidden="true"
-      />
-    );
+    glyph = <ImageBroken size={26} aria-hidden="true" />;
+    glyphClass = 'text-muted-foreground';
+    plateClass = 'bg-muted/70';
+  } else if (icon === 'file') {
+    glyph = <FileText size={26} aria-hidden="true" />;
+    glyphClass = 'text-muted-foreground';
+    plateClass = 'bg-muted/70';
+  } else if (tone === 'warning') {
+    glyph = <WarningCircle size={26} aria-hidden="true" />;
+    glyphClass = 'text-amber-500';
+    plateClass = 'bg-amber-500/10';
+  } else {
+    glyph = <WarningCircle size={26} aria-hidden="true" />;
+    glyphClass = 'text-destructive';
+    plateClass = 'bg-destructive/10';
   }
-
-  if (icon === 'file') {
-    return (
-      <FileText
-        className="w-16 h-16 text-muted-foreground opacity-50"
-        aria-hidden="true"
-      />
-    );
-  }
-
-  // warning
-  const toneClass =
-    tone === 'warning'
-      ? 'text-amber-500'
-      : 'text-destructive';
 
   return (
-    <WarningCircle
-      size={tone === 'warning' ? 32 : 40}
-      className={toneClass}
-      aria-hidden="true"
-    />
+    <div
+      className={cn(
+        'flex h-14 w-14 items-center justify-center rounded-full',
+        plateClass,
+        glyphClass,
+      )}
+    >
+      {glyph}
+    </div>
   );
 }
 
@@ -112,14 +122,40 @@ export const PreviewStatus: React.FC<PreviewStatusProps> = ({
   actions,
   className,
   children,
+  delayMs,
 }) => {
   const resolvedIcon = icon ?? defaultIconForTone(tone);
   const role = tone === 'loading' ? 'status' : tone === 'error' ? 'alert' : 'note';
+
+  const useDelay = tone === 'loading' && typeof delayMs === 'number' && delayMs > 0;
+  const [delayElapsed, setDelayElapsed] = React.useState(!useDelay);
+
+  React.useEffect(() => {
+    if (!useDelay) {
+      setDelayElapsed(true);
+      return;
+    }
+    setDelayElapsed(false);
+    const timer = window.setTimeout(() => setDelayElapsed(true), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [useDelay, delayMs]);
+
+  // 延迟期内保持等高空容器，避免 spinner 出现/消失引起布局跳动
+  if (!delayElapsed) {
+    return (
+      <div
+        className={cn('h-full', className)}
+        role="status"
+        aria-label={title}
+      />
+    );
+  }
 
   return (
     <div
       className={cn(
         'flex flex-col items-center justify-center h-full gap-3 px-4 py-6 text-center',
+        tone === 'loading' ? 'ui-fade-in' : 'ui-rise-in',
         className,
       )}
       role={role}
@@ -141,7 +177,7 @@ export const PreviewStatus: React.FC<PreviewStatusProps> = ({
           <p className="text-xs text-muted-foreground">{description}</p>
         )}
         {meta && (
-          <p className="text-xs text-muted-foreground/80 break-all font-mono">
+          <p className="text-xs text-muted-foreground/80 break-all">
             {meta}
           </p>
         )}

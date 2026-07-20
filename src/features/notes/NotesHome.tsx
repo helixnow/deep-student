@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { PanelGroup, Panel, PanelResizeHandle, ImperativePanelHandle } from "react-resizable-panels";
 import { useNotes } from "./NotesContext";
-import { NotesAPI } from "../../utils/notesApi";
 import { NotesSidebarV2 } from "./NotesSidebarV2";
 import { NotesHeader } from "./NotesHeader";
 import { NotesCrepeEditor } from "./NotesCrepeEditor";
@@ -177,7 +176,6 @@ const NotesEventsBridge: React.FC = () => {
     const handler = (e: any) => {
       const detail = e.detail || {};
       const id: string | undefined = detail.id;
-      const title: string | undefined = detail.title;
       if (id) {
         setSidebarRevealId(id);
         openTab(id);

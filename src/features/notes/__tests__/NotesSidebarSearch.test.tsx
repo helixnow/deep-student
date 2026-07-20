@@ -120,6 +120,58 @@ describe('NotesSidebarSearch', () => {
         expect(screen.getByPlaceholderText('notes:sidebar.search.search_placeholder')).toBeInTheDocument();
     });
 
+    it('根节点应带有 notes-sidebar-search class（命令面板聚焦依赖）', () => {
+        const { container } = render(<NotesSidebarSearch />);
+
+        const root = container.querySelector('.notes-sidebar-search');
+        expect(root).not.toBeNull();
+        // 命令面板通过 `.notes-sidebar-search input` 定位输入框
+        expect(root?.querySelector('input')).not.toBeNull();
+    });
+
+    describe('搜索结果键盘导航', () => {
+        it('输入词存在时 ↑/↓/Enter 应触发导航回调', () => {
+            const onResultNavigate = vi.fn();
+            const onResultSubmit = vi.fn();
+            render(
+                <NotesSidebarSearch
+                    onResultNavigate={onResultNavigate}
+                    onResultSubmit={onResultSubmit}
+                />,
+            );
+
+            const input = screen.getByTestId('search-input');
+            fireEvent.change(input, { target: { value: 'query' } });
+
+            fireEvent.keyDown(input, { key: 'ArrowDown' });
+            expect(onResultNavigate).toHaveBeenCalledWith(1);
+
+            fireEvent.keyDown(input, { key: 'ArrowUp' });
+            expect(onResultNavigate).toHaveBeenCalledWith(-1);
+
+            fireEvent.keyDown(input, { key: 'Enter' });
+            expect(onResultSubmit).toHaveBeenCalledTimes(1);
+        });
+
+        it('输入为空时不应触发导航回调', () => {
+            const onResultNavigate = vi.fn();
+            const onResultSubmit = vi.fn();
+            render(
+                <NotesSidebarSearch
+                    onResultNavigate={onResultNavigate}
+                    onResultSubmit={onResultSubmit}
+                />,
+            );
+
+            const input = screen.getByTestId('search-input');
+            fireEvent.keyDown(input, { key: 'ArrowDown' });
+            fireEvent.keyDown(input, { key: 'Enter' });
+
+            expect(onResultNavigate).not.toHaveBeenCalled();
+            expect(onResultSubmit).not.toHaveBeenCalled();
+        });
+    });
+
     it('应该能输入搜索词', async () => {
         render(<NotesSidebarSearch />);
 

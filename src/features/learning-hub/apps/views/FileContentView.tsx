@@ -19,7 +19,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { CircleNotch } from '@phosphor-icons/react';
 import type { ContentViewProps } from '../UnifiedAppPanel';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { PreviewProvider, usePreviewContext, type PreviewType } from './PreviewContext';
 import type { ToolbarPreviewType } from './UnifiedPreviewToolbar';
 import { usePdfLoader } from '@/hooks/usePdfLoader';
@@ -53,7 +53,21 @@ import {
   resolveVideoMimeType,
 } from './mediaPreviewUtils';
 import { PreviewStatus } from './PreviewStatus';
+import { AudioPlayer, VideoPlayer } from './media';
 import { createPreviewPersistController } from './previewPersistence';
+
+/** 加载指示延迟：对齐 UnifiedAppPanel 的 150ms 策略，快速加载不闪 spinner */
+const LOADING_INDICATOR_DELAY_MS = 150;
+
+/**
+ * 媒体源描述
+ * - stream: filestream:// 自定义协议流式播放（不进内存）
+ * - blob:   整文件读入内存后的 blob URL（流式不可用时的回退方案）
+ */
+interface MediaSourceState {
+  url: string;
+  kind: 'stream' | 'blob';
+}
 
 /**
  * 将文件预览模式映射到 PreviewContext 类型
@@ -81,6 +95,7 @@ const toToolbarPreviewType = (type: PreviewType): ToolbarPreviewType => {
  */
 const FileContentViewInner: React.FC<ContentViewProps> = ({
   node,
+  isActive = true,
   // onClose 暂未使用，保留接口以便后续扩展
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
@@ -100,12 +115,20 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   // 状态
   const [textContent, setTextContent] = useState<string | null>(null);
   const [base64Content, setBase64Content] = useState<string | null>(null);
-  const [mediaObjectUrl, setMediaObjectUrl] = useState<string | null>(null);
+  const [mediaSource, setMediaSource] = useState<MediaSourceState | null>(null);
+  // filestream 播放失败（协议/解码问题）后置 true，回退到 blob URL 方案
+  const [streamBlocked, setStreamBlocked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPreviewTooLarge, setIsPreviewTooLarge] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [mediaRenderFailed, setMediaRenderFailed] = useState(false);
+
+  // ★ isActive 门控：非活跃标签页不响应全局事件（pdf-page-refs 清除等）
+  const isActiveRef = useRef(isActive);
+  useEffect(() => {
+    isActiveRef.current = isActive;
+  }, [isActive]);
 
   // 从 node 的 metadata 获取文件信息
   const metadata = node.metadata as Record<string, unknown> | undefined;
@@ -171,7 +194,8 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     setPrevNodeId(node.id);
     setTextContent(null);
     setBase64Content(null);
-    setMediaObjectUrl(null); // 旧 blob URL 由 [mediaObjectUrl] 清理 effect 释放
+    setMediaSource(null); // 旧 blob URL 由 [mediaSource] 清理 effect 释放
+    setStreamBlocked(false);
     setError(null);
     setIsPreviewTooLarge(false);
     setMediaRenderFailed(false);
@@ -247,11 +271,14 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   // ★ 标签页：通过 sourceId 过滤，避免多个 PDF tab 互相干扰
   useEffect(() => {
     const handleClear = (event: Event) => {
+      // ★ 非活跃标签页不响应全局清除事件
+      if (!isActiveRef.current) return;
       const detail = (event as CustomEvent<{ sourceId?: string }>).detail;
       if (detail?.sourceId && detail.sourceId !== node.sourceId) return;
       setSelectedPages(new Set());
     };
     const handleRemove = (event: Event) => {
+      if (!isActiveRef.current) return;
       const detail = (event as CustomEvent<{ page: number; sourceId?: string }>).detail;
       if (detail?.sourceId && detail.sourceId !== node.sourceId) return;
       setSelectedPages((prev) => {
@@ -280,18 +307,36 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     setPreviewType(toContextPreviewType(previewMode));
   }, [previewMode, setPreviewType]);
 
-  // Blob URL 生命周期：每次 mediaObjectUrl 变化（含卸载）时释放旧 URL
+  // Blob URL 生命周期：每次 mediaSource 变化（含卸载）时释放旧 blob URL
+  // （filestream URL 无需释放，由自定义协议按需读取）
   useEffect(() => {
     return () => {
-      if (mediaObjectUrl) {
-        URL.revokeObjectURL(mediaObjectUrl);
+      if (mediaSource?.kind === 'blob') {
+        URL.revokeObjectURL(mediaSource.url);
       }
     };
-  }, [mediaObjectUrl]);
+  }, [mediaSource]);
 
-  // ★ 用于手动重试的计数器
+  // ★ 用于手动重试的计数器（重试时给 filestream 重新一次机会）
   const [retryCount, setRetryCount] = useState(0);
-  const handleRetry = useCallback(() => setRetryCount((c) => c + 1), []);
+  const handleRetry = useCallback(() => {
+    setStreamBlocked(false);
+    setRetryCount((c) => c + 1);
+  }, []);
+
+  // ★ 播放器错误：stream 播放失败 → 回退 blob 方案重新加载；blob 也失败 → 错误态
+  const mediaSourceKindRef = useRef<MediaSourceState['kind'] | null>(null);
+  useEffect(() => {
+    mediaSourceKindRef.current = mediaSource?.kind ?? null;
+  }, [mediaSource]);
+
+  const handleMediaError = useCallback(() => {
+    if (mediaSourceKindRef.current === 'stream') {
+      setStreamBlocked(true); // 触发加载 effect 重跑，走 blob 回退
+    } else {
+      setMediaRenderFailed(true);
+    }
+  }, []);
 
   // ★ L-008 修复：文件过大时提供"保存到本地"操作
   const handleSaveFile = useCallback(async () => {
@@ -388,6 +433,56 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       if (!isMounted) return;
 
       if (blobPath) {
+        // ★ 音视频：优先 filestream:// 流式协议（零内存拷贝），
+        //   协议不可用 / check 失败 / 播放失败（streamBlocked）时回退 blob URL
+        if (isAudio || isVideo) {
+          const mediaMimeType = isAudio
+            ? resolveAudioMimeType(mimeType, node.name)
+            : resolveVideoMimeType(mimeType, node.name);
+
+          if (!streamBlocked) {
+            try {
+              const canStream = await invoke<boolean>('filestream_check_access', {
+                path: blobPath,
+              });
+              if (!isMounted) return;
+              if (canStream) {
+                // VFS blob 落盘为 <hash>.bin，协议按扩展名只能推断出 octet-stream；
+                // 通过 ?mime= 覆盖告知真实媒体类型（WKWebView 对 Content-Type 敏感）。
+                // 仅取主类型：后端 sanitize 拒绝含 ';codecs=' 参数的覆盖值。
+                const mimeParam = encodeURIComponent(
+                  (mediaMimeType.split(';')[0] ?? '').trim(),
+                );
+                setMediaSource({
+                  url: `${convertFileSrc(blobPath, 'filestream')}?mime=${mimeParam}`,
+                  kind: 'stream',
+                });
+                return;
+              }
+            } catch {
+              // filestream 协议与本次改动并行落地，不可假设已存在；异常时静默回退
+            }
+            if (!isMounted) return;
+          }
+
+          const mediaFileSize = await invoke<number>('get_file_size', { path: blobPath });
+          if (!isMounted) return;
+          if (mediaFileSize > LARGE_FILE_THRESHOLD) {
+            setError(t('learningHub:file.previewTooLarge'));
+            setIsPreviewTooLarge(true);
+            return;
+          }
+
+          const mediaBuffer = await invoke<ArrayBuffer>('read_file_bytes', { path: blobPath });
+          if (!isMounted) return;
+          // ★ 音视频不再另存 base64（无消费方），避免双份内存
+          setMediaSource({
+            url: URL.createObjectURL(new Blob([mediaBuffer], { type: mediaMimeType })),
+            kind: 'blob',
+          });
+          return;
+        }
+
         const fileSize = await invoke<number>('get_file_size', { path: blobPath });
         if (!isMounted) return;
         if (fileSize > LARGE_FILE_THRESHOLD) {
@@ -398,15 +493,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
 
         const buffer = await invoke<ArrayBuffer>('read_file_bytes', { path: blobPath });
         if (!isMounted) return;
-        const content = uint8ArrayToBase64(new Uint8Array(buffer));
-        setBase64Content(content);
-
-        if (isAudio || isVideo) {
-          const mediaMimeType = isAudio
-            ? resolveAudioMimeType(mimeType, node.name)
-            : resolveVideoMimeType(mimeType, node.name);
-          setMediaObjectUrl(URL.createObjectURL(new Blob([buffer], { type: mediaMimeType })));
-        }
+        setBase64Content(uint8ArrayToBase64(new Uint8Array(buffer)));
         return;
       }
 
@@ -427,8 +514,6 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
           return;
         }
 
-        setBase64Content(result.content);
-
         if (isAudio || isVideo) {
           const mediaMimeType = isAudio
             ? resolveAudioMimeType(mimeType, node.name)
@@ -440,10 +525,12 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             return;
           }
 
-          // 旧 URL 由 [mediaObjectUrl] 清理 effect 统一释放
-          setMediaObjectUrl(URL.createObjectURL(mediaBlob));
+          // ★ 音视频不再另存 base64；旧 URL 由 [mediaSource] 清理 effect 统一释放
+          setMediaSource({ url: URL.createObjectURL(mediaBlob), kind: 'blob' });
+          return;
         }
 
+        setBase64Content(result.content);
         return;
       }
 
@@ -457,7 +544,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       setTextContent(null);
       setBase64Content(null);
       setMediaRenderFailed(false);
-      setMediaObjectUrl(null);
+      setMediaSource(null);
 
       // PDF 有独立的加载 Hook；不可预览类型无需加载 → 跳过，避免无意义的 loading 闪烁
       if (!needsBinaryPreview && !canPreviewText) {
@@ -467,7 +554,15 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       setIsLoading(true);
       try {
         const knownSize = typeof node.size === 'number' ? node.size : null;
-        if (needsBinaryPreview && knownSize && knownSize > LARGE_FILE_THRESHOLD) {
+        // ★ 音视频不做入口大小拦截：filestream 流式播放不受大小限制，
+        //   仅在流式不可用、回退整读内存时再做阈值检查（见 loadBinaryContent）
+        if (
+          needsBinaryPreview &&
+          !isAudio &&
+          !isVideo &&
+          knownSize &&
+          knownSize > LARGE_FILE_THRESHOLD
+        ) {
           setError(t('learningHub:file.previewTooLarge'));
           setIsPreviewTooLarge(true);
           return;
@@ -496,7 +591,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     return () => {
       isMounted = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- t 不加入依赖：语言切换不应重新加载文件；retryCount 用于手动重试
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- t 不加入依赖：语言切换不应重新加载文件；retryCount 用于手动重试；streamBlocked 触发流式→blob 回退重载
   }, [
     canPreviewText,
     contentHash,
@@ -508,6 +603,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     node.name,
     node.size,
     retryCount,
+    streamBlocked,
   ]);
   const showToolbar = Boolean(needsRichPreview && base64Content && previewType);
 
@@ -568,6 +664,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
         <PreviewStatus
           tone="loading"
           title={t('learningHub:loading.content')}
+          delayMs={LOADING_INDICATOR_DELAY_MS}
         />
       );
     }
@@ -580,6 +677,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             tone="loading"
             title={t('learningHub:loading.content')}
             description={isPdfLargeFile ? t('learningHub:file.loadingLargeFile') : undefined}
+            delayMs={LOADING_INDICATOR_DELAY_MS}
           />
         );
       }
@@ -624,78 +722,38 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
         <PreviewStatus
           tone="loading"
           title={t('learningHub:loading.content')}
+          delayMs={LOADING_INDICATOR_DELAY_MS}
         />
       );
     }
 
-    // DOCX / Excel / PPTX 富文档预览
+    // DOCX / Excel / PPTX 富文档预览（ui-rise-in 轻量淡入，避免二进制解码完成后的生硬切换）
     if (isDocx && base64Content) {
-      return renderRichDocumentPreview('docx', base64Content);
+      return <div className="h-full ui-rise-in">{renderRichDocumentPreview('docx', base64Content)}</div>;
     }
     if (isExcel && base64Content) {
-      return renderRichDocumentPreview('xlsx', base64Content);
+      return <div className="h-full ui-rise-in">{renderRichDocumentPreview('xlsx', base64Content)}</div>;
     }
     if (isPptx && base64Content) {
-      return renderRichDocumentPreview('pptx', base64Content);
+      return <div className="h-full ui-rise-in">{renderRichDocumentPreview('pptx', base64Content)}</div>;
     }
     if (isEpub && base64Content) {
-      return <EpubPreview base64Content={base64Content} fileName={node.name} resourceId={node.id} />;
-    }
-
-    // 音频预览
-    if (isAudio && mediaObjectUrl) {
-      if (mediaRenderFailed) {
-        return (
-          <PreviewStatus
-            tone="error"
-            title={t('learningHub:file.mediaRenderFailed')}
-            description={
-              isLikelyUnsupportedMedia(node.name, 'audio')
-                ? t('learningHub:file.mediaUnsupportedHint')
-                : t('learningHub:file.mediaRenderFailedHint')
-            }
-            actions={[
-              { id: 'retry', label: t('common:retry'), onClick: handleRetry, variant: 'ghost' },
-              {
-                id: 'save',
-                label: t('learningHub:file.saveToDevice'),
-                onClick: () => { void handleSaveFile(); },
-                variant: 'primary',
-                loading: isSaving,
-              },
-            ]}
-          />
-        );
-      }
       return (
-        <div className="h-full flex flex-col items-center justify-center p-6 gap-3">
-          {isLikelyUnsupportedMedia(node.name, 'audio') && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 text-center max-w-md">
-              {t('learningHub:file.mediaUnsupportedWarning')}
-            </p>
-          )}
-          <audio
-            controls
-            src={mediaObjectUrl}
-            className="w-full max-w-3xl"
-            preload="metadata"
-            onError={() => setMediaRenderFailed(true)}
-          >
-            {t('learningHub:file.noPreview')}
-          </audio>
+        <div className="h-full ui-rise-in">
+          <EpubPreview base64Content={base64Content} fileName={node.name} resourceId={node.id} />
         </div>
       );
     }
 
-    // 视频预览
-    if (isVideo && mediaObjectUrl) {
+    // 音视频预览：自定义播放器（流式优先；播放失败时统一错误态）
+    if ((isAudio || isVideo) && mediaSource) {
       if (mediaRenderFailed) {
         return (
           <PreviewStatus
             tone="error"
             title={t('learningHub:file.mediaRenderFailed')}
             description={
-              isLikelyUnsupportedMedia(node.name, 'video')
+              isLikelyUnsupportedMedia(node.name, isAudio ? 'audio' : 'video')
                 ? t('learningHub:file.mediaUnsupportedHint')
                 : t('learningHub:file.mediaRenderFailedHint')
             }
@@ -712,25 +770,37 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
           />
         );
       }
+
+      const compatibilityHint = isLikelyUnsupportedMedia(node.name, isAudio ? 'audio' : 'video')
+        ? t('learningHub:file.mediaUnsupportedWarning')
+        : undefined;
+
+      if (isAudio) {
+        return (
+          <AudioPlayer
+            key={mediaSource.url}
+            src={mediaSource.url}
+            fileName={node.name}
+            meta={
+              typeof node.size === 'number' && node.size > 0
+                ? formatFileSize(node.size)
+                : undefined
+            }
+            compatibilityHint={compatibilityHint}
+            isActive={isActive}
+            onError={handleMediaError}
+          />
+        );
+      }
       return (
-        <div className="h-full flex flex-col bg-black/90">
-          {isLikelyUnsupportedMedia(node.name, 'video') && (
-            <p className="text-xs text-amber-400 text-center py-2 px-4">
-              {t('learningHub:file.mediaUnsupportedWarning')}
-            </p>
-          )}
-          <div className="flex-1 flex items-center justify-center">
-            <video
-              controls
-              src={mediaObjectUrl}
-              className="max-h-full max-w-full"
-              preload="metadata"
-              onError={() => setMediaRenderFailed(true)}
-            >
-              {t('learningHub:file.noPreview')}
-            </video>
-          </div>
-        </div>
+        <VideoPlayer
+          key={mediaSource.url}
+          src={mediaSource.url}
+          fileName={node.name}
+          compatibilityHint={compatibilityHint}
+          isActive={isActive}
+          onError={handleMediaError}
+        />
       );
     }
 
@@ -753,7 +823,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
         description={t('learningHub:file.downloadHint')}
         meta={`${node.name} · ${mimeType}${
           typeof node.size === 'number' && node.size > 0 ? ` · ${formatFileSize(node.size)}` : ''
-        } · ${node.id}`}
+        }`}
         actions={[
           {
             id: 'save',
