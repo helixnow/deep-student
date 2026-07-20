@@ -33,6 +33,9 @@ module.exports = {
 				'xl': 'var(--font-size-xl)',
 				'2xl': 'var(--font-size-2xl)',
 				'3xl': 'var(--font-size-3xl)',
+				// 2026-07 mobile 基建追加：caption 层（时间戳/辅助说明），
+				// 移动端最小可读字号。Token 见 src/styles/shadcn-variables.css
+				'caption': 'var(--m-text-caption)',
 			},
 			fontWeight: {
 				'normal': 'var(--font-weight-normal)',
@@ -120,6 +123,8 @@ module.exports = {
 				row: 'var(--radius-shell-row)',
 				control: 'var(--radius-shell-control)',
 				dialog: 'var(--radius-shell-dialog)',
+				// 2026-07 chat 二轮追加：pill 形按钮/胶囊（替代裸 rounded-[999px]）
+				pill: '999px',
 			},
 			boxShadow: {
 				shell: 'var(--shadow-shell-panel)',
@@ -132,15 +137,34 @@ module.exports = {
 			maxWidth: {
 				thread: 'var(--chat-thread-max-w)',
 			},
+			// 2026-07 chat 二轮追加：标准出口曲线（transitions-dev --ease-standard 的
+			// Tailwind 出口），供 tsx 组件写 `transition ... ease-standard duration-150/200`
+			transitionTimingFunction: {
+				standard: 'cubic-bezier(0.22, 1, 0.36, 1)',
+			},
 			keyframes: {
 				sweep: {
 					'0%': { transform: 'translateX(-30%)' },
 					'50%': { transform: 'translateX(100%)' },
 					'100%': { transform: 'translateX(-30%)' },
 				},
+				// 2026-07 chat 二轮追加：共享入场 keyframes（仅 opacity / 独立 translate，
+				// 与 inline transform 定位不冲突）。token 见 src/features/chat/styles/motion.css
+				'chat-rise-in': {
+					from: { opacity: '0', translate: '0 4px' },
+					to: { opacity: '1', translate: '0 0' },
+				},
+				'chat-fade-in': {
+					from: { opacity: '0' },
+					to: { opacity: '1' },
+				},
 			},
 			animation: {
 				sweep: 'sweep 1.2s ease-in-out infinite',
+				// 2026-07 chat 二轮追加：消息/卡片入场工具类。
+				// 建议配合 motion-safe: 前缀使用（reduced-motion 自动跳过）
+				'chat-rise-in': 'chat-rise-in var(--chat-motion-fast, 150ms) var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)) both',
+				'chat-fade-in': 'chat-fade-in var(--chat-motion-base, 200ms) var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)) both',
 			},
 		},
 	},

@@ -297,12 +297,137 @@ jobs:
           echo "✅ All version numbers are consistent: ${TAG_VERSION}"
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 阶段三: 构建 (通过版本校验后并行构建全平台)
+  # 阶段二点五: 数据库迁移兼容性门禁 (fail-closed, 构建前)
+  #
+  # 仅在 release commit 上运行（挂在 verify 之后；verify 已由
+  # release_created == 'true' 条件门控，普通 main push 不会进入本 job，
+  # 因此缺 MIGRATION_FIXTURE_* secret 不会让日常 push 变红）。
+  #
+  # 与 PR 层 (ci.yml migration-gate) / nightly 层 (migration-nightly.yml)
+  # 不同，本层 fail-closed：
+  #   - fetch-fixtures --mode require：无 fixture secret / 无 fixture ⇒ 失败
+  #   - 生产迁移测试数必须非零（run-migration-tests.sh --min-tests）
+  #   - 全量 fixture upgrade + 故障注入必须全部通过
+  #   - release-requirements（真实产物升级 E2E 的诚实清单）：有 driver 必须
+  #     执行并通过；无 driver 必须有未过期 waiver，过期即失败——没有永绿占位
+  #   - 产出机器可读 migration-compatibility-report（候选 commit、tag、
+  #     平台、fixture hash、测试数量、逐 case 结果），失败也上传作为证据
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  migration-compatibility-gate:
+    needs: [verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.verify.outputs.tag_name }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Static migration gate (lock manifest + dangerous SQL)
+        run: node scripts/check-migrations.mjs
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: migration-release-gate
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+
+      - name: Production migration tests (non-zero count enforced)
+        run: |
+          bash scripts/migration-ci/run-migration-tests.sh \
+            --min-tests 50 --count-out "$RUNNER_TEMP/migration-test-count.json"
+
+      # fail-closed：release 绝不允许在没跑 fixture 升级的情况下出包
+      - name: Fetch full fixture tier (fail-closed)
+        id: fixtures
+        env:
+          MIGRATION_FIXTURE_URL: ${{ secrets.MIGRATION_FIXTURE_URL }}
+          MIGRATION_FIXTURE_SHA256: ${{ secrets.MIGRATION_FIXTURE_SHA256 }}
+          MIGRATION_FIXTURE_TOKEN: ${{ secrets.MIGRATION_FIXTURE_TOKEN }}
+        run: |
+          bash scripts/migration-ci/fetch-fixtures.sh \
+            --tier full --dest "$RUNNER_TEMP/migration-fixtures" --mode require
+
+      - name: Full fixture upgrades
+        run: |
+          bash scripts/migration-ci/run-fixture-upgrades.sh \
+            --fixture-root "${{ steps.fixtures.outputs.fixture_root }}" \
+            --mode upgrade \
+            --report "$RUNNER_TEMP/migration-reports/full-upgrade.jsonl"
+
+      - name: Fault-injection gate (corrupted DBs must surface failure)
+        run: |
+          bash scripts/migration-ci/run-fixture-upgrades.sh \
+            --fixture-root "${{ steps.fixtures.outputs.fixture_root }}" \
+            --mode fault \
+            --report "$RUNNER_TEMP/migration-reports/full-fault.jsonl"
+
+      # 真实产物升级 E2E 的诚实门禁：capability check + requirement manifest。
+      # 仓库暂无 upgrade-E2E driver ⇒ 依赖带过期日期的 waiver；waiver 过期
+      # 或 driver 落地却未执行 ⇒ 本步失败，release 被阻断。
+      - name: Verify release requirements (artifact upgrade E2E manifest)
+        run: |
+          node scripts/migration-ci/verify-release-requirements.mjs \
+            --manifest scripts/migration-ci/release-requirements.json \
+            --out "$RUNNER_TEMP/migration-reports/release-requirements-result.json"
+
+      - name: Generate migration compatibility report
+        if: always()
+        run: |
+          ARGS=(
+            --out "$RUNNER_TEMP/migration-reports/migration-compatibility-report.json"
+            --candidate-commit "${{ github.sha }}"
+            --tag "${{ needs.verify.outputs.tag_name }}"
+            --platform "linux-x86_64"
+            --fixture-tier full
+            --fixture-hash "${{ steps.fixtures.outputs.fixture_hash || 'none' }}"
+            --fail-on-empty
+          )
+          [ -f "$RUNNER_TEMP/migration-test-count.json" ] && \
+            ARGS+=(--test-count-file "$RUNNER_TEMP/migration-test-count.json")
+          [ -f "$RUNNER_TEMP/migration-reports/full-upgrade.jsonl" ] && \
+            ARGS+=(--harness-report "$RUNNER_TEMP/migration-reports/full-upgrade.jsonl")
+          [ -f "$RUNNER_TEMP/migration-reports/full-fault.jsonl" ] && \
+            ARGS+=(--harness-report "$RUNNER_TEMP/migration-reports/full-fault.jsonl")
+          [ -f "$RUNNER_TEMP/migration-reports/release-requirements-result.json" ] && \
+            ARGS+=(--requirements-result "$RUNNER_TEMP/migration-reports/release-requirements-result.json")
+          node scripts/migration-ci/generate-report.mjs "${ARGS[@]}"
+
+      # 失败也上传：报告本身就是发布决策的证据链
+      - name: Upload migration compatibility report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: migration-compatibility-report
+          path: ${{ runner.temp }}/migration-reports/
+          retention-days: 90
+          if-no-files-found: warn
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 阶段三: 构建 (通过版本校验 + 迁移兼容性门禁后并行构建全平台)
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   # ── macOS ──────────────────────────────────────────────────────
   build-macos:
-    needs: [verify]
+    needs: [verify, migration-compatibility-gate]
     runs-on: macos-latest
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
@@ -435,7 +560,7 @@ jobs:
 
   # ── Windows ────────────────────────────────────────────────────
   build-windows:
-    needs: [verify]
+    needs: [verify, migration-compatibility-gate]
     runs-on: windows-latest
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
@@ -493,7 +618,7 @@ jobs:
 
   # ── Linux ──────────────────────────────────────────────────────
   build-linux:
-    needs: [verify]
+    needs: [verify, migration-compatibility-gate]
     runs-on: ubuntu-24.04
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
@@ -575,7 +700,7 @@ jobs:
 
   # ── Android ────────────────────────────────────────────────────
   build-android:
-    needs: [verify]
+    needs: [verify, migration-compatibility-gate]
     runs-on: ubuntu-latest
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'

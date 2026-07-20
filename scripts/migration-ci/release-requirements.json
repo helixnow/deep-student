@@ -1,0 +1,70 @@
+{
+  "schema": "deep-student/release-requirements@1",
+  "description": "Release-blocking requirements for real-artifact upgrade E2E. Each requirement must either have a runnable driver (entry script exists and was executed with a passing result) or an explicit, dated waiver. Expired waivers FAIL the release — there is no permanently-green placeholder path.",
+  "requirements": [
+    {
+      "id": "upgrade-e2e-macos",
+      "platform": "macos",
+      "kind": "artifact-upgrade-e2e",
+      "summary": "Install previous stable .app, seed user data, upgrade with the candidate .app.tar.gz, verify migrations + data integrity.",
+      "driver": {
+        "type": "script",
+        "entry": "scripts/migration-ci/e2e/upgrade-macos.sh",
+        "notes": "No macOS WKWebView WebDriver support upstream; driver must orchestrate app launch + data-dir assertions directly (tauri-driver does not support macOS)."
+      },
+      "waiver": {
+        "until": "2026-08-31",
+        "reason": "No macOS upgrade-E2E driver exists in the repository yet. This waiver is temporary and visible in every release's compatibility report; when it expires, releases fail until a driver lands or the waiver is consciously renewed in review.",
+        "approved_by": "release-engineering"
+      }
+    },
+    {
+      "id": "upgrade-e2e-windows",
+      "platform": "windows",
+      "kind": "artifact-upgrade-e2e",
+      "summary": "Install previous stable setup.exe, seed user data, upgrade with the candidate setup.exe, verify migrations + data integrity.",
+      "driver": {
+        "type": "script",
+        "entry": "scripts/migration-ci/e2e/upgrade-windows.ps1",
+        "notes": "Reuse the tauri-driver + msedgedriver path from .github/workflows/webdriver.yml once e2e-tests/ exists."
+      },
+      "waiver": {
+        "until": "2026-08-31",
+        "reason": "webdriver.yml is disabled because e2e-tests/ does not exist; no Windows upgrade-E2E driver yet.",
+        "approved_by": "release-engineering"
+      }
+    },
+    {
+      "id": "upgrade-e2e-linux",
+      "platform": "linux",
+      "kind": "artifact-upgrade-e2e",
+      "summary": "Unpack previous stable AppImage, seed user data, upgrade with the candidate AppImage, verify migrations + data integrity.",
+      "driver": {
+        "type": "script",
+        "entry": "scripts/migration-ci/e2e/upgrade-linux.sh",
+        "notes": "Reuse the tauri-driver + webkit2gtk-driver + xvfb path from .github/workflows/webdriver.yml once e2e-tests/ exists."
+      },
+      "waiver": {
+        "until": "2026-08-31",
+        "reason": "webdriver.yml is disabled because e2e-tests/ does not exist; no Linux upgrade-E2E driver yet.",
+        "approved_by": "release-engineering"
+      }
+    },
+    {
+      "id": "upgrade-e2e-android",
+      "platform": "android",
+      "kind": "artifact-upgrade-e2e",
+      "summary": "Install previous stable APK on an emulator, seed user data, upgrade-install the candidate APK, verify migrations + data integrity.",
+      "driver": {
+        "type": "script",
+        "entry": "scripts/migration-ci/e2e/upgrade-android.sh",
+        "notes": "Requires reactivecircus/android-emulator-runner (or equivalent) plus adb-driven data seeding/assertions."
+      },
+      "waiver": {
+        "until": "2026-08-31",
+        "reason": "No Android emulator upgrade-E2E driver exists in the repository yet.",
+        "approved_by": "release-engineering"
+      }
+    }
+  ]
+}
