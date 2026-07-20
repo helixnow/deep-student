@@ -296,3 +296,19 @@ dev-server*.log
 tauri-dev*.log
 tc_agent*.log
 src-tauri/NONE
+
+# 内部规划/评审/设计过程文档（不入库）
+.parallel-notes/
+.planning/
+.roundtable/
+docs/reviews/
+docs/prompts/
+docs/superpowers/
+docs/cloud-sync-compatibility-analysis-*.md
+docs/cloud-sync-remediation-plan.md
+docs/FABLE_SOTA_GOAL.md
+docs/DEEPSEEK-V4-V32-RELEASE-NOTES.md
+docs/vfs-vector-knowledge-base-hardening.md
+docs/design-tokens-and-color-semantics.md
+dstu-test/docs/*
+!dstu-test/docs/README.md
