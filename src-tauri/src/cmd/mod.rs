@@ -13,6 +13,8 @@ pub mod enhanced_anki;
 pub mod fsrs_review;
 pub mod helpers;
 pub mod mcp;
+pub mod media;
+pub mod network;
 pub mod notes;
 pub mod ocr;
 pub mod openai_codex;

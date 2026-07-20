@@ -91,8 +91,20 @@ impl FsrsRating {
 
 #[cfg(test)]
 const MS_PER_MINUTE: i64 = 60_000;
-#[cfg(test)]
 const MS_PER_DAY: i64 = 86_400_000;
+
+/// 每日新卡上限默认值（对齐 Anki 默认牌组配置）
+pub const DEFAULT_NEW_PER_DAY: u32 = 20;
+/// 每日复习上限默认值（对齐 Anki 默认牌组配置）
+pub const DEFAULT_REVIEWS_PER_DAY: u32 = 200;
+/// leech 阈值默认值（Anki 默认 8 次 lapse 标记 leech）
+pub const DEFAULT_LEECH_THRESHOLD: u32 = 8;
+/// 留存率统计中 mature 卡的稳定度阈值（对齐 Anki interval >= 21 天）
+const MATURE_STABILITY_DAYS: f64 = 21.0;
+/// 统计窗口上限（天）
+const MAX_STATISTICS_DAYS: u32 = 366;
+/// rs-fsrs 默认最大间隔（天），fuzz 计算时使用
+const MAXIMUM_INTERVAL_DAYS: f64 = 36_500.0;
 
 /// 持久化的卡片调度状态
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,6 +127,12 @@ pub struct FsrsCardState {
     pub desired_retention: Option<f64>,
     pub created_at: String,
     pub updated_at: String,
+    /// leech 标记（连续 lapse 达阈值后置位；见 V20260722）
+    #[serde(default)]
+    pub leech: bool,
+    /// bury 到期时间（本地日切次日零点，毫秒）；到期后自动恢复调度
+    #[serde(default)]
+    pub buried_until_ms: Option<i64>,
 }
 
 /// 到期队列项：调度状态 + anki_cards 正反面（供复习 UI）
@@ -304,6 +322,10 @@ pub struct FsrsEnqueuedCard {
 }
 
 /// 统计
+///
+/// `due` 为“现在可复习”的数量：Review 卡按本地日切窗口计（今天到期即可复习），
+/// Learning/Relearning/New 按精确时间计，并已扣除每日上限与 bury。
+/// 新增字段均带默认值，旧序列化数据可继续反序列化。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsrsStats {
@@ -315,6 +337,167 @@ pub struct FsrsStats {
     pub relearning: i64,
     pub suspended: i64,
     pub reviews_today: i64,
+    /// 当前处于 bury 状态（buried_until_ms 未到期）的未暂停卡数
+    #[serde(default)]
+    pub buried: i64,
+    /// leech 标记卡数（含已暂停）
+    #[serde(default)]
+    pub leech: i64,
+    /// 今日剩余可引入的新卡额度
+    #[serde(default)]
+    pub new_remaining_today: i64,
+    /// 今日剩余可复习的 Review 卡额度
+    #[serde(default)]
+    pub reviews_remaining_today: i64,
+}
+
+/// 牌组级调度配置（存于 anki_decks.config_json，snake_case 键；未知键保留）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsSchedulerConfig {
+    pub new_per_day: u32,
+    pub reviews_per_day: u32,
+    pub desired_retention: f64,
+    pub leech_threshold: u32,
+    /// "suspend"：标记 leech 并自动暂停；"mark"：仅标记
+    pub leech_action: String,
+    /// 是否启用确定性 fuzz（默认关闭，保持调度可复现）
+    pub enable_fuzz: bool,
+}
+
+impl Default for FsrsSchedulerConfig {
+    fn default() -> Self {
+        Self {
+            new_per_day: DEFAULT_NEW_PER_DAY,
+            reviews_per_day: DEFAULT_REVIEWS_PER_DAY,
+            desired_retention: DEFAULT_DESIRED_RETENTION,
+            leech_threshold: DEFAULT_LEECH_THRESHOLD,
+            leech_action: "suspend".to_string(),
+            enable_fuzz: false,
+        }
+    }
+}
+
+/// 调度配置的部分更新；None 字段保持不变
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsSchedulerConfigUpdate {
+    #[serde(default)]
+    pub new_per_day: Option<u32>,
+    #[serde(default)]
+    pub reviews_per_day: Option<u32>,
+    #[serde(default)]
+    pub desired_retention: Option<f64>,
+    #[serde(default)]
+    pub leech_threshold: Option<u32>,
+    #[serde(default)]
+    pub leech_action: Option<String>,
+    #[serde(default)]
+    pub enable_fuzz: Option<bool>,
+}
+
+/// bury / unbury 结果。重复操作不写库（changed=false）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsBuryResult {
+    pub state: FsrsCardState,
+    pub changed: bool,
+}
+
+/// 单日复习聚合（供热力图）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsDailyReviewStat {
+    /// 本地日期 YYYY-MM-DD
+    pub date: String,
+    pub total: i64,
+    pub again: i64,
+    pub hard: i64,
+    pub good: i64,
+    pub easy: i64,
+    /// 当日引入的新卡复习数（state_before = New）
+    pub new_introduced: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsRatingDistribution {
+    pub again: i64,
+    pub hard: i64,
+    pub good: i64,
+    pub easy: i64,
+    pub total: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsStateBreakdown {
+    pub new_count: i64,
+    pub learning: i64,
+    pub review: i64,
+    pub relearning: i64,
+    pub suspended: i64,
+    pub buried: i64,
+    pub leech: i64,
+    pub total: i64,
+}
+
+/// 简单留存率：pass = rating >= 2；young/mature 以评分前稳定度 21 天划分，
+/// 仅统计 Review 状态卡的评分。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsRetentionStats {
+    pub young_reviews: i64,
+    pub young_passed: i64,
+    pub mature_reviews: i64,
+    pub mature_passed: i64,
+    pub overall_pass_rate: f64,
+    pub young_pass_rate: f64,
+    pub mature_pass_rate: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsDailyLimitsStatus {
+    pub new_per_day: i64,
+    pub reviews_per_day: i64,
+    pub new_introduced_today: i64,
+    pub reviews_done_today: i64,
+    pub new_remaining_today: i64,
+    pub reviews_remaining_today: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsDueForecastDay {
+    /// 本地日期 YYYY-MM-DD；今天一桶包含全部积压
+    pub date: String,
+    pub count: i64,
+}
+
+/// 一次性聚合统计（热力图 / 评分分布 / 状态构成 / 留存率 / 限额 / 到期预测）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsReviewStatistics {
+    pub generated_at_ms: i64,
+    pub day_start_ms: i64,
+    /// 实际统计窗口天数
+    pub days: u32,
+    /// 仅包含有复习记录的日期，升序；前端自行补零
+    pub daily_reviews: Vec<FsrsDailyReviewStat>,
+    pub rating_distribution: FsrsRatingDistribution,
+    pub state_breakdown: FsrsStateBreakdown,
+    pub retention: FsrsRetentionStats,
+    pub daily_limits: FsrsDailyLimitsStatus,
+    /// 未来 15 个本地日的到期预测（含今天积压桶）；只含 count > 0 的日期
+    pub due_forecast: Vec<FsrsDueForecastDay>,
+}
+
+/// 今日额度（引入的新卡数 / 完成的 Review 复习数）
+#[derive(Debug, Clone, Copy)]
+struct FsrsDailyCounters {
+    new_introduced: i64,
+    reviews_done: i64,
 }
 
 /// 单次调度计算结果（内存）
@@ -385,6 +568,11 @@ struct FsrsStateBeforeSnapshot {
     suspended: bool,
     fsrs_params_version: String,
     desired_retention: Option<f64>,
+    /// 早于 V20260722 的快照缺少以下字段；当时列尚不存在，默认值即正确值。
+    #[serde(default)]
+    leech: bool,
+    #[serde(default)]
+    buried_until_ms: Option<i64>,
 }
 
 impl FsrsStateBeforeSnapshot {
@@ -408,6 +596,8 @@ impl FsrsStateBeforeSnapshot {
             suspended: state.suspended,
             fsrs_params_version: state.fsrs_params_version.clone(),
             desired_retention: state.desired_retention,
+            leech: state.leech,
+            buried_until_ms: state.buried_until_ms,
         }
     }
 
@@ -1087,10 +1277,7 @@ impl FsrsReviewService {
         let placeholders = vec!["?"; normalized_ids.len()].join(",");
         let sql = format!(
             "SELECT
-                s.id, s.anki_card_id, s.deck_id, s.state, s.stability, s.difficulty,
-                s.elapsed_days, s.scheduled_days, s.reps, s.lapses, s.due_ms,
-                s.last_review_ms, s.suspended, s.fsrs_params_version,
-                s.desired_retention, s.created_at, s.updated_at,
+                {},
                 COALESCE(s.local_version, 0),
                 ac.id, COALESCE(ac.is_error_card, 0),
                 latest.id, latest.anki_card_id, latest.rating, latest.review_ms,
@@ -1111,6 +1298,7 @@ impl FsrsReviewService {
              WHERE ac.id IN ({})
                AND ac.deleted_at IS NULL
                AND dt.deleted_at IS NULL",
+            Self::STATE_COLUMNS,
             placeholders
         );
         let conn = self
@@ -1122,27 +1310,27 @@ impl FsrsReviewService {
             .map_err(|e| AppError::database(format!("准备 Library 复习状态查询失败: {}", e)))?;
         let rows = stmt
             .query_map(rusqlite::params_from_iter(normalized_ids.iter()), |row| {
-                let card_id: String = row.get(18)?;
-                let is_error_card = row.get::<_, i32>(19)? != 0;
+                let card_id: String = row.get(20)?;
+                let is_error_card = row.get::<_, i32>(21)? != 0;
                 let state_id: Option<String> = row.get(0)?;
                 let record = state_id
                     .map(|_| {
                         Ok::<FsrsAgentStateRecord, rusqlite::Error>(FsrsAgentStateRecord {
                             state: Self::map_state_row(row)?,
-                            review_version: row.get(17)?,
+                            review_version: row.get(19)?,
                         })
                     })
                     .transpose()?;
-                let latest_log_id: Option<String> = row.get(20)?;
+                let latest_log_id: Option<String> = row.get(22)?;
                 let latest = latest_log_id
                     .map(|log_id| {
                         Ok::<FsrsAgentReviewLogRecord, rusqlite::Error>(FsrsAgentReviewLogRecord {
                             log_id,
-                            anki_card_id: row.get(21)?,
-                            rating: row.get(22)?,
-                            review_ms: row.get(23)?,
-                            state_before_json: row.get(24)?,
-                            updated_at: row.get(25)?,
+                            anki_card_id: row.get(23)?,
+                            rating: row.get(24)?,
+                            review_ms: row.get(25)?,
+                            state_before_json: row.get(26)?,
+                            updated_at: row.get(27)?,
                         })
                     })
                     .transpose()?;
@@ -1208,13 +1396,24 @@ impl FsrsReviewService {
         self.get_due_inner(limit, Some(concept_scores))
     }
 
+    /// 读取一批到期卡片。
+    ///
+    /// 到期语义对齐 Anki：
+    /// - Learning / Relearning / New 按精确时间（`due_ms <= now`）；
+    /// - Review 按本地日切窗口（`due_ms < 次日零点`，即“今天到期”全天可复习）；
+    /// - 排除 suspended 与未到期的 buried；
+    /// - New / Review 各自受每日剩余额度约束（Learning 队列不受限）。
+    ///
+    /// 队列顺序：Learning/Relearning → Review → New，组内按 due 升序。
     fn get_due_inner(
         &self,
         limit: Option<u32>,
         concept_scores: Option<&HashMap<String, f64>>,
     ) -> Result<Vec<FsrsDueCard>> {
         let limit = limit.unwrap_or(50).min(500) as i64;
-        let now_ms = Utc::now().timestamp_millis();
+        let now = Utc::now();
+        let now_ms = now.timestamp_millis();
+        let (day_start_ms, next_day_start_ms) = local_day_bounds_ms();
         // 取稍多再排序截断，避免薄弱卡被 due 略晚挡在 limit 外
         let fetch_limit = if concept_scores.is_some() {
             (limit * 3).min(500)
@@ -1226,13 +1425,18 @@ impl FsrsReviewService {
             .get_conn_safe()
             .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
 
-        let mut stmt = conn
-            .prepare(
-                "SELECT s.id, s.anki_card_id, s.deck_id, s.state, s.stability, s.difficulty,
-                        s.elapsed_days, s.scheduled_days, s.reps, s.lapses, s.due_ms, s.last_review_ms,
-                        s.suspended, s.fsrs_params_version, s.desired_retention, s.created_at, s.updated_at,
+        let config = Self::load_scheduler_config(&conn, DEFAULT_DECK_ID)?;
+        let counters = Self::load_daily_counters(&conn, day_start_ms, next_day_start_ms)?;
+        let new_remaining =
+            (config.new_per_day as i64 - counters.new_introduced).clamp(0, fetch_limit);
+        let review_remaining =
+            (config.reviews_per_day as i64 - counters.reviews_done).clamp(0, fetch_limit);
+
+        let bucket_sql = |due_condition: &str| {
+            format!(
+                "SELECT {},
                         COALESCE(a.front, ''), COALESCE(a.back, ''), COALESCE(a.tags_json, '[]'),
-                        a.text, a.template_id, COALESCE(a.extra_fields_json, '{}'),
+                        a.text, a.template_id, COALESCE(a.extra_fields_json, '{{}}'),
                         COALESCE(a.images_json, '[]'), COALESCE(a.is_error_card, 0), a.error_content
                  FROM fsrs_card_states s
                  INNER JOIN anki_cards a ON a.id = s.anki_card_id
@@ -1242,42 +1446,69 @@ impl FsrsReviewService {
                    AND dt.deleted_at IS NULL
                    AND COALESCE(a.is_error_card, 0) = 0
                    AND s.suspended = 0
-                   AND s.due_ms <= ?1
+                   AND (s.buried_until_ms IS NULL OR s.buried_until_ms <= ?1)
+                   AND {}
                  ORDER BY s.due_ms ASC
-                 LIMIT ?2",
+                 LIMIT ?3",
+                Self::STATE_COLUMNS,
+                due_condition
             )
-            .map_err(|e| AppError::database(format!("准备到期查询失败: {}", e)))?;
-
-        let rows = stmt
-            .query_map(params![now_ms, fetch_limit], |row| {
-                let state = Self::map_state_row(row)?;
-                let front: String = row.get(17)?;
-                let back: String = row.get(18)?;
-                let tags_json: String = row.get(19)?;
-                let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-                let extra_fields_json: String = row.get(22)?;
-                let extra_fields: HashMap<String, String> =
-                    serde_json::from_str(&extra_fields_json).unwrap_or_default();
-                let images_json: String = row.get(23)?;
-                let images: Vec<String> = serde_json::from_str(&images_json).unwrap_or_default();
-                Ok(FsrsDueCard {
-                    state,
-                    front,
-                    back,
-                    tags,
-                    text: row.get(20)?,
-                    template_id: row.get(21)?,
-                    extra_fields,
-                    images,
-                    is_error_card: row.get::<_, i32>(24)? != 0,
-                    error_content: row.get(25)?,
-                })
+        };
+        let map_due_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<FsrsDueCard> {
+            let state = Self::map_state_row(row)?;
+            let front: String = row.get(19)?;
+            let back: String = row.get(20)?;
+            let tags_json: String = row.get(21)?;
+            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            let extra_fields_json: String = row.get(24)?;
+            let extra_fields: HashMap<String, String> =
+                serde_json::from_str(&extra_fields_json).unwrap_or_default();
+            let images_json: String = row.get(25)?;
+            let images: Vec<String> = serde_json::from_str(&images_json).unwrap_or_default();
+            Ok(FsrsDueCard {
+                state,
+                front,
+                back,
+                tags,
+                text: row.get(22)?,
+                template_id: row.get(23)?,
+                extra_fields,
+                images,
+                is_error_card: row.get::<_, i32>(26)? != 0,
+                error_content: row.get(27)?,
             })
-            .map_err(|e| AppError::database(format!("查询到期卡片失败: {}", e)))?;
+        };
+        // (due 条件, ?2 参数, 本桶 LIMIT)。?2 恒为对应的时间界，令三个桶共享参数形状。
+        let buckets: [(&str, i64, i64); 3] = [
+            // Learning / Relearning：精确到期时间
+            ("s.state IN (1, 3) AND s.due_ms <= ?2", now_ms, fetch_limit),
+            // Review：本地日切窗口
+            (
+                "s.state = 2 AND s.due_ms < ?2",
+                next_day_start_ms,
+                review_remaining,
+            ),
+            // New：入队即到期，受每日新卡额度约束
+            ("s.state = 0 AND s.due_ms <= ?2", now_ms, new_remaining),
+        ];
 
-        let mut out = Vec::new();
-        for row in rows {
-            out.push(row.map_err(|e| AppError::database(format!("解析到期行失败: {}", e)))?);
+        let mut out: Vec<FsrsDueCard> = Vec::new();
+        for (condition, boundary_ms, bucket_limit) in buckets {
+            if bucket_limit <= 0 || (concept_scores.is_none() && out.len() as i64 >= limit) {
+                continue;
+            }
+            let mut stmt = conn
+                .prepare(&bucket_sql(condition))
+                .map_err(|e| AppError::database(format!("准备到期查询失败: {}", e)))?;
+            let rows = stmt
+                .query_map(params![now_ms, boundary_ms, bucket_limit], map_due_row)
+                .map_err(|e| AppError::database(format!("查询到期卡片失败: {}", e)))?;
+            for row in rows {
+                out.push(row.map_err(|e| AppError::database(format!("解析到期行失败: {}", e)))?);
+            }
+        }
+        if concept_scores.is_none() {
+            out.truncate(limit as usize);
         }
 
         if let Some(scores) = concept_scores {
@@ -1398,12 +1629,30 @@ impl FsrsReviewService {
             ));
         }
 
+        let config = Self::load_scheduler_config(
+            &tx,
+            before.deck_id.as_deref().unwrap_or(DEFAULT_DECK_ID),
+        )?;
         let state_before_json =
             serde_json::to_string(&FsrsStateBeforeSnapshot::from_state(&before))
                 .map_err(|e| AppError::database(format!("序列化评分前状态失败: {}", e)))?;
         let mut outcome = schedule_review(&before, rating, now_ms);
+        if config.enable_fuzz {
+            apply_deterministic_fuzz(&mut outcome, &before, now_ms);
+        }
         apply_mastery_bias_to_outcome(&mut outcome, mastery_score, now_ms);
         let log_id = resolved_op_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+        // leech：本次评分产生 lapse 且累计 lapse 达阈值（其后每半阈值重复触发）。
+        // 与 Anki 语义一致；leech_action = "suspend" 时在同一事务内自动暂停。
+        let lapsed = outcome.lapses > before.lapses;
+        let threshold = config.leech_threshold.max(1) as i32;
+        let half_threshold = (threshold / 2).max(1);
+        let leech_triggered = lapsed
+            && outcome.lapses >= threshold
+            && (outcome.lapses - threshold) % half_threshold == 0;
+        let leech_flag = before.leech || leech_triggered;
+        let auto_suspend = leech_triggered && config.leech_action == "suspend";
 
         let updated = if enforce_expected_last_review {
             tx.execute(
@@ -1419,6 +1668,9 @@ impl FsrsReviewService {
                 last_review_ms = ?9,
                 fsrs_params_version = ?10,
                 updated_at = ?11,
+                leech = ?14,
+                suspended = ?15,
+                buried_until_ms = NULL,
                 local_version = COALESCE(local_version, 0) + 1
              WHERE id = ?12 AND deleted_at IS NULL
                AND (
@@ -1439,6 +1691,8 @@ impl FsrsReviewService {
                     now_rfc,
                     card_state_id,
                     expected_last_review_ms,
+                    if leech_flag { 1 } else { 0 },
+                    if auto_suspend { 1 } else { 0 },
                 ],
             )
             .map_err(|e| AppError::database(format!("更新 fsrs_card_states 失败: {}", e)))?
@@ -1456,6 +1710,9 @@ impl FsrsReviewService {
                 last_review_ms = ?9,
                 fsrs_params_version = ?10,
                 updated_at = ?11,
+                leech = ?13,
+                suspended = ?14,
+                buried_until_ms = NULL,
                 local_version = COALESCE(local_version, 0) + 1
              WHERE id = ?12 AND deleted_at IS NULL",
                 params![
@@ -1471,6 +1728,8 @@ impl FsrsReviewService {
                     FSRS_PARAMS_VERSION,
                     now_rfc,
                     card_state_id,
+                    if leech_flag { 1 } else { 0 },
+                    if auto_suspend { 1 } else { 0 },
                 ],
             )
             .map_err(|e| AppError::database(format!("更新 fsrs_card_states 失败: {}", e)))?
@@ -1585,10 +1844,18 @@ impl FsrsReviewService {
             return Err(AppError::validation("card is suspended"));
         }
 
+        let config = Self::load_scheduler_config(
+            &conn,
+            before.deck_id.as_deref().unwrap_or(DEFAULT_DECK_ID),
+        )?;
         let mut intervals = Vec::with_capacity(4);
         for rating_u8 in 1u8..=4 {
             let rating = FsrsRating::from_u8(rating_u8).expect("1..=4 is valid");
             let mut outcome = schedule_review(&before, rating, now_ms);
+            if config.enable_fuzz {
+                // fuzz 因子只依赖 (card_state_id, reps)，同一张卡预览与评分结果一致
+                apply_deterministic_fuzz(&mut outcome, &before, now_ms);
+            }
             apply_mastery_bias_to_outcome(&mut outcome, mastery_score, now_ms);
             intervals.push(FsrsPreviewInterval {
                 rating: rating_u8,
@@ -1775,6 +2042,8 @@ impl FsrsReviewService {
                     suspended = ?11,
                     fsrs_params_version = ?12,
                     desired_retention = ?13,
+                    leech = ?18,
+                    buried_until_ms = ?19,
                     updated_at = ?14,
                     local_version = COALESCE(local_version, 0) + 1
                  WHERE id = ?15
@@ -1799,6 +2068,8 @@ impl FsrsReviewService {
                     card_state_id,
                     review_ms,
                     expected_state_updated_at,
+                    if snapshot.leech { 1 } else { 0 },
+                    snapshot.buried_until_ms,
                 ],
             )
             .map_err(|e| AppError::database(format!("恢复 FSRS 卡片状态失败: {}", e)))?;
@@ -2102,6 +2373,8 @@ impl FsrsReviewService {
                     suspended = ?11,
                     fsrs_params_version = ?12,
                     desired_retention = ?13,
+                    leech = ?20,
+                    buried_until_ms = ?21,
                     updated_at = ?14,
                     local_version = COALESCE(local_version, 0) + 1
                  WHERE id = ?15
@@ -2138,6 +2411,8 @@ impl FsrsReviewService {
                     expected_review_version,
                     latest_review.review_ms,
                     record.state.updated_at,
+                    if snapshot.leech { 1 } else { 0 },
+                    snapshot.buried_until_ms,
                 ],
             )
             .map_err(|e| AppError::database(format!("恢复 Agent FSRS 卡片状态失败: {}", e)))?;
@@ -2253,40 +2528,55 @@ impl FsrsReviewService {
         })
     }
 
-    /// 统计
+    /// 统计。`due` 与 [`Self::get_due`] 使用同一套到期窗口 / bury / 每日额度语义。
     pub fn get_stats(&self) -> Result<FsrsStats> {
         let now_ms = Utc::now().timestamp_millis();
-        let local_now = Local::now();
-        let (day_start_ms, next_day_start_ms) = day_bounds_ms(&local_now).unwrap_or_else(|| {
-            // Some time zones have a skipped/ambiguous midnight. Falling back to
-            // UTC is preferable to panicking; ordinary DST transitions resolve
-            // through `earliest()` in `day_bounds_ms`.
-            day_bounds_ms(&Utc::now()).expect("UTC day boundaries are always valid")
-        });
+        let (day_start_ms, next_day_start_ms) = local_day_bounds_ms();
 
         let conn = self
             .db
             .get_conn_safe()
             .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
 
-        let (total, due, new_count, learning, review, relearning, suspended): (
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-        ) = conn
+        let config = Self::load_scheduler_config(&conn, DEFAULT_DECK_ID)?;
+        let counters = Self::load_daily_counters(&conn, day_start_ms, next_day_start_ms)?;
+        let new_remaining = (config.new_per_day as i64 - counters.new_introduced).max(0);
+        let review_remaining = (config.reviews_per_day as i64 - counters.reviews_done).max(0);
+
+        #[allow(clippy::type_complexity)]
+        let (
+            total,
+            new_count,
+            learning,
+            review,
+            relearning,
+            suspended,
+            buried,
+            leech,
+            learning_due,
+            review_due,
+            new_due,
+        ): (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) = conn
             .query_row(
                 "SELECT
                     COUNT(*),
-                    COALESCE(SUM(CASE WHEN s.suspended = 0 AND s.due_ms <= ?1 THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN s.state = 0 AND s.suspended = 0 THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN s.state = 1 AND s.suspended = 0 THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN s.state = 2 AND s.suspended = 0 THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN s.state = 3 AND s.suspended = 0 THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN s.suspended = 1 THEN 1 ELSE 0 END), 0)
+                    COALESCE(SUM(CASE WHEN s.suspended = 1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN s.suspended = 0
+                        AND COALESCE(s.buried_until_ms, 0) > ?1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN COALESCE(s.leech, 0) = 1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN s.suspended = 0
+                        AND (s.buried_until_ms IS NULL OR s.buried_until_ms <= ?1)
+                        AND s.state IN (1, 3) AND s.due_ms <= ?1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN s.suspended = 0
+                        AND (s.buried_until_ms IS NULL OR s.buried_until_ms <= ?1)
+                        AND s.state = 2 AND s.due_ms < ?2 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN s.suspended = 0
+                        AND (s.buried_until_ms IS NULL OR s.buried_until_ms <= ?1)
+                        AND s.state = 0 AND s.due_ms <= ?1 THEN 1 ELSE 0 END), 0)
                  FROM fsrs_card_states s
                  INNER JOIN anki_cards a ON a.id = s.anki_card_id
                  INNER JOIN document_tasks dt ON dt.id = a.task_id
@@ -2294,7 +2584,7 @@ impl FsrsReviewService {
                    AND a.deleted_at IS NULL
                    AND dt.deleted_at IS NULL
                    AND COALESCE(a.is_error_card, 0) = 0",
-                params![now_ms],
+                params![now_ms, next_day_start_ms],
                 |row| {
                     Ok((
                         row.get(0)?,
@@ -2304,10 +2594,15 @@ impl FsrsReviewService {
                         row.get(4)?,
                         row.get(5)?,
                         row.get(6)?,
+                        row.get(7)?,
+                        row.get(8)?,
+                        row.get(9)?,
+                        row.get(10)?,
                     ))
                 },
             )
             .map_err(|e| AppError::database(e.to_string()))?;
+        let due = learning_due + review_due.min(review_remaining) + new_due.min(new_remaining);
         let reviews_today: i64 = conn
             .query_row(
                 "SELECT COUNT(*)
@@ -2336,6 +2631,10 @@ impl FsrsReviewService {
             relearning,
             suspended,
             reviews_today,
+            buried,
+            leech,
+            new_remaining_today: new_remaining,
+            reviews_remaining_today: review_remaining,
         })
     }
 
@@ -2358,21 +2657,31 @@ impl FsrsReviewService {
             desired_retention: row.get(14)?,
             created_at: row.get(15)?,
             updated_at: row.get(16)?,
+            leech: row.get::<_, i32>(17)? != 0,
+            buried_until_ms: row.get(18)?,
         })
     }
 
+    /// `map_state_row` 对应的标准列清单（0..=18）。所有加载 FsrsCardState 的
+    /// SQL 必须以这 19 列开头，追加列从索引 19 起。
+    const STATE_COLUMNS: &'static str = "s.id, s.anki_card_id, s.deck_id, s.state, s.stability, s.difficulty,
+             s.elapsed_days, s.scheduled_days, s.reps, s.lapses, s.due_ms, s.last_review_ms,
+             s.suspended, s.fsrs_params_version, s.desired_retention, s.created_at, s.updated_at,
+             COALESCE(s.leech, 0), s.buried_until_ms";
+
     fn load_state_by_id(conn: &rusqlite::Connection, id: &str) -> Result<Option<FsrsCardState>> {
         conn.query_row(
-            "SELECT s.id, s.anki_card_id, s.deck_id, s.state, s.stability, s.difficulty,
-                    s.elapsed_days, s.scheduled_days, s.reps, s.lapses, s.due_ms, s.last_review_ms,
-                    s.suspended, s.fsrs_params_version, s.desired_retention, s.created_at, s.updated_at
-             FROM fsrs_card_states s
-             INNER JOIN anki_cards a ON a.id = s.anki_card_id
-             INNER JOIN document_tasks dt ON dt.id = a.task_id
-             WHERE s.id = ?1
-               AND s.deleted_at IS NULL
-               AND a.deleted_at IS NULL
-               AND dt.deleted_at IS NULL",
+            &format!(
+                "SELECT {}
+                 FROM fsrs_card_states s
+                 INNER JOIN anki_cards a ON a.id = s.anki_card_id
+                 INNER JOIN document_tasks dt ON dt.id = a.task_id
+                 WHERE s.id = ?1
+                   AND s.deleted_at IS NULL
+                   AND a.deleted_at IS NULL
+                   AND dt.deleted_at IS NULL",
+                Self::STATE_COLUMNS
+            ),
             params![id],
             Self::map_state_row,
         )
@@ -2403,23 +2712,23 @@ impl FsrsReviewService {
         card_id: &str,
     ) -> Result<Option<FsrsAgentStateRecord>> {
         conn.query_row(
-            "SELECT s.id, s.anki_card_id, s.deck_id, s.state, s.stability, s.difficulty,
-                    s.elapsed_days, s.scheduled_days, s.reps, s.lapses, s.due_ms,
-                    s.last_review_ms, s.suspended, s.fsrs_params_version,
-                    s.desired_retention, s.created_at, s.updated_at,
-                    COALESCE(s.local_version, 0)
-             FROM fsrs_card_states s
-             INNER JOIN anki_cards ac ON ac.id = s.anki_card_id
-             INNER JOIN document_tasks dt ON dt.id = ac.task_id
-             WHERE s.anki_card_id = ?1
-               AND s.deleted_at IS NULL
-               AND ac.deleted_at IS NULL
-               AND dt.deleted_at IS NULL",
+            &format!(
+                "SELECT {},
+                        COALESCE(s.local_version, 0)
+                 FROM fsrs_card_states s
+                 INNER JOIN anki_cards ac ON ac.id = s.anki_card_id
+                 INNER JOIN document_tasks dt ON dt.id = ac.task_id
+                 WHERE s.anki_card_id = ?1
+                   AND s.deleted_at IS NULL
+                   AND ac.deleted_at IS NULL
+                   AND dt.deleted_at IS NULL",
+                Self::STATE_COLUMNS
+            ),
             params![card_id],
             |row| {
                 Ok(FsrsAgentStateRecord {
                     state: Self::map_state_row(row)?,
-                    review_version: row.get(17)?,
+                    review_version: row.get(19)?,
                 })
             },
         )
@@ -2635,22 +2944,23 @@ impl FsrsReviewService {
         id: &str,
     ) -> Result<Option<(FsrsCardState, bool)>> {
         conn.query_row(
-            "SELECT s.id, s.anki_card_id, s.deck_id, s.state, s.stability, s.difficulty,
-                    s.elapsed_days, s.scheduled_days, s.reps, s.lapses, s.due_ms, s.last_review_ms,
-                    s.suspended, s.fsrs_params_version, s.desired_retention, s.created_at, s.updated_at,
-                    COALESCE(a.is_error_card, 0)
-             FROM fsrs_card_states s
-             INNER JOIN anki_cards a ON a.id = s.anki_card_id
-             INNER JOIN document_tasks dt ON dt.id = a.task_id
-             WHERE s.id = ?1
-               AND s.deleted_at IS NULL
-               AND a.deleted_at IS NULL
-               AND dt.deleted_at IS NULL",
+            &format!(
+                "SELECT {},
+                        COALESCE(a.is_error_card, 0)
+                 FROM fsrs_card_states s
+                 INNER JOIN anki_cards a ON a.id = s.anki_card_id
+                 INNER JOIN document_tasks dt ON dt.id = a.task_id
+                 WHERE s.id = ?1
+                   AND s.deleted_at IS NULL
+                   AND a.deleted_at IS NULL
+                   AND dt.deleted_at IS NULL",
+                Self::STATE_COLUMNS
+            ),
             params![id],
             |row| {
                 Ok((
                     Self::map_state_row(row)?,
-                    row.get::<_, i32>(17)? != 0,
+                    row.get::<_, i32>(19)? != 0,
                 ))
             },
         )
@@ -2663,16 +2973,17 @@ impl FsrsReviewService {
         anki_card_id: &str,
     ) -> Result<Option<FsrsCardState>> {
         conn.query_row(
-            "SELECT s.id, s.anki_card_id, s.deck_id, s.state, s.stability, s.difficulty,
-                    s.elapsed_days, s.scheduled_days, s.reps, s.lapses, s.due_ms, s.last_review_ms,
-                    s.suspended, s.fsrs_params_version, s.desired_retention, s.created_at, s.updated_at
-             FROM fsrs_card_states s
-             INNER JOIN anki_cards a ON a.id = s.anki_card_id
-             INNER JOIN document_tasks dt ON dt.id = a.task_id
-             WHERE s.anki_card_id = ?1
-               AND s.deleted_at IS NULL
-               AND a.deleted_at IS NULL
-               AND dt.deleted_at IS NULL",
+            &format!(
+                "SELECT {}
+                 FROM fsrs_card_states s
+                 INNER JOIN anki_cards a ON a.id = s.anki_card_id
+                 INNER JOIN document_tasks dt ON dt.id = a.task_id
+                 WHERE s.anki_card_id = ?1
+                   AND s.deleted_at IS NULL
+                   AND a.deleted_at IS NULL
+                   AND dt.deleted_at IS NULL",
+                Self::STATE_COLUMNS
+            ),
             params![anki_card_id],
             Self::map_state_row,
         )

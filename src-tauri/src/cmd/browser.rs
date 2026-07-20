@@ -214,11 +214,16 @@ pub async fn browser_close(
     sessionId: Option<String>,
 ) -> CmdResult<()> {
     if let Some(id) = sessionId.as_deref() {
-        // 校验 id 匹配（若有活跃 session）
-        if let Some(active) = service.get_active_state() {
-            if active.id != id {
+        match service.get_active_state() {
+            Some(active) if active.id != id => {
                 return Err(format!("NOT_FOUND: session {id}"));
             }
+            // 显式指定 sessionId 但无活跃 session：同样是 NOT_FOUND，
+            // 而不是静默「成功」销毁窗口（幂等关闭请省略 sessionId）
+            None => {
+                return Err(format!("NOT_FOUND: session {id}"));
+            }
+            _ => {}
         }
     }
     service.close_session().await.map_err(map_err)

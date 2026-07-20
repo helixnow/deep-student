@@ -4719,6 +4719,13 @@ pub struct UpdateMindMapInput {
     /// 乐观并发控制：期望的 updatedAt（ISO8601）
     #[serde(default)]
     pub expected_updated_at: Option<String>,
+
+    /// 版本快照来源（'manual' | 'auto'），缺省为 'manual'
+    ///
+    /// 仅影响 mindmap_versions 的 source 标记与自动保存合并窗口分组；
+    /// chat% 前缀保留给聊天工具链路（builtin executor），UI 路径不可伪造。
+    #[serde(default)]
+    pub version_source: Option<String>,
 }
 
 /// 创建知识导图
@@ -4733,6 +4740,9 @@ pub async fn vfs_create_mindmap(
         params.folder_id
     );
 
+    // ★ 2026-07（B14）：内容字节上限（MindMap 50MB，与资源类型上限表一致）
+    validate_file_size(&VfsResourceType::MindMap, &params.content).map_err(|e| e.to_string())?;
+
     let create_params = VfsCreateMindMapParams {
         title: params.title,
         description: params.description,
@@ -4741,13 +4751,8 @@ pub async fn vfs_create_mindmap(
         theme: params.theme,
     };
 
-    if let Some(folder_id) = params.folder_id {
-        VfsMindMapRepo::create_mindmap_in_folder(&vfs_db, create_params, Some(&folder_id))
-            .map_err(|e| e.to_string())
-    } else {
-        VfsMindMapRepo::create_mindmap_in_folder(&vfs_db, create_params, None)
-            .map_err(|e| e.to_string())
-    }
+    VfsMindMapRepo::create_mindmap_in_folder(&vfs_db, create_params, params.folder_id.as_deref())
+        .map_err(|e| e.to_string())
 }
 
 /// 获取知识导图元数据
@@ -4789,14 +4794,18 @@ pub async fn vfs_get_mindmap_content(
 }
 
 /// 获取思维导图的版本历史
+///
+/// `limit` 可选（1..=500），缺省 100（与旧行为一致）。
 #[tauri::command]
 pub async fn vfs_get_mindmap_versions(
     mindmap_id: String,
+    limit: Option<u32>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<Vec<VfsMindMapVersion>, String> {
     log::debug!(
-        "[VFS::handlers] vfs_get_mindmap_versions: id={}",
-        mindmap_id
+        "[VFS::handlers] vfs_get_mindmap_versions: id={}, limit={:?}",
+        mindmap_id,
+        limit
     );
 
     if !mindmap_id.starts_with("mm_") {
@@ -4807,7 +4816,37 @@ pub async fn vfs_get_mindmap_versions(
         .to_string());
     }
 
-    VfsMindMapRepo::get_versions(&vfs_db, &mindmap_id).map_err(|e| e.to_string())
+    let effective_limit = limit
+        .unwrap_or(VfsMindMapRepo::DEFAULT_VERSION_PAGE_SIZE)
+        .clamp(1, 500);
+
+    VfsMindMapRepo::get_versions_paged(&vfs_db, &mindmap_id, effective_limit)
+        .map_err(|e| e.to_string())
+}
+
+/// 恢复思维导图到指定历史版本
+///
+/// ★ 2026-07 新增（B6）：事务内先将当前内容快照为 `restore_backup` 版本，
+/// 再用目标版本内容覆盖主资源，返回恢复后的导图元数据。
+#[tauri::command]
+pub async fn vfs_restore_mindmap_version(
+    version_id: String,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+) -> Result<VfsMindMap, String> {
+    log::info!(
+        "[VFS::handlers] vfs_restore_mindmap_version: id={}",
+        version_id
+    );
+
+    if !version_id.starts_with("mv_") {
+        return Err(VfsError::InvalidArgument {
+            param: "version_id".to_string(),
+            reason: format!("Invalid version ID format: {}", version_id),
+        }
+        .to_string());
+    }
+
+    VfsMindMapRepo::restore_version(&vfs_db, &version_id).map_err(|e| e.to_string())
 }
 
 /// 获取指定版本的思维导图内容
@@ -4868,6 +4907,27 @@ pub async fn vfs_update_mindmap(
         .to_string());
     }
 
+    // ★ 2026-07（B14）：更新路径补内容字节上限（MindMap 50MB）
+    if let Some(content) = params.content.as_deref() {
+        validate_file_size(&VfsResourceType::MindMap, content).map_err(|e| e.to_string())?;
+    }
+
+    // 版本来源白名单：UI 路径只允许 manual/auto，缺省 manual（与旧行为一致）；
+    // chat% 保留给聊天工具链路，非法值回退 manual 并告警，防止绕过版本清理策略
+    let version_source = match params.version_source.as_deref() {
+        None | Some("manual") => "manual",
+        Some("auto") => "auto",
+        Some(other) => {
+            log::warn!(
+                "[VFS::handlers] vfs_update_mindmap: invalid versionSource {:?} for {}, falling back to 'manual'",
+                other,
+                mindmap_id
+            );
+            "manual"
+        }
+    }
+    .to_string();
+
     let update_params = VfsUpdateMindMapParams {
         title: params.title,
         description: params.description,
@@ -4876,7 +4936,7 @@ pub async fn vfs_update_mindmap(
         theme: params.theme,
         settings: params.settings,
         expected_updated_at: params.expected_updated_at,
-        version_source: Some("manual".to_string()),
+        version_source: Some(version_source),
     };
 
     VfsMindMapRepo::update_mindmap(&vfs_db, &mindmap_id, update_params).map_err(|e| e.to_string())

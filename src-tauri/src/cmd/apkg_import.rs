@@ -77,6 +77,7 @@ fn emit_import_changed(app: &AppHandle, result: &ApkgImportResult) {
 }
 
 /// 将本地 APKG 包解析并写入 Anki 卡片库。
+/// 媒体文件解出到应用数据目录下的 `anki_media/`，卡片 images 指向落盘路径。
 #[tauri::command]
 pub async fn import_apkg_to_library(
     app: AppHandle,
@@ -84,10 +85,16 @@ pub async fn import_apkg_to_library(
     state: State<'_, AppState>,
 ) -> Result<ApkgImportResult> {
     let database = state.anki_database.clone();
+    let media_dir = state
+        .file_manager
+        .get_writable_app_data_dir()
+        .join("anki_media");
 
     let result = tokio::task::spawn_blocking(move || {
         let path = validate_apkg_path(&path)?;
-        ApkgImporterService::new(database).import_path(&path, None)
+        ApkgImporterService::new(database)
+            .with_media_dir(media_dir)
+            .import_path(&path, None)
     })
     .await
     .map_err(|error| {
@@ -166,6 +173,8 @@ mod tests {
             imported_cards: 2,
             imported_templates: 0,
             media_skipped: 3,
+            media_imported: 1,
+            warnings: vec![],
             card_ids: vec!["card-1".to_string(), "card-2".to_string()],
         };
 
@@ -185,7 +194,26 @@ mod tests {
                 "importedCards": 2,
                 "importedTemplates": 0,
                 "mediaSkipped": 3,
+                "mediaImported": 1,
             })
         );
+    }
+
+    #[test]
+    fn import_result_with_warnings_serializes_them_for_frontend() {
+        let result = ApkgImportResult {
+            document_id: "document-2".to_string(),
+            imported_cards: 1,
+            imported_templates: 1,
+            media_skipped: 1,
+            media_imported: 0,
+            warnings: vec!["媒体清单声明的条目在包内缺失，已跳过: 0 (a.png)".to_string()],
+            card_ids: vec!["card-1".to_string()],
+        };
+        let value = serde_json::to_value(&result).expect("serialize command response");
+        assert_eq!(value["importedTemplates"], 1);
+        assert!(value["warnings"][0]
+            .as_str()
+            .is_some_and(|warning| warning.contains("a.png")));
     }
 }

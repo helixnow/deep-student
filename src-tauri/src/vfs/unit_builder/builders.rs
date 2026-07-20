@@ -507,44 +507,65 @@ fn parse_preview_hashes(preview_json: &Option<String>, page_count: usize) -> Vec
         .unwrap_or_else(|| vec![None; page_count])
 }
 
-/// 从思维导图 JSON 提取所有节点文本
+/// 思维导图文本提取最大深度（与 normalize 的 100 层上限一致，防栈溢出）
+const MAX_MINDMAP_EXTRACT_DEPTH: usize = 100;
+
+/// 从思维导图 JSON 提取所有节点文本（含备注，层级缩进）
+///
+/// ★ 2026-07 修复（E6）：
+/// - 标准 MindMapDocument 的节点在 `root` 键下，旧实现不下钻 root 导致索引文本为空；
+/// - 节点 `note` 备注一并纳入索引文本（缩进跟随所属节点，保持大纲可读）。
 fn extract_mindmap_text(json: &str) -> Option<String> {
     serde_json::from_str::<serde_json::Value>(json)
         .ok()
         .map(|v| {
-            let mut texts = Vec::new();
-            extract_texts_recursive(&v, &mut texts);
-            texts.join("\n")
+            let mut lines = Vec::new();
+            // 标准 MindMapDocument 从 root 下钻；兼容直接传节点/数组的旧数据
+            let start = v.get("root").unwrap_or(&v);
+            extract_texts_recursive(start, 0, &mut lines);
+            lines.join("\n")
         })
         .filter(|s| !s.is_empty())
 }
 
-fn extract_texts_recursive(value: &serde_json::Value, texts: &mut Vec<String>) {
+fn extract_texts_recursive(value: &serde_json::Value, depth: usize, texts: &mut Vec<String>) {
+    if depth > MAX_MINDMAP_EXTRACT_DEPTH {
+        return;
+    }
     match value {
         serde_json::Value::Object(map) => {
+            let indent = "  ".repeat(depth);
             // 提取 text、label、title、content 等常见文本字段
             for key in ["text", "label", "title", "content", "name"] {
                 if let Some(text) = map.get(key).and_then(|v| v.as_str()) {
                     if !text.is_empty() {
-                        texts.push(text.to_string());
+                        texts.push(format!("{}{}", indent, text));
+                    }
+                }
+            }
+            // 备注：多行备注逐行缩进到所属节点下一层
+            if let Some(note) = map.get("note").and_then(|v| v.as_str()) {
+                if !note.trim().is_empty() {
+                    for note_line in note.trim().lines() {
+                        texts.push(format!("{}  {}", indent, note_line));
                     }
                 }
             }
             // 递归处理子节点
             if let Some(children) = map.get("children").and_then(|v| v.as_array()) {
                 for child in children {
-                    extract_texts_recursive(child, texts);
+                    extract_texts_recursive(child, depth + 1, texts);
                 }
             }
             if let Some(nodes) = map.get("nodes").and_then(|v| v.as_array()) {
                 for node in nodes {
-                    extract_texts_recursive(node, texts);
+                    extract_texts_recursive(node, depth + 1, texts);
                 }
             }
         }
         serde_json::Value::Array(arr) => {
             for item in arr {
-                extract_texts_recursive(item, texts);
+                extract_texts_recursive(item, depth, texts);
             }
         }
         _ => {}
@@ -576,6 +597,37 @@ mod tests {
             output.units[0].text_content,
             Some("Hello world".to_string())
         );
+        assert_eq!(output.units[0].text_source, Some("native".to_string()));
+    }
+
+    #[test]
+    fn test_mindmap_builder_extracts_root_and_notes() {
+        let builder = MindmapBuilder;
+        let input = UnitBuildInput {
+            resource_id: "res_789".to_string(),
+            resource_type: "mindmap".to_string(),
+            data: Some(
+                r#"{"version":"1.0","root":{"id":"root","text":"主题","note":"根备注","children":[{"id":"n1","text":"子节点","note":"第一行\n第二行","children":[]}]}}"#
+                    .to_string(),
+            ),
+            ocr_text: None,
+            ocr_pages_json: None,
+            blob_hash: None,
+            page_count: None,
+            extracted_text: None,
+            preview_json: None,
+        };
+
+        let output = builder.build(&input);
+        assert_eq!(output.units.len(), 1);
+        let text = output.units[0].text_content.as_deref().unwrap();
+        // root 下钻：节点文本必须出现
+        assert!(text.contains("主题"));
+        assert!(text.contains("子节点"));
+        // 备注纳入索引文本（多行逐行保留）
+        assert!(text.contains("根备注"));
+        assert!(text.contains("第一行"));
+        assert!(text.contains("第二行"));
         assert_eq!(output.units[0].text_source, Some("native".to_string()));
     }
 

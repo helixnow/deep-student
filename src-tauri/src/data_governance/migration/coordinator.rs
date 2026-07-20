@@ -36,6 +36,13 @@ use super::definitions::MigrationSet;
 use super::verifier::MigrationVerifier;
 use super::MigrationError;
 
+// 测试专用故障注入 failpoint 注册表。
+// 仅在 cfg(test) 下编译；生产构建中既无该模块、也无任何激活路径
+// （不读环境变量/配置）。通过 #[path] 声明避免改动 mod.rs。
+#[cfg(test)]
+#[path = "fault_injection.rs"]
+pub(crate) mod fault_injection;
+
 // 导入各数据库的迁移集合
 use super::chat_v2::CHAT_V2_MIGRATION_SET;
 use super::llm_usage::LLM_USAGE_MIGRATION_SET;
@@ -178,6 +185,9 @@ impl MigrationCoordinator {
         // 核心库迁移前保护：仅在存在待迁移项时，且同一启动周期只备份一次初始状态
         self.maybe_backup_core_databases_before_migration()?;
 
+        // failpoint: 核心快照完成后、任何数据库迁移开始前
+        self.failpoint("after_core_backup")?;
+
         // 按依赖顺序获取数据库列表
         let ordered_databases = DatabaseId::all_ordered();
         tracing::info!(
@@ -293,6 +303,24 @@ impl MigrationCoordinator {
             .to_string()
     }
 
+    /// 测试专用 failpoint 钩子：armed 时返回确定性注入错误。
+    ///
+    /// 按 app_data_dir 作用域隔离，避免并行测试互相干扰。
+    #[cfg(test)]
+    fn failpoint(&self, point: &str) -> Result<(), MigrationError> {
+        fault_injection::fire(&self.startup_guard_key(), point)
+    }
+
+    /// 生产构建下的零成本占位。
+    ///
+    /// 注意：生产构建中不存在任何激活路径（不读环境变量、不读配置），
+    /// 故障注入仅存在于 `cfg(test)`。
+    #[cfg(not(test))]
+    #[inline(always)]
+    fn failpoint(&self, _point: &str) -> Result<(), MigrationError> {
+        Ok(())
+    }
+
     fn maybe_backup_core_databases_before_migration(&mut self) -> Result<(), MigrationError> {
         let pending = self.pending_migrations_count()?;
         if pending == 0 {
@@ -384,6 +412,9 @@ impl MigrationCoordinator {
     /// # Returns
     /// 成功恢复的数据库数量
     pub fn restore_from_latest_core_backup(&self) -> Result<usize, MigrationError> {
+        // failpoint: 恢复开始前（磁盘尚未被恢复流程触碰）
+        self.failpoint("before_restore")?;
+
         let root = self.core_backup_root_dir();
         if !root.exists() {
             return Err(MigrationError::Database(
@@ -519,6 +550,9 @@ impl MigrationCoordinator {
             restored,
             copied_files.len()
         );
+
+        // failpoint: 所有数据库文件已恢复到旧状态，但恢复结果尚未上报
+        self.failpoint("after_restore")?;
 
         Ok(restored)
     }
@@ -708,6 +742,9 @@ impl MigrationCoordinator {
             return Err(e);
         }
 
+        // failpoint: 某数据库迁移执行前（schema/history 均未变更）
+        self.failpoint(&format!("before_db_migration::{}", id.as_str()))?;
+
         // 执行迁移
         let migration_outcome = match self.run_refinery_migrations(&mut conn, &id) {
             Ok(outcome) => outcome,
@@ -722,6 +759,9 @@ impl MigrationCoordinator {
             }
         };
         let applied_count = migration_outcome.applied_count;
+
+        // failpoint: 迁移 SQL 与 refinery history 已落盘，但验证尚未执行
+        self.failpoint(&format!("after_db_migration::{}", id.as_str()))?;
 
         // 获取迁移后版本
         let to_version = self.get_current_version(&conn)?;
@@ -743,6 +783,9 @@ impl MigrationCoordinator {
             );
             return Err(e);
         }
+
+        // failpoint: 该数据库迁移+验证全部完成，审计/报告尚未记录
+        self.failpoint(&format!("after_verification::{}", id.as_str()))?;
 
         let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -5840,5 +5883,786 @@ mod tests {
             report.to_version,
             MISTAKES_MIGRATIONS.latest_version() as u32
         );
+    }
+
+    // ========================================================================
+    // 故障注入与恢复测试（failpoint fault injection & recovery）
+    //
+    // 约定：
+    // - failpoint 仅在 cfg(test) 下存在（见 fault_injection.rs 模块头注释），
+    //   生产构建无任何激活路径（不读环境变量/配置）。
+    // - 全部使用确定性错误注入，不使用 process::abort / SIGKILL，
+    //   不破坏测试 runner。真正的 hard-kill 语义需要独立子进程 harness，
+    //   明确不在本套测试边界内。
+    // ========================================================================
+
+    /// 每个数据库的迁移集合（测试辅助）
+    #[cfg(feature = "data_governance")]
+    fn migration_set_for(id: &DatabaseId) -> &'static MigrationSet {
+        match id {
+            DatabaseId::Vfs => &VFS_MIGRATION_SET,
+            DatabaseId::ChatV2 => &CHAT_V2_MIGRATION_SET,
+            DatabaseId::Mistakes => &MISTAKES_MIGRATIONS,
+            DatabaseId::LlmUsage => &LLM_USAGE_MIGRATION_SET,
+        }
+    }
+
+    /// 集合中倒数第二个迁移版本（用于构造"还差一个迁移"的旧状态）
+    #[cfg(feature = "data_governance")]
+    fn second_latest_version(set: &MigrationSet) -> i32 {
+        set.migrations[set.migrations.len() - 2].refinery_version
+    }
+
+    const FAULT_MARKER_PAYLOAD: &str = "governance-fault-marker";
+
+    /// 把某个数据库构造到指定版本的真实旧状态：
+    /// 顺序执行注册迁移 SQL 并写入 refinery history（checksum '0'，
+    /// 由 repair_refinery_checksums 在迁移时对齐），启用 WAL，写入 marker 数据。
+    #[cfg(feature = "data_governance")]
+    fn build_db_at_version(coordinator: &MigrationCoordinator, id: &DatabaseId, target: i32) {
+        let path = coordinator.get_database_path(id);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        // 与真实应用一致地使用 WAL，让备份/恢复路径在 WAL 场景下被验证
+        let _mode: String = conn
+            .query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))
+            .unwrap();
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS refinery_schema_history (
+                version INTEGER PRIMARY KEY,
+                name TEXT,
+                applied_on TEXT,
+                checksum TEXT
+            )",
+            [],
+        )
+        .unwrap();
+
+        let set = migration_set_for(id);
+        for migration in set
+            .migrations
+            .iter()
+            .filter(|m| m.refinery_version <= target)
+        {
+            conn.execute_batch(migration.sql).unwrap_or_else(|e| {
+                panic!(
+                    "构造旧状态失败 {} V{}: {}",
+                    set.database_name, migration.refinery_version, e
+                )
+            });
+            conn.execute(
+                "INSERT OR REPLACE INTO refinery_schema_history (version, name, applied_on, checksum)
+                 VALUES (?1, ?2, '2026-07-01T00:00:00Z', '0')",
+                rusqlite::params![migration.refinery_version, migration.name],
+            )
+            .unwrap();
+        }
+
+        // 关键数据 marker：迁移不管理的 runtime 表，fingerprint 会忽略它，
+        // 但备份/恢复必须完整保留其内容
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS __test_marker (id TEXT PRIMARY KEY, payload TEXT NOT NULL)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO __test_marker (id, payload) VALUES ('m', ?1)",
+            [FAULT_MARKER_PAYLOAD],
+        )
+        .unwrap();
+    }
+
+    /// 构造四核心库的一致旧状态：
+    /// - vfs 处于已注册迁移的最新版（其待执行项与本测试无关）
+    /// - chat_v2 / mistakes / llm_usage 各留一个待执行迁移
+    ///
+    /// 返回旧版本 tuple（按 all_ordered 顺序）。
+    #[cfg(feature = "data_governance")]
+    fn build_old_core_state(coordinator: &MigrationCoordinator) -> Vec<(DatabaseId, u32)> {
+        let targets = [
+            (DatabaseId::Vfs, VFS_MIGRATION_SET.latest_version()),
+            (
+                DatabaseId::LlmUsage,
+                second_latest_version(&LLM_USAGE_MIGRATION_SET),
+            ),
+            (
+                DatabaseId::ChatV2,
+                second_latest_version(&CHAT_V2_MIGRATION_SET),
+            ),
+            (
+                DatabaseId::Mistakes,
+                second_latest_version(&MISTAKES_MIGRATIONS),
+            ),
+        ];
+        for (id, target) in &targets {
+            build_db_at_version(coordinator, id, *target);
+        }
+        targets
+            .iter()
+            .map(|(id, target)| (id.clone(), *target as u32))
+            .collect()
+    }
+
+    /// 读取四核心库当前 schema 版本 tuple
+    #[cfg(feature = "data_governance")]
+    fn core_version_tuple(coordinator: &MigrationCoordinator) -> Vec<(DatabaseId, u32)> {
+        DatabaseId::all_ordered()
+            .into_iter()
+            .map(|id| {
+                let conn =
+                    rusqlite::Connection::open(coordinator.get_database_path(&id)).unwrap();
+                let version = coordinator.get_current_version(&conn).unwrap();
+                (id, version)
+            })
+            .collect()
+    }
+
+    /// 新 schema 哨兵：分别对应 chat_v2 / mistakes / llm_usage 的最后一个迁移
+    /// 引入的可观测 schema 变化。返回 (chat_new, mistakes_new, llm_new)。
+    #[cfg(feature = "data_governance")]
+    fn new_schema_sentinels(coordinator: &MigrationCoordinator) -> (bool, bool, bool) {
+        let chat_conn =
+            rusqlite::Connection::open(coordinator.get_database_path(&DatabaseId::ChatV2))
+                .unwrap();
+        // V20260719 新建复合索引
+        let chat_new = coordinator
+            .index_exists(&chat_conn, "idx_chat_v2_sessions_status_updated")
+            .unwrap();
+
+        let mistakes_conn =
+            rusqlite::Connection::open(coordinator.get_database_path(&DatabaseId::Mistakes))
+                .unwrap();
+        // V20260721 新增列
+        let mistakes_new = coordinator
+            .column_exists(&mistakes_conn, "automation_definitions", "trusted_profile_json")
+            .unwrap();
+
+        let llm_conn =
+            rusqlite::Connection::open(coordinator.get_database_path(&DatabaseId::LlmUsage))
+                .unwrap();
+        // V20260525 删除 daily 触发器（新 = 触发器不存在）
+        let llm_new = !coordinator
+            .trigger_exists(&llm_conn, "trg__change_log_usage_daily_insert")
+            .unwrap();
+
+        (chat_new, mistakes_new, llm_new)
+    }
+
+    /// 断言 marker 数据在四核心库中完整存在
+    #[cfg(feature = "data_governance")]
+    fn assert_markers_intact(coordinator: &MigrationCoordinator, context: &str) {
+        for id in DatabaseId::all_ordered() {
+            let conn =
+                rusqlite::Connection::open(coordinator.get_database_path(&id)).unwrap();
+            let payload: String = conn
+                .query_row("SELECT payload FROM __test_marker WHERE id = 'm'", [], |r| {
+                    r.get(0)
+                })
+                .unwrap_or_else(|e| {
+                    panic!("[{}] {} marker 丢失: {}", context, id.as_str(), e)
+                });
+            assert_eq!(
+                payload,
+                FAULT_MARKER_PAYLOAD,
+                "[{}] {} marker 数据被破坏",
+                context,
+                id.as_str()
+            );
+        }
+    }
+
+    /// 参数化故障注入：覆盖 核心快照后 / 某库迁移前 / 某库迁移后(history 已写、
+    /// 验证前) / 验证后 等关键边界。
+    ///
+    /// 断言：任一故障后四核心库 schema tuple 与关键数据必须"全旧"（恢复成功），
+    /// 不允许混合状态；解除故障后重试必须成功且哨兵"全新"。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_failpoint_injection_keeps_core_state_atomic_and_retry_succeeds() {
+        struct Case {
+            point: &'static str,
+            expect_recovered_error: bool,
+        }
+        let cases = [
+            // 核心快照完成后、任何库迁移前（错误直接上抛，不走恢复）
+            Case {
+                point: "after_core_backup",
+                expect_recovered_error: false,
+            },
+            // 第二个库迁移前（vfs 已完成 → 必须整体回滚）
+            Case {
+                point: "before_db_migration::llm_usage",
+                expect_recovered_error: true,
+            },
+            // 第三个库迁移前
+            Case {
+                point: "before_db_migration::chat_v2",
+                expect_recovered_error: true,
+            },
+            // 迁移 SQL 与 history 已落盘、验证前
+            Case {
+                point: "after_db_migration::chat_v2",
+                expect_recovered_error: true,
+            },
+            // 最后一个库迁移后、验证前
+            Case {
+                point: "after_db_migration::mistakes",
+                expect_recovered_error: true,
+            },
+            // 最后一个库验证完成后、审计/报告前
+            Case {
+                point: "after_verification::mistakes",
+                expect_recovered_error: true,
+            },
+        ];
+
+        for case in &cases {
+            let (mut coordinator, temp_dir) = create_test_coordinator();
+            let old_tuple = build_old_core_state(&coordinator);
+            assert_eq!(
+                new_schema_sentinels(&coordinator),
+                (false, false, false),
+                "[{}] 旧状态哨兵应全为旧",
+                case.point
+            );
+
+            let guard = fault_injection::arm(temp_dir.path(), case.point, 1);
+            let err = coordinator
+                .run_all()
+                .expect_err(&format!("[{}] 注入后 run_all 必须失败", case.point));
+            assert_eq!(guard.hits(), 1, "[{}] failpoint 必须恰好触发一次", case.point);
+
+            if case.expect_recovered_error {
+                match &err {
+                    MigrationError::RecoveredFromBackup {
+                        original_error,
+                        restored_count,
+                    } => {
+                        assert!(
+                            original_error.contains("[failpoint]"),
+                            "[{}] 原始错误应为注入错误: {}",
+                            case.point,
+                            original_error
+                        );
+                        assert_eq!(
+                            *restored_count, 4,
+                            "[{}] 四个核心库都应被恢复",
+                            case.point
+                        );
+                    }
+                    other => panic!(
+                        "[{}] 期望 RecoveredFromBackup，实际: {:?}",
+                        case.point, other
+                    ),
+                }
+            } else {
+                assert!(
+                    err.to_string().contains("[failpoint]"),
+                    "[{}] 应为注入错误: {}",
+                    case.point,
+                    err
+                );
+            }
+
+            // 一致性：故障后必须"全旧"，不允许混合
+            assert_eq!(
+                core_version_tuple(&coordinator),
+                old_tuple,
+                "[{}] 故障后 schema tuple 必须全部回到旧版本",
+                case.point
+            );
+            assert_eq!(
+                new_schema_sentinels(&coordinator),
+                (false, false, false),
+                "[{}] 故障后哨兵必须全旧（禁止混合状态）",
+                case.point
+            );
+            assert_markers_intact(&coordinator, case.point);
+
+            // 解除故障后重试必须成功，且全部推进到新版本
+            drop(guard);
+            let report = coordinator
+                .run_all()
+                .unwrap_or_else(|e| panic!("[{}] 重试应成功: {}", case.point, e));
+            assert!(report.success, "[{}] 重试报告应成功", case.point);
+            for (id, version) in core_version_tuple(&coordinator) {
+                assert!(
+                    version >= migration_set_for(&id).latest_version() as u32,
+                    "[{}] {} 重试后应达到最新注册版本",
+                    case.point,
+                    id.as_str()
+                );
+            }
+            assert_eq!(
+                new_schema_sentinels(&coordinator),
+                (true, true, true),
+                "[{}] 重试成功后哨兵必须全新",
+                case.point
+            );
+            assert_markers_intact(&coordinator, &format!("{}(retry)", case.point));
+        }
+    }
+
+    /// 恢复前故障（before_restore）：恢复流程被阻断时，如果失败点在第一个库
+    /// 迁移前，磁盘仍应保持一致的全旧状态，且重试成功。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_failpoint_before_restore_leaves_untouched_state_consistent() {
+        let (mut coordinator, temp_dir) = create_test_coordinator();
+        let old_tuple = build_old_core_state(&coordinator);
+
+        let migration_guard = fault_injection::arm(temp_dir.path(), "before_db_migration::vfs", 1);
+        let restore_guard = fault_injection::arm(temp_dir.path(), "before_restore", 1);
+
+        let err = coordinator.run_all().unwrap_err();
+        assert_eq!(migration_guard.hits(), 1);
+        assert_eq!(restore_guard.hits(), 1, "恢复流程应已被触达并被阻断");
+        // 恢复失败时返回原始迁移错误（而非 RecoveredFromBackup）
+        assert!(
+            matches!(&err, MigrationError::Database(msg) if msg.contains("[failpoint]")),
+            "unexpected error: {err:?}"
+        );
+
+        // vfs 迁移前失败 + 恢复被阻断 → 磁盘未被触碰，仍是全旧
+        assert_eq!(core_version_tuple(&coordinator), old_tuple);
+        assert_eq!(new_schema_sentinels(&coordinator), (false, false, false));
+        assert_markers_intact(&coordinator, "before_restore");
+
+        drop(migration_guard);
+        drop(restore_guard);
+        let report = coordinator.run_all().unwrap();
+        assert!(report.success);
+        assert_eq!(new_schema_sentinels(&coordinator), (true, true, true));
+        assert_markers_intact(&coordinator, "before_restore(retry)");
+    }
+
+    /// 恢复后故障（after_restore）：所有文件已恢复但恢复结果上报失败。
+    /// 磁盘必须已经是一致的全旧状态，重试成功。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_failpoint_after_restore_disk_recovered_despite_reported_failure() {
+        let (mut coordinator, temp_dir) = create_test_coordinator();
+        let old_tuple = build_old_core_state(&coordinator);
+
+        let migration_guard =
+            fault_injection::arm(temp_dir.path(), "before_db_migration::chat_v2", 1);
+        let restore_guard = fault_injection::arm(temp_dir.path(), "after_restore", 1);
+
+        let err = coordinator.run_all().unwrap_err();
+        assert_eq!(migration_guard.hits(), 1);
+        assert_eq!(restore_guard.hits(), 1, "after_restore 应在恢复完成后触发");
+        // 恢复"上报失败" → 返回原始迁移错误
+        assert!(
+            matches!(&err, MigrationError::Database(msg) if msg.contains("[failpoint]")),
+            "unexpected error: {err:?}"
+        );
+
+        // 尽管恢复被上报为失败，磁盘上必须已经是一致的全旧状态
+        assert_eq!(core_version_tuple(&coordinator), old_tuple);
+        assert_eq!(new_schema_sentinels(&coordinator), (false, false, false));
+        assert_markers_intact(&coordinator, "after_restore");
+
+        drop(migration_guard);
+        drop(restore_guard);
+        let report = coordinator.run_all().unwrap();
+        assert!(report.success);
+        assert_eq!(new_schema_sentinels(&coordinator), (true, true, true));
+    }
+
+    /// 未 arm 的 failpoint 必须是 no-op（防止注册表泄漏影响其他测试）
+    #[test]
+    fn test_failpoint_unarmed_is_noop_and_guard_disarms_on_drop() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        assert!(coordinator.failpoint("never_armed").is_ok());
+
+        {
+            let _guard = fault_injection::arm(temp_dir.path(), "scoped_point", 1);
+            assert!(coordinator.failpoint("scoped_point").is_err());
+        }
+        // guard drop 后自动解除
+        assert!(coordinator.failpoint("scoped_point").is_ok());
+
+        // 不同数据目录的同名 failpoint 互不影响
+        let other_dir = TempDir::new().unwrap();
+        let _other_guard = fault_injection::arm(other_dir.path(), "scoped_point", 1);
+        assert!(coordinator.failpoint("scoped_point").is_ok());
+    }
+
+    // ========================================================================
+    // make_alter_columns_safe 回归：列已存在但同迁移 DML 未完成时，
+    // 绝不允许"整条预标记"而跳过回填/索引；必须重放剩余 SQL 后才记账。
+    // 目标迁移：mistakes V20260720（2×ALTER + UPDATE 回填 + CREATE INDEX）。
+    // ========================================================================
+
+    /// 构造 mistakes 库到 V20260715，并插入一条待回填的 fsrs_review_logs 行
+    #[cfg(feature = "data_governance")]
+    fn build_mistakes_before_mastery_outbox(
+        coordinator: &MigrationCoordinator,
+    ) -> rusqlite::Connection {
+        build_db_at_version(coordinator, &DatabaseId::Mistakes, 20260715);
+        let conn =
+            rusqlite::Connection::open(coordinator.get_database_path(&DatabaseId::Mistakes))
+                .unwrap();
+        conn.execute(
+            "INSERT INTO document_tasks (
+                id, document_id, original_document_name, segment_index,
+                content_segment, status, anki_generation_options_json
+             ) VALUES ('task-1', 'doc-1', 'doc.md', 0, 'seg', 'Completed', '{}')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO anki_cards (id, task_id, front, back, created_at, updated_at)
+             VALUES ('card-1', 'task-1', 'f', 'b', '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO fsrs_card_states (id, anki_card_id, due_ms, created_at, updated_at)
+             VALUES ('state-1', 'card-1', 0, '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO fsrs_review_logs (
+                id, card_state_id, anki_card_id, rating, state_before, state_after,
+                review_ms, fsrs_params_version, created_at, updated_at
+             ) VALUES (
+                'log-1', 'state-1', 'card-1', 3, 0, 1,
+                1751328000000, 'rs-fsrs-1.2', '2026-07-01T00:00:00Z', NULL
+             )",
+            [],
+        )
+        .unwrap();
+        conn
+    }
+
+    /// 直接回归 make_alter_columns_safe：所有 ALTER 列已存在、DML 未执行
+    /// （模拟 history 回滚残留）。必须重放回填 UPDATE 与 CREATE INDEX，
+    /// 不能只标记完成。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_make_alter_columns_safe_replays_backfill_when_all_columns_exist() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let conn = build_mistakes_before_mastery_outbox(&coordinator);
+
+        // 模拟部分失败：V20260720 的两条 ALTER 已落盘，但 UPDATE 回填、
+        // CREATE INDEX 和 history 记录都丢失
+        conn.execute_batch(
+            "ALTER TABLE fsrs_review_logs ADD COLUMN mastery_synced_at TEXT;
+             ALTER TABLE fsrs_review_logs ADD COLUMN mastery_revert_pending INTEGER NOT NULL DEFAULT 0;",
+        )
+        .unwrap();
+        let pre_backfill: Option<String> = conn
+            .query_row(
+                "SELECT mastery_synced_at FROM fsrs_review_logs WHERE id = 'log-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(pre_backfill.is_none(), "构造场景应为未回填状态");
+
+        let runner = coordinator.create_mistakes_runner().unwrap();
+        coordinator.make_alter_columns_safe(&conn, &runner).unwrap();
+
+        // 1) 必须已记账
+        assert!(
+            coordinator.is_migration_recorded(&conn, 20260720).unwrap(),
+            "V20260720 应被标记完成"
+        );
+        // 2) 回填 DML 必须已重放（mastery_synced_at = COALESCE(updated_at, created_at, ...)）
+        let backfilled: String = conn
+            .query_row(
+                "SELECT mastery_synced_at FROM fsrs_review_logs WHERE id = 'log-1'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("回填 UPDATE 必须执行，不能被预标记跳过");
+        assert_eq!(backfilled, "2026-07-01T00:00:00Z");
+        // 3) 同迁移中的 CREATE INDEX 也必须重放
+        assert!(
+            coordinator
+                .index_exists(&conn, "idx_fsrs_review_logs_mastery_pending")
+                .unwrap(),
+            "V20260720 的索引必须随重放创建"
+        );
+    }
+
+    /// 部分列存在（中间状态）：补齐缺失列后同样必须重放回填与索引。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_make_alter_columns_safe_completes_partial_columns_and_backfills() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let conn = build_mistakes_before_mastery_outbox(&coordinator);
+
+        // 只有第一条 ALTER 落盘
+        conn.execute(
+            "ALTER TABLE fsrs_review_logs ADD COLUMN mastery_synced_at TEXT",
+            [],
+        )
+        .unwrap();
+
+        let runner = coordinator.create_mistakes_runner().unwrap();
+        coordinator.make_alter_columns_safe(&conn, &runner).unwrap();
+
+        assert!(coordinator.is_migration_recorded(&conn, 20260720).unwrap());
+        // 缺失列被补齐（含列定义/默认值）
+        let revert_pending: i64 = conn
+            .query_row(
+                "SELECT mastery_revert_pending FROM fsrs_review_logs WHERE id = 'log-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(revert_pending, 0, "补齐列应带 DEFAULT 0");
+        // 回填与索引依然必须执行
+        let backfilled: String = conn
+            .query_row(
+                "SELECT mastery_synced_at FROM fsrs_review_logs WHERE id = 'log-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(backfilled, "2026-07-01T00:00:00Z");
+        assert!(coordinator
+            .index_exists(&conn, "idx_fsrs_review_logs_mastery_pending")
+            .unwrap());
+    }
+
+    /// 端到端回归：ALTER 残留状态下走完整 migrate_single，
+    /// 回填生效、后续迁移继续、且可重入。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_migrate_single_recovers_alter_residue_without_skipping_backfill() {
+        let (mut coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let conn = build_mistakes_before_mastery_outbox(&coordinator);
+        conn.execute_batch(
+            "ALTER TABLE fsrs_review_logs ADD COLUMN mastery_synced_at TEXT;
+             ALTER TABLE fsrs_review_logs ADD COLUMN mastery_revert_pending INTEGER NOT NULL DEFAULT 0;",
+        )
+        .unwrap();
+        drop(conn);
+
+        let report = coordinator.migrate_single(DatabaseId::Mistakes).unwrap();
+        assert!(report.success);
+        assert_eq!(
+            report.to_version,
+            MISTAKES_MIGRATIONS.latest_version() as u32
+        );
+
+        let conn =
+            rusqlite::Connection::open(coordinator.get_database_path(&DatabaseId::Mistakes))
+                .unwrap();
+        let backfilled: String = conn
+            .query_row(
+                "SELECT mastery_synced_at FROM fsrs_review_logs WHERE id = 'log-1'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("端到端路径同样不允许跳过回填");
+        assert_eq!(backfilled, "2026-07-01T00:00:00Z");
+        drop(conn);
+
+        // 可重入
+        let second = coordinator.migrate_single(DatabaseId::Mistakes).unwrap();
+        assert!(second.success);
+        assert_eq!(second.applied_count, 0);
+    }
+
+    // ========================================================================
+    // lock / read-only / WAL / 备份恢复补充场景
+    // ========================================================================
+
+    /// 另一连接持有写锁（BEGIN IMMEDIATE）时迁移必须失败，
+    /// 释放后重试成功且不留混合状态。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_migration_fails_cleanly_when_database_write_locked_then_retries() {
+        let (mut coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        build_db_at_version(
+            &coordinator,
+            &DatabaseId::Mistakes,
+            second_latest_version(&MISTAKES_MIGRATIONS),
+        );
+        let old_version = {
+            let conn =
+                rusqlite::Connection::open(coordinator.get_database_path(&DatabaseId::Mistakes))
+                    .unwrap();
+            coordinator.get_current_version(&conn).unwrap()
+        };
+
+        // 持有写锁
+        let locker =
+            rusqlite::Connection::open(coordinator.get_database_path(&DatabaseId::Mistakes))
+                .unwrap();
+        locker.execute_batch("BEGIN IMMEDIATE").unwrap();
+
+        let err = coordinator.migrate_single(DatabaseId::Mistakes);
+        assert!(err.is_err(), "写锁存在时迁移必须失败: {err:?}");
+
+        // 释放写锁
+        locker.execute_batch("ROLLBACK").unwrap();
+        drop(locker);
+
+        // 失败后版本不能前进到一半（history 未变更）
+        {
+            let conn =
+                rusqlite::Connection::open(coordinator.get_database_path(&DatabaseId::Mistakes))
+                    .unwrap();
+            assert_eq!(coordinator.get_current_version(&conn).unwrap(), old_version);
+        }
+
+        let report = coordinator.migrate_single(DatabaseId::Mistakes).unwrap();
+        assert!(report.success);
+        assert_eq!(
+            report.to_version,
+            MISTAKES_MIGRATIONS.latest_version() as u32
+        );
+    }
+
+    /// 数据库文件只读时迁移必须失败且不破坏文件；恢复权限后重试成功。
+    #[cfg(all(unix, feature = "data_governance"))]
+    #[test]
+    fn test_migration_fails_cleanly_on_readonly_database_then_retries() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (mut coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        build_db_at_version(
+            &coordinator,
+            &DatabaseId::LlmUsage,
+            second_latest_version(&LLM_USAGE_MIGRATION_SET),
+        );
+        let db_path = coordinator.get_database_path(&DatabaseId::LlmUsage);
+
+        std::fs::set_permissions(&db_path, std::fs::Permissions::from_mode(0o444)).unwrap();
+        let result = coordinator.migrate_single(DatabaseId::LlmUsage);
+        assert!(result.is_err(), "只读数据库上的迁移必须失败: {result:?}");
+
+        std::fs::set_permissions(&db_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        // 只读失败不能损坏数据库
+        {
+            let conn = rusqlite::Connection::open(&db_path).unwrap();
+            let integrity: String = conn
+                .query_row("PRAGMA quick_check", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(integrity, "ok");
+        }
+
+        let report = coordinator.migrate_single(DatabaseId::LlmUsage).unwrap();
+        assert!(report.success);
+        assert_eq!(
+            report.to_version,
+            LLM_USAGE_MIGRATION_SET.latest_version() as u32
+        );
+    }
+
+    /// 无快照时恢复必须显式报错（而不是静默"成功"）。
+    #[test]
+    fn test_restore_without_snapshot_errors_explicitly() {
+        let (coordinator, _temp_dir) = create_test_coordinator();
+        let err = coordinator.restore_from_latest_core_backup().unwrap_err();
+        assert!(
+            err.to_string().contains("无迁移前快照"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// 恢复必须覆盖故障后的脏数据，并清理残留 WAL/SHM 文件。
+    #[test]
+    fn test_restore_overwrites_tampered_data_and_cleans_stale_wal_files() {
+        let (mut coordinator, temp_dir) = create_test_coordinator();
+        create_test_sqlite_db(&temp_dir.path().join("databases").join("vfs.db"));
+        create_test_sqlite_db(&temp_dir.path().join("chat_v2.db"));
+        create_test_sqlite_db(&temp_dir.path().join("mistakes.db"));
+        create_test_sqlite_db(&temp_dir.path().join("llm_usage.db"));
+
+        coordinator
+            .backup_core_databases_once_per_startup()
+            .unwrap();
+
+        // 模拟失败迁移留下的脏数据 + 残留 WAL/SHM
+        let chat_path = temp_dir.path().join("chat_v2.db");
+        {
+            let conn = rusqlite::Connection::open(&chat_path).unwrap();
+            conn.execute("INSERT INTO test_data (value) VALUES ('tampered')", [])
+                .unwrap();
+        }
+        let wal_residual = temp_dir.path().join("chat_v2.db-wal");
+        let shm_residual = temp_dir.path().join("chat_v2.db-shm");
+        std::fs::write(&wal_residual, b"stale-wal-garbage").unwrap();
+        std::fs::write(&shm_residual, b"stale-shm-garbage").unwrap();
+
+        let restored = coordinator.restore_from_latest_core_backup().unwrap();
+        assert_eq!(restored, 4, "四个核心库都应恢复");
+
+        let conn = rusqlite::Connection::open(&chat_path).unwrap();
+        let tampered_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_data WHERE value = 'tampered'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(tampered_count, 0, "脏数据必须被快照覆盖");
+        let ok_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_data WHERE value = 'ok'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(ok_count, 1, "快照数据必须完整恢复");
+        let integrity: String = conn
+            .query_row("PRAGMA quick_check", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(integrity, "ok");
+
+        assert!(!wal_residual.exists(), "残留 WAL 必须被清理");
+        assert!(!shm_residual.exists(), "残留 SHM 必须被清理");
+    }
+
+    /// 存在多个快照时必须恢复最新的一个。
+    #[test]
+    fn test_restore_picks_latest_snapshot() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let root = coordinator.core_backup_root_dir();
+
+        for (dir_name, payload) in [
+            ("startup_20260101T000000.000Z_1", "old-snapshot"),
+            ("startup_20260702T000000.000Z_1", "new-snapshot"),
+        ] {
+            let snapshot_dir = root.join(dir_name);
+            std::fs::create_dir_all(&snapshot_dir).unwrap();
+            let db_path = snapshot_dir.join("chat_v2.db");
+            let conn = rusqlite::Connection::open(&db_path).unwrap();
+            conn.execute(
+                "CREATE TABLE test_data (id INTEGER PRIMARY KEY, value TEXT NOT NULL)",
+                [],
+            )
+            .unwrap();
+            conn.execute("INSERT INTO test_data (value) VALUES (?1)", [payload])
+                .unwrap();
+            std::fs::write(
+                snapshot_dir.join("metadata.json"),
+                r#"{"copied_files":["chat_v2.db"]}"#,
+            )
+            .unwrap();
+        }
+
+        let restored = coordinator.restore_from_latest_core_backup().unwrap();
+        assert_eq!(restored, 1);
+
+        let conn = rusqlite::Connection::open(temp_dir.path().join("chat_v2.db")).unwrap();
+        let value: String = conn
+            .query_row("SELECT value FROM test_data LIMIT 1", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(value, "new-snapshot", "必须从最新快照恢复");
     }
 }

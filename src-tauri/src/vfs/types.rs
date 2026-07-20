@@ -604,8 +604,16 @@ pub struct VfsMindMap {
     /// 创建时间
     pub created_at: String,
 
-    /// 更新时间
+    /// 更新时间（任何元数据/内容写入都会推进，参与同步 LWW）
     pub updated_at: String,
+
+    /// 内容更新时间（★ 2026-07 B5：OCC 内容锁基线）
+    ///
+    /// 仅在 MindMapDocument 内容实际变化（或版本恢复）时推进；
+    /// 收藏/重命名等纯元数据操作不改动此列，避免编辑端乐观锁伪冲突。
+    /// 旧库迁移前读取时由 SQL COALESCE 回退到 updated_at。
+    #[serde(default)]
+    pub content_updated_at: String,
 
     /// 软删除时间
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -649,7 +657,11 @@ pub struct VfsMindMapVersion {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
 
-    /// 来源：'chat_update' | 'chat_edit_nodes' | 'manual' | 'auto'
+    /// 来源语义（★ 2026-07 扩展）：
+    /// - `manual` / `auto` / NULL：编辑器保存类快照，参与 30 分钟合并窗口与 20 条保留剪枝
+    /// - `chat_create` / `chat_update` / `chat_edit_nodes`：聊天引用（mv_*）指向的不可变快照，永不剪枝
+    /// - `pre_chat_backup`：聊天改写前的用户内容备份（可剪枝，不合并）
+    /// - `restore_backup`：版本恢复前的当前内容备份（可剪枝，不合并）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
 
@@ -1121,6 +1133,14 @@ pub struct PomodoroRecord {
 
     /// 创建时间（ISO 8601）
     pub created_at: String,
+
+    /// 更新时间（ISO 8601，云同步 LWW 基准；历史行可能为空）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+
+    /// 软删除时间（ISO 8601；为空表示未删除）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<String>,
 }
 
 fn default_pomodoro_type() -> String {

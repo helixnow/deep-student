@@ -116,6 +116,23 @@ pub struct ReorderItemsInput {
     pub expected_updated_at: Option<String>,
 }
 
+/// `todo_reorder_lists` 参数（camelCase: listIds）——
+/// 必须精确覆盖全部未删除清单，按传入顺序重写 sort_order 0..n。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReorderListsInput {
+    pub list_ids: Vec<String>,
+}
+
+/// `todo_move_item` 参数（camelCase: itemId / targetListId）——
+/// 条目连同子树移入目标清单尾部。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveTodoItemInput {
+    pub item_id: String,
+    pub target_list_id: String,
+}
+
 // ============================================================================
 // TodoList 命令
 // ============================================================================
@@ -175,6 +192,13 @@ pub fn todo_ensure_inbox(app: AppHandle, title: Option<String>) -> Result<VfsTod
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
     VfsTodoRepo::ensure_default_inbox_with_title(&vfs_db, title.as_deref())
         .map_err(|e| e.to_string())
+}
+
+/// 清单排序持久化：按传入顺序把 sort_order 重写为 0..n（须精确覆盖全部未删清单）
+#[tauri::command]
+pub fn todo_reorder_lists(app: AppHandle, input: ReorderListsInput) -> Result<(), String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::reorder_todo_lists(&vfs_db, &input.list_ids).map_err(|e| e.to_string())
 }
 
 // ============================================================================
@@ -268,14 +292,35 @@ pub fn todo_get_item(app: AppHandle, item_id: String) -> Result<Option<VfsTodoIt
     VfsTodoRepo::get_todo_item(&vfs_db, &item_id).map_err(|e| e.to_string())
 }
 
+/// 分页切片辅助（移动端支撑）：
+/// `limit`/`offset` 均缺省时返回全量，保持与存量前端调用完全兼容；
+/// 提供任一参数时按（offset 缺省 0）窗口切片，减小 IPC 载荷。
+fn paginate_todo_items(
+    items: Vec<VfsTodoItem>,
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> Vec<VfsTodoItem> {
+    if limit.is_none() && offset.is_none() {
+        return items;
+    }
+    let offset = offset.unwrap_or(0) as usize;
+    let limit = limit.map(|l| l as usize).unwrap_or(usize::MAX);
+    items.into_iter().skip(offset).take(limit).collect()
+}
+
+/// 移动端支撑：新增可选 `limit`/`offset`（None 时保持全量，兼容旧前端）
 #[tauri::command]
 pub fn todo_list_items(
     app: AppHandle,
     list_id: String,
     include_completed: bool,
+    limit: Option<u32>,
+    offset: Option<u32>,
 ) -> Result<Vec<VfsTodoItem>, String> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
-    VfsTodoRepo::list_items_by_list(&vfs_db, &list_id, include_completed).map_err(|e| e.to_string())
+    let items = VfsTodoRepo::list_items_by_list(&vfs_db, &list_id, include_completed)
+        .map_err(|e| e.to_string())?;
+    Ok(paginate_todo_items(items, limit, offset))
 }
 
 #[tauri::command]
@@ -330,26 +375,44 @@ pub fn todo_reorder_items(app: AppHandle, input: ReorderItemsInput) -> Result<()
     .map_err(|e| e.to_string())
 }
 
+/// 跨清单移动：条目连同子树移到目标清单尾部（子树内 parent 关系保留）
+#[tauri::command]
+pub fn todo_move_item(app: AppHandle, input: MoveTodoItemInput) -> Result<VfsTodoItem, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::move_todo_item(&vfs_db, &input.item_id, &input.target_list_id)
+        .map_err(|e| e.to_string())
+}
+
 // ============================================================================
 // 查询命令
 // ============================================================================
 
+/// 移动端支撑：新增可选 `limit`/`offset`（None 时保持全量，兼容旧前端）
 #[tauri::command]
 pub fn todo_list_today(
     app: AppHandle,
     include_completed: bool,
+    limit: Option<u32>,
+    offset: Option<u32>,
 ) -> Result<Vec<VfsTodoItem>, String> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
-    VfsTodoRepo::list_today_items(&vfs_db, include_completed).map_err(|e| e.to_string())
+    let items =
+        VfsTodoRepo::list_today_items(&vfs_db, include_completed).map_err(|e| e.to_string())?;
+    Ok(paginate_todo_items(items, limit, offset))
 }
 
+/// 移动端支撑：新增可选 `limit`/`offset`（None 时保持全量，兼容旧前端）
 #[tauri::command]
 pub fn todo_list_overdue(
     app: AppHandle,
     include_completed: bool,
+    limit: Option<u32>,
+    offset: Option<u32>,
 ) -> Result<Vec<VfsTodoItem>, String> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
-    VfsTodoRepo::list_overdue_items(&vfs_db, include_completed).map_err(|e| e.to_string())
+    let items =
+        VfsTodoRepo::list_overdue_items(&vfs_db, include_completed).map_err(|e| e.to_string())?;
+    Ok(paginate_todo_items(items, limit, offset))
 }
 
 #[tauri::command]
@@ -385,10 +448,17 @@ pub fn todo_list_completed(
     VfsTodoRepo::list_completed_items(&vfs_db, list_id.as_deref()).map_err(|e| e.to_string())
 }
 
+/// 移动端支撑：新增可选 `limit`/`offset`（None 时保持全量，兼容旧前端）
 #[tauri::command]
-pub fn todo_search(app: AppHandle, query: String) -> Result<Vec<VfsTodoItem>, String> {
+pub fn todo_search(
+    app: AppHandle,
+    query: String,
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> Result<Vec<VfsTodoItem>, String> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
-    VfsTodoRepo::search_items(&vfs_db, &query).map_err(|e| e.to_string())
+    let items = VfsTodoRepo::search_items(&vfs_db, &query).map_err(|e| e.to_string())?;
+    Ok(paginate_todo_items(items, limit, offset))
 }
 
 #[tauri::command]
@@ -521,25 +591,48 @@ pub async fn todo_ai_breakdown(
         return Err("AI 未能生成有效的子任务，请重试".to_string());
     }
 
-    let mut created = Vec::with_capacity(titles.len());
-    for title in titles {
-        let params = VfsCreateTodoItemParams {
-            todo_list_id: item.todo_list_id.clone(),
-            title,
-            description: None,
-            priority: "none".to_string(),
-            due_date: None,
-            due_time: None,
-            reminder: None,
-            tags: None,
-            parent_id: Some(item_id.clone()),
-            attachments: None,
-            repeat_json: None,
-        };
-        let sub = VfsTodoRepo::create_todo_item(&vfs_db, params).map_err(|e| e.to_string())?;
-        created.push(sub);
+    // ★ 2026-07-19：逐条插入包进一个 SAVEPOINT——中途失败（如触发器拒绝）
+    // 会留下"拆解了一半"的子任务且已向调用方报错，用户重试又生成一批重复项。
+    // 全部成功才提交，失败整体回滚。
+    let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+    conn.execute("SAVEPOINT todo_ai_breakdown", [])
+        .map_err(|e| e.to_string())?;
+
+    let insert_result = (|| -> Result<Vec<VfsTodoItem>, String> {
+        let mut created = Vec::with_capacity(titles.len());
+        for title in titles {
+            let params = VfsCreateTodoItemParams {
+                todo_list_id: item.todo_list_id.clone(),
+                title,
+                description: None,
+                priority: "none".to_string(),
+                due_date: None,
+                due_time: None,
+                reminder: None,
+                tags: None,
+                parent_id: Some(item_id.clone()),
+                attachments: None,
+                repeat_json: None,
+            };
+            let sub = VfsTodoRepo::create_todo_item_with_conn(&conn, params)
+                .map_err(|e| e.to_string())?;
+            created.push(sub);
+        }
+        Ok(created)
+    })();
+
+    match insert_result {
+        Ok(created) => {
+            conn.execute("RELEASE SAVEPOINT todo_ai_breakdown", [])
+                .map_err(|e| e.to_string())?;
+            Ok(created)
+        }
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK TO SAVEPOINT todo_ai_breakdown", []);
+            let _ = conn.execute("RELEASE SAVEPOINT todo_ai_breakdown", []);
+            Err(e)
+        }
     }
-    Ok(created)
 }
 
 // ============================================================================

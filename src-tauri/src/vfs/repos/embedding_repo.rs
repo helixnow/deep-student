@@ -487,10 +487,10 @@ impl VfsIndexStateRepo {
     pub fn get_pending_resources(
         db: &VfsDatabase,
         limit: u32,
-        _max_retries: i32,
+        max_retries: i32,
     ) -> VfsResult<Vec<String>> {
         let conn = db.get_conn_safe()?;
-        Self::get_pending_resources_with_conn(&conn, limit, _max_retries)
+        Self::get_pending_resources_with_conn(&conn, limit, max_retries)
     }
 
     /// 原子 claim 一批待索引资源并立即置为 indexing，避免并发重复处理。
@@ -527,26 +527,35 @@ impl VfsIndexStateRepo {
     pub fn get_pending_resources_with_conn(
         conn: &Connection,
         limit: u32,
-        _max_retries: i32,
+        max_retries: i32,
     ) -> VfsResult<Vec<String>> {
         // 查询待索引资源（不包含 disabled 状态，避免队列污染）
         // - pending/NULL: 新资源，需要索引
-        // - failed: 失败资源，重试次数未超限时重新索引
+        // - failed: 退避到期且 retry_count 未达上限时重新索引
+        //   ★ P0-3 修复：此前 max_retries 形参被丢弃，failed 资源在退避封顶
+        //   （1 小时）后无限重试，持续消耗 embedding API。现在真正按
+        //   retry_count < max_retries 过滤。超限资源**保持 failed 不再入队**：
+        //   - 不转 disabled——disabled 语义是"内容不可索引"，这里是"可索引但持续失败"，
+        //     保留 failed + index_error 便于 UI 展示失败原因；
+        //   - 用户显式重试（mark_pending / reset_unit_index）会清零 retry_count，
+        //     资源自然重新入队。
         // - indexed 但无 unit: 索引元数据丢失，需要重新索引（使用新架构 vfs_index_units）
         // 注意：disabled 资源不在此查询中，需通过 get_disabled_resources 显式获取
         let mut stmt = conn.prepare(
             r#"
             SELECT id FROM resources r
             WHERE (r.index_state = 'pending' OR r.index_state IS NULL)
-               OR (r.index_state = 'failed' AND COALESCE(r.index_next_retry_at, 0) <= ?1)
+               OR (r.index_state = 'failed'
+                   AND COALESCE(r.index_next_retry_at, 0) <= ?1
+                   AND COALESCE(r.index_retry_count, 0) < ?2)
                OR (r.index_state = 'indexed' AND NOT EXISTS (SELECT 1 FROM vfs_index_units WHERE resource_id = r.id))
             ORDER BY r.updated_at DESC
-            LIMIT ?2
+            LIMIT ?3
             "#,
         )?;
 
         let rows = stmt.query_map(
-            params![chrono::Utc::now().timestamp_millis(), limit],
+            params![chrono::Utc::now().timestamp_millis(), max_retries, limit],
             |row| row.get::<_, String>(0),
         )?;
         let ids: Vec<String> = rows.filter_map(log_and_skip_err).collect();
@@ -743,34 +752,85 @@ impl VfsIndexStateRepo {
     pub fn get_mm_pending_resources(
         db: &VfsDatabase,
         limit: u32,
-        _max_retries: i32,
+        max_retries: i32,
     ) -> VfsResult<Vec<String>> {
         let conn = db.get_conn_safe()?;
-        Self::get_mm_pending_resources_with_conn(&conn, limit, _max_retries)
+        Self::get_mm_pending_resources_with_conn(&conn, limit, max_retries)
     }
 
     pub fn get_mm_pending_resources_with_conn(
         conn: &Connection,
         limit: u32,
-        _max_retries: i32,
+        max_retries: i32,
     ) -> VfsResult<Vec<String>> {
+        // ★ P0-3 修复：与文本侧一致，failed 资源需同时满足"退避到期"和
+        // "retry_count 未达上限"才重新入队；超限保持 failed（见文本侧注释）。
         let mut stmt = conn.prepare(
             r#"
             SELECT id FROM resources r
             WHERE r.type IN ('image', 'textbook', 'file', 'exam')
               AND ((r.mm_index_state = 'pending' OR r.mm_index_state IS NULL)
-                   OR (r.mm_index_state = 'failed' AND COALESCE(r.mm_index_next_retry_at, 0) <= ?1))
+                   OR (r.mm_index_state = 'failed'
+                       AND COALESCE(r.mm_index_next_retry_at, 0) <= ?1
+                       AND COALESCE(r.mm_index_retry_count, 0) < ?2))
             ORDER BY r.updated_at DESC
-            LIMIT ?2
+            LIMIT ?3
             "#,
         )?;
 
         let rows = stmt.query_map(
-            params![chrono::Utc::now().timestamp_millis(), limit],
+            params![chrono::Utc::now().timestamp_millis(), max_retries, limit],
             |row| row.get::<_, String>(0),
         )?;
         let ids: Vec<String> = rows.filter_map(log_and_skip_err).collect();
         Ok(ids)
+    }
+
+    /// 原子 claim 一组资源的多模态索引权（P1-4）。
+    ///
+    /// 与文本侧 `claim_pending_resources` 对称：在 Immediate 事务里把
+    /// `mm_index_state` 翻转为 indexing，返回实际抢到的资源 ID。
+    ///
+    /// 以下资源会被跳过（本轮不处理）：
+    /// - 已处于 indexing——`vfs_unified_batch_index` / 手动索引正在处理同一资源，
+    ///   并行会造成重复 embedding 与 generation 竞态；
+    /// - failed 且退避未到期——尊重 `mark_mm_failed` 写入的指数退避；
+    /// - failed 且 retry_count 已达上限——与 P0-3 的文本侧语义一致，
+    ///   等待用户显式重试（mark_mm_pending 会清零计数）。
+    pub fn claim_mm_indexing_resources(
+        db: &VfsDatabase,
+        resource_ids: &[String],
+        max_retries: i32,
+    ) -> VfsResult<Vec<String>> {
+        if resource_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let now = chrono::Utc::now().timestamp_millis();
+
+        let mut claimed = Vec::with_capacity(resource_ids.len());
+        for resource_id in resource_ids {
+            // ★ G2/A11 约定：claim 不触碰业务 updated_at
+            let updated = tx.execute(
+                r#"
+                UPDATE resources
+                SET mm_index_state = 'indexing', mm_index_error = NULL
+                WHERE id = ?1
+                  AND COALESCE(mm_index_state, 'pending') <> 'indexing'
+                  AND (COALESCE(mm_index_state, 'pending') <> 'failed'
+                       OR (COALESCE(mm_index_next_retry_at, 0) <= ?2
+                           AND COALESCE(mm_index_retry_count, 0) < ?3))
+                "#,
+                params![resource_id, now, max_retries],
+            )?;
+            if updated > 0 {
+                claimed.push(resource_id.clone());
+            }
+        }
+
+        tx.commit()?;
+        Ok(claimed)
     }
 }
 
@@ -1005,8 +1065,10 @@ mod tests {
         assert_eq!(state.hash, Some("hash123".to_string()));
     }
 
+    // ★ P0-3 回归测试：failed 资源超过 max_retries 后不再入队；
+    // 显式 mark_pending 清零计数后恢复入队。
     #[test]
-    fn cooled_down_failures_remain_retryable_past_the_historical_limit() {
+    fn failed_resources_stop_requeueing_after_max_retries() {
         let (_temp_dir, db) = setup_test_db();
         let conn = db.get_conn_safe().unwrap();
         conn.execute(
@@ -1023,11 +1085,29 @@ mod tests {
         )
         .unwrap();
 
+        // retry_count(99) >= max_retries(3)：退避到期也不再入队
         let text = VfsIndexStateRepo::get_pending_resources_with_conn(&conn, 10, 3).unwrap();
         let multimodal =
             VfsIndexStateRepo::get_mm_pending_resources_with_conn(&conn, 10, 3).unwrap();
-        assert!(text.contains(&"res_retry_text".to_string()));
-        assert!(multimodal.contains(&"res_retry_mm".to_string()));
+        assert!(!text.contains(&"res_retry_text".to_string()));
+        assert!(!multimodal.contains(&"res_retry_mm".to_string()));
+
+        // 上限充分大时仍可重试（说明过滤条件确实是 retry_count 比较）
+        let text_relaxed =
+            VfsIndexStateRepo::get_pending_resources_with_conn(&conn, 10, 200).unwrap();
+        let mm_relaxed =
+            VfsIndexStateRepo::get_mm_pending_resources_with_conn(&conn, 10, 200).unwrap();
+        assert!(text_relaxed.contains(&"res_retry_text".to_string()));
+        assert!(mm_relaxed.contains(&"res_retry_mm".to_string()));
+
+        // 超限资源保持 failed，mm claim 也不会抢占
+        let claimed = VfsIndexStateRepo::claim_mm_indexing_resources(
+            &db,
+            &["res_retry_mm".to_string()],
+            3,
+        )
+        .unwrap();
+        assert!(claimed.is_empty());
 
         VfsIndexStateRepo::mark_failed_with_conn(&conn, "res_retry_text", "again").unwrap();
         let (retry_count, next_retry_at): (i32, i64) = conn
@@ -1043,6 +1123,7 @@ mod tests {
         assert!(next_retry_at > now);
         assert!(next_retry_at <= now + 3_601_000);
 
+        // 显式重试：mark_pending 清零计数，资源重新可入队
         VfsIndexStateRepo::mark_pending(&db, "res_retry_text").unwrap();
         let reset: (i32, i64) = conn
             .query_row(
@@ -1053,5 +1134,44 @@ mod tests {
             )
             .unwrap();
         assert_eq!(reset, (0, 0));
+        let text_after_reset =
+            VfsIndexStateRepo::get_pending_resources_with_conn(&conn, 10, 3).unwrap();
+        assert!(text_after_reset.contains(&"res_retry_text".to_string()));
+    }
+
+    // ★ P1-4 回归测试：mm claim 原子抢占，已 indexing 的资源被跳过
+    #[test]
+    fn mm_claim_skips_resources_already_indexing() {
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        conn.execute(
+            "INSERT INTO resources
+             (id, hash, type, storage_mode, data, index_state, mm_index_state,
+              mm_index_retry_count, mm_index_next_retry_at, created_at, updated_at)
+             VALUES
+             ('res_mm_free', 'hash_mm_free', 'image', 'inline', '', 'disabled', 'pending', 0, 0, 0, 10),
+             ('res_mm_busy', 'hash_mm_busy', 'image', 'inline', '', 'disabled', 'indexing', 0, 0, 0, 20)",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+
+        let claimed = VfsIndexStateRepo::claim_mm_indexing_resources(
+            &db,
+            &["res_mm_free".to_string(), "res_mm_busy".to_string()],
+            3,
+        )
+        .unwrap();
+        assert_eq!(claimed, vec!["res_mm_free".to_string()]);
+
+        let conn = db.get_conn_safe().unwrap();
+        let state: String = conn
+            .query_row(
+                "SELECT mm_index_state FROM resources WHERE id = 'res_mm_free'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(state, "indexing");
     }
 }

@@ -8,7 +8,7 @@
  * - 批量操作
  */
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
   NotionDialog,
@@ -53,7 +53,9 @@ import {
   FileText,
   Tag,
   Star,
+  ArrowLeft,
 } from "@phosphor-icons/react";
+import { registerBackHandler, BACK_PRIORITY } from "@/app/navigation/androidBackCoordinator";
 import { useShallow } from "zustand/react/shallow";
 import {
   SyncConflict,
@@ -73,6 +75,12 @@ interface SyncConflictDialogProps {
   examId: string;
   conflicts: SyncConflict[];
   onResolved?: () => void;
+  /**
+   * inline 模式（移动端）：不渲染 NotionDialog 浮层，改为宿主容器内的
+   * 全屏内联冲突处理子屏（absolute inset-0 + 顶栏返回 + Android 返回键）；
+   * 解决策略的二次确认也改为列表顶部行内确认条。
+   */
+  inline?: boolean;
 }
 
 type PendingResolution =
@@ -175,7 +183,7 @@ function VersionCompare({ local, remote }: VersionCompareProps) {
   const newerSide = compareTime(local.updated_at, remote.updated_at);
 
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       {/* 本地版本 */}
       <Card
         className={`border-2 ${newerSide === "local" ? "border-green-500" : "border-muted"}`}
@@ -418,6 +426,7 @@ export function SyncConflictDialog({
   examId,
   conflicts,
   onResolved,
+  inline = false,
 }: SyncConflictDialogProps) {
   const { t } = useTranslation("sync");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -596,22 +605,40 @@ export function SyncConflictDialog({
     }
   }, [isConfirmingResolution]);
 
-  return (
-    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-4xl">
-      <NotionDialogHeader>
-        <NotionDialogTitle className="flex items-center gap-2">
-          <WarningCircle size={20} className="text-amber-500" />
-          {t("syncConflicts")}
-          <Badge variant="secondary">{pendingConflicts.length}</Badge>
-        </NotionDialogTitle>
-        <NotionDialogDescription>
-          {t(
-            "conflictDescription",
-            "conflictDescription",
-          )}
-        </NotionDialogDescription>
-      </NotionDialogHeader>
-      <NotionDialogBody>
+  // inline 子屏：Android 返回键 = 关闭（有待确认操作时先取消该操作）
+  useEffect(() => {
+    if (!inline || !open) return;
+    return registerBackHandler(() => {
+      if (pendingResolution && !isConfirmingResolution) {
+        setPendingResolution(null);
+      } else {
+        onOpenChange(false);
+      }
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [inline, open, pendingResolution, isConfirmingResolution, onOpenChange]);
+
+  // 确认描述文案（模态 Alert 与行内确认条共用）
+  const resolutionDescription = pendingResolution
+    ? pendingResolution.kind === "single"
+      ? t(
+        "confirmConflictResolveDescription",
+        "confirmConflictResolveDescription",
+        { strategy: getStrategyLabel(pendingResolution.strategy, t) },
+      )
+      : t(
+        "confirmConflictBatchResolveDescription",
+        "confirmConflictBatchResolveDescription",
+        {
+          count: pendingResolution.conflictIds.length,
+          strategy: getStrategyLabel(pendingResolution.strategy, t),
+        },
+      )
+    : undefined;
+
+  // 冲突主体（Dialog 与 inline 子屏共用）
+  const conflictBody = (
+    <>
         {pendingConflicts.length === 0 ? (
           <Alert>
             <Check size={16} />
@@ -621,8 +648,8 @@ export function SyncConflictDialog({
           </Alert>
         ) : (
           <>
-            {/* 批量操作栏 */}
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+            {/* 批量操作栏（窄屏允许换行，避免策略选项横向溢出） */}
+            <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-muted/50 rounded-lg">
               <div className="flex items-center gap-3">
                 <Checkbox
                   checked={
@@ -641,8 +668,8 @@ export function SyncConflictDialog({
               </div>
 
               {selectedIds.size > 0 && (
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-4">
                     {(
                       [
                         "keep_local",
@@ -724,6 +751,115 @@ export function SyncConflictDialog({
             </CustomScrollArea>
           </>
         )}
+    </>
+  );
+
+  // ==================== inline 模式：全屏内联冲突处理子屏（移动端） ====================
+  if (inline) {
+    if (!open) return null;
+    return (
+      <div
+        className="absolute inset-0 z-30 flex flex-col bg-background"
+        role="dialog"
+        aria-label={t("syncConflicts")}
+      >
+        {/* 顶栏：返回 + 标题 + 冲突数 */}
+        <div className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b border-border/60 px-2">
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={() => onOpenChange(false)}
+            aria-label={t("close")}
+            className="!h-11 !w-11 text-muted-foreground"
+          >
+            <ArrowLeft size={20} />
+          </NotionButton>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <WarningCircle size={16} className="flex-shrink-0 text-amber-500" />
+            <span className="truncate text-sm font-medium text-foreground">
+              {t("syncConflicts")}
+            </span>
+            <Badge variant="secondary">{pendingConflicts.length}</Badge>
+          </div>
+        </div>
+        <p className="flex-shrink-0 border-b border-border/40 px-4 py-2 text-xs text-muted-foreground">
+          {t("conflictDescription", "conflictDescription")}
+        </p>
+
+        {/* 行内二次确认条（替代模态 Alert） */}
+        {pendingResolution && (
+          <div
+            className="flex-shrink-0 border-b border-amber-300/50 bg-amber-50/50 px-3 py-2 dark:border-amber-700/40 dark:bg-amber-900/10"
+            role="alert"
+            aria-label={t("confirmConflictResolveTitle")}
+          >
+            <div className="flex items-start gap-2">
+              <WarningCircle size={16} className="mt-0.5 flex-shrink-0 text-amber-500" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-foreground">
+                  {t("confirmConflictResolveTitle")}
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">{resolutionDescription}</p>
+              </div>
+            </div>
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                className="!h-9 px-3 text-xs"
+                onClick={() => handleResolutionDialogOpenChange(false)}
+                disabled={isConfirmingResolution}
+              >
+                {t("cancel")}
+              </NotionButton>
+              <NotionButton
+                variant="warning"
+                size="sm"
+                className="!h-9 px-3 text-xs"
+                onClick={() => void handleConfirmResolution()}
+                disabled={isConfirmingResolution}
+              >
+                {isConfirmingResolution && (
+                  <CircleNotch size={14} className="mr-1.5 animate-spin" />
+                )}
+                {t("confirm")}
+              </NotionButton>
+            </div>
+          </div>
+        )}
+
+        {/* 冲突列表：全高滚动（safe-area 兼容） */}
+        <div
+          className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4 pt-3"
+          style={{
+            paddingBottom: "var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px))",
+          }}
+        >
+          {conflictBody}
+        </div>
+      </div>
+    );
+  }
+
+  // ==================== 桌面端：模态 Dialog ====================
+  return (
+    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-4xl">
+      <NotionDialogHeader>
+        <NotionDialogTitle className="flex items-center gap-2">
+          <WarningCircle size={20} className="text-amber-500" />
+          {t("syncConflicts")}
+          <Badge variant="secondary">{pendingConflicts.length}</Badge>
+        </NotionDialogTitle>
+        <NotionDialogDescription>
+          {t(
+            "conflictDescription",
+            "conflictDescription",
+          )}
+        </NotionDialogDescription>
+      </NotionDialogHeader>
+      <NotionDialogBody>
+        {conflictBody}
       </NotionDialogBody>
       <NotionDialogFooter>
         <NotionButton
@@ -739,22 +875,7 @@ export function SyncConflictDialog({
         onOpenChange={handleResolutionDialogOpenChange}
         icon={<WarningCircle size={20} className="text-amber-500" />}
         title={t("confirmConflictResolveTitle")}
-        description={pendingResolution
-          ? pendingResolution.kind === "single"
-            ? t(
-              "confirmConflictResolveDescription",
-              "confirmConflictResolveDescription",
-              { strategy: getStrategyLabel(pendingResolution.strategy, t) },
-            )
-            : t(
-              "confirmConflictBatchResolveDescription",
-              "confirmConflictBatchResolveDescription",
-              {
-                count: pendingResolution.conflictIds.length,
-                strategy: getStrategyLabel(pendingResolution.strategy, t),
-              },
-            )
-          : undefined}
+        description={resolutionDescription}
         confirmText={t("confirm")}
         cancelText={t("cancel")}
         confirmVariant="warning"

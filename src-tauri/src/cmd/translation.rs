@@ -39,6 +39,10 @@ fn infer_extension_from_bytes(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
+/// OCR 图片体积上限（解码后字节数）。
+/// base64 无上限解码会被超大图打满内存/临时磁盘（审计 07 §2.3）。
+const MAX_OCR_IMAGE_BYTES: usize = 20 * 1024 * 1024;
+
 fn decode_base64_image_payload(payload: &str) -> Result<(Vec<u8>, &'static str)> {
     let trimmed = payload.trim();
     let (declared_mime, base64_data) = if trimmed.starts_with("data:") {
@@ -54,9 +58,24 @@ fn decode_base64_image_payload(payload: &str) -> Result<(Vec<u8>, &'static str)>
         (None, trimmed)
     };
 
+    // 先按 base64 长度粗判（4/3 膨胀率），避免为超大 payload 分配解码缓冲
+    if base64_data.len() / 4 * 3 > MAX_OCR_IMAGE_BYTES {
+        return Err(AppError::validation(format!(
+            "图片过大（上限 {}MB），请压缩后重试",
+            MAX_OCR_IMAGE_BYTES / 1024 / 1024
+        )));
+    }
+
     let image_data = base64::engine::general_purpose::STANDARD
         .decode(base64_data)
         .map_err(|e| AppError::validation(format!("Base64解码失败: {}", e)))?;
+
+    if image_data.len() > MAX_OCR_IMAGE_BYTES {
+        return Err(AppError::validation(format!(
+            "图片过大（上限 {}MB），请压缩后重试",
+            MAX_OCR_IMAGE_BYTES / 1024 / 1024
+        )));
+    }
 
     let extension = infer_extension_from_bytes(&image_data)
         .or_else(|| declared_mime.and_then(infer_extension_from_mime))

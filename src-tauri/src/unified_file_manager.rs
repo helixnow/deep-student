@@ -186,6 +186,54 @@ pub fn read_all_bytes(window: &Window, raw_path: &str) -> Result<Vec<u8>, AppErr
     Ok(buffer)
 }
 
+/// 带大小上限的全量读取。
+///
+/// ★ 2026-07-19（安全加固）：`read_file_bytes` 命令此前无上限，前端任意 JS
+/// 可将超大文件一次性载入内存。此处双重防护：
+/// - 本地文件先用 `metadata().len()` 预检，超限直接报错（错误信息含实际大小）；
+/// - 实际读取用 `take(max_bytes + 1)` 截断，防止预检与读取之间文件增长（TOCTOU），
+///   同时覆盖无法预检大小的虚拟 URI（content:// 等）。
+pub fn read_all_bytes_bounded(
+    window: &Window,
+    raw_path: &str,
+    max_bytes: u64,
+) -> Result<Vec<u8>, AppError> {
+    let path = classify_path(raw_path)?;
+
+    if let PathKind::Local(local_path) = &path {
+        let meta = std::fs::metadata(local_path).map_err(|e| {
+            AppError::file_system(format!(
+                "获取文件信息失败: {} ({})",
+                local_path.display(),
+                e
+            ))
+        })?;
+        if meta.len() > max_bytes {
+            return Err(AppError::validation(format!(
+                "文件过大: {} 字节，超过读取上限 {} 字节: {}",
+                meta.len(),
+                max_bytes,
+                path.display()
+            )));
+        }
+    }
+
+    let reader = open_reader(window, &path)?;
+    let mut limited = reader.take(max_bytes.saturating_add(1));
+    let mut buffer = Vec::new();
+    limited
+        .read_to_end(&mut buffer)
+        .map_err(|e| AppError::file_system(format!("读取文件失败: {} ({})", path.display(), e)))?;
+    if buffer.len() as u64 > max_bytes {
+        return Err(AppError::validation(format!(
+            "文件过大: 超过读取上限 {} 字节: {}",
+            max_bytes,
+            path.display()
+        )));
+    }
+    Ok(buffer)
+}
+
 pub fn read_to_string(window: &Window, raw_path: &str) -> Result<String, AppError> {
     let bytes = read_all_bytes(window, raw_path)?;
     String::from_utf8(bytes).map_err(|_| AppError::file_system("文件编码不是有效的 UTF-8"))

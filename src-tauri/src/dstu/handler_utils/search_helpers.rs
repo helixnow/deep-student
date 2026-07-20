@@ -575,7 +575,7 @@ pub fn search_mindmaps(
 
     let mut stmt = conn.prepare(
         r#"
-        SELECT id, resource_id, title, description, is_favorite, default_view, theme, settings, created_at, updated_at, deleted_at
+        SELECT id, resource_id, title, description, is_favorite, default_view, theme, settings, created_at, updated_at, deleted_at, COALESCE(content_updated_at, updated_at)
         FROM mindmaps
         WHERE deleted_at IS NULL AND title LIKE ?1 ESCAPE '\'
         ORDER BY updated_at DESC
@@ -599,6 +599,7 @@ pub fn search_mindmaps(
                 settings,
                 created_at: row.get(8)?,
                 updated_at: row.get(9)?,
+                content_updated_at: row.get(11)?,
                 deleted_at: row.get(10)?,
             })
         })

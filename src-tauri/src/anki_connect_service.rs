@@ -7,6 +7,12 @@ use tracing::{debug, warn};
 
 const ANKI_CONNECT_URL: &str = "http://127.0.0.1:8765";
 
+/// 本应用依赖的最低 AnkiConnect API 版本（canAddNotes / addNotes / createModel 均在 v6 定义）。
+const ANKI_CONNECT_MIN_VERSION: u64 = 6;
+
+/// addNotes 批量推送分片大小：过大易触发 AnkiConnect 超时，过小徒增 HTTP 往返。
+const ANKI_CONNECT_ADD_NOTES_CHUNK_SIZE: usize = 100;
+
 #[derive(Serialize)]
 struct AnkiConnectRequest {
     action: String,
@@ -226,14 +232,30 @@ pub async fn check_anki_connect_availability() -> Result<bool, String> {
 
                 match serde_json::from_str::<AnkiConnectResponse>(&response_text) {
                     Ok(anki_response) => {
-                        if anki_response.error.is_none() {
-                            debug!("✅ AnkiConnect版本检查成功");
-                            Ok(true)
-                        } else {
-                            Err(format!(
-                                "AnkiConnect错误: {}",
-                                anki_response.error.unwrap_or_default()
-                            ))
+                        if let Some(error) = anki_response.error {
+                            return Err(format!("AnkiConnect错误: {}", error));
+                        }
+                        // 版本协商：低于最低支持版本时给出明确升级提示，
+                        // 避免后续 canAddNotes/createModel 等 action 静默失败。
+                        match anki_response.result.as_ref().and_then(|v| v.as_u64()) {
+                            Some(version) if version < ANKI_CONNECT_MIN_VERSION => {
+                                Err(format!(
+                                    "AnkiConnect 插件版本过旧（API v{}，需要 ≥ v{}）。请在 Anki 中更新 AnkiConnect 插件（代码：2055492159）后重试",
+                                    version, ANKI_CONNECT_MIN_VERSION
+                                ))
+                            }
+                            Some(version) => {
+                                debug!("✅ AnkiConnect版本检查成功: API v{}", version);
+                                Ok(true)
+                            }
+                            None => {
+                                // 兼容返回非数字（极旧/魔改版本）：放行但记录告警
+                                warn!(
+                                    "⚠️ AnkiConnect version 返回非数字结果，跳过版本协商: {:?}",
+                                    anki_response.result
+                                );
+                                Ok(true)
+                            }
                         }
                     }
                     Err(e) => Err(format!(
@@ -434,6 +456,22 @@ pub struct AnkiSyncReport {
     pub failed: usize,
     /// 本次同步自动创建的 Anki 模型名
     pub created_models: Vec<String>,
+    /// 新增可选字段（向后兼容）：模型预检/createModel 的结构化失败明细。
+    /// 为空时不序列化，旧前端无感知。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub model_errors: Vec<AnkiSyncModelError>,
+    /// 新增可选字段（向后兼容）：非致命告警（canAddNotes 降级、分批推送部分失败等）。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
+/// 模型相关失败的结构化明细（AnkiSyncReport 新增可选字段的元素类型）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnkiSyncModelError {
+    /// 出问题的 Anki 模型名（note type）
+    pub model: String,
+    pub error: String,
 }
 
 /// 通用 AnkiConnect 调用辅助（新增 action 使用）。
@@ -447,14 +485,31 @@ async fn invoke_anki_connect_action(
         version: 6,
         params,
     };
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| format!("创建HTTP客户端失败({}): {}", action, e))?;
     let response = client
         .post(ANKI_CONNECT_URL)
         .json(&request)
         .timeout(std::time::Duration::from_secs(timeout_secs))
         .send()
         .await
-        .map_err(|e| format!("AnkiConnect 请求失败({}): {}", action, e))?;
+        .map_err(|e| {
+            if e.is_timeout() {
+                format!(
+                    "AnkiConnect 请求超时({}): 请确认 Anki 正在运行且未被弹窗阻塞",
+                    action
+                )
+            } else if e.is_connect() {
+                format!(
+                    "无法连接 AnkiConnect({}): 请确认 Anki 已启动并安装了 AnkiConnect 插件",
+                    action
+                )
+            } else {
+                format!("AnkiConnect 请求失败({}): {}", action, e)
+            }
+        })?;
     if !response.status().is_success() {
         return Err(format!(
             "AnkiConnect HTTP错误({}): {}",
@@ -590,8 +645,11 @@ pub async fn add_notes_to_anki_detailed(
     model_names.sort();
     model_names.dedup();
 
-    // 模型预检（D1）：缺失的模型若有对应自定义模板，自动创建
+    // 模型预检（D1）：缺失的模型若有对应自定义模板，自动创建。
+    // 失败不再只 warn：结构化写入报告（model_errors/warnings），让前端可见。
     let mut created_models: Vec<String> = Vec::new();
+    let mut model_errors: Vec<AnkiSyncModelError> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
     if !templates_by_model.is_empty() {
         match get_model_names().await {
             Ok(existing) => {
@@ -604,6 +662,10 @@ pub async fn add_notes_to_anki_detailed(
                             Ok(()) => created_models.push(model_name.clone()),
                             Err(e) => {
                                 warn!("⚠️ 自动创建模型 {} 失败: {}", model_name, e);
+                                model_errors.push(AnkiSyncModelError {
+                                    model: model_name.clone(),
+                                    error: format!("自动创建模型失败: {}", e),
+                                });
                             }
                         }
                     } else {
@@ -611,10 +673,18 @@ pub async fn add_notes_to_anki_detailed(
                             "⚠️ Anki 中缺少模型 {} 且无对应模板，可能导致同步失败",
                             model_name
                         );
+                        model_errors.push(AnkiSyncModelError {
+                            model: model_name.clone(),
+                            error: "Anki 中缺少该模型且本地无对应模板，相关卡片可能同步失败"
+                                .to_string(),
+                        });
                     }
                 }
             }
-            Err(e) => warn!("⚠️ 获取 Anki 模型列表失败，跳过模型预检: {}", e),
+            Err(e) => {
+                warn!("⚠️ 获取 Anki 模型列表失败，跳过模型预检: {}", e);
+                warnings.push(format!("获取 Anki 模型列表失败，已跳过模型预检: {}", e));
+            }
         }
     }
 
@@ -660,43 +730,94 @@ pub async fn add_notes_to_anki_detailed(
         .collect();
 
     let total = notes.len();
+    let mut note_ids: Vec<Option<u64>> = vec![None; total];
+    let mut duplicates = 0usize;
 
     // canAddNotes 预检（D1）：false 只有在本地结构校验通过时才视为重复；
     // 模型字段未知、首字段为空、字段缺失等情况记为真实失败，避免把结构错误误报为幂等成功。
-    let can_add: Vec<bool> = match can_add_notes(&notes).await {
-        Ok(flags) if flags.len() == total => flags,
-        Ok(_) | Err(_) => vec![true; total],
-    };
-    let duplicates = notes
-        .iter()
-        .zip(can_add.iter())
-        .filter(|(note, ok)| {
-            !**ok
-                && classify_can_add_false(note, &model_field_names_cache)
-                    == CanAddFalseReason::Duplicate
-        })
-        .count();
+    //
+    // 预检失败/返回数量不一致时【不再乐观假设全部可添加】：
+    // 降级为逐条 addNote 并收集逐条结果（重复由 AnkiConnect 的 duplicate 错误判定），
+    // 同时把降级原因写入 warnings 供前端展示。
+    match can_add_notes(&notes).await {
+        Ok(flags) if flags.len() == total => {
+            duplicates = notes
+                .iter()
+                .zip(flags.iter())
+                .filter(|(note, ok)| {
+                    !**ok
+                        && classify_can_add_false(note, &model_field_names_cache)
+                            == CanAddFalseReason::Duplicate
+                })
+                .count();
 
-    let addable_notes: Vec<&Note> = notes
-        .iter()
-        .zip(can_add.iter())
-        .filter(|(_, ok)| **ok)
-        .map(|(note, _)| note)
-        .collect();
+            let addable_indices: Vec<usize> = flags
+                .iter()
+                .enumerate()
+                .filter(|(_, ok)| **ok)
+                .map(|(index, _)| index)
+                .collect();
 
-    let mut note_ids: Vec<Option<u64>> = vec![None; total];
-    if !addable_notes.is_empty() {
-        let params = serde_json::json!({ "notes": addable_notes });
-        let result = invoke_anki_connect_action("addNotes", Some(params), 30).await?;
-        let added_ids = serde_json::from_value::<Vec<Option<u64>>>(result)
-            .map_err(|e| format!("解析笔记ID列表失败: {}", e))?;
+            // 分批推送（大批量分块 + 失败续传）：
+            // 单批失败只影响本批，之前批次已写入 Anki 的结果全部保留；
+            // 失败批次的卡片在 note_ids 中保持 None，由调用方按 receipt 续传。
+            for chunk in addable_indices.chunks(ANKI_CONNECT_ADD_NOTES_CHUNK_SIZE) {
+                let chunk_notes: Vec<&Note> = chunk.iter().map(|&index| &notes[index]).collect();
+                let params = serde_json::json!({ "notes": chunk_notes });
+                match invoke_anki_connect_action("addNotes", Some(params), 60).await {
+                    Ok(result) => match serde_json::from_value::<Vec<Option<u64>>>(result) {
+                        Ok(added_ids) => {
+                            for (slot, note_index) in chunk.iter().enumerate() {
+                                note_ids[*note_index] = added_ids.get(slot).cloned().flatten();
+                            }
+                        }
+                        Err(e) => {
+                            warnings.push(format!(
+                                "解析 addNotes 批次结果失败（{} 张卡片未确认写入）: {}",
+                                chunk.len(),
+                                e
+                            ));
+                        }
+                    },
+                    Err(e) => {
+                        warn!("⚠️ addNotes 批次推送失败（{} 张）: {}", chunk.len(), e);
+                        warnings.push(format!(
+                            "addNotes 批次推送失败（{} 张卡片未写入，可重试续传）: {}",
+                            chunk.len(),
+                            e
+                        ));
+                    }
+                }
+            }
+        }
+        other => {
+            let reason = match other {
+                Ok(flags) => format!(
+                    "canAddNotes 返回数量不匹配（期望 {}，实际 {}）",
+                    total,
+                    flags.len()
+                ),
+                Err(e) => e,
+            };
+            warn!("⚠️ canAddNotes 预检不可用，降级为逐条 addNote: {}", reason);
+            warnings.push(format!(
+                "canAddNotes 预检不可用，已降级为逐条 addNote: {}",
+                reason
+            ));
 
-        // 回填到原位置
-        let mut cursor = 0usize;
-        for (i, ok) in can_add.iter().enumerate() {
-            if *ok {
-                note_ids[i] = added_ids.get(cursor).cloned().flatten();
-                cursor += 1;
+            for (index, note) in notes.iter().enumerate() {
+                let params = serde_json::json!({ "note": note });
+                match invoke_anki_connect_action("addNote", Some(params), 30).await {
+                    Ok(result) => match result.as_u64() {
+                        Some(id) => note_ids[index] = Some(id),
+                        // addNote 结果为 null：Anki 判定为重复但未报错（旧版本行为）
+                        None => duplicates += 1,
+                    },
+                    Err(e) if is_duplicate_note_error(&e) => duplicates += 1,
+                    Err(e) => {
+                        warnings.push(format!("第 {} 张卡片 addNote 失败: {}", index + 1, e));
+                    }
+                }
             }
         }
     }
@@ -710,7 +831,15 @@ pub async fn add_notes_to_anki_detailed(
         duplicates,
         failed,
         created_models,
+        model_errors,
+        warnings,
     })
+}
+
+/// AnkiConnect addNote 的重复判定：错误信息包含 "duplicate"
+/// （官方实现返回 "cannot create note because it is a duplicate"）。
+fn is_duplicate_note_error(error: &str) -> bool {
+    error.to_lowercase().contains("duplicate")
 }
 
 /// 创建牌组（如果不存在）
@@ -875,5 +1004,61 @@ mod tests {
             classify_can_add_false(&note, &cache),
             CanAddFalseReason::InvalidNote
         );
+    }
+
+    #[test]
+    fn duplicate_note_error_detection_is_case_insensitive() {
+        assert!(is_duplicate_note_error(
+            "cannot create note because it is a duplicate"
+        ));
+        assert!(is_duplicate_note_error("AnkiConnect错误(addNote): Duplicate"));
+        assert!(!is_duplicate_note_error("model was not found: Basic"));
+    }
+
+    #[test]
+    fn sync_report_omits_empty_optional_fields_for_backward_compat() {
+        let report = AnkiSyncReport {
+            note_ids: vec![Some(1), None],
+            added: 1,
+            duplicates: 1,
+            failed: 0,
+            created_models: vec![],
+            model_errors: vec![],
+            warnings: vec![],
+        };
+        let value = serde_json::to_value(&report).expect("serialize report");
+        // 旧契约字段保持存在
+        assert_eq!(value["noteIds"][0], 1);
+        assert_eq!(value["added"], 1);
+        assert_eq!(value["duplicates"], 1);
+        assert_eq!(value["failed"], 0);
+        assert!(value["createdModels"].as_array().is_some());
+        // 新字段为空时不序列化，旧前端零感知
+        assert!(value.get("modelErrors").is_none());
+        assert!(value.get("warnings").is_none());
+    }
+
+    #[test]
+    fn sync_report_serializes_structured_model_errors_when_present() {
+        let report = AnkiSyncReport {
+            note_ids: vec![None],
+            added: 0,
+            duplicates: 0,
+            failed: 1,
+            created_models: vec![],
+            model_errors: vec![AnkiSyncModelError {
+                model: "Custom".to_string(),
+                error: "自动创建模型失败: boom".to_string(),
+            }],
+            warnings: vec!["canAddNotes 预检不可用，已降级为逐条 addNote: timeout".to_string()],
+        };
+        let value = serde_json::to_value(&report).expect("serialize report");
+        assert_eq!(value["modelErrors"][0]["model"], "Custom");
+        assert!(value["modelErrors"][0]["error"]
+            .as_str()
+            .is_some_and(|e| e.contains("boom")));
+        assert!(value["warnings"][0]
+            .as_str()
+            .is_some_and(|w| w.contains("addNote")));
     }
 }

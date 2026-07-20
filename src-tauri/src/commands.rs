@@ -2526,7 +2526,14 @@ fn deny_hidden_local_path(window: &Window, raw_path: &str) -> Result<()> {
         return Ok(());
     }
 
-    // 应用数据目录内的路径（如 VFS blob）放行
+    // ★ 2026-07-19（安全加固）：先解码 + canonicalize 再做前缀/隐藏段判断。
+    // 旧实现直接对原始字符串做 `starts_with`，`$APP_DATA/../../.ssh/key` 这类
+    // 带 `..` 的路径可通过应用目录前缀放行，URL 编码（%2Essh）也能绕过隐藏段检查。
+    let normalized_raw = unified_file_manager::sanitize_for_legacy(raw_path);
+    let resolved = canonicalize_lenient(Path::new(&normalized_raw));
+
+    // 应用数据目录内的路径（如 VFS blob）放行（目录本身也真实化，
+    // 处理 macOS /var -> /private/var 之类的符号链接前缀差异）
     let app = window.app_handle();
     let in_app_dirs = [
         app.path().app_data_dir().ok(),
@@ -2535,12 +2542,15 @@ fn deny_hidden_local_path(window: &Window, raw_path: &str) -> Result<()> {
     ]
     .into_iter()
     .flatten()
-    .any(|dir| Path::new(raw_path).starts_with(&dir));
+    .any(|dir| {
+        let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+        resolved.starts_with(&dir)
+    });
     if in_app_dirs {
         return Ok(());
     }
 
-    let has_hidden_component = Path::new(raw_path).components().any(|c| {
+    let has_hidden_component = resolved.components().any(|c| {
         matches!(
             c,
             std::path::Component::Normal(name)
@@ -2556,16 +2566,75 @@ fn deny_hidden_local_path(window: &Window, raw_path: &str) -> Result<()> {
     Ok(())
 }
 
+/// 尽力真实化路径：
+/// - 文件存在时直接 `canonicalize`（消除 `..` 与符号链接）；
+/// - 文件尚不存在时先词法归一化 `.`/`..`，再尝试真实化父目录后拼回文件名；
+/// - 父目录也不存在时退化为纯词法归一化结果。
+fn canonicalize_lenient(path: &Path) -> std::path::PathBuf {
+    if let Ok(canonical) = std::fs::canonicalize(path) {
+        return canonical;
+    }
+    let normalized = lexical_normalize_path(path);
+    if let Some(parent) = normalized.parent() {
+        if let (Ok(canonical_parent), Some(name)) =
+            (std::fs::canonicalize(parent), normalized.file_name())
+        {
+            return canonical_parent.join(name);
+        }
+    }
+    normalized
+}
+
+/// 词法归一化：消除 `.` 段，`..` 段弹出上一个普通段（到达根后忽略，
+/// 与 `canonicalize` 对 `/..` 的行为一致）。不访问文件系统。
+fn lexical_normalize_path(path: &Path) -> std::path::PathBuf {
+    use std::path::Component;
+
+    let mut result = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                // 相对路径开头的连续 `..` 无处可弹，原样保留；
+                // 已到根（pop 返回 false）时按 POSIX 语义忽略。
+                let ends_with_parent = matches!(
+                    result.components().next_back(),
+                    Some(Component::ParentDir)
+                );
+                if ends_with_parent || (!result.pop() && !result.has_root()) {
+                    result.push(Component::ParentDir.as_os_str());
+                }
+            }
+            other => result.push(other.as_os_str()),
+        }
+    }
+    result
+}
+
+/// `read_file_bytes` 单次读取的强制上限（与 vfs attachment `MAX_FILE_BYTES` 对齐）。
+/// 调用方传入的 `max_bytes` 只能收紧、不能放宽该上限。
+const MAX_READ_FILE_BYTES: u64 = 200 * 1024 * 1024;
+
 /// 读取文件二进制内容（支持 content://、ph:// 等移动端安全URI）
 ///
 /// ★ 2026-06-12（审阅问题 R4）：返回 `tauri::ipc::Response` 原始二进制。
 /// 旧实现返回 `Vec<u8>` 会被序列化成 JSON number 数组，传输体积膨胀 3-4 倍，
 /// 200MB 文件经 IPC 后字符串近 1GB。同时把磁盘读取移入 blocking 线程。
+///
+/// ★ 2026-07-19（安全加固）：新增可选 `max_bytes` 参数并强制 200MB 上限，
+/// 超限直接报错（本地文件先 metadata 预检，读取用 take 截断防 TOCTOU 增长）。
 #[tauri::command]
-pub async fn read_file_bytes(window: Window, path: String) -> Result<tauri::ipc::Response> {
+pub async fn read_file_bytes(
+    window: Window,
+    path: String,
+    max_bytes: Option<u64>,
+) -> Result<tauri::ipc::Response> {
     deny_hidden_local_path(&window, &path)?;
+    let limit = max_bytes
+        .unwrap_or(MAX_READ_FILE_BYTES)
+        .min(MAX_READ_FILE_BYTES);
     let bytes = tauri::async_runtime::spawn_blocking(move || {
-        unified_file_manager::read_all_bytes(&window, &path)
+        unified_file_manager::read_all_bytes_bounded(&window, &path, limit)
     })
     .await
     .map_err(|e| AppError::file_system(format!("读取任务异常终止: {}", e)))??;
@@ -2573,8 +2642,12 @@ pub async fn read_file_bytes(window: Window, path: String) -> Result<tauri::ipc:
 }
 
 /// 获取文件大小（字节）
+///
+/// ★ 2026-07-19（安全加固）：补上与 `read_file_bytes` 相同的路径策略，
+/// 避免通过文件大小探测隐藏目录（~/.ssh 等）内容的存在性。
 #[tauri::command]
 pub async fn get_file_size(window: Window, path: String) -> Result<u64> {
+    deny_hidden_local_path(&window, &path)?;
     unified_file_manager::get_file_size(&window, &path)
 }
 
@@ -2754,25 +2827,67 @@ pub async fn update_custom_template(
             }
         })?;
 
+    // 内置模板被用户修改后打 user_modified 标记：
+    // 后续内置模板版本升级导入将跳过该模板，避免用户修改被静默覆盖（bug D3 配套）
+    if existing_template.is_built_in {
+        if let Err(e) = state.database.mark_template_user_modified(&template_id) {
+            warn!(
+                "标记内置模板 user_modified 失败: {} ({})，内置模板升级导入可能覆盖此次修改",
+                template_id, e
+            );
+        }
+    }
+
     Ok(())
 }
 
 /// 删除自定义模板
+///
+/// 统一规则（bug F4）：内置模板不可物理删除，删除请求转为"停用 + user_deleted 墓碑"，
+/// 保持模板 ID 稳定且内置模板升级导入不会复活它；用户自建模板才做物理删除。
+///
+/// 返回结构（bug D5，向后兼容增强——旧前端忽略返回值不受影响）：
+/// `{ deleted, deactivated, isBuiltIn, referencingCards, message }`
+/// referencingCards 为仍引用该模板的存量卡片数，供前端提示。
 #[tauri::command]
-pub async fn delete_custom_template(template_id: String, state: State<'_, AppState>) -> Result<()> {
+pub async fn delete_custom_template(
+    template_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value> {
     // 验证模板是否存在
     let existing_template = state
         .database
         .get_custom_template_by_id(&template_id)
         .map_err(|e| AppError::database(format!("查询模板失败: {}", e)))?;
 
-    match existing_template {
-        Some(_template) => {
-            // 允许删除内置模板
-        }
+    let template = match existing_template {
+        Some(template) => template,
         None => {
             return Err(AppError::validation("模板不存在".to_string()));
         }
+    };
+
+    let referencing_cards = state
+        .database
+        .count_anki_cards_referencing_template(&template_id)
+        .map_err(|e| AppError::database(format!("统计模板引用卡片失败: {}", e)))?;
+
+    if template.is_built_in {
+        state
+            .database
+            .soft_delete_builtin_template(&template_id)
+            .map_err(|e| AppError::database(format!("停用内置模板失败: {}", e)))?;
+
+        return Ok(serde_json::json!({
+            "deleted": false,
+            "deactivated": true,
+            "isBuiltIn": true,
+            "referencingCards": referencing_cards,
+            "message": format!(
+                "内置模板「{}」已停用（内置模板不可物理删除，已有 {} 张卡片引用不受影响）",
+                template.name, referencing_cards
+            ),
+        }));
     }
 
     state
@@ -2780,7 +2895,20 @@ pub async fn delete_custom_template(template_id: String, state: State<'_, AppSta
         .delete_custom_template(&template_id)
         .map_err(|e| AppError::database(format!("删除模板失败: {}", e)))?;
 
-    Ok(())
+    if referencing_cards > 0 {
+        warn!(
+            "模板 '{}' 已删除，但仍有 {} 张卡片引用它（template_id 绑定失效）",
+            template.name, referencing_cards
+        );
+    }
+
+    Ok(serde_json::json!({
+        "deleted": true,
+        "deactivated": false,
+        "isBuiltIn": false,
+        "referencingCards": referencing_cards,
+        "message": format!("模板「{}」已删除", template.name),
+    }))
 }
 /// 导出模板
 #[tauri::command]
@@ -2806,6 +2934,11 @@ pub async fn export_template(
     }
 }
 /// 导入模板
+///
+/// 修复 bug D2：旧实现"先删同名旧模板，后校验新模板"，校验失败时旧模板已丢失，
+/// 且删旧建新导致模板 ID 变化，存量卡片的 template_id 绑定断裂。
+/// 新实现：先校验；同名覆盖时对旧模板做单条 UPDATE 原地替换（保持 ID 稳定），
+/// 任一步失败旧模板保持原样。
 #[tauri::command]
 pub async fn import_template(
     request: TemplateImportRequest,
@@ -2821,23 +2954,11 @@ pub async fn import_template(
         .get_all_custom_templates()
         .map_err(|e| AppError::database(format!("查询现有模板失败: {}", e)))?;
 
-    if existing_templates.iter().any(|t| t.name == template.name) {
-        if !request.overwrite_existing {
-            return Err(AppError::validation(format!(
-                "模板 '{}' 已存在，请启用覆盖或修改名称后重试",
-                template.name
-            )));
-        }
-        // 找到同名模板并删除（包括内置模板）
-        if let Some(existing) = existing_templates.iter().find(|t| t.name == template.name) {
-            state
-                .database
-                .delete_custom_template(&existing.id)
-                .map_err(|e| AppError::database(format!("删除旧模板失败: {}", e)))?;
-        }
-    }
+    let existing_same_name = existing_templates
+        .iter()
+        .find(|t| t.name == template.name)
+        .cloned();
 
-    // 创建新模板
     let create_request = CreateTemplateRequest {
         name: template.name,
         description: template.description,
@@ -2857,7 +2978,35 @@ pub async fn import_template(
         is_built_in: Some(template.is_built_in),
     };
 
+    // 先校验后写库：校验失败时数据库不发生任何变更
     validate_template_request(&create_request)?;
+
+    if let Some(existing) = existing_same_name {
+        if !request.overwrite_existing {
+            return Err(AppError::validation(format!(
+                "模板 '{}' 已存在，请启用覆盖或修改名称后重试",
+                create_request.name
+            )));
+        }
+
+        // 原地覆盖：保持模板 ID 与 is_built_in 不变，存量卡片绑定不断裂
+        state
+            .database
+            .replace_custom_template_content(&existing.id, &create_request)
+            .map_err(|e| AppError::database(format!("覆盖导入模板失败: {}", e)))?;
+
+        // 覆盖的是内置模板 => 视为用户修改，内置模板升级导入不再覆盖它
+        if existing.is_built_in {
+            if let Err(e) = state.database.mark_template_user_modified(&existing.id) {
+                warn!(
+                    "标记内置模板 user_modified 失败: {} ({})",
+                    existing.id, e
+                );
+            }
+        }
+
+        return Ok(existing.id);
+    }
 
     let template_id = state
         .database
@@ -2889,12 +3038,18 @@ pub async fn import_custom_templates_bulk(
             .database
             .get_all_custom_templates()
             .map_err(|e| AppError::database(format!("查询现有模板失败: {}", e)))?;
-        let mut existing_ids: HashSet<String> =
+        let existing_ids: HashSet<String> =
             existing_templates.iter().map(|t| t.id.clone()).collect();
+        let builtin_ids: HashSet<String> = existing_templates
+            .iter()
+            .filter(|t| t.is_built_in)
+            .map(|t| t.id.clone())
+            .collect();
         let mut existing_by_name: HashMap<String, String> = existing_templates
             .iter()
             .map(|template| (template.name.clone(), template.id.clone()))
             .collect();
+        let mut created_ids: HashSet<String> = HashSet::new();
 
         let mut imported = 0;
         let mut skipped = 0;
@@ -2911,33 +3066,16 @@ pub async fn import_custom_templates_bulk(
                 .and_then(|v| v.as_str())
                 .unwrap_or("未命名模板");
 
-            if let Some(existing_id) = existing_by_name.get(template_name).cloned() {
-                if !request.overwrite_existing {
-                    skipped += 1;
-                    conflicts.push(template_name.to_string());
-                    continue;
-                }
-                if let Err(e) = state.database.delete_custom_template(&existing_id) {
-                    errors.push(format!("{}: {}", template_name, e));
-                    continue;
-                }
-                existing_by_name.remove(template_name);
-                existing_ids.remove(&existing_id);
-            }
-
-            if existing_ids.contains(template_id) {
-                if !request.overwrite_existing {
-                    skipped += 1;
-                    conflicts.push(template_name.to_string());
-                    continue;
-                }
-                if let Err(e) = state.database.delete_custom_template(template_id) {
-                    errors.push(format!("{}: {}", template_name, e));
-                    continue;
-                }
-                existing_ids.remove(template_id);
-                existing_by_name.retain(|_, id| id != template_id);
-            }
+            // 与单模板导入（bug D2 修复）同源规则：先校验后写库、
+            // 同名/同 ID 覆盖用原地 UPDATE（保持模板 ID 稳定），不再"先删后建"。
+            // 目标行定位优先按 ID，其次按名称。
+            let target_existing_id = if existing_ids.contains(template_id)
+                || created_ids.contains(template_id)
+            {
+                Some(template_id.to_string())
+            } else {
+                existing_by_name.get(template_name).cloned()
+            };
 
             let fields: Vec<String> = template_value
                 .get("fields_json")
@@ -3017,8 +3155,40 @@ pub async fn import_custom_templates_bulk(
                 is_built_in: Some(true),
             };
 
+            // 先校验后写库：校验失败时旧模板保持原样（bug D2 同源修复）
             if let Err(e) = validate_template_request(&create_request) {
                 errors.push(format!("{}: {}", template_name, e));
+                continue;
+            }
+
+            if let Some(existing_id) = target_existing_id {
+                if !request.overwrite_existing {
+                    skipped += 1;
+                    conflicts.push(template_name.to_string());
+                    continue;
+                }
+                match state
+                    .database
+                    .replace_custom_template_content(&existing_id, &create_request)
+                {
+                    Ok(()) => {
+                        imported += 1;
+                        existing_by_name
+                            .insert(template_name.to_string(), existing_id.clone());
+                        // 覆盖内置模板 => 视为用户修改，内置模板升级导入不再覆盖它
+                        if builtin_ids.contains(&existing_id) {
+                            if let Err(e) =
+                                state.database.mark_template_user_modified(&existing_id)
+                            {
+                                warn!(
+                                    "标记内置模板 user_modified 失败: {} ({})",
+                                    existing_id, e
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => errors.push(format!("{}: {}", template_name, e)),
+                }
                 continue;
             }
 
@@ -3028,7 +3198,8 @@ pub async fn import_custom_templates_bulk(
             {
                 Ok(_) => {
                     imported += 1;
-                    existing_ids.insert(template_id.to_string());
+                    created_ids.insert(template_id.to_string());
+                    existing_by_name.insert(template_name.to_string(), template_id.to_string());
                 }
                 Err(e) => errors.push(format!("{}: {}", template_name, e)),
             }
@@ -3065,6 +3236,11 @@ pub async fn import_custom_templates_bulk(
         .iter()
         .map(|template| (template.name.clone(), template.id.clone()))
         .collect();
+    let builtin_id_set: HashSet<String> = existing_templates
+        .iter()
+        .filter(|t| t.is_built_in)
+        .map(|t| t.id.clone())
+        .collect();
 
     let mut imported = 0;
     let mut skipped = 0;
@@ -3081,19 +3257,7 @@ pub async fn import_custom_templates_bulk(
         };
 
         let template_name = template.name.clone();
-
-        if let Some(existing_id) = existing_by_name.get(&template_name).cloned() {
-            if !request.overwrite_existing {
-                skipped += 1;
-                conflicts.push(template_name.clone());
-                continue;
-            }
-            if let Err(e) = state.database.delete_custom_template(&existing_id) {
-                errors.push(format!("{}: {}", template_name, e));
-                continue;
-            }
-            existing_by_name.remove(&template_name);
-        }
+        let template_is_built_in = template.is_built_in;
 
         let create_request = CreateTemplateRequest {
             name: template.name,
@@ -3111,11 +3275,37 @@ pub async fn import_custom_templates_bulk(
             field_extraction_rules: template.field_extraction_rules,
             preview_data_json: template.preview_data_json,
             is_active: Some(template.is_active),
-            is_built_in: Some(template.is_built_in),
+            is_built_in: Some(template_is_built_in),
         };
 
+        // 先校验后写库：校验失败时旧模板保持原样（bug D2 同源修复）
         if let Err(e) = validate_template_request(&create_request) {
             errors.push(format!("{}: {}", template_name, e));
+            continue;
+        }
+
+        if let Some(existing_id) = existing_by_name.get(&template_name).cloned() {
+            if !request.overwrite_existing {
+                skipped += 1;
+                conflicts.push(template_name.clone());
+                continue;
+            }
+            // 同名覆盖用原地 UPDATE（保持模板 ID 稳定），不再"先删后建"
+            match state
+                .database
+                .replace_custom_template_content(&existing_id, &create_request)
+            {
+                Ok(()) => {
+                    imported += 1;
+                    // 覆盖内置模板 => 视为用户修改，内置模板升级导入不再覆盖它
+                    if builtin_id_set.contains(&existing_id) {
+                        if let Err(e) = state.database.mark_template_user_modified(&existing_id) {
+                            warn!("标记内置模板 user_modified 失败: {} ({})", existing_id, e);
+                        }
+                    }
+                }
+                Err(e) => errors.push(format!("{}: {}", template_name, e)),
+            }
             continue;
         }
 
@@ -3166,6 +3356,8 @@ pub async fn import_builtin_templates(state: State<'_, AppState>) -> Result<Stri
     let mut skipped = 0;
     let mut errors: Vec<String> = Vec::new();
     let mut conflicts: Vec<String> = Vec::new();
+    // bug D3：因用户改过/删过而被保留（跳过覆盖）的内置模板说明
+    let mut preserved: Vec<String> = Vec::new();
 
     // 获取现有模板列表
     let existing_templates = state
@@ -3178,6 +3370,14 @@ pub async fn import_builtin_templates(state: State<'_, AppState>) -> Result<Stri
         .collect();
     let mut existing_names: HashSet<String> =
         existing_templates.iter().map(|t| t.name.clone()).collect();
+
+    // bug D3：读取模板用户态标记（user_modified / user_deleted）。
+    // 用户改过的内置模板升级时跳过覆盖；用户删过（停用墓碑）的不复活。
+    // 停用是软删（行保留、is_active=0），因此墓碑一定能在这里查到。
+    let user_states = state
+        .database
+        .get_template_user_states()
+        .map_err(|e| AppError::database(format!("读取模板用户态标记失败: {}", e)))?;
 
     for template_value in templates {
         let template_id = template_value
@@ -3203,7 +3403,30 @@ pub async fn import_builtin_templates(state: State<'_, AppState>) -> Result<Stri
                 continue;
             }
 
-            if should_update_builtin_template(&existing.version, builtin_version) {
+            // bug D3：尊重用户对内置模板的删除/修改，不静默复活或覆盖
+            let (user_modified, user_deleted) = user_states
+                .get(template_id)
+                .copied()
+                .unwrap_or((false, false));
+            match decide_builtin_import_action(
+                user_modified,
+                user_deleted,
+                &existing.version,
+                builtin_version,
+            ) {
+                BuiltinImportAction::PreserveUserState { reason } => {
+                    skipped += 1;
+                    preserved.push(format!("{}({})", template_name, reason));
+                    continue;
+                }
+                BuiltinImportAction::Skip => {
+                    skipped += 1;
+                    continue;
+                }
+                BuiltinImportAction::Update => {}
+            }
+
+            {
                 let fields: Vec<String> = template_value
                     .get("fields_json")
                     .and_then(|v| v.as_str())
@@ -3287,7 +3510,8 @@ pub async fn import_builtin_templates(state: State<'_, AppState>) -> Result<Stri
                             .to_string(),
                     ),
                     field_extraction_rules: Some(field_extraction_rules),
-                    is_active: Some(true),
+                    // 保持现有激活状态：升级导入不得把用户手动停用的模板重新激活
+                    is_active: Some(existing.is_active),
                     preview_data_json: template_value
                         .get("preview_data_json")
                         .and_then(|v| v.as_str())
@@ -3314,8 +3538,6 @@ pub async fn import_builtin_templates(state: State<'_, AppState>) -> Result<Stri
                     }
                     Err(e) => errors.push(format!("{}: {}", template_name, e)),
                 }
-            } else {
-                skipped += 1;
             }
             continue;
         }
@@ -3420,10 +3642,19 @@ pub async fn import_builtin_templates(state: State<'_, AppState>) -> Result<Stri
     }
 
     let result = format!(
-        "导入完成: {} 个新增, {} 个更新, {} 个跳过{}{}",
+        "导入完成: {} 个新增, {} 个更新, {} 个跳过{}{}{}",
         imported,
         updated,
         skipped,
+        if preserved.is_empty() {
+            String::new()
+        } else {
+            format!(
+                ", {} 个保留用户状态(已跳过): {}",
+                preserved.len(),
+                preserved.join("; ")
+            )
+        },
         if conflicts.is_empty() {
             String::new()
         } else {
@@ -3445,6 +3676,44 @@ pub async fn import_builtin_templates(state: State<'_, AppState>) -> Result<Stri
 
 fn should_update_builtin_template(existing_version: &str, builtin_version: &str) -> bool {
     compare_template_version(existing_version, builtin_version) == Ordering::Less
+}
+
+/// bug D3：内置模板升级导入时，对"库中已存在的内置模板"的处置决策
+#[derive(Debug, PartialEq, Eq)]
+enum BuiltinImportAction {
+    /// 用户改过 / 删过（墓碑），跳过覆盖并保留用户状态
+    PreserveUserState { reason: &'static str },
+    /// 内置版本更新，执行原地覆盖
+    Update,
+    /// 版本无变化，常规跳过
+    Skip,
+}
+
+/// 内置模板升级导入决策：
+/// 1. user_deleted 墓碑优先——用户删过（停用）的模板不复活；
+/// 2. user_modified 次之——用户改过的模板保留用户版本；
+/// 3. 都没有时按版本比较决定是否覆盖。
+fn decide_builtin_import_action(
+    user_modified: bool,
+    user_deleted: bool,
+    existing_version: &str,
+    builtin_version: &str,
+) -> BuiltinImportAction {
+    if user_deleted {
+        return BuiltinImportAction::PreserveUserState {
+            reason: "用户已删除，保持停用不复活",
+        };
+    }
+    if user_modified {
+        return BuiltinImportAction::PreserveUserState {
+            reason: "用户已修改，保留用户版本",
+        };
+    }
+    if should_update_builtin_template(existing_version, builtin_version) {
+        BuiltinImportAction::Update
+    } else {
+        BuiltinImportAction::Skip
+    }
 }
 
 fn compare_template_version(existing_version: &str, builtin_version: &str) -> Ordering {
@@ -3508,9 +3777,10 @@ fn parse_version_parts(version: &str) -> Option<Vec<u64>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_test_provider_request, compare_template_version, is_openai_codex_oauth_test,
-        resolve_test_api_protocol, resolve_test_provider_adapter, should_update_builtin_template,
-        TestProviderAdapter,
+        build_test_provider_request, compare_template_version, decide_builtin_import_action,
+        extract_template_field_refs, is_openai_codex_oauth_test, resolve_test_api_protocol,
+        resolve_test_provider_adapter, should_update_builtin_template, validate_template_request,
+        BuiltinImportAction, TestProviderAdapter,
     };
     use crate::llm_manager::{VendorConfig, AUTH_MODE_OPENAI_CODEX_OAUTH};
     use serde_json::json;
@@ -3531,6 +3801,205 @@ mod tests {
     fn compare_template_version_tolerates_non_standard_versions() {
         assert!(should_update_builtin_template("legacy", "2.0.0"));
         assert!(!should_update_builtin_template("2.1.0", "beta"));
+    }
+
+    // ------------------------------------------------------------------
+    // bug D3：内置模板升级导入决策
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn builtin_import_skips_user_deleted_templates() {
+        // 用户删过（墓碑）的内置模板：即使内置版本更新也不复活
+        assert_eq!(
+            decide_builtin_import_action(false, true, "1.0.0", "2.0.0"),
+            BuiltinImportAction::PreserveUserState {
+                reason: "用户已删除，保持停用不复活"
+            }
+        );
+        // 墓碑优先级高于 user_modified
+        assert_eq!(
+            decide_builtin_import_action(true, true, "1.0.0", "2.0.0"),
+            BuiltinImportAction::PreserveUserState {
+                reason: "用户已删除，保持停用不复活"
+            }
+        );
+    }
+
+    #[test]
+    fn builtin_import_skips_user_modified_templates() {
+        assert_eq!(
+            decide_builtin_import_action(true, false, "1.0.0", "2.0.0"),
+            BuiltinImportAction::PreserveUserState {
+                reason: "用户已修改，保留用户版本"
+            }
+        );
+    }
+
+    #[test]
+    fn builtin_import_updates_untouched_templates_by_version() {
+        assert_eq!(
+            decide_builtin_import_action(false, false, "1.0.0", "2.0.0"),
+            BuiltinImportAction::Update
+        );
+        assert_eq!(
+            decide_builtin_import_action(false, false, "2.0.0", "2.0.0"),
+            BuiltinImportAction::Skip
+        );
+        assert_eq!(
+            decide_builtin_import_action(false, false, "2.1.0", "2.0.0"),
+            BuiltinImportAction::Skip
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // 模板校验增强：字段引用提取 + Cloze 占位符
+    // ------------------------------------------------------------------
+
+    fn make_template_request(
+        note_type: &str,
+        fields: &[&str],
+        front: &str,
+        back: &str,
+    ) -> crate::models::CreateTemplateRequest {
+        use crate::models::{FieldExtractionRule, FieldType};
+        let mut rules = std::collections::HashMap::new();
+        for field in fields {
+            rules.insert(
+                field.to_string(),
+                FieldExtractionRule {
+                    field_type: FieldType::Text,
+                    is_required: false,
+                    default_value: None,
+                    validation_pattern: None,
+                    description: format!("{}字段", field),
+                    validation: None,
+                    transform: None,
+                    schema: None,
+                    item_schema: None,
+                    display_format: None,
+                    ai_hint: None,
+                    max_length: None,
+                    min_length: None,
+                    allowed_values: None,
+                    depends_on: None,
+                    compute_function: None,
+                },
+            );
+        }
+        crate::models::CreateTemplateRequest {
+            name: "测试模板".to_string(),
+            description: "desc".to_string(),
+            author: None,
+            version: Some("1.0.0".to_string()),
+            preview_front: String::new(),
+            preview_back: String::new(),
+            note_type: note_type.to_string(),
+            fields: fields.iter().map(|s| s.to_string()).collect(),
+            generation_prompt: "gen".to_string(),
+            front_template: front.to_string(),
+            back_template: back.to_string(),
+            css_style: String::new(),
+            field_extraction_rules: rules,
+            preview_data_json: None,
+            is_active: Some(true),
+            is_built_in: None,
+        }
+    }
+
+    #[test]
+    fn extract_template_field_refs_handles_conditionals_filters_and_specials() {
+        let refs = extract_template_field_refs(
+            "{{Front}} {{#Extra}}{{cloze:Text}}{{/Extra}} {{^Hint}}x{{/Hint}} \
+             {{type:cloze:Answer}} {{FrontSide}} {{Tags}}",
+        );
+        assert!(refs.contains("Front"));
+        assert!(refs.contains("Extra"));
+        assert!(refs.contains("Text"));
+        assert!(refs.contains("Hint"));
+        assert!(refs.contains("Answer"));
+        // Anki 特殊占位符不算字段引用
+        assert!(!refs.contains("FrontSide"));
+        assert!(!refs.contains("Tags"));
+    }
+
+    #[test]
+    fn validate_template_request_rejects_cloze_without_placeholder() {
+        let request = make_template_request(
+            "Cloze",
+            &["Text", "Extra"],
+            "{{Text}}",
+            "{{Text}} {{Extra}}",
+        );
+        let err = validate_template_request(&request).expect_err("缺少 cloze 占位符应校验失败");
+        assert!(err.to_string().contains("cloze"), "错误信息应指明 cloze 占位符缺失");
+    }
+
+    #[test]
+    fn validate_template_request_accepts_valid_cloze_and_basic_templates() {
+        let cloze = make_template_request(
+            "Cloze",
+            &["Text", "Extra"],
+            "{{cloze:Text}}",
+            "{{cloze:Text}} {{Extra}}",
+        );
+        assert!(validate_template_request(&cloze).is_ok());
+
+        // Basic 模板引用未定义字段仅告警不阻断（兼容存量内置模板的历史写法）
+        let basic_with_unknown_ref = make_template_request(
+            "Basic",
+            &["Front"],
+            "{{Front}}",
+            "{{FrontSide}} {{Back}}",
+        );
+        assert!(validate_template_request(&basic_with_unknown_ref).is_ok());
+    }
+
+    #[test]
+    fn lexical_normalize_path_resolves_dot_segments() {
+        use super::lexical_normalize_path;
+        use std::path::{Path, PathBuf};
+
+        assert_eq!(
+            lexical_normalize_path(Path::new("/a/b/../c/./d")),
+            PathBuf::from("/a/c/d")
+        );
+        // `..` 穿越应用目录前缀的攻击面：归一化后前缀判断不再被欺骗
+        assert_eq!(
+            lexical_normalize_path(Path::new("/app/data/../../home/user/.ssh/key")),
+            PathBuf::from("/home/user/.ssh/key")
+        );
+        // 根之上的 `..` 按 POSIX 语义忽略
+        assert_eq!(
+            lexical_normalize_path(Path::new("/../a")),
+            PathBuf::from("/a")
+        );
+        // 相对路径开头的连续 `..` 原样保留
+        assert_eq!(
+            lexical_normalize_path(Path::new("../../a/b/../c")),
+            PathBuf::from("../../a/c")
+        );
+    }
+
+    #[test]
+    fn canonicalize_lenient_handles_missing_files() {
+        use super::canonicalize_lenient;
+
+        let temp = std::env::temp_dir();
+        let canonical_temp = std::fs::canonicalize(&temp).unwrap();
+
+        // 不存在的文件：父目录真实化 + 拼回文件名
+        let missing = temp.join("deep_student_test_missing_file.bin");
+        assert_eq!(
+            canonicalize_lenient(&missing),
+            canonical_temp.join("deep_student_test_missing_file.bin")
+        );
+
+        // 不存在的文件 + `..` 段：词法归一化后仍能消除穿越
+        let traversal = temp.join("nonexistent_dir/../deep_student_test_missing_file.bin");
+        assert_eq!(
+            canonicalize_lenient(&traversal),
+            canonical_temp.join("deep_student_test_missing_file.bin")
+        );
     }
 
     #[test]
@@ -3900,7 +4369,68 @@ pub fn validate_template_request(request: &CreateTemplateRequest) -> Result<()> 
         )));
     }
 
+    // Cloze 模板必须含 {{cloze:字段}} 占位符，否则 Anki 无法生成填空卡片
+    if request.note_type.to_ascii_lowercase().contains("cloze")
+        && !request.front_template.contains("{{cloze:")
+    {
+        return Err(AppError::validation(format!(
+            "Cloze 模板「{}」的正面模板缺少 {{{{cloze:字段}}}} 占位符，Anki 无法生成填空卡片",
+            request.name
+        )));
+    }
+
+    // front/back 模板引用的 {{Field}} 应在 fields 中定义。
+    // 仅告警不阻断：存量内置模板（如 The Swiss 引用了未声明的 {{Back}}）存在历史写法，
+    // 硬校验会阻断其版本升级导入；未定义字段渲染时表现为空白，不构成数据安全问题。
+    let referenced_fields: HashSet<String> =
+        extract_template_field_refs(&request.front_template)
+            .into_iter()
+            .chain(extract_template_field_refs(&request.back_template))
+            .collect();
+    let unknown_refs: Vec<&String> = referenced_fields
+        .iter()
+        .filter(|field| !field_set.contains(*field))
+        .collect();
+    if !unknown_refs.is_empty() {
+        let mut unknown_refs: Vec<&str> = unknown_refs.iter().map(|s| s.as_str()).collect();
+        unknown_refs.sort_unstable();
+        warn!(
+            "模板「{}」的 front/back 模板引用了 fields 之外的字段: {}（渲染时将为空白，请核对字段定义）",
+            request.name,
+            unknown_refs.join(", ")
+        );
+    }
+
     Ok(())
+}
+
+/// 从 Anki 模板 HTML 中提取引用的字段名。
+///
+/// 处理条件区块前缀（`{{#X}}` / `{{/X}}` / `{{^X}}`）与过滤器链
+/// （`{{cloze:Text}}`、`{{type:cloze:Text}}` 取链尾字段名），
+/// 并忽略 Anki 内置特殊占位符（FrontSide / Tags / Type / Deck / Subdeck / Card / Flags）。
+fn extract_template_field_refs(template: &str) -> HashSet<String> {
+    const ANKI_SPECIAL_PLACEHOLDERS: &[&str] = &[
+        "FrontSide", "Tags", "Type", "Deck", "Subdeck", "Card", "Flags", "CardFlag",
+    ];
+    let mut refs = HashSet::new();
+    let mut rest = template;
+    while let Some(start) = rest.find("{{") {
+        rest = &rest[start + 2..];
+        let Some(end) = rest.find("}}") else {
+            break;
+        };
+        let raw = rest[..end].trim();
+        rest = &rest[end + 2..];
+
+        let stripped = raw.trim_start_matches(['#', '/', '^']).trim();
+        let field = stripped.rsplit(':').next().unwrap_or(stripped).trim();
+        if field.is_empty() || ANKI_SPECIAL_PLACEHOLDERS.contains(&field) {
+            continue;
+        }
+        refs.insert(field.to_string());
+    }
+    refs
 }
 
 /// 设置默认模板

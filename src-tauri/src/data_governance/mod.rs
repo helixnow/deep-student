@@ -56,6 +56,9 @@ mod tests;
 mod migration_tests;
 
 #[cfg(test)]
+mod migration_compat_tests;
+
+#[cfg(test)]
 mod critical_audit_tests;
 
 // Re-exports - 命令（commands.rs 中保留的命令）

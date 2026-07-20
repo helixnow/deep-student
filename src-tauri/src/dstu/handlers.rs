@@ -63,6 +63,7 @@ use super::handler_utils::{
     textbook_to_dstu_node,
     translation_to_dstu_node,
     update_content_by_type,
+    update_mindmap_content_with_occ,
 };
 
 use crate::vfs::{
@@ -1346,8 +1347,39 @@ pub async fn dstu_update(
             // 教材内容是 PDF，不支持直接更新内容
             return Err("Textbook content update not supported".to_string());
         }
-        "translations" | "translation" | "exams" | "exam" | "essays" | "essay" | "mindmaps"
-        | "mindmap" => {
+        "mindmaps" | "mindmap" => {
+            // ★ 2026-07（B1）：mindmap 分支接线乐观并发控制。
+            // 此前该分支走通用 update_content_by_type（expected_updated_at: None），
+            // Chat/DSTU 旁路可静默覆盖编辑器未保存的内容；现与 notes 分支对齐，
+            // 将前端毫秒基线接入 content_updated_at 内容锁（收藏/重命名不产生伪冲突）。
+            update_mindmap_content_with_occ(&vfs_db, &id, &content, expected_updated_at_ms)?;
+
+            match get_resource_by_type_and_id(&vfs_db, "mindmaps", &id).await {
+                Ok(Some(node)) => {
+                    log::info!(
+                        "[DSTU::handlers] dstu_update: SUCCESS - type=mindmap, id={}",
+                        id
+                    );
+                    node
+                }
+                Ok(None) => {
+                    log::error!(
+                        "[DSTU::handlers] dstu_update: updated but node not found - type=mindmap, id={}",
+                        id
+                    );
+                    return Err(DstuError::not_found(&id).to_string());
+                }
+                Err(e) => {
+                    log::error!(
+                        "[DSTU::handlers] dstu_update: updated but fetch failed - type=mindmap, id={}, error={}",
+                        id,
+                        e
+                    );
+                    return Err(e);
+                }
+            }
+        }
+        "translations" | "translation" | "exams" | "exam" | "essays" | "essay" => {
             // ★ 2026-07-08：接线 content_helpers::update_content_by_type。
             // 该能力早已实现（2026-01-28，供 chat_v2 agent 工具使用），但命令层
             // 一直停留在只支持 note 的旧实现，导致前端（如 EssayEditorWrapper）
@@ -1356,15 +1388,13 @@ pub async fn dstu_update(
             // - translation: JSON { source, translated } → resources.data
             // - exam: preview_json 整体更新
             // - essay: essay_session_* 更新元数据 / essay_* 更新轮次正文
-            // - mindmap: MindMapDocument JSON（Repo 内部校验结构与大小）
             update_content_by_type(&vfs_db, &resource_type, &id, &content)?;
 
             // 更新成功后取回最新节点返回（与 note 分支行为一致）
             let plural_type = match resource_type.as_str() {
                 "translation" | "translations" => "translations",
                 "exam" | "exams" => "exams",
-                "essay" | "essays" => "essays",
-                _ => "mindmaps",
+                _ => "essays",
             };
             match get_resource_by_type_and_id(&vfs_db, plural_type, &id).await {
                 Ok(Some(node)) => {
@@ -3543,6 +3573,25 @@ pub async fn dstu_set_metadata(
                                 log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook reading_progress error={}", e);
                                 return Err(e.to_string());
                             }
+                        }
+                    }
+                }
+                // 更新书签：与 files/file 分支保持等价（textbook 与 file 共用
+                // files 表的 bookmarks_json）。此前该分支不处理 bookmarks，
+                // folder_items.item_type=="textbook" 的资源保存书签会静默丢失。
+                if let Some(bookmarks) = metadata.get("bookmarks") {
+                    let bookmarks = bookmarks.as_array().ok_or_else(|| {
+                        "INVALID_ARGUMENT: textbook bookmarks must be an array".to_string()
+                    })?;
+                    match VfsTextbookRepo::update_bookmarks(&vfs_db, &id, bookmarks) {
+                        Ok(_) => log::info!(
+                            "[DSTU::handlers] dstu_set_metadata: set textbook bookmarks={}, id={}",
+                            bookmarks.len(),
+                            id
+                        ),
+                        Err(e) => {
+                            log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook bookmarks error={}", e);
+                            return Err(e.to_string());
                         }
                     }
                 }

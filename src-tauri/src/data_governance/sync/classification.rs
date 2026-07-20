@@ -198,7 +198,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::Lww,
             business_unique_keys: "",
             has_json_blobs: false,
-            merge_notes: "User todo lists with sort_order/is_default",
+            merge_notes: "User todo lists with sort_order/is_default; sort_order is user-reordered (todo_reorder_lists rewrites 0..n and bumps updated_at/local_version, LWW row-sync carries the order)",
         },
         TableClassification {
             database: "vfs",
@@ -208,7 +208,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "estimated_pomodoros/completed_pomodoros use max; tags_json uses set union",
+            merge_notes: "estimated_pomodoros/completed_pomodoros use max; tags_json uses set union; sort_order/todo_list_id rewritten by todo_reorder_items/todo_move_item (per-field LWW inside FieldMerge)",
         },
         TableClassification {
             database: "vfs",
@@ -218,7 +218,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::Lww,
             business_unique_keys: "",
             has_json_blobs: false,
-            merge_notes: "Focus session records linked to todo items",
+            merge_notes: "Focus session records linked to todo items; soft delete via deleted_at (bumps updated_at/local_version, LWW propagates deletion)",
         },
         // --- FileSync ---
         TableClassification {

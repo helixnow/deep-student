@@ -767,14 +767,22 @@ impl MemoryService {
                     updated_at: Some(note.updated_at),
                 });
 
-                if results.len() >= top_k {
+                // 收集完整候选集（retrieval_k = 3 * top_k），
+                // 时间衰减必须在截断前应用，否则新近记忆会被旧的高分记忆永久挤出
+                if results.len() >= retrieval_k {
                     break;
                 }
             }
         }
 
-        // 应用时间衰减
+        // 应用时间衰减 → 按衰减后分数重排 → 再截断到 top_k
         self.apply_time_decay(&mut results);
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        results.truncate(top_k);
 
         if purpose == SearchPurpose::UserRetrieval {
             // 异步记录命中（不阻塞搜索返回）

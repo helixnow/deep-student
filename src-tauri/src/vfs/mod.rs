@@ -34,6 +34,7 @@ pub mod lance_store;
 pub mod multimodal_service;
 pub mod ocr_utils;
 pub mod pdf_processing_service;
+pub mod pomodoro_handlers;
 pub mod ref_handlers;
 pub mod repos;
 pub mod retrieval_planner;

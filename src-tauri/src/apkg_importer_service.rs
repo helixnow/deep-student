@@ -6,10 +6,11 @@ use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, Write};
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tempfile::NamedTempFile;
+use tracing::warn;
 use uuid::Uuid;
 use zip::ZipArchive;
 
@@ -58,13 +59,42 @@ pub struct ApkgImportResult {
     pub card_ids: Vec<String>,
 }
 
+/// 带媒体/告警明细的导入结果（`import_*_detailed` 返回）。
+/// 序列化为 `ApkgImportResult` 的字段超集（flatten），前端向后兼容；
+/// 旧调用方继续使用 `import_path` / `import_bytes` 拿到旧结构。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ApkgImportDetailedResult {
+    #[serde(flatten)]
+    pub result: ApkgImportResult,
+    /// 成功落盘到应用媒体目录的媒体文件数。
+    /// 未配置媒体目录时恒为 0（此时所有声明媒体计入 media_skipped）。
+    #[serde(default)]
+    pub media_imported: usize,
+    /// 结构化导入告警（媒体/模板导入的非致命问题）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
 pub struct ApkgImporterService {
     db: Arc<Database>,
+    /// 媒体落盘目录（None = 保持旧行为：不导入媒体，仅统计 media_skipped）
+    media_dir: Option<PathBuf>,
 }
 
 impl ApkgImporterService {
     pub fn new(db: Arc<Database>) -> Self {
-        Self { db }
+        Self {
+            db,
+            media_dir: None,
+        }
+    }
+
+    /// 启用媒体导入：包内媒体按清单文件名解出到 `media_dir`，
+    /// 并把引用了这些媒体的卡片 images 指向落盘后的绝对路径。
+    pub fn with_media_dir(mut self, media_dir: PathBuf) -> Self {
+        self.media_dir = Some(media_dir);
+        self
     }
 
     pub fn import_path(
@@ -72,6 +102,15 @@ impl ApkgImporterService {
         path: &Path,
         session_id: Option<&str>,
     ) -> Result<ApkgImportResult, AppError> {
+        self.import_path_detailed(path, session_id)
+            .map(|detailed| detailed.result)
+    }
+
+    pub fn import_path_detailed(
+        &self,
+        path: &Path,
+        session_id: Option<&str>,
+    ) -> Result<ApkgImportDetailedResult, AppError> {
         if path.as_os_str().is_empty() {
             return Err(validation_error(
                 APKG_ERROR_INVALID_INPUT,
@@ -133,6 +172,16 @@ impl ApkgImporterService {
         source_name: Option<&str>,
         session_id: Option<&str>,
     ) -> Result<ApkgImportResult, AppError> {
+        self.import_bytes_detailed(bytes, source_name, session_id)
+            .map(|detailed| detailed.result)
+    }
+
+    pub fn import_bytes_detailed(
+        &self,
+        bytes: &[u8],
+        source_name: Option<&str>,
+        session_id: Option<&str>,
+    ) -> Result<ApkgImportDetailedResult, AppError> {
         if bytes.is_empty() {
             return Err(validation_error(
                 APKG_ERROR_INVALID_INPUT,
@@ -159,8 +208,8 @@ impl ApkgImporterService {
         source_name: &str,
         session_id: Option<&str>,
         limits: ImportLimits,
-    ) -> Result<ApkgImportResult, AppError> {
-        let parsed = parse_archive(reader, limits)?;
+    ) -> Result<ApkgImportDetailedResult, AppError> {
+        let parsed = parse_archive(reader, limits, self.media_dir.as_deref())?;
         persist_package(&self.db, parsed, source_name, session_id)
     }
 }
@@ -190,6 +239,10 @@ struct ParsedPackage {
     cards: Vec<ParsedCard>,
     deck_names: Vec<String>,
     media_skipped: usize,
+    media_imported: usize,
+    /// deepStudentTemplateId → 可重建的模板定义（供本地缺失时导入）
+    template_candidates: Vec<TemplateImportCandidate>,
+    warnings: Vec<String>,
 }
 
 struct ParsedCard {
@@ -197,8 +250,22 @@ struct ParsedCard {
     back: String,
     text: Option<String>,
     tags: Vec<String>,
+    /// 已落盘媒体的绝对路径（未启用媒体导入时为空）
+    images: Vec<String>,
     extra_fields: HashMap<String, String>,
     template_id: Option<String>,
+}
+
+/// 从 APKG 模型元数据重建 Deep Student 模板所需的最小信息。
+/// 仅对携带 deepStudentTemplateId 的模型生成（外部模型不臆造模板身份）。
+struct TemplateImportCandidate {
+    template_id: String,
+    name: String,
+    note_type: String,
+    fields: Vec<String>,
+    front_template: String,
+    back_template: String,
+    css_style: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -209,6 +276,10 @@ struct RawModel {
     model_type: i64,
     #[serde(default, rename = "flds")]
     fields: Vec<RawModelField>,
+    #[serde(default, rename = "tmpls")]
+    templates: Vec<RawModelTemplate>,
+    #[serde(default)]
+    css: String,
     #[serde(default, rename = "deepStudentTemplateId")]
     template_id: Option<String>,
     #[serde(default, rename = "deepStudentCollapseClozeOrds")]
@@ -220,6 +291,14 @@ struct RawModelField {
     name: String,
     #[serde(default)]
     ord: Option<i64>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RawModelTemplate {
+    #[serde(default)]
+    qfmt: String,
+    #[serde(default)]
+    afmt: String,
 }
 
 struct ModelDefinition {
@@ -234,6 +313,7 @@ struct ModelDefinition {
 fn parse_archive<R: Read + Seek>(
     reader: R,
     limits: ImportLimits,
+    media_dir: Option<&Path>,
 ) -> Result<ParsedPackage, AppError> {
     let mut archive = ZipArchive::new(reader).map_err(|error| {
         validation_error(
@@ -320,6 +400,7 @@ fn parse_archive<R: Read + Seek>(
     let collection_bytes = decode_collection(encoded_collection, limits.max_collection_bytes)?;
 
     let mut declared_media = HashSet::new();
+    let mut manifest_entries: HashMap<String, String> = HashMap::new();
     if let Some(index) = media_manifest {
         let manifest = read_zip_entry_bounded(
             &mut archive,
@@ -343,8 +424,20 @@ fn parse_archive<R: Read + Seek>(
             }
             declared_media.insert(key.clone());
         }
+        manifest_entries = values;
     }
     declared_media.extend(numeric_media);
+
+    // 媒体导入：仅当调用方提供媒体目录时进行；
+    // 未提供时保持旧行为（全部计入 media_skipped）。
+    let mut media_warnings: Vec<String> = Vec::new();
+    let media_paths = if let Some(dir) = media_dir {
+        extract_declared_media(&mut archive, &manifest_entries, dir, &limits, &mut media_warnings)
+    } else {
+        HashMap::new()
+    };
+    let media_imported = media_paths.len();
+    let media_skipped = declared_media.len().saturating_sub(media_imported);
 
     let mut collection_file = NamedTempFile::new().map_err(|error| {
         file_error(format!(
@@ -364,10 +457,100 @@ fn parse_archive<R: Read + Seek>(
         ))
     })?;
 
-    let mut package =
-        parse_collection_database(collection_file.path(), limits.max_materialized_card_bytes)?;
-    package.media_skipped = declared_media.len();
+    let mut package = parse_collection_database(
+        collection_file.path(),
+        limits.max_materialized_card_bytes,
+        &media_paths,
+    )?;
+    package.media_skipped = media_skipped;
+    package.media_imported = media_imported;
+    package.warnings.extend(media_warnings);
     Ok(package)
+}
+
+/// 媒体文件名安全化：仅保留最后一个 path segment，拒绝空名/点名/超长名。
+fn sanitize_media_filename(raw: &str) -> Option<String> {
+    let name = Path::new(raw.trim()).file_name()?.to_str()?;
+    if name.is_empty() || name == "." || name == ".." || name.len() > 255 {
+        return None;
+    }
+    if name.chars().any(|ch| ch.is_control()) {
+        return None;
+    }
+    Some(name.to_string())
+}
+
+/// 把媒体清单声明且包内存在的媒体流式解出到 `media_dir`。
+/// 返回「清单文件名 → 落盘绝对路径」映射；所有非致命问题写入 `warnings`。
+fn extract_declared_media<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    manifest_entries: &HashMap<String, String>,
+    media_dir: &Path,
+    limits: &ImportLimits,
+    warnings: &mut Vec<String>,
+) -> HashMap<String, String> {
+    let mut media_paths: HashMap<String, String> = HashMap::new();
+    if manifest_entries.is_empty() {
+        return media_paths;
+    }
+    if let Err(error) = std::fs::create_dir_all(media_dir) {
+        warnings.push(format!(
+            "创建媒体目录失败，本次导入跳过全部媒体 ({}): {}",
+            media_dir.display(),
+            error
+        ));
+        return media_paths;
+    }
+
+    for (key, raw_name) in manifest_entries {
+        let Some(file_name) = sanitize_media_filename(raw_name) else {
+            warnings.push(format!("媒体清单文件名不安全，已跳过: {raw_name}"));
+            continue;
+        };
+        let target = media_dir.join(&file_name);
+        if target.exists() {
+            // Anki 媒体按文件名寻址：同名文件视为同一媒体，直接复用
+            media_paths.insert(raw_name.clone(), target.to_string_lossy().to_string());
+            continue;
+        }
+        let mut entry = match archive.by_name(key) {
+            Ok(entry) => entry,
+            Err(_) => {
+                warnings.push(format!(
+                    "媒体清单声明的条目在包内缺失，已跳过: {key} ({file_name})"
+                ));
+                continue;
+            }
+        };
+        let mut output = match File::create(&target) {
+            Ok(file) => file,
+            Err(error) => {
+                warnings.push(format!("创建媒体文件失败，已跳过 {file_name}: {error}"));
+                continue;
+            }
+        };
+        // 解压炸弹防护：实际解压量超过单条目上限时中止并删除半成品
+        let mut limited = entry.by_ref().take(limits.max_entry_bytes + 1);
+        match std::io::copy(&mut limited, &mut output) {
+            Ok(written) if written > limits.max_entry_bytes => {
+                drop(output);
+                let _ = std::fs::remove_file(&target);
+                warnings.push(format!(
+                    "媒体文件解压后超过 {} 字节上限，已跳过: {file_name}",
+                    limits.max_entry_bytes
+                ));
+            }
+            Ok(_) => {
+                media_paths.insert(raw_name.clone(), target.to_string_lossy().to_string());
+            }
+            Err(error) => {
+                drop(output);
+                let _ = std::fs::remove_file(&target);
+                warnings.push(format!("解压媒体文件失败，已跳过 {file_name}: {error}"));
+            }
+        }
+    }
+    media_paths
 }
 
 fn set_unique_entry(slot: &mut Option<usize>, index: usize, name: &str) -> Result<(), AppError> {
@@ -481,6 +664,7 @@ fn decode_collection(bytes: Vec<u8>, limit: usize) -> Result<Vec<u8>, AppError> 
 fn parse_collection_database(
     path: &Path,
     max_materialized_card_bytes: usize,
+    media_paths: &HashMap<String, String>,
 ) -> Result<ParsedPackage, AppError> {
     let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
     let conn = Connection::open_with_flags(path, flags).map_err(|error| {
@@ -506,7 +690,7 @@ fn parse_collection_database(
     if models_json.len() > MAX_MODELS_JSON_BYTES || decks_json.len() > MAX_DECKS_JSON_BYTES {
         return Err(limit_error("APKG model or deck metadata is too large"));
     }
-    let models = parse_models(&models_json)?;
+    let (models, template_candidates) = parse_models(&models_json)?;
     let deck_names = parse_deck_names(&decks_json)?;
 
     let card_count: i64 = conn
@@ -577,6 +761,7 @@ fn parse_collection_database(
             card_ord,
             deck_id,
             model_id,
+            media_paths,
         )?);
     }
     if joined_card_rows != card_count as usize {
@@ -593,6 +778,9 @@ fn parse_collection_database(
         cards,
         deck_names,
         media_skipped: 0,
+        media_imported: 0,
+        template_candidates,
+        warnings: Vec::new(),
     })
 }
 
@@ -670,7 +858,9 @@ fn validate_table_columns(
     Ok(())
 }
 
-fn parse_models(raw: &str) -> Result<HashMap<i64, ModelDefinition>, AppError> {
+fn parse_models(
+    raw: &str,
+) -> Result<(HashMap<i64, ModelDefinition>, Vec<TemplateImportCandidate>), AppError> {
     let values: serde_json::Map<String, serde_json::Value> =
         serde_json::from_str(raw).map_err(|error| {
             validation_error(
@@ -686,6 +876,8 @@ fn parse_models(raw: &str) -> Result<HashMap<i64, ModelDefinition>, AppError> {
     }
 
     let mut models = HashMap::with_capacity(values.len());
+    let mut template_candidates: Vec<TemplateImportCandidate> = Vec::new();
+    let mut seen_template_ids: HashSet<String> = HashSet::new();
     for (key, value) in values {
         let model_id = key
             .parse::<i64>()
@@ -768,6 +960,35 @@ fn parse_models(raw: &str) -> Result<HashMap<i64, ModelDefinition>, AppError> {
                 ),
             ));
         }
+
+        // 模板导入候选：仅对携带 Deep Student 模板身份的模型重建模板定义。
+        // 外部模型没有可信身份，不臆造 template_id（与卡片映射策略一致）。
+        if let Some(candidate_id) = template_id.as_deref() {
+            if seen_template_ids.insert(candidate_id.to_string()) {
+                let first_template = raw_model.templates.first();
+                template_candidates.push(TemplateImportCandidate {
+                    template_id: candidate_id.to_string(),
+                    name: raw_model.name.clone(),
+                    note_type: if raw_model.model_type == 1 {
+                        "Cloze".to_string()
+                    } else {
+                        "Basic".to_string()
+                    },
+                    fields: ordered_fields
+                        .iter()
+                        .map(|(_, _, name)| name.clone())
+                        .collect(),
+                    front_template: first_template
+                        .map(|template| template.qfmt.clone())
+                        .unwrap_or_default(),
+                    back_template: first_template
+                        .map(|template| template.afmt.clone())
+                        .unwrap_or_default(),
+                    css_style: raw_model.css.clone(),
+                });
+            }
+        }
+
         models.insert(
             model_id,
             ModelDefinition {
@@ -785,7 +1006,7 @@ fn parse_models(raw: &str) -> Result<HashMap<i64, ModelDefinition>, AppError> {
             },
         );
     }
-    Ok(models)
+    Ok((models, template_candidates))
 }
 
 fn validate_and_estimate_card(
@@ -897,6 +1118,70 @@ fn parse_deck_names(raw: &str) -> Result<Vec<String>, AppError> {
     Ok(names)
 }
 
+/// 从字段 HTML/文本中提取媒体引用文件名：`src="..."`、`src='...'` 与 `[sound:...]`。
+fn extract_media_filenames(text: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let bytes = text.as_bytes();
+
+    let mut search_from = 0usize;
+    while let Some(relative) = text[search_from..].find("src=") {
+        let quote_index = search_from + relative + 4;
+        let Some(&quote) = bytes.get(quote_index) else {
+            break;
+        };
+        if quote == b'"' || quote == b'\'' {
+            let value_start = quote_index + 1;
+            if let Some(relative_end) = text[value_start..].find(quote as char) {
+                let value = &text[value_start..value_start + relative_end];
+                if !value.is_empty() {
+                    names.push(value.to_string());
+                }
+                search_from = value_start + relative_end + 1;
+                continue;
+            }
+        }
+        search_from = quote_index;
+    }
+
+    let mut search_from = 0usize;
+    while let Some(relative) = text[search_from..].find("[sound:") {
+        let value_start = search_from + relative + "[sound:".len();
+        let Some(relative_end) = text[value_start..].find(']') else {
+            break;
+        };
+        let value = &text[value_start..value_start + relative_end];
+        if !value.is_empty() {
+            names.push(value.to_string());
+        }
+        search_from = value_start + relative_end + 1;
+    }
+
+    names
+}
+
+/// 收集卡片字段引用且已成功落盘的媒体绝对路径（去重、保持首次出现顺序）。
+fn collect_card_media_paths(
+    field_values: &[&str],
+    media_paths: &HashMap<String, String>,
+) -> Vec<String> {
+    if media_paths.is_empty() {
+        return Vec::new();
+    }
+    let mut images = Vec::new();
+    let mut seen = HashSet::new();
+    for value in field_values {
+        for name in extract_media_filenames(value) {
+            if let Some(path) = media_paths.get(&name) {
+                if seen.insert(path.clone()) {
+                    images.push(path.clone());
+                }
+            }
+        }
+    }
+    images
+}
+
+#[allow(clippy::too_many_arguments)]
 fn map_card(
     model: &ModelDefinition,
     raw_tags: &str,
@@ -906,6 +1191,7 @@ fn map_card(
     card_ord: i64,
     deck_id: i64,
     model_id: i64,
+    media_paths: &HashMap<String, String>,
 ) -> Result<ParsedCard, AppError> {
     let values = raw_fields.split('\u{1f}').collect::<Vec<_>>();
     if let Some(value) = values
@@ -974,11 +1260,13 @@ fn map_card(
         .filter(|tag| !tag.is_empty())
         .map(str::to_string)
         .collect();
+    let images = collect_card_media_paths(&values, media_paths);
     Ok(ParsedCard {
         front,
         back,
         text,
         tags,
+        images,
         extra_fields,
         template_id: model.template_id.clone(),
     })
@@ -1012,6 +1300,9 @@ fn persist_package(
     .to_string();
     let imported_cards = package.cards.len();
     let media_skipped = package.media_skipped;
+    let media_imported = package.media_imported;
+    let template_candidates = package.template_candidates;
+    let mut warnings = package.warnings;
     let mut card_ids = Vec::with_capacity(imported_cards);
 
     let mut conn = db.get_conn_safe().map_err(|error| {
@@ -1047,6 +1338,9 @@ fn persist_package(
         let tags_json = serde_json::to_string(&card.tags).map_err(|error| {
             database_error(format!("Failed to serialize imported APKG tags: {error}"))
         })?;
+        let images_json = serde_json::to_string(&card.images).map_err(|error| {
+            database_error(format!("Failed to serialize imported APKG images: {error}"))
+        })?;
         let extra_fields_json = serde_json::to_string(&card.extra_fields).map_err(|error| {
             database_error(format!("Failed to serialize imported APKG fields: {error}"))
         })?;
@@ -1055,8 +1349,8 @@ fn persist_package(
                 id, task_id, front, back, text, tags_json, images_json,
                 is_error_card, error_content, card_order_in_task, created_at, updated_at,
                 extra_fields_json, template_id, source_type, source_id
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, '[]', 0, NULL, ?7, ?8, ?8, ?9,
-                       ?10, 'apkg_import', ?11)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, NULL, ?8, ?9, ?9, ?10,
+                       ?11, 'apkg_import', ?12)",
             params![
                 card_id,
                 task_id,
@@ -1064,6 +1358,7 @@ fn persist_package(
                 card.back,
                 card.text,
                 tags_json,
+                images_json,
                 index as i64,
                 now,
                 extra_fields_json,
@@ -1084,13 +1379,84 @@ fn persist_package(
         database_error(format!("Failed to commit APKG import transaction: {error}"))
     })?;
 
+    // 模板映射导入（卡片事务成功后执行，失败不回滚卡片、只产生结构化告警）：
+    // 仅补建本地缺失、且包内携带 deepStudentTemplateId 的模板。
+    let imported_templates = import_template_candidates(db, &template_candidates, &mut warnings);
+
     Ok(ApkgImportResult {
         document_id,
         imported_cards,
-        imported_templates: 0,
+        imported_templates,
         media_skipped,
+        media_imported,
+        warnings,
         card_ids,
     })
+}
+
+/// 补建本地缺失的 Deep Student 模板；返回成功创建数。
+/// 名称冲突（custom_anki_templates.name UNIQUE）等失败降级为告警。
+fn import_template_candidates(
+    db: &Arc<Database>,
+    candidates: &[TemplateImportCandidate],
+    warnings: &mut Vec<String>,
+) -> usize {
+    let mut imported = 0usize;
+    for candidate in candidates {
+        match db.get_custom_template_by_id(&candidate.template_id) {
+            Ok(Some(_)) => continue, // 本地已有同 id 模板：以本地为准，不覆盖
+            Ok(None) => {}
+            Err(error) => {
+                warnings.push(format!(
+                    "查询本地模板失败，跳过模板导入 {}: {error}",
+                    candidate.template_id
+                ));
+                continue;
+            }
+        }
+        if candidate.front_template.trim().is_empty()
+            || candidate.back_template.trim().is_empty()
+            || candidate.fields.is_empty()
+        {
+            warnings.push(format!(
+                "APKG 模型缺少可用的模板正反面/字段定义，跳过模板导入: {}",
+                candidate.template_id
+            ));
+            continue;
+        }
+        let request = crate::models::CreateTemplateRequest {
+            name: candidate.name.clone(),
+            description: "Imported from an APKG package".to_string(),
+            author: None,
+            version: Some("1.0.0".to_string()),
+            preview_front: String::new(),
+            preview_back: String::new(),
+            note_type: candidate.note_type.clone(),
+            fields: candidate.fields.clone(),
+            generation_prompt: String::new(),
+            front_template: candidate.front_template.clone(),
+            back_template: candidate.back_template.clone(),
+            css_style: candidate.css_style.clone(),
+            field_extraction_rules: HashMap::new(),
+            preview_data_json: None,
+            is_active: Some(true),
+            is_built_in: Some(false),
+        };
+        match db.create_custom_template_with_id(&candidate.template_id, &request) {
+            Ok(_) => imported += 1,
+            Err(error) => {
+                warn!(
+                    "APKG 模板导入失败 {} ({}): {}",
+                    candidate.template_id, candidate.name, error
+                );
+                warnings.push(format!(
+                    "模板导入失败（可能与现有模板重名）{}: {error}",
+                    candidate.template_id
+                ));
+            }
+        }
+    }
+    imported
 }
 
 fn safe_source_name(source_name: &str) -> String {
@@ -1205,6 +1571,7 @@ mod tests {
             0,
             1,
             100,
+            &HashMap::new(),
         )
         .expect("map Basic note with custom Text field");
         assert_eq!(basic.front, "question");
@@ -1232,6 +1599,7 @@ mod tests {
             0,
             1,
             200,
+            &HashMap::new(),
         )
         .expect("map Cloze Text field");
         assert_eq!(cloze.text.as_deref(), Some("A {{c1::cloze}} note"));
@@ -1607,7 +1975,17 @@ mod tests {
             .import_path(&first_output, Some("first-import"))
             .expect("import mixed-template APKG");
         assert_eq!(first_result.imported_cards, 3);
-        assert_eq!(first_result.imported_templates, 0);
+        // 携带 deepStudentTemplateId 的模型在本地缺失时会被补建为自定义模板
+        assert_eq!(first_result.imported_templates, 3);
+        for template_id in ["design-lab", "design-redaction", "design-glass"] {
+            assert!(
+                first_db
+                    .get_custom_template_by_id(template_id)
+                    .expect("query imported template")
+                    .is_some(),
+                "template {template_id} must be recreated locally"
+            );
+        }
         let first_cards = first_db
             .get_cards_for_document(&first_result.document_id)
             .expect("load first imported cards");
@@ -1628,7 +2006,8 @@ mod tests {
             .import_path(&second_output, Some("second-import"))
             .expect("import directly re-exported APKG");
         assert_eq!(second_result.imported_cards, 3);
-        assert_eq!(second_result.imported_templates, 0);
+        // 第二个全新库同样缺这 3 个模板，再次补建
+        assert_eq!(second_result.imported_templates, 3);
         let second_cards = second_db
             .get_cards_for_document(&second_result.document_id)
             .expect("load second imported cards");
@@ -2065,11 +2444,153 @@ mod tests {
             imported_cards: 1,
             imported_templates: 0,
             media_skipped: 0,
+            media_imported: 0,
+            warnings: vec![],
             card_ids: vec!["card".to_string()],
         };
         let value = serde_json::to_value(result).expect("serialize result");
         assert_eq!(value["documentId"], "doc");
+        assert_eq!(value["mediaImported"], 0);
         assert!(value.get("cardIds").is_none());
+        // 空 warnings 不序列化，保持旧前端契约整洁
+        assert!(value.get("warnings").is_none());
+    }
+
+    #[test]
+    fn result_deserialization_defaults_new_optional_fields() {
+        let json = r#"{"documentId":"doc","importedCards":2,"importedTemplates":0,"mediaSkipped":1}"#;
+        let parsed: ApkgImportResult = serde_json::from_str(json).expect("compat deserialize");
+        assert_eq!(parsed.media_imported, 0);
+        assert!(parsed.warnings.is_empty());
+    }
+
+    #[test]
+    fn media_filename_sanitization_rejects_traversal_and_control_names() {
+        assert_eq!(
+            sanitize_media_filename("picture.png").as_deref(),
+            Some("picture.png")
+        );
+        assert_eq!(
+            sanitize_media_filename("nested/dir/photo.jpg").as_deref(),
+            Some("photo.jpg")
+        );
+        assert_eq!(sanitize_media_filename(""), None);
+        assert_eq!(sanitize_media_filename(".."), None);
+        assert_eq!(sanitize_media_filename("bad\u{0}name.png"), None);
+        assert_eq!(sanitize_media_filename(&"x".repeat(256)), None);
+    }
+
+    #[test]
+    fn media_reference_extraction_handles_img_and_sound_tags() {
+        let html = r#"<img src="one.png"> text <img src='two.jpg'/> [sound:clip.mp3] src= broken"#;
+        let names = extract_media_filenames(html);
+        assert_eq!(names, vec!["one.png", "two.jpg", "clip.mp3"]);
+    }
+
+    #[test]
+    fn media_import_extracts_declared_files_and_links_referencing_cards() {
+        let (db, _dir) = setup_migrated_db();
+        let media_dir = tempdir().expect("media dir");
+        let collection = make_collection(
+            json!({ "100": model_json(0, &[("Front", 0), ("Back", 1)]) }),
+            &[(
+                1,
+                100,
+                "",
+                "front with <img src=\"picture.png\">\u{1f}plain back",
+            )],
+            &[(10, 1, 0)],
+        );
+        let apkg = make_apkg(vec![
+            ("collection.anki2", collection),
+            (
+                "media",
+                br#"{"0":"picture.png","1":"missing-entry.mp3"}"#.to_vec(),
+            ),
+            ("0", b"png-bytes".to_vec()),
+        ]);
+
+        let result = ApkgImporterService::new(db.clone())
+            .with_media_dir(media_dir.path().to_path_buf())
+            .import_bytes(&apkg, Some("media.apkg"), Some("media-session"))
+            .expect("import APKG with media");
+
+        // 声明 2 个媒体：1 个成功落盘，1 个包内缺失 → skipped
+        assert_eq!(result.media_imported, 1);
+        assert_eq!(result.media_skipped, 1);
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("missing-entry.mp3")));
+        let extracted = media_dir.path().join("picture.png");
+        assert!(extracted.exists());
+        assert_eq!(
+            std::fs::read(&extracted).expect("read extracted media"),
+            b"png-bytes"
+        );
+
+        // 引用该媒体的卡片 images 指向落盘绝对路径
+        let imported = db
+            .get_cards_for_document(&result.document_id)
+            .expect("imported cards");
+        assert_eq!(imported.len(), 1);
+        assert_eq!(
+            imported[0].images,
+            vec![extracted.to_string_lossy().to_string()]
+        );
+    }
+
+    #[test]
+    fn media_import_without_media_dir_keeps_legacy_skip_semantics() {
+        let (db, _dir) = setup_migrated_db();
+        let apkg = make_apkg(vec![
+            ("collection.anki2", make_basic_collection("front")),
+            ("media", br#"{"0":"picture.png"}"#.to_vec()),
+            ("0", b"png-bytes".to_vec()),
+        ]);
+        let result = ApkgImporterService::new(db)
+            .import_bytes(&apkg, Some("legacy.apkg"), None)
+            .expect("import without media dir");
+        assert_eq!(result.media_imported, 0);
+        assert_eq!(result.media_skipped, 1);
+    }
+
+    #[test]
+    fn deep_student_template_metadata_recreates_missing_local_template() {
+        let (db, _dir) = setup_migrated_db();
+        let models = json!({
+            "300": {
+                "name": "Imported Design",
+                "type": 0,
+                "css": ".card { color: teal; }",
+                "tmpls": [{"name": "Card 1", "qfmt": "{{Question}}", "afmt": "{{Question}}<hr>{{Answer}}"}],
+                "flds": [{"name": "Question", "ord": 0}, {"name": "Answer", "ord": 1}],
+                "deepStudentTemplateId": "design-imported"
+            }
+        });
+        let collection = make_collection(models, &[(1, 300, "", "q\u{1f}a")], &[(10, 1, 0)]);
+        let apkg = make_apkg(vec![("collection.anki2", collection)]);
+
+        let result = ApkgImporterService::new(db.clone())
+            .import_bytes(&apkg, Some("template.apkg"), None)
+            .expect("import APKG carrying template metadata");
+        assert_eq!(result.imported_templates, 1);
+
+        let template = db
+            .get_custom_template_by_id("design-imported")
+            .expect("query template")
+            .expect("template recreated");
+        assert_eq!(template.name, "Imported Design");
+        assert_eq!(template.note_type, "Basic");
+        assert_eq!(template.fields, vec!["Question", "Answer"]);
+        assert_eq!(template.front_template, "{{Question}}");
+        assert_eq!(template.css_style, ".card { color: teal; }");
+
+        // 幂等：再次导入同一包不会重复创建
+        let second = ApkgImporterService::new(db)
+            .import_bytes(&apkg, Some("template.apkg"), None)
+            .expect("re-import same APKG");
+        assert_eq!(second.imported_templates, 0);
     }
 
     #[tokio::test]

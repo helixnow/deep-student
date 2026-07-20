@@ -53,6 +53,7 @@ pub use delete_helpers::{
 // 重导出内容辅助函数
 pub use content_helpers::{
     get_content_by_type, get_content_by_type_paged, get_file_total_pages, update_content_by_type,
+    update_mindmap_content_with_occ,
 };
 
 // 重导出搜索辅助函数

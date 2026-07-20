@@ -338,6 +338,28 @@ data_governance = ["refinery"]
 devtools = ["tauri/devtools"]
 
 # =============================================================================
+# 移动端 feature profile 草案（mobile-slim）
+# =============================================================================
+# 状态：仅为骨架定义 + 裁剪评估注释，默认 features 不变，不影响桌面构建。
+# 目标：移动端构建体积/编译时间/内存占用最小化。
+#
+# 可裁剪项评估（相对 default）：
+#   - mcp / mcp-debug     : MCP 客户端为桌面能力（本地进程/stdio 桥、调试插件），移动端裁掉
+#   - cloud_storage_s3    : aws-sdk-s3 + aws-config 依赖树重；移动端云备份可先走 WebDAV/FTP 路径
+#   - tokenizer_tiktoken  : 精确 token 计数（tiktoken-rs 带词表数据）；移动端退化为启发式估算
+#   - lance               : LanceDB + arrow 系列为最大编译负担之一；移动端首版可仅用 SQLite 检索路径
+#   - devtools            : 仅开发构建使用
+# 保留项：
+#   - sqlite / builtin_free_models / data_governance（核心数据与迁移能力）
+# 无需进 feature 的裁剪：
+#   - updater/process/single-instance/global-shortcut 等桌面插件已由
+#     [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'] 条件依赖天然排除
+#
+# 使用方式（草案，落地前需先验证各 #[cfg(feature)] 门控的编译完整性）：
+#   cargo tauri android build --no-default-features --features mobile-slim
+mobile-slim = ["sqlite", "builtin_free_models", "data_governance"]
+
+# =============================================================================
 # Clippy / rustc lint gate (code-quality plan W0–W1 / C3)
 # =============================================================================
 # correctness: deny (must stay clean).

@@ -2821,6 +2821,147 @@ impl Database {
         Ok(())
     }
 
+    /// 幂等补齐模板表用户态标记列（user_modified / user_deleted）。
+    ///
+    /// 正式 schema 由迁移 V20260722__template_user_state.sql 声明；
+    /// 此处为旧库 / 未走治理迁移路径时的运行时兜底，重复执行安全。
+    fn ensure_template_user_state_columns(conn: &Connection) -> Result<()> {
+        for ddl in [
+            "ALTER TABLE custom_anki_templates ADD COLUMN user_modified INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE custom_anki_templates ADD COLUMN user_deleted INTEGER NOT NULL DEFAULT 0",
+        ] {
+            if let Err(e) = conn.execute(ddl, []) {
+                if !e.to_string().contains("duplicate column name") {
+                    return Err(e.into());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// 统计仍引用指定模板的 Anki 卡片数量（排除已软删卡片）。
+    pub fn count_anki_cards_referencing_template(&self, template_id: &str) -> Result<i64> {
+        let conn = self.get_conn_safe()?;
+        match conn.query_row(
+            "SELECT COUNT(*) FROM anki_cards WHERE template_id = ?1 AND deleted_at IS NULL",
+            params![template_id],
+            |row| row.get::<_, i64>(0),
+        ) {
+            Ok(count) => Ok(count),
+            // 兜底：极老的库可能缺 deleted_at 列（同步字段迁移之前创建）
+            Err(_) => Ok(conn.query_row(
+                "SELECT COUNT(*) FROM anki_cards WHERE template_id = ?1",
+                params![template_id],
+                |row| row.get::<_, i64>(0),
+            )?),
+        }
+    }
+
+    /// 读取模板用户态标记：template_id -> (user_modified, user_deleted)
+    pub fn get_template_user_states(&self) -> Result<HashMap<String, (bool, bool)>> {
+        let conn = self.get_conn_safe()?;
+        Self::ensure_template_user_state_columns(&conn)?;
+        let mut stmt =
+            conn.prepare("SELECT id, user_modified, user_deleted FROM custom_anki_templates")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)? != 0,
+                row.get::<_, i64>(2)? != 0,
+            ))
+        })?;
+        let mut states = HashMap::new();
+        for row in rows {
+            let (id, user_modified, user_deleted) = row?;
+            states.insert(id, (user_modified, user_deleted));
+        }
+        Ok(states)
+    }
+
+    /// 标记内置模板已被用户修改（内置模板版本升级导入时将跳过覆盖）。
+    /// 对非内置模板是 no-op。
+    pub fn mark_template_user_modified(&self, template_id: &str) -> Result<()> {
+        let conn = self.get_conn_safe()?;
+        Self::ensure_template_user_state_columns(&conn)?;
+        conn.execute(
+            "UPDATE custom_anki_templates SET user_modified = 1 WHERE id = ?1 AND is_built_in = 1",
+            params![template_id],
+        )?;
+        Ok(())
+    }
+
+    /// 软删除（停用）内置模板：打 user_deleted 墓碑并置 is_active = 0。
+    ///
+    /// 保留行与模板 ID，存量卡片的 template_id 绑定不断裂；
+    /// 内置模板版本升级导入检测到墓碑后不会复活该模板。
+    pub fn soft_delete_builtin_template(&self, template_id: &str) -> Result<()> {
+        let conn = self.get_conn_safe()?;
+        Self::ensure_template_user_state_columns(&conn)?;
+        let now = Utc::now().to_rfc3339();
+        let affected = conn.execute(
+            "UPDATE custom_anki_templates
+             SET user_deleted = 1, is_active = 0, updated_at = ?2
+             WHERE id = ?1 AND is_built_in = 1",
+            params![template_id, now],
+        )?;
+        if affected == 0 {
+            return Err(anyhow::anyhow!(
+                "builtin_template_not_found: {}",
+                template_id
+            ));
+        }
+        Ok(())
+    }
+
+    /// 原地整体替换模板内容（保持模板 ID 与 is_built_in 不变）。
+    ///
+    /// 用于"覆盖导入"场景：替代旧的"先删后建"流程。
+    /// 单条 UPDATE 原子执行，失败时不会丢失旧模板，
+    /// 且存量卡片的 template_id 绑定保持稳定。
+    pub fn replace_custom_template_content(
+        &self,
+        template_id: &str,
+        request: &crate::models::CreateTemplateRequest,
+    ) -> Result<()> {
+        let conn = self.get_conn_safe()?;
+        let now = Utc::now().to_rfc3339();
+        let version = request.version.as_deref().unwrap_or("1.0.0").to_string();
+        let is_active = request.is_active.unwrap_or(true);
+        let affected = conn.execute(
+            "UPDATE custom_anki_templates SET
+                name = ?2, description = ?3, author = ?4, version = ?5,
+                preview_front = ?6, preview_back = ?7, note_type = ?8,
+                fields_json = ?9, generation_prompt = ?10,
+                front_template = ?11, back_template = ?12, css_style = ?13,
+                field_extraction_rules_json = ?14, preview_data_json = ?15,
+                is_active = ?16, updated_at = ?17
+             WHERE id = ?1",
+            params![
+                template_id,
+                request.name,
+                request.description,
+                request.author,
+                version,
+                request.preview_front,
+                request.preview_back,
+                request.note_type,
+                serde_json::to_string(&request.fields)?,
+                request.generation_prompt,
+                request.front_template,
+                request.back_template,
+                request.css_style,
+                serde_json::to_string(&request.field_extraction_rules)?,
+                request.preview_data_json,
+                if is_active { 1 } else { 0 },
+                now,
+            ],
+        )?;
+        if affected == 0 {
+            return Err(anyhow::anyhow!("template_not_found: {}", template_id));
+        }
+        Ok(())
+    }
+
     // ============================================
     // 已废弃：旧迁移辅助函数 (review_sessions)
     // 新系统使用 data_governance::migration
@@ -7241,6 +7382,7 @@ impl Database {
             [],
             |r| r.get(0),
         )?;
+        // 历史口径：卡片引用过的 distinct template_id（保留字段名以兼容前端）
         let template_count: i64 = conn.query_row(
             &format!(
                 "SELECT COUNT(DISTINCT ac.template_id) {live_cards_from}
@@ -7250,11 +7392,39 @@ impl Database {
             [],
             |r| r.get(0),
         )?;
+        // 新口径：模板库中真实存在的模板数量（含内置模板）。
+        // 与 templateCount 并存：前者反映"用过的模板"，后者反映"模板库规模"。
+        // 模板表理论上随迁移必建；万一缺失（旧库/部分迁移）降级为 0 并记录警告，避免拖垮整个统计接口。
+        let library_template_count: i64 = match conn.query_row(
+            "SELECT COUNT(*) FROM custom_anki_templates",
+            [],
+            |r| r.get(0),
+        ) {
+            Ok(count) => count,
+            Err(e) => {
+                tracing::warn!("[get_anki_stats] 查询模板库数量失败（降级为 0）: {}", e);
+                0
+            }
+        };
+        let active_library_template_count: i64 = match conn.query_row(
+            "SELECT COUNT(*) FROM custom_anki_templates WHERE is_active = 1",
+            [],
+            |r| r.get(0),
+        ) {
+            Ok(count) => count,
+            Err(e) => {
+                tracing::warn!("[get_anki_stats] 查询启用模板数量失败（降级为 0）: {}", e);
+                0
+            }
+        };
         Ok(serde_json::json!({
             "totalCards": total_cards,
             "totalDocuments": total_tasks,
             "errorCards": error_cards,
             "templateCount": template_count,
+            // 新增可选字段（向后兼容）：模板库真实规模
+            "libraryTemplateCount": library_template_count,
+            "activeLibraryTemplateCount": active_library_template_count,
         }))
     }
 
@@ -7277,7 +7447,10 @@ impl Database {
             .query_map([limit], |row| {
                 let tags_json: String = row.get(5)?;
                 let images_json: String = row.get(6)?;
-                let extra_fields_json: String = row.get(12)?;
+                // 修复列索引错位：SELECT 共 13 列（索引 0-12），
+                // extra_fields_json 位于索引 11，template_id 位于索引 12。
+                // 旧代码取 12/13 会把 template_id 当 extra_fields 解析并越界读取 template_id。
+                let extra_fields_json: String = row.get(11)?;
 
                 Ok(AnkiCard {
                     id: row.get(0)?,
@@ -7292,7 +7465,7 @@ impl Database {
                     created_at: row.get(9)?,
                     updated_at: row.get(10)?,
                     extra_fields: serde_json::from_str(&extra_fields_json).unwrap_or_default(),
-                    template_id: row.get(13)?,
+                    template_id: row.get(12)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<AnkiCard>>>()?;
@@ -8831,6 +9004,121 @@ mod tests {
             other => panic!("expected version-bound delete, got {other:?}"),
         }
         assert!(db.get_anki_agent_library_card(scope, &card.id)?.is_none());
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // 模板用户态标记（bug D3 / F4 配套）
+    // ------------------------------------------------------------------
+
+    fn make_template_create_request(
+        name: &str,
+        is_built_in: bool,
+    ) -> crate::models::CreateTemplateRequest {
+        crate::models::CreateTemplateRequest {
+            name: name.to_string(),
+            description: "desc".to_string(),
+            author: None,
+            version: Some("1.0.0".to_string()),
+            preview_front: String::new(),
+            preview_back: String::new(),
+            note_type: "Basic".to_string(),
+            fields: vec!["Front".to_string()],
+            generation_prompt: "gen".to_string(),
+            front_template: "{{Front}}".to_string(),
+            back_template: "{{Front}}".to_string(),
+            css_style: String::new(),
+            field_extraction_rules: HashMap::new(),
+            preview_data_json: None,
+            is_active: Some(true),
+            is_built_in: Some(is_built_in),
+        }
+    }
+
+    #[test]
+    fn soft_delete_builtin_template_keeps_row_and_sets_tombstone() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+
+        let builtin_id = db.create_custom_template_with_id(
+            "builtin-tpl",
+            &make_template_create_request("内置模板", true),
+        )?;
+        db.soft_delete_builtin_template(&builtin_id)?;
+
+        // 软删：行保留（ID 稳定），is_active=0 + user_deleted=1 墓碑
+        let template = db
+            .get_custom_template_by_id(&builtin_id)?
+            .expect("软删后行必须保留");
+        assert!(!template.is_active, "软删后应停用");
+        assert!(template.is_built_in);
+
+        let states = db.get_template_user_states()?;
+        let (user_modified, user_deleted) =
+            states.get(&builtin_id).copied().expect("状态行存在");
+        assert!(user_deleted, "软删后应有 user_deleted 墓碑");
+        assert!(!user_modified);
+
+        // 非内置模板不可软删（保护性 WHERE is_built_in = 1）
+        let custom_id =
+            db.create_custom_template(&make_template_create_request("自定义模板", false))?;
+        assert!(
+            db.soft_delete_builtin_template(&custom_id).is_err(),
+            "对非内置模板软删应返回错误"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn mark_template_user_modified_only_affects_builtin_rows() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+
+        let builtin_id = db.create_custom_template_with_id(
+            "builtin-tpl-mod",
+            &make_template_create_request("内置模板2", true),
+        )?;
+        let custom_id =
+            db.create_custom_template(&make_template_create_request("自定义模板2", false))?;
+
+        db.mark_template_user_modified(&builtin_id)?;
+        // 对非内置模板是 no-op（不报错、不打标记）
+        db.mark_template_user_modified(&custom_id)?;
+
+        let states = db.get_template_user_states()?;
+        assert_eq!(states.get(&builtin_id).copied(), Some((true, false)));
+        assert_eq!(states.get(&custom_id).copied(), Some((false, false)));
+        Ok(())
+    }
+
+    #[test]
+    fn replace_custom_template_content_keeps_id_and_builtin_flag() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+
+        let builtin_id = db.create_custom_template_with_id(
+            "builtin-tpl-replace",
+            &make_template_create_request("内置模板3", true),
+        )?;
+
+        let mut replacement = make_template_create_request("内置模板3", false);
+        replacement.front_template = "{{Front}} v2".to_string();
+        replacement.version = Some("9.9.9".to_string());
+        db.replace_custom_template_content(&builtin_id, &replacement)?;
+
+        let template = db
+            .get_custom_template_by_id(&builtin_id)?
+            .expect("原地替换后行保留");
+        assert_eq!(template.front_template, "{{Front}} v2");
+        assert_eq!(template.version, "9.9.9");
+        // is_built_in 不随导入数据翻转（导入文件不能夺取/放弃内置身份）
+        assert!(template.is_built_in);
+
+        assert!(
+            db.replace_custom_template_content("no-such-id", &replacement)
+                .is_err(),
+            "不存在的模板应报 template_not_found"
+        );
         Ok(())
     }
 }

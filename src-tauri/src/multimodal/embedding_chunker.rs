@@ -292,16 +292,43 @@ impl EmbeddingChunker {
 
         // 滑动窗口重叠：将前一块末尾约 overlap_tokens 个 token 的文本 prepend 到下一块开头，
         // 避免跨块边界的语义信息丢失，提升检索召回率。
+        //
+        // ★ 2026-07-19 修复：prepend 后必须仍满足 max_tokens 约束，否则会触发 API token 超限。
+        // 每块的实际重叠量被限制在剩余 token 预算内（预算不足时跳过该块的重叠）。
         if self.overlap_tokens > 0 && chunks.len() > 1 {
             let tails: Vec<String> = chunks
                 .iter()
                 .map(|c| Self::tail_text_by_tokens(c, self.overlap_tokens).to_string())
                 .collect();
             for i in 1..chunks.len() {
-                let tail = tails[i - 1].trim();
+                let chunk_tokens = Self::estimate_tokens(&chunks[i]);
+                // 预留 1 token 给拼接用的空格
+                let budget = self
+                    .max_tokens
+                    .saturating_sub(chunk_tokens)
+                    .saturating_sub(1);
+                let effective_overlap = self.overlap_tokens.min(budget);
+                if effective_overlap == 0 {
+                    continue;
+                }
+                let tail = Self::tail_text_by_tokens(&tails[i - 1], effective_overlap).trim();
                 if !tail.is_empty() {
                     chunks[i] = format!("{} {}", tail, chunks[i]);
                 }
+            }
+        }
+
+        // 最终校验：任何块估算超限都说明分块逻辑有回归，记录警告便于定位
+        // （estimate_tokens 是启发式，安全裕量由 EmbeddingTokenLimits::safety_margin 提供）。
+        for (idx, chunk) in chunks.iter().enumerate() {
+            let tokens = Self::estimate_tokens(chunk);
+            if tokens > self.max_tokens {
+                log::warn!(
+                    "[EmbeddingChunker] 块 {} 估算 {} tokens 超出限制 {}，可能触发 API 失败",
+                    idx,
+                    tokens,
+                    self.max_tokens
+                );
             }
         }
 
@@ -648,19 +675,37 @@ mod tests {
 
     #[test]
     fn test_chunk_text_overlap() {
-        // overlap = 5 tokens, max = 10 tokens → chunks should overlap
-        let chunker = EmbeddingChunker::new(10).with_overlap(5);
+        // 每段约 12 tokens，max = 20 留有重叠预算 → 应产生重叠
+        let chunker = EmbeddingChunker::new(20).with_overlap(5);
         let text = "这是第一段内容。\n\n这是第二段内容。\n\n这是第三段内容。";
         let chunks = chunker.chunk_text(text);
 
-        if chunks.len() >= 2 {
-            // 第二块应包含第一块末尾的重叠文本
-            let tail_of_first = EmbeddingChunker::tail_text_by_tokens(&chunks[0], 5);
-            // The overlap text (trimmed) should appear at the start of the next chunk
-            let tail_trimmed = tail_of_first.trim();
+        assert!(chunks.len() >= 2);
+        // 第二块应包含第一块末尾的重叠文本
+        let tail_of_first = EmbeddingChunker::tail_text_by_tokens("这是第一段内容。", 5).trim();
+        assert!(
+            chunks[1].starts_with(tail_of_first),
+            "chunk[1] should start with overlap from chunk[0]"
+        );
+        // 重叠后仍不得超限
+        for chunk in &chunks {
+            assert!(EmbeddingChunker::estimate_tokens(chunk) <= 20);
+        }
+    }
+
+    #[test]
+    fn test_chunk_text_overlap_respects_token_budget() {
+        // 每段约 12 tokens 已贴近 max = 12，没有重叠预算 → 跳过重叠且不超限
+        let chunker = EmbeddingChunker::new(12).with_overlap(5);
+        let text = "这是第一段内容。\n\n这是第二段内容。\n\n这是第三段内容。";
+        let chunks = chunker.chunk_text(text);
+
+        assert!(chunks.len() >= 2);
+        for chunk in &chunks {
             assert!(
-                chunks[1].starts_with(tail_trimmed),
-                "chunk[1] should start with overlap from chunk[0]"
+                EmbeddingChunker::estimate_tokens(chunk) <= 12,
+                "overlap must not push chunk over max_tokens: {:?}",
+                chunk
             );
         }
     }

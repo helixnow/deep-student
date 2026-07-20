@@ -720,6 +720,92 @@ pub const V20260720_MASTERY_EVENTS_SYNC: MigrationDef = MigrationDef::new(
 ])
 .idempotent();
 
+/// V20260721: backfill pomodoro_records.updated_at (= created_at) for LWW sync coverage.
+pub const V20260721_POMODORO_BACKFILL_UPDATED_AT: MigrationDef = MigrationDef::new(
+    20260721,
+    "pomodoro_backfill_updated_at",
+    include_str!("../../../migrations/vfs/V20260721__pomodoro_backfill_updated_at.sql"),
+)
+.with_expected_queries(&[
+    "SELECT 1 FROM pomodoro_records WHERE updated_at IS NULL AND created_at IS NOT NULL LIMIT 0",
+])
+.idempotent();
+
+/// V20260722: 笔记规范化标签表 note_tags（触发器随 notes.tags JSON 同步维护 + 回填）。
+/// 回填使用无 WHERE 的 DELETE 清空映射表后全量重建，属预期行为（幂等重建）。
+pub const V20260722_NOTE_TAGS: MigrationDef = MigrationDef::new(
+    20260722,
+    "note_tags",
+    include_str!("../../../migrations/vfs/V20260722__note_tags.sql"),
+)
+.with_expected_tables(&["note_tags"])
+.with_expected_indexes(&["idx_note_tags_tag"])
+.with_expected_queries(&[
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_note_tags_insert'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_note_tags_update'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_note_tags_delete'",
+])
+.idempotent();
+
+/// V20260723: partial index on todo_items.completed_at for local-day "today completed" stats.
+pub const V20260723_TODO_COMPLETED_AT_INDEX: MigrationDef = MigrationDef::new(
+    20260723,
+    "todo_completed_at_index",
+    include_str!("../../../migrations/vfs/V20260723__todo_completed_at_index.sql"),
+)
+.with_expected_indexes(&["idx_todo_items_completed_at"])
+.idempotent();
+
+/// V20260724: 笔记全文检索 notes_fts（FTS5 contentless + trigram，触发器维护 + 回填）。
+pub const V20260724_NOTES_FTS: MigrationDef = MigrationDef::new(
+    20260724,
+    "notes_fts",
+    include_str!("../../../migrations/vfs/V20260724__notes_fts.sql"),
+)
+.with_expected_tables(&["notes_fts"])
+.with_expected_queries(&[
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_notes_fts_insert'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_notes_fts_update'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_notes_fts_delete'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_notes_fts_resource_insert'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_notes_fts_resource_data_update'",
+])
+.idempotent();
+
+/// V20260725: 笔记链接图 note_links（wikilink / note:// 双链，触发器维护解析状态）。
+/// 派生数据表（可由正文全量重建，见 notes_rebuild_links），不进 __change_log 同步。
+pub const V20260725_NOTE_LINKS: MigrationDef = MigrationDef::new(
+    20260725,
+    "note_links",
+    include_str!("../../../migrations/vfs/V20260725__note_links.sql"),
+)
+.with_expected_tables(&["note_links"])
+.with_expected_indexes(&[
+    "idx_note_links_target_id",
+    "idx_note_links_unresolved",
+    "idx_notes_title_nocase",
+])
+.with_expected_queries(&[
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_note_links_on_note_delete'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_note_links_resolve_on_insert'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_note_links_resolve_on_update'",
+])
+.idempotent();
+
+/// V20260726: mindmaps.content_updated_at — OCC 内容锁与元数据时间戳解耦（B5）。
+/// 仅内容实际变化时推进；收藏/重命名等元数据操作不再造成编辑端乐观锁伪冲突。
+/// 回填 = updated_at（幂等，仅作用于 NULL 行）。
+pub const V20260726_MINDMAP_CONTENT_UPDATED_AT: MigrationDef = MigrationDef::new(
+    20260726,
+    "mindmap_content_updated_at",
+    include_str!("../../../migrations/vfs/V20260726__mindmap_content_updated_at.sql"),
+)
+.with_expected_columns(&[("mindmaps", "content_updated_at")])
+.with_expected_queries(&[
+    "SELECT 1 FROM mindmaps WHERE content_updated_at IS NULL AND updated_at IS NOT NULL LIMIT 0",
+])
+.idempotent();
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -766,6 +852,12 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260718_ADD_MASTERY_TABLES,
     V20260719_MASTERY_EVENTS_SIGNAL,
     V20260720_MASTERY_EVENTS_SYNC,
+    V20260721_POMODORO_BACKFILL_UPDATED_AT,
+    V20260722_NOTE_TAGS,
+    V20260723_TODO_COMPLETED_AT_INDEX,
+    V20260724_NOTES_FTS,
+    V20260725_NOTE_LINKS,
+    V20260726_MINDMAP_CONTENT_UPDATED_AT,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -826,25 +918,30 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     // 掌握度中间层
     "mastery_events",
     "mastery_states",
+    // 笔记规范化标签（V20260722）
+    "note_tags",
+    // 笔记链接图（V20260725，派生数据，不参与同步）
+    "note_links",
     // 本地辅助队列
     "__blob_deletion_queue",
     "__asset_deletion_queue",
     "__lance_orphan_queue",
     // FTS5 虚拟表
     "questions_fts",
+    "notes_fts",
 ];
 
 /// VFS 数据库中的视图
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 39;
+pub const VFS_TABLE_COUNT: usize = 41;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
 
-/// VFS 数据库 FTS5 虚拟表总数
-pub const VFS_FTS_TABLE_COUNT: usize = 1;
+/// VFS 数据库 FTS5 虚拟表总数（questions_fts + notes_fts）
+pub const VFS_FTS_TABLE_COUNT: usize = 2;
 
 // ============================================================================
 // 测试

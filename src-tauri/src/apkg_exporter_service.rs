@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs::{self};
-use std::io::Write;
+use std::io::{Seek, Write};
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use tempfile::NamedTempFile;
@@ -870,6 +870,78 @@ fn convert_cards_to_anki_records_with_fields(
     Ok(records)
 }
 
+/// APKG 导出报告（新增，向后兼容）：
+/// 旧调用方继续使用 `Result<(), String>` 签名的入口；
+/// 需要媒体完整性信息的调用方改用 `*_report` 变体。
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApkgExportReport {
+    /// 实际打包进 APKG 的媒体文件数
+    pub exported_media: usize,
+    /// 引用了但磁盘上缺失/不可读的媒体文件（路径），导出继续但需告警
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub missing_media: Vec<String>,
+}
+
+/// 从卡片列表收集可读媒体文件：
+/// - 以文件名去重（Anki 包内媒体按文件名寻址）；
+/// - 打开失败的文件进入 missing 清单，不再让整次导出失败；
+/// - 返回的句柄在打包时流式拷贝，避免整文件读入内存。
+fn collect_media_entries(cards: &[AnkiCard]) -> (Vec<(String, fs::File)>, Vec<String>) {
+    let mut entries: Vec<(String, fs::File)> = Vec::new();
+    let mut missing: Vec<String> = Vec::new();
+    let mut seen_media_names: HashSet<String> = HashSet::new();
+    for card in cards {
+        for image_path in &card.images {
+            let Some(fname) = std::path::Path::new(image_path)
+                .file_name()
+                .and_then(|n| n.to_str())
+            else {
+                warn!("媒体路径无有效文件名，跳过: {}", image_path);
+                missing.push(image_path.clone());
+                continue;
+            };
+            if !seen_media_names.insert(fname.to_string()) {
+                continue;
+            }
+            match fs::File::open(image_path) {
+                Ok(file) => entries.push((fname.to_string(), file)),
+                Err(e) => {
+                    warn!("读取媒体文件失败，跳过并继续导出 {}: {}", image_path, e);
+                    missing.push(image_path.clone());
+                }
+            }
+        }
+    }
+    (entries, missing)
+}
+
+/// 把媒体清单 + 媒体条目写入 zip（Anki 规范：清单键为 "0","1",... 指向同名条目）。
+fn write_media_to_zip<W: Write + Seek>(
+    zip: &mut ZipWriter<W>,
+    media_entries: &mut [(String, fs::File)],
+) -> Result<(), String> {
+    let mut media_map = serde_json::Map::new();
+    for (idx, (fname, _)) in media_entries.iter().enumerate() {
+        media_map.insert(idx.to_string(), serde_json::Value::String(fname.clone()));
+    }
+    let media_json = serde_json::to_string(&media_map)
+        .map_err(|e| format!("序列化媒体列表失败: {}", e))?;
+
+    zip.start_file("media", FileOptions::default())
+        .map_err(|e| format!("创建媒体列表条目失败: {}", e))?;
+    zip.write_all(media_json.as_bytes())
+        .map_err(|e| format!("写入媒体列表失败: {}", e))?;
+
+    for (idx, (fname, file)) in media_entries.iter_mut().enumerate() {
+        zip.start_file(idx.to_string(), FileOptions::default())
+            .map_err(|e| format!("创建媒体文件条目失败: {}", e))?;
+        std::io::copy(file, zip)
+            .map_err(|e| format!("写入媒体文件失败 {}: {}", fname, e))?;
+    }
+    Ok(())
+}
+
 /// 导出卡片为.apkg文件
 pub async fn export_cards_to_apkg(
     cards: Vec<AnkiCard>,
@@ -900,15 +972,44 @@ pub async fn export_cards_to_apkg_with_template(
     .await
 }
 
-/// 导出卡片为.apkg文件（支持完整模板对象）
+/// 导出卡片为.apkg文件（支持完整模板对象）——兼容签名，丢弃导出报告。
 pub async fn export_cards_to_apkg_with_full_template(
+    cards: Vec<AnkiCard>,
+    deck_name: String,
+    note_type: String,
+    output_path: PathBuf,
+    template_config: Option<(String, Vec<String>, String, String, String)>,
+    full_template: Option<CustomAnkiTemplate>,
+) -> Result<(), String> {
+    export_cards_to_apkg_with_full_template_report(
+        cards,
+        deck_name,
+        note_type,
+        output_path,
+        template_config,
+        full_template,
+    )
+    .await
+    .map(|report| {
+        if !report.missing_media.is_empty() {
+            warn!(
+                "APKG 导出完成，但 {} 个媒体文件缺失: {:?}",
+                report.missing_media.len(),
+                report.missing_media
+            );
+        }
+    })
+}
+
+/// 导出卡片为.apkg文件（支持完整模板对象），返回媒体完整性报告。
+pub async fn export_cards_to_apkg_with_full_template_report(
     cards: Vec<AnkiCard>,
     deck_name: String,
     note_type: String,
     output_path: PathBuf,
     template_config: Option<(String, Vec<String>, String, String, String)>, // (name, fields, front, back, css)
     full_template: Option<CustomAnkiTemplate>,                              // 完整的模板对象
-) -> Result<(), String> {
+) -> Result<ApkgExportReport, String> {
     if cards.is_empty() {
         return Err("没有卡片可以导出".to_string());
     }
@@ -1055,26 +1156,9 @@ pub async fn export_cards_to_apkg_with_full_template(
         let mut temp_file = NamedTempFile::new_in(parent_dir)
             .map_err(|e| format!("创建临时输出文件失败: {}", e))?;
 
-        // 媒体文件列表和文件
-        // 🎯 SOTA 修复：媒体文件去重与规范化索引
-        let mut media_map = serde_json::Map::new();
-        let mut media_entries: Vec<(String, String)> = Vec::new(); // (original_filename, path)
-        let mut seen_media_names: HashSet<String> = HashSet::new();
-
-        for card in &cards_clone_for_media { // 使用克隆的数据进行媒体处理
-            for image_path in &card.images {
-                if let Some(fname) = std::path::Path::new(image_path).file_name().and_then(|n| n.to_str()) {
-                    if seen_media_names.insert(fname.to_string()) {
-                        media_entries.push((fname.to_string(), image_path.clone()));
-                    }
-                }
-            }
-        }
-        for (idx, (fname, _path)) in media_entries.iter().enumerate() {
-            media_map.insert(idx.to_string(), serde_json::Value::String(fname.to_string()));
-        }
-        let media_json = serde_json::to_string(&media_map)
-            .map_err(|e| format!("序列化媒体列表失败: {}", e))?;
+        // 媒体收集：去重 + 缺失容忍（缺失文件进入报告而不是让整次导出失败），
+        // 清单只登记真正可读的条目，保证 media 清单与 zip 条目一一对应。
+        let (mut media_entries, missing_media) = collect_media_entries(&cards_clone_for_media);
 
         {
             let file_handle = temp_file.as_file_mut();
@@ -1088,21 +1172,8 @@ pub async fn export_cards_to_apkg_with_full_template(
             std::io::copy(&mut db_file, &mut zip)
                 .map_err(|e| format!("写入数据库到zip失败: {}", e))?;
 
-            zip.start_file("media", FileOptions::default())
-                .map_err(|e| format!("创建媒体列表条目失败: {}", e))?;
-            zip.write_all(media_json.as_bytes())
-                .map_err(|e| format!("写入媒体列表失败: {}", e))?;
-
             // In Anki packages, media files are stored as numbered entries ("0", "1", ...).
-            for (idx, (_fname, path)) in media_entries.iter().enumerate() {
-                // F14（round2）：流式拷贝媒体文件，避免整文件读入内存
-                let mut media_file = fs::File::open(path)
-                    .map_err(|e| format!("读取媒体文件失败 {}: {}", path, e))?;
-                zip.start_file(idx.to_string(), FileOptions::default())
-                    .map_err(|e| format!("创建媒体文件条目失败: {}", e))?;
-                std::io::copy(&mut media_file, &mut zip)
-                    .map_err(|e| format!("写入媒体文件失败: {}", e))?;
-            }
+            write_media_to_zip(&mut zip, &mut media_entries)?;
 
             zip.finish()
                 .map_err(|e| format!("完成zip文件失败: {}", e))?;
@@ -1128,7 +1199,10 @@ pub async fn export_cards_to_apkg_with_full_template(
         }
 
         debug!("APKG文件验证通过: {:?} ({} 字节)", output_path, temp_size);
-        Ok(())
+        Ok(ApkgExportReport {
+            exported_media: media_entries.len(),
+            missing_media,
+        })
     }.await;
 
     // 清理临时文件
@@ -1145,20 +1219,40 @@ pub async fn export_cards_to_apkg_with_full_template(
 // 多模板 APKG 导出（每种 template_id 对应一个 Anki model）
 // ============================================================================
 
-/// 多模板导出：每种 template_id 创建独立的 Anki model，
-/// 每张卡片的 notes.mid 指向自己模板对应的 model。
-///
-/// 参数：
-/// - cards: 所有待导出卡片
-/// - deck_name: 牌组名称
-/// - output_path: 输出文件路径
-/// - template_map: template_id → CustomAnkiTemplate 的映射
+/// 多模板导出（兼容签名，丢弃导出报告）。
 pub async fn export_multi_template_apkg(
     cards: Vec<AnkiCard>,
     deck_name: String,
     output_path: PathBuf,
     template_map: HashMap<String, CustomAnkiTemplate>,
 ) -> Result<(), String> {
+    export_multi_template_apkg_report(cards, deck_name, output_path, template_map)
+        .await
+        .map(|report| {
+            if !report.missing_media.is_empty() {
+                warn!(
+                    "多模板 APKG 导出完成，但 {} 个媒体文件缺失: {:?}",
+                    report.missing_media.len(),
+                    report.missing_media
+                );
+            }
+        })
+}
+
+/// 多模板导出：每种 template_id 创建独立的 Anki model，
+/// 每张卡片的 notes.mid 指向自己模板对应的 model。返回媒体完整性报告。
+///
+/// 参数：
+/// - cards: 所有待导出卡片
+/// - deck_name: 牌组名称
+/// - output_path: 输出文件路径
+/// - template_map: template_id → CustomAnkiTemplate 的映射
+pub async fn export_multi_template_apkg_report(
+    cards: Vec<AnkiCard>,
+    deck_name: String,
+    output_path: PathBuf,
+    template_map: HashMap<String, CustomAnkiTemplate>,
+) -> Result<ApkgExportReport, String> {
     if cards.is_empty() {
         return Err("没有卡片可以导出".to_string());
     }
@@ -1418,28 +1512,9 @@ pub async fn export_multi_template_apkg(
         let mut temp_file = NamedTempFile::new_in(parent_dir)
             .map_err(|e| format!("创建临时输出文件失败: {}", e))?;
 
-        // 先读出可用的媒体文件，再统一编号：保证 media 清单与 zip 内条目一一对应，
-        // 避免读取失败的文件在清单中留下悬空引用（Anki 导入会报媒体缺失）。
-        let mut media_entries: Vec<(String, Vec<u8>)> = Vec::new(); // (fname, data)
-        let mut seen_media_names: HashSet<String> = HashSet::new();
-        for card in &cards_for_media {
-            for image_path in &card.images {
-                if let Some(fname) = std::path::Path::new(image_path).file_name().and_then(|n| n.to_str()) {
-                    if seen_media_names.insert(fname.to_string()) {
-                        match fs::read(image_path) {
-                            Ok(data) => media_entries.push((fname.to_string(), data)),
-                            Err(e) => warn!("读取媒体文件失败，跳过 {}: {}", image_path, e),
-                        }
-                    }
-                }
-            }
-        }
-        let mut media_map = serde_json::Map::new();
-        for (idx, (fname, _)) in media_entries.iter().enumerate() {
-            media_map.insert(idx.to_string(), serde_json::Value::String(fname.to_string()));
-        }
-
-        let media_json = serde_json::to_string(&media_map).map_err(|e| format!("序列化媒体列表失败: {}", e))?;
+        // 媒体收集：与单模板路径统一——去重 + 缺失容忍 + 流式拷贝，
+        // media 清单只登记真正可读的条目，缺失文件进入报告。
+        let (mut media_entries, missing_media) = collect_media_entries(&cards_for_media);
 
         {
             let file_handle = temp_file.as_file_mut();
@@ -1448,14 +1523,7 @@ pub async fn export_multi_template_apkg(
             // F14（round2）：流式写入数据库，避免整库读入内存
             let mut db_file = fs::File::open(&db_path).map_err(|e| format!("打开数据库失败: {}", e))?;
             std::io::copy(&mut db_file, &mut zip).map_err(|e| format!("写入db失败: {}", e))?;
-            zip.start_file("media", FileOptions::default()).map_err(|e| format!("zip media失败: {}", e))?;
-            zip.write_all(media_json.as_bytes()).map_err(|e| format!("写入media失败: {}", e))?;
-            for (idx, (_, data)) in media_entries.iter().enumerate() {
-                zip.start_file(idx.to_string(), FileOptions::default())
-                    .map_err(|e| format!("创建媒体文件条目失败: {}", e))?;
-                zip.write_all(data)
-                    .map_err(|e| format!("写入媒体文件失败: {}", e))?;
-            }
+            write_media_to_zip(&mut zip, &mut media_entries)?;
             zip.finish().map_err(|e| format!("zip finish失败: {}", e))?;
         }
 
@@ -1463,7 +1531,10 @@ pub async fn export_multi_template_apkg(
             fs::remove_file(&output_path).map_err(|e| format!("删除旧文件失败: {}", e))?;
         }
         temp_file.persist(&output_path).map_err(|e| format!("持久化失败: {}", e.error))?;
-        Ok(())
+        Ok(ApkgExportReport {
+            exported_media: media_entries.len(),
+            missing_media,
+        })
     }.await;
 
     if temp_dir.exists() {
@@ -1801,5 +1872,101 @@ mod tests {
 
         // actual media blob should be stored under the numeric index
         assert!(zip.by_name("0").is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_export_apkg_missing_media_is_tolerated_and_reported() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let out = tmp.path().join("missing-media.apkg");
+
+        let img_path = tmp.path().join("exists.png");
+        std::fs::write(&img_path, b"\x89PNG\r\n\x1a\n").expect("write img");
+        let missing_path = tmp.path().join("does-not-exist.png");
+
+        let mut card = test_card("m", "Q", "A");
+        card.images = vec![
+            img_path.to_string_lossy().to_string(),
+            missing_path.to_string_lossy().to_string(),
+        ];
+
+        let report = export_cards_to_apkg_with_full_template_report(
+            vec![card],
+            "TestDeck".to_string(),
+            "Basic".to_string(),
+            out.clone(),
+            None,
+            None,
+        )
+        .await
+        .expect("missing media must not fail the export");
+
+        assert_eq!(report.exported_media, 1);
+        assert_eq!(
+            report.missing_media,
+            vec![missing_path.to_string_lossy().to_string()]
+        );
+
+        let f = std::fs::File::open(&out).expect("open apkg");
+        let mut zip = zip::ZipArchive::new(f).expect("zip open");
+        {
+            let mut media_file = zip.by_name("media").expect("media manifest");
+            let mut media_json = String::new();
+            media_file
+                .read_to_string(&mut media_json)
+                .expect("read media manifest");
+            let media_map: serde_json::Value =
+                serde_json::from_str(&media_json).expect("parse media manifest");
+            // 清单只登记可读文件，无悬空引用
+            assert_eq!(
+                media_map.get("0").and_then(|v| v.as_str()),
+                Some("exists.png")
+            );
+            assert!(media_map.get("1").is_none());
+        }
+        assert!(zip.by_name("0").is_ok());
+        assert!(zip.by_name("1").is_err());
+    }
+
+    #[tokio::test]
+    async fn multi_template_export_report_collects_missing_media() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let out = tmp.path().join("multi-missing-media.apkg");
+
+        let mut card = test_card("m", "Q", "A");
+        card.images = vec![tmp
+            .path()
+            .join("ghost.png")
+            .to_string_lossy()
+            .to_string()];
+
+        let report = export_multi_template_apkg_report(
+            vec![card],
+            "Deck".to_string(),
+            out.clone(),
+            HashMap::new(),
+        )
+        .await
+        .expect("missing media must not fail the multi-template export");
+        assert_eq!(report.exported_media, 0);
+        assert_eq!(report.missing_media.len(), 1);
+        assert!(out.exists());
+    }
+
+    #[test]
+    fn export_report_serialization_omits_empty_missing_media() {
+        let clean = ApkgExportReport {
+            exported_media: 2,
+            missing_media: vec![],
+        };
+        let value = serde_json::to_value(&clean).expect("serialize clean report");
+        assert_eq!(value["exportedMedia"], 2);
+        assert!(value.get("missingMedia").is_none());
+
+        let dirty = ApkgExportReport {
+            exported_media: 0,
+            missing_media: vec!["/tmp/a.png".to_string()],
+        };
+        let value = serde_json::to_value(&dirty).expect("serialize dirty report");
+        assert_eq!(value["missingMedia"][0], "/tmp/a.png");
     }
 }

@@ -1,3 +1,13 @@
+//! # 向量存储抽象接口（维护模式）
+//!
+//! ⚠️ 退役计划说明（2026-07）：
+//! - 本 trait 目前只有 `LanceVectorStore` 一个实现，且没有任何外部多态使用
+//!   （无 `dyn VectorStore` / 泛型约束调用方），属于悬空抽象。
+//! - 活跃的知识库检索已迁移至 `vfs::lance_store::VfsLanceStore`，本层仅为
+//!   遗留 KB 数据与聊天向量维护保留。
+//! - 保留 trait 与全部公开方法签名是为了兼容可能存在的并行任务/外部调用；
+//!   新代码不应再实现或依赖本 trait，待确认无调用方后整体移除。
+
 use crate::models::{
     AppError, DocumentChunk, DocumentChunkWithEmbedding, RetrievedChunk, VectorStoreStats,
 };
@@ -7,7 +17,7 @@ use std::any::Any;
 
 type Result<T> = std::result::Result<T, AppError>;
 
-/// 向量存储抽象接口
+/// 向量存储抽象接口（维护模式，见模块级说明；请勿在新代码中使用）
 #[async_trait]
 pub trait VectorStore: Send + Sync {
     /// 添加文档块和对应的向量
@@ -28,7 +38,9 @@ pub trait VectorStore: Send + Sync {
         sub_library_ids: Option<Vec<String>>,
     ) -> Result<Vec<RetrievedChunk>>;
 
-    /// 带 FTS 预筛的混合检索（所有库）
+    /// 混合检索（所有库）。
+    /// 命名沿革：早期实现依赖 SQLite FTS 预筛，现由 LanceDB 原生
+    /// FTS + 向量混合检索完成，方法名仅为兼容保留。
     async fn search_similar_chunks_with_prefilter(
         &self,
         query_text: &str,
@@ -36,7 +48,7 @@ pub trait VectorStore: Send + Sync {
         top_k: usize,
     ) -> Result<Vec<RetrievedChunk>>;
 
-    /// 带 FTS 预筛的混合检索（限定分库）
+    /// 混合检索（限定分库）。命名沿革同 `search_similar_chunks_with_prefilter`。
     async fn search_similar_chunks_in_libraries_with_prefilter(
         &self,
         query_text: &str,

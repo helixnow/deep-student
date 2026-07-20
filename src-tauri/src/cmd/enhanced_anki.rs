@@ -251,8 +251,10 @@ pub async fn get_task_cards(
 ) -> Result<Vec<crate::models::AnkiCard>> {
     println!("🃏 获取任务卡片: {}", task_id);
 
+    // 统一使用 Anki 专属数据库句柄（与制卡写入路径一致），
+    // 避免未来拆库时读写落在不同数据库
     let enhanced_service = crate::enhanced_anki_service::EnhancedAnkiService::new(
-        state.database.clone(),
+        state.anki_database.clone(),
         state.llm_manager.clone(),
     );
 
@@ -272,7 +274,7 @@ pub async fn update_anki_card(
     validate_anki_card_update(&card)?;
 
     let enhanced_service = crate::enhanced_anki_service::EnhancedAnkiService::new(
-        state.database.clone(),
+        state.anki_database.clone(),
         state.llm_manager.clone(),
     );
 
@@ -291,7 +293,7 @@ pub async fn delete_anki_card(card_id: String, state: State<'_, AppState>) -> Re
     }
 
     let enhanced_service = crate::enhanced_anki_service::EnhancedAnkiService::new(
-        state.database.clone(),
+        state.anki_database.clone(),
         state.llm_manager.clone(),
     );
 
@@ -310,7 +312,7 @@ pub async fn delete_document_task(task_id: String, state: State<'_, AppState>) -
     }
 
     let enhanced_service = crate::enhanced_anki_service::EnhancedAnkiService::new(
-        state.database.clone(),
+        state.anki_database.clone(),
         state.llm_manager.clone(),
     );
 
@@ -333,7 +335,7 @@ pub async fn delete_document_session(
     }
 
     let enhanced_service = crate::enhanced_anki_service::EnhancedAnkiService::new(
-        state.database.clone(),
+        state.anki_database.clone(),
         state.llm_manager.clone(),
     );
 
@@ -361,7 +363,7 @@ pub async fn export_apkg_for_selection(
     }
 
     let enhanced_service = crate::enhanced_anki_service::EnhancedAnkiService::new(
-        state.database.clone(),
+        state.anki_database.clone(),
         state.llm_manager.clone(),
     );
 

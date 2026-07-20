@@ -32,7 +32,16 @@ impl IndexState {
             "indexing" => IndexState::Indexing,
             "indexed" => IndexState::Indexed,
             "failed" => IndexState::Failed,
-            _ => IndexState::Disabled,
+            "disabled" => IndexState::Disabled,
+            other => {
+                // ★ P1-6：未知值说明账本已被脏数据污染。静默映射为 Disabled 会让
+                // Unit 无声地退出调度（状态漂移），至少留下告警便于定位数据来源。
+                log::warn!(
+                    "[IndexUnitRepo] Unknown index state '{}' in vfs_index_units; treating as disabled",
+                    other
+                );
+                IndexState::Disabled
+            }
         }
     }
 }
@@ -83,7 +92,11 @@ pub struct CreateUnitInput {
 pub struct SyncUnitsResult {
     /// 同步后的 Units 列表
     pub units: Vec<VfsIndexUnit>,
-    /// 被删除的 Units 关联的 LanceDB lance_row_ids（需要调用方清理 LanceDB）
+    /// 本次同步失效的 LanceDB lance_row_ids。
+    ///
+    /// ★ P1-5：这些 row IDs 已在 `sync_units` 内部（同一连接/事务）写入
+    /// `__lance_orphan_queue`，由后台 drain 兜底删除。此字段仅供调用方
+    /// 记录日志/观测，**不再要求调用方自行入队**。
     pub orphaned_lance_row_ids: Vec<String>,
 }
 
@@ -640,6 +653,10 @@ pub fn batch_create(
 }
 
 /// 同步资源的 Units（比较 content_hash，增量更新）
+///
+/// ★ P0-2：内容变更的 Unit 不再"只置 pending、保留旧 segments/profile"。
+/// 旧向量对应旧内容，若保留到重索引完成，检索会命中与已更新 `text_content`
+/// 不一致的"幽灵结果"。本函数在变更时立即失效旧索引产物（见分支内注释）。
 pub fn sync_units(
     conn: &Connection,
     resource_id: &str,
@@ -652,6 +669,7 @@ pub fn sync_units(
     let mut result = Vec::with_capacity(inputs.len());
     let input_indices: std::collections::HashSet<i32> =
         inputs.iter().map(|i| i.unit_index).collect();
+    let mut orphaned_lance_row_ids = Vec::new();
 
     for input in inputs {
         let new_hash = compute_content_hash(
@@ -664,13 +682,19 @@ pub fn sync_units(
             if existing_unit.content_hash.as_deref() == Some(&new_hash) {
                 result.push(existing_unit.clone());
             } else {
-                // 内容变化，更新 Unit 并重置索引状态
+                // 内容变化：按模态增量失效。content_hash = hash(image_hash | text)，
+                // 变化必然来自 text 侧或 image 侧之一；只失效变化的一侧，
+                // 避免"改了一段文字导致整页图片重新过一遍 VL embedding"。
                 let text_required = input
                     .text_content
                     .as_ref()
                     .map(|t| !t.is_empty())
                     .unwrap_or(false);
                 let mm_required = input.image_blob_hash.is_some();
+                let text_changed = existing_unit.text_content != input.text_content
+                    || existing_unit.text_required != text_required;
+                let image_changed = existing_unit.image_blob_hash != input.image_blob_hash
+                    || existing_unit.mm_required != mm_required;
 
                 let mut updated = existing_unit.clone();
                 updated.image_blob_hash = input.image_blob_hash;
@@ -679,20 +703,70 @@ pub fn sync_units(
                 updated.text_source = input.text_source;
                 updated.content_hash = Some(new_hash);
                 updated.text_required = text_required;
-                updated.text_state = if text_required {
-                    IndexState::Pending
-                } else {
-                    IndexState::Disabled
-                };
-                updated.text_error = None;
-                updated.text_chunk_count = 0;
                 updated.mm_required = mm_required;
-                updated.mm_state = if mm_required {
-                    IndexState::Pending
-                } else {
-                    IndexState::Disabled
-                };
-                updated.mm_error = None;
+
+                if text_changed {
+                    // ★ P0-2：立即失效旧文本索引产物。
+                    // - replace_by_unit_and_modality(…, vec![]) 删除旧 segments，
+                    //   并把旧 Lance row IDs 同连接写入 __lance_orphan_queue（兜底物理删除）；
+                    // - 摘除 text_profile_id 后，generation/profile 对齐检查
+                    //   （retain_active_unit_generations）会立刻过滤掉尚未物理删除的旧行。
+                    // 权衡：这会产生"重索引完成前该 Unit 文本检索无命中"的短暂空窗，
+                    // 但后台 worker 周期为秒级，短空窗远优于长时间返回已过期内容。
+                    // 注意 text_generation 保持单调不清零（next_unit_generation 依赖递增语义）。
+                    orphaned_lance_row_ids.extend(
+                        super::index_segment_repo::list_lance_row_ids_by_unit_and_modality(
+                            conn,
+                            &existing_unit.id,
+                            super::embedding_repo::MODALITY_TEXT,
+                        )?,
+                    );
+                    super::index_segment_repo::replace_by_unit_and_modality(
+                        conn,
+                        resource_id,
+                        &existing_unit.id,
+                        super::embedding_repo::MODALITY_TEXT,
+                        Vec::new(),
+                    )?;
+                    updated.text_state = if text_required {
+                        IndexState::Pending
+                    } else {
+                        IndexState::Disabled
+                    };
+                    updated.text_error = None;
+                    updated.text_indexed_at = None;
+                    updated.text_chunk_count = 0;
+                    updated.text_embedding_dim = None;
+                    updated.text_profile_id = None;
+                }
+                if image_changed {
+                    // ★ P0-2 同理：图片变化时旧多模态向量立即失效。
+                    // 与 sync_multimodal_units 的 generation 协议一致：
+                    // mm_generation 只增不减，仅摘除 profile 指针使旧行不可检索。
+                    orphaned_lance_row_ids.extend(
+                        super::index_segment_repo::list_lance_row_ids_by_unit_and_modality(
+                            conn,
+                            &existing_unit.id,
+                            super::embedding_repo::MODALITY_MULTIMODAL,
+                        )?,
+                    );
+                    super::index_segment_repo::replace_by_unit_and_modality(
+                        conn,
+                        resource_id,
+                        &existing_unit.id,
+                        super::embedding_repo::MODALITY_MULTIMODAL,
+                        Vec::new(),
+                    )?;
+                    updated.mm_state = if mm_required {
+                        IndexState::Pending
+                    } else {
+                        IndexState::Disabled
+                    };
+                    updated.mm_error = None;
+                    updated.mm_indexed_at = None;
+                    updated.mm_embedding_dim = None;
+                    updated.mm_profile_id = None;
+                }
 
                 update(conn, &updated)?;
                 result.push(updated);
@@ -704,16 +778,17 @@ pub fn sync_units(
         }
     }
 
-    // 删除不再存在的 Units，收集孤立的 lance_row_ids
-    let mut orphaned_lance_row_ids = Vec::new();
+    // 删除不再存在的 Units。
+    // ★ P1-5：孤立 lance_row_ids 直接在本函数内（同一连接/事务）写入
+    // __lance_orphan_queue，不再依赖调用方处理返回值——调用方遗漏即孤儿向量。
     for (index, existing_unit) in existing_map {
         if !input_indices.contains(&index) {
-            // 收集该 unit 关联的 lance_row_ids（删除后 segments 会被 CASCADE 删除）
-            if let Ok(ids) =
-                super::index_segment_repo::list_lance_row_ids_by_unit(conn, &existing_unit.id)
-            {
-                orphaned_lance_row_ids.extend(ids);
+            let ids =
+                super::index_segment_repo::list_lance_row_ids_by_unit(conn, &existing_unit.id)?;
+            for row_id in &ids {
+                super::index_segment_repo::enqueue_lance_orphan(conn, row_id, Some(resource_id))?;
             }
+            orphaned_lance_row_ids.extend(ids);
             delete(conn, &existing_unit.id)?;
         }
     }
@@ -946,6 +1021,68 @@ mod tests {
             )
             .unwrap();
         assert_eq!(queued, 1, "orphan lance row must be enqueued");
+    }
+
+    // ★ P0-2 回归测试：内容变更必须立即失效旧 segments 与 profile 指针
+    #[test]
+    fn sync_units_content_change_invalidates_stale_segments() {
+        let (_tmp, db) = setup();
+        let conn = db.get_conn_safe().unwrap();
+        let unit_id = seed_resource_with_index(&conn, "res_sync_change", "lance_stale_text");
+        // 模拟"旧内容已完成索引"：indexed 状态 + profile 指针 + 旧 content_hash
+        conn.execute(
+            "UPDATE vfs_index_units SET text_required = 1, text_state = 'indexed',
+                text_profile_id = 'profile_old', text_generation = 3,
+                content_hash = 'stale_hash'
+             WHERE id = ?1",
+            params![unit_id],
+        )
+        .unwrap();
+
+        let synced = sync_units(
+            &conn,
+            "res_sync_change",
+            vec![CreateUnitInput {
+                resource_id: "res_sync_change".to_string(),
+                unit_index: 0,
+                image_blob_hash: None,
+                image_mime_type: None,
+                text_content: Some("brand new text".to_string()),
+                text_source: Some("native".to_string()),
+            }],
+        )
+        .unwrap();
+
+        let updated = &synced.units[0];
+        assert_eq!(updated.text_state, IndexState::Pending);
+        assert!(
+            updated.text_profile_id.is_none(),
+            "stale profile pointer must be removed so old vectors stop matching"
+        );
+        assert_eq!(
+            updated.text_generation, 3,
+            "generation counter must stay monotonic"
+        );
+
+        let segments: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM vfs_index_segments WHERE unit_id = ?1",
+                params![unit_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(segments, 0, "stale segments must be deleted");
+        let queued: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __lance_orphan_queue WHERE lance_row_id = 'lance_stale_text'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(queued, 1, "stale lance row must be enqueued for deletion");
+        assert!(synced
+            .orphaned_lance_row_ids
+            .contains(&"lance_stale_text".to_string()));
     }
 
     #[test]

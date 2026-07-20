@@ -230,6 +230,22 @@ pub const V20260721_TRUSTED_AUTOMATION_PROFILE: MigrationDef = MigrationDef::new
 .with_expected_columns(&[("automation_definitions", "trusted_profile_json")])
 .idempotent();
 
+/// V20260722: 内置模板用户态标记（user_modified / user_deleted）
+///
+/// 支撑模板 CRUD 加固：内置模板版本升级导入跳过用户改过/删过的模板，
+/// 删除内置模板改为打墓碑标记（停用）而非物理删除，保证模板 ID 稳定。
+pub const V20260722_TEMPLATE_USER_STATE: MigrationDef = MigrationDef::new(
+    20260722,
+    "template_user_state",
+    include_str!("../../../migrations/mistakes/V20260722__template_user_state.sql"),
+)
+.with_expected_columns(&[
+    ("custom_anki_templates", "user_modified"),
+    ("custom_anki_templates", "user_deleted"),
+])
+.with_expected_indexes(&["idx_custom_anki_templates_user_deleted"])
+.idempotent();
+
 /// V20260720: durable FSRS -> mastery outbox marker.
 pub const V20260720_FSRS_MASTERY_OUTBOX: MigrationDef = MigrationDef::new(
     20260720,
@@ -379,6 +395,7 @@ pub const MISTAKES_MIGRATIONS: MigrationSet = MigrationSet {
         V20260715_HARDEN_AUTOMATION_RUNTIME,
         V20260720_FSRS_MASTERY_OUTBOX,
         V20260721_TRUSTED_AUTOMATION_PROFILE,
+        V20260722_TEMPLATE_USER_STATE,
     ],
 };
 
@@ -592,9 +609,21 @@ mod tests {
             .expected_columns
             .contains(&("fsrs_review_logs", "mastery_synced_at")));
 
+        let template_user_state = MISTAKES_MIGRATIONS
+            .get(20260722)
+            .expect("V20260722 should exist");
+        assert_eq!(template_user_state.name, "template_user_state");
+        assert!(template_user_state.idempotent);
+        assert!(template_user_state
+            .expected_columns
+            .contains(&("custom_anki_templates", "user_modified")));
+        assert!(template_user_state
+            .expected_columns
+            .contains(&("custom_anki_templates", "user_deleted")));
+
         assert_eq!(
             MISTAKES_MIGRATIONS.latest_version(),
-            20260720,
+            20260722,
             "Latest version should track the newest published mistakes migration"
         );
     }

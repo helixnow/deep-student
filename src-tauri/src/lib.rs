@@ -51,6 +51,7 @@ pub mod exam_sheet_service;
 pub mod feature_flags;
 pub mod figure_extractor;
 pub mod file_manager;
+pub mod file_stream_protocol; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
 pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
 pub mod injection_budget;
 pub mod json_validator;
@@ -1326,6 +1327,9 @@ pub fn run() {
             // ★ 4.2 防休眠（制卡等长任务）
             crate::cmd::power::set_prevent_sleep,
             crate::cmd::power::get_prevent_sleep,
+            // 移动端支撑：图片压缩（上传前减载）+ 网络质量探测（弱网降级）
+            crate::cmd::media::compress_image,
+            crate::cmd::network::network_probe,
             // 状态恢复相关命令
             crate::commands::get_recent_document_tasks,
             crate::commands::get_all_recent_cards,
@@ -1371,6 +1375,7 @@ pub fn run() {
             crate::commands::read_file_text,
             crate::commands::get_file_size,
             crate::commands::pdfstream_check_access,
+            crate::file_stream_protocol::filestream_check_access,
             crate::commands::hash_file,
             crate::commands::read_file_bytes,
             crate::commands::copy_file,
@@ -1508,6 +1513,11 @@ pub fn run() {
             ,crate::commands::notes_hard_delete
             ,crate::commands::notes_empty_trash
             ,crate::commands::notes_list_deleted
+            // 笔记链接图（backlinks / outgoing / rebuild / unlinked mentions）
+            ,crate::commands::notes_get_backlinks
+            ,crate::commands::notes_get_outgoing_links
+            ,crate::commands::notes_rebuild_links
+            ,crate::commands::notes_unlinked_mentions
             // Canvas AI 工具命令（智能笔记）
             ,crate::commands::canvas_note_read
             ,crate::commands::canvas_note_append
@@ -1553,6 +1563,8 @@ pub fn run() {
             ,crate::chat_v2::kill_switch::chat_v2_resume_automations
             ,crate::chat_v2::kill_switch::chat_v2_kill_switch_status
             ,crate::chat_v2::handlers::load_session::chat_v2_load_session
+            // 消息分页加载（移动端渐进式历史补页）
+            ,crate::chat_v2::handlers::load_messages_page::chat_v2_load_messages_page
             ,crate::chat_v2::handlers::manage_session::chat_v2_create_session
             ,crate::chat_v2::handlers::manage_session::chat_v2_get_session
             ,crate::chat_v2::handlers::manage_session::chat_v2_update_session_settings
@@ -1791,6 +1803,7 @@ pub fn run() {
             ,crate::vfs::handlers::vfs_get_mindmap_versions
             ,crate::vfs::handlers::vfs_get_mindmap_version_content
             ,crate::vfs::handlers::vfs_get_mindmap_version
+            ,crate::vfs::handlers::vfs_restore_mindmap_version
             ,crate::vfs::handlers::vfs_update_mindmap
             ,crate::vfs::handlers::vfs_delete_mindmap
             ,crate::vfs::handlers::vfs_list_mindmaps
@@ -1828,6 +1841,9 @@ pub fn run() {
             ,crate::vfs::todo_handlers::todo_list_deleted_items
             ,crate::vfs::todo_handlers::todo_purge_item
             ,crate::vfs::todo_handlers::todo_purge_deleted_items
+            // 清单重排 / 跨清单移动
+            ,crate::vfs::todo_handlers::todo_reorder_lists
+            ,crate::vfs::todo_handlers::todo_move_item
             // 番茄钟命令
             ,crate::vfs::todo_handlers::pomodoro_create_record
             ,crate::vfs::todo_handlers::pomodoro_get_record
@@ -1835,6 +1851,8 @@ pub fn run() {
             ,crate::vfs::todo_handlers::pomodoro_today_stats
             ,crate::vfs::todo_handlers::pomodoro_list_today
             ,crate::vfs::todo_handlers::pomodoro_daily_stats
+            ,crate::vfs::pomodoro_handlers::pomodoro_delete_record
+            ,crate::vfs::pomodoro_handlers::pomodoro_list_range
             // 索引诊断命令
             ,crate::vfs::handlers::vfs_debug_index_status
             ,crate::vfs::handlers::vfs_reset_disabled_to_pending
@@ -2195,6 +2213,33 @@ pub fn run() {
                                 .unwrap_or_else(|_| {
                                     tauri::http::Response::new(b"Internal Server Error".to_vec())
                                 })
+                        })
+                }
+            }
+        })
+        // 注册 filestream:// 自定义协议，用于媒体（音频/视频/图片）与通用 blob 流式加载
+        .register_uri_scheme_protocol("filestream", |ctx, request| {
+            let allowed_dirs = crate::pdf_protocol::resolve_allowed_dirs(ctx.app_handle());
+            let blob_dirs = crate::file_stream_protocol::resolve_blob_dirs(ctx.app_handle());
+            match crate::file_stream_protocol::handle_asset_protocol(
+                &request,
+                &allowed_dirs,
+                &blob_dirs,
+            ) {
+                Ok(response) => response,
+                Err(e) => {
+                    error!("filestream:// 协议处理失败: {}", e);
+                    let cors_origin =
+                        crate::file_stream_protocol::cors_origin_for_request(&request);
+                    tauri::http::Response::builder()
+                        .status(500)
+                        .header("Access-Control-Allow-Origin", cors_origin.clone())
+                        .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+                        .header("Access-Control-Allow-Headers", "Range")
+                        .header("Vary", "Origin")
+                        .body(b"Internal Server Error".to_vec())
+                        .unwrap_or_else(|_| {
+                            tauri::http::Response::new(b"Internal Server Error".to_vec())
                         })
                 }
             }

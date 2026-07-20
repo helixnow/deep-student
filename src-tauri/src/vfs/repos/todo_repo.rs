@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::vfs::database::VfsDatabase;
@@ -83,6 +83,67 @@ fn validate_due_time(v: &Option<String>) -> VfsResult<Option<String>> {
         }
         None => Ok(None),
     }
+}
+
+/// 校验并规范化提醒时间为本地 datetime `YYYY-MM-DDTHH:MM`（datetime-local 格式，
+/// 接受带秒输入并截断到分钟）。
+///
+/// ★ 2026-07-19：写入前校验。reminder 参与字符串排序（list_reminder_items
+/// ORDER BY reminder）且被 `shift_reminder`/前端调度器按此格式解析，
+/// 非法或非零填充值会静默破坏提醒调度，必须在写入前拒绝并规范化。
+fn validate_reminder(v: &Option<String>) -> VfsResult<Option<String>> {
+    match v {
+        Some(s) => {
+            let parsed = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M")
+                .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"));
+            match parsed {
+                Ok(t) => Ok(Some(t.format("%Y-%m-%dT%H:%M").to_string())),
+                Err(_) => Err(VfsError::InvalidArgument {
+                    param: "reminder".to_string(),
+                    reason: format!("Invalid reminder '{}'; expected YYYY-MM-DDTHH:MM", s),
+                }),
+            }
+        }
+        None => Ok(None),
+    }
+}
+
+/// 本地日历日「今天」的 `[start, end)` UTC 时刻串。
+///
+/// ★ 2026-07-19：completed_at 以 UTC ISO（`…Z`）落库，而"今日完成"等
+/// 统计口径是**本地日历日**（与 today/overdue 视图使用 `chrono::Local`
+/// 生成日期一致）。此前用 `completed_at LIKE '{本地日期}%'` 直接拿本地
+/// 日期匹配 UTC 字符串，在时区偏移跨日（如 UTC+8 的 00:00-08:00）时统计
+/// 错误。这里把本地日界换算成 UTC 时刻串后做范围比较——UTC ISO 字符串
+/// 字典序与时间序一致，可走 completed_at 索引。
+fn local_today_utc_bounds() -> (String, String) {
+    use chrono::TimeZone;
+    let today = chrono::Local::now().date_naive();
+    let to_utc_string = |d: chrono::NaiveDate| -> String {
+        // DST 导致本地午夜不存在/歧义时逐小时后移探测；歧义取较早侧。
+        // 统计口径下该 1 小时级误差每年最多出现两天，可接受。
+        let mut instant = None;
+        for hour in 0..=3u32 {
+            if let Some(naive) = d.and_hms_opt(hour, 0, 0) {
+                match chrono::Local.from_local_datetime(&naive) {
+                    chrono::LocalResult::Single(v) | chrono::LocalResult::Ambiguous(v, _) => {
+                        instant = Some(v);
+                        break;
+                    }
+                    chrono::LocalResult::None => continue,
+                }
+            }
+        }
+        instant
+            .map(|v| v.with_timezone(&chrono::Utc))
+            .unwrap_or_else(chrono::Utc::now)
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string()
+    };
+    (
+        to_utc_string(today),
+        to_utc_string(today + chrono::Days::new(1)),
+    )
 }
 
 // ============================================================================
@@ -419,15 +480,33 @@ impl VfsTodoRepo {
             .to_string();
 
         let final_title = params.title.unwrap_or(current.title);
-        let final_description = params.description.or(current.description);
-        let final_icon = params.icon.or(current.icon);
-        let final_color = params.color.or(current.color);
+        // ★ 2026-07-19：description/icon/color 采用与 item 更新一致的三态语义——
+        // None=不变、Some("")=清空为 NULL、Some(v)=设值。此前用 `.or(current…)`
+        // 导致 Some("") 被存成空串、且永远无法清空回 NULL。
+        let final_description = if params.description.is_some() {
+            normalize_optional_str(params.description)
+        } else {
+            current.description
+        };
+        let final_icon = if params.icon.is_some() {
+            normalize_optional_str(params.icon)
+        } else {
+            current.icon
+        };
+        let final_color = if params.color.is_some() {
+            normalize_optional_str(params.color)
+        } else {
+            current.color
+        };
 
-        conn.execute(
+        // ★ 2026-07-19：WHERE 补 deleted_at IS NULL——读取与写入之间列表可能
+        // 被并发软删除，缺谓词会把回收站行改活跃字段（且推进 updated_at 干扰
+        // 云同步 LWW）。affected == 0 视为 NotFound。
+        let affected = conn.execute(
             r#"
             UPDATE todo_lists
             SET title = ?1, description = ?2, icon = ?3, color = ?4, updated_at = ?5
-            WHERE id = ?6
+            WHERE id = ?6 AND deleted_at IS NULL
             "#,
             params![
                 final_title,
@@ -438,6 +517,12 @@ impl VfsTodoRepo {
                 list_id
             ],
         )?;
+        if affected == 0 {
+            return Err(VfsError::NotFound {
+                resource_type: "TodoList".to_string(),
+                id: list_id.to_string(),
+            });
+        }
 
         info!("[TodoRepo] Updated todo list: {}", list_id);
 
@@ -796,6 +881,78 @@ impl VfsTodoRepo {
         })
     }
 
+    /// 批量重排序待办列表（事务保护；ID 必须去重且精确覆盖全部未删除列表）
+    ///
+    /// 按传入顺序把 `sort_order` 重写为 0..n（校验风格与 `reorder_items` 一致），
+    /// 每行推进 updated_at 与 local_version（sort_order 参与 LWW 整行同步，
+    /// 不推进版本会被远端旧序覆盖）。
+    pub fn reorder_todo_lists(db: &VfsDatabase, list_ids: &[String]) -> VfsResult<()> {
+        let conn = db.get_conn_safe()?;
+        // fresh_updated_at 以全表最新 updated_at 为基线，保证重排后的时间戳
+        // 严格前进（同毫秒内"创建即拖拽"也不会产出相同 LWW 时间戳）。
+        let max_updated: Option<String> = conn
+            .query_row(
+                "SELECT MAX(updated_at) FROM todo_lists WHERE deleted_at IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        let now = fresh_updated_at(max_updated.as_deref().unwrap_or_default());
+
+        conn.execute("SAVEPOINT reorder_todo_lists", [])?;
+
+        let result = (|| -> VfsResult<()> {
+            let input_ids: HashSet<&str> = list_ids.iter().map(String::as_str).collect();
+            if input_ids.len() != list_ids.len() {
+                return Err(VfsError::InvalidArgument {
+                    param: "list_ids".to_string(),
+                    reason: "list_ids must not contain duplicates".to_string(),
+                });
+            }
+            let mut stmt = conn.prepare("SELECT id FROM todo_lists WHERE deleted_at IS NULL")?;
+            let actual_ids: HashSet<String> = stmt
+                .query_map([], |row| row.get(0))?
+                .collect::<Result<_, _>>()?;
+            if actual_ids.len() != input_ids.len()
+                || !actual_ids.iter().all(|id| input_ids.contains(id.as_str()))
+            {
+                return Err(VfsError::InvalidArgument {
+                    param: "list_ids".to_string(),
+                    reason: "list_ids must exactly match every non-deleted todo list".to_string(),
+                });
+            }
+            for (i, id) in list_ids.iter().enumerate() {
+                conn.execute(
+                    r#"
+                    UPDATE todo_lists
+                    SET sort_order = ?1, updated_at = ?2,
+                        local_version = COALESCE(local_version, 0) + 1
+                    WHERE id = ?3 AND deleted_at IS NULL
+                    "#,
+                    params![i as i32, now, id],
+                )?;
+            }
+            Ok(())
+        })();
+
+        match result {
+            Ok(_) => {
+                conn.execute("RELEASE SAVEPOINT reorder_todo_lists", [])?;
+                info!(
+                    "[VFS::TodoRepo] Reordered {} todo lists",
+                    list_ids.len()
+                );
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT reorder_todo_lists", []);
+                let _ = conn.execute("RELEASE SAVEPOINT reorder_todo_lists", []);
+                Err(e)
+            }
+        }
+    }
+
     /// 确保默认收件箱列表存在（首次使用时自动创建）
     ///
     /// 使用 `BEGIN IMMEDIATE` 事务防止并发创建重复的默认收件箱。
@@ -978,37 +1135,56 @@ impl VfsTodoRepo {
             )
             .unwrap_or(-1);
 
-        let normalized_reminder = normalize_optional_str(params.reminder.clone());
+        let normalized_reminder = validate_reminder(&normalize_optional_str(params.reminder.clone()))?;
 
-        conn.execute(
-            r#"
-            INSERT INTO todo_items (id, todo_list_id, title, description, status, priority, due_date, due_time, reminder, tags_json, sort_order, parent_id, repeat_json, attachments_json, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
-            "#,
-            params![
-                item_id,
-                params.todo_list_id,
-                final_title,
-                normalize_optional_str(params.description.clone()),
-                params.priority,
-                normalized_due_date,
-                normalized_due_time,
-                normalized_reminder,
-                tags_json,
-                max_sort + 1,
-                params.parent_id,
-                normalized_repeat_json,
-                attachments_json,
-                now,
-                now,
-            ],
-        )?;
+        // ★ 2026-07-19：条目 INSERT 与列表 updated_at 推进必须原子提交
+        // （与 update_todo_item 一致）——中途失败会留下"条目已创建但列表
+        // 时间戳未推进"的不一致，云同步 LWW 依赖 updated_at 判断新旧。
+        conn.execute("SAVEPOINT create_todo_item", [])?;
 
-        // 更新列表的 updated_at
-        conn.execute(
-            "UPDATE todo_lists SET updated_at = ?1 WHERE id = ?2",
-            params![now, params.todo_list_id],
-        )?;
+        let write_result = (|| -> VfsResult<()> {
+            conn.execute(
+                r#"
+                INSERT INTO todo_items (id, todo_list_id, title, description, status, priority, due_date, due_time, reminder, tags_json, sort_order, parent_id, repeat_json, attachments_json, created_at, updated_at)
+                VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                "#,
+                params![
+                    item_id,
+                    params.todo_list_id,
+                    final_title,
+                    normalize_optional_str(params.description.clone()),
+                    params.priority,
+                    normalized_due_date,
+                    normalized_due_time,
+                    normalized_reminder,
+                    tags_json,
+                    max_sort + 1,
+                    params.parent_id,
+                    normalized_repeat_json,
+                    attachments_json,
+                    now,
+                    now,
+                ],
+            )?;
+
+            // 更新列表的 updated_at
+            conn.execute(
+                "UPDATE todo_lists SET updated_at = ?1 WHERE id = ?2",
+                params![now, params.todo_list_id],
+            )?;
+            Ok(())
+        })();
+
+        match write_result {
+            Ok(_) => {
+                conn.execute("RELEASE SAVEPOINT create_todo_item", [])?;
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT create_todo_item", []);
+                let _ = conn.execute("RELEASE SAVEPOINT create_todo_item", []);
+                return Err(e);
+            }
+        }
 
         info!(
             "[VFS::TodoRepo] Created todo item: {} in list {}",
@@ -1031,8 +1207,10 @@ impl VfsTodoRepo {
             completed_at: None,
             repeat_json: normalized_repeat_json,
             attachments_json,
-            estimated_pomodoros: None,
-            completed_pomodoros: None,
+            // ★ 2026-07-19：DB 列默认 0（V20260310 DEFAULT 0），返回 Some(0)
+            // 与随后 get/list 读回的行保持一致，避免"创建返回 None、刷新变 0"。
+            estimated_pomodoros: Some(0),
+            completed_pomodoros: Some(0),
             created_at: now.clone(),
             updated_at: now,
             deleted_at: None,
@@ -1133,10 +1311,16 @@ impl VfsTodoRepo {
                     "[VFS::TodoRepo] Optimistic lock conflict for todo item {}: expected updated_at='{}', actual='{}'",
                     item_id, expected, current.updated_at
                 );
-                return Err(VfsError::Other(format!(
-                    "TODO_CONFLICT: expected_updated_at={}, actual_updated_at={}",
-                    expected, current.updated_at
-                )));
+                // ★ 2026-07-19：与本文件其余 OCC 路径统一为 VfsError::Conflict
+                // （此前是 Other("TODO_CONFLICT:…")，同一冲突两种错误类型）。
+                // 消息保留 TODO_CONFLICT 稳定子串——AI 层与前端按子串识别冲突。
+                return Err(VfsError::Conflict {
+                    key: "todo_items.conflict".to_string(),
+                    message: format!(
+                        "TODO_CONFLICT: expected_updated_at={}, actual_updated_at={}",
+                        expected, current.updated_at
+                    ),
+                });
             }
         }
 
@@ -1178,7 +1362,7 @@ impl VfsTodoRepo {
             final_due_time
         };
         let final_reminder = if params.reminder.is_some() {
-            normalize_optional_str(params.reminder)
+            validate_reminder(&normalize_optional_str(params.reminder))?
         } else {
             current.reminder.clone()
         };
@@ -1376,13 +1560,15 @@ impl VfsTodoRepo {
             deleted_at: None,
         };
 
-        // 重复任务：完成时生成下一次实例（失败仅告警，不阻塞完成操作——
-        // 派生实例可在用户取消完成/再完成时补生成，不值得回滚整个更新）
+        // 重复任务：完成时生成下一次实例（失败不阻塞完成操作——
+        // 派生实例可在用户取消完成/再完成时补生成，不值得回滚整个更新）。
+        // ★ 2026-07-19：日志级别 warn → error 并带上规则/到期日上下文，
+        // 便于用户报告"重复任务没有生成下一次"时定位（保守修复，不改返回结构）。
         if was_completed_now {
             if let Err(e) = Self::spawn_next_recurrence_with_conn(conn, &updated) {
-                warn!(
-                    "[VFS::TodoRepo] Failed to spawn next recurrence for {}: {}",
-                    item_id, e
+                error!(
+                    "[VFS::TodoRepo] Failed to spawn next recurrence for {} (title='{}', repeat_json={:?}, due_date={:?}): {}",
+                    item_id, updated.title, updated.repeat_json, updated.due_date, e
                 );
             }
         }
@@ -1575,15 +1761,17 @@ impl VfsTodoRepo {
             }
 
             // 递归软删除所有后代子任务（使用 CTE 遍历整棵子树，
-            // deleted_at 与父项一致，作为"删除批次"标记供恢复使用）
+            // deleted_at 与父项一致，作为"删除批次"标记供恢复使用）。
+            // ★ 2026-07-19：depth < 100 防御历史坏数据中的 parent 环导致递归不终止
+            // （与 update_todo_item 环检测、V20260615 触发器的深度上限一致）。
             conn.execute(
                 r#"
-                WITH RECURSIVE descendants(id) AS (
-                    SELECT id FROM todo_items WHERE parent_id = ?3 AND deleted_at IS NULL
+                WITH RECURSIVE descendants(id, depth) AS (
+                    SELECT id, 1 FROM todo_items WHERE parent_id = ?3 AND deleted_at IS NULL
                     UNION ALL
-                    SELECT ti.id FROM todo_items ti
+                    SELECT ti.id, d.depth + 1 FROM todo_items ti
                     JOIN descendants d ON ti.parent_id = d.id
-                    WHERE ti.deleted_at IS NULL
+                    WHERE ti.deleted_at IS NULL AND d.depth < 100
                 )
                 UPDATE todo_items SET deleted_at = ?1, updated_at = ?2
                 WHERE id IN (SELECT id FROM descendants)
@@ -1666,14 +1854,15 @@ impl VfsTodoRepo {
                     },
                 });
             }
+            // ★ 2026-07-19：depth < 100 防环（同 delete_todo_item）
             conn.execute(
                 r#"
-                WITH RECURSIVE descendants(id) AS (
-                    SELECT id FROM todo_items WHERE parent_id = ?2 AND deleted_at IS NULL
+                WITH RECURSIVE descendants(id, depth) AS (
+                    SELECT id, 1 FROM todo_items WHERE parent_id = ?2 AND deleted_at IS NULL
                     UNION ALL
-                    SELECT ti.id FROM todo_items ti
+                    SELECT ti.id, d.depth + 1 FROM todo_items ti
                     JOIN descendants d ON ti.parent_id = d.id
-                    WHERE ti.deleted_at IS NULL
+                    WHERE ti.deleted_at IS NULL AND d.depth < 100
                 )
                 UPDATE todo_items SET deleted_at = ?1, updated_at = ?1
                 WHERE id IN (SELECT id FROM descendants)
@@ -1759,15 +1948,15 @@ impl VfsTodoRepo {
                 }
             }
 
-            // 恢复自身 + 同批次后代
+            // 恢复自身 + 同批次后代（depth < 100 防环，同 delete_todo_item）
             conn.execute(
                 r#"
-                WITH RECURSIVE descendants(id) AS (
-                    SELECT id FROM todo_items WHERE id = ?2
+                WITH RECURSIVE descendants(id, depth) AS (
+                    SELECT id, 1 FROM todo_items WHERE id = ?2
                     UNION ALL
-                    SELECT ti.id FROM todo_items ti
+                    SELECT ti.id, d.depth + 1 FROM todo_items ti
                     JOIN descendants d ON ti.parent_id = d.id
-                    WHERE ti.deleted_at = ?3
+                    WHERE ti.deleted_at = ?3 AND d.depth < 100
                 )
                 UPDATE todo_items SET deleted_at = NULL, updated_at = ?1
                 WHERE id IN (SELECT id FROM descendants) AND deleted_at = ?3
@@ -1906,6 +2095,127 @@ impl VfsTodoRepo {
             Err(e) => {
                 let _ = conn.execute("ROLLBACK TO SAVEPOINT reorder_todo_items", []);
                 let _ = conn.execute("RELEASE SAVEPOINT reorder_todo_items", []);
+                Err(e)
+            }
+        }
+    }
+
+    /// 把待办项（连同整棵子树）移动到目标清单。
+    ///
+    /// - 目标清单必须存在且未删除；
+    /// - 被移动项挂到目标清单顶层（原父项留在源清单，跨清单父子关系被
+    ///   触发器禁止，故根节点 parent_id 置 NULL）；子树内部的 parent
+    ///   关系原样保留，整体跟随迁移；
+    /// - sort_order 追加到目标清单顶层尾部；
+    /// - 后代按深度自浅向深逐层改写 todo_list_id——UPDATE 触发器校验
+    ///   "parent 与本行同清单"，必须先迁父行再迁子行；
+    /// - 软删除的后代一并迁移，避免恢复时出现跨清单父子；
+    /// - 源/目标清单 updated_at 同步推进，SAVEPOINT 原子提交。
+    pub fn move_todo_item(
+        db: &VfsDatabase,
+        item_id: &str,
+        target_list_id: &str,
+    ) -> VfsResult<VfsTodoItem> {
+        let conn = db.get_conn_safe()?;
+
+        let current =
+            Self::get_todo_item_with_conn(&conn, item_id)?.ok_or_else(|| VfsError::NotFound {
+                resource_type: "TodoItem".to_string(),
+                id: item_id.to_string(),
+            })?;
+
+        let target_exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM todo_lists WHERE id = ?1 AND deleted_at IS NULL)",
+            params![target_list_id],
+            |row| row.get(0),
+        )?;
+        if !target_exists {
+            return Err(VfsError::NotFound {
+                resource_type: "TodoList".to_string(),
+                id: target_list_id.to_string(),
+            });
+        }
+
+        let now = fresh_updated_at(&current.updated_at);
+        let source_list_id = current.todo_list_id.clone();
+
+        conn.execute("SAVEPOINT move_todo_item", [])?;
+
+        let result = (|| -> VfsResult<()> {
+            // 目标清单顶层尾部追加
+            let max_sort: i32 = conn
+                .query_row(
+                    "SELECT COALESCE(MAX(sort_order), -1) FROM todo_items WHERE todo_list_id = ?1 AND parent_id IS NULL AND deleted_at IS NULL",
+                    params![target_list_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(-1);
+
+            // 收集后代（含软删除行；depth < 100 防历史坏数据成环）
+            let mut stmt = conn.prepare(
+                r#"
+                WITH RECURSIVE descendants(id, depth) AS (
+                    SELECT id, 1 FROM todo_items WHERE parent_id = ?1
+                    UNION ALL
+                    SELECT ti.id, d.depth + 1 FROM todo_items ti
+                    JOIN descendants d ON ti.parent_id = d.id
+                    WHERE d.depth < 100
+                )
+                SELECT id FROM descendants ORDER BY depth ASC
+                "#,
+            )?;
+            let descendant_ids: Vec<String> = stmt
+                .query_map(params![item_id], |row| row.get(0))?
+                .collect::<Result<_, _>>()?;
+
+            // 根节点先迁：detach 原父 + 落目标清单尾部
+            // （affected == 0 说明读取后被并发删除，整体回滚避免"子树已迁、根未迁"）
+            let affected = conn.execute(
+                r#"
+                UPDATE todo_items
+                SET todo_list_id = ?1, parent_id = NULL, sort_order = ?2, updated_at = ?3
+                WHERE id = ?4 AND deleted_at IS NULL
+                "#,
+                params![target_list_id, max_sort + 1, now, item_id],
+            )?;
+            if affected == 0 {
+                return Err(VfsError::NotFound {
+                    resource_type: "TodoItem".to_string(),
+                    id: item_id.to_string(),
+                });
+            }
+
+            // 后代按深度序逐行迁移（保留子树内 parent 关系与相对 sort_order）
+            for id in &descendant_ids {
+                conn.execute(
+                    "UPDATE todo_items SET todo_list_id = ?1, updated_at = ?2 WHERE id = ?3",
+                    params![target_list_id, now, id],
+                )?;
+            }
+
+            // 源/目标清单时间戳推进（云同步 LWW 基准）
+            conn.execute(
+                "UPDATE todo_lists SET updated_at = ?1 WHERE id IN (?2, ?3) AND deleted_at IS NULL",
+                params![now, source_list_id, target_list_id],
+            )?;
+            Ok(())
+        })();
+
+        match result {
+            Ok(_) => {
+                conn.execute("RELEASE SAVEPOINT move_todo_item", [])?;
+                info!(
+                    "[VFS::TodoRepo] Moved todo item {} from list {} to list {}",
+                    item_id, source_list_id, target_list_id
+                );
+                Self::get_todo_item_with_conn(&conn, item_id)?.ok_or_else(|| VfsError::NotFound {
+                    resource_type: "TodoItem".to_string(),
+                    id: item_id.to_string(),
+                })
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT move_todo_item", []);
+                let _ = conn.execute("RELEASE SAVEPOINT move_todo_item", []);
                 Err(e)
             }
         }
@@ -2256,10 +2566,15 @@ impl VfsTodoRepo {
             .map(|v| v as usize)
             .unwrap_or(0);
 
+        // ★ 2026-07-19：completed_at 是 UTC ISO（…Z），此前 LIKE '{本地日期}%'
+        // 直接拿本地日期匹配 UTC 串，非 UTC 时区在日界附近统计错误。
+        // 改为把本地"今天"的日界换算成 UTC 时刻串做范围比较（口径与
+        // today/overdue 视图的"本地日历日"一致，见 local_today_utc_bounds）。
+        let (today_start_utc, today_end_utc) = local_today_utc_bounds();
         let today_completed: usize = conn
             .query_row(
-                "SELECT COUNT(*) FROM todo_items WHERE completed_at LIKE ?1 AND status = 'completed' AND deleted_at IS NULL",
-                params![format!("{}%", today)],
+                "SELECT COUNT(*) FROM todo_items WHERE completed_at >= ?1 AND completed_at < ?2 AND status = 'completed' AND deleted_at IS NULL",
+                params![today_start_utc, today_end_utc],
                 |row| row.get::<_, i64>(0),
             )
             .map(|v| v as usize)
@@ -2598,14 +2913,16 @@ impl VfsTodoRepo {
         conn.execute("BEGIN IMMEDIATE", [])?;
 
         let result = (|| -> VfsResult<()> {
-            // 后代（无论删除批次）一并物理删除，避免遗留悬挂 parent_id
+            // 后代（无论删除批次）一并物理删除，避免遗留悬挂 parent_id。
+            // ★ 2026-07-19：depth < 100 防御 parent 环导致递归不终止。
             conn.execute(
                 r#"
-                WITH RECURSIVE descendants(id) AS (
-                    SELECT id FROM todo_items WHERE parent_id = ?1
+                WITH RECURSIVE descendants(id, depth) AS (
+                    SELECT id, 1 FROM todo_items WHERE parent_id = ?1
                     UNION ALL
-                    SELECT ti.id FROM todo_items ti
+                    SELECT ti.id, d.depth + 1 FROM todo_items ti
                     JOIN descendants d ON ti.parent_id = d.id
+                    WHERE d.depth < 100
                 )
                 DELETE FROM todo_items
                 WHERE id IN (SELECT id FROM descendants) OR id = ?1
@@ -3432,5 +3749,96 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![second.id.as_str(), first.id.as_str()]
         );
+    }
+
+    #[test]
+    fn reorder_lists_requires_exact_unique_membership_and_persists_order() {
+        let (_temp_dir, db) = setup_test_db();
+        let a = create_list(&db, "Alpha");
+        let b = create_list(&db, "Beta");
+        let c = create_list(&db, "Gamma");
+
+        for invalid in [
+            vec![a.id.clone(), a.id.clone(), b.id.clone()], // 重复
+            vec![a.id.clone(), b.id.clone()],               // 不完整
+            vec![a.id.clone(), b.id.clone(), "tdl_missing".to_string()], // 未知 ID
+        ] {
+            let error = VfsTodoRepo::reorder_todo_lists(&db, &invalid)
+                .expect_err("duplicate/partial/unknown reorder must fail");
+            assert!(error.to_string().contains("list_ids"));
+        }
+
+        VfsTodoRepo::reorder_todo_lists(&db, &[c.id.clone(), a.id.clone(), b.id.clone()])
+            .expect("exact reorder succeeds");
+        let ordered = VfsTodoRepo::list_todo_lists(&db).expect("list lists");
+        assert_eq!(
+            ordered.iter().map(|l| l.id.as_str()).collect::<Vec<_>>(),
+            vec![c.id.as_str(), a.id.as_str(), b.id.as_str()]
+        );
+        assert_eq!(
+            ordered.iter().map(|l| l.sort_order).collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+        // updated_at 必须推进（云同步 LWW 依赖）
+        assert_ne!(ordered[0].updated_at, c.updated_at);
+    }
+
+    #[test]
+    fn move_todo_item_moves_subtree_to_target_list_tail() {
+        let (_temp_dir, db) = setup_test_db();
+        let source = create_list(&db, "Source");
+        let target = create_list(&db, "Target");
+        let existing = create_item(&db, &target.id, "Existing", None, None);
+        let parent = create_item(&db, &source.id, "Parent", None, None);
+        let child = create_item(&db, &source.id, "Child", None, Some(parent.id.clone()));
+        let grandchild = create_item(&db, &source.id, "Grandchild", None, Some(child.id.clone()));
+
+        let moved = VfsTodoRepo::move_todo_item(&db, &parent.id, &target.id)
+            .expect("move subtree to target");
+        assert_eq!(moved.todo_list_id, target.id);
+        assert_eq!(moved.parent_id, None);
+        assert_eq!(
+            moved.sort_order,
+            existing.sort_order + 1,
+            "moved root appends to target top-level tail"
+        );
+
+        // 子树整体跟随，内部 parent 关系保留
+        let moved_child = VfsTodoRepo::get_todo_item(&db, &child.id)
+            .unwrap()
+            .expect("child alive");
+        assert_eq!(moved_child.todo_list_id, target.id);
+        assert_eq!(moved_child.parent_id.as_deref(), Some(parent.id.as_str()));
+        let moved_grandchild = VfsTodoRepo::get_todo_item(&db, &grandchild.id)
+            .unwrap()
+            .expect("grandchild alive");
+        assert_eq!(moved_grandchild.todo_list_id, target.id);
+        assert_eq!(
+            moved_grandchild.parent_id.as_deref(),
+            Some(child.id.as_str())
+        );
+
+        // 源清单已空
+        let source_items = VfsTodoRepo::list_items_by_list(&db, &source.id, true).unwrap();
+        assert!(source_items.is_empty());
+    }
+
+    #[test]
+    fn move_todo_item_rejects_missing_or_deleted_target_list() {
+        let (_temp_dir, db) = setup_test_db();
+        let source = create_list(&db, "Source");
+        let doomed = create_list(&db, "Doomed");
+        let item = create_item(&db, &source.id, "Task", None, None);
+
+        assert!(VfsTodoRepo::move_todo_item(&db, &item.id, "tdl_missing").is_err());
+
+        VfsTodoRepo::delete_todo_list(&db, &doomed.id).expect("soft delete target");
+        let error = VfsTodoRepo::move_todo_item(&db, &item.id, &doomed.id)
+            .expect_err("deleted target must be rejected");
+        assert!(error.to_string().contains("TodoList"));
+
+        // 失败不应改变原条目
+        let untouched = VfsTodoRepo::get_todo_item(&db, &item.id).unwrap().unwrap();
+        assert_eq!(untouched.todo_list_id, source.id);
     }
 }

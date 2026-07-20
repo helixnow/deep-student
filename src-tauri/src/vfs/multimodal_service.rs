@@ -191,6 +191,12 @@ impl VfsMultimodalService {
     ///
     /// ## 返回
     /// 索引结果，包含成功/失败的页面数
+    ///
+    /// ## force_rebuild 语义
+    /// 本入口（及 `_with_progress` 变体）是**手动/显式索引**路径，固定
+    /// `force_rebuild=true`：整份资源重置重建。后台增量路径
+    /// （`process_pending_batch`）传 `false`，只重建图片变化的页面并在
+    /// 索引已完整时短路。`index_resource_by_source` 尊重调用方参数。
     pub async fn index_resource_pages(
         &self,
         resource_id: &str,
@@ -263,7 +269,10 @@ impl VfsMultimodalService {
             ));
         }
 
-        // 2. 补齐图片数据并验证可持久化 provenance。
+        // 2. 补齐可持久化 provenance（blob_hash）。
+        // ★ 内存优化：不再在此处把全部页面的原图读成 Base64 常驻内存
+        // （百页 PDF 会同时驻留数百 MB），只校验 blob 可定位；
+        // 原图字节延迟到步骤 4 的嵌入阶段按批读取、用完即弃。
         let mut failed_pages: Vec<i32> = Vec::new();
         for page in &mut pages {
             if page.blob_hash.is_none() {
@@ -293,23 +302,13 @@ impl VfsMultimodalService {
                 let blob =
                     VfsBlobRepo::store_blob(&self.vfs_db, &data, Some(mime), Some(extension))?;
                 page.blob_hash = Some(blob.hash);
+                // 原图已持久化，inline Base64 不再需要常驻；嵌入阶段按批从 blob 重读。
+                page.image_base64 = None;
             }
             let blob_hash = page.blob_hash.clone().unwrap_or_default();
-            if page.image_base64.is_none() {
-                let Some(blob_path) = VfsBlobRepo::get_blob_path(&self.vfs_db, &blob_hash)? else {
-                    failed_pages.push(page.page_index);
-                    continue;
-                };
-                match tokio::fs::read(&blob_path).await {
-                    Ok(data) => page.image_base64 = Some(BASE64.encode(data)),
-                    Err(e) => {
-                        warn!(
-                            "[VfsMultimodalService] Failed to read page blob {}: {}",
-                            blob_hash, e
-                        );
-                        failed_pages.push(page.page_index);
-                    }
-                }
+            if VfsBlobRepo::get_blob_path(&self.vfs_db, &blob_hash)?.is_none() {
+                failed_pages.push(page.page_index);
+                continue;
             }
             if page.image_mime.is_none() {
                 page.image_mime = Some("image/png".to_string());
@@ -374,6 +373,9 @@ impl VfsMultimodalService {
                 .first()
                 .and_then(|unit| unit.mm_embedding_dim)
                 .unwrap_or(0) as usize;
+            // 调用方（process_pending_batch）可能已把资源 claim 成 indexing；
+            // 短路返回前必须落回 indexed，否则资源卡死在 indexing。
+            self.set_resource_mm_state(resource_id, "indexed", None)?;
             return Ok(VfsMultimodalIndexResult {
                 indexed_pages: units.len(),
                 dimension,
@@ -396,22 +398,14 @@ impl VfsMultimodalService {
 
         let unit_map: HashMap<i32, &VfsIndexUnit> =
             units.iter().map(|unit| (unit.unit_index, unit)).collect();
-        // 原图优先：即使 Unit 中存在 OCR 文本，也不把 OCR 作为 ME 输入前置。
-        let inputs: Vec<(i32, MultimodalInput)> = pages
-            .iter()
-            .map(|page| {
-                (
-                    page.page_index,
-                    MultimodalInput::image_base64(
-                        page.image_base64.as_deref().unwrap_or_default(),
-                        page.image_mime.as_deref().unwrap_or("image/png"),
-                    ),
-                )
-            })
-            .collect();
 
-        // 4. 批量生成嵌入向量（底层按 8 页拆批，避免单次请求过大）
-        let mm_inputs: Vec<MultimodalInput> = inputs.iter().map(|(_, i)| i.clone()).collect();
+        // 4. 流式生成嵌入向量：按批"读原图 → embed → 释放字节"。
+        // ★ 内存优化：每次只把 EMBED_READ_BATCH 页的 Base64 读入内存，
+        // embed 返回后立即释放，只保留小得多的向量结果（dim × 4 字节/页）。
+        // 批大小与 MultimodalEmbeddingService 内部拆批（8 页）一致，
+        // 不改变对 API 的请求粒度。
+        // 原图优先：即使 Unit 中存在 OCR 文本，也不把 OCR 作为 ME 输入前置。
+        const EMBED_READ_BATCH: usize = 8;
         let total_pages = pages.len() as i32;
         let skipped_pages = failed_pages.len() as i32;
         let embed_progress_tx = if progress_tx.is_some() {
@@ -444,28 +438,107 @@ impl VfsMultimodalService {
             None
         };
 
-        let embeddings = match self
-            .embedding_service
-            .embed_batch_with_progress_for_config(&mm_inputs, &model_config, embed_progress_tx)
-            .await
-        {
-            Ok(embeddings) => embeddings,
-            Err(error) => {
-                let message = format!("多模态嵌入生成失败: {}", error);
-                self.set_units_mm_state(&units, UnitIndexState::Failed, Some(&message))?;
-                self.set_resource_mm_state(resource_id, "failed", Some(&message))?;
-                return Err(VfsError::Other(message));
-            }
-        };
+        let mut embeddings: Vec<Vec<f32>> = Vec::with_capacity(pages.len());
+        let mut embed_error: Option<String> = None;
+        'embed: for (chunk_index, page_chunk) in pages.chunks(EMBED_READ_BATCH).enumerate() {
+            let completed_offset = chunk_index * EMBED_READ_BATCH;
 
-        if embeddings.is_empty() {
-            return Err(VfsError::Other("多模态嵌入 API 返回空结果".to_string()));
+            let mut chunk_inputs: Vec<MultimodalInput> = Vec::with_capacity(page_chunk.len());
+            for page in page_chunk {
+                let mime = page.image_mime.as_deref().unwrap_or("image/png");
+                let blob_hash = page.blob_hash.as_deref().unwrap_or_default();
+                let blob_path = match VfsBlobRepo::get_blob_path(&self.vfs_db, blob_hash) {
+                    Ok(Some(path)) => path,
+                    Ok(None) => {
+                        embed_error = Some(format!(
+                            "多模态页面 {} 的 blob {} 不存在",
+                            page.page_index, blob_hash
+                        ));
+                        break 'embed;
+                    }
+                    Err(error) => {
+                        embed_error = Some(format!(
+                            "解析页面 {} 的 blob 路径失败: {}",
+                            page.page_index, error
+                        ));
+                        break 'embed;
+                    }
+                };
+                match tokio::fs::read(&blob_path).await {
+                    Ok(data) if !data.is_empty() => {
+                        chunk_inputs.push(MultimodalInput::image_base64(BASE64.encode(data), mime));
+                    }
+                    Ok(_) => {
+                        embed_error = Some(format!(
+                            "多模态页面 {} 的 blob {} 为空",
+                            page.page_index, blob_hash
+                        ));
+                        break 'embed;
+                    }
+                    Err(error) => {
+                        embed_error = Some(format!(
+                            "读取页面 {} 原图失败 ({}): {}",
+                            page.page_index, blob_hash, error
+                        ));
+                        break 'embed;
+                    }
+                }
+            }
+
+            // 每个子批的 completed 从 0 计数；转发时叠加偏移，保持整卷进度单调。
+            let chunk_progress_tx = embed_progress_tx.as_ref().map(|main_tx| {
+                let (tx, mut rx) = mpsc::channel::<
+                    crate::multimodal::embedding_service::EmbeddingProgress,
+                >(64);
+                let main_tx = main_tx.clone();
+                tokio::spawn(async move {
+                    while let Some(mut progress) = rx.recv().await {
+                        progress.completed += completed_offset;
+                        let _ = main_tx.send(progress).await;
+                    }
+                });
+                tx
+            });
+
+            match self
+                .embedding_service
+                .embed_batch_with_progress_for_config(
+                    &chunk_inputs,
+                    &model_config,
+                    chunk_progress_tx,
+                )
+                .await
+            {
+                Ok(chunk_embeddings) => {
+                    if chunk_embeddings.len() != chunk_inputs.len() {
+                        embed_error = Some(format!(
+                            "多模态嵌入数量不匹配: expected={}, actual={}",
+                            chunk_inputs.len(),
+                            chunk_embeddings.len()
+                        ));
+                        break 'embed;
+                    }
+                    embeddings.extend(chunk_embeddings);
+                }
+                Err(error) => {
+                    embed_error = Some(format!("多模态嵌入生成失败: {}", error));
+                    break 'embed;
+                }
+            }
+        }
+        // 主发送端此后不再使用；显式 drop 让 relay 任务在失败提前退出时也能结束。
+        drop(embed_progress_tx);
+
+        if let Some(message) = embed_error {
+            self.set_units_mm_state(&units, UnitIndexState::Failed, Some(&message))?;
+            self.set_resource_mm_state(resource_id, "failed", Some(&message))?;
+            return Err(VfsError::Other(message));
         }
 
-        if embeddings.len() != inputs.len() {
+        if embeddings.len() != pages.len() {
             let message = format!(
                 "多模态嵌入数量不匹配: expected={}, actual={}",
-                inputs.len(),
+                pages.len(),
                 embeddings.len()
             );
             self.set_units_mm_state(&units, UnitIndexState::Failed, Some(&message))?;
@@ -517,14 +590,10 @@ impl VfsMultimodalService {
                     .map(|generation| (unit.unit_index, generation))
             })
             .collect::<VfsResult<HashMap<i32, i64>>>()?;
-        let page_map: HashMap<i32, &VfsMultimodalPage> =
-            pages.iter().map(|page| (page.page_index, page)).collect();
         let folder_id = folder_id.map(String::from);
 
-        for ((page_index, _), embedding) in inputs.iter().zip(embeddings) {
-            let page = page_map
-                .get(page_index)
-                .ok_or_else(|| VfsError::Other(format!("页面索引不存在: {}", page_index)))?;
+        for (page, embedding) in pages.iter().zip(embeddings) {
+            let page_index = &page.page_index;
 
             let unit = unit_map
                 .get(page_index)
@@ -984,17 +1053,38 @@ impl VfsMultimodalService {
     /// `limit` 以待处理 Unit 为取样上限，返回值以资源为成功/失败计数。只要资源中
     /// 有一页 pending，就按该资源当前全部图片 Unit 重建，避免模型维度切换或页级
     /// 更新时产生半新半旧的资源账本。
+    ///
+    /// ★ P1-4 修复：取样后先按资源原子 claim（`mm_index_state` -> indexing，
+    /// Immediate 事务），与文本侧 `claim_pending_resources` 对称。
+    /// 已被 `vfs_unified_batch_index` / 手动索引占用、或处于失败退避期/
+    /// 超过重试上限的资源本轮跳过，防止同一资源被并行重复 embedding
+    /// 以及 generation 竞态。失败统一落 `mark_mm_failed` 指数退避账本。
     pub async fn process_pending_batch(&self, limit: u32) -> VfsResult<(usize, usize)> {
         let pending = {
             let conn = self.vfs_db.get_conn_safe()?;
             index_unit_repo::list_pending_mm(&conn, limit.clamp(1, 100) as i32)?
         };
-        let mut resource_ids = Vec::new();
+        let mut candidate_ids = Vec::new();
         let mut seen = std::collections::HashSet::new();
         for unit in pending {
             if seen.insert(unit.resource_id.clone()) {
-                resource_ids.push(unit.resource_id);
+                candidate_ids.push(unit.resource_id);
             }
+        }
+
+        let max_retries = crate::vfs::repos::VfsIndexingConfigRepo::get_i32(
+            &self.vfs_db,
+            "indexing.max_retries",
+            3,
+        )?;
+        let resource_ids =
+            VfsIndexStateRepo::claim_mm_indexing_resources(&self.vfs_db, &candidate_ids, max_retries)?;
+        if resource_ids.len() < candidate_ids.len() {
+            info!(
+                "[VfsMultimodalService] process_pending_batch: claimed {}/{} resources (rest busy, backing off, or over retry limit)",
+                resource_ids.len(),
+                candidate_ids.len()
+            );
         }
 
         let mut success = 0usize;
@@ -1026,13 +1116,16 @@ impl VfsMultimodalService {
                 (resource_type, folder_id, pages)
             };
 
+            // force_rebuild=false：增量优先。sync_multimodal_units 只把图片变化的
+            // 页面重新置 pending；若 claim 与处理之间资源已被其他路径补完索引，
+            // all_current 短路直接返回，避免整本重复 embedding。
             match self
                 .index_resource_pages_with_options(
                     &resource_id,
                     &resource_type,
                     folder_id.as_deref(),
                     pages,
-                    true,
+                    false,
                     None,
                 )
                 .await
@@ -1044,6 +1137,24 @@ impl VfsMultimodalService {
                         "[VfsMultimodalService] Pending resource {} failed: {}",
                         resource_id, error
                     );
+                    // ★ P1-4：失败统一走 mark_mm_failed 指数退避。
+                    // index_resource_pages_with_options 的多数失败路径已写入
+                    // failed/pending 资源态；这里只兜底"提前返回、状态仍停留在
+                    // claim 时 indexing"的路径（如模型未配置、blob 缺失），
+                    // 否则资源卡死 indexing，要等下次启动 recover_stuck_indexing。
+                    let stuck_indexing =
+                        VfsIndexStateRepo::get_mm_index_state(&self.vfs_db, &resource_id)?
+                            .map(|state| {
+                                state.state == crate::vfs::repos::INDEX_STATE_INDEXING
+                            })
+                            .unwrap_or(false);
+                    if stuck_indexing {
+                        VfsIndexStateRepo::mark_mm_failed(
+                            &self.vfs_db,
+                            &resource_id,
+                            &error.to_string(),
+                        )?;
+                    }
                 }
             }
         }

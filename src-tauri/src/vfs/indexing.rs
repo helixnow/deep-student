@@ -2092,22 +2092,38 @@ impl VfsFullIndexingService {
     ) -> VfsResult<(usize, usize)> {
         // 0. 同步资源到 vfs_index_units 表（VFS 统一索引架构）
         // ★ 2026-02 修复：检查 Units 是否已存在且有效，避免删除 Pipeline 创建的完整 Units
+        // ★ P2-7 修复：仅当"资源内容自上次索引后未变、且没有 pending 文本 Unit"时才复用。
+        // 资源内容已更新（hash != index_hash；mark_pending 会清空 index_hash）时必须
+        // 强制 re-sync，否则 Unit.text_content 滞后于 resources 中的新内容，本轮重索引
+        // 会把旧文本再写一遍向量。sync_units 按 content_hash 增量比对，未变化的 Unit
+        // 是 no-op，因此对 Pipeline 创建的 Units 幂等、不会误删。
         let conn = self.db.get_conn_safe()?;
         let existing_units = index_unit_repo::get_by_resource(&conn, resource_id)?;
         let has_valid_units = existing_units
             .iter()
             .any(|u| u.text_content.is_some() || u.image_blob_hash.is_some());
+        let content_changed: bool = conn
+            .query_row(
+                "SELECT COALESCE(index_hash, '') <> hash FROM resources WHERE id = ?1",
+                rusqlite::params![resource_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or(false);
+        let has_pending_text_unit = existing_units
+            .iter()
+            .any(|u| u.text_required && u.text_state == index_unit_repo::IndexState::Pending);
         drop(conn); // 释放连接，避免长时间持有
 
-        if has_valid_units {
-            // Units 已存在且有效（由 Pipeline 的 sync_resource_units 创建），跳过重新同步
+        if has_valid_units && !content_changed && !has_pending_text_unit {
+            // Units 已存在且有效且内容未变，跳过重新同步
             debug!(
                 "[VfsFullIndexingService] Reusing {} existing units for resource {}",
                 existing_units.len(),
                 resource_id
             );
         } else {
-            // 无有效 Units，执行同步
+            // 无有效 Units / 内容已变 / 存在待重建文本 Unit：执行同步
             self.sync_resource_to_units(resource_id)?;
         }
 
