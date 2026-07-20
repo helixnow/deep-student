@@ -5,11 +5,12 @@
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::OpenOptions;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tauri::Manager;
 use tracing::{error, info, warn};
 fn console_logging_enabled() -> bool {
@@ -54,16 +55,16 @@ pub struct LogEntry {
 pub struct DebugLogger {
     log_dir: PathBuf,
     log_queue: Arc<Mutex<Vec<LogEntry>>>,
+    write_lock: Arc<Mutex<()>>,
 }
 
 impl DebugLogger {
     const MAX_LOG_AGE_DAYS: i64 = 7;
     const MAX_LOG_FILE_SIZE_BYTES: u64 = 10 * 1024 * 1024; // 10MB
+    const MAX_ROTATED_FILES: usize = 5;
 
-    pub fn new(app_data_dir: PathBuf) -> Self {
-        let log_dir = app_data_dir.join("logs");
-
-        // 确保日志目录存在
+    /// 创建写入平台标准日志根目录的结构化日志记录器。
+    pub fn new(log_dir: PathBuf) -> Self {
         if let Err(e) = std::fs::create_dir_all(log_dir.join("frontend")) {
             error!("Failed to create frontend log directory: {}", e);
         }
@@ -77,6 +78,7 @@ impl DebugLogger {
         let logger = Self {
             log_dir,
             log_queue: Arc::new(Mutex::new(Vec::new())),
+            write_lock: Arc::new(Mutex::new(())),
         };
 
         logger.cleanup_old_logs();
@@ -84,7 +86,59 @@ impl DebugLogger {
         logger
     }
 
-    /// 清理过期和超大日志文件
+    fn bounded_text(value: &str, max_chars: usize) -> String {
+        crate::debug_log_service::redact_sensitive_text(value)
+            .chars()
+            .take(max_chars)
+            .collect()
+    }
+
+    fn safe_file_component(value: &str) -> String {
+        let value: String = value
+            .chars()
+            .take(80)
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+                    ch.to_ascii_lowercase()
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        if value.is_empty() {
+            "unknown".to_string()
+        } else {
+            value
+        }
+    }
+
+    fn bounded_context(mut context: Option<LogContext>) -> Option<LogContext> {
+        if let Some(value) = context.as_mut() {
+            value.user_id = value
+                .user_id
+                .as_deref()
+                .map(|text| Self::bounded_text(text, 256));
+            value.session_id = value
+                .session_id
+                .as_deref()
+                .map(|text| Self::bounded_text(text, 256));
+            value.mistake_id = value
+                .mistake_id
+                .as_deref()
+                .map(|text| Self::bounded_text(text, 256));
+            value.stream_id = value
+                .stream_id
+                .as_deref()
+                .map(|text| Self::bounded_text(text, 256));
+            value.business_id = value
+                .business_id
+                .as_deref()
+                .map(|text| Self::bounded_text(text, 256));
+        }
+        context
+    }
+
+    /// 清理过期日志。大小限制由写入时轮转处理，不能直接删除当前活跃文件。
     fn cleanup_old_logs(&self) {
         let mut removed_count = 0u32;
         let mut removed_bytes = 0u64;
@@ -103,20 +157,14 @@ impl DebugLogger {
                 }
 
                 let should_remove = match entry.metadata() {
-                    Ok(meta) => {
-                        let modified = meta
-                            .modified()
-                            .ok()
-                            .and_then(|t| {
-                                let duration = t.elapsed().ok()?;
-                                Some(duration.as_secs() > (Self::MAX_LOG_AGE_DAYS as u64 * 86400))
-                            })
-                            .unwrap_or(false);
-
-                        let oversized = meta.len() > Self::MAX_LOG_FILE_SIZE_BYTES;
-
-                        modified || oversized
-                    }
+                    Ok(meta) => meta
+                        .modified()
+                        .ok()
+                        .and_then(|t| {
+                            let duration = t.elapsed().ok()?;
+                            Some(duration.as_secs() > (Self::MAX_LOG_AGE_DAYS as u64 * 86400))
+                        })
+                        .unwrap_or(false),
                     Err(_) => false,
                 };
 
@@ -133,7 +181,7 @@ impl DebugLogger {
 
         if removed_count > 0 {
             info!(
-                "[DebugLogger] Cleaned up {} old/oversized log files ({:.1} MB)",
+                "[DebugLogger] Cleaned up {} old log files ({:.1} MB)",
                 removed_count,
                 removed_bytes as f64 / (1024.0 * 1024.0)
             );
@@ -224,7 +272,6 @@ impl DebugLogger {
 
         let data = serde_json::json!({
             "query_length": query.map(|q| q.chars().count()),
-            "query_preview": query.map(|q| crate::utils::text::safe_truncate(q, 100)),
             "top_k": top_k,
             "sources_found": sources_found,
             "sources_returned": sources_returned,
@@ -293,7 +340,7 @@ impl DebugLogger {
 
         let data = serde_json::json!({
             "method": method,
-            "url": url,
+            "url": Self::sanitize_api_url(url),
             "request_body": self.sanitize_api_body(request_body),
             "response_body": self.sanitize_api_body(response_body),
             "status_code": status_code,
@@ -334,34 +381,35 @@ impl DebugLogger {
         data: serde_json::Value,
         context: Option<LogContext>,
     ) {
+        let redacted_data = crate::debug_log_service::redact_sensitive_fields(&data);
+        let redacted_data = if serde_json::to_vec(&redacted_data)
+            .map(|bytes| bytes.len() > 256 * 1024)
+            .unwrap_or(true)
+        {
+            serde_json::json!({ "_truncated": true, "_reason": "entry exceeded 256 KiB" })
+        } else {
+            redacted_data
+        };
         let log_entry = LogEntry {
             timestamp: Utc::now().to_rfc3339(),
             level: level.clone(),
-            module: module.to_string(),
-            operation: operation.to_string(),
-            data,
-            context,
-            stack_trace: if matches!(level, LogLevel::ERROR) {
-                Some(format!("{:?}", std::backtrace::Backtrace::capture()))
-            } else {
-                None
-            },
+            module: Self::bounded_text(module, 128),
+            operation: Self::bounded_text(operation, 256),
+            data: redacted_data,
+            context: Self::bounded_context(context),
+            // 调用方提供的 JS/Rust 原始 stack 才能指向故障现场；IPC 处理线程的
+            // Rust backtrace 既无诊断价值又会让每条前端错误膨胀数十 KB。
+            stack_trace: None,
         };
 
         // 添加到队列
         {
             let mut queue = self.log_queue.lock().unwrap_or_else(|e| e.into_inner());
             queue.push(log_entry.clone());
-
-            // 如果是错误级别，立即写入
-            if matches!(level, LogLevel::ERROR) {
-                drop(queue);
-                // 使用 spawn 来避免 Send 问题
-                let logger = self.clone();
-                tokio::spawn(async move {
-                    logger.flush_logs().await;
-                });
-            }
+        }
+        // 错误级别在 IPC 返回前完成写盘；普通日志由 5 秒周期任务批量刷盘。
+        if matches!(level, LogLevel::ERROR) {
+            self.flush_logs().await;
         }
 
         // 可选：输出到控制台（默认关闭，设置 DSTU_CONSOLE_LOG=true 启用）
@@ -392,6 +440,19 @@ impl DebugLogger {
 
     /// 刷新日志到文件
     pub async fn flush_logs(&self) {
+        let logger = self.clone();
+        if let Err(error) =
+            tauri::async_runtime::spawn_blocking(move || logger.flush_logs_sync()).await
+        {
+            error!("[DebugLogger] flush task failed: {}", error);
+        }
+    }
+
+    fn flush_logs_sync(&self) {
+        let _write_guard = match self.write_lock.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         let logs = {
             let mut queue = match self.log_queue.lock() {
                 Ok(queue) => queue,
@@ -402,9 +463,7 @@ impl DebugLogger {
                 return;
             }
 
-            let logs = queue.clone();
-            queue.clear();
-            logs
+            std::mem::take(&mut *queue)
         };
 
         // 按日期和模块分组写入不同文件
@@ -417,7 +476,7 @@ impl DebugLogger {
                 .next()
                 .unwrap_or("unknown")
                 .to_string();
-            let module_key = log.module.to_lowercase();
+            let module_key = Self::safe_file_component(&log.module);
             let target_dir = if module_key.starts_with("frontend") {
                 "frontend".to_string()
             } else {
@@ -432,8 +491,78 @@ impl DebugLogger {
 
             if let Err(e) = self.write_logs_to_file(&file_path, &group_logs) {
                 error!("Failed to write logs to {}: {}", file_path.display(), e);
+                // 写盘失败时恢复队列，避免瞬时文件系统错误直接吞掉诊断现场。
+                self.log_queue
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .extend(group_logs);
             }
         }
+    }
+
+    pub fn write_frontend_entries(&self, logs: Vec<LogEntry>) -> Result<(), String> {
+        let _write_guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut normalized_logs = Vec::new();
+        let mut accepted_bytes = 0usize;
+        let offered_count = logs.len();
+        for mut log in logs.into_iter().rev().take(500) {
+            log.timestamp = Self::bounded_text(&log.timestamp, 64);
+            log.module = Self::bounded_text(&log.module, 128);
+            log.operation = Self::bounded_text(&log.operation, 256);
+            let redacted_data = crate::debug_log_service::redact_sensitive_fields(&log.data);
+            log.data = if serde_json::to_vec(&redacted_data)
+                .map(|bytes| bytes.len() > 256 * 1024)
+                .unwrap_or(true)
+            {
+                serde_json::json!({ "_truncated": true, "_reason": "entry exceeded 256 KiB" })
+            } else {
+                redacted_data
+            };
+            log.stack_trace = log
+                .stack_trace
+                .as_deref()
+                .map(|value| Self::bounded_text(value, 64_000));
+            log.context = Self::bounded_context(log.context);
+            let entry_bytes = serde_json::to_vec(&log)
+                .map(|bytes| bytes.len())
+                .unwrap_or(0);
+            if accepted_bytes.saturating_add(entry_bytes) > 10 * 1024 * 1024 {
+                break;
+            }
+            accepted_bytes = accepted_bytes.saturating_add(entry_bytes);
+            normalized_logs.push(log);
+        }
+        normalized_logs.reverse();
+        if normalized_logs.len() < offered_count {
+            normalized_logs.insert(
+                0,
+                LogEntry {
+                    timestamp: Utc::now().to_rfc3339(),
+                    level: LogLevel::WARN,
+                    module: "FRONTEND".to_string(),
+                    operation: "LOG_BATCH_TRUNCATED".to_string(),
+                    data: serde_json::json!({
+                        "offered_count": offered_count,
+                        "persisted_count": normalized_logs.len(),
+                        "limit_bytes": 10 * 1024 * 1024,
+                    }),
+                    context: None,
+                    stack_trace: None,
+                },
+            );
+        }
+        if normalized_logs.is_empty() {
+            return Ok(());
+        }
+        let file_path = self
+            .log_dir
+            .join("frontend")
+            .join(format!("{}_frontend.log", Utc::now().format("%Y-%m-%d")));
+        self.write_logs_to_file(&file_path, &normalized_logs)
+            .map_err(|e| e.to_string())
     }
 
     fn write_logs_to_file(
@@ -441,18 +570,70 @@ impl DebugLogger {
         file_path: &PathBuf,
         logs: &[LogEntry],
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(file_path)?;
-
+        if let Some(parent) = file_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut payload = String::new();
         for log in logs {
-            let log_line = serde_json::to_string(log)?;
-            writeln!(file, "{}", log_line)?;
+            payload.push_str(&serde_json::to_string(log)?);
+            payload.push('\n');
         }
 
+        self.rotate_if_needed(file_path, payload.len() as u64)?;
+
+        let mut open_options = OpenOptions::new();
+        open_options.create(true).append(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            open_options.mode(0o600);
+        }
+        let mut file = open_options.open(file_path)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            file.set_permissions(fs::Permissions::from_mode(0o600))?;
+        }
+        file.write_all(payload.as_bytes())?;
         file.flush()?;
+        file.sync_data()?;
         Ok(())
+    }
+
+    fn rotate_if_needed(
+        &self,
+        file_path: &PathBuf,
+        incoming_bytes: u64,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let current_bytes = fs::metadata(file_path).map(|m| m.len()).unwrap_or(0);
+        if current_bytes == 0
+            || current_bytes.saturating_add(incoming_bytes) <= Self::MAX_LOG_FILE_SIZE_BYTES
+        {
+            return Ok(());
+        }
+
+        for index in (1..=Self::MAX_ROTATED_FILES).rev() {
+            let source = if index == 1 {
+                file_path.clone()
+            } else {
+                Self::rotated_path(file_path, index - 1)
+            };
+            let destination = Self::rotated_path(file_path, index);
+            if !source.exists() {
+                continue;
+            }
+            if destination.exists() {
+                fs::remove_file(&destination)?;
+            }
+            fs::rename(source, destination)?;
+        }
+        Ok(())
+    }
+
+    fn rotated_path(file_path: &std::path::Path, index: usize) -> PathBuf {
+        let mut file_name = file_path.file_name().unwrap_or_default().to_os_string();
+        file_name.push(format!(".{}", index));
+        file_path.with_file_name(file_name)
     }
 
     fn sanitize_database_result(
@@ -483,43 +664,112 @@ impl DebugLogger {
     ) -> Option<serde_json::Value> {
         chat_history.and_then(|ch| {
             ch.as_array().map(|arr| {
-                if arr.len() > 10 {
-                    let preview: Vec<_> = arr.iter().take(3).cloned().collect();
-                    let latest: Vec<_> = arr
-                        .iter()
-                        .rev()
-                        .take(2)
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .into_iter()
-                        .rev()
-                        .collect();
-                    serde_json::json!({
-                        "_truncated": true,
-                        "_count": arr.len(),
-                        "_preview": preview,
-                        "_latest": latest
+                let messages: Vec<_> = arr
+                    .iter()
+                    .map(|message| {
+                        let role = message
+                            .get("role")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("unknown");
+                        let content_size = message
+                            .get("content")
+                            .map(|content| content.to_string().chars().count())
+                            .unwrap_or_default();
+                        serde_json::json!({
+                            "role": role,
+                            "content_size": content_size,
+                            "has_tool_calls": message.get("tool_calls").is_some(),
+                            "has_tool_result": message.get("tool_result").is_some()
+                        })
                     })
-                } else {
-                    serde_json::Value::Array(arr.clone())
-                }
+                    .collect();
+                serde_json::json!({
+                    "_redacted": true,
+                    "_count": arr.len(),
+                    "messages": messages
+                })
             })
         })
     }
 
-    fn sanitize_api_body(&self, body: Option<&serde_json::Value>) -> Option<serde_json::Value> {
-        body.map(|b| {
-            let body_str = b.to_string();
-            if body_str.len() > 1000 {
-                let preview: String = body_str.chars().take(500).collect();
-                serde_json::json!({
-                    "_truncated": true,
-                    "_size": body_str.len(),
-                    "_preview": preview
-                })
-            } else {
-                b.clone()
+    fn sanitize_api_url(raw_url: &str) -> String {
+        let Ok(mut parsed) = url::Url::parse(raw_url) else {
+            return "[unparseable URL redacted]".to_string();
+        };
+        let _ = parsed.set_username("");
+        let _ = parsed.set_password(None);
+        let query_pairs: Vec<(String, String)> = parsed
+            .query_pairs()
+            .map(|(name, value)| (name.into_owned(), value.into_owned()))
+            .collect();
+        if !query_pairs.is_empty() {
+            parsed.set_query(None);
+            let mut query = parsed.query_pairs_mut();
+            for (name, value) in query_pairs {
+                let normalized = name.to_ascii_lowercase();
+                let sensitive = normalized.contains("key")
+                    || normalized.contains("token")
+                    || normalized.contains("secret")
+                    || normalized.contains("signature")
+                    || normalized.contains("credential")
+                    || normalized.contains("auth")
+                    || normalized == "code"
+                    || normalized == "sig";
+                query.append_pair(&name, if sensitive { "[REDACTED]" } else { &value });
             }
+        }
+        parsed.to_string()
+    }
+
+    fn sanitize_api_body(&self, body: Option<&serde_json::Value>) -> Option<serde_json::Value> {
+        body.map(|value| {
+            let serialized_size = value.to_string().len();
+            let Some(object) = value.as_object() else {
+                return serde_json::json!({
+                    "_redacted": true,
+                    "_type": if value.is_array() { "array" } else { "scalar" },
+                    "_size": serialized_size
+                });
+            };
+            let mut summary = serde_json::Map::new();
+            summary.insert("_redacted".to_string(), serde_json::Value::Bool(true));
+            summary.insert("_size".to_string(), serde_json::json!(serialized_size));
+            summary.insert(
+                "_keys".to_string(),
+                serde_json::json!(object.keys().collect::<Vec<_>>()),
+            );
+            for safe_key in [
+                "model",
+                "stream",
+                "max_tokens",
+                "max_completion_tokens",
+                "max_output_tokens",
+            ] {
+                if let Some(safe_value) = object.get(safe_key) {
+                    summary.insert(safe_key.to_string(), safe_value.clone());
+                }
+            }
+            for content_key in ["messages", "input", "contents", "tools", "output"] {
+                if let Some(content) = object.get(content_key) {
+                    let count = content
+                        .as_array()
+                        .map(Vec::len)
+                        .or_else(|| content.as_object().map(serde_json::Map::len))
+                        .unwrap_or(1);
+                    summary.insert(format!("{content_key}_count"), serde_json::json!(count));
+                }
+            }
+            if let Some(error) = object.get("error").and_then(serde_json::Value::as_object) {
+                summary.insert(
+                    "error_type".to_string(),
+                    error
+                        .get("type")
+                        .or_else(|| error.get("code"))
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
+                );
+            }
+            serde_json::Value::Object(summary)
         })
     }
 
@@ -641,36 +891,17 @@ impl DebugLogger {
 // Tauri命令，用于从前端写入日志
 #[tauri::command]
 pub async fn write_debug_logs(app: tauri::AppHandle, logs: Vec<LogEntry>) -> Result<(), String> {
-    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-
-    let logger = DebugLogger::new(app_data_dir);
-
-    // 写入前端日志到frontend目录
-    let frontend_dir = logger.log_dir.join("frontend");
-    std::fs::create_dir_all(&frontend_dir).map_err(|e| e.to_string())?;
-
-    // 按日期分组
-    let mut grouped_logs: HashMap<String, Vec<LogEntry>> = HashMap::new();
-
-    for log in logs {
-        let date = log
-            .timestamp
-            .split('T')
-            .next()
-            .unwrap_or("unknown")
-            .to_string();
-        let key = format!("{}_{}", date, log.module.to_lowercase());
-        grouped_logs.entry(key).or_default().push(log);
-    }
-
-    for (key, group_logs) in grouped_logs {
-        let file_path = frontend_dir.join(format!("{}.log", key));
-        logger
-            .write_logs_to_file(&file_path, &group_logs)
-            .map_err(|e| e.to_string())?;
-    }
-
-    Ok(())
+    let logger = get_global_logger().unwrap_or_else(|| {
+        let log_dir = app
+            .path()
+            .app_log_dir()
+            .or_else(|_| app.path().app_data_dir().map(|path| path.join("logs")))
+            .unwrap_or_else(|_| std::env::temp_dir().join("deep-student").join("logs"));
+        DebugLogger::new(log_dir)
+    });
+    tauri::async_runtime::spawn_blocking(move || logger.write_frontend_entries(logs))
+        .await
+        .map_err(|e| format!("frontend log task failed: {}", e))?
 }
 
 // 全局日志记录器实例
@@ -678,8 +909,8 @@ static GLOBAL_LOGGER: LazyLock<Arc<Mutex<Option<DebugLogger>>>> =
     LazyLock::new(|| Arc::new(Mutex::new(None)));
 
 /// 初始化全局日志记录器
-pub fn init_global_logger(app_data_dir: PathBuf) {
-    *GLOBAL_LOGGER.lock().unwrap_or_else(|e| e.into_inner()) = Some(DebugLogger::new(app_data_dir));
+pub fn init_global_logger(log_dir: PathBuf) {
+    *GLOBAL_LOGGER.lock().unwrap_or_else(|e| e.into_inner()) = Some(DebugLogger::new(log_dir));
 }
 
 /// 获取全局日志记录器
@@ -688,6 +919,25 @@ pub fn get_global_logger() -> Option<DebugLogger> {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone()
+}
+
+pub fn start_periodic_flush() {
+    tauri::async_runtime::spawn(async {
+        let mut interval = tokio::time::interval(Duration::from_secs(5));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            if let Some(logger) = get_global_logger() {
+                logger.flush_logs().await;
+            }
+        }
+    });
+}
+
+pub async fn flush_global_logger() {
+    if let Some(logger) = get_global_logger() {
+        logger.flush_logs().await;
+    }
 }
 
 /// 便捷宏用于记录日志

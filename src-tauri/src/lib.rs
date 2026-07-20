@@ -38,6 +38,7 @@ pub mod cloud_storage;
 pub mod cross_page_merger;
 pub mod data_space;
 pub mod deepseek_ocr_parser;
+pub mod diagnostics;
 #[allow(dead_code)]
 pub mod document_parser;
 pub mod document_processing_service;
@@ -99,6 +100,8 @@ pub mod spaced_repetition;
 pub mod startup_cleanup;
 #[allow(dead_code)]
 pub mod streaming_anki_service;
+pub mod system_notification;
+pub mod system_permissions;
 #[allow(dead_code)]
 pub mod test_utils;
 pub mod textbooks_db;
@@ -135,7 +138,7 @@ use std::sync::OnceLock;
 use tokio::sync::{Mutex, RwLock};
 // Register Tauri plugins for dialog, opener and http
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_log::{Target, TargetKind};
+use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 // Sentry for Rust (后端)
 use sentry::ClientInitGuard;
 use tracing::{debug, error, info, warn};
@@ -149,6 +152,79 @@ pub fn set_global_app_handle(app_handle: AppHandle) {
 
 pub fn get_global_app_handle() -> Option<&'static AppHandle> {
     GLOBAL_APP_HANDLE.get()
+}
+
+pub struct BackendSentryState(std::sync::Arc<std::sync::Mutex<Option<ClientInitGuard>>>);
+
+fn init_backend_sentry_client() -> Option<ClientInitGuard> {
+    let configured_dsn = std::env::var("SENTRY_DSN")
+        .ok()
+        .or_else(|| option_env!("SENTRY_DSN").map(str::to_string));
+    let raw_dsn = match configured_dsn {
+        Some(value) if !value.trim().is_empty() => value,
+        _ => {
+            warn!("[Sentry] user consent is enabled, but backend DSN is not configured");
+            return None;
+        }
+    };
+    let dsn = match raw_dsn.parse::<sentry::types::Dsn>() {
+        Ok(value) => value,
+        Err(_) => {
+            warn!("[Sentry] backend DSN is invalid; error reporting remains disabled");
+            return None;
+        }
+    };
+    let guard = sentry::init(sentry::ClientOptions {
+        dsn: Some(dsn),
+        release: Some(env!("SENTRY_RELEASE").into()),
+        send_default_pii: false,
+        // Panic/ANR are captured explicitly through Hub::main so consent can be
+        // changed at runtime without stale thread-local integrations.
+        default_integrations: false,
+        ..Default::default()
+    });
+    sentry::Hub::main().bind_client(sentry::Hub::current().client());
+    info!("[Sentry] backend error reporting enabled by user consent");
+    Some(guard)
+}
+
+mod backend_sentry_command {
+    use super::{init_backend_sentry_client, BackendSentryState};
+    use log::info;
+
+    #[tauri::command]
+    pub async fn set_backend_sentry_enabled(
+        enabled: bool,
+        state: tauri::State<'_, BackendSentryState>,
+        app_state: tauri::State<'_, crate::commands::AppState>,
+    ) -> Result<bool, String> {
+        let sentry_state = state.0.clone();
+        let database = app_state.database.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let mut guard = sentry_state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            database
+                .save_setting("sentry_error_reporting_enabled", &enabled.to_string())
+                .map_err(|e| format!("保存错误报告授权失败: {}", e))?;
+            if enabled {
+                if guard.is_none() {
+                    *guard = init_backend_sentry_client();
+                }
+                Ok(guard.is_some())
+            } else {
+                let previous = guard.take();
+                sentry::Hub::main().bind_client(None);
+                sentry::Hub::current().bind_client(None);
+                drop(guard);
+                drop(previous);
+                info!("[Sentry] backend error reporting disabled");
+                Ok(false)
+            }
+        })
+        .await
+        .map_err(|e| format!("更新错误报告授权任务失败: {}", e))?
+    }
 }
 // tracing 日志初始化由 tauri-plugin-log 统一管理
 
@@ -216,24 +292,80 @@ pub fn run() {
 
     // 统一使用 tauri-plugin-log 初始化日志系统，避免与 tracing_subscriber/全局 logger 冲突
 
-    // 初始化 Sentry（若有环境变量 SENTRY_DSN）
-    let _sentry_guard: Option<ClientInitGuard> = {
-        let dsn = std::env::var("SENTRY_DSN").ok();
-        dsn.map(|dsn| {
-            let guard = sentry::init((
-                dsn,
-                sentry::ClientOptions {
-                    release: Some(env!("SENTRY_RELEASE").into()),
-                    ..Default::default()
-                },
-            ));
-            tracing::info!("sentry initialized");
-            guard
-        })
-    };
-
     // 构建 Tauri 应用
     let builder = tauri::Builder::default().on_page_load(|webview, payload| {
+        // 在前端 bundle 执行前安装极小的错误桥，覆盖入口脚本加载失败/白屏。
+        // main.tsx 成功启动后会注销这些监听，再由统一 errorReporter 接管。
+        if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+            let _ = webview.eval(
+                r#"
+                (() => {
+                  window.__DSTU_BOOT_DIAGNOSTICS_CLEANUP__?.();
+                  let active = true;
+                  const report = (kind, message, stack, extra) => {
+                    const invoke = window.__TAURI_INTERNALS__?.invoke;
+                    if (!active || typeof invoke !== 'function') return;
+                    void invoke('report_frontend_log', {
+                      payload: {
+                        level: 'ERROR',
+                        kind,
+                        message: String(message || kind),
+                        stack: stack || null,
+                        route: location.hash || location.pathname,
+                        url: location.href,
+                        user_agent: navigator.userAgent,
+                        extra: extra || null,
+                      },
+                    }).catch(() => {});
+                  };
+                  const onError = event => {
+                    const target = event.target;
+                    const resource = target && target !== window
+                      ? (target.src || target.href || target.tagName)
+                      : null;
+                    report(
+                      resource ? 'BOOT_RESOURCE_ERROR' : 'BOOT_WINDOW_ERROR',
+                      event.message || ('Failed to load resource: ' + (resource || 'unknown')),
+                      event.error?.stack,
+                      resource ? { resource } : null,
+                    );
+                  };
+                  const onRejection = event => {
+                    const reason = event.reason;
+                    report(
+                      'BOOT_UNHANDLED_REJECTION',
+                      reason instanceof Error ? reason.message : String(reason),
+                      reason instanceof Error ? reason.stack : null,
+                    );
+                  };
+                  const onCsp = event => {
+                    report(
+                      'BOOT_CSP_VIOLATION',
+                      'CSP blocked ' + event.blockedURI + ' via ' + event.violatedDirective,
+                    );
+                  };
+                  window.addEventListener('error', onError, true);
+                  window.addEventListener('unhandledrejection', onRejection, true);
+                  window.addEventListener('securitypolicyviolation', onCsp, true);
+                  const blankTimer = setTimeout(() => {
+                    const root = document.getElementById('root');
+                    if (!root || root.childElementCount === 0) {
+                      report('BOOT_BLANK_SCREEN', 'Application root is empty after startup timeout');
+                    }
+                  }, 8000);
+                  window.__DSTU_BOOT_DIAGNOSTICS_CLEANUP__ = () => {
+                    active = false;
+                    clearTimeout(blankTimer);
+                    window.removeEventListener('error', onError, true);
+                    window.removeEventListener('unhandledrejection', onRejection, true);
+                    window.removeEventListener('securitypolicyviolation', onCsp, true);
+                    delete window.__DSTU_BOOT_DIAGNOSTICS_CLEANUP__;
+                  };
+                })();
+                "#,
+            );
+        }
+
         if std::env::var_os("TAURI_LAB_INSTANCE_ID").is_none() {
             return;
         }
@@ -435,34 +567,35 @@ pub fn run() {
         info!("🔧 [DataGovernance] 数据治理命令将在 invoke_handler 中注册");
     }
 
+    let mut log_plugin_builder = tauri_plugin_log::Builder::new()
+        .clear_targets()
+        .target(Target::new(TargetKind::LogDir {
+            file_name: Some("deep-student".to_string()),
+        }))
+        .max_file_size(10 * 1024 * 1024)
+        .rotation_strategy(RotationStrategy::KeepSome(5))
+        .timezone_strategy(TimezoneStrategy::UseLocal)
+        .level(log::LevelFilter::Info)
+        .level_for("lance", log::LevelFilter::Warn)
+        .level_for("lance_encoding", log::LevelFilter::Warn)
+        .level_for("lance_io", log::LevelFilter::Warn)
+        .level_for("tracing", log::LevelFilter::Warn)
+        .level_for("h2", log::LevelFilter::Warn)
+        .level_for("hyper", log::LevelFilter::Warn)
+        .level_for("rustls", log::LevelFilter::Warn)
+        .level_for("reqwest", log::LevelFilter::Warn)
+        .level_for("deep_student_lib", log::LevelFilter::Info);
+
+    // Webview 回显只能用于开发构建；生产环境开启会与前端 console 捕获形成回路。
+    #[cfg(debug_assertions)]
+    {
+        log_plugin_builder = log_plugin_builder
+            .target(Target::new(TargetKind::Stdout))
+            .target(Target::new(TargetKind::Webview));
+    }
+
     builder
-        // 统一日志插件：落盘到各平台推荐目录；开发期也输出到 Stdout/Webview
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .clear_targets()
-                // 写入各平台推荐日志目录（记录所有级别）
-                .target(Target::new(TargetKind::LogDir {
-                    file_name: Some("deep-student".to_string()),
-                }))
-                // 开发期输出到终端（过滤掉 TRACE 和 DEBUG）
-                .target(Target::new(TargetKind::Stdout))
-                // 开发期输出到浏览器控制台（过滤掉 TRACE 和 DEBUG）
-                .target(Target::new(TargetKind::Webview))
-                // 设置全局日志级别为 INFO，屏蔽掉 DEBUG 和 TRACE
-                .level(log::LevelFilter::Info)
-                // 特别屏蔽一些第三方库的日志
-                .level_for("lance", log::LevelFilter::Warn)
-                .level_for("lance_encoding", log::LevelFilter::Warn)
-                .level_for("lance_io", log::LevelFilter::Warn)
-                .level_for("tracing", log::LevelFilter::Warn)
-                .level_for("h2", log::LevelFilter::Warn)
-                .level_for("hyper", log::LevelFilter::Warn)
-                .level_for("rustls", log::LevelFilter::Warn)
-                .level_for("reqwest", log::LevelFilter::Warn)
-                // 我们自己的模块保持 INFO 级别
-                .level_for("deep_student_lib", log::LevelFilter::Info)
-                .build(),
-        )
+        .plugin(log_plugin_builder.build())
         //.manage(init_app_state())
         .setup(|app| {
             let app_handle = app.handle().clone();
@@ -486,8 +619,36 @@ pub fn run() {
                     fallback
                 });
 
+            // 所有可反馈日志统一到系统推荐日志目录：
+            // macOS ~/Library/Logs/<identifier>，Windows %LOCALAPPDATA%/<identifier>/logs。
+            let app_log_dir = app_handle.path().app_log_dir().unwrap_or_else(|e| {
+                let fallback = base_app_data_dir.join("logs");
+                warn!(
+                    "[startup] 获取系统日志目录失败: {}，使用应用数据目录回退: {}",
+                    e,
+                    fallback.display()
+                );
+                fallback
+            });
+            if let Err(e) = std::fs::create_dir_all(&app_log_dir) {
+                error!(
+                    "[startup] 创建系统日志目录失败（结构化日志将尝试降级写入）: {}",
+                    e
+                );
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Err(e) = std::fs::set_permissions(
+                    &app_log_dir,
+                    std::fs::Permissions::from_mode(0o700),
+                ) {
+                    warn!("[startup] 收紧日志目录权限失败: {}", e);
+                }
+            }
+
             // 初始化崩溃日志（即使后续仍有致命错误，也能落盘）
-            crate::crash_logger::init_crash_logging(base_app_data_dir.clone());
+            crate::crash_logger::init_crash_logging(app_log_dir.clone());
 
             // 启动异步运行时看门狗（所有平台）。
             // 注意：心跳跑在 tokio runtime 上，检测的是 tokio worker 饥饿
@@ -518,7 +679,13 @@ pub fn run() {
             // ANTI-REGRESSION：勿在此 set_var WEBVIEW2_* 注入 --disable-gpu*；见 windows conf。
 
             // 初始化数据空间管理器（A/B 双数据空间）并应用 pending 切换
-            crate::data_space::init_data_space_manager(base_app_data_dir.clone());
+            if let Err(e) = crate::data_space::init_data_space_manager(base_app_data_dir.clone()) {
+                error!(
+                    "[startup] 数据空间初始化失败，拒绝在可能不完整的数据槽上继续启动: {}",
+                    e
+                );
+                return Err(Box::new(e));
+            }
             let data_space = crate::data_space::get_data_space_manager()
                 .expect("DataSpaceManager not initialized");
             let active_app_data_dir = data_space.active_dir();
@@ -527,6 +694,18 @@ pub fn run() {
                     "[startup] 创建活动数据目录失败（将继续以降级模式运行）: {}",
                     e
                 );
+            }
+            // 上次进程若在虚拟 URI 复制阶段崩溃，临时 ZIP 可能包含完整用户数据；
+            // 新进程启动时没有可恢复任务所有权，必须主动清理。
+            let stale_zip_exports = active_app_data_dir.join("temp_zip_export");
+            if stale_zip_exports.exists() {
+                if let Err(e) = std::fs::remove_dir_all(&stale_zip_exports) {
+                    warn!(
+                        "[startup] 清理遗留 ZIP 临时导出目录失败 {}: {}",
+                        stale_zip_exports.display(),
+                        e
+                    );
+                }
             }
 
             // 移动端兜底：将 TMP/TEMP 等变量设置到活动数据目录的 tmp/ 下，避免 Lance/Arrow 产生跨挂载点临时文件
@@ -545,26 +724,36 @@ pub fn run() {
 
             // 在任何数据库初始化之前，执行启动阶段清理（若存在清理标记）
             if crate::startup_cleanup::should_purge_on_start(&base_app_data_dir) {
-                match crate::startup_cleanup::purge_active_data_dir(&active_app_data_dir) {
+                match crate::startup_cleanup::purge_all_local_data(
+                    &base_app_data_dir,
+                    &active_app_data_dir,
+                ) {
                     Ok(report) => {
                         info!("启动阶段已执行数据清理:\n{}", report.details);
                         if report.had_errors {
-                            warn!("启动阶段数据清理存在失败项，保留清理标记以便下次启动重试");
-                        } else if let Err(e) =
+                            let error = std::io::Error::other(
+                                "启动阶段数据清理不完整，已保留清理标记并拒绝打开业务库",
+                            );
+                            error!("{}", error);
+                            return Err(Box::new(error));
+                        }
+                        if let Err(e) =
                             crate::startup_cleanup::clear_purge_marker(&base_app_data_dir)
                         {
-                            warn!("清除清理标记失败: {}", e);
+                            error!("清除清理标记失败，拒绝打开业务库: {}", e);
+                            return Err(Box::new(e));
                         }
                     }
                     Err(e) => {
                         error!("启动阶段数据清理失败: {}", e);
-                        // 即使清理失败也继续启动，避免应用卡死
+                        return Err(Box::new(e));
                     }
                 }
             }
 
             // 初始化全局调试日志记录器
-            crate::debug_logger::init_global_logger(base_app_data_dir.clone());
+            crate::debug_logger::init_global_logger(app_log_dir);
+            crate::debug_logger::start_periodic_flush();
 
             // 启动内置 Prometheus 指标服务
             crate::metrics_server::ensure_metrics_server(&app_handle);
@@ -702,7 +891,8 @@ pub fn run() {
                                 "success": false,
                                 "recovered": true,
                                 "error": error_msg,
-                                "message": "数据库升级失败，已自动恢复到升级前状态。部分新功能可能不可用，建议更新应用。"
+                                "maintenance_mode_forced": true,
+                                "message": "数据库升级失败，已恢复到升级前状态并进入只读维护模式。请先导出备份或更新应用后重试。"
                             }));
 
                             let coordinator = crate::data_governance::MigrationCoordinator::new(active_app_data_dir.clone());
@@ -734,7 +924,9 @@ pub fn run() {
                                 let audit_db_arc = std::sync::Arc::new(default_audit_db);
                                 app.manage(audit_db_arc);
                             }
-                            // data_governance_init_failed 保持 false：应用正常启动，不进入维护模式
+                            // 新二进制不能在未声明兼容的旧 schema 上继续业务写入。
+                            // 保持应用可启动以便诊断/导出，但进入 fail-close 维护模式。
+                            data_governance_init_failed = true;
                         } else {
                             warn!("⚠️ [DataGovernance] 初始化失败（将以降级模式继续运行）: {}", error_msg);
                             warn!(
@@ -775,6 +967,20 @@ pub fn run() {
 
             // 构建并注册全局 AppState（使用当前活动的数据空间目录）
             let state = build_app_state(active_app_data_dir.clone(), app_handle.clone());
+            let sentry_consented = state
+                .database
+                .get_setting("sentry_error_reporting_enabled")
+                .ok()
+                .flatten()
+                .is_some_and(|value| value == "true");
+            let sentry_guard = if sentry_consented {
+                init_backend_sentry_client()
+            } else {
+                None
+            };
+            app.manage(BackendSentryState(std::sync::Arc::new(
+                std::sync::Mutex::new(sentry_guard),
+            )));
             app.manage(state);
 
 
@@ -783,11 +989,49 @@ pub fn run() {
             {
                 if data_governance_init_failed {
                     let app_state: tauri::State<crate::commands::AppState> = app.state();
-                    if let Err(e) = app_state.database.enter_maintenance_mode() {
-                        tracing::warn!(error = %e, "数据治理初始化失败后进入维护模式失败");
-                    } else {
-                        tracing::warn!("⚠️ [DataGovernance] 初始化失败后已进入维护模式");
+                    let maintenance_result = (|| -> Result<(), String> {
+                        app_state
+                            .database
+                            .enter_maintenance_mode()
+                            .map_err(|e| format!("主数据库: {}", e))?;
+                        app_state
+                            .database_manager
+                            .enter_maintenance_mode()
+                            .map_err(|e| format!("数据库连接池: {}", e))?;
+                        if let Some(vfs) = &app_state.vfs_db {
+                            vfs.enter_maintenance_mode()
+                                .map_err(|e| format!("VFS: {}", e))?;
+                        }
+                        if let Some(chat) =
+                            app.try_state::<std::sync::Arc<crate::chat_v2::ChatV2Database>>()
+                        {
+                            chat.enter_maintenance_mode()
+                                .map_err(|e| format!("Chat V2: {}", e))?;
+                        }
+                        if let Some(usage) =
+                            app.try_state::<std::sync::Arc<crate::llm_usage::LlmUsageDatabase>>()
+                        {
+                            usage
+                                .enter_maintenance_mode()
+                                .map_err(|e| format!("LLM Usage: {}", e))?;
+                        }
+                        if let Some(workspaces) = app.try_state::<std::sync::Arc<
+                            crate::chat_v2::workspace::WorkspaceCoordinator,
+                        >>() {
+                            workspaces
+                                .enter_maintenance_mode()
+                                .map_err(|e| format!("工作区: {}", e))?;
+                        }
+                        Ok(())
+                    })();
+                    if let Err(e) = maintenance_result {
+                        tracing::error!(error = %e, "数据治理初始化失败后无法建立完整维护屏障");
+                        return Err(Box::new(std::io::Error::other(format!(
+                            "无法建立完整数据治理维护屏障: {}",
+                            e
+                        ))));
                     }
+                    tracing::warn!("⚠️ [DataGovernance] 初始化失败后已进入全组件维护模式");
                 }
             }
 
@@ -827,8 +1071,14 @@ pub fn run() {
                 info!("✅ [Backup] BackupJobManagerState 已注册为 Tauri State（单例模式）");
             }
 
-            // 初始化 Chat V2（使用统一初始化函数）
-            match crate::chat_v2::init_chat_v2(&active_app_data_dir) {
+            // 数据治理 fail-close 时不得再初始化会打开/写入磁盘的新数据库组件。
+            #[cfg(feature = "data_governance")]
+            let initialize_extended_databases = !data_governance_init_failed;
+            #[cfg(not(feature = "data_governance"))]
+            let initialize_extended_databases = true;
+            if initialize_extended_databases {
+                // 初始化 Chat V2（使用统一初始化函数）
+                match crate::chat_v2::init_chat_v2(&active_app_data_dir) {
                 Ok(chat_v2_db) => {
                     info!("✅ Chat V2 统一初始化完成: {}", chat_v2_db.db_path().display());
                     let chat_v2_db_arc = std::sync::Arc::new(chat_v2_db);
@@ -893,10 +1143,10 @@ pub fn run() {
                     error!("⚠️ Chat V2 数据库初始化失败（将以降级模式继续运行）: {}", e);
                     // 不阻止应用启动，但 Chat V2 功能将不可用
                 }
-            }
+                }
 
-            // 初始化 LLM Usage 统计数据库
-            match crate::llm_usage::LlmUsageDatabase::new(&active_app_data_dir) {
+                // 初始化 LLM Usage 统计数据库
+                match crate::llm_usage::LlmUsageDatabase::new(&active_app_data_dir) {
                 Ok(llm_usage_db) => {
                     info!("✅ LLM Usage 数据库初始化完成: {}", llm_usage_db.db_path().display());
                     let llm_usage_db_arc = std::sync::Arc::new(llm_usage_db);
@@ -909,6 +1159,9 @@ pub fn run() {
                 Err(e) => {
                     error!("⚠️ LLM Usage 数据库初始化失败（统计功能将不可用）: {}", e);
                 }
+                }
+            } else {
+                warn!("⚠️ [DataGovernance] fail-close 模式下已跳过 Chat V2 与 LLM Usage 数据库初始化");
             }
 
             // Workbench 内置浏览器：manage 未打开的 DB + Service（不无条件 ensure_open）
@@ -943,7 +1196,8 @@ pub fn run() {
             }
 
 
-            // 启动后异步触发一次 Lance 聊天表的轻量优化（压缩合并+清理近期旧版本+索引优化）
+            // 启动后异步触发一次 Lance 聊天表与遗留 KB 宽表的轻量优化
+            // （压缩合并+清理近期旧版本+索引优化）
             {
                 let database_for_maint = database.clone();
                 tauri::async_runtime::spawn(async move {
@@ -951,6 +1205,7 @@ pub fn run() {
                     tokio::time::sleep(std::time::Duration::from_secs(6)).await;
                     if let Ok(store) = crate::lance_vector_store::LanceVectorStore::new(database_for_maint.clone()) {
                         let _ = store.optimize_chat_tables(Some(7), None, false).await; // 默认清理 >7 天版本
+                        let _ = store.optimize_kb_tables(Some(7), None, false).await; // KB 宽表同样吞错，不影响启动
                     }
                 });
             }
@@ -981,8 +1236,10 @@ pub fn run() {
                 let database_for_backup = database.clone();
                 let database_manager_for_backup = app_state.inner().database_manager.clone();
                 let file_manager_for_backup = app_state.inner().file_manager.clone();
+                let app_handle_for_backup = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
                     crate::backup_config::start_auto_backup_scheduler(
+                        app_handle_for_backup,
                         database_for_backup,
                         database_manager_for_backup,
                         file_manager_for_backup,
@@ -1028,13 +1285,19 @@ pub fn run() {
                         {
                             api.prevent_close();
                             let _ = window_for_close.hide();
-                            use tauri_plugin_notification::NotificationExt;
-                            let _ = app_for_close
-                                .notification()
-                                .builder()
-                                .title("Deep Student 正在后台运行")
-                                .body("已启用的定时任务会继续按计划执行。")
-                                .show();
+                            // 「从不通知」档全局生效：后台驻留提示同样受
+                            // 统一策略约束（background/always 档照常提示）。
+                            if !crate::system_notification::notifications_disabled(
+                                &database_for_close,
+                            ) {
+                                use tauri_plugin_notification::NotificationExt;
+                                let _ = app_for_close
+                                    .notification()
+                                    .builder()
+                                    .title("Deep Student 正在后台运行")
+                                    .body("已启用的定时任务会继续按计划执行。")
+                                    .show();
+                            }
                         } else if !crate::chat_v2::automations::automation_app_is_exiting() {
                             #[cfg(target_os = "macos")]
                             {
@@ -1219,6 +1482,7 @@ pub fn run() {
             crate::commands::delete_setting,
             crate::commands::get_settings_by_prefix,
             crate::commands::delete_settings_by_prefix,
+            backend_sentry_command::set_backend_sentry_enabled,
             // 快速学习小窗窗口管理
             crate::quick_assistant::quick_assistant_show,
             crate::quick_assistant::quick_assistant_hide,
@@ -1256,6 +1520,7 @@ pub fn run() {
             crate::llm_manager::routing::llm_set_failover_policy,
             crate::commands::get_vendor_configs,
             crate::commands::save_vendor_configs,
+            crate::commands::fetch_vendor_models,
             crate::commands::get_model_profiles,
             crate::commands::save_model_profiles,
             crate::commands::test_api_connection,
@@ -1342,6 +1607,8 @@ pub fn run() {
             crate::translation::translate_text_stream,
             crate::translation::chat_popover::stream_chat_translation_aligned,
             crate::translation::chat_popover::stream_chat_translation_plain,
+            crate::translation::candidates::translate_text_candidates,
+            crate::translation::candidates::cancel_translation_candidates,
             crate::commands::ocr_extract_text,
             // Essay Grading Commands
             crate::essay_grading::essay_grading_stream,
@@ -1395,7 +1662,9 @@ pub fn run() {
             crate::commands::get_test_logs,
             crate::commands::open_log_file,
             crate::commands::open_logs_folder,
+            crate::system_permissions::open_system_permission_settings,
             crate::commands::report_frontend_log,
+            crate::diagnostics::export_diagnostics_bundle,
             crate::commands::save_template_debug_data,
             crate::commands::export_unified_backup_data,
             // 备份配置
@@ -1572,6 +1841,8 @@ pub fn run() {
             ,crate::chat_v2::handlers::manage_session::chat_v2_save_session
             ,crate::chat_v2::handlers::block_actions::chat_v2_delete_message
             ,crate::chat_v2::handlers::block_actions::chat_v2_copy_block_content
+            ,crate::chat_v2::handlers::block_actions::chat_v2_compact_session
+            ,crate::chat_v2::handlers::block_actions::chat_v2_undo_compaction
             ,crate::chat_v2::handlers::block_actions::chat_v2_update_block_content
             ,crate::chat_v2::handlers::block_actions::chat_v2_update_block_tool_output
             ,crate::chat_v2::handlers::block_actions::chat_v2_get_anki_cards_from_block_by_document_id
@@ -1640,6 +1911,12 @@ pub fn run() {
             ,crate::chat_v2::handlers::migration::chat_v2_rollback_migration
             // 内容搜索 + 标签管理命令
             ,crate::chat_v2::handlers::search_handlers::chat_v2_search_content
+            // 会话元信息搜索（标题/描述/标签 LIKE）
+            ,crate::chat_v2::handlers::search_handlers::chat_v2_search_sessions
+            // 会话导出（markdown / json）
+            ,crate::chat_v2::handlers::export_handlers::chat_v2_export_session
+            // 事件发射失败计数（只读诊断）
+            ,crate::chat_v2::events::chat_v2_get_emit_failure_count
             ,crate::chat_v2::handlers::search_handlers::rebuild_chat_fts
             ,crate::chat_v2::handlers::search_handlers::chat_v2_get_session_tags
             ,crate::chat_v2::handlers::search_handlers::chat_v2_get_tags_batch
@@ -1661,19 +1938,14 @@ pub fn run() {
             ,crate::chat_v2::handlers::workspace_handlers::workspace_get_document
             ,crate::chat_v2::handlers::workspace_handlers::workspace_list_all
             ,crate::chat_v2::handlers::workspace_handlers::workspace_run_agent
+            ,crate::chat_v2::handlers::workspace_handlers::workspace_list_agent_profiles
             ,crate::chat_v2::handlers::workspace_handlers::workspace_cancel_agent
             ,crate::chat_v2::handlers::workspace_handlers::workspace_manual_wake
             ,crate::chat_v2::handlers::workspace_handlers::workspace_cancel_sleep
             ,crate::chat_v2::handlers::workspace_handlers::workspace_restore_executions
-            // ⚠️ DEPRECATED 资源库命令 — 前端已迁移到 VFS (vfs_* 命令)，零引用。
-            // 保留注册以兼容旧版前端，计划在下一次大版本中移除。参见 P1-#9。
-            ,crate::chat_v2::handlers::resource_handlers::resource_create_or_reuse
-            ,crate::chat_v2::handlers::resource_handlers::resource_get
-            ,crate::chat_v2::handlers::resource_handlers::resource_get_latest
-            ,crate::chat_v2::handlers::resource_handlers::resource_exists
-            ,crate::chat_v2::handlers::resource_handlers::resource_increment_ref
-            ,crate::chat_v2::handlers::resource_handlers::resource_decrement_ref
-            ,crate::chat_v2::handlers::resource_handlers::resource_get_versions_by_source
+            // COMPAT-REMOVED 2026-07-20 (owner: platform-chat, remove target: vNext)
+            // 旧 resource_* 命令已注销：前端零 invoke，替代路径 = vfs_* / VfsResourceRepo。
+            // chat_v2::resource_repo 仍保留只读兼容层（见该模块头注释），勿再注册 resource_*。
             // 🆕 Skills 文件系统命令
             ,crate::chat_v2::skills::skill_list_directories
             ,crate::chat_v2::skills::skill_list_package_files
@@ -1831,6 +2103,7 @@ pub fn run() {
             ,crate::vfs::todo_handlers::todo_list_completed
             ,crate::vfs::todo_handlers::todo_search
             ,crate::vfs::todo_handlers::todo_get_active_summary
+            ,crate::vfs::todo_handlers::todo_counts_snapshot
             ,crate::vfs::todo_handlers::todo_ai_breakdown
             // 待办回收站命令
             ,crate::vfs::todo_handlers::todo_list_deleted_lists
@@ -1853,6 +2126,24 @@ pub fn run() {
             ,crate::vfs::todo_handlers::pomodoro_daily_stats
             ,crate::vfs::pomodoro_handlers::pomodoro_delete_record
             ,crate::vfs::pomodoro_handlers::pomodoro_list_range
+            ,crate::vfs::pomodoro_handlers::pomodoro_streak
+            ,crate::vfs::pomodoro_handlers::pomodoro_hourly_stats
+            ,crate::vfs::pomodoro_handlers::pomodoro_stats_by_todo
+            ,crate::vfs::pomodoro_handlers::pomodoro_stats_overview
+            ,crate::vfs::pomodoro_handlers::pomodoro_todo_focus_summary
+            // 待办批量操作 / 回收站增强 / 统计聚合命令（2026-07-20）
+            ,crate::vfs::todo_handlers::todo_batch_complete
+            ,crate::vfs::todo_handlers::todo_batch_reschedule
+            ,crate::vfs::todo_handlers::todo_batch_move
+            ,crate::vfs::todo_handlers::todo_batch_delete
+            ,crate::vfs::todo_handlers::todo_batch_restore
+            ,crate::vfs::todo_handlers::todo_batch_purge
+            ,crate::vfs::todo_handlers::todo_trash_counts
+            ,crate::vfs::todo_handlers::todo_stats_overview
+            ,crate::vfs::todo_handlers::todo_list_items_with_stats
+            // 遗留补齐轮 r3（2026-07-20）：批量优先级 / 全量标签词表
+            ,crate::vfs::todo_handlers::todo_batch_set_priority
+            ,crate::vfs::todo_handlers::todo_list_all_tags
             // 索引诊断命令
             ,crate::vfs::handlers::vfs_debug_index_status
             ,crate::vfs::handlers::vfs_reset_disabled_to_pending
@@ -2022,6 +2313,8 @@ pub fn run() {
             ,crate::memory::handlers::memory_batch_delete
             ,crate::memory::handlers::memory_batch_move
             ,crate::memory::handlers::memory_update_tags
+            ,crate::memory::handlers::memory_restore_stale
+            ,crate::memory::handlers::memory_restore_archived
             ,crate::memory::handlers::memory_get_tags
             ,crate::memory::handlers::memory_add_relation
             ,crate::memory::handlers::memory_remove_relation
@@ -2066,6 +2359,10 @@ pub fn run() {
             ,crate::cmd::fsrs_review::fsrs_undo_last_review
             ,crate::cmd::fsrs_review::fsrs_suspend_card
             ,crate::cmd::fsrs_review::fsrs_unsuspend_card
+            ,crate::cmd::fsrs_review::fsrs_get_review_statistics
+            ,crate::cmd::fsrs_review::fsrs_get_scheduler_config
+            ,crate::cmd::fsrs_review::fsrs_update_scheduler_config
+            ,crate::cmd::fsrs_review::fsrs_reset_card_progress
             // =================================================
             // APKG 本地导入
             // =================================================
@@ -2094,15 +2391,11 @@ pub fn run() {
             ,crate::cmd::browser::browser_list_downloads
             ,crate::cmd::browser::browser_list_task_downloads
             ,crate::cmd::browser::browser_scroll
-            // =================================================
-            // 题目集同步冲突策略
-            // =================================================
-            ,crate::question_sync_service::qbank_sync_check
-            ,crate::question_sync_service::qbank_get_sync_conflicts
-            ,crate::question_sync_service::qbank_resolve_sync_conflict
-            ,crate::question_sync_service::qbank_batch_resolve_conflicts
-            ,crate::question_sync_service::qbank_set_sync_enabled
-            ,crate::question_sync_service::qbank_update_sync_config
+            // COMPAT-REMOVED 2026-07-20 (owner: learning-qbank, remove target: vNext)
+            // 题库专属 qbank_*_sync_* 冲突命令已注销：QuestionSyncService::detect_conflicts /
+            // save_conflict 无生产调用方，question_sync_conflicts 表无真实生产者。
+            // 真冲突源 = data_governance __sync_conflicts（RecordConflictsPanel）。
+            // 保留 QuestionSyncService::mark_as_modified / content_hash 与历史 DB 列迁移。
             // =================================================
             // 数据治理系统命令（2026-01-30）
             // 注意：data_governance 已在 default features 中启用
@@ -2249,7 +2542,13 @@ pub fn run() {
         .run(|_app_handle, event| match event {
             tauri::RunEvent::ExitRequested { .. } => {
                 crate::chat_v2::automations::mark_automation_app_exiting();
-                tauri::async_runtime::block_on(crate::background_tasks::shutdown());
+                tauri::async_runtime::block_on(async {
+                    crate::debug_logger::flush_global_logger().await;
+                    crate::debug_log_service::flush_pending_debug_log_writes().await;
+                    crate::background_tasks::shutdown().await;
+                    crate::debug_logger::flush_global_logger().await;
+                    crate::debug_log_service::flush_pending_debug_log_writes().await;
+                });
             }
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { .. } => {
@@ -2358,6 +2657,20 @@ fn start_vfs_index_worker(
                     Err(error) => {
                         tracing::warn!("[VfsIndexWorker] multimodal batch failed: {}", error)
                     }
+                }
+            }
+
+            // Throttled Lance maintenance (compact + prune + index-delta merge).
+            // The interval check lives inside maybe_optimize_all, so calling it on
+            // every tick is cheap; failures must never affect the indexing loop.
+            match lance_store.maybe_optimize_all().await {
+                Ok(optimized) if optimized > 0 => tracing::info!(
+                    "[VfsIndexWorker] Lance auto-optimize completed: {} tables",
+                    optimized
+                ),
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::warn!("[VfsIndexWorker] Lance auto-optimize failed: {}", error)
                 }
             }
         }
@@ -2597,6 +2910,22 @@ fn build_app_state(
                 }
                 Err(e) => {
                     tracing::warn!("[AppSetup] Retrieval sweep skipped (no connection): {}", e);
+                }
+            }
+
+            // ★ 2026-07-20：一次性回填笔记链接图（修复 DSTU 时期写路径不维护
+            // note_links 的存量缺口）。带 KV 标志（vfs_indexing_config），
+            // 成功后不再执行；失败不写标志，下次启动自动重试。
+            match crate::vfs::repos::VfsNoteRepo::backfill_note_links_once(&vfs_db_sweep, 500) {
+                Ok(true) => {
+                    tracing::info!("[AppSetup] One-time note links backfill completed");
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    tracing::warn!(
+                        "[AppSetup] Note links backfill failed (will retry next launch): {}",
+                        e
+                    );
                 }
             }
         });

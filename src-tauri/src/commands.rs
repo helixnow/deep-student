@@ -6,7 +6,7 @@ use crate::database::{Database, DatabaseManager};
 use crate::exam_sheet_service::ExamSheetService;
 use crate::llm_manager::{
     build_provider_adapter, should_use_openai_responses_for_config, ApiConfig, ModelProfile,
-    VendorConfig, AUTH_MODE_OPENAI_CODEX_OAUTH,
+    VendorConfig, AUTH_MODE_NONE, AUTH_MODE_OPENAI_CODEX_OAUTH,
 };
 #[cfg(feature = "mcp")]
 use crate::mcp::McpConfig;
@@ -28,7 +28,6 @@ use crate::file_manager::FileManager;
 use crate::pdf_ocr_service::PdfOcrService;
 use crate::unified_file_manager;
 use serde::{Deserialize, Serialize};
-use sha2::Digest;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -488,46 +487,82 @@ pub async fn get_app_data_dir(state: State<'_, AppState>) -> Result<String> {
 // 调试日志管理命令
 // ============================================================================
 
+fn resolve_app_log_dir(app: &AppHandle) -> Result<std::path::PathBuf> {
+    if let Ok(path) = app.path().app_log_dir() {
+        return Ok(path);
+    }
+    if let Ok(path) = app.path().app_data_dir() {
+        return Ok(path.join("logs"));
+    }
+    Ok(std::env::temp_dir().join("deep-student").join("logs"))
+}
+
+fn resolve_debug_log_roots(app: &AppHandle) -> Result<Vec<std::path::PathBuf>> {
+    let current = resolve_app_log_dir(app)?;
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::env::temp_dir().join("deep-student"));
+    let mut roots = vec![
+        current,
+        app_data.clone(),
+        app_data.join("slots").join("slotA"),
+        app_data.join("slots").join("slotB"),
+    ];
+    roots.sort();
+    roots.dedup();
+    Ok(roots)
+}
+
 /// 获取调试日志统计信息（文件数量 + 总大小）
 #[tauri::command]
 pub async fn get_debug_logs_info(
-    state: State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<crate::debug_log_service::DebugLogsInfo> {
-    let data_dir = state.file_manager.get_app_data_dir();
-    Ok(crate::debug_log_service::get_debug_logs_info(data_dir))
+    if !crate::debug_log_service::flush_pending_debug_log_writes().await {
+        return Err(AppError::file_system("等待调试日志写入超时，请稍后重试"));
+    }
+    let log_roots = resolve_debug_log_roots(&app)?;
+    Ok(crate::debug_log_service::get_debug_logs_info(&log_roots))
 }
 
 /// 清除所有调试日志文件
 #[tauri::command]
-pub async fn clear_debug_logs(state: State<'_, AppState>) -> Result<usize> {
-    let data_dir = state.file_manager.get_app_data_dir();
-    crate::debug_log_service::clear_all_debug_logs(data_dir).map_err(AppError::unknown)
+pub async fn clear_debug_logs(app: AppHandle) -> Result<usize> {
+    if !crate::debug_log_service::flush_pending_debug_log_writes().await {
+        return Err(AppError::file_system("等待调试日志写入超时，请稍后重试"));
+    }
+    let log_roots = resolve_debug_log_roots(&app)?;
+    crate::debug_log_service::clear_all_debug_logs(&log_roots).map_err(AppError::unknown)
 }
 
 /// 清理超过指定天数的旧调试日志
 #[tauri::command]
-pub async fn cleanup_old_debug_logs(
-    state: State<'_, AppState>,
-    max_age_days: u32,
-) -> Result<usize> {
-    let data_dir = state.file_manager.get_app_data_dir();
-    crate::debug_log_service::cleanup_old_debug_logs(data_dir, max_age_days)
+pub async fn cleanup_old_debug_logs(app: AppHandle, max_age_days: u32) -> Result<usize> {
+    if !crate::debug_log_service::flush_pending_debug_log_writes().await {
+        return Err(AppError::file_system("等待调试日志写入超时，请稍后重试"));
+    }
+    let log_roots = resolve_debug_log_roots(&app)?;
+    crate::debug_log_service::cleanup_old_debug_logs(&log_roots, max_age_days)
         .map_err(AppError::unknown)
 }
 
 /// 确保 debug-logs 目录存在并返回绝对路径
 #[tauri::command]
-pub async fn ensure_debug_log_dir(state: State<'_, AppState>) -> Result<String> {
-    let data_dir = state.file_manager.get_app_data_dir();
-    let dir = crate::debug_log_service::ensure_debug_log_dir(data_dir);
+pub async fn ensure_debug_log_dir(app: AppHandle) -> Result<String> {
+    let log_root = resolve_app_log_dir(&app)?;
+    let dir = crate::debug_log_service::ensure_debug_log_dir(&log_root);
     Ok(dir.to_string_lossy().to_string())
 }
 
 /// 读取指定调试日志文件的完整内容（用于"完整"过滤级别的复制）
 #[tauri::command]
-pub async fn read_debug_log_file(path: String, state: State<'_, AppState>) -> Result<String> {
-    let data_dir = state.file_manager.get_app_data_dir();
-    crate::debug_log_service::read_debug_log_file(std::path::Path::new(&path), data_dir)
+pub async fn read_debug_log_file(path: String, app: AppHandle) -> Result<String> {
+    if !crate::debug_log_service::flush_pending_debug_log_writes().await {
+        return Err(AppError::file_system("等待调试日志写入超时，请稍后重试"));
+    }
+    let log_roots = resolve_debug_log_roots(&app)?;
+    crate::debug_log_service::read_debug_log_file(std::path::Path::new(&path), &log_roots)
         .map_err(AppError::unknown)
 }
 
@@ -1861,6 +1896,349 @@ fn is_openai_codex_oauth_test(
         && effective_auth_mode.eq_ignore_ascii_case(AUTH_MODE_OPENAI_CODEX_OAUTH)
 }
 
+fn api_origins_match(left: &str, right: &str) -> bool {
+    let Ok(left) = url::Url::parse(left.trim()) else {
+        return false;
+    };
+    let Ok(right) = url::Url::parse(right.trim()) else {
+        return false;
+    };
+    left.scheme().eq_ignore_ascii_case(right.scheme())
+        && left.host_str().map(str::to_ascii_lowercase)
+            == right.host_str().map(str::to_ascii_lowercase)
+        && left.port_or_known_default() == right.port_or_known_default()
+}
+
+fn truncate_provider_error_detail(detail: String) -> String {
+    detail.chars().take(2048).collect()
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchedVendorModel {
+    pub id: String,
+    pub label: String,
+}
+
+fn vendor_models_endpoint(
+    base_url: &str,
+    provider_type: &str,
+    api_protocol: Option<&str>,
+) -> Result<(url::Url, &'static str)> {
+    let mut url = url::Url::parse(base_url.trim())
+        .map_err(|_| AppError::validation("供应商 Base URL 无效"))?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return Err(AppError::validation(
+            "供应商 Base URL 必须是有效的 HTTP(S) 地址",
+        ));
+    }
+
+    let provider = provider_type.trim().to_ascii_lowercase();
+    let protocol = api_protocol.unwrap_or_default().trim().to_ascii_lowercase();
+    let mut path = url.path().trim_end_matches('/').to_string();
+    let uses_openai_protocol = matches!(
+        protocol.as_str(),
+        "openai_chat_completions" | "openai_responses"
+    );
+    let kind = if !uses_openai_protocol
+        && (protocol == "google_generate_content"
+            || matches!(provider.as_str(), "gemini" | "google"))
+    {
+        for suffix in ["/v1beta/models", "/v1/models", "/models"] {
+            if path.to_ascii_lowercase().ends_with(suffix) {
+                path.truncate(path.len() - suffix.len());
+                break;
+            }
+        }
+        if path.is_empty() {
+            path = "/v1beta".to_string();
+        } else if !path.ends_with("/v1beta") && !path.ends_with("/v1") {
+            path.push_str("/v1beta");
+        }
+        path.push_str("/models");
+        "gemini"
+    } else if !uses_openai_protocol
+        && (protocol == "anthropic_messages" || matches!(provider.as_str(), "anthropic" | "claude"))
+    {
+        for suffix in ["/v1/messages", "/v1/models", "/messages", "/models"] {
+            if path.to_ascii_lowercase().ends_with(suffix) {
+                path.truncate(path.len() - suffix.len());
+                break;
+            }
+        }
+        if !path.ends_with("/v1") {
+            path.push_str("/v1");
+        }
+        path.push_str("/models");
+        "anthropic"
+    } else {
+        for suffix in ["/chat/completions", "/responses", "/models"] {
+            if path.to_ascii_lowercase().ends_with(suffix) {
+                path.truncate(path.len() - suffix.len());
+                break;
+            }
+        }
+        path.push_str("/models");
+        "openai"
+    };
+    url.set_path(&path);
+    url.set_query(None);
+    url.set_fragment(None);
+    Ok((url, kind))
+}
+
+fn vendor_model_headers(vendor: &VendorConfig, kind: &str) -> Result<reqwest::header::HeaderMap> {
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+
+    let mut headers = HeaderMap::new();
+    for (name, value) in &vendor.headers {
+        let normalized = name.trim().to_ascii_lowercase();
+        if matches!(
+            normalized.as_str(),
+            "host" | "content-length" | "connection" | "transfer-encoding"
+        ) {
+            continue;
+        }
+        let name = HeaderName::from_bytes(name.as_bytes())
+            .map_err(|_| AppError::validation(format!("无效的供应商请求头名称: {name}")))?;
+        let value = HeaderValue::from_str(value)
+            .map_err(|_| AppError::validation("供应商请求头包含无效字符"))?;
+        headers.insert(name, value);
+    }
+
+    let key = vendor.api_key.trim();
+    match kind {
+        "gemini" if !key.is_empty() => {
+            headers.insert(
+                HeaderName::from_static("x-goog-api-key"),
+                HeaderValue::from_str(key)
+                    .map_err(|_| AppError::validation("Gemini API 密钥包含无效字符"))?,
+            );
+        }
+        "anthropic" => {
+            headers.insert(
+                HeaderName::from_static("anthropic-version"),
+                HeaderValue::from_static("2023-06-01"),
+            );
+            if !key.is_empty() {
+                headers.insert(
+                    HeaderName::from_static("x-api-key"),
+                    HeaderValue::from_str(key)
+                        .map_err(|_| AppError::validation("Anthropic API 密钥包含无效字符"))?,
+                );
+            }
+        }
+        "openai" if !key.is_empty() => {
+            headers.insert(
+                reqwest::header::AUTHORIZATION,
+                HeaderValue::from_str(&format!("Bearer {key}"))
+                    .map_err(|_| AppError::validation("API 密钥包含无效字符"))?,
+            );
+        }
+        _ => {}
+    }
+    Ok(headers)
+}
+
+async fn vendor_model_response_json(
+    client: &reqwest::Client,
+    url: url::Url,
+    headers: &reqwest::header::HeaderMap,
+) -> Result<serde_json::Value> {
+    let response = client
+        .get(url)
+        .headers(headers.clone())
+        .send()
+        .await
+        .map_err(|error| {
+            AppError::network(format!("获取供应商模型失败: {}", error.without_url()))
+        })?;
+    let status = response.status();
+    if !status.is_success() {
+        let detail: String = response
+            .text()
+            .await
+            .unwrap_or_default()
+            .chars()
+            .take(2048)
+            .collect();
+        return Err(AppError::network(format!(
+            "获取供应商模型失败: {status} - {detail}"
+        )));
+    }
+    response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|error| AppError::network(format!("解析供应商模型响应失败: {error}")))
+}
+
+#[tauri::command]
+pub async fn fetch_vendor_models(
+    vendor_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<FetchedVendorModel>> {
+    let mut vendor = state
+        .llm_manager
+        .vendor_config_for_runtime(vendor_id.trim())
+        .await?;
+    let uses_no_auth = vendor
+        .auth_mode
+        .as_deref()
+        .is_some_and(|mode| mode.eq_ignore_ascii_case(AUTH_MODE_NONE));
+    if !uses_no_auth && vendor.api_key.trim().is_empty() {
+        if let Some(backup_key) = vendor
+            .api_keys
+            .iter()
+            .map(|key| key.trim())
+            .find(|key| !key.is_empty())
+            .map(str::to_string)
+        {
+            vendor.api_key = backup_key;
+        } else {
+            return Err(AppError::validation("供应商尚未配置 API 密钥"));
+        }
+    }
+
+    let (endpoint, kind) = vendor_models_endpoint(
+        &vendor.base_url,
+        &vendor.provider_type,
+        vendor.api_protocol.as_deref(),
+    )?;
+    let headers = vendor_model_headers(&vendor, kind)?;
+    let timeout_ms = vendor
+        .default_timeout_ms
+        .unwrap_or(30_000)
+        .clamp(1_000, 120_000);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(timeout_ms))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|error| AppError::network(format!("创建供应商模型客户端失败: {error}")))?;
+
+    let mut models = HashMap::<String, String>::new();
+    let mut cursor: Option<String> = None;
+    for _ in 0..20 {
+        let mut page_url = endpoint.clone();
+        {
+            let mut query = page_url.query_pairs_mut();
+            match kind {
+                "gemini" => {
+                    query.append_pair("pageSize", "100");
+                    if let Some(token) = cursor.as_deref() {
+                        query.append_pair("pageToken", token);
+                    }
+                }
+                "anthropic" => {
+                    query.append_pair("limit", "1000");
+                    if let Some(after_id) = cursor.as_deref() {
+                        query.append_pair("after_id", after_id);
+                    }
+                }
+                _ => {
+                    // OpenAI 的 GET /models 不定义 limit；部分兼容网关会拒绝未知参数。
+                    // 仅在响应明确给出 has_more 后携带游标继续请求。
+                    if let Some(after) = cursor.as_deref() {
+                        query.append_pair("after", after);
+                    }
+                }
+            }
+        }
+
+        let body = vendor_model_response_json(&client, page_url, &headers).await?;
+        if kind == "gemini" {
+            let items = body
+                .get("models")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| AppError::network("Gemini 模型响应缺少 models 数组"))?;
+            for item in items {
+                let supports_generate = item
+                    .get("supportedGenerationMethods")
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|methods| {
+                        methods
+                            .iter()
+                            .any(|method| method.as_str() == Some("generateContent"))
+                    });
+                if !supports_generate {
+                    continue;
+                }
+                if let Some(raw_id) = item.get("name").and_then(serde_json::Value::as_str) {
+                    let id = raw_id.strip_prefix("models/").unwrap_or(raw_id).to_string();
+                    let label = item
+                        .get("displayName")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or(&id)
+                        .to_string();
+                    models.insert(id, label);
+                }
+            }
+            cursor = body
+                .get("nextPageToken")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
+        } else {
+            let items = body
+                .get("data")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| AppError::network("供应商模型响应缺少 data 数组"))?;
+            for item in items {
+                let Some(id) = item.get("id").and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                if kind == "anthropic"
+                    && item
+                        .get("type")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|item_type| item_type != "model")
+                {
+                    continue;
+                }
+                let excluded = [
+                    "tts", "whisper", "video", "kolors", "flux", "dall-e", "audio",
+                ]
+                .iter()
+                .any(|needle| id.to_ascii_lowercase().contains(needle));
+                if kind == "openai" && excluded {
+                    continue;
+                }
+                let label = item
+                    .get("display_name")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or(id)
+                    .to_string();
+                models.insert(id.to_string(), label);
+            }
+            let has_more = body
+                .get("has_more")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            cursor = if has_more {
+                body.get("last_id")
+                    .and_then(serde_json::Value::as_str)
+                    .or_else(|| {
+                        items
+                            .last()
+                            .and_then(|item| item.get("id"))
+                            .and_then(serde_json::Value::as_str)
+                    })
+                    .map(str::to_string)
+            } else {
+                None
+            };
+        }
+        if cursor.as_deref().map_or(true, str::is_empty) {
+            break;
+        }
+    }
+
+    let mut fetched: Vec<FetchedVendorModel> = models
+        .into_iter()
+        .map(|(id, label)| FetchedVendorModel { id, label })
+        .collect();
+    fetched.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(fetched)
+}
+
 #[tauri::command]
 pub async fn test_api_connection(
     api_key: String,
@@ -1886,12 +2264,7 @@ pub async fn test_api_connection(
     );
 
     let persisted_vendor = if let Some(vid) = vendor_id.as_deref() {
-        state
-            .llm_manager
-            .get_vendor_configs()
-            .await?
-            .into_iter()
-            .find(|vendor| vendor.id == vid)
+        Some(state.llm_manager.vendor_config_for_runtime(vid).await?)
     } else {
         None
     };
@@ -1908,6 +2281,19 @@ pub async fn test_api_connection(
         provider_type.as_deref(),
         auth_mode.as_deref(),
     );
+    let uses_no_auth = effective_auth_mode
+        .as_deref()
+        .is_some_and(|mode| mode.eq_ignore_ascii_case(AUTH_MODE_NONE));
+
+    // 已保存供应商的凭据只能发送到同源端点。修改主机、协议或端口时必须先保存
+    // 新供应商配置并重新输入凭据，避免 renderer 借 vendor_id 把真实密钥转发到任意 URL。
+    if let Some(vendor) = persisted_vendor.as_ref() {
+        if !api_origins_match(&vendor.base_url, &api_base) {
+            return Err(AppError::validation(
+                "连接测试地址与已保存供应商不同源；请先保存新地址并重新输入凭据",
+            ));
+        }
+    }
 
     // 解析真实的 API 密钥
     // 如果 api_key 是占位符（*** 或空），尝试从安全存储获取真实密钥
@@ -1916,24 +2302,63 @@ pub async fn test_api_connection(
         let is_placeholder =
             trimmed.is_empty() || trimmed == "***" || trimmed.chars().all(|c| c == '*');
 
-        if is_codex_oauth {
+        if is_codex_oauth || uses_no_auth {
             String::new()
         } else if is_placeholder {
-            // 尝试从安全存储获取真实密钥
-            if let Some(vid) = &vendor_id {
-                // 尝试标准格式：{vendor_id}.api_key
-                let secret_key = format!("{}.api_key", vid);
-                if let Ok(Some(key)) = state.database.get_secret(&secret_key) {
-                    if !key.is_empty() {
-                        debug!("[API测试] 从安全存储获取密钥: {}", secret_key);
-                        key
+            if let Some(key) = persisted_vendor.as_ref().and_then(|vendor| {
+                std::iter::once(vendor.api_key.as_str())
+                    .chain(vendor.api_keys.iter().map(String::as_str))
+                    .map(str::trim)
+                    .find(|key| {
+                        !key.is_empty()
+                            && *key != "***"
+                            && !key.chars().all(|character| character == '*')
+                    })
+            }) {
+                key.to_string()
+            } else {
+                // 尝试从安全存储获取真实密钥
+                if let Some(vid) = &vendor_id {
+                    // 尝试标准格式：{vendor_id}.api_key
+                    let secret_key = format!("{}.api_key", vid);
+                    if let Ok(Some(key)) = state.database.get_secret(&secret_key) {
+                        if !key.is_empty() {
+                            debug!("[API测试] 从安全存储获取密钥: {}", secret_key);
+                            key
+                        } else {
+                            // 如果是 SiliconFlow，尝试旧格式
+                            if vid.contains("siliconflow") {
+                                if let Ok(Some(key)) =
+                                    state.database.get_secret("siliconflow.api_key")
+                                {
+                                    if !key.is_empty() {
+                                        debug!("[API测试] 从安全存储获取密钥（旧格式）: siliconflow.api_key");
+                                        key
+                                    } else {
+                                        return Err(AppError::validation(
+                                            "API 密钥未配置，请先配置 API 密钥",
+                                        ));
+                                    }
+                                } else {
+                                    return Err(AppError::validation(
+                                        "API 密钥未配置，请先配置 API 密钥",
+                                    ));
+                                }
+                            } else {
+                                return Err(AppError::validation(
+                                    "API 密钥未配置，请先配置 API 密钥",
+                                ));
+                            }
+                        }
                     } else {
                         // 如果是 SiliconFlow，尝试旧格式
                         if vid.contains("siliconflow") {
                             if let Ok(Some(key)) = state.database.get_secret("siliconflow.api_key")
                             {
                                 if !key.is_empty() {
-                                    debug!("[API测试] 从安全存储获取密钥（旧格式）: siliconflow.api_key");
+                                    debug!(
+                                    "[API测试] 从安全存储获取密钥（旧格式）: siliconflow.api_key"
+                                );
                                     key
                                 } else {
                                     return Err(AppError::validation(
@@ -1950,28 +2375,8 @@ pub async fn test_api_connection(
                         }
                     }
                 } else {
-                    // 如果是 SiliconFlow，尝试旧格式
-                    if vid.contains("siliconflow") {
-                        if let Ok(Some(key)) = state.database.get_secret("siliconflow.api_key") {
-                            if !key.is_empty() {
-                                debug!(
-                                    "[API测试] 从安全存储获取密钥（旧格式）: siliconflow.api_key"
-                                );
-                                key
-                            } else {
-                                return Err(AppError::validation(
-                                    "API 密钥未配置，请先配置 API 密钥",
-                                ));
-                            }
-                        } else {
-                            return Err(AppError::validation("API 密钥未配置，请先配置 API 密钥"));
-                        }
-                    } else {
-                        return Err(AppError::validation("API 密钥未配置，请先配置 API 密钥"));
-                    }
+                    return Err(AppError::validation("请先输入 API 密钥"));
                 }
-            } else {
-                return Err(AppError::validation("请先输入 API 密钥"));
             }
         } else {
             trimmed.to_string()
@@ -2019,13 +2424,19 @@ pub async fn test_api_connection(
                 .or(headers),
             ..Default::default()
         };
+        let mut adapted_request_body = request_body.clone();
+        crate::llm_manager::LLMManager::apply_reasoning_config(
+            &mut adapted_request_body,
+            &config,
+            None,
+        );
         let adapter = build_provider_adapter(&config);
         let mut request = state
             .llm_manager
             .prepare_provider_request(
                 adapter.as_ref(),
                 &config,
-                &request_body,
+                &adapted_request_body,
                 None,
                 None,
                 "Codex 连接测试请求构建失败",
@@ -2040,7 +2451,7 @@ pub async fn test_api_connection(
             info!("[API测试] Codex OAuth 连接成功");
             return Ok(true);
         }
-        let error_text = response.text().await.unwrap_or_default();
+        let error_text = truncate_provider_error_detail(response.text().await.unwrap_or_default());
         error!(
             "[API测试] Codex OAuth 连接失败: {} - {}",
             status, error_text
@@ -2051,20 +2462,53 @@ pub async fn test_api_connection(
         )));
     }
 
-    let provider_request = build_test_provider_request(
-        &api_base,
-        effective_api_key.trim(),
-        &model_id,
-        &request_body,
-        protocol,
-        effective_provider_type.as_deref(),
-        model_adapter.as_deref(),
-    )
-    .map_err(|error| AppError::validation(format!("API连接测试请求构建失败: {error}")))?;
+    let config = ApiConfig {
+        id: "connection-test".to_string(),
+        name: "API connection test".to_string(),
+        vendor_id: vendor_id.clone(),
+        provider_type: effective_provider_type,
+        auth_mode: effective_auth_mode,
+        api_protocol: Some(protocol.to_string()),
+        supports_openai_responses,
+        api_key: effective_api_key,
+        base_url: api_base,
+        model: model_id,
+        model_adapter: model_adapter.unwrap_or_else(|| "general".to_string()),
+        headers: persisted_vendor
+            .as_ref()
+            .map(|vendor| vendor.headers.clone())
+            .filter(|configured| !configured.is_empty())
+            .or(headers),
+        ..Default::default()
+    };
+    let mut adapted_request_body = request_body;
+    crate::llm_manager::LLMManager::apply_reasoning_config(
+        &mut adapted_request_body,
+        &config,
+        None,
+    );
+    let adapter = build_provider_adapter(&config);
+    let provider_request = state
+        .llm_manager
+        .prepare_provider_request(
+            adapter.as_ref(),
+            &config,
+            &adapted_request_body,
+            None,
+            None,
+            "API连接测试请求构建失败",
+        )
+        .await?;
 
-    // 创建 HTTP 客户端（10 秒超时）
+    let timeout_ms = persisted_vendor
+        .as_ref()
+        .and_then(|vendor| vendor.default_timeout_ms)
+        .unwrap_or(10_000)
+        .clamp(1_000, 120_000);
+    // 连接测试遵循供应商超时设置，同时禁止跨源重定向。
     let client = Client::builder()
-        .timeout(Duration::from_secs(10))
+        .timeout(Duration::from_millis(timeout_ms))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| AppError::network(format!("创建HTTP客户端失败: {}", e)))?;
 
@@ -2072,25 +2516,6 @@ pub async fn test_api_connection(
     for (name, value) in &provider_request.headers {
         request_builder = request_builder.header(name, value);
     }
-    if let Some(headers) = headers {
-        for (name, value) in headers {
-            let Ok(parsed_name) = reqwest::header::HeaderName::from_bytes(name.as_bytes()) else {
-                continue;
-            };
-            if provider_request
-                .headers
-                .iter()
-                .any(|(owned, _)| owned.eq_ignore_ascii_case(parsed_name.as_str()))
-            {
-                continue;
-            }
-            let Ok(parsed_value) = reqwest::header::HeaderValue::from_str(&value) else {
-                continue;
-            };
-            request_builder = request_builder.header(parsed_name, parsed_value);
-        }
-    }
-
     // 发送请求
     let response = request_builder
         .json(&provider_request.body)
@@ -2103,7 +2528,7 @@ pub async fn test_api_connection(
         info!("[API测试] 连接成功");
         Ok(true)
     } else {
-        let error_text = response.text().await.unwrap_or_default();
+        let error_text = truncate_provider_error_detail(response.text().await.unwrap_or_default());
         error!("[API测试] 连接失败: {} - {}", status, error_text);
         Err(AppError::network(format!(
             "API连接测试失败: {} - {}",
@@ -2597,10 +3022,8 @@ fn lexical_normalize_path(path: &Path) -> std::path::PathBuf {
             Component::ParentDir => {
                 // 相对路径开头的连续 `..` 无处可弹，原样保留；
                 // 已到根（pop 返回 false）时按 POSIX 语义忽略。
-                let ends_with_parent = matches!(
-                    result.components().next_back(),
-                    Some(Component::ParentDir)
-                );
+                let ends_with_parent =
+                    matches!(result.components().next_back(), Some(Component::ParentDir));
                 if ends_with_parent || (!result.pop() && !result.has_root()) {
                     result.push(Component::ParentDir.as_os_str());
                 }
@@ -2998,10 +3421,7 @@ pub async fn import_template(
         // 覆盖的是内置模板 => 视为用户修改，内置模板升级导入不再覆盖它
         if existing.is_built_in {
             if let Err(e) = state.database.mark_template_user_modified(&existing.id) {
-                warn!(
-                    "标记内置模板 user_modified 失败: {} ({})",
-                    existing.id, e
-                );
+                warn!("标记内置模板 user_modified 失败: {} ({})", existing.id, e);
             }
         }
 
@@ -3069,13 +3489,12 @@ pub async fn import_custom_templates_bulk(
             // 与单模板导入（bug D2 修复）同源规则：先校验后写库、
             // 同名/同 ID 覆盖用原地 UPDATE（保持模板 ID 稳定），不再"先删后建"。
             // 目标行定位优先按 ID，其次按名称。
-            let target_existing_id = if existing_ids.contains(template_id)
-                || created_ids.contains(template_id)
-            {
-                Some(template_id.to_string())
-            } else {
-                existing_by_name.get(template_name).cloned()
-            };
+            let target_existing_id =
+                if existing_ids.contains(template_id) || created_ids.contains(template_id) {
+                    Some(template_id.to_string())
+                } else {
+                    existing_by_name.get(template_name).cloned()
+                };
 
             let fields: Vec<String> = template_value
                 .get("fields_json")
@@ -3173,17 +3592,12 @@ pub async fn import_custom_templates_bulk(
                 {
                     Ok(()) => {
                         imported += 1;
-                        existing_by_name
-                            .insert(template_name.to_string(), existing_id.clone());
+                        existing_by_name.insert(template_name.to_string(), existing_id.clone());
                         // 覆盖内置模板 => 视为用户修改，内置模板升级导入不再覆盖它
                         if builtin_ids.contains(&existing_id) {
-                            if let Err(e) =
-                                state.database.mark_template_user_modified(&existing_id)
+                            if let Err(e) = state.database.mark_template_user_modified(&existing_id)
                             {
-                                warn!(
-                                    "标记内置模板 user_modified 失败: {} ({})",
-                                    existing_id, e
-                                );
+                                warn!("标记内置模板 user_modified 失败: {} ({})", existing_id, e);
                             }
                         }
                     }
@@ -3931,7 +4345,10 @@ mod tests {
             "{{Text}} {{Extra}}",
         );
         let err = validate_template_request(&request).expect_err("缺少 cloze 占位符应校验失败");
-        assert!(err.to_string().contains("cloze"), "错误信息应指明 cloze 占位符缺失");
+        assert!(
+            err.to_string().contains("cloze"),
+            "错误信息应指明 cloze 占位符缺失"
+        );
     }
 
     #[test]
@@ -3945,12 +4362,8 @@ mod tests {
         assert!(validate_template_request(&cloze).is_ok());
 
         // Basic 模板引用未定义字段仅告警不阻断（兼容存量内置模板的历史写法）
-        let basic_with_unknown_ref = make_template_request(
-            "Basic",
-            &["Front"],
-            "{{Front}}",
-            "{{FrontSide}} {{Back}}",
-        );
+        let basic_with_unknown_ref =
+            make_template_request("Basic", &["Front"], "{{Front}}", "{{FrontSide}} {{Back}}");
         assert!(validate_template_request(&basic_with_unknown_ref).is_ok());
     }
 
@@ -4382,11 +4795,10 @@ pub fn validate_template_request(request: &CreateTemplateRequest) -> Result<()> 
     // front/back 模板引用的 {{Field}} 应在 fields 中定义。
     // 仅告警不阻断：存量内置模板（如 The Swiss 引用了未声明的 {{Back}}）存在历史写法，
     // 硬校验会阻断其版本升级导入；未定义字段渲染时表现为空白，不构成数据安全问题。
-    let referenced_fields: HashSet<String> =
-        extract_template_field_refs(&request.front_template)
-            .into_iter()
-            .chain(extract_template_field_refs(&request.back_template))
-            .collect();
+    let referenced_fields: HashSet<String> = extract_template_field_refs(&request.front_template)
+        .into_iter()
+        .chain(extract_template_field_refs(&request.back_template))
+        .collect();
     let unknown_refs: Vec<&String> = referenced_fields
         .iter()
         .filter(|field| !field_set.contains(*field))
@@ -4411,7 +4823,14 @@ pub fn validate_template_request(request: &CreateTemplateRequest) -> Result<()> 
 /// 并忽略 Anki 内置特殊占位符（FrontSide / Tags / Type / Deck / Subdeck / Card / Flags）。
 fn extract_template_field_refs(template: &str) -> HashSet<String> {
     const ANKI_SPECIAL_PLACEHOLDERS: &[&str] = &[
-        "FrontSide", "Tags", "Type", "Deck", "Subdeck", "Card", "Flags", "CardFlag",
+        "FrontSide",
+        "Tags",
+        "Type",
+        "Deck",
+        "Subdeck",
+        "Card",
+        "Flags",
+        "CardFlag",
     ];
     let mut refs = HashSet::new();
     let mut rest = template;
@@ -4449,20 +4868,39 @@ pub async fn get_default_template_id(state: tauri::State<'_, AppState>) -> Resul
 }
 // ============= 测试日志相关命令 =============
 
+fn structured_log_subdir(log_type: &str) -> Result<&'static str> {
+    let subdir = match log_type {
+        "backend" => "backend",
+        "frontend" => "frontend",
+        "debug" => "debug-logs",
+        "crash" => "crash",
+        _ => return Err(AppError::validation("不支持的日志类型")),
+    };
+    Ok(subdir)
+}
+
+fn resolve_structured_log_dir(app: &AppHandle, log_type: &str) -> Result<std::path::PathBuf> {
+    Ok(resolve_app_log_dir(app)?.join(structured_log_subdir(log_type)?))
+}
+
 /// 保存测试日志到文件
 #[tauri::command]
 pub async fn save_test_log(
     file_name: String,
     content: String,
     log_type: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<()> {
     use std::fs;
 
-    // 创建日志目录路径
-    let mut log_dir = state.file_manager.get_app_data_dir().to_path_buf();
-    log_dir.push("logs");
-    log_dir.push(&log_type);
+    if std::path::Path::new(&file_name)
+        .file_name()
+        .and_then(|name| name.to_str())
+        != Some(file_name.as_str())
+    {
+        return Err(AppError::validation("非法的日志文件名"));
+    }
+    let log_dir = resolve_structured_log_dir(&app, &log_type)?;
 
     // 确保目录存在
     if let Err(e) = fs::create_dir_all(&log_dir) {
@@ -4482,15 +4920,11 @@ pub async fn save_test_log(
 }
 /// 获取测试日志列表
 #[tauri::command]
-pub async fn get_test_logs(
-    log_type: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<String>> {
+pub async fn get_test_logs(log_type: String, app: AppHandle) -> Result<Vec<String>> {
     use std::fs;
 
-    let mut log_dir = state.file_manager.get_app_data_dir().to_path_buf();
-    log_dir.push("logs");
-    log_dir.push(&log_type);
+    let log_dir = resolve_structured_log_dir(&app, &log_type)?;
+    let log_subdir = structured_log_subdir(&log_type)?;
 
     if !log_dir.exists() {
         return Ok(vec![]);
@@ -4504,7 +4938,7 @@ pub async fn get_test_logs(
             if path.is_file() && path.extension().is_some_and(|ext| ext == "log") {
                 if let Some(file_name) = path.file_name() {
                     if let Some(file_name_str) = file_name.to_str() {
-                        let relative_path = format!("logs/{}/{}", log_type, file_name_str);
+                        let relative_path = format!("{}/{}", log_subdir, file_name_str);
                         log_files.push(relative_path);
                     }
                 }
@@ -4514,8 +4948,9 @@ pub async fn get_test_logs(
 
     // 按修改时间排序（最新的在前）
     log_files.sort_by(|a, b| {
-        let path_a = state.file_manager.get_app_data_dir().join(a);
-        let path_b = state.file_manager.get_app_data_dir().join(b);
+        let root = resolve_app_log_dir(&app).unwrap_or_default();
+        let path_a = root.join(a);
+        let path_b = root.join(b);
 
         let time_a = path_a
             .metadata()
@@ -4534,7 +4969,7 @@ pub async fn get_test_logs(
 
 /// 打开指定的日志文件
 #[tauri::command]
-pub async fn open_log_file(log_path: String, state: tauri::State<'_, AppState>) -> Result<()> {
+pub async fn open_log_file(log_path: String, app: AppHandle) -> Result<()> {
     use std::process::Command;
 
     // 防止路径遍历
@@ -4542,19 +4977,16 @@ pub async fn open_log_file(log_path: String, state: tauri::State<'_, AppState>) 
         return Err(AppError::validation("非法的文件路径"));
     }
 
-    let full_path = state.file_manager.get_app_data_dir().join(&log_path);
+    let log_root = resolve_app_log_dir(&app)?;
+    let full_path = log_root.join(&log_path);
 
     // 规范化路径并检查前缀
     let canonical_path = full_path
         .canonicalize()
         .map_err(|_| AppError::not_found(format!("日志文件不存在: {}", log_path)))?;
-    let app_data_dir = state
-        .file_manager
-        .get_app_data_dir()
-        .canonicalize()
-        .unwrap_or_else(|_| state.file_manager.get_app_data_dir().to_path_buf());
+    let canonical_log_root = log_root.canonicalize().unwrap_or(log_root);
 
-    if !canonical_path.starts_with(&app_data_dir) {
+    if !canonical_path.starts_with(&canonical_log_root) {
         return Err(AppError::validation("非法的文件路径访问"));
     }
 
@@ -4568,17 +5000,7 @@ pub async fn open_log_file(log_path: String, state: tauri::State<'_, AppState>) 
             .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .spawn()
         {
-            // 如果notepad失败，尝试默认程序
-            if let Err(e2) = Command::new("cmd")
-                .args(&["/C", "start", "", canonical_path.to_str().unwrap_or("")])
-                .creation_flags(0x08000000)
-                .spawn()
-            {
-                return Err(AppError::file_system(format!(
-                    "打开日志文件失败: {} (备用方案也失败: {})",
-                    e, e2
-                )));
-            }
+            return Err(AppError::file_system(format!("打开日志文件失败: {}", e)));
         }
     }
 
@@ -4596,49 +5018,29 @@ pub async fn open_log_file(log_path: String, state: tauri::State<'_, AppState>) 
         }
     }
 
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    return Err(AppError::validation(
+        "移动端不支持直接打开日志文件，请导出诊断包",
+    ));
+
     Ok(())
 }
 /// 打开日志文件夹
 #[tauri::command]
-pub async fn open_logs_folder(log_type: String, state: tauri::State<'_, AppState>) -> Result<()> {
+pub async fn open_logs_folder(log_type: String, app: AppHandle) -> Result<()> {
     use std::process::Command;
 
-    // 防止路径遍历
-    if log_type.contains("..") || log_type.starts_with("/") || log_type.starts_with("\\") {
-        return Err(AppError::validation("非法的文件路径"));
-    }
-
-    let mut log_dir = state.file_manager.get_app_data_dir().to_path_buf();
-    log_dir.push("logs");
-    log_dir.push(&log_type);
-
-    // 规范化路径并检查前缀
-    let canonical_path = if log_dir.exists() {
-        log_dir
-            .canonicalize()
-            .map_err(|_| AppError::not_found("日志目录路径无效"))?
-    } else {
-        // 如果目录不存在，我们先不canonicalize，而是检查其逻辑路径
-        // 但为了安全，我们最好先创建它，然后再 canonicalize
-        std::fs::create_dir_all(&log_dir)
-            .map_err(|_| AppError::file_system("创建日志目录失败".to_string()))?;
-        log_dir
-            .canonicalize()
-            .map_err(|_| AppError::not_found("日志目录路径无效"))?
+    let root = resolve_app_log_dir(&app)?;
+    let target_dir = match log_type.as_str() {
+        // 后端主日志 deep-student.log 位于根目录，旧实现打开空的 backend/ 是问题根因。
+        "all" | "backend" => root,
+        "frontend" => root.join("frontend"),
+        "debug" => root.join("debug-logs"),
+        "crash" => root.join("crash"),
+        _ => return Err(AppError::validation("不支持的日志类型")),
     };
-
-    let app_data_dir = state
-        .file_manager
-        .get_app_data_dir()
-        .canonicalize()
-        .unwrap_or_else(|_| state.file_manager.get_app_data_dir().to_path_buf());
-
-    if !canonical_path.starts_with(&app_data_dir) {
-        return Err(AppError::validation("非法的文件路径访问"));
-    }
-
-    // 使用规范化后的路径
-    let target_dir = canonical_path;
+    std::fs::create_dir_all(&target_dir)
+        .map_err(|e| AppError::file_system(format!("创建日志目录失败: {}", e)))?;
 
     // 根据操作系统选择合适的命令打开文件夹
     #[cfg(target_os = "windows")]
@@ -4662,6 +5064,11 @@ pub async fn open_logs_folder(log_type: String, state: tauri::State<'_, AppState
         }
     }
 
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    return Err(AppError::validation(
+        "移动端不支持打开日志目录，请导出诊断包",
+    ));
+
     Ok(())
 }
 
@@ -4678,6 +5085,43 @@ pub struct FrontendLogPayload {
     pub user_agent: Option<String>,
     pub extra: Option<serde_json::Value>,
     pub kind: Option<String>,
+}
+
+fn bounded_frontend_text(value: &str, max_chars: usize) -> String {
+    let redacted = crate::debug_log_service::redact_sensitive_text(value);
+    let mut chars = redacted.chars();
+    let output: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{}…[truncated]", output)
+    } else {
+        output
+    }
+}
+
+fn bounded_frontend_json(value: &serde_json::Value, depth: usize) -> serde_json::Value {
+    if depth >= 4 {
+        return serde_json::Value::String("[max depth reached]".to_string());
+    }
+    match crate::debug_log_service::redact_sensitive_fields(value) {
+        serde_json::Value::String(value) => {
+            serde_json::Value::String(bounded_frontend_text(&value, 8_000))
+        }
+        serde_json::Value::Array(values) => serde_json::Value::Array(
+            values
+                .iter()
+                .take(20)
+                .map(|child| bounded_frontend_json(child, depth + 1))
+                .collect(),
+        ),
+        serde_json::Value::Object(values) => serde_json::Value::Object(
+            values
+                .iter()
+                .take(40)
+                .map(|(key, child)| (key.clone(), bounded_frontend_json(child, depth + 1)))
+                .collect(),
+        ),
+        other => other,
+    }
 }
 
 impl FrontendLogPayload {
@@ -4705,17 +5149,21 @@ pub async fn report_frontend_log(payload: FrontendLogPayload) -> Result<()> {
         .kind
         .clone()
         .unwrap_or_else(|| "CLIENT_ERROR".to_string());
+    let kind = bounded_frontend_text(&kind, 128);
 
     let data = serde_json::json!({
-        "message": payload.message,
-        "stack": payload.stack,
-        "component": payload.component,
-        "route": payload.route,
-        "url": payload.url,
+        "message": bounded_frontend_text(&payload.message, 16_000),
+        "stack": payload.stack.as_deref().map(|value| bounded_frontend_text(value, 64_000)),
+        "component": payload.component.as_deref().map(|value| bounded_frontend_text(value, 256)),
+        "route": payload.route.as_deref().map(|value| bounded_frontend_text(value, 2_000)),
+        "url": payload.url.as_deref().map(|value| {
+            let without_query = value.split(['?', '#']).next().unwrap_or(value);
+            bounded_frontend_text(without_query, 2_000)
+        }),
         "line": payload.line,
         "column": payload.column,
-        "user_agent": payload.user_agent,
-        "extra": payload.extra,
+        "user_agent": payload.user_agent.as_deref().map(|value| bounded_frontend_text(value, 1_000)),
+        "extra": payload.extra.as_ref().map(|value| bounded_frontend_json(value, 0)),
     });
 
     if let Some(logger) = crate::debug_logger::get_global_logger() {
@@ -6622,66 +7070,73 @@ pub async fn qbank_get_source_images(
     let vfs_db = state
         .vfs_db
         .as_ref()
+        .cloned()
         .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
 
-    // 从 exam_sheet 的 metadata_json 中读取 source_image_hashes
-    let exam = crate::vfs::repos::VfsExamRepo::get_exam_sheet(vfs_db, &examId)
-        .map_err(|e| AppError::database(format!("获取题目集失败: {}", e)))?
-        .ok_or_else(|| AppError::not_found("题目集不存在"))?;
+    // 阻塞式 SQLite 查询 + 大文件读取 + base64 编码整体移出异步线程，
+    // 避免多页大图卡住 Tokio runtime
+    tokio::task::spawn_blocking(move || -> Result<Vec<SourceImageInfo>> {
+        // 从 exam_sheet 的 metadata_json 中读取 source_image_hashes
+        let exam = crate::vfs::repos::VfsExamRepo::get_exam_sheet(&vfs_db, &examId)
+            .map_err(|e| AppError::database(format!("获取题目集失败: {}", e)))?
+            .ok_or_else(|| AppError::not_found("题目集不存在"))?;
 
-    let mut source_hashes: Vec<String> = exam
-        .metadata_json
-        .get("source_image_hashes")
-        .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
-        .unwrap_or_default();
+        let mut source_hashes: Vec<String> = exam
+            .metadata_json
+            .get("source_image_hashes")
+            .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
+            .unwrap_or_default();
 
-    // ★ 回退：OCR 上传流程不写 source_image_hashes，图片存在 preview_json pages 的 blob_hash 中
-    if source_hashes.is_empty() {
-        if let Some(pages) = exam.preview_json.get("pages").and_then(|v| v.as_array()) {
-            for page in pages {
-                if let Some(hash) = page.get("blob_hash").and_then(|v| v.as_str()) {
-                    if !hash.is_empty() {
-                        source_hashes.push(hash.to_string());
+        // ★ 回退：OCR 上传流程不写 source_image_hashes，图片存在 preview_json pages 的 blob_hash 中
+        if source_hashes.is_empty() {
+            if let Some(pages) = exam.preview_json.get("pages").and_then(|v| v.as_array()) {
+                for page in pages {
+                    if let Some(hash) = page.get("blob_hash").and_then(|v| v.as_str()) {
+                        if !hash.is_empty() {
+                            source_hashes.push(hash.to_string());
+                        }
                     }
                 }
             }
         }
-    }
 
-    if source_hashes.is_empty() {
-        return Ok(Vec::new());
-    }
+        if source_hashes.is_empty() {
+            return Ok(Vec::new());
+        }
 
-    let mut results = Vec::new();
-    for (idx, hash) in source_hashes.iter().enumerate() {
-        let blob_path = match VfsBlobRepo::get_blob_path(vfs_db, hash) {
-            Ok(Some(p)) => p,
-            _ => continue,
-        };
-        let data = match std::fs::read(&blob_path) {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
-        let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
-        // 检测实际 MIME 类型（通过魔数字节头）
-        let mime = if data.starts_with(b"\x89PNG") {
-            "image/png"
-        } else if data.starts_with(b"\xFF\xD8\xFF") {
-            "image/jpeg"
-        } else if data.starts_with(b"RIFF") && data.len() > 12 && &data[8..12] == b"WEBP" {
-            "image/webp"
-        } else {
-            "image/png"
-        };
-        let data_url = format!("data:{};base64,{}", mime, b64);
-        results.push(SourceImageInfo {
-            blob_hash: hash.clone(),
-            data_url,
-            page_index: idx,
-        });
-    }
+        let mut results = Vec::new();
+        for (idx, hash) in source_hashes.iter().enumerate() {
+            let blob_path = match VfsBlobRepo::get_blob_path(&vfs_db, hash) {
+                Ok(Some(p)) => p,
+                _ => continue,
+            };
+            let data = match std::fs::read(&blob_path) {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+            // 检测实际 MIME 类型（通过魔数字节头）
+            let mime = if data.starts_with(b"\x89PNG") {
+                "image/png"
+            } else if data.starts_with(b"\xFF\xD8\xFF") {
+                "image/jpeg"
+            } else if data.starts_with(b"RIFF") && data.len() > 12 && &data[8..12] == b"WEBP" {
+                "image/webp"
+            } else {
+                "image/png"
+            };
+            let data_url = format!("data:{};base64,{}", mime, b64);
+            results.push(SourceImageInfo {
+                blob_hash: hash.clone(),
+                data_url,
+                page_index: idx,
+            });
+        }
 
-    Ok(results)
+        Ok(results)
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("读取源图片任务失败: {}", e)))?
 }
 
 /// 裁剪请求参数
@@ -6718,40 +7173,51 @@ pub async fn qbank_crop_source_image(
         .map_err(|e| AppError::database(format!("获取 Blob 路径失败: {}", e)))?
         .ok_or_else(|| AppError::not_found("源图片 Blob 不存在"))?;
 
-    let img_data = std::fs::read(&blob_path)
-        .map_err(|e| AppError::file_system(format!("读取源图片失败: {}", e)))?;
+    // 2/3. 文件读取 + 解码/裁剪/PNG 编码是重 IO/CPU 操作，移出异步线程执行
+    let (crop_x_ratio, crop_y_ratio, crop_w_ratio, crop_h_ratio) = (
+        request.crop_x,
+        request.crop_y,
+        request.crop_width,
+        request.crop_height,
+    );
+    let buf = tokio::task::spawn_blocking(move || -> Result<Vec<u8>> {
+        let img_data = std::fs::read(&blob_path)
+            .map_err(|e| AppError::file_system(format!("读取源图片失败: {}", e)))?;
 
-    // 2. 解码图片并裁剪（使用 image::imageops::crop_imm 匹配项目 image 0.24 API）
-    let img = image::load_from_memory(&img_data)
-        .map_err(|e| AppError::validation(format!("图片解码失败: {}", e)))?;
-    let rgba = img.to_rgba8();
+        // 解码图片并裁剪（使用 image::imageops::crop_imm 匹配项目 image 0.24 API）
+        let img = image::load_from_memory(&img_data)
+            .map_err(|e| AppError::validation(format!("图片解码失败: {}", e)))?;
+        let rgba = img.to_rgba8();
 
-    let (w, h) = (rgba.width(), rgba.height());
-    let crop_x = (request.crop_x * w as f64).round() as u32;
-    let crop_y = (request.crop_y * h as f64).round() as u32;
-    let crop_w = (request.crop_width * w as f64).round().max(1.0) as u32;
-    let crop_h = (request.crop_height * h as f64).round().max(1.0) as u32;
+        let (w, h) = (rgba.width(), rgba.height());
+        let crop_x = (crop_x_ratio * w as f64).round() as u32;
+        let crop_y = (crop_y_ratio * h as f64).round() as u32;
+        let crop_w = (crop_w_ratio * w as f64).round().max(1.0) as u32;
+        let crop_h = (crop_h_ratio * h as f64).round().max(1.0) as u32;
 
-    // 边界保护
-    let crop_x = crop_x.min(w.saturating_sub(1));
-    let crop_y = crop_y.min(h.saturating_sub(1));
-    let crop_w = crop_w.min(w - crop_x);
-    let crop_h = crop_h.min(h - crop_y);
+        // 边界保护
+        let crop_x = crop_x.min(w.saturating_sub(1));
+        let crop_y = crop_y.min(h.saturating_sub(1));
+        let crop_w = crop_w.min(w - crop_x).max(1);
+        let crop_h = crop_h.min(h - crop_y).max(1);
 
-    let crop = image::imageops::crop_imm(&rgba, crop_x, crop_y, crop_w, crop_h);
-    let cropped = crop.to_image();
+        let crop = image::imageops::crop_imm(&rgba, crop_x, crop_y, crop_w, crop_h);
+        let cropped = crop.to_image();
 
-    if cropped.width() == 0 || cropped.height() == 0 {
-        return Err(AppError::validation("裁剪区域无效"));
-    }
+        if cropped.width() == 0 || cropped.height() == 0 {
+            return Err(AppError::validation("裁剪区域无效"));
+        }
 
-    // 3. 编码为 PNG（写入内存缓冲区）
-    let dyn_img = image::DynamicImage::ImageRgba8(cropped);
-    let mut cursor = std::io::Cursor::new(Vec::new());
-    dyn_img
-        .write_to(&mut cursor, image::ImageOutputFormat::Png)
-        .map_err(|e| AppError::validation(format!("裁剪图片编码失败: {}", e)))?;
-    let buf = cursor.into_inner();
+        // 编码为 PNG（写入内存缓冲区）
+        let dyn_img = image::DynamicImage::ImageRgba8(cropped);
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        dyn_img
+            .write_to(&mut cursor, image::ImageOutputFormat::Png)
+            .map_err(|e| AppError::validation(format!("裁剪图片编码失败: {}", e)))?;
+        Ok(cursor.into_inner())
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("图片裁剪任务失败: {}", e)))??;
 
     // 4. 存入 VFS Blob
     let blob = VfsBlobRepo::store_blob(vfs_db, &buf, Some("image/png"), Some("png"))

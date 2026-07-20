@@ -166,7 +166,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         provider_type: "moonshot",
         auth_mode: None,
         base_url: "https://api.moonshot.cn/v1",
-        notes: "Kimi API。可用模型: kimi-k2.6(旗舰/多模态), kimi-k2.7-code(编程/强制思考), kimi-k2.5(多模态), moonshot-v1 系列。kimi-k2 全系与 kimi-k2-thinking 已于 2026-05-25 停服、kimi-latest 已于 2026-01-28 停服。注意: K2.5/K2.6 采样参数锁定，自定义 temperature/top_p 会直接报错。",
+        notes: "Kimi API。可用模型: kimi-k3(1M/多模态/强制最高推理), kimi-k2.6(多模态), kimi-k2.7-code(编程/强制思考), kimi-k2.5(多模态), moonshot-v1 系列。kimi-k2 全系与 kimi-k2-thinking 已于 2026-05-25 停服、kimi-latest 已于 2026-01-28 停服。注意: K3 不接受 K2.x thinking 对象；K2.5/K2.6 采样参数锁定。",
         max_tokens_limit: None,
         website_url: "https://platform.moonshot.cn",
     },
@@ -177,7 +177,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         provider_type: "openai",
         auth_mode: None,
         base_url: "https://api.openai.com/v1",
-        notes: "OpenAI 官方 API。根据 OpenAI 官方模型文档，当前 GPT-5.x 家族可用模型包括: gpt-5.5, gpt-5.5-pro, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano；全部模型页仍列出 gpt-5.2, gpt-5.2-pro, gpt-5.1, gpt-5, gpt-5-pro, gpt-5-mini, gpt-5-nano，以及 o3-pro/o3/o4-mini。o 系列已进入退役期: o1/o3-mini/o4-mini 于 2026-10-23 关停，o3/o3-pro 于 2026-12-11 关停。默认协议建议使用 Responses。",
+        notes: "OpenAI 官方 API。当前主线包括 gpt-5.6、gpt-5.5/pro、gpt-5.4/pro/mini/nano；全部模型页仍列出 gpt-5.2/pro、gpt-5.1、gpt-5/pro/mini/nano，以及 o3-pro/o3/o4-mini。o 系列已进入退役期: o1/o3-mini/o4-mini 于 2026-10-23 关停，o3/o3-pro 于 2026-12-11 关停。默认协议建议使用 Responses。",
         max_tokens_limit: None,
         website_url: "https://platform.openai.com",
     },
@@ -263,7 +263,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         is_multimodal: true,
         is_reasoning: true,
         supports_tools: true,
-        max_output_tokens: 32768,
+        max_output_tokens: 65536,
         temperature: 0.7,
     },
     BuiltinModel {
@@ -530,6 +530,17 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         max_output_tokens: 16384,
         temperature: 1.0,
     },
+    BuiltinModel {
+        id: "builtin-minimax-m2.7",
+        vendor_id: "builtin-minimax",
+        label: "MiniMax M2.7 (高性价比推理)",
+        model: "MiniMax-M2.7",
+        is_multimodal: false,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 32768,
+        temperature: 1.0,
+    },
     // M2.5 系列（2026-02-12 发布）
     BuiltinModel {
         id: "builtin-minimax-m2.5",
@@ -567,6 +578,17 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     },
     // ===== 月之暗面模型 =====
     // 注：kimi-k2 全系 / kimi-k2-thinking（2026-05-25 停服）与 kimi-latest（2026-01-28 停服）已移除。
+    BuiltinModel {
+        id: "builtin-kimi-k3",
+        vendor_id: "builtin-moonshot",
+        label: "Kimi K3 (旗舰/1M/多模态)",
+        model: "kimi-k3",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 131072,
+        temperature: 1.0,
+    },
     // K2.6 通用旗舰（256K 上下文，原生多模态，思考/非思考双模式默认思考）
     BuiltinModel {
         id: "builtin-kimi-k2.6",
@@ -615,11 +637,23 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         temperature: 0.7,
     },
     // ===== OpenAI 模型 (GPT-5.x 和 o 系列) =====
-    // --- GPT-5.5 系列 (当前旗舰) ---
+    // --- GPT-5.6 系列 (当前旗舰) ---
+    BuiltinModel {
+        id: "builtin-gpt-5.6",
+        vendor_id: "builtin-openai",
+        label: "GPT-5.6 (当前旗舰)",
+        model: "gpt-5.6",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
+    // --- GPT-5.5 系列 ---
     BuiltinModel {
         id: "builtin-gpt-5.5",
         vendor_id: "builtin-openai",
-        label: "GPT-5.5 (当前旗舰)",
+        label: "GPT-5.5 (上一代旗舰)",
         model: "gpt-5.5",
         is_multimodal: true,
         is_reasoning: true,
@@ -1226,18 +1260,29 @@ pub(crate) fn deepseek_context_window(model: &str) -> Option<u32> {
         Some(1_000_000)
     } else if matches!(normalized.as_str(), "mimo-v2.5-pro" | "mimo-v2.5") {
         Some(1_000_000)
+    } else if normalized == "gpt-5.6" {
+        Some(1_050_000)
+    } else if normalized == "kimi-k3" {
+        Some(1_000_000)
     } else if matches!(
         normalized.as_str(),
         "kimi-k2.6" | "kimi-k2.7-code" | "kimi-k2.7-code-highspeed" | "kimi-k2.5"
     ) {
         // Kimi K2 系 256K 上下文
         Some(262_144)
-    } else if normalized.starts_with("doubao-seed-2-1-") || normalized == "doubao-seed-evolving" {
-        // 豆包 Seed 2.1 / Evolving 256K 上下文
+    } else if normalized == "doubao-seed-evolving" {
+        Some(1_000_000)
+    } else if normalized.starts_with("doubao-seed-2-1-") {
+        // 豆包 Seed 2.1 为 256K 上下文
         Some(262_144)
     } else if matches!(
         normalized.as_str(),
-        "glm-5.2" | "minimax-m3" | "qwen3.7-max" | "qwen3.7-plus" | "qwen3.6-flash"
+        "glm-5.2"
+            | "minimax-m3"
+            | "minimax-m2.7"
+            | "qwen3.7-max"
+            | "qwen3.7-plus"
+            | "qwen3.6-flash"
     ) {
         Some(1_000_000)
     } else if normalized == "glm-5.1" {

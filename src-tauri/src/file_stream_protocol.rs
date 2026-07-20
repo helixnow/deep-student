@@ -36,12 +36,9 @@ const ALLOWED_EXTENSIONS: &[&str] = &[
     // 音频
     "mp3", "wav", "ogg", "oga", "m4a", "flac", "aac", "opus", "weba", "aiff", "aif", "caf",
     // 视频
-    "mp4", "webm", "mov", "m4v", "ogv", "mpg", "mpeg", "3gp", "mkv", "avi",
-    // 图片
-    "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif", "heic",
-    // 文档兜底
-    "pdf",
-    // 通用 blob
+    "mp4", "webm", "mov", "m4v", "ogv", "mpg", "mpeg", "3gp", "mkv", "avi", // 图片
+    "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif", "heic", // 文档兜底
+    "pdf",  // 通用 blob
     "bin",
 ];
 
@@ -662,10 +659,7 @@ fn parse_range_header(range_str: &str, file_size: u64) -> Option<(u64, u64)> {
 /// 校验失败一律返回 `Ok(false)`（不可达是常态而非异常）；
 /// `Result<bool, String>` 签名与前端契约保持一致。
 #[tauri::command]
-pub async fn filestream_check_access(
-    app: tauri::AppHandle,
-    path: String,
-) -> Result<bool, String> {
+pub async fn filestream_check_access(app: tauri::AppHandle, path: String) -> Result<bool, String> {
     let Ok(canonical) = std::fs::canonicalize(Path::new(&path)) else {
         return Ok(false);
     };
@@ -943,10 +937,7 @@ mod tests {
         let response =
             handle_asset_protocol(&request, &allowed_dirs, &blob_dirs).expect("response");
         assert_eq!(response.status(), tauri::http::StatusCode::OK);
-        assert_eq!(
-            response.headers().get("Content-Type").unwrap(),
-            "video/mp4"
-        );
+        assert_eq!(response.headers().get("Content-Type").unwrap(), "video/mp4");
         assert_eq!(response.body().len(), 4096);
 
         // Range GET → 206 + Content-Range
@@ -958,10 +949,7 @@ mod tests {
             .expect("Range request");
         let response =
             handle_asset_protocol(&request, &allowed_dirs, &blob_dirs).expect("response");
-        assert_eq!(
-            response.status(),
-            tauri::http::StatusCode::PARTIAL_CONTENT
-        );
+        assert_eq!(response.status(), tauri::http::StatusCode::PARTIAL_CONTENT);
         assert_eq!(
             response.headers().get("Content-Range").unwrap(),
             "bytes 0-1023/4096"
@@ -1014,10 +1002,7 @@ mod tests {
         let response =
             handle_asset_protocol(&request, &allowed_dirs, &blob_dirs).expect("response");
         assert_eq!(response.status(), tauri::http::StatusCode::OK);
-        assert_eq!(
-            response.headers().get("Content-Type").unwrap(),
-            "video/mp4"
-        );
+        assert_eq!(response.headers().get("Content-Type").unwrap(), "video/mp4");
 
         // 非法 mime 覆盖被忽略，回退 octet-stream
         let request = make_get_request(&format!(
@@ -1054,7 +1039,8 @@ mod tests {
         let blob_dirs: Vec<PathBuf> = Vec::new();
 
         let get = make_get_request(&uri);
-        let response = handle_asset_protocol(&get, &allowed_dirs, &blob_dirs).expect("GET response");
+        let response =
+            handle_asset_protocol(&get, &allowed_dirs, &blob_dirs).expect("GET response");
         assert_eq!(
             response.status(),
             tauri::http::StatusCode::PAYLOAD_TOO_LARGE

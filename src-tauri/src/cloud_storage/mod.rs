@@ -30,6 +30,7 @@ mod traits;
 mod webdav;
 
 pub use config::{CloudStorageConfig, FtpConfig, S3Config, StorageProvider, WebDavConfig};
+pub(crate) use sync_manager::normalize_device_id;
 pub use sync_manager::{
     generate_device_id_after_restore, get_device_id, persist_device_id_after_restore,
     rotate_device_id_after_restore, BackupVersion, CloudManifest, CloudSyncManager, DownloadResult,
@@ -247,9 +248,14 @@ pub async fn cloud_sync_upload(
     note: Option<String>,
 ) -> Result<UploadResult> {
     crate::secure_store::hydrate_cloud_config(&app_handle, &mut config);
+    let _operation_permit = crate::backup_common::BACKUP_GLOBAL_LIMITER
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| AppError::internal("另一个备份、恢复或云同步操作正在进行".to_string()))?;
+
     // 如果配置了加密密码，先把 ZIP 加密到临时文件再上传
     // 临时文件在 ZIP 附近创建，上传成功后删除
-    let mut encrypted_temp: Option<std::path::PathBuf> = None;
+    let mut encrypted_temp: Option<tempfile::TempPath> = None;
     let actual_upload_path: std::path::PathBuf = if let Some(pwd) = config
         .encryption_password
         .as_deref()
@@ -259,11 +265,20 @@ pub async fn cloud_sync_upload(
         // [F14] 流式分块加密到临时文件（同目录 → 同一文件系统，rename/上传快），
         // 内存占用恒定，避免多 GB 备份一次性读入内存导致 OOM。
         let original = std::path::Path::new(&zip_path);
-        let temp_path = original.with_extension("zip.dsbk");
+        let parent = original
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let temp_path = tempfile::Builder::new()
+            .prefix(".cloud-upload-")
+            .suffix(".dsbk")
+            .tempfile_in(parent)
+            .map_err(|e| AppError::file_system(format!("创建加密临时文件失败: {}", e)))?
+            .into_temp_path();
         crate::crypto::backup_crypto::encrypt_backup_file(original, &temp_path, pwd)
             .map_err(|e| AppError::internal(format!("加密备份失败: {}", e)))?;
-        encrypted_temp = Some(temp_path.clone());
-        temp_path
+        let path = temp_path.to_path_buf();
+        encrypted_temp = Some(temp_path);
+        path
     } else {
         std::path::Path::new(&zip_path).to_path_buf()
     };
@@ -311,10 +326,8 @@ pub async fn cloud_sync_upload(
         .upload_with_progress(&actual_upload_path, app_version, note, Some(progress_cb))
         .await;
 
-    // 无论成功失败都清理临时加密文件
-    if let Some(temp) = encrypted_temp {
-        let _ = std::fs::remove_file(&temp);
-    }
+    // TempPath 在成功和错误路径都会自动清理，且每次操作使用独立随机文件名。
+    drop(encrypted_temp);
 
     let result = upload_result?;
 
@@ -344,6 +357,10 @@ pub async fn cloud_sync_download(
     local_dir: String,
 ) -> Result<DownloadResult> {
     crate::secure_store::hydrate_cloud_config(&app_handle, &mut config);
+    let _operation_permit = crate::backup_common::BACKUP_GLOBAL_LIMITER
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| AppError::internal("另一个备份、恢复或云同步操作正在进行".to_string()))?;
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
 
@@ -416,16 +433,19 @@ pub async fn cloud_sync_download(
         let parent = downloaded_path
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
-        let temp_path = parent.join(format!(".decrypt-{}.tmp", uuid::Uuid::new_v4().simple()));
+        let temp_path = tempfile::Builder::new()
+            .prefix(".cloud-decrypt-")
+            .suffix(".tmp")
+            .tempfile_in(parent)
+            .map_err(|e| AppError::file_system(format!("创建解密临时文件失败: {}", e)))?
+            .into_temp_path();
         crate::crypto::backup_crypto::decrypt_backup_file(downloaded_path, &temp_path, pwd)
             .map_err(|e| {
-                let _ = std::fs::remove_file(&temp_path);
                 AppError::validation(format!("解密备份失败（密码错或数据损坏）: {}", e))
             })?;
-        std::fs::rename(&temp_path, downloaded_path).map_err(|e| {
-            let _ = std::fs::remove_file(&temp_path);
-            AppError::file_system(format!("保存解密后 ZIP 失败: {}", e))
-        })?;
+        temp_path
+            .persist(downloaded_path)
+            .map_err(|e| AppError::file_system(format!("保存解密后 ZIP 失败: {}", e.error)))?;
     }
 
     emit_sync_progress(
@@ -451,6 +471,10 @@ pub async fn cloud_sync_delete_version(
     version_id: String,
 ) -> Result<()> {
     crate::secure_store::hydrate_cloud_config(&app, &mut config);
+    let _operation_permit = crate::backup_common::BACKUP_GLOBAL_LIMITER
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| AppError::internal("另一个备份、恢复或云同步操作正在进行".to_string()))?;
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
     manager.delete_version(&version_id).await

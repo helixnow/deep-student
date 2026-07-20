@@ -101,6 +101,10 @@ pub struct BrowserSession {
     pub alive: bool,
     /// 用户显式接管时间戳（ACR R1-05）；冷却期内 Agent 操作类工具返回 USER_TAKEOVER
     pub user_takeover_at: Option<DateTime<Utc>>,
+    /// ACR 4.0（A7）：用户接管后 Agent 首次成功 claim 时需在回执中提示的闩锁。
+    /// `take_over()` 置位；由执行器经 `consume_takeover_notice` 消费清除，
+    /// 与 15s 冷却（`user_takeover_at`）互不影响。
+    pub takeover_notice_pending: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -133,6 +137,7 @@ impl BrowserSession {
             loading: true,
             alive: true,
             user_takeover_at: None,
+            takeover_notice_pending: false,
             created_at: now,
             updated_at: now,
         }
@@ -273,7 +278,17 @@ impl BrowserSession {
     pub fn take_over(&mut self) {
         self.control_mode = ControlMode::User;
         self.user_takeover_at = Some(Utc::now());
+        // ACR 4.0（A7）：冷却结束后 Agent 首次 claim 的回执需要告知用户
+        self.takeover_notice_pending = true;
         self.updated_at = Utc::now();
+    }
+
+    /// ACR 4.0（A7）：消费「用户接管后首次 claim」提示闩锁（返回消费前的值）。
+    /// 只在 Agent 成功 claim 控制权后由执行器调用，用于回执提示字段。
+    pub fn consume_takeover_notice(&mut self) -> bool {
+        let pending = self.takeover_notice_pending;
+        self.takeover_notice_pending = false;
+        pending
     }
 
     /// 是否仍处于用户接管冷却期（过期则清除闩锁并返回 false）
@@ -356,6 +371,35 @@ mod tests {
         assert_eq!(s.control_mode, ControlMode::Agent);
         assert!(s.user_takeover_at.is_none());
         assert!(!s.is_blocked_by_user_takeover());
+    }
+
+    /// ACR 4.0（A7）：接管提示闩锁——take_over 置位、claim 不清除、消费一次即清
+    #[test]
+    fn takeover_notice_latch_survives_claim_until_consumed() {
+        let mut s = BrowserSession::new(
+            "bs_1".into(),
+            "https://a.example/".into(),
+            PathBuf::from("/tmp/p"),
+            None,
+            None,
+        );
+        assert!(!s.takeover_notice_pending);
+        assert!(!s.consume_takeover_notice());
+
+        s.take_over();
+        assert!(s.takeover_notice_pending);
+
+        // 冷却过期清除 user_takeover_at，但提示闩锁保留给首次 claim 的回执
+        s.user_takeover_at =
+            Some(Utc::now() - chrono::Duration::seconds(USER_TAKEOVER_BLOCK_SECS + 1));
+        assert!(!s.is_blocked_by_user_takeover());
+        assert!(s.takeover_notice_pending);
+
+        // Agent claim（set_control_mode）本身不消费闩锁——由执行器显式消费
+        s.set_control_mode(ControlMode::Agent);
+        assert!(s.takeover_notice_pending);
+        assert!(s.consume_takeover_notice());
+        assert!(!s.consume_takeover_notice());
     }
 
     #[test]

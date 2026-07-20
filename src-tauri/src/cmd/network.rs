@@ -46,7 +46,11 @@ pub async fn network_probe(
         return Err(format!("仅支持 http/https URL: {}", url));
     }
 
-    let timeout = Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS).clamp(100, MAX_TIMEOUT_MS));
+    let timeout = Duration::from_millis(
+        timeout_ms
+            .unwrap_or(DEFAULT_TIMEOUT_MS)
+            .clamp(100, MAX_TIMEOUT_MS),
+    );
     let use_get = matches!(method.as_deref(), Some(m) if m.eq_ignore_ascii_case("GET"));
 
     let client = reqwest::Client::builder()

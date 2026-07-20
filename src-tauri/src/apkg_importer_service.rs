@@ -23,6 +23,21 @@ pub const APKG_ERROR_LIMIT_EXCEEDED: &str = "apkg_limit_exceeded";
 pub const APKG_ERROR_COLLECTION_MISSING: &str = "apkg_collection_missing";
 pub const APKG_ERROR_COLLECTION_INVALID: &str = "apkg_collection_invalid";
 pub const APKG_ERROR_DATABASE: &str = "apkg_database";
+/// 历史错误码：现代 anki21b 包已支持直接导入，保留常量仅为兼容旧前端的错误映射。
+pub const APKG_ERROR_MODERN_SCHEMA: &str = "apkg_modern_schema_unsupported";
+pub const APKG_ERROR_COLPKG: &str = "colpkg_unsupported";
+
+/// 导入时注入的 Anki 调度信息元数据键。
+/// 与 apkg_exporter_service 的回写读取（card_sched_restore）严格一致。
+pub const ANKI_SCHED_METADATA_KEYS: [&str; 7] = [
+    "AnkiSchedType",
+    "AnkiQueue",
+    "AnkiDue",
+    "AnkiIvl",
+    "AnkiFactor",
+    "AnkiReps",
+    "AnkiLapses",
+];
 
 pub const MAX_APKG_ARCHIVE_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_ZIP_ENTRIES: usize = 10_000;
@@ -55,25 +70,16 @@ pub struct ApkgImportResult {
     pub imported_cards: usize,
     pub imported_templates: usize,
     pub media_skipped: usize,
-    #[serde(skip)]
-    pub card_ids: Vec<String>,
-}
-
-/// 带媒体/告警明细的导入结果（`import_*_detailed` 返回）。
-/// 序列化为 `ApkgImportResult` 的字段超集（flatten），前端向后兼容；
-/// 旧调用方继续使用 `import_path` / `import_bytes` 拿到旧结构。
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct ApkgImportDetailedResult {
-    #[serde(flatten)]
-    pub result: ApkgImportResult,
     /// 成功落盘到应用媒体目录的媒体文件数。
     /// 未配置媒体目录时恒为 0（此时所有声明媒体计入 media_skipped）。
     #[serde(default)]
     pub media_imported: usize,
     /// 结构化导入告警（媒体/模板导入的非致命问题）。
+    /// 空列表不序列化，保持旧前端契约整洁。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+    #[serde(skip)]
+    pub card_ids: Vec<String>,
 }
 
 pub struct ApkgImporterService {
@@ -102,20 +108,14 @@ impl ApkgImporterService {
         path: &Path,
         session_id: Option<&str>,
     ) -> Result<ApkgImportResult, AppError> {
-        self.import_path_detailed(path, session_id)
-            .map(|detailed| detailed.result)
-    }
-
-    pub fn import_path_detailed(
-        &self,
-        path: &Path,
-        session_id: Option<&str>,
-    ) -> Result<ApkgImportDetailedResult, AppError> {
         if path.as_os_str().is_empty() {
             return Err(validation_error(
                 APKG_ERROR_INVALID_INPUT,
                 "APKG path must not be empty",
             ));
+        }
+        if is_colpkg_source_name(&path.to_string_lossy()) {
+            return Err(colpkg_unsupported_error());
         }
 
         let metadata = match std::fs::metadata(path) {
@@ -172,16 +172,6 @@ impl ApkgImporterService {
         source_name: Option<&str>,
         session_id: Option<&str>,
     ) -> Result<ApkgImportResult, AppError> {
-        self.import_bytes_detailed(bytes, source_name, session_id)
-            .map(|detailed| detailed.result)
-    }
-
-    pub fn import_bytes_detailed(
-        &self,
-        bytes: &[u8],
-        source_name: Option<&str>,
-        session_id: Option<&str>,
-    ) -> Result<ApkgImportDetailedResult, AppError> {
         if bytes.is_empty() {
             return Err(validation_error(
                 APKG_ERROR_INVALID_INPUT,
@@ -193,6 +183,9 @@ impl ApkgImporterService {
                 "APKG data is larger than the {} byte limit",
                 MAX_APKG_ARCHIVE_BYTES
             )));
+        }
+        if source_name.is_some_and(is_colpkg_source_name) {
+            return Err(colpkg_unsupported_error());
         }
         self.import_reader(
             Cursor::new(bytes),
@@ -208,7 +201,7 @@ impl ApkgImporterService {
         source_name: &str,
         session_id: Option<&str>,
         limits: ImportLimits,
-    ) -> Result<ApkgImportDetailedResult, AppError> {
+    ) -> Result<ApkgImportResult, AppError> {
         let parsed = parse_archive(reader, limits, self.media_dir.as_deref())?;
         persist_package(&self.db, parsed, source_name, session_id)
     }
@@ -336,6 +329,7 @@ fn parse_archive<R: Read + Seek>(
 
     let mut collection_anki21 = None;
     let mut collection_anki2 = None;
+    let mut collection_anki21b = None;
     let mut media_manifest = None;
     let mut numeric_media = HashSet::new();
     let mut total_uncompressed = 0u64;
@@ -374,6 +368,7 @@ fn parse_archive<R: Read + Seek>(
         match name.as_str() {
             "collection.anki21" => set_unique_entry(&mut collection_anki21, index, &name)?,
             "collection.anki2" => set_unique_entry(&mut collection_anki2, index, &name)?,
+            "collection.anki21b" => set_unique_entry(&mut collection_anki21b, index, &name)?,
             "media" => set_unique_entry(&mut media_manifest, index, &name)?,
             _ if is_numeric_media_name(&name) && !numeric_media.insert(name.clone()) => {
                 return Err(validation_error(
@@ -385,12 +380,22 @@ fn parse_archive<R: Read + Seek>(
         }
     }
 
-    let collection_index = collection_anki21.or(collection_anki2).ok_or_else(|| {
-        validation_error(
+    // 集合优先级：legacy anki21 → 现代 anki21b → anki2。
+    // 现代包（collection.anki21b，zstd + 新 schema）中的 collection.anki2 只是
+    // “请升级 Anki”占位库，因此 anki21b 必须先于 anki2 被选中；
+    // 同时携带 legacy anki21 时仍优先走成熟的 legacy 路径。
+    let (collection_index, modern_package) = if let Some(index) = collection_anki21 {
+        (index, false)
+    } else if let Some(index) = collection_anki21b {
+        (index, true)
+    } else if let Some(index) = collection_anki2 {
+        (index, false)
+    } else {
+        return Err(validation_error(
             APKG_ERROR_COLLECTION_MISSING,
-            "APKG does not contain collection.anki21 or collection.anki2",
-        )
-    })?;
+            "APKG does not contain collection.anki21, collection.anki21b or collection.anki2",
+        ));
+    };
     let encoded_collection = read_zip_entry_bounded(
         &mut archive,
         collection_index,
@@ -401,6 +406,7 @@ fn parse_archive<R: Read + Seek>(
 
     let mut declared_media = HashSet::new();
     let mut manifest_entries: HashMap<String, String> = HashMap::new();
+    let mut media_warnings: Vec<String> = Vec::new();
     if let Some(index) = media_manifest {
         let manifest = read_zip_entry_bounded(
             &mut archive,
@@ -408,14 +414,28 @@ fn parse_archive<R: Read + Seek>(
             MAX_MEDIA_MANIFEST_BYTES,
             "media manifest",
         )?;
-        let values: HashMap<String, String> =
-            serde_json::from_slice(&manifest).map_err(|error| {
-                validation_error(
-                    APKG_ERROR_INVALID_ARCHIVE,
-                    format!("APKG media manifest is invalid JSON: {error}"),
-                )
-            })?;
-        for key in values.keys() {
+        if modern_package {
+            // 现代包媒体清单是 zstd + protobuf（MediaEntries）；
+            // 解析失败降级为“无媒体导入”，不阻断卡片导入。
+            match parse_modern_media_manifest(&manifest) {
+                Ok(values) => manifest_entries = values,
+                Err(reason) => {
+                    media_warnings.push(format!(
+                        "现代 APKG 媒体清单解析失败，本次导入跳过全部媒体: {reason}"
+                    ));
+                }
+            }
+        } else {
+            let values: HashMap<String, String> =
+                serde_json::from_slice(&manifest).map_err(|error| {
+                    validation_error(
+                        APKG_ERROR_INVALID_ARCHIVE,
+                        format!("APKG media manifest is invalid JSON: {error}"),
+                    )
+                })?;
+            manifest_entries = values;
+        }
+        for key in manifest_entries.keys() {
             if !is_numeric_media_name(key) {
                 return Err(validation_error(
                     APKG_ERROR_INVALID_ARCHIVE,
@@ -424,15 +444,20 @@ fn parse_archive<R: Read + Seek>(
             }
             declared_media.insert(key.clone());
         }
-        manifest_entries = values;
     }
     declared_media.extend(numeric_media);
 
     // 媒体导入：仅当调用方提供媒体目录时进行；
     // 未提供时保持旧行为（全部计入 media_skipped）。
-    let mut media_warnings: Vec<String> = Vec::new();
     let media_paths = if let Some(dir) = media_dir {
-        extract_declared_media(&mut archive, &manifest_entries, dir, &limits, &mut media_warnings)
+        extract_declared_media(
+            &mut archive,
+            &manifest_entries,
+            dir,
+            &limits,
+            &mut media_warnings,
+            modern_package,
+        )
     } else {
         HashMap::new()
     };
@@ -461,6 +486,7 @@ fn parse_archive<R: Read + Seek>(
         collection_file.path(),
         limits.max_materialized_card_bytes,
         &media_paths,
+        modern_package,
     )?;
     package.media_skipped = media_skipped;
     package.media_imported = media_imported;
@@ -482,12 +508,14 @@ fn sanitize_media_filename(raw: &str) -> Option<String> {
 
 /// 把媒体清单声明且包内存在的媒体流式解出到 `media_dir`。
 /// 返回「清单文件名 → 落盘绝对路径」映射；所有非致命问题写入 `warnings`。
+/// `modern_package` 为 true（anki21b 包）时媒体条目本身通常是 zstd 帧，需先解压。
 fn extract_declared_media<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     manifest_entries: &HashMap<String, String>,
     media_dir: &Path,
     limits: &ImportLimits,
     warnings: &mut Vec<String>,
+    modern_package: bool,
 ) -> HashMap<String, String> {
     let mut media_paths: HashMap<String, String> = HashMap::new();
     if manifest_entries.is_empty() {
@@ -530,8 +558,13 @@ fn extract_declared_media<R: Read + Seek>(
             }
         };
         // 解压炸弹防护：实际解压量超过单条目上限时中止并删除半成品
-        let mut limited = entry.by_ref().take(limits.max_entry_bytes + 1);
-        match std::io::copy(&mut limited, &mut output) {
+        let copy_result = if modern_package {
+            copy_possibly_zstd_media(&mut entry, &mut output, limits.max_entry_bytes)
+        } else {
+            let mut limited = entry.by_ref().take(limits.max_entry_bytes + 1);
+            std::io::copy(&mut limited, &mut output).map_err(|error| error.to_string())
+        };
+        match copy_result {
             Ok(written) if written > limits.max_entry_bytes => {
                 drop(output);
                 let _ = std::fs::remove_file(&target);
@@ -551,6 +584,191 @@ fn extract_declared_media<R: Read + Seek>(
         }
     }
     media_paths
+}
+
+/// 现代 APKG 的媒体条目通常是 zstd 帧：探测 magic 后解压写入；
+/// 非 zstd 数据（防御性兼容）原样拷贝。返回写入的字节数（用于解压炸弹判定）。
+fn copy_possibly_zstd_media<R: Read>(
+    entry: &mut R,
+    output: &mut File,
+    max_bytes: u64,
+) -> Result<u64, String> {
+    let mut header = [0u8; 4];
+    let mut header_len = 0usize;
+    while header_len < header.len() {
+        match entry.read(&mut header[header_len..]) {
+            Ok(0) => break,
+            Ok(read) => header_len += read,
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    let source = Cursor::new(header[..header_len].to_vec()).chain(entry);
+    if header[..header_len] == *ZSTD_MAGIC {
+        let mut decoder =
+            zstd::stream::read::Decoder::new(source).map_err(|error| error.to_string())?;
+        decoder
+            .window_log_max(MAX_ZSTD_WINDOW_LOG)
+            .map_err(|error| error.to_string())?;
+        let mut limited = decoder.take(max_bytes + 1);
+        std::io::copy(&mut limited, output).map_err(|error| error.to_string())
+    } else {
+        let mut limited = source.take(max_bytes + 1);
+        std::io::copy(&mut limited, output).map_err(|error| error.to_string())
+    }
+}
+
+// ============================================================================
+// 现代 APKG（anki21b）：最小 protobuf 解码
+// ============================================================================
+
+/// 读取 protobuf varint（最多 10 字节）。
+fn read_protobuf_varint(bytes: &[u8], pos: &mut usize) -> Result<u64, String> {
+    let mut value = 0u64;
+    let mut shift = 0u32;
+    loop {
+        let byte = *bytes
+            .get(*pos)
+            .ok_or_else(|| "protobuf varint is truncated".to_string())?;
+        *pos += 1;
+        if shift >= 64 {
+            return Err("protobuf varint overflows 64 bits".to_string());
+        }
+        value |= u64::from(byte & 0x7f) << shift;
+        if byte & 0x80 == 0 {
+            return Ok(value);
+        }
+        shift += 7;
+    }
+}
+
+fn read_protobuf_length_delimited<'a>(
+    bytes: &'a [u8],
+    pos: &mut usize,
+) -> Result<&'a [u8], String> {
+    let length = read_protobuf_varint(bytes, pos)? as usize;
+    let end = pos
+        .checked_add(length)
+        .ok_or_else(|| "protobuf field length overflow".to_string())?;
+    if end > bytes.len() {
+        return Err("protobuf length-delimited field is truncated".to_string());
+    }
+    let slice = &bytes[*pos..end];
+    *pos = end;
+    Ok(slice)
+}
+
+fn skip_protobuf_value(bytes: &[u8], pos: &mut usize, wire_type: u64) -> Result<(), String> {
+    match wire_type {
+        0 => {
+            read_protobuf_varint(bytes, pos)?;
+        }
+        1 | 5 => {
+            let width = if wire_type == 1 { 8 } else { 4 };
+            let end = pos
+                .checked_add(width)
+                .filter(|end| *end <= bytes.len())
+                .ok_or_else(|| "protobuf fixed-width field is truncated".to_string())?;
+            *pos = end;
+        }
+        2 => {
+            read_protobuf_length_delimited(bytes, pos)?;
+        }
+        other => return Err(format!("unsupported protobuf wire type {other}")),
+    }
+    Ok(())
+}
+
+/// 解析现代 APKG 媒体清单（zstd 压缩的 protobuf `MediaEntries`）：
+/// `MediaEntries { repeated MediaEntry entries = 1; }`
+/// `MediaEntry { string name = 1; … }`
+/// 仅提取 name，按出现顺序映射到 zip 内数字媒体条目 "0","1",…。
+fn parse_modern_media_manifest(bytes: &[u8]) -> Result<HashMap<String, String>, String> {
+    let decoded = if bytes.starts_with(ZSTD_MAGIC) {
+        let mut decoder = zstd::stream::read::Decoder::new(Cursor::new(bytes))
+            .map_err(|error| format!("初始化 zstd 解压失败: {error}"))?;
+        decoder
+            .window_log_max(MAX_ZSTD_WINDOW_LOG)
+            .map_err(|error| format!("限制 zstd 窗口失败: {error}"))?;
+        let mut out = Vec::new();
+        decoder
+            .take(MAX_MEDIA_MANIFEST_BYTES as u64 + 1)
+            .read_to_end(&mut out)
+            .map_err(|error| format!("zstd 解压失败: {error}"))?;
+        if out.len() > MAX_MEDIA_MANIFEST_BYTES {
+            return Err(format!(
+                "解压后的媒体清单超过 {MAX_MEDIA_MANIFEST_BYTES} 字节上限"
+            ));
+        }
+        out
+    } else {
+        bytes.to_vec()
+    };
+
+    let names = parse_media_entries_protobuf(&decoded)?;
+    Ok(names
+        .into_iter()
+        .enumerate()
+        .map(|(index, name)| (index.to_string(), name))
+        .collect())
+}
+
+fn parse_media_entries_protobuf(bytes: &[u8]) -> Result<Vec<String>, String> {
+    let mut names = Vec::new();
+    let mut pos = 0usize;
+    while pos < bytes.len() {
+        let tag = read_protobuf_varint(bytes, &mut pos)?;
+        let (field, wire_type) = (tag >> 3, tag & 7);
+        if field == 1 && wire_type == 2 {
+            let entry = read_protobuf_length_delimited(bytes, &mut pos)?;
+            names.push(parse_media_entry_name(entry)?);
+            if names.len() > MAX_ZIP_ENTRIES {
+                return Err(format!("媒体清单条目数超过 {MAX_ZIP_ENTRIES} 上限"));
+            }
+        } else {
+            skip_protobuf_value(bytes, &mut pos, wire_type)?;
+        }
+    }
+    Ok(names)
+}
+
+fn parse_media_entry_name(bytes: &[u8]) -> Result<String, String> {
+    let mut pos = 0usize;
+    let mut name = None;
+    while pos < bytes.len() {
+        let tag = read_protobuf_varint(bytes, &mut pos)?;
+        let (field, wire_type) = (tag >> 3, tag & 7);
+        if field == 1 && wire_type == 2 {
+            let raw = read_protobuf_length_delimited(bytes, &mut pos)?;
+            let value = std::str::from_utf8(raw)
+                .map_err(|_| "媒体条目文件名不是合法 UTF-8".to_string())?;
+            name = Some(value.to_string());
+        } else {
+            skip_protobuf_value(bytes, &mut pos, wire_type)?;
+        }
+    }
+    name.ok_or_else(|| "媒体条目缺少文件名".to_string())
+}
+
+/// 现代 schema `notetypes.config`（protobuf NotetypeConfig）：field 1 = kind
+/// （0 = normal，1 = cloze，proto3 零值不序列化）。解析失败保守回退 normal。
+fn parse_notetype_kind(config: &[u8]) -> i64 {
+    let mut pos = 0usize;
+    while pos < config.len() {
+        let Ok(tag) = read_protobuf_varint(config, &mut pos) else {
+            return 0;
+        };
+        let (field, wire_type) = (tag >> 3, tag & 7);
+        if field == 1 && wire_type == 0 {
+            return match read_protobuf_varint(config, &mut pos) {
+                Ok(1) => 1,
+                _ => 0,
+            };
+        }
+        if skip_protobuf_value(config, &mut pos, wire_type).is_err() {
+            return 0;
+        }
+    }
+    0
 }
 
 fn set_unique_entry(slot: &mut Option<usize>, index: usize, name: &str) -> Result<(), AppError> {
@@ -574,6 +792,22 @@ fn is_safe_zip_entry_name(name: &str) -> bool {
 
 fn is_numeric_media_name(name: &str) -> bool {
     !name.is_empty() && name.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+/// `.colpkg` 是整库集合包（含配置/复习日志/全部牌组），结构与按牌组导出的 apkg 不同，
+/// 暂不支持解析；在入口处按扩展名给出结构化指引错误。
+fn is_colpkg_source_name(name: &str) -> bool {
+    Path::new(name.trim())
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("colpkg"))
+}
+
+fn colpkg_unsupported_error() -> AppError {
+    validation_error(
+        APKG_ERROR_COLPKG,
+        "暂不支持导入 .colpkg 集合包。请在 Anki 中使用「文件 → 导出 → 牌组（.apkg）」按牌组导出后再导入。",
+    )
 }
 
 fn read_zip_entry_bounded<R: Read + Seek>(
@@ -661,10 +895,46 @@ fn decode_collection(bytes: Vec<u8>, limit: usize) -> Result<Vec<u8>, AppError> 
     Ok(decoded)
 }
 
+/// 同一 note 的待落地卡片行（按 `ORDER BY c.nid` 保证组内相邻）。
+struct PendingNoteGroup {
+    model_id: i64,
+    note_id: i64,
+    raw_tags: String,
+    raw_fields: String,
+    rows: Vec<PendingCardRow>,
+}
+
+struct PendingCardRow {
+    card_id: i64,
+    card_ord: i64,
+    deck_id: i64,
+    sched: Option<CardSchedState>,
+}
+
+/// Anki cards 表的调度信息快照（SM-2 语义）。
+#[derive(Clone, Copy)]
+struct CardSchedState {
+    card_type: i64,
+    queue: i64,
+    due: i64,
+    ivl: i64,
+    factor: i64,
+    reps: i64,
+    lapses: i64,
+}
+
+impl CardSchedState {
+    /// 是否携带真实复习进度：全新卡不注入元数据，保持 extra_fields 干净。
+    fn has_review_progress(&self) -> bool {
+        self.card_type != 0 || self.reps > 0 || self.ivl > 0 || self.lapses > 0 || self.queue < 0
+    }
+}
+
 fn parse_collection_database(
     path: &Path,
     max_materialized_card_bytes: usize,
     media_paths: &HashMap<String, String>,
+    modern_schema: bool,
 ) -> Result<ParsedPackage, AppError> {
     let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
     let conn = Connection::open_with_flags(path, flags).map_err(|error| {
@@ -680,18 +950,29 @@ fn parse_collection_database(
         .map_err(collection_sql_error)?;
     conn.pragma_update(None, "temp_store", "MEMORY")
         .map_err(collection_sql_error)?;
-    validate_collection_schema(&conn)?;
 
-    let (models_json, decks_json): (String, String) = conn
-        .query_row("SELECT models, decks FROM col LIMIT 1", [], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })
-        .map_err(collection_sql_error)?;
-    if models_json.len() > MAX_MODELS_JSON_BYTES || decks_json.len() > MAX_DECKS_JSON_BYTES {
-        return Err(limit_error("APKG model or deck metadata is too large"));
-    }
-    let (models, template_candidates) = parse_models(&models_json)?;
-    let deck_names = parse_deck_names(&decks_json)?;
+    let mut warnings: Vec<String> = Vec::new();
+    let (models, template_candidates, deck_names) = if modern_schema {
+        validate_modern_collection_schema(&conn)?;
+        let models = load_modern_models(&conn, &mut warnings)?;
+        let deck_names = load_modern_deck_names(&conn)?;
+        // 现代 notetypes.config 不携带 deepStudentTemplateId（本应用只写 legacy 包），
+        // 不臆造模板身份 → 无模板导入候选。
+        (models, Vec::new(), deck_names)
+    } else {
+        validate_collection_schema(&conn)?;
+        let (models_json, decks_json): (String, String) = conn
+            .query_row("SELECT models, decks FROM col LIMIT 1", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .map_err(collection_sql_error)?;
+        if models_json.len() > MAX_MODELS_JSON_BYTES || decks_json.len() > MAX_DECKS_JSON_BYTES {
+            return Err(limit_error("APKG model or deck metadata is too large"));
+        }
+        let (models, template_candidates) = parse_models(&models_json)?;
+        let deck_names = parse_deck_names(&decks_json)?;
+        (models, template_candidates, deck_names)
+    };
 
     let card_count: i64 = conn
         .query_row("SELECT COUNT(*) FROM cards", [], |row| row.get(0))
@@ -708,19 +989,28 @@ fn parse_collection_database(
         )));
     }
 
-    let mut stmt = conn
-        .prepare(
-            "SELECT c.id, c.nid, c.did, c.ord, n.mid, n.tags, n.flds
-             FROM cards c
-             JOIN notes n ON n.id = c.nid
-             ORDER BY c.id",
-        )
-        .map_err(collection_sql_error)?;
+    // 调度列（type/queue/due/ivl/factor/reps/lapses）在真实 Anki 包中始终存在；
+    // 缺失时（如极简合成包）静默退化为不读取调度信息。
+    let has_sched_columns = cards_table_has_sched_columns(&conn)?;
+    let sched_select = if has_sched_columns {
+        ", c.type, c.queue, c.due, c.ivl, c.factor, c.reps, c.lapses"
+    } else {
+        ""
+    };
+    // 按 note 分组读取（组内相邻），便于 reversed 卡去重与 Cloze 折叠。
+    let sql = format!(
+        "SELECT c.id, c.nid, c.did, c.ord, n.mid, n.tags, n.flds{sched_select}
+         FROM cards c
+         JOIN notes n ON n.id = c.nid
+         ORDER BY c.nid, c.ord, c.id"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(collection_sql_error)?;
     let mut rows = stmt.query([]).map_err(collection_sql_error)?;
     let mut cards = Vec::with_capacity(card_count as usize);
     let mut materialized_bytes = 0usize;
     let mut joined_card_rows = 0usize;
-    let mut materialized_deep_student_cloze_notes = HashSet::new();
+    let mut sched_metadata_cards = 0usize;
+    let mut current_group: Option<PendingNoteGroup> = None;
     while let Some(row) = rows.next().map_err(collection_sql_error)? {
         joined_card_rows = joined_card_rows
             .checked_add(1)
@@ -736,14 +1026,54 @@ fn parse_collection_database(
                 format!("APKG card references missing model {model_id}"),
             )
         })?;
-        if model.collapse_cloze_ords
-            && !materialized_deep_student_cloze_notes.insert((model_id, note_id))
-        {
+
+        let same_group = current_group
+            .as_ref()
+            .is_some_and(|group| group.model_id == model_id && group.note_id == note_id);
+        // Deep Student Cloze 折叠：同 note 其余 card 行直接跳过
+        //（与旧行为一致，不计材料化预算）。
+        if same_group && model.collapse_cloze_ords {
             continue;
         }
-        let raw_tags: String = row.get(5).map_err(collection_sql_error)?;
-        let raw_fields: String = row.get(6).map_err(collection_sql_error)?;
-        let estimated_bytes = validate_and_estimate_card(model, &raw_tags, &raw_fields)?;
+        if !same_group {
+            if let Some(group) = current_group.take() {
+                flush_note_group(
+                    &models,
+                    group,
+                    media_paths,
+                    &mut cards,
+                    &mut warnings,
+                    &mut sched_metadata_cards,
+                )?;
+            }
+            let raw_tags: String = row.get(5).map_err(collection_sql_error)?;
+            let raw_fields: String = row.get(6).map_err(collection_sql_error)?;
+            current_group = Some(PendingNoteGroup {
+                model_id,
+                note_id,
+                raw_tags,
+                raw_fields,
+                rows: Vec::new(),
+            });
+        }
+        let sched = if has_sched_columns {
+            Some(CardSchedState {
+                card_type: row.get(7).map_err(collection_sql_error)?,
+                queue: row.get(8).map_err(collection_sql_error)?,
+                due: row.get(9).map_err(collection_sql_error)?,
+                ivl: row.get(10).map_err(collection_sql_error)?,
+                factor: row.get(11).map_err(collection_sql_error)?,
+                reps: row.get(12).map_err(collection_sql_error)?,
+                lapses: row.get(13).map_err(collection_sql_error)?,
+            })
+        } else {
+            None
+        };
+        let group = current_group
+            .as_mut()
+            .expect("current note group initialized above");
+        // 预算估算逐行进行（与旧行为一致，保守计费；去重跳过的行也已计入）。
+        let estimated_bytes = validate_and_estimate_card(model, &group.raw_tags, &group.raw_fields)?;
         materialized_bytes = materialized_bytes
             .checked_add(estimated_bytes)
             .ok_or_else(|| limit_error("APKG materialized card size overflow"))?;
@@ -752,17 +1082,22 @@ fn parse_collection_database(
                 "APKG materialized card data exceeds the {max_materialized_card_bytes} byte limit"
             )));
         }
-        cards.push(map_card(
-            model,
-            &raw_tags,
-            &raw_fields,
-            note_id,
+        group.rows.push(PendingCardRow {
             card_id,
             card_ord,
             deck_id,
-            model_id,
+            sched,
+        });
+    }
+    if let Some(group) = current_group.take() {
+        flush_note_group(
+            &models,
+            group,
             media_paths,
-        )?);
+            &mut cards,
+            &mut warnings,
+            &mut sched_metadata_cards,
+        )?;
     }
     if joined_card_rows != card_count as usize {
         return Err(validation_error(
@@ -773,6 +1108,11 @@ fn parse_collection_database(
             ),
         ));
     }
+    if sched_metadata_cards > 0 {
+        warnings.push(format!(
+            "已将 {sched_metadata_cards} 张卡片的 Anki 复习进度保存为卡片元数据（AnkiSchedType/AnkiIvl/AnkiReps 等），再导出 APKG 时会回写调度信息"
+        ));
+    }
 
     Ok(ParsedPackage {
         cards,
@@ -780,8 +1120,108 @@ fn parse_collection_database(
         media_skipped: 0,
         media_imported: 0,
         template_candidates,
-        warnings: Vec::new(),
+        warnings,
     })
+}
+
+/// 落地一个 note 分组：
+/// - 单行 / Cloze（外部多挖空）/ Deep Student 模板卡：逐行导入（既有行为）；
+/// - 外部非 Cloze 模型（无 deepStudentTemplateId）多行时：
+///   两张卡且 ord=0/1 → 视为 “Basic (and reversed card)”，第二张交换正反面；
+///   其他组合 → 按 note 去重保留最小 ord 并写入 warning。
+fn flush_note_group(
+    models: &HashMap<i64, ModelDefinition>,
+    group: PendingNoteGroup,
+    media_paths: &HashMap<String, String>,
+    cards: &mut Vec<ParsedCard>,
+    warnings: &mut Vec<String>,
+    sched_metadata_cards: &mut usize,
+) -> Result<(), AppError> {
+    let model = models.get(&group.model_id).ok_or_else(|| {
+        validation_error(
+            APKG_ERROR_COLLECTION_INVALID,
+            format!("APKG card references missing model {}", group.model_id),
+        )
+    })?;
+    let mut rows = group.rows;
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    let mut push_card = |row: &PendingCardRow, swap_front_back: bool| -> Result<(), AppError> {
+        let mut card = map_card(
+            model,
+            &group.raw_tags,
+            &group.raw_fields,
+            group.note_id,
+            row.card_id,
+            row.card_ord,
+            row.deck_id,
+            group.model_id,
+            media_paths,
+        )?;
+        if swap_front_back {
+            std::mem::swap(&mut card.front, &mut card.back);
+        }
+        if let Some(sched) = row.sched.filter(|sched| sched.has_review_progress()) {
+            // 键名与 ANKI_SCHED_METADATA_KEYS / 导出端 card_sched_restore 保持一致
+            for (key, value) in [
+                ("AnkiSchedType", sched.card_type),
+                ("AnkiQueue", sched.queue),
+                ("AnkiDue", sched.due),
+                ("AnkiIvl", sched.ivl),
+                ("AnkiFactor", sched.factor),
+                ("AnkiReps", sched.reps),
+                ("AnkiLapses", sched.lapses),
+            ] {
+                card.extra_fields.insert(key.to_string(), value.to_string());
+            }
+            *sched_metadata_cards += 1;
+        }
+        cards.push(card);
+        Ok(())
+    };
+
+    let external_non_cloze =
+        model.template_id.is_none() && model.model_type != 1 && !model.collapse_cloze_ords;
+    if rows.len() == 1 || !external_non_cloze {
+        for row in &rows {
+            push_card(row, false)?;
+        }
+        return Ok(());
+    }
+
+    rows.sort_by_key(|row| (row.card_ord, row.card_id));
+    if rows.len() == 2 && rows[0].card_ord == 0 && rows[1].card_ord == 1 {
+        push_card(&rows[0], false)?;
+        push_card(&rows[1], true)?;
+        return Ok(());
+    }
+
+    push_card(&rows[0], false)?;
+    warnings.push(format!(
+        "外部多模板笔记 {} 含 {} 张卡片，已按笔记去重保留 ord={}（其余卡片跳过，避免重复卡）",
+        group.note_id,
+        rows.len(),
+        rows[0].card_ord
+    ));
+    Ok(())
+}
+
+fn cards_table_has_sched_columns(conn: &Connection) -> Result<bool, AppError> {
+    let mut stmt = conn
+        .prepare("SELECT name FROM pragma_table_info('cards')")
+        .map_err(collection_sql_error)?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(collection_sql_error)?;
+    let mut columns = HashSet::new();
+    for row in rows {
+        columns.insert(row.map_err(collection_sql_error)?);
+    }
+    Ok(["type", "queue", "due", "ivl", "factor", "reps", "lapses"]
+        .iter()
+        .all(|column| columns.contains(*column)))
 }
 
 fn install_collection_progress_handler(conn: &Connection) {
@@ -856,6 +1296,141 @@ fn validate_table_columns(
         }
     }
     Ok(())
+}
+
+/// 现代 schema（anki21b）：notetypes/fields/decks 为独立表，col.models/decks 不再可用。
+fn validate_modern_collection_schema(conn: &Connection) -> Result<(), AppError> {
+    for table in ["notes", "cards", "notetypes", "decks", "fields"] {
+        let object_type: Option<String> = conn
+            .query_row(
+                "SELECT type FROM sqlite_master WHERE name = ?1 LIMIT 1",
+                params![table],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(collection_sql_error)?;
+        if object_type.as_deref() != Some("table") {
+            return Err(validation_error(
+                APKG_ERROR_COLLECTION_INVALID,
+                format!("APKG collection object {table} must be a real table"),
+            ));
+        }
+    }
+
+    validate_table_columns(conn, "notes", &["id", "mid", "tags", "flds"], &["id"])?;
+    validate_table_columns(conn, "cards", &["id", "nid", "did", "ord"], &["id"])?;
+    validate_table_columns(conn, "notetypes", &["id", "name", "config"], &["id"])?;
+    validate_table_columns(conn, "decks", &["id", "name"], &["id"])?;
+    validate_table_columns(conn, "fields", &["ntid", "ord", "name"], &[])?;
+    Ok(())
+}
+
+/// 从现代 schema 的 notetypes + fields 表重建 ModelDefinition。
+/// 模型类型（normal/cloze）取自 notetypes.config 的 protobuf kind 字段。
+fn load_modern_models(
+    conn: &Connection,
+    warnings: &mut Vec<String>,
+) -> Result<HashMap<i64, ModelDefinition>, AppError> {
+    let mut fields_by_notetype: HashMap<i64, Vec<(i64, String)>> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare("SELECT ntid, ord, name FROM fields ORDER BY ntid, ord")
+            .map_err(collection_sql_error)?;
+        let mut rows = stmt.query([]).map_err(collection_sql_error)?;
+        while let Some(row) = rows.next().map_err(collection_sql_error)? {
+            let notetype_id: i64 = row.get(0).map_err(collection_sql_error)?;
+            let ord: i64 = row.get(1).map_err(collection_sql_error)?;
+            let name: String = row.get(2).map_err(collection_sql_error)?;
+            let entry = fields_by_notetype.entry(notetype_id).or_default();
+            if entry.len() >= MAX_FIELDS_PER_MODEL {
+                return Err(validation_error(
+                    APKG_ERROR_COLLECTION_INVALID,
+                    format!("APKG notetype {notetype_id} has too many fields"),
+                ));
+            }
+            entry.push((ord, name));
+        }
+    }
+
+    let mut models = HashMap::new();
+    let mut stmt = conn
+        .prepare("SELECT id, name, config FROM notetypes")
+        .map_err(collection_sql_error)?;
+    let mut rows = stmt.query([]).map_err(collection_sql_error)?;
+    while let Some(row) = rows.next().map_err(collection_sql_error)? {
+        let model_id: i64 = row.get(0).map_err(collection_sql_error)?;
+        let name: String = row.get(1).map_err(collection_sql_error)?;
+        let config: Vec<u8> = row.get(2).map_err(collection_sql_error)?;
+        let model_type = parse_notetype_kind(&config);
+
+        let mut ordered_fields = fields_by_notetype.remove(&model_id).unwrap_or_default();
+        ordered_fields.retain(|(ord, field_name)| {
+            *ord >= 0 && (*ord as usize) < MAX_FIELDS_PER_MODEL && !field_name.trim().is_empty()
+        });
+        ordered_fields.sort_by(|a, b| a.0.cmp(&b.0));
+        ordered_fields.dedup_by_key(|(ord, _)| *ord);
+
+        let (field_slot_count, fields_by_ord) = if ordered_fields.is_empty() {
+            // 字段表缺失/异常：退化为按位置映射（Front/Back 取前两个字段值），
+            // 上限放宽到 MAX_FIELDS_PER_MODEL 以免材料化校验误杀。
+            warnings.push(format!(
+                "APKG 笔记类型 {name}（{model_id}）缺少字段定义，已按字段位置导入"
+            ));
+            (MAX_FIELDS_PER_MODEL, HashMap::new())
+        } else {
+            let slot_count = ordered_fields
+                .last()
+                .map_or(0, |(ord, _)| *ord as usize + 1);
+            (
+                slot_count,
+                ordered_fields
+                    .into_iter()
+                    .map(|(ord, field_name)| (ord as usize, field_name))
+                    .collect(),
+            )
+        };
+
+        models.insert(
+            model_id,
+            ModelDefinition {
+                name,
+                model_type,
+                fields_by_ord,
+                field_slot_count,
+                // 现代包不携带 Deep Student 模板身份，不臆造 template_id
+                template_id: None,
+                collapse_cloze_ords: false,
+            },
+        );
+    }
+    if models.is_empty() {
+        return Err(validation_error(
+            APKG_ERROR_COLLECTION_INVALID,
+            "APKG collection contains no notetypes",
+        ));
+    }
+    Ok(models)
+}
+
+/// 现代 schema decks.name 用 U+001F 分隔层级，转为 Anki 惯用的 `::` 展示形式。
+fn load_modern_deck_names(conn: &Connection) -> Result<Vec<String>, AppError> {
+    let mut stmt = conn
+        .prepare("SELECT name FROM decks")
+        .map_err(collection_sql_error)?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(collection_sql_error)?;
+    let mut names = Vec::new();
+    for row in rows {
+        let name = row.map_err(collection_sql_error)?;
+        let display = name.replace('\u{1f}', "::");
+        if !display.trim().is_empty() {
+            names.push(display);
+        }
+    }
+    names.sort();
+    names.dedup();
+    Ok(names)
 }
 
 fn parse_models(
@@ -2131,8 +2706,9 @@ mod tests {
             imported[0].extra_fields.get("ExtraField"),
             Some(&"detail".to_string())
         );
-        assert_eq!(imported[1].front, imported[0].front);
-        assert_eq!(imported[1].back, imported[0].back);
+        // 外部模型同 note 两张卡（ord 0/1）按 reversed 模式导入：第二张交换正反面
+        assert_eq!(imported[1].front, imported[0].back);
+        assert_eq!(imported[1].back, imported[0].front);
         assert_ne!(
             imported[0].extra_fields.get("AnkiCardId"),
             imported[1].extra_fields.get("AnkiCardId")
@@ -2232,6 +2808,313 @@ mod tests {
             .get_document_session_source(&result.document_id)
             .expect("session source")
             .is_none());
+    }
+
+    /// 构造现代 schema（anki21b）集合库：notetypes/fields/decks 为独立表，
+    /// cards 携带调度列，notetype config 用最小 protobuf（kind 字段）。
+    fn make_modern_collection(
+        notetypes: &[(i64, &str, i64, &[&str])],
+        notes: &[(i64, i64, &str, &str)],
+        cards: &[(i64, i64, i64, [i64; 7])],
+    ) -> Vec<u8> {
+        let file = NamedTempFile::new().expect("collection tempfile");
+        let conn = Connection::open(file.path()).expect("collection sqlite");
+        conn.execute_batch(
+            "PRAGMA journal_mode = DELETE;
+             CREATE TABLE notes (
+                 id INTEGER PRIMARY KEY, mid INTEGER NOT NULL, tags TEXT NOT NULL, flds TEXT NOT NULL
+             );
+             CREATE TABLE cards (
+                 id INTEGER PRIMARY KEY, nid INTEGER NOT NULL, did INTEGER NOT NULL, ord INTEGER NOT NULL,
+                 type INTEGER NOT NULL DEFAULT 0, queue INTEGER NOT NULL DEFAULT 0,
+                 due INTEGER NOT NULL DEFAULT 0, ivl INTEGER NOT NULL DEFAULT 0,
+                 factor INTEGER NOT NULL DEFAULT 0, reps INTEGER NOT NULL DEFAULT 0,
+                 lapses INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE TABLE notetypes (id INTEGER PRIMARY KEY, name TEXT NOT NULL, config BLOB NOT NULL);
+             CREATE TABLE decks (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+             CREATE TABLE fields (
+                 ntid INTEGER NOT NULL, ord INTEGER NOT NULL, name TEXT NOT NULL,
+                 PRIMARY KEY (ntid, ord)
+             );",
+        )
+        .expect("modern schema");
+        conn.execute(
+            "INSERT INTO decks (id, name) VALUES (1, ?1)",
+            params!["Parent\u{1f}Child"],
+        )
+        .expect("modern deck");
+        for (id, name, kind, fields) in notetypes {
+            let config: Vec<u8> = if *kind == 1 { vec![0x08, 0x01] } else { Vec::new() };
+            conn.execute(
+                "INSERT INTO notetypes (id, name, config) VALUES (?1, ?2, ?3)",
+                params![id, name, config],
+            )
+            .expect("modern notetype");
+            for (ord, field_name) in fields.iter().enumerate() {
+                conn.execute(
+                    "INSERT INTO fields (ntid, ord, name) VALUES (?1, ?2, ?3)",
+                    params![id, ord as i64, field_name],
+                )
+                .expect("modern field");
+            }
+        }
+        for (id, mid, tags, fields) in notes {
+            conn.execute(
+                "INSERT INTO notes (id, mid, tags, flds) VALUES (?1, ?2, ?3, ?4)",
+                params![id, mid, tags, fields],
+            )
+            .expect("modern note");
+        }
+        for (id, nid, ord, sched) in cards {
+            conn.execute(
+                "INSERT INTO cards (id, nid, did, ord, type, queue, due, ivl, factor, reps, lapses)
+                 VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    id, nid, ord, sched[0], sched[1], sched[2], sched[3], sched[4], sched[5],
+                    sched[6]
+                ],
+            )
+            .expect("modern card");
+        }
+        conn.close().expect("close modern collection sqlite");
+        std::fs::read(file.path()).expect("read modern collection sqlite")
+    }
+
+    /// 手工编码 protobuf MediaEntries（每条 entry 含 name=field1 + size=field2）。
+    fn encode_media_entries(names: &[&str]) -> Vec<u8> {
+        let mut out = Vec::new();
+        for name in names {
+            let name_bytes = name.as_bytes();
+            let mut entry = Vec::new();
+            entry.push(0x0a); // MediaEntry.name (field 1, wire 2)
+            entry.push(name_bytes.len() as u8);
+            entry.extend_from_slice(name_bytes);
+            entry.push(0x10); // MediaEntry.size (field 2, varint) — 应被解码器跳过
+            entry.push(0x05);
+            out.push(0x0a); // MediaEntries.entries (field 1, wire 2)
+            out.push(entry.len() as u8);
+            out.extend_from_slice(&entry);
+        }
+        out
+    }
+
+    #[test]
+    fn modern_anki21b_package_imports_cards_media_and_schedule() {
+        let (db, _dir) = setup_migrated_db();
+        let media_dir = tempdir().expect("media dir");
+        let collection = make_modern_collection(
+            &[
+                (100, "Basic", 0, &["Front", "Back"][..]),
+                (200, "Cloze", 1, &["Text", "Extra"][..]),
+            ],
+            &[
+                (
+                    1,
+                    100,
+                    " geo ",
+                    "capital of France? <img src=\"map.png\">\u{1f}Paris",
+                ),
+                (2, 200, "", "A {{c1::cloze}} note\u{1f}extra"),
+            ],
+            &[
+                (10, 1, 0, [2, 2, 5, 12, 2500, 7, 1]),
+                (20, 2, 0, [0, 0, 0, 0, 0, 0, 0]),
+            ],
+        );
+        let compressed =
+            zstd::stream::encode_all(Cursor::new(collection), 1).expect("zstd collection");
+        let manifest = zstd::stream::encode_all(
+            Cursor::new(encode_media_entries(&["map.png"])),
+            1,
+        )
+        .expect("zstd manifest");
+        let media_blob =
+            zstd::stream::encode_all(Cursor::new(b"png-bytes".to_vec()), 1).expect("zstd media");
+        let apkg = make_apkg(vec![
+            (
+                "collection.anki2",
+                make_basic_collection("please upgrade placeholder"),
+            ),
+            ("collection.anki21b", compressed),
+            ("media", manifest),
+            ("0", media_blob),
+        ]);
+
+        let result = ApkgImporterService::new(db.clone())
+            .with_media_dir(media_dir.path().to_path_buf())
+            .import_bytes(&apkg, Some("modern.apkg"), Some("modern-session"))
+            .expect("import modern anki21b package");
+
+        assert_eq!(result.imported_cards, 2);
+        assert_eq!(result.media_imported, 1);
+        assert_eq!(result.media_skipped, 0);
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("复习进度")));
+        let extracted = media_dir.path().join("map.png");
+        assert_eq!(
+            std::fs::read(&extracted).expect("extracted media"),
+            b"png-bytes",
+            "现代包媒体条目必须先做 zstd 解压再落盘"
+        );
+
+        let imported = db
+            .get_cards_for_document(&result.document_id)
+            .expect("imported cards");
+        assert_eq!(imported.len(), 2);
+        assert!(imported.iter().all(|card| card.template_id.is_none()));
+        let basic = imported
+            .iter()
+            .find(|card| card.text.is_none())
+            .expect("Basic card");
+        assert_eq!(basic.front, "capital of France? <img src=\"map.png\">");
+        assert_eq!(basic.back, "Paris");
+        assert_eq!(basic.tags, vec!["geo"]);
+        assert_eq!(
+            basic.extra_fields.get("AnkiIvl").map(String::as_str),
+            Some("12")
+        );
+        assert_eq!(
+            basic.extra_fields.get("AnkiReps").map(String::as_str),
+            Some("7")
+        );
+        assert_eq!(
+            basic.extra_fields.get("AnkiSchedType").map(String::as_str),
+            Some("2")
+        );
+        assert_eq!(basic.images, vec![extracted.to_string_lossy().to_string()]);
+        let cloze = imported
+            .iter()
+            .find(|card| card.text.is_some())
+            .expect("Cloze card");
+        assert_eq!(cloze.text.as_deref(), Some("A {{c1::cloze}} note"));
+        assert!(
+            !cloze.extra_fields.contains_key("AnkiIvl"),
+            "全新卡不注入调度元数据"
+        );
+    }
+
+    #[test]
+    fn modern_media_manifest_failure_degrades_to_no_media_import() {
+        let (db, _dir) = setup_migrated_db();
+        let media_dir = tempdir().expect("media dir");
+        let collection = make_modern_collection(
+            &[(100, "Basic", 0, &["Front", "Back"][..])],
+            &[(1, 100, "", "front\u{1f}back")],
+            &[(10, 1, 0, [0, 0, 0, 0, 0, 0, 0])],
+        );
+        let compressed =
+            zstd::stream::encode_all(Cursor::new(collection), 1).expect("zstd collection");
+        let apkg = make_apkg(vec![
+            ("collection.anki21b", compressed),
+            // 非法 protobuf：wire type 5 但数据被截断
+            ("media", b"\x05\x05\x05".to_vec()),
+            ("0", b"orphan".to_vec()),
+        ]);
+        let result = ApkgImporterService::new(db)
+            .with_media_dir(media_dir.path().to_path_buf())
+            .import_bytes(&apkg, Some("modern-bad-media.apkg"), None)
+            .expect("media manifest failure must not block card import");
+        assert_eq!(result.imported_cards, 1);
+        assert_eq!(result.media_imported, 0);
+        assert_eq!(result.media_skipped, 1);
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("媒体清单解析失败")));
+    }
+
+    #[test]
+    fn modern_media_manifest_protobuf_parses_names_in_order() {
+        let encoded = encode_media_entries(&["a.png", "b.mp3"]);
+        let manifest =
+            parse_modern_media_manifest(&encoded).expect("parse raw protobuf manifest");
+        assert_eq!(manifest.get("0").map(String::as_str), Some("a.png"));
+        assert_eq!(manifest.get("1").map(String::as_str), Some("b.mp3"));
+
+        let compressed =
+            zstd::stream::encode_all(Cursor::new(encoded), 1).expect("zstd manifest");
+        let manifest = parse_modern_media_manifest(&compressed).expect("parse zstd manifest");
+        assert_eq!(manifest.len(), 2);
+
+        assert!(parse_modern_media_manifest(b"\x0a\x02\x10").is_err());
+    }
+
+    #[test]
+    fn notetype_kind_parsing_defaults_to_normal_on_unknown_data() {
+        assert_eq!(parse_notetype_kind(&[]), 0);
+        assert_eq!(parse_notetype_kind(&[0x08, 0x01]), 1);
+        assert_eq!(parse_notetype_kind(&[0x08, 0x00]), 0);
+        // 前置未知字段（field 2, string）不影响 kind 解析
+        assert_eq!(
+            parse_notetype_kind(&[0x12, 0x03, b'a', b'b', b'c', 0x08, 0x01]),
+            1
+        );
+        // 畸形数据保守回退 normal
+        assert_eq!(parse_notetype_kind(&[0xff]), 0);
+    }
+
+    #[test]
+    fn external_multi_template_note_is_deduplicated_with_warning() {
+        let (db, _dir) = setup_migrated_db();
+        let collection = make_collection(
+            json!({ "100": model_json(0, &[("Front", 0), ("Back", 1)]) }),
+            &[(1, 100, "", "front\u{1f}back")],
+            &[(10, 1, 0), (11, 1, 1), (12, 1, 2)],
+        );
+        let apkg = make_apkg(vec![("collection.anki2", collection)]);
+        let result = ApkgImporterService::new(db.clone())
+            .import_bytes(&apkg, Some("multi-template.apkg"), None)
+            .expect("import external multi-template note");
+        assert_eq!(result.imported_cards, 1);
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("去重")));
+        let imported = db
+            .get_cards_for_document(&result.document_id)
+            .expect("imported cards");
+        assert_eq!(imported.len(), 1);
+        assert_eq!(imported[0].front, "front");
+        assert_eq!(imported[0].back, "back");
+        assert_eq!(
+            imported[0].extra_fields.get("AnkiCardOrd").map(String::as_str),
+            Some("0")
+        );
+    }
+
+    #[test]
+    fn colpkg_source_is_rejected_with_export_guidance() {
+        let (db, _dir) = setup_unmigrated_db();
+        let apkg = make_apkg(vec![("collection.anki2", make_basic_collection("front"))]);
+        let error = ApkgImporterService::new(db)
+            .import_bytes(&apkg, Some("collection.colpkg"), None)
+            .expect_err("colpkg must be rejected with guidance");
+        assert_eq!(error_code(&error), Some(APKG_ERROR_COLPKG));
+        assert!(error.message.contains("apkg"));
+    }
+
+    #[test]
+    fn anki21b_alongside_legacy_anki21_still_imports_legacy_data() {
+        let (db, _dir) = setup_migrated_db();
+        let apkg = make_apkg(vec![
+            (
+                "collection.anki2",
+                make_basic_collection("placeholder anki2"),
+            ),
+            ("collection.anki21", make_basic_collection("legacy anki21")),
+            ("collection.anki21b", b"\x28\xb5\x2f\xfdmodern".to_vec()),
+        ]);
+        let result = ApkgImporterService::new(db.clone())
+            .import_bytes(&apkg, Some("modern-plus-legacy.apkg"), None)
+            .expect("legacy anki21 must remain importable next to anki21b");
+        let cards = db
+            .get_cards_for_document(&result.document_id)
+            .expect("imported cards");
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].front, "legacy anki21");
     }
 
     #[test]
@@ -2458,7 +3341,8 @@ mod tests {
 
     #[test]
     fn result_deserialization_defaults_new_optional_fields() {
-        let json = r#"{"documentId":"doc","importedCards":2,"importedTemplates":0,"mediaSkipped":1}"#;
+        let json =
+            r#"{"documentId":"doc","importedCards":2,"importedTemplates":0,"mediaSkipped":1}"#;
         let parsed: ApkgImportResult = serde_json::from_str(json).expect("compat deserialize");
         assert_eq!(parsed.media_imported, 0);
         assert!(parsed.warnings.is_empty());

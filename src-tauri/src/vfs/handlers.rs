@@ -651,8 +651,99 @@ pub async fn vfs_delete_note(
     // 验证笔记 ID 格式
     validate_id_format(&id, "note_", "id")?;
 
+    // 记忆卫生（J7）：删除前判断该笔记是否在记忆根目录内。
+    // 判定与后续清理全程 best-effort——非记忆笔记不受影响，
+    // 记忆逻辑失败也绝不阻塞通用删除。
+    let memory_ctx = memory_note_delete_context(&vfs_db, &id);
+
     // 保持 notes 与 folder_items 软删除一致
-    VfsNoteRepo::delete_note_with_folder_item(&vfs_db, &id).map_err(|e| e.to_string())
+    VfsNoteRepo::delete_note_with_folder_item(&vfs_db, &id).map_err(|e| e.to_string())?;
+
+    if let Some((resource_id, title)) = memory_ctx {
+        cleanup_deleted_memory_note(&vfs_db, &id, &resource_id, &title);
+    }
+    Ok(())
+}
+
+/// 判断笔记是否位于记忆根目录内；是则返回 (resource_id, title)。
+///
+/// 任何一步出错都按"非记忆笔记"处理（返回 None），确保记忆逻辑
+/// 不影响通用笔记删除路径。
+fn memory_note_delete_context(
+    vfs_db: &Arc<VfsDatabase>,
+    note_id: &str,
+) -> Option<(String, String)> {
+    let root_id = crate::memory::MemoryConfig::new(vfs_db.clone())
+        .get_root_folder_id()
+        .ok()
+        .flatten()?;
+    let note = VfsNoteRepo::get_note(vfs_db, note_id).ok().flatten()?;
+    let location = VfsNoteRepo::get_note_location(vfs_db, note_id)
+        .ok()
+        .flatten()?;
+    let folder_id = location.folder_id?;
+    if folder_id != root_id {
+        let folder_ids =
+            crate::vfs::repos::VfsFolderRepo::get_folder_ids_recursive(vfs_db, &root_id).ok()?;
+        if !folder_ids.contains(&folder_id) {
+            return None;
+        }
+    }
+    Some((note.resource_id, note.title))
+}
+
+/// 记忆笔记经 UI 删除后的索引/审计卫生（best-effort，只记 warn 不上抛）：
+/// - 把该笔记的向量段入 __lance_orphan_queue 并清理索引单元（与
+///   MemoryService::delete_with_source 的清理口径一致；后台 drain 兜底删除
+///   Lance 向量，恢复笔记时 restore_note 会 mark_pending 重建索引）
+/// - 写一条 memory_audit_log，标注来源为用户 UI 删除
+fn cleanup_deleted_memory_note(
+    vfs_db: &Arc<VfsDatabase>,
+    note_id: &str,
+    resource_id: &str,
+    title: &str,
+) {
+    match vfs_db.get_conn_safe() {
+        Ok(conn) => {
+            if let Err(e) =
+                crate::vfs::repos::index_unit_repo::purge_index_artifacts_by_resource(
+                    &conn,
+                    resource_id,
+                )
+            {
+                log::warn!(
+                    "[VFS::handlers] Failed to purge index artifacts for deleted memory note {}: {}",
+                    note_id,
+                    e
+                );
+            }
+        }
+        Err(e) => {
+            log::warn!(
+                "[VFS::handlers] Failed to get connection for memory note cleanup {}: {}",
+                note_id,
+                e
+            );
+        }
+    }
+
+    crate::memory::MemoryAuditLogger::new(vfs_db.clone()).log(
+        &crate::memory::audit_log::MemoryAuditEntry {
+            source: crate::memory::MemoryOpSource::Handler,
+            operation: crate::memory::MemoryOpType::Delete,
+            success: true,
+            note_id: Some(note_id.to_string()),
+            title: Some(title.to_string()),
+            content_preview: None,
+            folder: None,
+            event: Some("DELETE".to_string()),
+            confidence: None,
+            reason: Some("user_ui: 用户经 VFS/DSTU UI 删除记忆笔记 (vfs_delete_note)".to_string()),
+            session_id: None,
+            duration_ms: None,
+            extra_json: None,
+        },
+    );
 }
 
 // ============================================================================
@@ -1307,8 +1398,274 @@ pub struct VfsUploadAttachmentParamsExt {
     pub folder_id: Option<String>,
 }
 
+/// 自动转写的音频大小上限（与 media_transcribe 工具的受管 ASR 限额一致）
+const AUTO_TRANSCRIBE_MAX_AUDIO_BYTES: usize = 25 * 1024 * 1024;
+
+/// 判断上传是否是音频文件（MIME 或扩展名）
+fn is_audio_upload(name: &str, mime_type: &str) -> bool {
+    if mime_type.trim().to_lowercase().starts_with("audio/") {
+        return true;
+    }
+    let ext = std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_lowercase());
+    matches!(
+        ext.as_deref(),
+        Some("mp3" | "wav" | "ogg" | "m4a" | "flac" | "aac" | "opus" | "wma")
+    )
+}
+
+/// 通过文件签名确认音频容器类型（供受管 ASR 使用的 MIME）
+///
+/// 与 `media_executor::media_signature` 保持一致的接受范围：
+/// MP3 / WAV / OGG / FLAC / M4A（MP4 audio ftyp）/ ADTS AAC。
+/// WMA（ASF 容器）与视频容器返回明确的不支持原因。
+fn detect_audio_mime_by_signature(bytes: &[u8]) -> Result<&'static str, String> {
+    if bytes.starts_with(b"ID3")
+        || bytes.starts_with(b"\xff\xfb")
+        || bytes.starts_with(b"\xff\xf3")
+        || bytes.starts_with(b"\xff\xf2")
+    {
+        Ok("audio/mpeg")
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
+        Ok("audio/wav")
+    } else if bytes.starts_with(b"OggS") {
+        Ok("audio/ogg")
+    } else if bytes.starts_with(b"fLaC") {
+        Ok("audio/flac")
+    } else if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" {
+        // ISO BMFF：仅接受确认为音频的 M4A/M4B/M4P 品牌，其余按视频容器拒绝
+        let brand = &bytes[8..12];
+        if brand.starts_with(b"M4A") || brand.starts_with(b"M4B") || brand.starts_with(b"M4P") {
+            Ok("audio/mp4")
+        } else {
+            Err("视频容器（MP4/MOV 等）暂不支持提取音轨转写".to_string())
+        }
+    } else if bytes.len() >= 2 && bytes[0] == 0xff && (bytes[1] & 0xf6) == 0xf0 {
+        // ADTS AAC 帧头（0xFFF1 / 0xFFF9 等）
+        Ok("audio/aac")
+    } else if bytes.starts_with(b"\x30\x26\xb2\x75\x8e\x66\xcf\x11") {
+        Err("WMA（ASF 容器）暂不支持转写，请先转换为 MP3/WAV/M4A".to_string())
+    } else if bytes.starts_with(b"\x1a\x45\xdf\xa3") {
+        Err("WebM/MKV 容器暂不支持提取音轨转写".to_string())
+    } else {
+        Err("无法通过文件签名确认音频格式（支持 MP3/WAV/OGG/FLAC/M4A/AAC）".to_string())
+    }
+}
+
+/// 把可读的处理状态写入 files 行（音频转写状态显式化，仅日志用户不可见）
+fn mark_audio_processing_note(vfs_db: &VfsDatabase, file_id: &str, note: &str) {
+    match vfs_db.get_conn_safe() {
+        Ok(conn) => {
+            if let Err(e) = conn.execute(
+                "UPDATE files SET processing_error = ?1 WHERE id = ?2",
+                rusqlite::params![note, file_id],
+            ) {
+                log::warn!(
+                    "[VFS::handlers] Failed to record audio processing note for {}: {}",
+                    file_id,
+                    e
+                );
+            }
+        }
+        Err(e) => {
+            log::warn!(
+                "[VFS::handlers] Failed to get connection for audio note {}: {}",
+                file_id,
+                e
+            );
+        }
+    }
+}
+
+/// ★ 音频导入后的可选转写流水线（异步，不阻塞导入）
+///
+/// 复用现有语音输入 ASR 基建（`voice_input_transcribe_with_state`）：
+/// - ASR 未配置 → 在 files.processing_error 标记可读状态后跳过；
+/// - 转写成功 → 写入 files.extracted_text + resources OCR 文本并重建索引单元，
+///   使音频内容可被检索与注入对话。
+fn spawn_audio_transcription_if_applicable(
+    app: &AppHandle,
+    vfs_db: Arc<VfsDatabase>,
+    file_id: String,
+    resource_id: Option<String>,
+    file_name: String,
+    audio_base64: String,
+) {
+    use base64::Engine as _;
+
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let Some(state) = app.try_state::<crate::commands::AppState>() else {
+            log::warn!(
+                "[VFS::handlers] AppState unavailable, skip audio transcription for {}",
+                file_id
+            );
+            return;
+        };
+
+        let asr = crate::voice_input::voice_input_asr_capability(&state);
+        if !asr.configured {
+            log::info!(
+                "[VFS::handlers] ASR not configured, skip audio transcription for {}",
+                file_id
+            );
+            mark_audio_processing_note(
+                &vfs_db,
+                &file_id,
+                "音频未自动转写：未配置语音输入 ASR（SiliconFlow API Key）。可在设置中配置后重新导入，或在对话中调用 media_transcribe 工具转写",
+            );
+            return;
+        }
+
+        // 解码前按编码长度估算，超过受管 ASR 限额直接跳过
+        let estimated = audio_base64.len() / 4 * 3;
+        if estimated > AUTO_TRANSCRIBE_MAX_AUDIO_BYTES {
+            mark_audio_processing_note(
+                &vfs_db,
+                &file_id,
+                "音频超过 25MB 自动转写上限，未转写。可裁剪后重新导入",
+            );
+            return;
+        }
+        let bytes = match base64::engine::general_purpose::STANDARD.decode(&audio_base64) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                log::warn!(
+                    "[VFS::handlers] Failed to decode audio for transcription {}: {}",
+                    file_id,
+                    e
+                );
+                return;
+            }
+        };
+        if bytes.len() > AUTO_TRANSCRIBE_MAX_AUDIO_BYTES {
+            mark_audio_processing_note(
+                &vfs_db,
+                &file_id,
+                "音频超过 25MB 自动转写上限，未转写。可裁剪后重新导入",
+            );
+            return;
+        }
+
+        let mime = match detect_audio_mime_by_signature(&bytes) {
+            Ok(mime) => mime,
+            Err(reason) => {
+                mark_audio_processing_note(
+                    &vfs_db,
+                    &file_id,
+                    &format!("音频未自动转写：{}", reason),
+                );
+                return;
+            }
+        };
+
+        let request = crate::voice_input::VoiceInputTranscribeRequest {
+            audio_base64,
+            mime_type: mime.to_string(),
+            provider_id: None,
+            model: None,
+            config_id: None,
+            language: None,
+            prompt: None,
+            duration_ms: None,
+        };
+
+        match crate::voice_input::voice_input_transcribe_with_state(request, &state).await {
+            Ok(transcript) if !transcript.text.trim().is_empty() => {
+                let text = transcript.text.trim().to_string();
+                log::info!(
+                    "[VFS::handlers] Audio transcribed for {} ({}): {} chars",
+                    file_id,
+                    file_name,
+                    text.len()
+                );
+                match vfs_db.get_conn_safe() {
+                    Ok(conn) => {
+                        if let Err(e) = conn.execute(
+                            "UPDATE files SET extracted_text = ?1, processing_error = NULL WHERE id = ?2",
+                            rusqlite::params![text, file_id],
+                        ) {
+                            log::warn!(
+                                "[VFS::handlers] Failed to store transcript for {}: {}",
+                                file_id,
+                                e
+                            );
+                            return;
+                        }
+                        if let Some(ref resource_id) = resource_id {
+                            if let Err(e) =
+                                VfsResourceRepo::save_ocr_text_with_conn(&conn, resource_id, &text)
+                            {
+                                log::warn!(
+                                    "[VFS::handlers] Failed to persist transcript OCR text for {}: {}",
+                                    resource_id,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[VFS::handlers] Failed to get connection for transcript {}: {}",
+                            file_id,
+                            e
+                        );
+                        return;
+                    }
+                }
+
+                // 触发既有文本索引（与文档上传一致的 Units 同步路径）
+                if let Some(resource_id) = resource_id {
+                    let index_service = VfsIndexService::new(vfs_db.clone());
+                    let input = UnitBuildInput {
+                        resource_id: resource_id.clone(),
+                        resource_type: "file".to_string(),
+                        data: None,
+                        ocr_text: Some(text.clone()),
+                        ocr_pages_json: None,
+                        blob_hash: None,
+                        page_count: None,
+                        extracted_text: Some(text),
+                        preview_json: None,
+                    };
+                    match index_service.sync_resource_units(input) {
+                        Ok(units) => log::info!(
+                            "[VFS::handlers] Synced {} units for transcribed audio {}",
+                            units.len(),
+                            file_id
+                        ),
+                        Err(e) => log::warn!(
+                            "[VFS::handlers] Failed to sync units for transcribed audio {}: {}",
+                            file_id,
+                            e
+                        ),
+                    }
+                }
+            }
+            Ok(_) => {
+                mark_audio_processing_note(&vfs_db, &file_id, "音频转写结果为空（可能是无语音内容）");
+            }
+            Err(e) => {
+                log::warn!(
+                    "[VFS::handlers] Audio transcription failed for {}: {}",
+                    file_id,
+                    e.message
+                );
+                mark_audio_processing_note(
+                    &vfs_db,
+                    &file_id,
+                    &format!("音频自动转写失败：{}。可在对话中调用 media_transcribe 工具重试", e.message),
+                );
+            }
+        }
+    });
+}
+
 #[tauri::command]
 pub async fn vfs_upload_attachment(
+    app: AppHandle,
     params: VfsUploadAttachmentParamsExt,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     pdf_processing_service: State<'_, Arc<PdfProcessingService>>,
@@ -1336,6 +1693,17 @@ pub async fn vfs_upload_attachment(
         }
     };
 
+    // ★ 音频附件：留存 base64 供导入后的可选转写流水线使用（其余类型不复制；
+    // 超过受管 ASR 25MB 限额的大音频不复制，避免峰值内存翻倍）
+    let is_audio = is_audio_upload(&params.name, &params.mime_type);
+    let audio_within_asr_limit =
+        params.base64_content.len() <= AUTO_TRANSCRIBE_MAX_AUDIO_BYTES / 3 * 4 + 4;
+    let audio_base64_for_transcription = if is_audio && audio_within_asr_limit {
+        Some(params.base64_content.clone())
+    } else {
+        None
+    };
+
     let upload_params = VfsUploadAttachmentParams {
         name: params.name.clone(),
         mime_type: params.mime_type.clone(),
@@ -1346,6 +1714,32 @@ pub async fn vfs_upload_attachment(
     let result =
         VfsAttachmentRepo::upload_with_folder(&vfs_db, upload_params, target_folder_id.as_deref())
             .map_err(|e| e.to_string())?;
+
+    // ★ 音频导入后自动转写（异步，不阻塞导入；ASR 未配置则标记状态后跳过）
+    if let Some(audio_base64) = audio_base64_for_transcription {
+        let has_transcript = result
+            .attachment
+            .extracted_text
+            .as_ref()
+            .map(|t| !t.trim().is_empty())
+            .unwrap_or(false);
+        if result.is_new && !has_transcript {
+            spawn_audio_transcription_if_applicable(
+                &app,
+                vfs_db.inner().clone(),
+                result.source_id.clone(),
+                result.attachment.resource_id.clone(),
+                params.name.clone(),
+                audio_base64,
+            );
+        }
+    } else if is_audio && !audio_within_asr_limit && result.is_new {
+        mark_audio_processing_note(
+            &vfs_db,
+            &result.source_id,
+            "音频超过 25MB 自动转写上限，未转写。可裁剪后重新导入",
+        );
+    }
 
     log::info!(
         "[VFS::handlers] Attachment {}: source_id={}, hash={}, folder={:?}",
@@ -1958,6 +2352,7 @@ impl OcrStrategyConfig {
 
 #[tauri::command]
 pub async fn vfs_upload_file(
+    app: AppHandle,
     params: VfsUploadFileParams,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
@@ -1989,11 +2384,17 @@ pub async fn vfs_upload_file(
         .map_err(|e| format!("Base64 decode failed: {}", e))?;
 
     if !VfsAttachmentRepo::is_supported_upload_type(&params.name, &params.mime_type) {
+        // ★ 结构化拒绝错误：带上具体文件名/扩展名/MIME，前端可直接展示给用户
+        let ext_display = std::path::Path::new(&params.name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| format!(".{}", e.to_lowercase()))
+            .unwrap_or_else(|| "(无扩展名)".to_string());
         return Err(VfsError::InvalidArgument {
             param: "mime_type".to_string(),
             reason: format!(
-                "Unsupported mime type or file extension: {} ({})",
-                params.mime_type, params.name
+                "UNSUPPORTED_FILE_TYPE: 不支持的文件类型 {} (文件: {}, MIME: {})",
+                ext_display, params.name, params.mime_type
             ),
         }
         .to_string());
@@ -2081,31 +2482,26 @@ pub async fn vfs_upload_file(
         }
     }
 
-    // TODO(transaction): 以下多步操作（store_blob → create_file_with_doc_data_in_folder → sync_resource_units）
-    // 目前缺少 handler 级别的事务保护。create_file_with_doc_data_in_folder 已有内部 SAVEPOINT，
-    // 但 store_blob 涉及文件系统写入（无法被数据库事务回滚），sync_resource_units 使用独立的
-    // VfsIndexService（可能获取独立连接）。若 create_file_with_doc_data_in_folder 失败，
-    // 已写入的 blob 文件和 DB 记录会成为孤儿数据（因去重设计影响较小，但仍应清理）。
-    // 考虑方案：1) 用 SAVEPOINT 包裹 store_blob_db + create_file 的 DB 部分；
-    //          2) 失败时补偿删除 blob 文件；3) 后台定期清理孤儿 blob。
-    let blob_hash = if is_image || size >= 1024 * 1024 {
-        let blob = VfsBlobRepo::store_blob_with_conn(
-            &conn,
-            blobs_dir,
-            &content,
-            Some(&params.mime_type),
-            None,
-        )
-        .map_err(|e| e.to_string())?;
-        Some(blob.hash)
-    } else {
-        None
-    };
-
-    // ★ P2-1 修复：添加文档处理逻辑（与 vfs_upload_attachment 保持一致）
+    // ★ TD-03：上传原子性保障（最小 saga + savepoint，替代旧 TODO(transaction)）
+    //
+    // 事务边界：
+    // - PDF 预览渲染与根目录解析使用**独立连接**、先于事务执行；
+    //   它们的副作用（预览页 blob 的 ref +1）记入 UploadSaga 补偿账本。
+    // - store_blob（主 blob 落库）与 create_file_with_doc_data_in_folder
+    //   （resources/files/folder_items）在**同一连接**的 SAVEPOINT 内执行，
+    //   失败整体回滚；已原子 rename 落盘、且 DB 行随回滚消失的物理文件由
+    //   remove_unregistered_blob_file 补偿删除（去重复用的 blob 行仍在 → 保留）。
+    // - 索引同步失败不回滚文件（文件已持久可用），而是把资源置入显式
+    //   可重试状态（failed + 退避），由后台索引循环幂等重试补建。
     let is_pdf =
         params.mime_type == "application/pdf" || params.name.to_lowercase().ends_with(".pdf");
 
+    let mut saga = crate::vfs::upload_saga::UploadSaga::new();
+
+    // ★ pptx/epub 页级拆分结果（写入 files.ocr_pages_json，使检索命中可定位页/章节）
+    let mut paged_text_pages: Option<Vec<String>> = None;
+
+    // ★ P2-1 修复：添加文档处理逻辑（与 vfs_upload_attachment 保持一致）
     let (preview_json, extracted_text, page_count): (Option<String>, Option<String>, Option<i32>) =
         if is_pdf {
             log::info!(
@@ -2130,6 +2526,11 @@ pub async fn vfs_upload_file(
                 .await
                 {
                     Ok(Ok(result)) => {
+                        // 页面 blob 已在独立连接上提交，登记入补偿账本：
+                        // 后续任一步失败即回退这些引用（守卫式，仅归零才删文件）
+                        if let Some(ref preview) = result.preview_json {
+                            saga.record_preview_blobs(preview);
+                        }
                         let preview_str = result
                             .preview_json
                             .as_ref()
@@ -2164,33 +2565,77 @@ pub async fn vfs_upload_file(
                 .map(|s| s.to_lowercase());
 
             let supported_extensions = [
-                "docx", "xlsx", "xls", "xlsb", "ods", "pptx", "epub", "rtf", "txt", "md", "html",
-                "htm", "csv", "json", "xml",
+                "docx", "xlsx", "xls", "xlsb", "ods", "pptx", "epub", "rtf", "txt", "md",
+                "markdown", "html", "htm", "csv", "json", "xml",
             ];
 
-            if let Some(ref ext) = extension {
-                if supported_extensions.contains(&ext.as_str()) {
+            let is_zip_archive = extension.as_deref() == Some("zip")
+                || matches!(
+                    params.mime_type.trim().to_ascii_lowercase().as_str(),
+                    "application/zip" | "application/x-zip-compressed"
+                );
+
+            if is_zip_archive {
+                // ★ ZIP 压缩包：解析中央目录生成条目清单（不解压内容），
+                // 存入 extracted_text 供预览兜底页与对话注入使用
+                match crate::vfs::repos::attachment_repo::build_zip_manifest_text(
+                    &params.name,
+                    &content,
+                ) {
+                    Some(manifest) => {
+                        log::info!(
+                            "[VFS::handlers] Built zip manifest for {}: {} chars",
+                            params.name,
+                            manifest.len()
+                        );
+                        (None, Some(manifest), None)
+                    }
+                    None => (None, None, None),
+                }
+            } else if let Some(ref ext) = extension {
+                // ★ 代码/纯文本扩展名（与附件白名单/前端同一清单）也走文本提取
+                let is_parseable = supported_extensions.contains(&ext.as_str())
+                    || crate::document_parser::is_plain_text_code_extension(ext);
+                if is_parseable {
                     let parser = DocumentParser::new();
-                    match parser.extract_text_from_bytes(&params.name, content.clone()) {
-                        Ok(text) => {
-                            if !text.trim().is_empty() {
-                                log::info!(
-                                    "[VFS::handlers] Extracted text from {}: {} chars",
-                                    params.name,
-                                    text.len()
-                                );
-                                (None, Some(text), None)
-                            } else {
-                                (None, None, None)
-                            }
-                        }
-                        Err(e) => {
-                            log::warn!(
-                                "[VFS::handlers] Failed to extract text from {}: {}",
+
+                    // ★ pptx/epub 优先页级拆分（按 slide/章节），失败回退整篇提取
+                    match parser.extract_paged_text_from_bytes(&params.name, &content) {
+                        Ok(Some(pages)) if !pages.is_empty() => {
+                            let joined = pages.join("\n\n").trim().to_string();
+                            log::info!(
+                                "[VFS::handlers] Extracted paged text from {}: {} pages, {} chars",
                                 params.name,
-                                e
+                                pages.len(),
+                                joined.len()
                             );
-                            (None, None, None)
+                            let count = pages.len() as i32;
+                            paged_text_pages = Some(pages);
+                            (None, Some(joined), Some(count))
+                        }
+                        Ok(_) | Err(_) => {
+                            match parser.extract_text_from_bytes(&params.name, content.clone()) {
+                                Ok(text) => {
+                                    if !text.trim().is_empty() {
+                                        log::info!(
+                                            "[VFS::handlers] Extracted text from {}: {} chars",
+                                            params.name,
+                                            text.len()
+                                        );
+                                        (None, Some(text), None)
+                                    } else {
+                                        (None, None, None)
+                                    }
+                                }
+                                Err(e) => {
+                                    log::warn!(
+                                        "[VFS::handlers] Failed to extract text from {}: {}",
+                                        params.name,
+                                        e
+                                    );
+                                    (None, None, None)
+                                }
+                            }
                         }
                     }
                 } else {
@@ -2201,50 +2646,73 @@ pub async fn vfs_upload_file(
             }
         };
 
+    // 解析目标文件夹（可能在独立连接上创建根目录，必须在 savepoint 之外）
     let target_folder_id = match params.folder_id {
         Some(ref id) if !id.is_empty() => Some(id.clone()),
         _ => {
             let config = AttachmentConfig::new(vfs_db.inner().clone());
-            Some(
-                config
-                    .get_or_create_root_folder()
-                    .map_err(|e| e.to_string())?,
-            )
+            match config.get_or_create_root_folder() {
+                Ok(id) => Some(id),
+                Err(e) => {
+                    // ★ TD-03：此前这里直接 `?` 返回，泄漏已渲染的预览页 blob
+                    saga.abort(&conn, blobs_dir);
+                    return Err(e.to_string());
+                }
+            }
         }
     };
 
-    let file = match VfsFileRepo::create_file_with_doc_data_in_folder(
-        &conn,
-        &sha256,
-        &params.name,
-        size,
-        &file_type,
-        Some(&params.mime_type),
-        blob_hash.as_deref(),
-        None,
-        target_folder_id.as_deref(),
-        preview_json.as_deref(),
-        extracted_text.as_deref(),
-        page_count,
-    ) {
-        Ok(file) => file,
+    // ★ TD-03：主 blob 落库 + 文件三表写入在同一连接的 SAVEPOINT 内，失败整体回滚。
+    // 闭包内无 .await、无其他连接写入（避免持写锁期间跨连接死锁）。
+    let saga_result = crate::vfs::upload_saga::with_savepoint(&conn, "vfs_upload_file_saga", || {
+        let blob_hash = if is_image || size >= 1024 * 1024 {
+            let blob = VfsBlobRepo::store_blob_with_conn(
+                &conn,
+                blobs_dir,
+                &content,
+                Some(&params.mime_type),
+                None,
+            )?;
+            Some(blob.hash)
+        } else {
+            None
+        };
+
+        let (file, created) = VfsFileRepo::create_file_with_doc_data_in_folder_outcome(
+            &conn,
+            &sha256,
+            &params.name,
+            size,
+            &file_type,
+            Some(&params.mime_type),
+            blob_hash.as_deref(),
+            None,
+            target_folder_id.as_deref(),
+            preview_json.as_deref(),
+            extracted_text.as_deref(),
+            page_count,
+        )?;
+        Ok((blob_hash, file, created))
+    });
+
+    let (blob_hash, file, created) = match saga_result {
+        Ok(v) => v,
         Err(e) => {
-            if let Some(ref hash) = blob_hash {
-                log::warn!(
-                    "[VFS::handlers] 文件记录创建失败，补偿清理 blob: hash={}…",
-                    &hash[..hash.len().min(16)]
-                );
-                // ★ 2026-06-13（审阅 R2-3）：store_blob_with_conn 已把 ref_count 置/加到 1
-                // （去重命中时 N→N+1），而 create_file 不增 ref。旧补偿直接 cleanup_blob
-                // （ref_count=1>0 → no-op）会漏删 → 孤儿 blob 残留（原 2071 注释已知此问题）。
-                // 正确补偿：先 decrement_ref 抵消本次 store 的 +1（去重命中回到 N，仍被他人引用），
-                // 再 cleanup（仅当回到 0 时真正删除文件+记录）。
-                let _ = VfsBlobRepo::decrement_ref_with_conn(&conn, blobs_dir, hash);
+            log::warn!(
+                "[VFS::handlers] 上传事务失败，已回滚 DB 写入，开始补偿: {}",
+                e
+            );
+            // savepoint 已回滚 blobs/resources/files/folder_items 行；
+            // 补偿：1) 预览页 blob 引用（独立连接已提交，逐个回退）
+            saga.abort(&conn, blobs_dir);
+            // 2) 主 blob 物理文件（行随回滚消失 → 本次新写，删除；
+            //    去重复用时行仍在 → 保留，不删共享 blob）
+            if is_image || size >= 1024 * 1024 {
                 if let Err(cleanup_err) =
-                    VfsBlobRepo::cleanup_blob_with_conn(&conn, blobs_dir, hash)
+                    VfsBlobRepo::remove_unregistered_blob_file(&conn, blobs_dir, &sha256)
                 {
                     log::error!(
-                        "[VFS::handlers] 补偿清理 blob 失败（将由后台清理）: {}",
+                        "[VFS::handlers] 补偿删除孤儿 blob 文件失败（内容寻址可自愈）: {}",
                         cleanup_err
                     );
                 }
@@ -2252,6 +2720,22 @@ pub async fn vfs_upload_file(
             return Err(e.to_string());
         }
     };
+
+    if created {
+        // 主 blob（若有）与预览页 blob 的引用均已被新 files 行接管
+        saga.commit();
+    } else {
+        // 并发去重命中：返回的是已存在文件，本次 store 的主 blob +1 与
+        // 渲染的预览页 blob 均未被接管 → 全部补偿回退（守卫式，不动共享数据）
+        log::info!(
+            "[VFS::handlers] 上传去重命中已有文件 {}，回退本次新增的 blob 引用",
+            file.id
+        );
+        if let Some(ref hash) = blob_hash {
+            saga.record_blob_ref(hash);
+        }
+        saga.abort(&conn, blobs_dir);
+    }
 
     log::info!(
         "[VFS::handlers] File uploaded: {} (type={}, folder={:?}, has_text={})",
@@ -2275,7 +2759,24 @@ pub async fn vfs_upload_file(
 
     // OCR 相关变量设为 None，由 Pipeline 异步填充
     let ocr_text: Option<String> = None;
-    let ocr_pages_json: Option<String> = None;
+    // ★ pptx/epub 页级文本：与 PDF 相同写入 ocr_pages_json，索引可定位页/章节
+    let ocr_pages_json: Option<String> = paged_text_pages
+        .as_ref()
+        .and_then(|pages| serde_json::to_string(pages).ok());
+    if created {
+        if let Some(ref pages_json) = ocr_pages_json {
+            if let Err(e) = conn.execute(
+                "UPDATE files SET ocr_pages_json = ?1 WHERE id = ?2",
+                rusqlite::params![pages_json, file.id],
+            ) {
+                log::warn!(
+                    "[VFS::handlers] Failed to write ocr_pages_json for {}: {}",
+                    file.id,
+                    e
+                );
+            }
+        }
+    }
 
     // 判断是否需要触发 Pipeline OCR（用于状态返回）
     let needs_image_ocr = is_image && ocr_config.enabled && ocr_config.ocr_images;
@@ -2330,6 +2831,21 @@ pub async fn vfs_upload_file(
                     file.id,
                     e
                 );
+                // ★ TD-03：索引失败不得被静默吞掉。sync_units 已整体回滚
+                // （不留半套 Units），此处把资源置入显式可重试状态：
+                // failed + 退避 + 重试计数，后台索引循环（get_pending_resources
+                // → sync_resource_to_units）会幂等重建单元并索引。
+                // 若 mark_failed 本身失败，index_state 保持 NULL——待索引队列
+                // 把 NULL 视同 pending，同样会被重试（双保险）。
+                if let Err(mark_err) =
+                    VfsIndexStateRepo::mark_failed(&vfs_db, resource_id, &e.to_string())
+                {
+                    log::error!(
+                        "[VFS::handlers] Failed to mark index retry state for {}: {} (NULL state still retried by queue)",
+                        resource_id,
+                        mark_err
+                    );
+                }
             }
         }
     }
@@ -2368,7 +2884,8 @@ pub async fn vfs_upload_file(
     // ★ 2026-01 新增：构建索引状态
     let index_status = if file.resource_id.is_some() {
         let message = if let Some(ref err) = index_error {
-            format!("索引失败: {}", err)
+            // ★ TD-03：失败已落入可重试状态，向前端如实说明（不谎报成功，也不丢失索引）
+            format!("索引失败，已加入后台重试队列: {}", err)
         } else if index_queued && index_units_created > 0 {
             format!("已加入索引队列（{} 个单元）", index_units_created)
         } else if index_queued {
@@ -2385,6 +2902,36 @@ pub async fn vfs_upload_file(
     } else {
         None
     };
+
+    // ★ 音频导入后自动转写（异步，不阻塞导入；ASR 未配置则标记状态后跳过）
+    if created
+        && is_audio_upload(&params.name, &params.mime_type)
+        && file
+            .extracted_text
+            .as_ref()
+            .map(|t| t.trim().is_empty())
+            .unwrap_or(true)
+        && content.len() <= AUTO_TRANSCRIBE_MAX_AUDIO_BYTES
+    {
+        let audio_base64 = BASE64.encode(&content);
+        spawn_audio_transcription_if_applicable(
+            &app,
+            vfs_db.inner().clone(),
+            file.id.clone(),
+            file.resource_id.clone(),
+            params.name.clone(),
+            audio_base64,
+        );
+    } else if created
+        && is_audio_upload(&params.name, &params.mime_type)
+        && content.len() > AUTO_TRANSCRIBE_MAX_AUDIO_BYTES
+    {
+        mark_audio_processing_note(
+            &vfs_db,
+            &file.id,
+            "音频超过 25MB 自动转写上限，未转写。可裁剪后重新导入",
+        );
+    }
 
     // ★ 2026-02 修复：PDF/图片 上传后异步触发 Pipeline
     // PDF: Stage 1-2（文本提取、页面渲染）已在 create_file_with_doc_data_in_folder 中完成，从 OCR 阶段开始
@@ -7046,20 +7593,14 @@ pub async fn vfs_download_paper(
         }
     }
 
-    // Blob 存储
+    // ★ TD-03：与 vfs_upload_file 相同的最小 saga——
+    // 预览渲染（独立连接）先行并登记补偿账本；主 blob 落库 + 文件三表写入
+    // 在同一连接 SAVEPOINT 内整体回滚；索引失败置显式可重试状态。
     use crate::vfs::VfsBlobRepo;
     let blobs_dir = vfs_db.blobs_dir();
-    let blob_hash = VfsBlobRepo::store_blob_with_conn(
-        &conn,
-        blobs_dir,
-        &pdf_bytes,
-        Some("application/pdf"),
-        None,
-    )
-    .map_err(|e| format!("Blob storage failed: {}", e))?
-    .hash;
+    let mut saga = crate::vfs::upload_saga::UploadSaga::new();
 
-    // PDF 预览 + 文本提取（spawn_blocking 避免阻塞 tokio 线程）
+    // PDF 预览 + 文本提取（spawn_blocking 避免阻塞 tokio 线程；须在 savepoint 之外）
     let (preview_json, extracted_text, page_count) = {
         let vfs_db_clone = vfs_db.inner().clone();
         let blobs_dir_clone = blobs_dir.to_path_buf();
@@ -7077,6 +7618,9 @@ pub async fn vfs_download_paper(
         .await
         {
             Ok(Ok(result)) => {
+                if let Some(ref preview) = result.preview_json {
+                    saga.record_preview_blobs(preview);
+                }
                 let preview_str = result
                     .preview_json
                     .as_ref()
@@ -7110,21 +7654,61 @@ pub async fn vfs_download_paper(
 
     let folder_id = params.folder_id.as_deref().filter(|s| !s.is_empty());
 
-    let file = VfsFileRepo::create_file_with_doc_data_in_folder(
-        &conn,
-        &sha256,
-        &file_name,
-        pdf_bytes.len() as i64,
-        "pdf",
-        Some("application/pdf"),
-        Some(&blob_hash),
-        None,
-        folder_id,
-        preview_json.as_deref(),
-        extracted_text.as_deref(),
-        page_count,
-    )
-    .map_err(|e| format!("File creation failed: {}", e))?;
+    let saga_result =
+        crate::vfs::upload_saga::with_savepoint(&conn, "vfs_download_paper_saga", || {
+            let blob_hash = VfsBlobRepo::store_blob_with_conn(
+                &conn,
+                blobs_dir,
+                &pdf_bytes,
+                Some("application/pdf"),
+                None,
+            )?
+            .hash;
+
+            let (file, created) = VfsFileRepo::create_file_with_doc_data_in_folder_outcome(
+                &conn,
+                &sha256,
+                &file_name,
+                pdf_bytes.len() as i64,
+                "pdf",
+                Some("application/pdf"),
+                Some(&blob_hash),
+                None,
+                folder_id,
+                preview_json.as_deref(),
+                extracted_text.as_deref(),
+                page_count,
+            )?;
+            Ok((blob_hash, file, created))
+        });
+
+    let (blob_hash, file, created) = match saga_result {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!(
+                "[VFS::download_paper] 保存事务失败，已回滚 DB 写入，开始补偿: {}",
+                e
+            );
+            saga.abort(&conn, blobs_dir);
+            if let Err(cleanup_err) =
+                VfsBlobRepo::remove_unregistered_blob_file(&conn, blobs_dir, &sha256)
+            {
+                log::error!(
+                    "[VFS::download_paper] 补偿删除孤儿 blob 文件失败（内容寻址可自愈）: {}",
+                    cleanup_err
+                );
+            }
+            return Err(format!("File creation failed: {}", e));
+        }
+    };
+
+    if created {
+        saga.commit();
+    } else {
+        // 并发去重命中：本次 +1 的引用未被新文件行接管，回退
+        saga.record_blob_ref(&blob_hash);
+        saga.abort(&conn, blobs_dir);
+    }
 
     // 索引
     if let Some(ref resource_id) = file.resource_id {
@@ -7137,12 +7721,28 @@ pub async fn vfs_download_paper(
             data: None,
             ocr_text: None,
             ocr_pages_json: None,
-            blob_hash: Some(blob_hash.clone()),
+            blob_hash: file.blob_hash.clone(),
             page_count: file.page_count,
             extracted_text: file.extracted_text.clone(),
             preview_json: file.preview_json.clone(),
         };
-        let _ = index_service.sync_resource_units(input);
+        // ★ TD-03：失败不再 `let _` 吞掉——置显式可重试状态交后台索引循环补建
+        if let Err(e) = index_service.sync_resource_units(input) {
+            log::warn!(
+                "[VFS::download_paper] Failed to sync units for {}: {} (queued for background retry)",
+                resource_id,
+                e
+            );
+            if let Err(mark_err) =
+                VfsIndexStateRepo::mark_failed(&vfs_db, resource_id, &e.to_string())
+            {
+                log::error!(
+                    "[VFS::download_paper] Failed to mark index retry state for {}: {}",
+                    resource_id,
+                    mark_err
+                );
+            }
+        }
     }
 
     // 异步 PDF Pipeline

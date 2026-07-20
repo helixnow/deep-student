@@ -134,7 +134,61 @@ static PROVIDER_PROTOCOL_REGISTRY: LazyLock<Vec<ProviderProtocolRegistryRecord>>
     },
 );
 
+pub const AUTH_MODE_NONE: &str = "none";
 pub const AUTH_MODE_OPENAI_CODEX_OAUTH: &str = "openai_codex_oauth";
+
+fn api_origins_match(left: &str, right: &str) -> bool {
+    let Ok(left) = url::Url::parse(left.trim()) else {
+        return false;
+    };
+    let Ok(right) = url::Url::parse(right.trim()) else {
+        return false;
+    };
+    left.scheme().eq_ignore_ascii_case(right.scheme())
+        && left.host_str().map(str::to_ascii_lowercase)
+            == right.host_str().map(str::to_ascii_lowercase)
+        && left.port_or_known_default() == right.port_or_known_default()
+}
+
+fn is_sensitive_vendor_header(name: &str) -> bool {
+    // 自定义 Header 的语义不可可靠推断（X-Auth、X-Api-Key-V2、租户签名等命名
+    // 没有统一标准），因此一律按凭据处理：落盘加密、返回 renderer 时掩码，
+    // 跨源修改时要求显式重输。
+    !name.trim().is_empty()
+}
+
+fn is_masked_secret(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty() && value.chars().all(|character| character == '*')
+}
+
+fn deserialize_vendor_configs(
+    raw: &str,
+) -> std::result::Result<Vec<VendorConfig>, serde_json::Error> {
+    let mut value: Value = serde_json::from_str(raw)?;
+    if let Some(vendors) = value.as_array_mut() {
+        for vendor in vendors {
+            let Some(object) = vendor.as_object_mut() else {
+                continue;
+            };
+            let legacy_no_api_key = object
+                .get("noApiKey")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let has_auth_mode = object
+                .get("authMode")
+                .and_then(Value::as_str)
+                .is_some_and(|mode| !mode.trim().is_empty());
+            if legacy_no_api_key && !has_auth_mode {
+                object.insert(
+                    "authMode".to_string(),
+                    Value::String(AUTH_MODE_NONE.to_string()),
+                );
+            }
+        }
+    }
+    serde_json::from_value(value)
+}
 
 /// 增量 JSON 数组解析器 - 用于流式解析 LLM 输出的 JSON 数组
 /// 当检测到完整的 JSON 对象时立即返回，无需等待整个数组完成
@@ -402,7 +456,6 @@ mod tests {
         for (provider, base_url) in [
             ("qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
             ("doubao", "https://ark.cn-beijing.volces.com/api/v3"),
-            ("grok", "https://api.x.ai/v1"),
             ("ernie", "https://qianfan.baidubce.com/v2"),
         ] {
             let record = get_provider_protocol_record(Some(provider))
@@ -435,6 +488,19 @@ mod tests {
                 ),
                 "openai_responses",
                 "{provider} explicit opt-in should unlock responses"
+            );
+        }
+
+        for provider in ["grok", "xai"] {
+            assert_eq!(
+                resolve_preferred_protocol_for_provider(
+                    Some(provider),
+                    Some("general"),
+                    "https://api.x.ai/v1",
+                    None,
+                ),
+                "openai_responses",
+                "{provider} should honor its registry Responses default"
             );
         }
     }
@@ -891,7 +957,12 @@ mod tests {
         for provider in ["grok", "xai", "ernie", "mistral"] {
             let record = get_provider_protocol_record(Some(provider))
                 .unwrap_or_else(|| panic!("{provider} provider should exist in registry"));
-            assert_eq!(record.default_protocol, "openai_chat_completions");
+            let expected_default = if matches!(provider, "grok" | "xai") {
+                "openai_responses"
+            } else {
+                "openai_chat_completions"
+            };
+            assert_eq!(record.default_protocol, expected_default);
             assert!(
                 !record
                     .allowed_protocols
@@ -2542,7 +2613,7 @@ pub struct ModelProfile {
     /// 是否收藏（收藏的模型在列表中优先显示）
     #[serde(default)]
     pub is_favorite: bool,
-    /// 模型级别的 max_tokens 限制（优先于供应商级别）
+    /// 模型级 max_tokens 限制；与供应商限制同时存在时取较小值。
     #[serde(default)]
     pub max_tokens_limit: Option<u32>,
     /// 模型上下文窗口大小（tokens），用于前端/Chat V2 预算，不作为 API 参数发送
@@ -2760,11 +2831,19 @@ pub(crate) fn resolve_preferred_protocol_for_provider(
         return "openai_responses".to_string();
     }
 
+    if normalize_provider_protocol_registry_value(provider_type) == "openai"
+        && !resolves_to_official_openai(provider_type, base_url)
+        && allowed
+            .iter()
+            .any(|protocol| protocol == "openai_chat_completions")
+    {
+        return "openai_chat_completions".to_string();
+    }
+
     if let Some(record) = get_provider_protocol_record(provider_type) {
-        if record.default_protocol != "openai_responses"
-            && allowed
-                .iter()
-                .any(|protocol| protocol == &record.default_protocol)
+        if allowed
+            .iter()
+            .any(|protocol| protocol == &record.default_protocol)
         {
             return record.default_protocol.clone();
         }
@@ -2772,7 +2851,7 @@ pub(crate) fn resolve_preferred_protocol_for_provider(
 
     allowed
         .iter()
-        .find(|protocol| protocol.as_str() != "openai_responses")
+        .find(|protocol| protocol.as_str() == "openai_chat_completions")
         .cloned()
         .or_else(|| allowed.first().cloned())
         .unwrap_or_else(|| "openai_chat_completions".to_string())
@@ -2958,6 +3037,20 @@ pub(crate) fn normalize_nonstream_response_to_openai(
             .map_err(|e| AppError::llm(format!("Gemini响应转换失败: {}", e)));
         }
         "anthropic_messages" => {
+            let stop_reason = response_json.get("stop_reason").and_then(Value::as_str);
+            let refusal_category = response_json
+                .get("stop_details")
+                .and_then(|details| details.get("category"))
+                .and_then(Value::as_str)
+                .filter(|category| !category.is_empty() && *category != "none");
+            if stop_reason == Some("refusal") || refusal_category.is_some() {
+                return Err(AppError::llm(format!(
+                    "模型拒绝了该请求{}",
+                    refusal_category
+                        .map(|category| format!(": {category}"))
+                        .unwrap_or_default()
+                )));
+            }
             return crate::providers::convert_anthropic_response_to_openai(
                 response_json,
                 &config.model,
@@ -2965,7 +3058,11 @@ pub(crate) fn normalize_nonstream_response_to_openai(
             .ok_or_else(|| AppError::llm("解析Anthropic响应失败".to_string()));
         }
         "openai_responses" => {}
-        _ => return Ok(response_json.clone()),
+        _ => {
+            return Ok(crate::providers::normalize_openai_nonstream_response(
+                response_json,
+            ))
+        }
     }
 
     let response_status = response_json.get("status").and_then(Value::as_str);
@@ -4379,7 +4476,7 @@ impl LLMManager {
             .map_err(|e| AppError::database(format!("读取模型条目失败: {}", e)))?
             .unwrap_or_else(|| "[]".to_string());
 
-        let mut vendors: Vec<VendorConfig> = serde_json::from_str(&raw_vendors)
+        let mut vendors = deserialize_vendor_configs(&raw_vendors)
             .map_err(|e| AppError::configuration(format!("解析供应商配置失败: {}", e)))?;
         let mut profiles: Vec<ModelProfile> = serde_json::from_str(&raw_profiles)
             .map_err(|e| AppError::configuration(format!("解析模型条目失败: {}", e)))?;
@@ -4434,33 +4531,43 @@ impl LLMManager {
                 vendors.push(vendor);
             }
         }
-        // 统一处理：内置供应商从安全存储读取真实 API key（与 vendor_configs_for_runtime 一致）
-        // 前端可直接在 password input 中显示密码点，而非仅显示"已配置"占位符。
+        // Renderer 只接收凭据存在性占位符。真实主/备用 key 始终留在 Rust 边界内，
+        // 运行时请求与模型发现通过 vendor_configs_for_runtime 读取。
         for vendor in &mut vendors {
             let is_builtin_vendor = vendor.is_builtin || vendor.id.starts_with("builtin-");
-            if !is_builtin_vendor {
-                continue;
-            }
-            let is_invalid = vendor.api_key.is_empty()
-                || vendor.api_key == "***"
-                || vendor.api_key.chars().all(|c| c == '*');
-            if is_invalid {
+            let mut has_api_key = !vendor.api_key.trim().is_empty()
+                && vendor.api_key != "***"
+                && !vendor.api_key.chars().all(|character| character == '*');
+            if is_builtin_vendor && !has_api_key {
                 let secret_key = format!("{}.api_key", vendor.id);
                 if let Ok(Some(key)) = self.db.get_secret(&secret_key) {
                     if !key.is_empty() {
-                        vendor.api_key = key;
+                        has_api_key = true;
                     }
                 }
                 // 兼容旧的 SiliconFlow 存储格式
-                if vendor.id == "builtin-siliconflow" && vendor.api_key.is_empty() {
+                if vendor.id == "builtin-siliconflow" && !has_api_key {
                     if let Ok(Some(sf_key)) = self.db.get_secret("siliconflow.api_key") {
                         if !sf_key.is_empty() {
-                            vendor.api_key = sf_key;
+                            has_api_key = true;
                         }
                     }
                 }
             }
-            vendor.is_builtin = true;
+            vendor.api_key = if has_api_key {
+                "***".to_string()
+            } else {
+                String::new()
+            };
+            vendor.api_keys = vec!["***".to_string(); vendor.api_keys.len()];
+            for (name, value) in &mut vendor.headers {
+                if is_sensitive_vendor_header(name) && !value.trim().is_empty() {
+                    *value = "***".to_string();
+                }
+            }
+            if is_builtin_vendor {
+                vendor.is_builtin = true;
+            }
         }
         Ok(vendors)
     }
@@ -4472,11 +4579,29 @@ impl LLMManager {
             .map_err(|e| AppError::database(format!("获取供应商配置失败: {}", e)))?
             .unwrap_or_else(|| "[]".to_string());
 
-        let mut vendors: Vec<VendorConfig> = serde_json::from_str(&raw)
+        let mut vendors = deserialize_vendor_configs(&raw)
             .map_err(|e| AppError::configuration(format!("解析供应商配置失败: {}", e)))?;
 
         // 容错处理：解密失败时清空 API 密钥而不是让整个配置加载失败
         for vendor in &mut vendors {
+            for (name, value) in &mut vendor.headers {
+                if !is_sensitive_vendor_header(name) {
+                    continue;
+                }
+                match self.decrypt_api_key_if_needed(value) {
+                    Ok(decrypted) => *value = decrypted,
+                    Err(error) => {
+                        tracing::warn!(
+                            "⚠️ 供应商 {} 的敏感请求头 {} 解密失败，将移除该请求头: {}",
+                            vendor.id,
+                            name,
+                            error
+                        );
+                        value.clear();
+                    }
+                }
+            }
+            vendor.headers.retain(|_, value| !value.is_empty());
             // 🆕 Failover：备用 key 列表逐个解密，解密失败/空值的条目丢弃
             vendor.api_keys = vendor
                 .api_keys
@@ -4575,42 +4700,165 @@ impl LLMManager {
         Ok(vendors)
     }
 
+    pub(crate) async fn vendor_config_for_runtime(&self, vendor_id: &str) -> Result<VendorConfig> {
+        self.vendor_configs_for_runtime()
+            .await?
+            .into_iter()
+            .find(|vendor| vendor.id == vendor_id)
+            .ok_or_else(|| AppError::configuration("供应商不存在或已被删除"))
+    }
+
     pub async fn save_vendor_configs(&self, configs: &[VendorConfig]) -> Result<()> {
         // 读取现有配置，用于保留未更新的 API key
-        let existing_vendors = self.read_user_vendor_configs().await.unwrap_or_default();
-        let existing_map: std::collections::HashMap<String, String> = existing_vendors
+        let mut existing_vendors = self.read_user_vendor_configs().await.unwrap_or_default();
+        if let Ok((builtin_vendors, _)) = self.load_builtin_vendor_profiles() {
+            for vendor in builtin_vendors {
+                if !existing_vendors
+                    .iter()
+                    .any(|existing| existing.id == vendor.id)
+                {
+                    existing_vendors.push(vendor);
+                }
+            }
+        }
+        let existing_map: std::collections::HashMap<String, VendorConfig> = existing_vendors
             .into_iter()
-            .map(|v| (v.id.clone(), v.api_key))
+            .map(|vendor| (vendor.id.clone(), vendor))
             .collect();
+
+        // 先完成跨配置校验，再触碰任何安全存储，避免列表后部校验失败时
+        // 前部内置供应商的密钥已经被部分更新。
+        for cfg in configs {
+            for (name, value) in &cfg.headers {
+                reqwest::header::HeaderName::from_bytes(name.as_bytes())
+                    .map_err(|_| AppError::validation(format!("无效的供应商请求头名称: {name}")))?;
+                reqwest::header::HeaderValue::from_str(value)
+                    .map_err(|_| AppError::validation("供应商请求头包含无效字符"))?;
+            }
+            let Some(existing) = existing_map.get(&cfg.id) else {
+                continue;
+            };
+            if api_origins_match(&existing.base_url, &cfg.base_url) {
+                continue;
+            }
+            let uses_no_auth = cfg
+                .auth_mode
+                .as_deref()
+                .is_some_and(|mode| mode.eq_ignore_ascii_case(AUTH_MODE_NONE));
+            if !uses_no_auth {
+                if is_masked_secret(&cfg.api_key) {
+                    return Err(AppError::validation(
+                        "修改供应商地址的主机、协议或端口时必须重新输入 API 密钥",
+                    ));
+                }
+                if cfg.api_keys.iter().any(|key| is_masked_secret(key)) {
+                    return Err(AppError::validation(
+                        "修改供应商地址的主机、协议或端口时必须重新输入备用 API 密钥",
+                    ));
+                }
+            }
+            if cfg
+                .headers
+                .iter()
+                .any(|(name, value)| is_sensitive_vendor_header(name) && is_masked_secret(value))
+            {
+                return Err(AppError::validation(
+                    "修改供应商地址的主机、协议或端口时必须重新输入敏感请求头",
+                ));
+            }
+        }
 
         let mut sanitized = Vec::new();
         for cfg in configs {
             let mut clone = cfg.clone();
             normalize_vendor_protocol_config(&mut clone);
 
-            // 🆕 Failover：备用 key 列表统一加密存储（内置/自建供应商一致），
-            // 过滤空值与占位符（前端回传的明文会被重新加密）
-            {
-                let mut encrypted_keys = Vec::new();
-                for key in &cfg.api_keys {
-                    let trimmed_key = key.trim();
-                    let is_placeholder = trimmed_key == "***"
-                        || (!trimmed_key.is_empty() && trimmed_key.chars().all(|c| c == '*'));
-                    if trimmed_key.is_empty() || is_placeholder {
+            let existing = existing_map.get(&cfg.id);
+            let origin_changed =
+                existing.is_some_and(|vendor| !api_origins_match(&vendor.base_url, &cfg.base_url));
+            let uses_no_auth = cfg
+                .auth_mode
+                .as_deref()
+                .is_some_and(|mode| mode.eq_ignore_ascii_case(AUTH_MODE_NONE));
+            let mut protected_headers = HashMap::new();
+            for (name, value) in &cfg.headers {
+                if !is_sensitive_vendor_header(name) {
+                    protected_headers.insert(name.clone(), value.clone());
+                    continue;
+                }
+                let trimmed = value.trim();
+                let keep_placeholder = trimmed == "***"
+                    || (!trimmed.is_empty() && trimmed.chars().all(|character| character == '*'));
+                if keep_placeholder && origin_changed {
+                    return Err(AppError::validation(
+                        "修改供应商地址的主机、协议或端口时必须重新输入敏感请求头",
+                    ));
+                }
+                let effective_value = if keep_placeholder {
+                    existing
+                        .and_then(|vendor| vendor.headers.get(name))
+                        .map(String::as_str)
+                        .unwrap_or_default()
+                } else {
+                    trimmed
+                };
+                if !effective_value.is_empty() {
+                    protected_headers.insert(name.clone(), self.encrypt_api_key(effective_value)?);
+                }
+            }
+            clone.headers = protected_headers;
+
+            // Failover 备用 key 按位置合并：掩码保留对应旧值，明文替换对应项，
+            // 空行删除对应位置，缩短列表可删除尾部 key，清空列表则删除全部。
+            if uses_no_auth {
+                clone.api_keys.clear();
+            } else {
+                let existing_keys = existing
+                    .map(|vendor| vendor.api_keys.as_slice())
+                    .unwrap_or(&[]);
+                let mut keys_to_store = Vec::new();
+                for (index, submitted) in cfg.api_keys.iter().enumerate() {
+                    let submitted = submitted.trim();
+                    if submitted.is_empty() {
                         continue;
                     }
-                    encrypted_keys.push(self.encrypt_api_key(trimmed_key)?);
+                    let is_placeholder =
+                        submitted == "***" || submitted.chars().all(|character| character == '*');
+                    if is_placeholder {
+                        if origin_changed {
+                            return Err(AppError::validation(
+                                "修改供应商地址的主机、协议或端口时必须重新输入备用 API 密钥",
+                            ));
+                        }
+                        if let Some(existing_key) = existing_keys.get(index) {
+                            keys_to_store.push(existing_key.clone());
+                        }
+                    } else {
+                        keys_to_store.push(submitted.to_string());
+                    }
+                }
+                let mut encrypted_keys = Vec::new();
+                for key in keys_to_store {
+                    encrypted_keys.push(self.encrypt_api_key(&key)?);
                 }
                 clone.api_keys = encrypted_keys;
             }
 
-            let trimmed = cfg.api_key.trim();
+            let trimmed = if uses_no_auth { "" } else { cfg.api_key.trim() };
             // “保留旧值”占位符：*** 或全 *（但不包含空字符串）
             // 空字符串应视为用户明确清空（而不是保留）。
             let keep_placeholder =
                 trimmed == "***" || (!trimmed.is_empty() && trimmed.chars().all(|c| c == '*'));
             // 内置供应商判断：兼容旧数据（is_builtin=false 但 id 以 builtin- 开头）
             let is_builtin_vendor = cfg.is_builtin || cfg.id.starts_with("builtin-");
+
+            if keep_placeholder {
+                if origin_changed {
+                    return Err(AppError::validation(
+                        "修改供应商地址的主机、协议或端口时必须重新输入 API 密钥",
+                    ));
+                }
+            }
 
             if is_builtin_vendor {
                 // 内置供应商：API key 始终通过安全存储管理，vendor_configs 中不保存
@@ -4654,7 +4902,10 @@ impl LLMManager {
             } else {
                 // 非内置供应商：API key 加密存储到 vendor_configs
                 let effective_api_key = if keep_placeholder {
-                    existing_map.get(&cfg.id).cloned().unwrap_or_default()
+                    existing_map
+                        .get(&cfg.id)
+                        .map(|vendor| vendor.api_key.clone())
+                        .unwrap_or_default()
                 } else {
                     trimmed.to_string()
                 };
@@ -4896,7 +5147,13 @@ impl LLMManager {
         profile: &ModelProfile,
         codex_authenticated: bool,
     ) -> Result<ResolvedModelConfig> {
-        let api_key = if vendor.is_builtin {
+        let has_no_auth = vendor
+            .auth_mode
+            .as_deref()
+            .is_some_and(|mode| mode.eq_ignore_ascii_case(AUTH_MODE_NONE));
+        let api_key = if has_no_auth {
+            String::new()
+        } else if vendor.is_builtin {
             vendor.api_key.trim().to_string()
         } else {
             self.decrypt_api_key_if_needed(&vendor.api_key)?
@@ -4905,7 +5162,8 @@ impl LLMManager {
         };
 
         let has_api_key =
-            !api_key.is_empty() && api_key != "***" && !api_key.chars().all(|c| c == '*');
+            (!api_key.is_empty() && api_key != "***" && !api_key.chars().all(|c| c == '*'))
+                || vendor.api_keys.iter().any(|key| !key.trim().is_empty());
         let has_oauth_session = vendor.provider_type.eq_ignore_ascii_case("openai_codex")
             && vendor.auth_mode.as_deref() == Some(AUTH_MODE_OPENAI_CODEX_OAUTH)
             && codex_authenticated;
@@ -4916,6 +5174,12 @@ impl LLMManager {
             .or_else(|| Some(vendor.provider_type.clone()));
         let capability_overrides =
             Self::resolve_capability_overrides(&profile.model, provider_scope.as_deref());
+        let max_tokens_limit = match (profile.max_tokens_limit, vendor.max_tokens_limit) {
+            (Some(profile_limit), Some(vendor_limit)) => Some(profile_limit.min(vendor_limit)),
+            (Some(profile_limit), None) => Some(profile_limit),
+            (None, Some(vendor_limit)) => Some(vendor_limit),
+            (None, None) => None,
+        };
 
         let runtime = ApiConfig {
             id: profile.id.clone(),
@@ -4948,7 +5212,7 @@ impl LLMManager {
                 || looks_like_image_generation_model_id(&profile.model),
             enabled: profile.enabled
                 && profile.status.to_lowercase() != "disabled"
-                && (has_api_key || has_oauth_session),
+                && (has_api_key || has_no_auth || has_oauth_session),
             model_adapter: profile.model_adapter.clone(),
             max_output_tokens: profile.max_output_tokens,
             temperature: profile.temperature,
@@ -4978,8 +5242,8 @@ impl LLMManager {
             effort: profile.effort.clone(),
             verbosity: profile.verbosity.clone(),
             is_favorite: profile.is_favorite,
-            // 模型粒度自管理 max_tokens_limit，不从供应商继承
-            max_tokens_limit: profile.max_tokens_limit,
+            // 供应商是硬上限；模型可设置更低的局部上限，但不能放宽供应商限制。
+            max_tokens_limit,
             context_window: profile
                 .context_window
                 .or(capability_overrides.context_window),

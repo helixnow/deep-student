@@ -30,7 +30,9 @@ async fn bing_rss_returns_search_citations_without_api_key() {
         Some("bing_rss")
     );
     assert!(
-        result.citations.is_some_and(|citations| !citations.is_empty()),
+        result
+            .citations
+            .is_some_and(|citations| !citations.is_empty()),
         "Bing RSS returned no citations"
     );
 }

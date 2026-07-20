@@ -6,9 +6,14 @@
 //! - 兼容旧版设备特征派生密钥，读取时自动迁移到新密钥
 //! - 加密文件存储在 app_data_dir/.secure/ 目录
 //!
-//! 设计原则：
-//! - 不依赖系统级加密（避免 macOS Keychain 弹窗、安卓 Keystore 兼容性问题）
-//! - 所有平台实现统一，减少跨平台差异
+//! 根种子（.key_seed）的平台保护（TD-08）：
+//! - **Windows**：DPAPI（用户级 `CryptProtectData`）封装后落盘
+//! - **macOS**：种子存入 Keychain，磁盘只留 `KEYSTORE1:<指纹>` 引用标记
+//! - **Linux**：优先 Secret Service（gnome-keyring/KWallet），同上留引用标记；
+//!   headless/无密钥环环境默认 fail-closed，只有显式设置
+//!   `DEEP_STUDENT_KEY_SEED_FILE_ONLY=1` 才允许文件种子降级
+//! - **Android/iOS**：维持加密文件方案（keyring 依赖不参与移动端编译）
+//! - 所有路径 fail-closed：平台密钥库不可达时**绝不**静默生成新种子覆盖旧密文
 //!
 //! 云存储凭据专用 API：
 //! - `save_cloud_credentials` / `get_cloud_credentials` / `delete_cloud_credentials`
@@ -43,6 +48,36 @@ pub enum SecureStoreError {
     EncryptionError(String),
     #[error("其他错误: {0}")]
     Other(String),
+}
+
+impl SecureStoreError {
+    /// IPC 稳定错误码；前端只按 code 分派，绝不匹配本地化 Display 文案。
+    fn stable_code(&self) -> &'static str {
+        match self {
+            Self::KeychainUnavailable(_) | Self::PlatformUnsupported(_) => {
+                "SECURE_STORE_UNAVAILABLE"
+            }
+            Self::KeyNotFound(_) => "SECURE_STORE_KEY_NOT_FOUND",
+            Self::AccessDenied(_) => "SECURE_STORE_ACCESS_DENIED",
+            Self::SerializationError(_) => "SECURE_STORE_DATA_INVALID",
+            Self::EncryptionError(_) => "SECURE_STORE_CRYPTO_ERROR",
+            Self::Other(_) => "SECURE_STORE_INTERNAL",
+        }
+    }
+
+    fn to_command_error(&self, operation: &'static str) -> crate::error_details::CommandError {
+        crate::error_details::CommandError::new(self.stable_code(), self.to_string()).with_data(
+            serde_json::json!({
+                "operation": operation,
+                "retryable": matches!(
+                    self,
+                    Self::KeychainUnavailable(_)
+                        | Self::AccessDenied(_)
+                        | Self::PlatformUnsupported(_)
+                ),
+            }),
+        )
+    }
 }
 
 /// 安全存储配置
@@ -92,6 +127,20 @@ const SENSITIVE_KEY_PATTERNS: &[&str] = &[
 /// 网盘同步、取证镜像），缺少当前 Windows 用户上下文也无法解封种子。
 /// 文件格式：`DPAPI1:` + base64(DPAPI blob)。旧版明文种子在首次读取时平滑迁移。
 const DPAPI_SEED_PREFIX: &str = "DPAPI1:";
+
+/// `.key_seed` 已迁入平台密钥库（macOS Keychain / Linux Secret Service）时的
+/// 引用标记前缀（TD-08）
+///
+/// 文件内容为 `KEYSTORE1:` + hex(SHA-256(domain || seed))。文件中不再含任何
+/// 秘密材料，仅保留指纹用于定位并校验密钥库条目；备份/恢复管线
+/// （data_governance/backup）对该标记文件的复制行为保持不变——跨机器恢复时
+/// `validate_backup_seed_file` 会像 DPAPI 种子一样 fail-closed。
+const KEYSTORE_SEED_PREFIX: &str = "KEYSTORE1:";
+
+/// 受控降级开关：设为 1/true 后，新种子/明文种子不迁入平台密钥库，
+/// 维持加密文件方案。适用于无桌面密钥环的 Linux headless 部署。
+/// 注意：已迁入密钥库的种子（KEYSTORE1: 标记）不受此开关影响，仍需密钥库可达。
+const KEY_SEED_FILE_ONLY_ENV: &str = "DEEP_STUDENT_KEY_SEED_FILE_ONLY";
 
 /// 备份种子文件读取上限。正常明文种子为 64 字符，DPAPI 载荷通常也只有数百字节。
 const MAX_BACKUP_SEED_FILE_BYTES: u64 = 64 * 1024;
@@ -215,6 +264,172 @@ mod win_dpapi {
     }
 }
 
+// ==================== 平台密钥库（TD-08） ====================
+
+/// 平台密钥库抽象（macOS Keychain / Linux Secret Service）。
+///
+/// 抽成 trait 是为了让「种子迁移决策」可以在任意平台上用 fake 实现做纯单测；
+/// 生产实现见 `PlatformSeedKeystore`。
+pub(crate) trait SeedKeystore {
+    /// 后端名称（日志/可行动错误信息用）
+    fn backend_name(&self) -> &'static str;
+    /// 读取指纹对应的种子。`Ok(None)` = 条目不存在；`Err` = 密钥库不可用/拒绝访问。
+    fn load(&self, fingerprint: &str) -> Result<Option<String>, String>;
+    /// 写入（覆盖）指纹对应的种子条目。
+    fn store(&self, fingerprint: &str, seed: &str) -> Result<(), String>;
+}
+
+/// 生产实现：经 `keyring` crate 访问 macOS Keychain / Linux Secret Service。
+///
+/// 条目定位：service = `deep-student`，account = `key_seed.<指纹>`。
+/// 用指纹（而非固定名）作 account，保证多数据空间/多 secure 目录各自的种子
+/// 互不覆盖，且迁移重试幂等（同种子恒定同条目）。
+#[cfg(all(any(target_os = "macos", target_os = "linux"), not(test)))]
+struct PlatformSeedKeystore;
+
+#[cfg(all(any(target_os = "macos", target_os = "linux"), not(test)))]
+impl SeedKeystore for PlatformSeedKeystore {
+    fn backend_name(&self) -> &'static str {
+        if cfg!(target_os = "macos") {
+            "macOS Keychain"
+        } else {
+            "Secret Service"
+        }
+    }
+
+    fn load(&self, fingerprint: &str) -> Result<Option<String>, String> {
+        let entry = keyring::Entry::new(SERVICE_NAME, &format!("key_seed.{fingerprint}"))
+            .map_err(|e| e.to_string())?;
+        match entry.get_password() {
+            Ok(seed) => Ok(Some(seed)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn store(&self, fingerprint: &str, seed: &str) -> Result<(), String> {
+        let entry = keyring::Entry::new(SERVICE_NAME, &format!("key_seed.{fingerprint}"))
+            .map_err(|e| e.to_string())?;
+        entry.set_password(seed).map_err(|e| e.to_string())
+    }
+}
+
+fn keystore_disabled_by_env() -> bool {
+    std::env::var(KEY_SEED_FILE_ONLY_ENV)
+        .map(|v| {
+            let v = v.trim();
+            !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false")
+        })
+        .unwrap_or(false)
+}
+
+/// 当前构建/配置下可用的平台密钥库。
+///
+/// - 桌面 macOS/Linux：返回真实实现；
+/// - Windows（走 DPAPI）、Android/iOS：`None`；
+/// - `DEEP_STUDENT_KEY_SEED_FILE_ONLY=1`：显式受控降级，`None`；
+/// - `cfg(test)`：恒 `None`——单测绝不触碰真实钥匙串，密钥库路径一律用 fake 注入覆盖。
+fn platform_seed_keystore() -> Option<Box<dyn SeedKeystore>> {
+    if keystore_disabled_by_env() {
+        return None;
+    }
+    #[cfg(all(any(target_os = "macos", target_os = "linux"), not(test)))]
+    {
+        Some(Box::new(PlatformSeedKeystore))
+    }
+    #[cfg(not(all(any(target_os = "macos", target_os = "linux"), not(test))))]
+    {
+        None
+    }
+}
+
+/// `.key_seed` 文件内容的形态分类（纯函数，供决策逻辑单测）。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum SeedFileContent<'a> {
+    /// 明文种子（历史格式 / 受控降级格式）
+    Plaintext(&'a str),
+    /// Windows DPAPI 封装（`DPAPI1:` 之后的 base64 载荷）
+    Dpapi(&'a str),
+    /// 平台密钥库引用标记（`KEYSTORE1:` 之后的 sha256 指纹）
+    KeystoreRef { fingerprint: &'a str },
+}
+
+pub(crate) fn classify_seed_content(
+    trimmed: &str,
+) -> Result<SeedFileContent<'_>, SecureStoreError> {
+    if let Some(payload) = trimmed.strip_prefix(DPAPI_SEED_PREFIX) {
+        return Ok(SeedFileContent::Dpapi(payload));
+    }
+    if let Some(reference) = trimmed.strip_prefix(KEYSTORE_SEED_PREFIX) {
+        let fingerprint = reference.trim();
+        if fingerprint.len() != 64 || !fingerprint.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(SecureStoreError::EncryptionError(
+                "平台密钥库引用标记格式非法（期望 KEYSTORE1:<sha256 hex>），拒绝继续".to_string(),
+            ));
+        }
+        return Ok(SeedFileContent::KeystoreRef { fingerprint });
+    }
+    Ok(SeedFileContent::Plaintext(trimmed)) // 空串已在调用方拦截
+}
+
+/// 种子指纹：SHA-256(domain || seed) 的 hex。用于密钥库条目定位与内容校验；
+/// 由 32 字节随机种子哈希而来，不可逆推，可安全落盘。
+pub(crate) fn seed_fingerprint(seed: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(b"deep-student.key_seed.fingerprint.v1");
+    hasher.update(seed.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+/// TD-08 核心决策：根据 `.key_seed` 的指纹标记从平台密钥库解析种子。
+///
+/// fail-closed 契约（有纯单测锁定）：
+/// - 密钥库不可用 / 条目缺失 / 内容与指纹不匹配 → 一律返回错误，
+///   **绝不生成新种子**（否则旧密文将永久不可解）；
+/// - 错误信息面向可行动性：Linux headless 提示安装/解锁 Secret Service
+///   或从备份恢复明文 `.key_seed`。
+pub(crate) fn resolve_keystore_seed(
+    keystore: Option<&dyn SeedKeystore>,
+    fingerprint: &str,
+) -> Result<String, SecureStoreError> {
+    let fp_short = &fingerprint[..fingerprint.len().min(12)];
+    let Some(keystore) = keystore else {
+        return Err(SecureStoreError::PlatformUnsupported(format!(
+            "密钥种子已迁入平台密钥库（指纹 {fp_short}…），当前平台/配置无法访问密钥库：\
+             请回到原设备运行，或从备份恢复明文 .key_seed；\
+             若设置了 {KEY_SEED_FILE_ONLY_ENV} 请先移除该环境变量"
+        )));
+    };
+    match keystore.load(fingerprint) {
+        Err(e) => Err(SecureStoreError::KeychainUnavailable(format!(
+            "{} 不可用: {}。Linux 无桌面环境请先安装并解锁 Secret Service\
+             （gnome-keyring/KWallet），或从备份恢复明文 .key_seed；\
+             系统不会自动生成新密钥覆盖旧密文",
+            keystore.backend_name(),
+            e
+        ))),
+        Ok(None) => Err(SecureStoreError::KeyNotFound(format!(
+            "{} 中找不到指纹 {fp_short}… 对应的密钥种子条目。\
+             若曾清理过钥匙串/密钥环，请从备份恢复明文 .key_seed；\
+             系统不会自动生成新密钥（fail-closed）",
+            keystore.backend_name()
+        ))),
+        Ok(Some(stored)) => {
+            let stored = Zeroizing::new(stored);
+            let trimmed = stored.trim();
+            if trimmed.is_empty() || seed_fingerprint(trimmed) != fingerprint {
+                return Err(SecureStoreError::EncryptionError(format!(
+                    "{} 返回的种子与 .key_seed 指纹不匹配，拒绝使用\
+                     （fail-closed，防止用错误密钥改写旧密文）",
+                    keystore.backend_name()
+                )));
+            }
+            Ok(trimmed.to_string())
+        }
+    }
+}
+
 /// 安全存储服务
 pub struct SecureStore {
     config: SecureStoreConfig,
@@ -259,12 +474,6 @@ impl SecureStore {
     fn platform_name() -> &'static str {
         // 所有平台统一使用加密文件存储，避免 Keychain 弹窗
         "Encrypted File Storage"
-    }
-
-    /// 检查安全存储可用性
-    fn check_availability() -> bool {
-        // 所有平台使用加密文件存储，始终可用
-        true
     }
 
     /// 检查键是否为敏感键
@@ -403,9 +612,14 @@ impl SecureStore {
 
     /// 获取或创建主密钥种子（稳定存储在 .key_seed）
     ///
-    /// Windows 下种子经 DPAPI 封装后落盘（见 `DPAPI_SEED_PREFIX` 注释）；
-    /// 历史明文种子在首次读取时自动迁移为封装格式（迁移失败不影响读取）。
-    /// 其余平台维持原有明文 + 权限收紧策略。
+    /// 平台策略（TD-08）：
+    /// - Windows：种子经 DPAPI 封装后落盘（见 `DPAPI_SEED_PREFIX` 注释）；
+    ///   历史明文种子首次读取时平滑迁移（迁移失败不影响读取）。
+    /// - macOS/Linux：种子迁入平台密钥库（Keychain / Secret Service），磁盘只留
+    ///   指纹标记；迁移遵循「写入→回读验证→替换文件」，任一步失败均保留原文件
+    ///   但返回错误；只有显式设置 `DEEP_STUDENT_KEY_SEED_FILE_ONLY=1` 才继续使用文件种子；
+    ///   已迁移的标记文件在密钥库不可达时 fail-closed（绝不静默生成新种子）。
+    /// - 其余平台维持明文 + 权限收紧策略。
     fn get_or_create_master_seed(&self) -> Result<String, SecureStoreError> {
         let _guard = MASTER_SEED_LOCK
             .lock()
@@ -444,23 +658,65 @@ impl SecureStore {
                         "密钥种子为空，拒绝生成新种子覆盖".to_string(),
                     ));
                 }
-                #[cfg(windows)]
-                {
-                    if let Some(encoded) = trimmed.strip_prefix(DPAPI_SEED_PREFIX) {
-                        return Self::unwrap_dpapi_seed(encoded);
+                match classify_seed_content(trimmed)? {
+                    SeedFileContent::Dpapi(_payload) => {
+                        #[cfg(windows)]
+                        {
+                            return Self::unwrap_dpapi_seed(_payload);
+                        }
+                        #[cfg(not(windows))]
+                        {
+                            // 此前非 Windows 平台会把 DPAPI 载荷当明文种子用，
+                            // 静默派生出错误密钥；现改为 fail-closed。
+                            return Err(SecureStoreError::PlatformUnsupported(
+                                "检测到 DPAPI 封装的密钥种子，只能在原 Windows 用户/机器上解封；\
+                                 拒绝把封装载荷当作种子使用（fail-closed，不会生成新密钥）"
+                                    .to_string(),
+                            ));
+                        }
                     }
-                    // 旧版明文种子：平滑迁移为 DPAPI 封装（失败仅告警，不影响使用）
-                    let plain_seed = trimmed.to_string();
-                    if let Err(e) = Self::write_seed_file(&seed_file, &plain_seed) {
-                        warn!("迁移明文密钥种子到 DPAPI 封装失败（继续使用明文）: {}", e);
-                    } else {
-                        info!("已将明文密钥种子迁移为 DPAPI 封装存储");
+                    SeedFileContent::KeystoreRef { fingerprint } => {
+                        let keystore = platform_seed_keystore();
+                        return resolve_keystore_seed(keystore.as_deref(), fingerprint);
                     }
-                    return Ok(plain_seed);
-                }
-                #[cfg(not(windows))]
-                {
-                    return Ok(trimmed.to_string());
+                    SeedFileContent::Plaintext(plain) => {
+                        let plain_seed = plain.to_string();
+                        #[cfg(windows)]
+                        {
+                            // 旧版明文种子：平滑迁移为 DPAPI 封装（失败仅告警，不影响使用）
+                            if let Err(e) = Self::write_seed_file(&seed_file, &plain_seed) {
+                                warn!("迁移明文密钥种子到 DPAPI 封装失败（继续使用明文）: {}", e);
+                            } else {
+                                info!("已将明文密钥种子迁移为 DPAPI 封装存储");
+                            }
+                        }
+                        #[cfg(not(windows))]
+                        {
+                            // 一次性迁移：写入密钥库→回读验证→替换文件。桌面平台
+                            // 密钥库失败时保留原文件但 fail-closed；文件种子仅能由
+                            // DEEP_STUDENT_KEY_SEED_FILE_ONLY=1 显式选择。
+                            if let Some(keystore) = platform_seed_keystore() {
+                                if let Err(error) = Self::migrate_seed_to_keystore(
+                                    keystore.as_ref(),
+                                    &seed_file,
+                                    &plain_seed,
+                                ) {
+                                    return Err(SecureStoreError::KeychainUnavailable(format!(
+                                        "迁移明文密钥种子到{}失败，已保留原文件但拒绝继续使用明文种子: {}。\
+                                         请解锁平台密钥库后重试；仅在明确接受目录级泄漏风险时设置 {}=1",
+                                        keystore.backend_name(),
+                                        error,
+                                        KEY_SEED_FILE_ONLY_ENV
+                                    )));
+                                }
+                                info!(
+                                    "已将明文密钥种子一次性迁入{}（.key_seed 仅保留指纹标记）",
+                                    keystore.backend_name()
+                                );
+                            }
+                        }
+                        return Ok(plain_seed);
+                    }
                 }
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -477,8 +733,72 @@ impl SecureStore {
         OsRng.fill_bytes(&mut seed_bytes);
         let seed = hex::encode(seed_bytes);
         seed_bytes.zeroize();
+        #[cfg(not(windows))]
+        {
+            // 新种子优先进平台密钥库（写入→回读验证→落指纹标记）。
+            // 桌面平台密钥库失败时 fail-closed；文件方案只能通过显式环境变量启用。
+            if let Some(keystore) = platform_seed_keystore() {
+                Self::migrate_seed_to_keystore(keystore.as_ref(), &seed_file, &seed).map_err(
+                    |error| {
+                        SecureStoreError::KeychainUnavailable(format!(
+                            "写入{}失败，拒绝自动降级为明文文件种子: {}。\
+                             请解锁平台密钥库后重试；仅在明确接受目录级泄漏风险时设置 {}=1",
+                            keystore.backend_name(),
+                            error,
+                            KEY_SEED_FILE_ONLY_ENV
+                        ))
+                    },
+                )?;
+                info!(
+                    "新密钥种子已写入{}（磁盘仅保留指纹标记）",
+                    keystore.backend_name()
+                );
+                return Ok(seed);
+            }
+        }
         Self::write_seed_file(&seed_file, &seed)?;
         Ok(seed)
+    }
+
+    /// TD-08：把种子写入平台密钥库并把 `.key_seed` 原子替换为指纹标记。
+    ///
+    /// 迁移契约（fake keystore 单测锁定）：
+    /// 1. 先写密钥库，再**回读验证**内容一致；
+    /// 2. 验证通过后才用指纹标记原子替换原文件（明文此时才消失）；
+    /// 3. 任一步失败即返回 Err 且不动原文件——不会出现「明文已删但密钥库没写成」
+    ///    或静默换新种子的中间态。
+    #[cfg_attr(windows, allow(dead_code))]
+    pub(crate) fn migrate_seed_to_keystore(
+        keystore: &dyn SeedKeystore,
+        seed_file: &std::path::Path,
+        seed: &str,
+    ) -> Result<(), SecureStoreError> {
+        let fingerprint = seed_fingerprint(seed);
+        keystore.store(&fingerprint, seed).map_err(|e| {
+            SecureStoreError::KeychainUnavailable(format!(
+                "{} 写入失败: {}",
+                keystore.backend_name(),
+                e
+            ))
+        })?;
+        match keystore.load(&fingerprint) {
+            Ok(Some(stored)) if stored.trim() == seed => {}
+            Ok(_) => {
+                return Err(SecureStoreError::EncryptionError(format!(
+                    "{} 回读验证失败：读出内容与写入种子不一致，保留明文种子",
+                    keystore.backend_name()
+                )))
+            }
+            Err(e) => {
+                return Err(SecureStoreError::KeychainUnavailable(format!(
+                    "{} 回读验证失败: {}，保留明文种子",
+                    keystore.backend_name(),
+                    e
+                )))
+            }
+        }
+        let marker = format!("{}{}", KEYSTORE_SEED_PREFIX, fingerprint);
+        Self::atomic_write_secure_file(seed_file, marker.as_bytes())
     }
 
     fn atomic_write_secure_file(
@@ -505,8 +825,8 @@ impl SecureStore {
         Ok(())
     }
 
-    /// 将种子写入 `.key_seed`：Windows 优先 DPAPI 封装，封装失败时回退明文
-    /// （回退时保留权限收紧，并输出显著告警）；其余平台明文 + 权限收紧。
+    /// 将种子写入 `.key_seed`：Windows 必须使用 DPAPI 封装，封装失败即
+    /// fail-closed；其余平台仅在上层策略明确允许时写入权限收紧的种子文件。
     fn write_seed_file(seed_file: &std::path::Path, seed: &str) -> Result<(), SecureStoreError> {
         #[cfg(windows)]
         {
@@ -534,7 +854,8 @@ impl SecureStore {
     /// 验证备份中的 `.key_seed` 能否在当前平台安全恢复。
     ///
     /// 明文种子可跨平台复制；DPAPI 种子只允许在 Windows 上、且必须能由当前
-    /// 用户/机器上下文成功解封。该检查不修改源文件或当前安全存储。
+    /// 用户/机器上下文成功解封；`KEYSTORE1:` 引用标记要求当前平台密钥库中
+    /// 存在指纹匹配的条目（TD-08）。该检查不修改源文件或当前安全存储。
     pub(crate) fn validate_backup_seed_file(
         seed_file: &std::path::Path,
     ) -> Result<(), SecureStoreError> {
@@ -589,6 +910,25 @@ impl SecureStore {
             return Err(SecureStoreError::EncryptionError(
                 "备份密钥种子为空".to_string(),
             ));
+        }
+
+        // 平台密钥库引用标记：文件本身不含种子，只有当前平台密钥库中存在
+        // 指纹匹配的条目时才可恢复（同机恢复 OK；跨机器与 DPAPI 一样 fail-closed）。
+        let keystore_ref = seed
+            .trim()
+            .strip_prefix(KEYSTORE_SEED_PREFIX)
+            .map(|value| value.trim().to_owned());
+        if let Some(fingerprint) = keystore_ref {
+            seed.zeroize();
+            if fingerprint.len() != 64 || !fingerprint.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err(SecureStoreError::EncryptionError(
+                    "备份中的平台密钥库引用标记格式非法".to_string(),
+                ));
+            }
+            let keystore = platform_seed_keystore();
+            let _resolved =
+                Zeroizing::new(resolve_keystore_seed(keystore.as_deref(), &fingerprint)?);
+            return Ok(());
         }
 
         let encoded = seed
@@ -874,7 +1214,21 @@ impl SecureStore {
 
     /// 检查安全存储可用性
     pub fn is_available(&self) -> bool {
-        Self::check_availability()
+        if !self.config.enabled {
+            return false;
+        }
+        // 加密文件本身可写不代表根种子可解封。必须实际解析/初始化设备密钥，
+        // 否则 Keychain / Secret Service 不可达时该 API 会错误返回 true。
+        match self.get_device_key() {
+            Ok(mut key) => {
+                key.zeroize();
+                true
+            }
+            Err(error) => {
+                warn!("安全存储可用性检查失败: {}", error);
+                false
+            }
+        }
     }
 
     /// 获取配置
@@ -1024,6 +1378,232 @@ mod tests {
         );
     }
 
+    // ==================== TD-08：种子迁移决策单测（fake keystore，纯逻辑） ====================
+
+    /// 可注入故障的内存密钥库：覆盖迁移决策的全部分支，不触碰真实钥匙串
+    #[derive(Default)]
+    struct FakeKeystore {
+        entries: std::sync::Mutex<std::collections::HashMap<String, String>>,
+        fail_store: bool,
+        fail_load: bool,
+        corrupt_readback: bool,
+    }
+
+    impl SeedKeystore for FakeKeystore {
+        fn backend_name(&self) -> &'static str {
+            "FakeKeystore"
+        }
+        fn load(&self, fingerprint: &str) -> Result<Option<String>, String> {
+            if self.fail_load {
+                return Err("keystore offline".to_string());
+            }
+            let entries = self.entries.lock().unwrap();
+            let value = entries.get(fingerprint).cloned();
+            if self.corrupt_readback {
+                return Ok(value.map(|v| format!("{v}-corrupted")));
+            }
+            Ok(value)
+        }
+        fn store(&self, fingerprint: &str, seed: &str) -> Result<(), String> {
+            if self.fail_store {
+                return Err("keystore write denied".to_string());
+            }
+            self.entries
+                .lock()
+                .unwrap()
+                .insert(fingerprint.to_string(), seed.to_string());
+            Ok(())
+        }
+    }
+
+    fn sample_seed() -> String {
+        "ab".repeat(32)
+    }
+
+    #[test]
+    fn classify_seed_content_variants() {
+        let seed = sample_seed();
+        assert_eq!(
+            classify_seed_content(&seed).unwrap(),
+            SeedFileContent::Plaintext(seed.as_str())
+        );
+        assert_eq!(
+            classify_seed_content("DPAPI1:Zm9v").unwrap(),
+            SeedFileContent::Dpapi("Zm9v")
+        );
+        let fp = seed_fingerprint(&seed);
+        let marker = format!("KEYSTORE1:{fp}");
+        assert_eq!(
+            classify_seed_content(&marker).unwrap(),
+            SeedFileContent::KeystoreRef { fingerprint: &fp }
+        );
+        // 非法指纹（长度/字符）必须整体拒绝，而不是当明文种子用
+        let error = classify_seed_content("KEYSTORE1:not-a-fingerprint")
+            .expect_err("malformed keystore ref must be rejected");
+        assert!(matches!(error, SecureStoreError::EncryptionError(_)));
+    }
+
+    #[test]
+    fn seed_fingerprint_is_stable_hex() {
+        let fp1 = seed_fingerprint("seed-a");
+        let fp2 = seed_fingerprint("seed-a");
+        let fp3 = seed_fingerprint("seed-b");
+        assert_eq!(fp1, fp2);
+        assert_ne!(fp1, fp3);
+        assert_eq!(fp1.len(), 64);
+        assert!(fp1.bytes().all(|b| b.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn plaintext_seed_migrates_into_keystore_with_verified_marker() {
+        let dir = TempDir::new().expect("create tempdir");
+        let seed_file = dir.path().join(".key_seed");
+        let seed = sample_seed();
+        std::fs::write(&seed_file, &seed).expect("write plaintext seed");
+
+        let keystore = FakeKeystore::default();
+        SecureStore::migrate_seed_to_keystore(&keystore, &seed_file, &seed)
+            .expect("migration should succeed");
+
+        let on_disk = std::fs::read_to_string(&seed_file).expect("read marker");
+        assert!(on_disk.starts_with(KEYSTORE_SEED_PREFIX), "落盘应为引用标记");
+        assert!(!on_disk.contains(&seed), "落盘内容不应再含明文种子");
+
+        // 标记指纹可从密钥库解析回同一种子
+        let SeedFileContent::KeystoreRef { fingerprint } =
+            classify_seed_content(on_disk.trim()).unwrap()
+        else {
+            panic!("marker should classify as keystore ref");
+        };
+        let resolved = resolve_keystore_seed(Some(&keystore as &dyn SeedKeystore), fingerprint)
+            .expect("resolve migrated seed");
+        assert_eq!(resolved, seed);
+    }
+
+    #[test]
+    fn migration_store_failure_keeps_plaintext_file() {
+        let dir = TempDir::new().expect("create tempdir");
+        let seed_file = dir.path().join(".key_seed");
+        let seed = sample_seed();
+        std::fs::write(&seed_file, &seed).expect("write plaintext seed");
+
+        let keystore = FakeKeystore {
+            fail_store: true,
+            ..Default::default()
+        };
+        let error = SecureStore::migrate_seed_to_keystore(&keystore, &seed_file, &seed)
+            .expect_err("store failure must abort migration");
+        assert!(matches!(error, SecureStoreError::KeychainUnavailable(_)));
+        assert_eq!(std::fs::read_to_string(&seed_file).unwrap(), seed);
+    }
+
+    #[test]
+    fn migration_readback_mismatch_keeps_plaintext_file() {
+        let dir = TempDir::new().expect("create tempdir");
+        let seed_file = dir.path().join(".key_seed");
+        let seed = sample_seed();
+        std::fs::write(&seed_file, &seed).expect("write plaintext seed");
+
+        let keystore = FakeKeystore {
+            corrupt_readback: true,
+            ..Default::default()
+        };
+        let error = SecureStore::migrate_seed_to_keystore(&keystore, &seed_file, &seed)
+            .expect_err("readback mismatch must abort migration before deleting plaintext");
+        assert!(matches!(error, SecureStoreError::EncryptionError(_)));
+        assert_eq!(std::fs::read_to_string(&seed_file).unwrap(), seed);
+    }
+
+    #[test]
+    fn keystore_ref_fails_closed_without_backend() {
+        let fp = seed_fingerprint(&sample_seed());
+        let error = resolve_keystore_seed(None, &fp)
+            .expect_err("no backend must fail closed, never mint a new seed");
+        assert!(matches!(error, SecureStoreError::PlatformUnsupported(_)));
+    }
+
+    #[test]
+    fn keystore_ref_fails_closed_when_backend_unavailable() {
+        let fp = seed_fingerprint(&sample_seed());
+        let keystore = FakeKeystore {
+            fail_load: true,
+            ..Default::default()
+        };
+        let error = resolve_keystore_seed(Some(&keystore as &dyn SeedKeystore), &fp)
+            .expect_err("unavailable backend must fail closed with actionable error");
+        assert!(matches!(error, SecureStoreError::KeychainUnavailable(_)));
+        // 可行动性：错误信息必须指向 Secret Service / 备份恢复路径
+        assert!(error.to_string().contains("Secret Service"));
+    }
+
+    #[test]
+    fn keystore_ref_fails_closed_when_entry_missing() {
+        let fp = seed_fingerprint(&sample_seed());
+        let keystore = FakeKeystore::default();
+        let error = resolve_keystore_seed(Some(&keystore as &dyn SeedKeystore), &fp)
+            .expect_err("missing entry must fail closed");
+        assert!(matches!(error, SecureStoreError::KeyNotFound(_)));
+    }
+
+    #[test]
+    fn keystore_ref_fingerprint_mismatch_fails_closed() {
+        let seed = sample_seed();
+        let fp = seed_fingerprint(&seed);
+        let keystore = FakeKeystore::default();
+        // 指纹条目下放了另一个种子（模拟条目被覆盖/篡改）
+        keystore.store(&fp, "cc".repeat(32).as_str()).unwrap();
+        let error = resolve_keystore_seed(Some(&keystore as &dyn SeedKeystore), &fp)
+            .expect_err("mismatched seed must be rejected");
+        assert!(matches!(error, SecureStoreError::EncryptionError(_)));
+    }
+
+    /// 端到端：`.key_seed` 为密钥库标记而（测试构建下）无真实密钥库时，
+    /// 读写必须失败且标记文件保持原样——绝不静默生成新种子。
+    #[test]
+    fn keystore_marker_seed_file_never_replaced_by_new_seed() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+        let seed_file = dir.path().join(".secure/.key_seed");
+        let marker = format!("{}{}", KEYSTORE_SEED_PREFIX, seed_fingerprint(&sample_seed()));
+        std::fs::write(&seed_file, &marker).expect("write keystore marker");
+
+        let error = store
+            .save_secret("keystore-marker-test", "must-not-be-written")
+            .expect_err("unreachable keystore must fail closed");
+        assert!(matches!(error, SecureStoreError::PlatformUnsupported(_)));
+        assert_eq!(std::fs::read_to_string(&seed_file).unwrap(), marker);
+        assert!(!dir.path().join(".secure/keystore-marker-test.enc").exists());
+    }
+
+    #[test]
+    fn keystore_marker_backup_seed_is_rejected_without_backend() {
+        let dir = TempDir::new().expect("create tempdir");
+        let seed_file = dir.path().join(".key_seed");
+        let marker = format!("{}{}", KEYSTORE_SEED_PREFIX, seed_fingerprint(&sample_seed()));
+        std::fs::write(&seed_file, marker).expect("write keystore marker");
+
+        let error = SecureStore::validate_backup_seed_file(&seed_file)
+            .expect_err("keystore marker without reachable backend is not restorable");
+        assert!(matches!(error, SecureStoreError::PlatformUnsupported(_)));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn dpapi_seed_is_rejected_off_windows_when_reading() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+        let seed_file = dir.path().join(".secure/.key_seed");
+        std::fs::write(&seed_file, "DPAPI1:Zm9yZWlnbi1ibG9i").expect("write dpapi seed");
+
+        // 此前会把 DPAPI 载荷当明文种子静默派生错误密钥；现必须 fail-closed
+        let error = store
+            .save_secret("dpapi-cross-platform", "value")
+            .expect_err("DPAPI seed must fail closed off Windows");
+        assert!(matches!(error, SecureStoreError::PlatformUnsupported(_)));
+    }
+
     #[test]
     fn can_read_legacy_ciphertext_and_migrate() {
         let dir = TempDir::new().expect("create tempdir");
@@ -1107,7 +1687,7 @@ impl SecureStore {
 
 // ==================== Tauri 命令 ====================
 
-use crate::models::AppError;
+use crate::error_details::CommandError;
 
 /// 全局安全存储实例
 fn get_secure_store(app: Option<&tauri::AppHandle>) -> SecureStore {
@@ -1125,31 +1705,31 @@ fn get_secure_store(app: Option<&tauri::AppHandle>) -> SecureStore {
 pub fn secure_save_cloud_credentials(
     app: tauri::AppHandle,
     credentials: CloudStorageCredentials,
-) -> Result<(), AppError> {
+) -> Result<(), CommandError> {
     let store = get_secure_store(Some(&app));
     store
         .save_cloud_credentials(&credentials)
-        .map_err(|e| AppError::internal(format!("保存凭据失败: {}", e)))
+        .map_err(|e| e.to_command_error("save_cloud_credentials"))
 }
 
 /// 获取云存储凭据
 #[tauri::command]
 pub fn secure_get_cloud_credentials(
     app: tauri::AppHandle,
-) -> Result<Option<CloudStorageCredentials>, AppError> {
+) -> Result<Option<CloudStorageCredentials>, CommandError> {
     let store = get_secure_store(Some(&app));
     store
         .get_cloud_credentials()
-        .map_err(|e| AppError::internal(format!("获取凭据失败: {}", e)))
+        .map_err(|e| e.to_command_error("get_cloud_credentials"))
 }
 
 /// 删除云存储凭据
 #[tauri::command]
-pub fn secure_delete_cloud_credentials(app: tauri::AppHandle) -> Result<(), AppError> {
+pub fn secure_delete_cloud_credentials(app: tauri::AppHandle) -> Result<(), CommandError> {
     let store = get_secure_store(Some(&app));
     store
         .delete_cloud_credentials()
-        .map_err(|e| AppError::internal(format!("删除凭据失败: {}", e)))
+        .map_err(|e| e.to_command_error("delete_cloud_credentials"))
 }
 
 /// 检查安全存储是否可用

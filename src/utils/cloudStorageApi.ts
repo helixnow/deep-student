@@ -604,23 +604,16 @@ export interface CloudStorageCredentials {
  * - Android: AES-GCM 加密文件
  */
 export async function saveCredentials(credentials: CloudStorageCredentials): Promise<void> {
-  try {
-    await invoke('secure_save_cloud_credentials', { credentials });
-  } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
-  }
+  // 保留后端 CommandError envelope，调用方需要稳定 code 展示可行动的密钥库提示。
+  await invoke('secure_save_cloud_credentials', { credentials });
 }
 
 /**
  * 从系统安全存储获取云存储凭据
  */
 export async function getCredentials(): Promise<CloudStorageCredentials | null> {
-  try {
-    return await invoke<CloudStorageCredentials | null>('secure_get_cloud_credentials');
-  } catch (error: unknown) {
-    console.warn('Failed to get credentials:', error);
-    return null;
-  }
+  // 读取失败与“尚未保存凭据”语义不同：必须向 UI 传播，不能静默伪装成 null。
+  return await invoke<CloudStorageCredentials | null>('secure_get_cloud_credentials');
 }
 
 /**

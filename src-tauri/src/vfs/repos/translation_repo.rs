@@ -89,13 +89,14 @@ fn with_savepoint<T>(
 
     match f() {
         Ok(v) => {
-            conn.execute(&format!("RELEASE {}", name), []).map_err(|e| {
-                warn!(
-                    "[VFS::TranslationRepo] Failed to release savepoint {}: {}",
-                    name, e
-                );
-                VfsError::Database(format!("Failed to release savepoint {}: {}", name, e))
-            })?;
+            conn.execute(&format!("RELEASE {}", name), [])
+                .map_err(|e| {
+                    warn!(
+                        "[VFS::TranslationRepo] Failed to release savepoint {}: {}",
+                        name, e
+                    );
+                    VfsError::Database(format!("Failed to release savepoint {}: {}", name, e))
+                })?;
             Ok(v)
         }
         Err(e) => {
@@ -203,7 +204,10 @@ impl VfsTranslationRepo {
         limit: u32,
         offset: u32,
     ) -> VfsResult<Vec<VfsTranslation>> {
-        let mut sql = format!("{} WHERE t.deleted_at IS NULL", SELECT_TRANSLATION_META_ONLY);
+        let mut sql = format!(
+            "{} WHERE t.deleted_at IS NULL",
+            SELECT_TRANSLATION_META_ONLY
+        );
 
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
         let mut param_idx = 1;
@@ -530,7 +534,12 @@ impl VfsTranslationRepo {
              SET is_favorite = ?1, updated_at = ?2,
                  local_version = COALESCE(local_version, 0) + 1, device_id = ?3
              WHERE id = ?4 AND deleted_at IS NULL",
-            params![favorite as i32, now_iso(), current_device_id(), translation_id],
+            params![
+                favorite as i32,
+                now_iso(),
+                current_device_id(),
+                translation_id
+            ],
         )?;
 
         if updated == 0 {

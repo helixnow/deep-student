@@ -28,9 +28,138 @@ static ALIAS_MAP: LazyLock<HashMap<&'static str, &'static [&'static str]>> = Laz
 const DEEP_STUDENT_TEMPLATE_ID_KEY: &str = "deepStudentTemplateId";
 const DEEP_STUDENT_COLLAPSE_CLOZE_ORDS_KEY: &str = "deepStudentCollapseClozeOrds";
 
+/// 导出用固定 deck id：避开 Anki 保留的默认牌组 id 1（导入端对 id=1 有特殊合并语义）。
+/// 单文件内 decks / cards.did / model.did 均引用该 id；dconf 仍为 id 1，deck.conf 指向它。
+const APKG_EXPORT_DECK_ID: i64 = 1746000000000;
+
+/// 导入时由 apkg_importer_service 注入的元数据保留字段。
+/// 再导出时必须过滤，避免这些键污染 Anki model 字段表。
+/// 后 7 个为调度信息键，与 apkg_importer_service::ANKI_SCHED_METADATA_KEYS 一致。
+const RESERVED_IMPORT_METADATA_FIELDS: [&str; 13] = [
+    "AnkiNoteId",
+    "AnkiCardId",
+    "AnkiCardOrd",
+    "AnkiDeckId",
+    "AnkiModelId",
+    "AnkiModelName",
+    "AnkiSchedType",
+    "AnkiQueue",
+    "AnkiDue",
+    "AnkiIvl",
+    "AnkiFactor",
+    "AnkiReps",
+    "AnkiLapses",
+];
+
+fn is_reserved_import_metadata_field(name: &str) -> bool {
+    RESERVED_IMPORT_METADATA_FIELDS
+        .iter()
+        .any(|reserved| reserved.eq_ignore_ascii_case(name))
+}
+
 /// 清理卡片内容中的无效模板占位符
 fn clean_template_placeholders(content: &str) -> String {
     content.trim().to_string()
+}
+
+/// 导出写入 notes.flds 前清洗字段值中的 U+001F（Anki 字段分隔符），防止字段错位。
+fn sanitize_apkg_field_value(value: String) -> String {
+    if value.contains('\u{1f}') {
+        value.replace('\u{1f}', " ")
+    } else {
+        value
+    }
+}
+
+/// 判断文本是否含有效的 `{{cN::...}}` Cloze 标记（与 cloze_card_ords 的识别口径一致）。
+fn contains_cloze_marker(text: &str) -> bool {
+    let mut search_from = 0usize;
+    while let Some(relative_start) = text[search_from..].find("{{c") {
+        let number_start = search_from + relative_start + 3;
+        let digit_count = text[number_start..]
+            .bytes()
+            .take_while(u8::is_ascii_digit)
+            .count();
+        if digit_count > 0 && text[number_start + digit_count..].starts_with("::") {
+            return true;
+        }
+        search_from = number_start;
+    }
+    false
+}
+
+/// 基于卡片稳定标识生成确定性 note guid
+/// （思路对齐 cmd::anki_connect::compute_anki_card_content_hash）：
+/// - 优先使用卡片库内 id：同一张卡任何时候导出 guid 相同，
+///   重复导出再导入 Anki 时按 guid 去重/更新而不是重复建卡；
+/// - id 缺失时退化为内容哈希（front/back/text/排序后的 extra_fields/tags/template_id）。
+///
+/// Anki 只要求 guid 是唯一且稳定的字符串，这里取 sha1 前 10 字节的 hex（20 字符）。
+fn stable_note_guid(card: &AnkiCard) -> String {
+    const FIELD_SEP: [u8; 1] = [0x1f];
+    const PAIR_SEP: [u8; 1] = [0x1e];
+
+    let mut hasher = Sha1::new();
+    hasher.update(b"deep-student-apkg-guid-v1");
+    hasher.update(FIELD_SEP);
+    let card_id = card.id.trim();
+    if !card_id.is_empty() {
+        hasher.update(b"id");
+        hasher.update(FIELD_SEP);
+        hasher.update(card_id.as_bytes());
+    } else {
+        hasher.update(b"content");
+        hasher.update(FIELD_SEP);
+        hasher.update(card.front.as_bytes());
+        hasher.update(FIELD_SEP);
+        hasher.update(card.back.as_bytes());
+        hasher.update(FIELD_SEP);
+        if let Some(text) = card.text.as_deref() {
+            hasher.update(text.as_bytes());
+        }
+        hasher.update(FIELD_SEP);
+        let mut keys: Vec<&String> = card.extra_fields.keys().collect();
+        keys.sort();
+        for key in keys {
+            hasher.update(key.as_bytes());
+            hasher.update(PAIR_SEP);
+            if let Some(value) = card.extra_fields.get(key) {
+                hasher.update(value.as_bytes());
+            }
+            hasher.update(PAIR_SEP);
+        }
+        hasher.update(FIELD_SEP);
+        for tag in &card.tags {
+            hasher.update(tag.as_bytes());
+            hasher.update(PAIR_SEP);
+        }
+        hasher.update(FIELD_SEP);
+        if let Some(template_id) = card.template_id.as_deref() {
+            hasher.update(template_id.as_bytes());
+        }
+    }
+    let digest = hasher.finalize();
+    digest[..10]
+        .iter()
+        .map(|byte| format!("{:02x}", byte))
+        .collect()
+}
+
+/// 批内去重：notes.guid 有 UNIQUE 约束，同批出现相同 guid
+/// （如同一张卡被重复选择）时给后续副本追加序号后缀，避免整次导出失败。
+fn unique_note_guid(card: &AnkiCard, used: &mut HashSet<String>) -> String {
+    let base = stable_note_guid(card);
+    if used.insert(base.clone()) {
+        return base;
+    }
+    let mut suffix = 2usize;
+    loop {
+        let candidate = format!("{}-{}", base, suffix);
+        if used.insert(candidate.clone()) {
+            return candidate;
+        }
+        suffix += 1;
+    }
 }
 
 // F9（round2）：全局单调 note_id 生成器，确保跨导出 / 同毫秒多次导出都不碰撞。
@@ -130,6 +259,49 @@ fn cloze_card_ords(text: &str) -> Vec<i64> {
     }
 }
 
+/// 导出时回写的调度状态（由导入注入的 AnkiSched* 元数据换算而来）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CardSchedRestore {
+    due: i64,
+    ivl: i64,
+    factor: i64,
+    reps: i64,
+    lapses: i64,
+}
+
+/// 从卡片元数据（AnkiIvl/AnkiReps/AnkiFactor/AnkiDue/AnkiLapses）保守重建调度状态：
+/// - 仅当卡片明确处于复习状态（ivl > 0 且 reps > 0）时回写，其余一律按新卡导出；
+/// - 原集合的 crt 不可知，AnkiDue 的绝对天数失真，超出 [1, ivl] 时回退为 ivl
+///   （即“导入后 ivl 天内到期”），避免卡片被排到遥远未来；
+/// - factor 越界时回退 Anki 默认 2500。
+fn card_sched_restore(card: &AnkiCard) -> Option<CardSchedRestore> {
+    let get = |key: &str| {
+        card.extra_fields
+            .get(key)
+            .and_then(|value| value.trim().parse::<i64>().ok())
+    };
+    let ivl = get("AnkiIvl").unwrap_or(0);
+    let reps = get("AnkiReps").unwrap_or(0);
+    if ivl <= 0 || reps <= 0 {
+        return None;
+    }
+    let ivl = ivl.min(36_500);
+    let factor = get("AnkiFactor")
+        .filter(|factor| (1000..=9999).contains(factor))
+        .unwrap_or(2500);
+    let lapses = get("AnkiLapses").unwrap_or(0).clamp(0, 9_999);
+    let due = get("AnkiDue")
+        .filter(|due| (1..=ivl).contains(due))
+        .unwrap_or(ivl);
+    Some(CardSchedRestore {
+        due,
+        ivl,
+        factor,
+        reps: reps.min(1_000_000),
+        lapses,
+    })
+}
+
 fn insert_anki_card_rows(
     conn: &Connection,
     note_id: i64,
@@ -137,9 +309,30 @@ fn insert_anki_card_rows(
     now: i64,
     card_ords: &[i64],
     next_due: &mut i64,
+    sched: Option<&CardSchedRestore>,
 ) -> Result<(), String> {
     for ord in card_ords {
         let card_id = next_apkg_card_id();
+        if let Some(sched) = sched {
+            // 携带导入调度元数据的卡片：按复习卡（type=2/queue=2）回写 SM-2 状态
+            conn.execute(
+                "INSERT INTO cards (id, nid, did, ord, mod, usn, type, queue, due, ivl, factor, reps, lapses, left, odue, odid, flags, data) VALUES (?, ?, ?, ?, ?, -1, 2, 2, ?, ?, ?, ?, ?, 0, 0, 0, 0, '')",
+                params![
+                    card_id,
+                    note_id,
+                    deck_id,
+                    ord,
+                    now,
+                    sched.due,
+                    sched.ivl,
+                    sched.factor,
+                    sched.reps,
+                    sched.lapses
+                ],
+            )
+            .map_err(|error| format!("插入卡片失败: {}", error))?;
+            continue;
+        }
         let due = *next_due;
         *next_due = next_due
             .checked_add(1)
@@ -211,6 +404,12 @@ fn resolve_card_field_value(card: &AnkiCard, field_name: &str) -> String {
                 .map(|t| t.to_string())
                 .or(fallback)
                 .unwrap_or_default();
+            // 全 Cloze 强制转换回填：note_type 被判定为 Cloze 但挖空内容留在 front
+            //（text/extra_fields 均为空）时，若 front 含 {{cN::}} 标记则回填 front，
+            // 避免导出空 Text 字段导致 {{cloze:Text}} 渲染为空卡。
+            if text_value.trim().is_empty() && contains_cloze_marker(&card.front) {
+                return clean_template_placeholders(&card.front);
+            }
             clean_template_placeholders(&text_value)
         }
         "extra" => {
@@ -357,7 +556,7 @@ fn create_basic_model() -> AnkiModel {
         modified: Utc::now().timestamp(),
         update_sequence_number: -1,
         sort_field: 0,
-        deck_id: 1,
+        deck_id: APKG_EXPORT_DECK_ID,
         templates: vec![AnkiTemplate {
             name: "Card 1".to_string(),
             ord: 0,
@@ -449,7 +648,7 @@ fn create_template_model(
         modified: Utc::now().timestamp(),
         update_sequence_number: -1,
         sort_field: 0,
-        deck_id: 1,
+        deck_id: APKG_EXPORT_DECK_ID,
         templates: vec![AnkiTemplate {
             name: "Card 1".to_string(),
             ord: 0,
@@ -480,7 +679,7 @@ fn create_cloze_model() -> AnkiModel {
         modified: Utc::now().timestamp(),
         update_sequence_number: -1,
         sort_field: 0,
-        deck_id: 1,
+        deck_id: APKG_EXPORT_DECK_ID,
         templates: vec![AnkiTemplate {
             name: "Cloze".to_string(),
             ord: 0,
@@ -628,7 +827,8 @@ fn initialize_anki_database_with_template(
     )?;
 
     let now = Utc::now().timestamp();
-    let deck_id = 1i64;
+    // 避开 Anki 保留的默认牌组 id 1；dconf 仍为 id 1，deck.conf 指向它
+    let deck_id = APKG_EXPORT_DECK_ID;
     let model_id = if model_name == "Cloze" {
         1425279151692i64
     } else {
@@ -636,9 +836,10 @@ fn initialize_anki_database_with_template(
     };
 
     // 创建牌组配置
+    let deck_key = deck_id.to_string();
     let decks = serde_json::json!({
-        "1": {
-            "id": 1,
+        deck_key: {
+            "id": deck_id,
             "name": deck_name,
             "extendRev": 50,
             "usn": 0,
@@ -764,7 +965,17 @@ fn field_checksum(text: &str) -> i64 {
 }
 
 /// 将AnkiCard转换为Anki数据库记录
-type AnkiNoteRecord = (String, String, String, String, i64, String, Vec<i64>);
+/// (note_id, guid, flds, sort_field, csum, tags, card_ords, 调度回写状态)
+type AnkiNoteRecord = (
+    String,
+    String,
+    String,
+    String,
+    i64,
+    String,
+    Vec<i64>,
+    Option<CardSchedRestore>,
+);
 
 fn convert_cards_to_anki_records(
     cards: Vec<AnkiCard>,
@@ -786,14 +997,13 @@ fn convert_cards_to_anki_records_with_fields(
 ) -> Result<Vec<AnkiNoteRecord>, String> {
     let mut records = Vec::new();
     let is_cloze_model = model_name.eq_ignore_ascii_case("Cloze");
+    let mut used_guids: HashSet<String> = HashSet::new();
 
     for card in &cards {
         // F9（round2）：全局单调 note_id，避免同秒多次导出碰撞
         let note_id = next_apkg_note_id();
-        let guid = uuid::Uuid::new_v4()
-            .to_string()
-            .replace("-", "")
-            .to_string();
+        // 确定性 guid：同一张卡重复导出再导入 Anki 时按 guid 去重，不再重复建卡
+        let guid = unique_note_guid(card, &mut used_guids);
 
         // 根据模板字段或模型类型处理字段
         let (fields, sort_field) = if let Some(field_names) = template_fields {
@@ -813,7 +1023,8 @@ fn convert_cards_to_anki_records_with_fields(
 
             for field_name in field_names {
                 // F11（round2）：统一字段解析（与多模板路径共用 resolve_card_field_value）
-                let value = resolve_card_field_value(card, field_name);
+                // 写入前清洗 U+001F，防止字段对齐被破坏
+                let value = sanitize_apkg_field_value(resolve_card_field_value(card, field_name));
 
                 // 调试：打印每个字段的值 (UTF-8安全截断)
                 if field_names.len() > 4 {
@@ -836,8 +1047,8 @@ fn convert_cards_to_anki_records_with_fields(
         } else {
             // 🎯 SOTA 修复：移除旧的、不灵活的Cloze硬编码逻辑
             // 如果没有提供字段，则退化为仅有当前卡片 Front/Back 的基础笔记
-            let front = clean_template_placeholders(&card.front);
-            let back = clean_template_placeholders(&card.back);
+            let front = sanitize_apkg_field_value(clean_template_placeholders(&card.front));
+            let back = sanitize_apkg_field_value(clean_template_placeholders(&card.back));
             (format!("{}\x1f{}", front, back), front)
         };
 
@@ -864,6 +1075,7 @@ fn convert_cards_to_anki_records_with_fields(
             csum,
             tags,
             card_ords,
+            card_sched_restore(card),
         ));
     }
 
@@ -881,16 +1093,26 @@ pub struct ApkgExportReport {
     /// 引用了但磁盘上缺失/不可读的媒体文件（路径），导出继续但需告警
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub missing_media: Vec<String>,
+    /// 导出过程中的非致命告警（如媒体同名冲突被静默去重）
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 /// 从卡片列表收集可读媒体文件：
 /// - 以文件名去重（Anki 包内媒体按文件名寻址）；
+/// - 「同名但来源路径不同」的文件被去重丢弃时记入 warnings，不再静默；
 /// - 打开失败的文件进入 missing 清单，不再让整次导出失败；
 /// - 返回的句柄在打包时流式拷贝，避免整文件读入内存。
-fn collect_media_entries(cards: &[AnkiCard]) -> (Vec<(String, fs::File)>, Vec<String>) {
+///
+/// 返回 (可读媒体条目, 缺失媒体路径, 告警)。
+fn collect_media_entries(
+    cards: &[AnkiCard],
+) -> (Vec<(String, fs::File)>, Vec<String>, Vec<String>) {
     let mut entries: Vec<(String, fs::File)> = Vec::new();
     let mut missing: Vec<String> = Vec::new();
-    let mut seen_media_names: HashSet<String> = HashSet::new();
+    let mut warnings: Vec<String> = Vec::new();
+    // 文件名 → 首次出现的来源路径（用于识别同名不同源的冲突）
+    let mut seen_media_sources: HashMap<String, String> = HashMap::new();
     for card in cards {
         for image_path in &card.images {
             let Some(fname) = std::path::Path::new(image_path)
@@ -901,9 +1123,18 @@ fn collect_media_entries(cards: &[AnkiCard]) -> (Vec<(String, fs::File)>, Vec<St
                 missing.push(image_path.clone());
                 continue;
             };
-            if !seen_media_names.insert(fname.to_string()) {
+            if let Some(first_source) = seen_media_sources.get(fname) {
+                if first_source != image_path {
+                    let message = format!(
+                        "媒体同名冲突：{} 与 {} 文件名相同（{}），仅导出首个来源，后者被跳过",
+                        first_source, image_path, fname
+                    );
+                    warn!("{}", message);
+                    warnings.push(message);
+                }
                 continue;
             }
+            seen_media_sources.insert(fname.to_string(), image_path.clone());
             match fs::File::open(image_path) {
                 Ok(file) => entries.push((fname.to_string(), file)),
                 Err(e) => {
@@ -913,7 +1144,7 @@ fn collect_media_entries(cards: &[AnkiCard]) -> (Vec<(String, fs::File)>, Vec<St
             }
         }
     }
-    (entries, missing)
+    (entries, missing, warnings)
 }
 
 /// 把媒体清单 + 媒体条目写入 zip（Anki 规范：清单键为 "0","1",... 指向同名条目）。
@@ -925,8 +1156,8 @@ fn write_media_to_zip<W: Write + Seek>(
     for (idx, (fname, _)) in media_entries.iter().enumerate() {
         media_map.insert(idx.to_string(), serde_json::Value::String(fname.clone()));
     }
-    let media_json = serde_json::to_string(&media_map)
-        .map_err(|e| format!("序列化媒体列表失败: {}", e))?;
+    let media_json =
+        serde_json::to_string(&media_map).map_err(|e| format!("序列化媒体列表失败: {}", e))?;
 
     zip.start_file("media", FileOptions::default())
         .map_err(|e| format!("创建媒体列表条目失败: {}", e))?;
@@ -936,8 +1167,7 @@ fn write_media_to_zip<W: Write + Seek>(
     for (idx, (fname, file)) in media_entries.iter_mut().enumerate() {
         zip.start_file(idx.to_string(), FileOptions::default())
             .map_err(|e| format!("创建媒体文件条目失败: {}", e))?;
-        std::io::copy(file, zip)
-            .map_err(|e| format!("写入媒体文件失败 {}: {}", fname, e))?;
+        std::io::copy(file, zip).map_err(|e| format!("写入媒体文件失败 {}: {}", fname, e))?;
     }
     Ok(())
 }
@@ -1057,9 +1287,11 @@ pub async fn export_cards_to_apkg_with_full_template_report(
             });
 
         // Append extra_fields keys in a deterministic order.
+        // 过滤导入时注入的 Anki* 元数据保留字段，避免再导出时污染 model 字段表。
         let mut extra_keys: Vec<String> = cards
             .iter()
             .flat_map(|c| c.extra_fields.keys().cloned())
+            .filter(|key| !is_reserved_import_metadata_field(key))
             .collect();
         extra_keys.sort_by_key(|a| a.to_lowercase());
         extra_keys.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
@@ -1125,9 +1357,11 @@ pub async fn export_cards_to_apkg_with_full_template_report(
 
         let now = Utc::now().timestamp();
 
-        // 插入笔记和卡片
+        // 插入笔记和卡片：包进单个事务，避免逐条 INSERT 在 synchronous=FULL 下逐条刷盘
+        conn.execute_batch("BEGIN IMMEDIATE;")
+            .map_err(|e| format!("开始导出事务失败: {}", e))?;
         let mut next_due = 1i64;
-        for (note_id, guid, fields, sort_field, csum, tags, card_ords) in &records {
+        for (note_id, guid, fields, sort_field, csum, tags, card_ords, sched) in &records {
             let note_id = note_id
                 .parse::<i64>()
                 .map_err(|error| format!("无效的 note id: {}", error))?;
@@ -1146,8 +1380,18 @@ pub async fn export_cards_to_apkg_with_full_template_report(
                 ]
             ).map_err(|e| format!("插入笔记失败: {}", e))?;
 
-            insert_anki_card_rows(&conn, note_id, deck_id, now, card_ords, &mut next_due)?;
+            insert_anki_card_rows(
+                &conn,
+                note_id,
+                deck_id,
+                now,
+                card_ords,
+                &mut next_due,
+                sched.as_ref(),
+            )?;
         }
+        conn.execute_batch("COMMIT;")
+            .map_err(|e| format!("提交导出事务失败: {}", e))?;
 
         conn.close().map_err(|e| format!("关闭数据库失败: {:?}", e))?;
 
@@ -1158,7 +1402,8 @@ pub async fn export_cards_to_apkg_with_full_template_report(
 
         // 媒体收集：去重 + 缺失容忍（缺失文件进入报告而不是让整次导出失败），
         // 清单只登记真正可读的条目，保证 media 清单与 zip 条目一一对应。
-        let (mut media_entries, missing_media) = collect_media_entries(&cards_clone_for_media);
+        let (mut media_entries, missing_media, media_warnings) =
+            collect_media_entries(&cards_clone_for_media);
 
         {
             let file_handle = temp_file.as_file_mut();
@@ -1179,11 +1424,8 @@ pub async fn export_cards_to_apkg_with_full_template_report(
                 .map_err(|e| format!("完成zip文件失败: {}", e))?;
         }
 
-        if output_path.exists() {
-            fs::remove_file(&output_path)
-                .map_err(|e| format!("删除旧的输出文件失败: {}", e))?;
-        }
-
+        // 直接依赖 NamedTempFile::persist 的原子覆盖语义；
+        // 提前 remove_file 会留下"旧文件已删、新文件未落盘"的丢文件窗口。
         temp_file
             .persist(&output_path)
             .map_err(|e| format!("无法持久化临时输出文件: {}", e.error))?;
@@ -1202,6 +1444,7 @@ pub async fn export_cards_to_apkg_with_full_template_report(
         Ok(ApkgExportReport {
             exported_media: media_entries.len(),
             missing_media,
+            warnings: media_warnings,
         })
     }.await;
 
@@ -1319,7 +1562,8 @@ pub async fn export_multi_template_apkg_report(
         ).map_err(|e| format!("创建表失败: {}", e))?;
 
         let now = Utc::now().timestamp();
-        let deck_id = 1i64;
+        // 避开 Anki 保留的默认牌组 id 1；dconf 仍为 id 1，deck.conf 指向它
+        let deck_id = APKG_EXPORT_DECK_ID;
 
         // 按 template_id 分组卡片
         let mut groups: HashMap<String, Vec<&AnkiCard>> = HashMap::new();
@@ -1345,9 +1589,11 @@ pub async fn export_multi_template_apkg_report(
             if let Some(tmpl) = template_map.get(tid) {
                 // 构建该模板的字段列表
                 let mut fields = tmpl.fields.clone();
-                // 追加该组卡片的 extra_fields keys（不在 fields 中的）
+                // 追加该组卡片的 extra_fields keys（不在 fields 中的），
+                // 并过滤导入时注入的 Anki* 元数据保留字段
                 let mut extra_keys: Vec<String> = group_cards.iter()
                     .flat_map(|c| c.extra_fields.keys().cloned())
+                    .filter(|key| !is_reserved_import_metadata_field(key))
                     .collect();
                 extra_keys.sort_by_key(|a| a.to_lowercase());
                 extra_keys.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
@@ -1356,14 +1602,22 @@ pub async fn export_multi_template_apkg_report(
                         fields.push(key.clone());
                     }
                 }
-                // 确保 Front/Back 存在（fallback）
-                for mandatory in ["Front", "Back"] {
+
+                let is_cloze = tmpl.note_type.eq_ignore_ascii_case("Cloze");
+                // 确保模型类型必需字段存在：
+                // Cloze 的 qfmt 是 {{cloze:Text}}，必须补 Text（+Extra）确保有字段可用；
+                // 同时保留 Front/Back 回填，维持 Deep Student 卡片 front/back 的往返保真。
+                let mandatory_fields: &[&str] = if is_cloze {
+                    &["Text", "Extra", "Front", "Back"]
+                } else {
+                    &["Front", "Back"]
+                };
+                for mandatory in mandatory_fields {
                     if !fields.iter().any(|f| f.eq_ignore_ascii_case(mandatory)) {
                         fields.push(mandatory.to_string());
                     }
                 }
 
-                let is_cloze = tmpl.note_type.eq_ignore_ascii_case("Cloze");
                 let model_type = if is_cloze { 1 } else { 0 };
 
                 let model = create_template_model(
@@ -1406,9 +1660,10 @@ pub async fn export_multi_template_apkg_report(
         }
 
         // 构建 col 记录
+        let deck_key = deck_id.to_string();
         let decks = serde_json::json!({
-            "1": {
-                "id": 1, "name": deck_name, "extendRev": 50, "usn": 0,
+            deck_key: {
+                "id": deck_id, "name": deck_name, "extendRev": 50, "usn": 0,
                 "collapsed": false, "newToday": [0,0], "revToday": [0,0],
                 "lrnToday": [0,0], "timeToday": [0,0], "dyn": 0,
                 "extendNew": 10, "conf": 1, "desc": "", "browserCollapsed": true, "mod": now
@@ -1432,20 +1687,24 @@ pub async fn export_multi_template_apkg_report(
 
         // 插入 notes 和 cards
         let mut next_due = 1i64;
+        let mut used_guids: HashSet<String> = HashSet::new();
         let insert_note = |conn: &Connection,
                            card: &AnkiCard,
                            mid: i64,
                            field_names: &[String],
                            is_cloze: bool,
-                           next_due: &mut i64|
+                           next_due: &mut i64,
+                           used_guids: &mut HashSet<String>|
          -> Result<(), String> {
             let note_id = next_apkg_note_id(); // F9（round2）：全局单调 id
-            let guid = uuid::Uuid::new_v4().to_string().replace("-", "");
+            // 确定性 guid：同一张卡重复导出再导入 Anki 时按 guid 去重，不再重复建卡
+            let guid = unique_note_guid(card, used_guids);
 
             let mut field_values: Vec<String> = Vec::new();
             for field_name in field_names {
                 // F11（round2）：与单模板路径统一字段解析（含 text 回退 extra_fields + ALIAS_MAP）
-                let value = resolve_card_field_value(card, field_name);
+                // 写入前清洗 U+001F，防止字段对齐被破坏
+                let value = sanitize_apkg_field_value(resolve_card_field_value(card, field_name));
                 field_values.push(value);
             }
 
@@ -1468,10 +1727,23 @@ pub async fn export_multi_template_apkg_report(
             } else {
                 vec![0]
             };
-            insert_anki_card_rows(conn, note_id, deck_id, now, &card_ords, next_due)?;
+            let sched = card_sched_restore(card);
+            insert_anki_card_rows(
+                conn,
+                note_id,
+                deck_id,
+                now,
+                &card_ords,
+                next_due,
+                sched.as_ref(),
+            )?;
 
             Ok(())
         };
+
+        // 包进单个事务，避免逐条 INSERT 在 synchronous=FULL 下逐条刷盘
+        conn.execute_batch("BEGIN IMMEDIATE;")
+            .map_err(|e| format!("开始导出事务失败: {}", e))?;
 
         // 插入有 template_id 的卡片
         for (tid, group_cards) in &groups {
@@ -1488,6 +1760,7 @@ pub async fn export_multi_template_apkg_report(
                     &field_names,
                     is_cloze,
                     &mut next_due,
+                    &mut used_guids,
                 )?;
             }
         }
@@ -1502,8 +1775,12 @@ pub async fn export_multi_template_apkg_report(
                 &field_names,
                 false,
                 &mut next_due,
+                &mut used_guids,
             )?;
         }
+
+        conn.execute_batch("COMMIT;")
+            .map_err(|e| format!("提交导出事务失败: {}", e))?;
 
         conn.close().map_err(|e| format!("关闭数据库失败: {:?}", e))?;
 
@@ -1514,7 +1791,8 @@ pub async fn export_multi_template_apkg_report(
 
         // 媒体收集：与单模板路径统一——去重 + 缺失容忍 + 流式拷贝，
         // media 清单只登记真正可读的条目，缺失文件进入报告。
-        let (mut media_entries, missing_media) = collect_media_entries(&cards_for_media);
+        let (mut media_entries, missing_media, media_warnings) =
+            collect_media_entries(&cards_for_media);
 
         {
             let file_handle = temp_file.as_file_mut();
@@ -1527,13 +1805,12 @@ pub async fn export_multi_template_apkg_report(
             zip.finish().map_err(|e| format!("zip finish失败: {}", e))?;
         }
 
-        if output_path.exists() {
-            fs::remove_file(&output_path).map_err(|e| format!("删除旧文件失败: {}", e))?;
-        }
+        // 直接依赖 NamedTempFile::persist 的原子覆盖语义（见单模板路径说明）
         temp_file.persist(&output_path).map_err(|e| format!("持久化失败: {}", e.error))?;
         Ok(ApkgExportReport {
             exported_media: media_entries.len(),
             missing_media,
+            warnings: media_warnings,
         })
     }.await;
 
@@ -1933,11 +2210,7 @@ mod tests {
         let out = tmp.path().join("multi-missing-media.apkg");
 
         let mut card = test_card("m", "Q", "A");
-        card.images = vec![tmp
-            .path()
-            .join("ghost.png")
-            .to_string_lossy()
-            .to_string()];
+        card.images = vec![tmp.path().join("ghost.png").to_string_lossy().to_string()];
 
         let report = export_multi_template_apkg_report(
             vec![card],
@@ -1957,16 +2230,383 @@ mod tests {
         let clean = ApkgExportReport {
             exported_media: 2,
             missing_media: vec![],
+            warnings: vec![],
         };
         let value = serde_json::to_value(&clean).expect("serialize clean report");
         assert_eq!(value["exportedMedia"], 2);
         assert!(value.get("missingMedia").is_none());
+        assert!(value.get("warnings").is_none());
 
         let dirty = ApkgExportReport {
             exported_media: 0,
             missing_media: vec!["/tmp/a.png".to_string()],
+            warnings: vec!["媒体同名冲突".to_string()],
         };
         let value = serde_json::to_value(&dirty).expect("serialize dirty report");
         assert_eq!(value["missingMedia"][0], "/tmp/a.png");
+        assert_eq!(value["warnings"][0], "媒体同名冲突");
+    }
+
+    #[test]
+    fn stable_note_guid_is_deterministic_per_card_and_unique_per_id() {
+        let card_a = test_card("card-a", "front", "back");
+        assert_eq!(stable_note_guid(&card_a), stable_note_guid(&card_a));
+
+        // 相同内容不同 id → 不同 guid
+        let card_b = test_card("card-b", "front", "back");
+        assert_ne!(stable_note_guid(&card_a), stable_note_guid(&card_b));
+
+        // id 缺失时退化为内容哈希，仍然确定
+        let anon = test_card("", "anon front", "anon back");
+        assert_eq!(stable_note_guid(&anon), stable_note_guid(&anon));
+
+        // 批内重复卡片：guid 追加序号后缀而不是撞 UNIQUE 约束
+        let mut used = HashSet::new();
+        let first = unique_note_guid(&card_a, &mut used);
+        let second = unique_note_guid(&card_a, &mut used);
+        assert_ne!(first, second);
+        assert!(second.starts_with(&first));
+    }
+
+    #[test]
+    fn record_conversion_reuses_stable_guid_across_exports() {
+        let card = test_card("stable-guid", "Q", "A");
+        let fields = vec!["Front".to_string(), "Back".to_string()];
+        let convert = || {
+            convert_cards_to_anki_records_with_fields(
+                vec![card.clone()],
+                1,
+                1,
+                "Basic",
+                Some(&fields),
+                None,
+            )
+            .expect("convert record")
+        };
+        let first = convert();
+        let second = convert();
+        assert_eq!(first[0].1, second[0].1, "同一张卡两次导出 guid 必须一致");
+        assert_eq!(first[0].1, stable_note_guid(&card));
+    }
+
+    #[test]
+    fn field_values_with_unit_separator_are_sanitized() {
+        let card = test_card("sep", "front\u{1f}with separator", "back\u{1f}too");
+        let fields = vec!["Front".to_string(), "Back".to_string()];
+        let records = convert_cards_to_anki_records_with_fields(
+            vec![card],
+            1,
+            1,
+            "Basic",
+            Some(&fields),
+            None,
+        )
+        .expect("convert record");
+        assert_eq!(
+            records[0].2.split('\u{1f}').count(),
+            2,
+            "字段值内的 U+001F 必须被清洗，flds 只能有 2 个字段"
+        );
+        assert_eq!(records[0].2, "front with separator\u{1f}back too");
+    }
+
+    #[test]
+    fn cloze_text_field_falls_back_to_front_with_cloze_markup() {
+        // 全 Cloze 强制转换场景：挖空内容留在 front，text/extra_fields 均为空
+        let cloze = test_card("cloze-fallback", "Capital is {{c1::Paris}}", "extra");
+        assert_eq!(
+            resolve_card_field_value(&cloze, "Text"),
+            "Capital is {{c1::Paris}}"
+        );
+
+        // front 无 Cloze 标记时不回填，维持原空值行为
+        let plain = test_card("plain", "no cloze here", "back");
+        assert_eq!(resolve_card_field_value(&plain, "Text"), "");
+
+        // card.text 已有值时优先使用，不受 front 影响
+        let mut explicit = test_card("explicit", "{{c1::ignored}}", "back");
+        explicit.text = Some("{{c1::kept}}".to_string());
+        assert_eq!(resolve_card_field_value(&explicit, "Text"), "{{c1::kept}}");
+    }
+
+    #[test]
+    fn contains_cloze_marker_matches_valid_markers_only() {
+        assert!(contains_cloze_marker("{{c1::answer}}"));
+        assert!(contains_cloze_marker("prefix {{c12::answer::hint}} suffix"));
+        assert!(!contains_cloze_marker("{{Front}} plain"));
+        assert!(!contains_cloze_marker("{{c::missing number}}"));
+        assert!(!contains_cloze_marker("no markers"));
+    }
+
+    #[test]
+    fn reserved_import_metadata_fields_are_filtered_case_insensitively() {
+        assert!(is_reserved_import_metadata_field("AnkiNoteId"));
+        assert!(is_reserved_import_metadata_field("ankimodelname"));
+        assert!(is_reserved_import_metadata_field("AnkiIvl"));
+        assert!(is_reserved_import_metadata_field("ankischedtype"));
+        assert!(!is_reserved_import_metadata_field("Subject"));
+    }
+
+    #[test]
+    fn card_sched_restore_requires_review_progress_and_clamps_values() {
+        // 无调度元数据 → 新卡
+        assert_eq!(card_sched_restore(&test_card("plain", "Q", "A")), None);
+
+        // reps=0 → 视为新卡，不回写
+        let mut fresh = test_card("fresh", "Q", "A");
+        fresh.extra_fields = HashMap::from([
+            ("AnkiIvl".to_string(), "10".to_string()),
+            ("AnkiReps".to_string(), "0".to_string()),
+        ]);
+        assert_eq!(card_sched_restore(&fresh), None);
+
+        // 正常复习卡：due 超出 [1, ivl] 时回退为 ivl，factor 越界回退 2500
+        let mut reviewed = test_card("reviewed", "Q", "A");
+        reviewed.extra_fields = HashMap::from([
+            ("AnkiSchedType".to_string(), "2".to_string()),
+            ("AnkiQueue".to_string(), "2".to_string()),
+            ("AnkiDue".to_string(), "99999".to_string()),
+            ("AnkiIvl".to_string(), "21".to_string()),
+            ("AnkiFactor".to_string(), "50".to_string()),
+            ("AnkiReps".to_string(), "9".to_string()),
+            ("AnkiLapses".to_string(), "2".to_string()),
+        ]);
+        assert_eq!(
+            card_sched_restore(&reviewed),
+            Some(CardSchedRestore {
+                due: 21,
+                ivl: 21,
+                factor: 2500,
+                reps: 9,
+                lapses: 2,
+            })
+        );
+
+        // due 在合法范围内时按原值保留
+        let mut due_kept = test_card("due-kept", "Q", "A");
+        due_kept.extra_fields = HashMap::from([
+            ("AnkiDue".to_string(), "3".to_string()),
+            ("AnkiIvl".to_string(), "21".to_string()),
+            ("AnkiFactor".to_string(), "2300".to_string()),
+            ("AnkiReps".to_string(), "4".to_string()),
+        ]);
+        assert_eq!(
+            card_sched_restore(&due_kept),
+            Some(CardSchedRestore {
+                due: 3,
+                ivl: 21,
+                factor: 2300,
+                reps: 4,
+                lapses: 0,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn export_restores_schedule_columns_for_cards_with_imported_metadata() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let out = tmp.path().join("sched-restore.apkg");
+
+        let mut reviewed = test_card("reviewed", "reviewed front", "reviewed back");
+        reviewed.extra_fields = HashMap::from([
+            ("AnkiSchedType".to_string(), "2".to_string()),
+            ("AnkiDue".to_string(), "5".to_string()),
+            ("AnkiIvl".to_string(), "12".to_string()),
+            ("AnkiFactor".to_string(), "2600".to_string()),
+            ("AnkiReps".to_string(), "7".to_string()),
+            ("AnkiLapses".to_string(), "1".to_string()),
+        ]);
+        let fresh = test_card("fresh", "fresh front", "fresh back");
+
+        export_cards_to_apkg_with_full_template(
+            vec![reviewed, fresh],
+            "SchedDeck".to_string(),
+            "Basic".to_string(),
+            out.clone(),
+            None,
+            None,
+        )
+        .await
+        .expect("export apkg with schedule metadata");
+
+        let db_path = tmp.path().join("sched-restore.anki2");
+        extract_collection(&out, &db_path);
+        let conn = Connection::open(&db_path).expect("open collection");
+        let (card_type, queue, due, ivl, factor, reps, lapses): (
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+        ) = conn
+            .query_row(
+                "SELECT c.type, c.queue, c.due, c.ivl, c.factor, c.reps, c.lapses
+                 FROM cards c
+                 INNER JOIN notes n ON n.id = c.nid
+                 WHERE n.flds LIKE 'reviewed front%'",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )
+            .expect("load reviewed card schedule");
+        assert_eq!(
+            (card_type, queue, due, ivl, factor, reps, lapses),
+            (2, 2, 5, 12, 2600, 7, 1)
+        );
+
+        let (fresh_type, fresh_queue, fresh_ivl): (i64, i64, i64) = conn
+            .query_row(
+                "SELECT c.type, c.queue, c.ivl
+                 FROM cards c
+                 INNER JOIN notes n ON n.id = c.nid
+                 WHERE n.flds LIKE 'fresh front%'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("load fresh card schedule");
+        assert_eq!((fresh_type, fresh_queue, fresh_ivl), (0, 0, 0));
+    }
+
+    #[tokio::test]
+    async fn reexport_filters_injected_anki_metadata_fields_from_model() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let out = tmp.path().join("reexport-filter.apkg");
+
+        let mut card = test_card("reexport", "Q", "A");
+        // 模拟从 APKG 导入回来的卡片：extra_fields 携带注入的 Anki* 元数据
+        card.extra_fields = HashMap::from([
+            ("AnkiNoteId".to_string(), "1".to_string()),
+            ("AnkiCardId".to_string(), "2".to_string()),
+            ("AnkiCardOrd".to_string(), "0".to_string()),
+            ("AnkiDeckId".to_string(), "1".to_string()),
+            ("AnkiModelId".to_string(), "100".to_string()),
+            ("AnkiModelName".to_string(), "Basic".to_string()),
+            ("Subject".to_string(), "Physics".to_string()),
+        ]);
+
+        export_cards_to_apkg_with_full_template(
+            vec![card],
+            "ReexportDeck".to_string(),
+            "Basic".to_string(),
+            out.clone(),
+            None,
+            None,
+        )
+        .await
+        .expect("export apkg");
+
+        let db_path = tmp.path().join("reexport-filter.anki2");
+        extract_collection(&out, &db_path);
+        let conn = Connection::open(&db_path).expect("open collection");
+        let models_json: String = conn
+            .query_row("SELECT models FROM col LIMIT 1", [], |row| row.get(0))
+            .expect("load models");
+        let models: serde_json::Value =
+            serde_json::from_str(&models_json).expect("parse models json");
+        let model = models
+            .as_object()
+            .and_then(|o| o.values().next())
+            .expect("model object");
+        let field_names: Vec<String> = model["flds"]
+            .as_array()
+            .expect("model flds")
+            .iter()
+            .filter_map(|f| f["name"].as_str().map(str::to_string))
+            .collect();
+        assert!(
+            field_names.iter().any(|name| name == "Subject"),
+            "业务字段必须保留"
+        );
+        for reserved in RESERVED_IMPORT_METADATA_FIELDS {
+            assert!(
+                !field_names.iter().any(|name| name == reserved),
+                "保留元数据字段 {} 不得进入 model 字段表",
+                reserved
+            );
+        }
+        // note.flds 数量必须与 model 字段数一致
+        let note_flds: String = conn
+            .query_row("SELECT flds FROM notes LIMIT 1", [], |row| row.get(0))
+            .expect("load note flds");
+        assert_eq!(note_flds.split('\u{1f}').count(), field_names.len());
+    }
+
+    #[tokio::test]
+    async fn export_uses_non_reserved_deck_id_with_consistent_references() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let out = tmp.path().join("deck-id.apkg");
+        export_cards_to_apkg_with_full_template(
+            vec![test_card("d1", "Q", "A")],
+            "DeckIdCheck".to_string(),
+            "Basic".to_string(),
+            out.clone(),
+            None,
+            None,
+        )
+        .await
+        .expect("export apkg");
+
+        let db_path = tmp.path().join("deck-id.anki2");
+        extract_collection(&out, &db_path);
+        let conn = Connection::open(&db_path).expect("open collection");
+        let decks_json: String = conn
+            .query_row("SELECT decks FROM col LIMIT 1", [], |row| row.get(0))
+            .expect("load decks");
+        let decks: serde_json::Value = serde_json::from_str(&decks_json).expect("parse decks");
+        let deck_key = APKG_EXPORT_DECK_ID.to_string();
+        assert!(decks.get(&deck_key).is_some(), "decks 必须以新 deck id 为键");
+        assert!(decks.get("1").is_none(), "不得再使用保留 deck id 1");
+        let card_did: i64 = conn
+            .query_row("SELECT did FROM cards LIMIT 1", [], |row| row.get(0))
+            .expect("load card did");
+        assert_eq!(card_did, APKG_EXPORT_DECK_ID);
+    }
+
+    #[tokio::test]
+    async fn duplicate_media_basenames_from_different_paths_are_reported() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let out = tmp.path().join("dup-media.apkg");
+
+        let dir_a = tmp.path().join("a");
+        let dir_b = tmp.path().join("b");
+        std::fs::create_dir_all(&dir_a).expect("dir a");
+        std::fs::create_dir_all(&dir_b).expect("dir b");
+        let img_a = dir_a.join("same.png");
+        let img_b = dir_b.join("same.png");
+        std::fs::write(&img_a, b"content-a").expect("write a");
+        std::fs::write(&img_b, b"content-b").expect("write b");
+
+        let mut card = test_card("dup", "Q", "A");
+        card.images = vec![
+            img_a.to_string_lossy().to_string(),
+            img_b.to_string_lossy().to_string(),
+        ];
+
+        let report = export_cards_to_apkg_with_full_template_report(
+            vec![card],
+            "DupMedia".to_string(),
+            "Basic".to_string(),
+            out.clone(),
+            None,
+            None,
+        )
+        .await
+        .expect("export apkg with duplicate media names");
+
+        assert_eq!(report.exported_media, 1, "同名文件只导出首个来源");
+        assert_eq!(report.warnings.len(), 1);
+        assert!(report.warnings[0].contains("same.png"));
+        assert!(report.warnings[0].contains("媒体同名冲突"));
     }
 }

@@ -59,7 +59,15 @@ impl MistralAdapter {
             return false;
         }
         let model_lower = model.to_lowercase();
-        model_lower.contains("mistral-medium") || model_lower.contains("mistral-small")
+        let slug = model_lower.rsplit('/').next().unwrap_or(&model_lower);
+        slug == "mistral-medium-latest"
+            || slug == "mistral-small-latest"
+            || slug == "mistral-medium-3-5"
+            || slug == "mistral-medium-3.5"
+            || slug.starts_with("mistral-medium-3-5-")
+            || slug.starts_with("mistral-medium-3.5-")
+            || slug == "mistral-small-4"
+            || slug.starts_with("mistral-small-4-")
     }
 }
 

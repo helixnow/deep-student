@@ -18,8 +18,14 @@ interface SystemStatusState {
   maintenanceMode: boolean;
   /** 维护模式原因描述（用于 UI 提示） */
   maintenanceReason: string | null;
+  /** 后台任务已终止但仍有子库保持 fail-close，需要重启恢复 */
+  maintenanceRequiresRestart: boolean;
+  /** 每次维护状态写入递增，用于拒绝异步重连的过期结果 */
+  maintenanceGeneration: number;
   /** 进入维护模式 */
   enterMaintenanceMode: (reason: string) => void;
+  /** 进入“需重启恢复”的维护终态 */
+  requireMaintenanceRestart: (reason: string) => void;
   /** 退出维护模式 */
   exitMaintenanceMode: () => void;
 }
@@ -46,14 +52,27 @@ export const useSystemStatusStore = create<SystemStatusState>((set) => ({
 
   maintenanceMode: false,
   maintenanceReason: null,
+  maintenanceRequiresRestart: false,
+  maintenanceGeneration: 0,
   enterMaintenanceMode: (reason: string) =>
-    set({
+    set((state) => ({
       maintenanceMode: true,
       maintenanceReason: reason,
-    }),
+      maintenanceRequiresRestart: false,
+      maintenanceGeneration: state.maintenanceGeneration + 1,
+    })),
+  requireMaintenanceRestart: (reason: string) =>
+    set((state) => ({
+      maintenanceMode: true,
+      maintenanceReason: reason,
+      maintenanceRequiresRestart: true,
+      maintenanceGeneration: state.maintenanceGeneration + 1,
+    })),
   exitMaintenanceMode: () =>
-    set({
+    set((state) => ({
       maintenanceMode: false,
       maintenanceReason: null,
-    }),
+      maintenanceRequiresRestart: false,
+      maintenanceGeneration: state.maintenanceGeneration + 1,
+    })),
 }));

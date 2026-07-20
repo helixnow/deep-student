@@ -1,7 +1,9 @@
 use crate::models::AnkiCard;
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::TcpStream;
+use std::path::Path;
 use std::time::Duration;
 use tracing::{debug, warn};
 
@@ -12,6 +14,9 @@ const ANKI_CONNECT_MIN_VERSION: u64 = 6;
 
 /// addNotes 批量推送分片大小：过大易触发 AnkiConnect 超时，过小徒增 HTTP 往返。
 const ANKI_CONNECT_ADD_NOTES_CHUNK_SIZE: usize = 100;
+
+/// storeMediaFile 单文件上限：base64 后随请求体走本机 HTTP，过大易拖垮 AnkiConnect。
+const ANKI_CONNECT_MAX_MEDIA_BYTES: u64 = 32 * 1024 * 1024;
 
 #[derive(Serialize)]
 struct AnkiConnectRequest {
@@ -27,6 +32,19 @@ struct AnkiConnectResponse {
     error: Option<String>,
 }
 
+/// AnkiConnect 笔记媒体附件（picture/audio 协议对象）。
+/// `fields` 指定 Anki 侧要把媒体引用追加到哪些字段。
+#[derive(Serialize, Clone)]
+struct NoteMediaAttachment {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    url: Option<String>,
+    filename: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    fields: Vec<String>,
+}
+
 #[derive(Serialize)]
 struct Note {
     #[serde(rename = "deckName")]
@@ -35,6 +53,10 @@ struct Note {
     model_name: String,
     fields: HashMap<String, String>,
     tags: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    picture: Vec<NoteMediaAttachment>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    audio: Vec<NoteMediaAttachment>,
 }
 
 fn normalize_key(key: &str) -> String {
@@ -563,6 +585,231 @@ pub async fn create_model_from_template(
     Ok(())
 }
 
+// ============================================================================
+// 媒体同步（storeMediaFile + picture/audio 附件）
+// ============================================================================
+
+/// 按扩展名区分 audio / picture（未知类型按 picture 处理，Anki 端仍会保存文件）。
+fn is_audio_media_filename(name: &str) -> bool {
+    Path::new(name)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "mp3" | "wav" | "ogg" | "oga" | "m4a" | "flac" | "opus" | "aac" | "3gp" | "spx"
+            )
+        })
+}
+
+/// 从字段 HTML/文本中提取媒体引用：`src="..."`、`src='...'` 与 `[sound:...]`。
+/// （与 apkg_importer_service::extract_media_filenames 保持同一识别口径。）
+fn extract_field_media_refs(text: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let bytes = text.as_bytes();
+
+    let mut search_from = 0usize;
+    while let Some(relative) = text[search_from..].find("src=") {
+        let quote_index = search_from + relative + 4;
+        let Some(&quote) = bytes.get(quote_index) else {
+            break;
+        };
+        if quote == b'"' || quote == b'\'' {
+            let value_start = quote_index + 1;
+            if let Some(relative_end) = text[value_start..].find(quote as char) {
+                let value = &text[value_start..value_start + relative_end];
+                if !value.is_empty() {
+                    names.push(value.to_string());
+                }
+                search_from = value_start + relative_end + 1;
+                continue;
+            }
+        }
+        search_from = quote_index;
+    }
+
+    let mut search_from = 0usize;
+    while let Some(relative) = text[search_from..].find("[sound:") {
+        let value_start = search_from + relative + "[sound:".len();
+        let Some(relative_end) = text[value_start..].find(']') else {
+            break;
+        };
+        let value = &text[value_start..value_start + relative_end];
+        if !value.is_empty() {
+            names.push(value.to_string());
+        }
+        search_from = value_start + relative_end + 1;
+    }
+
+    names
+}
+
+/// 读取本地媒体文件并 base64 编码（带大小上限）。
+fn read_media_file_base64(path: &Path) -> Result<String, String> {
+    let metadata =
+        std::fs::metadata(path).map_err(|error| format!("读取媒体文件信息失败: {error}"))?;
+    if !metadata.is_file() {
+        return Err("媒体路径不是常规文件".to_string());
+    }
+    if metadata.len() > ANKI_CONNECT_MAX_MEDIA_BYTES {
+        return Err(format!(
+            "媒体文件超过 {ANKI_CONNECT_MAX_MEDIA_BYTES} 字节上限"
+        ));
+    }
+    let bytes = std::fs::read(path).map_err(|error| format!("读取媒体文件失败: {error}"))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
+/// storeMediaFile：把 base64 数据按文件名存入 Anki 媒体库（同名覆盖，与 Anki 语义一致）。
+async fn store_media_file_base64(filename: &str, data: &str) -> Result<(), String> {
+    let params = serde_json::json!({ "filename": filename, "data": data });
+    invoke_anki_connect_action("storeMediaFile", Some(params), 60)
+        .await
+        .map(|_| ())
+}
+
+/// 上传单个本地媒体文件（按文件名幂等去重）；失败进入 failed 集与 warnings。
+async fn upload_local_media(
+    path: &Path,
+    filename: &str,
+    uploaded: &mut HashSet<String>,
+    failed: &mut HashSet<String>,
+    warnings: &mut Vec<String>,
+) -> bool {
+    if uploaded.contains(filename) {
+        return true;
+    }
+    if failed.contains(filename) {
+        return false;
+    }
+    let encoded = match read_media_file_base64(path) {
+        Ok(encoded) => encoded,
+        Err(error) => {
+            warnings.push(format!("媒体文件 {} 读取失败，已跳过上传: {}", filename, error));
+            failed.insert(filename.to_string());
+            return false;
+        }
+    };
+    match store_media_file_base64(filename, &encoded).await {
+        Ok(()) => {
+            uploaded.insert(filename.to_string());
+            true
+        }
+        Err(error) => {
+            warnings.push(format!("媒体文件 {} 上传失败，已跳过: {}", filename, error));
+            failed.insert(filename.to_string());
+            false
+        }
+    }
+}
+
+fn media_basename(path: &str) -> Option<String> {
+    Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_string)
+        .filter(|name| !name.is_empty())
+}
+
+/// 同步前处理单张卡片的媒体：
+/// 1. 字段值中引用的本地绝对路径媒体 → 上传到 Anki 媒体库并把引用改写为纯文件名，
+///    保证字段引用与 Anki 媒体库文件名一致；
+/// 2. `card.images` 中被字段引用（按文件名）的媒体 → storeMediaFile 上传；
+/// 3. `card.images` 中未被任何字段引用的媒体 → 作为 picture/audio 附件挂到 note，
+///    由 AnkiConnect 把引用追加到目标字段（优先 Back/Extra）。
+///
+/// 所有失败均降级为 warnings，不阻断笔记同步。
+async fn prepare_note_media(
+    card: &AnkiCard,
+    fields: &mut HashMap<String, String>,
+    uploaded: &mut HashSet<String>,
+    failed: &mut HashSet<String>,
+    warnings: &mut Vec<String>,
+) -> (Vec<NoteMediaAttachment>, Vec<NoteMediaAttachment>) {
+    // 第一步：把字段里的本地绝对路径引用改写成文件名并上传
+    let field_keys: Vec<String> = fields.keys().cloned().collect();
+    for key in &field_keys {
+        let Some(value) = fields.get(key).cloned() else {
+            continue;
+        };
+        let mut rewritten = value.clone();
+        for reference in extract_field_media_refs(&value) {
+            let path = Path::new(&reference);
+            if !path.is_absolute() || !path.is_file() {
+                continue;
+            }
+            let Some(filename) = media_basename(&reference) else {
+                continue;
+            };
+            if upload_local_media(path, &filename, uploaded, failed, warnings).await {
+                rewritten = rewritten.replace(&reference, &filename);
+            }
+        }
+        if rewritten != value {
+            fields.insert(key.clone(), rewritten);
+        }
+    }
+
+    // 改写后字段实际引用到的文件名集合
+    let mut referenced: HashSet<String> = HashSet::new();
+    for value in fields.values() {
+        for reference in extract_field_media_refs(value) {
+            if let Some(filename) = media_basename(&reference) {
+                referenced.insert(filename);
+            }
+        }
+    }
+
+    // 第二步：card.images 中的本地媒体
+    let mut picture: Vec<NoteMediaAttachment> = Vec::new();
+    let mut audio: Vec<NoteMediaAttachment> = Vec::new();
+    for image_path in &card.images {
+        let Some(filename) = media_basename(image_path) else {
+            warnings.push(format!("媒体路径无有效文件名，已跳过: {}", image_path));
+            continue;
+        };
+        let path = Path::new(image_path);
+        if referenced.contains(&filename) {
+            // 字段已引用同名文件：仅需保证媒体库里有这个文件
+            upload_local_media(path, &filename, uploaded, failed, warnings).await;
+            continue;
+        }
+        // 字段未引用：作为附件挂到 note，由 AnkiConnect 追加引用到目标字段
+        let encoded = match read_media_file_base64(path) {
+            Ok(encoded) => encoded,
+            Err(error) => {
+                warnings.push(format!(
+                    "媒体文件 {} 读取失败，已跳过附加: {}",
+                    filename, error
+                ));
+                continue;
+            }
+        };
+        let target_field = ["Back", "Extra", "Front"]
+            .iter()
+            .find(|name| fields.contains_key(**name))
+            .map(|name| (*name).to_string())
+            .or_else(|| {
+                let mut keys: Vec<&String> = fields.keys().collect();
+                keys.sort();
+                keys.first().map(|key| (*key).to_string())
+            });
+        let attachment = NoteMediaAttachment {
+            data: Some(encoded),
+            url: None,
+            filename: filename.clone(),
+            fields: target_field.into_iter().collect(),
+        };
+        if is_audio_media_filename(&filename) {
+            audio.push(attachment);
+        } else {
+            picture.push(attachment);
+        }
+    }
+
+    (picture, audio)
+}
+
 /// canAddNotes 预检：返回每张卡是否可添加（false 通常表示重复）。
 async fn can_add_notes(notes: &[Note]) -> Result<Vec<bool>, String> {
     let params = serde_json::json!({ "notes": notes });
@@ -700,34 +947,46 @@ pub async fn add_notes_to_anki_detailed(
         model_field_names_cache.insert(model_name, loaded);
     }
 
-    // 构建notes数组
-    let notes: Vec<Note> = cards
-        .into_iter()
-        .map(|card| {
-            let model_name = card_models
-                .get(&card.id)
-                .cloned()
-                .unwrap_or_else(|| note_type.clone());
+    // 构建notes数组（媒体处理：本地媒体上传 + 字段引用改写 + 未引用媒体作为附件）
+    let mut notes: Vec<Note> = Vec::with_capacity(cards.len());
+    let mut uploaded_media: HashSet<String> = HashSet::new();
+    let mut failed_media: HashSet<String> = HashSet::new();
+    for card in cards {
+        let model_name = card_models
+            .get(&card.id)
+            .cloned()
+            .unwrap_or_else(|| note_type.clone());
 
-            let model_field_names = model_field_names_cache
-                .get(&model_name)
-                .cloned()
-                .unwrap_or(None);
+        let model_field_names = model_field_names_cache
+            .get(&model_name)
+            .cloned()
+            .unwrap_or(None);
 
-            let fields = if let Some(names) = model_field_names.as_ref() {
-                build_fields_with_model_names(&card, names, &model_name)
-            } else {
-                build_basic_fields(&card, &model_name)
-            };
+        let mut fields = if let Some(names) = model_field_names.as_ref() {
+            build_fields_with_model_names(&card, names, &model_name)
+        } else {
+            build_basic_fields(&card, &model_name)
+        };
 
-            Note {
-                deck_name: deck_name.clone(),
-                model_name,
-                fields,
-                tags: card.tags,
-            }
-        })
-        .collect();
+        let (picture, audio) = prepare_note_media(
+            &card,
+            &mut fields,
+            &mut uploaded_media,
+            &mut failed_media,
+            &mut warnings,
+        )
+        .await;
+
+        notes.push(Note {
+            deck_name: deck_name.clone(),
+            model_name,
+            fields,
+            tags: card.tags,
+            picture,
+            audio,
+        });
+    }
+    let notes = notes;
 
     let total = notes.len();
     let mut note_ids: Vec<Option<u64>> = vec![None; total];
@@ -951,6 +1210,8 @@ mod tests {
             model_name: "Basic".to_string(),
             fields,
             tags: vec![],
+            picture: vec![],
+            audio: vec![],
         }
     }
 
@@ -1007,11 +1268,64 @@ mod tests {
     }
 
     #[test]
+    fn note_serialization_omits_empty_media_attachments() {
+        let note = basic_note("question", "answer");
+        let value = serde_json::to_value(&note).expect("serialize note");
+        assert!(value.get("picture").is_none());
+        assert!(value.get("audio").is_none());
+
+        let mut with_media = basic_note("question", "answer");
+        with_media.picture.push(NoteMediaAttachment {
+            data: Some("aGk=".to_string()),
+            url: None,
+            filename: "img.png".to_string(),
+            fields: vec!["Back".to_string()],
+        });
+        let value = serde_json::to_value(&with_media).expect("serialize note with media");
+        assert_eq!(value["picture"][0]["filename"], "img.png");
+        assert_eq!(value["picture"][0]["data"], "aGk=");
+        assert!(value["picture"][0].get("url").is_none());
+        assert_eq!(value["picture"][0]["fields"][0], "Back");
+    }
+
+    #[test]
+    fn media_filename_classification_and_ref_extraction() {
+        assert!(is_audio_media_filename("clip.mp3"));
+        assert!(is_audio_media_filename("CLIP.WAV"));
+        assert!(!is_audio_media_filename("img.png"));
+        assert!(!is_audio_media_filename("noext"));
+
+        let html =
+            r#"<img src="one.png"> text <img src='/abs/two.jpg'/> [sound:clip.mp3] src= broken"#;
+        assert_eq!(
+            extract_field_media_refs(html),
+            vec!["one.png", "/abs/two.jpg", "clip.mp3"]
+        );
+
+        assert_eq!(media_basename("/abs/path/pic.png").as_deref(), Some("pic.png"));
+        assert_eq!(media_basename("pic.png").as_deref(), Some("pic.png"));
+        assert_eq!(media_basename(""), None);
+    }
+
+    #[test]
+    fn read_media_file_base64_reads_and_limits() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("img.png");
+        std::fs::write(&path, b"hi").expect("write media");
+        assert_eq!(read_media_file_base64(&path).expect("encode"), "aGk=");
+
+        let missing = dir.path().join("missing.png");
+        assert!(read_media_file_base64(&missing).is_err());
+    }
+
+    #[test]
     fn duplicate_note_error_detection_is_case_insensitive() {
         assert!(is_duplicate_note_error(
             "cannot create note because it is a duplicate"
         ));
-        assert!(is_duplicate_note_error("AnkiConnect错误(addNote): Duplicate"));
+        assert!(is_duplicate_note_error(
+            "AnkiConnect错误(addNote): Duplicate"
+        ));
         assert!(!is_duplicate_note_error("model was not found: Basic"));
     }
 

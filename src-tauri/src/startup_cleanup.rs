@@ -100,3 +100,116 @@ pub fn purge_active_data_dir(active_app_data_dir: &Path) -> Result<PurgeReport, 
         had_errors: !errors.is_empty(),
     })
 }
+
+/// 启动早期执行真正的本机数据清理。
+///
+/// - 活跃槽保留用户明确约定的备份目录；
+/// - 非活跃槽、测试槽和恢复 trash 全量删除，避免隐私数据可被切回；
+/// - 重置同步消费游标，使空白本地库下次可以重新消费完整云端历史；
+/// - 必须在任何业务数据库连接打开前调用。
+pub fn purge_all_local_data(
+    base_app_data_dir: &Path,
+    active_app_data_dir: &Path,
+) -> Result<PurgeReport, AppError> {
+    let mut report = purge_active_data_dir(active_app_data_dir)?;
+    let slots_dir = base_app_data_dir.join("slots");
+    let active_canonical = active_app_data_dir
+        .canonicalize()
+        .unwrap_or_else(|_| active_app_data_dir.to_path_buf());
+    let mut extra_deleted = Vec::new();
+    let mut extra_errors = Vec::new();
+
+    for slot_name in ["slotA", "slotB", "slotC", "slotD"] {
+        let slot_path = slots_dir.join(slot_name);
+        let slot_canonical = slot_path
+            .canonicalize()
+            .unwrap_or_else(|_| slot_path.clone());
+        if slot_canonical == active_canonical {
+            continue;
+        }
+        if slot_path.exists() {
+            if let Err(e) = fs::remove_dir_all(&slot_path) {
+                extra_errors.push(format!(
+                    "删除非活跃/测试槽失败: {} - {}",
+                    slot_path.display(),
+                    e
+                ));
+                continue;
+            }
+            extra_deleted.push(format!("数据槽: {}", slot_path.display()));
+        }
+        if let Err(e) = fs::create_dir_all(&slot_path) {
+            extra_errors.push(format!("重建数据槽失败: {} - {}", slot_path.display(), e));
+        }
+    }
+
+    if slots_dir.exists() {
+        match fs::read_dir(&slots_dir) {
+            Ok(entries) => {
+                for entry_result in entries {
+                    let entry = match entry_result {
+                        Ok(entry) => entry,
+                        Err(e) => {
+                            extra_errors.push(format!(
+                                "枚举数据槽清理项失败: {} - {}",
+                                slots_dir.display(),
+                                e
+                            ));
+                            continue;
+                        }
+                    };
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if !(name.starts_with("slotA.trash-") || name.starts_with("slotB.trash-")) {
+                        continue;
+                    }
+                    let path = entry.path();
+                    let result = if path.is_dir() {
+                        fs::remove_dir_all(&path)
+                    } else {
+                        fs::remove_file(&path)
+                    };
+                    match result {
+                        Ok(()) => extra_deleted.push(format!("恢复残留: {}", path.display())),
+                        Err(e) => extra_errors.push(format!(
+                            "删除恢复残留失败: {} - {}",
+                            path.display(),
+                            e
+                        )),
+                    }
+                }
+            }
+            Err(e) => extra_errors.push(format!(
+                "读取数据槽目录失败: {} - {}",
+                slots_dir.display(),
+                e
+            )),
+        }
+    }
+
+    #[cfg(feature = "data_governance")]
+    if let Err(e) =
+        crate::data_governance::sync::state::SyncStateStore::reset_default_after_local_purge()
+    {
+        extra_errors.push(format!("重置同步消费基线失败: {}", e));
+    }
+
+    if !extra_deleted.is_empty() {
+        report
+            .details
+            .push_str(&format!("✅ 额外清理 {} 项:\n", extra_deleted.len()));
+        for item in extra_deleted {
+            report.details.push_str(&format!("  - {}\n", item));
+        }
+    }
+    if !extra_errors.is_empty() {
+        report
+            .details
+            .push_str(&format!("❌ 额外清理 {} 项失败:\n", extra_errors.len()));
+        for item in &extra_errors {
+            report.details.push_str(&format!("  - {}\n", item));
+        }
+        report.had_errors = true;
+    }
+
+    Ok(report)
+}

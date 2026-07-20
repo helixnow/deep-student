@@ -235,6 +235,13 @@ async fn executor_imports_vfs_apkg_reads_cards_and_enforces_document_ownership()
     assert_eq!(import.output["importedCards"], 1);
     assert_eq!(import.output["importedTemplates"], 0);
     assert_eq!(import.output["mediaSkipped"], 0);
+    // 导入成功后附带后续操作建议（提示 AI 入队复习并展示卡片）
+    let next_steps = import.output["nextSteps"]
+        .as_array()
+        .expect("nextSteps suggestions");
+    assert!(next_steps
+        .iter()
+        .any(|step| step.as_str().is_some_and(|s| s.contains("chatanki_enqueue_review"))));
     let document_id = import.output["documentId"]
         .as_str()
         .expect("import document ID")

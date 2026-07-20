@@ -6452,7 +6452,6 @@ mod tests {
     #[test]
     fn test_simple_path_format() {
         // 验证简化路径格式正确性
-        let resource_type = "notes";
         let id = "note_abc123";
 
         let simple_path = format!("/{}", id);

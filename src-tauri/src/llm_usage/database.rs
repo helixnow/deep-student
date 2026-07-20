@@ -12,6 +12,8 @@ use std::time::Duration;
 use thiserror::Error;
 use tracing::{debug, error, info};
 
+use crate::database::maintenance::{self, MaintenanceState};
+
 /// 数据库文件名
 const DATABASE_FILENAME: &str = "llm_usage.db";
 
@@ -80,6 +82,8 @@ pub struct LlmUsageDatabase {
     pool: RwLock<LlmUsagePool>,
     /// 数据库文件路径
     db_path: PathBuf,
+    /// 维护屏障状态机（Active/Draining/Maintenance），无锁、poison 免疫。
+    maintenance: MaintenanceState,
 }
 
 impl LlmUsageDatabase {
@@ -119,6 +123,7 @@ impl LlmUsageDatabase {
         let db = Self {
             pool: RwLock::new(pool),
             db_path,
+            maintenance: MaintenanceState::new(),
         };
 
         db.ensure_schema()?;
@@ -166,51 +171,70 @@ impl LlmUsageDatabase {
         Ok(pool)
     }
 
+    /// 维护屏障拒绝借出时的错误。
+    fn maintenance_refusal() -> LlmUsageError {
+        LlmUsageError::Database(format!(
+            "LLM Usage {}",
+            maintenance::MAINTENANCE_REFUSAL_MESSAGE
+        ))
+    }
+
     /// 获取数据库连接
+    ///
+    /// fail-close：维护屏障（备份/恢复）期间显式拒绝。借出前后各检查一次
+    /// 屏障状态，关闭"检查通过后屏障才开始排空"的竞争窗口——之前的实现
+    /// 会把屏障期间的写入落到一次性的内存池，退出屏障后凭空消失。
     ///
     /// # 返回
     /// * `LlmUsageResult<LlmUsagePooledConnection>` - 池化连接
     pub fn get_conn(&self) -> LlmUsageResult<LlmUsagePooledConnection> {
+        if !self.maintenance.is_active() {
+            return Err(Self::maintenance_refusal());
+        }
         let pool = self
             .pool
             .read()
             .map_err(|e| LlmUsageError::Pool(format!("Pool lock poisoned: {}", e)))?;
 
-        pool.get()
-            .map_err(|e| LlmUsageError::Pool(format!("Failed to get connection: {}", e)))
+        let conn = pool
+            .get()
+            .map_err(|e| LlmUsageError::Pool(format!("Failed to get connection: {}", e)))?;
+        if !self.maintenance.is_active() {
+            drop(conn);
+            return Err(Self::maintenance_refusal());
+        }
+        Ok(conn)
     }
 
     /// 获取数据库连接（安全版本，处理 RwLock poison）
     ///
     /// 即使 RwLock 被 poison，也能获取连接。
-    /// 适用于需要高可用性的场景。
+    /// 适用于需要高可用性的场景。维护屏障下同样显式拒绝（fail-close）。
     ///
     /// # 返回
     /// * `LlmUsageResult<LlmUsagePooledConnection>` - 池化连接
     pub fn get_conn_safe(&self) -> LlmUsageResult<LlmUsagePooledConnection> {
+        if !self.maintenance.is_active() {
+            return Err(Self::maintenance_refusal());
+        }
         let pool = self.pool.read().unwrap_or_else(|poisoned| {
             log::error!("[LlmUsageDatabase] Pool RwLock poisoned! Attempting recovery");
             poisoned.into_inner()
         });
 
-        pool.get()
-            .map_err(|e| LlmUsageError::Pool(format!("Failed to get connection: {}", e)))
+        let conn = pool
+            .get()
+            .map_err(|e| LlmUsageError::Pool(format!("Failed to get connection: {}", e)))?;
+        if !self.maintenance.is_active() {
+            drop(conn);
+            return Err(Self::maintenance_refusal());
+        }
+        Ok(conn)
     }
 
-    /// 获取连接池的克隆
-    ///
-    /// # 返回
-    /// * `LlmUsagePool` - 连接池克隆
-    pub fn get_pool(&self) -> LlmUsagePool {
-        match self.pool.read() {
-            Ok(pool) => pool.clone(),
-            Err(poisoned) => {
-                log::error!(
-                    "[LlmUsageDatabase] Pool RwLock poisoned in get_pool! Attempting recovery"
-                );
-                poisoned.into_inner().clone()
-            }
-        }
+    /// 是否处于维护屏障（Draining 或 Maintenance 阶段）。
+    pub fn is_in_maintenance_mode(&self) -> bool {
+        self.maintenance.is_in_maintenance()
     }
 
     /// 获取数据库文件路径
@@ -249,46 +273,103 @@ impl LlmUsageDatabase {
         Ok(enabled == 1)
     }
 
-    /// 进入维护模式：将连接池切换为内存数据库，释放对磁盘文件的占用
+    /// 进入维护模式（fail-close 快照屏障）：
     ///
-    /// 用于恢复流程中替换实际数据库文件，避免 Windows 上文件锁定（os error 32）。
+    /// 1. CAS 抢占状态机（Active→Draining）——此后 `get_conn`/`get_conn_safe`
+    ///    立即拒绝新借出，重复进入直接失败；
+    /// 2. 持有池写锁并**可证明地排空**在途租约（`connections == idle_connections`）；
+    /// 3. 严格执行 `wal_checkpoint(TRUNCATE)`，失败（含 busy）回滚状态并向上传播；
+    /// 4. 换入 fail-closed 占位池（任何 `get()` 显式失败）并同步丢弃旧磁盘池，
+    ///    关闭全部文件句柄（Windows 上避免 os error 32），不再依赖任何 sleep。
+    ///
+    /// 之前的实现换入可正常读写的 `:memory:` 池，屏障期间的写入会落到
+    /// 内存池并在退出屏障时被静默丢弃（fail-open），且 checkpoint 失败被忽略。
     pub fn enter_maintenance_mode(&self) -> LlmUsageResult<()> {
-        // 先尝试 WAL checkpoint
-        if let Ok(conn) = self.get_conn() {
-            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+        self.enter_maintenance_mode_with_drain_deadline(maintenance::DEFAULT_DRAIN_DEADLINE)
+    }
+
+    /// 供测试注入较短排空时限；生产路径统一走 `enter_maintenance_mode`。
+    fn enter_maintenance_mode_with_drain_deadline(
+        &self,
+        drain_deadline: Duration,
+    ) -> LlmUsageResult<()> {
+        self.maintenance
+            .begin_drain()
+            .map_err(|e| LlmUsageError::Database(format!("LLM Usage: {e}")))?;
+
+        let entered = (|| -> LlmUsageResult<()> {
+            // 持有写锁：阻止 get_pool 等并发读者在换池窗口拿到旧磁盘池
+            let mut guard = self.pool.write().unwrap_or_else(|poisoned| {
+                log::error!(
+                    "[LlmUsageDatabase] Pool RwLock poisoned during enter_maintenance_mode! Forcing recovery"
+                );
+                poisoned.into_inner()
+            });
+            let old_pool = guard.clone();
+
+            maintenance::drain_pool_until_idle(&old_pool, drain_deadline)
+                .map_err(|e| LlmUsageError::Database(format!("LLM Usage 进入维护屏障失败: {e}")))?;
+
+            {
+                let conn = old_pool.get().map_err(|e| {
+                    LlmUsageError::Pool(format!("维护屏障 checkpoint 前获取连接失败: {e}"))
+                })?;
+                maintenance::checkpoint_truncate_strict(&conn).map_err(|e| {
+                    LlmUsageError::Database(format!("LLM Usage 进入维护屏障失败: {e}"))
+                })?;
+            }
+            maintenance::drain_pool_until_idle(&old_pool, Duration::from_secs(1))
+                .map_err(|e| LlmUsageError::Database(format!("LLM Usage 进入维护屏障失败: {e}")))?;
+
+            *guard = maintenance::fail_closed_placeholder_pool();
+            drop(guard);
+            // 排空保证 old_pool 此刻持有全部（空闲）连接；drop 同步关闭文件句柄
+            drop(old_pool);
+            Ok(())
+        })();
+
+        match entered {
+            Ok(()) => {
+                self.maintenance.commit_maintenance();
+                tracing::info!(
+                    "[LlmUsage::Database] 已进入维护屏障：在途连接已排空，文件句柄已关闭"
+                );
+                Ok(())
+            }
+            Err(error) => {
+                // 失败点均在换池之前，磁盘池保持原样；回滚状态恢复服务
+                self.maintenance.abort_drain();
+                Err(error)
+            }
         }
-
-        let mem_manager = SqliteConnectionManager::memory();
-        let mem_pool = Pool::builder()
-            .max_size(1)
-            .build(mem_manager)
-            .map_err(|e| LlmUsageError::Pool(format!("创建内存连接池失败: {}", e)))?;
-
-        {
-            let mut guard = self
-                .pool
-                .write()
-                .map_err(|e| LlmUsageError::Pool(format!("Pool lock poisoned: {}", e)))?;
-            *guard = mem_pool;
-        }
-
-        tracing::info!("[LlmUsage::Database] 已进入维护模式，文件连接已释放");
-        Ok(())
     }
 
     /// 退出维护模式：重新打开磁盘数据库文件的连接池
+    ///
+    /// fail-close：重建磁盘池失败时**保持** Maintenance 状态并返回错误，
+    /// 绝不提前恢复 Active。未处于维护屏障时调用为幂等 no-op。
     pub fn exit_maintenance_mode(&self) -> LlmUsageResult<()> {
+        if self.maintenance.is_active() {
+            tracing::warn!(
+                "[LlmUsage::Database] exit_maintenance_mode 在非维护状态被调用，按幂等 no-op 处理"
+            );
+            return Ok(());
+        }
+        // 先完整建好磁盘池；失败则保持屏障（fail-close）
         let new_pool = Self::build_pool(&self.db_path)?;
 
         {
-            let mut guard = self
-                .pool
-                .write()
-                .map_err(|e| LlmUsageError::Pool(format!("Pool lock poisoned: {}", e)))?;
+            let mut guard = self.pool.write().unwrap_or_else(|poisoned| {
+                log::error!(
+                    "[LlmUsageDatabase] Pool RwLock poisoned during exit_maintenance_mode! Forcing recovery"
+                );
+                poisoned.into_inner()
+            });
             *guard = new_pool;
         }
+        self.maintenance.force_active();
 
-        tracing::info!("[LlmUsage::Database] 已退出维护模式，文件连接已恢复");
+        tracing::info!("[LlmUsage::Database] 已退出维护屏障，文件连接已恢复");
         Ok(())
     }
 
@@ -304,6 +385,12 @@ impl LlmUsageDatabase {
     /// # 返回
     /// * `LlmUsageResult<()>` - 成功返回 Ok(()), 失败返回错误
     pub fn reinitialize(&self) -> LlmUsageResult<()> {
+        if !self.maintenance.is_active() {
+            // 换入新磁盘池会重新打开文件句柄，破坏屏障对"无活跃文件连接"的保证
+            return Err(LlmUsageError::Database(
+                "LLM Usage 处于维护屏障，拒绝重建连接池；请先退出维护屏障".to_string(),
+            ));
+        }
         info!(
             "[LlmUsage::Database] Reinitializing connection pool for: {}",
             self.db_path.display()
@@ -622,6 +709,84 @@ mod tests {
             )
             .expect("Failed to get request count");
         assert_eq!(count, 10, "Request count should be 10");
+    }
+
+    /// 回归：维护屏障必须 fail-close——屏障内 get_conn/get_conn_safe 显式失败，
+    /// 屏障期间不存在"写入内存池后被静默丢弃"的路径；退出后数据完整。
+    #[test]
+    fn test_maintenance_barrier_fails_closed_and_preserves_data() {
+        let (_temp_dir, db) = setup_test_db();
+
+        db.get_conn()
+            .expect("connection before barrier")
+            .execute(
+                r#"
+                INSERT INTO llm_usage_logs (
+                    id, timestamp, provider, model, prompt_tokens, completion_tokens,
+                    total_tokens, caller_type, status
+                ) VALUES (
+                    'usage_barrier_test', '2026-01-23T10:30:00.000Z', 'openai', 'gpt-4o',
+                    100, 50, 150, 'chat_v2', 'success'
+                )
+                "#,
+                [],
+            )
+            .expect("write before barrier");
+
+        db.enter_maintenance_mode().expect("enter barrier");
+        assert!(db.is_in_maintenance_mode());
+
+        // 屏障内两个借出入口都必须显式失败
+        let err = db.get_conn().expect_err("get_conn must refuse");
+        assert!(
+            err.to_string().contains("维护屏障"),
+            "refusal must carry an explicit maintenance message: {err}"
+        );
+        assert!(db.get_conn_safe().is_err(), "get_conn_safe must refuse");
+        // 屏障内禁止重建连接池（会重新打开文件句柄）
+        assert!(db.reinitialize().is_err(), "reinitialize must refuse");
+        // 重复进入必须失败，不能静默重置现有屏障
+        assert!(db.enter_maintenance_mode().is_err());
+
+        db.exit_maintenance_mode().expect("exit barrier");
+        assert!(!db.is_in_maintenance_mode());
+
+        let count: i64 = db
+            .get_conn()
+            .expect("connection after barrier")
+            .query_row(
+                "SELECT COUNT(*) FROM llm_usage_logs WHERE id = 'usage_barrier_test'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count after barrier");
+        assert_eq!(count, 1, "pre-barrier data must survive the barrier");
+    }
+
+    /// 回归：在途连接未归还时屏障必须显式失败并回滚（替代固定 sleep 500ms），
+    /// 租约归还后屏障可建立；非维护状态下退出为幂等 no-op。
+    #[test]
+    fn test_maintenance_barrier_drains_in_flight_connections_or_fails() {
+        let (_temp_dir, db) = setup_test_db();
+
+        db.exit_maintenance_mode().expect("no-op exit is ok");
+
+        let held = db.get_conn().expect("hold a lease");
+        let err = db
+            .enter_maintenance_mode_with_drain_deadline(Duration::from_millis(150))
+            .expect_err("outstanding lease must block the barrier");
+        assert!(
+            err.to_string().contains("未归还"),
+            "drain timeout should report outstanding leases: {err}"
+        );
+        // 进入失败必须回滚：连接池继续正常服务
+        assert!(!db.is_in_maintenance_mode());
+        db.get_conn().expect("barrier rollback restores service");
+
+        drop(held);
+        db.enter_maintenance_mode_with_drain_deadline(Duration::from_secs(5))
+            .expect("barrier succeeds after lease is returned");
+        db.exit_maintenance_mode().expect("exit");
     }
 
     #[test]

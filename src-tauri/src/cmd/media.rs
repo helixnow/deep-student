@@ -88,8 +88,7 @@ fn compress_image_blocking(
     let original_size = source_bytes.len() as u64;
 
     // 2. 解码
-    let img = image::load_from_memory(&source_bytes)
-        .map_err(|e| format!("图片解码失败: {}", e))?;
+    let img = image::load_from_memory(&source_bytes).map_err(|e| format!("图片解码失败: {}", e))?;
     let (original_width, original_height) = (img.width(), img.height());
 
     // 3. 长边缩放（不放大）
@@ -121,8 +120,7 @@ fn compress_image_blocking(
             "dstu_compressed_{}.jpg",
             uuid::Uuid::new_v4().simple()
         ));
-        std::fs::write(&file_path, &encoded)
-            .map_err(|e| format!("写入临时文件失败: {}", e))?;
+        std::fs::write(&file_path, &encoded).map_err(|e| format!("写入临时文件失败: {}", e))?;
         Ok(CompressImageResult {
             bytes_base64: None,
             file_path: Some(file_path.to_string_lossy().into_owned()),

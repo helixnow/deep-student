@@ -306,10 +306,17 @@ impl VfsDimensionRepo {
         format!("{}{}_{}", VFS_EMB_TABLE_PREFIX, modality, dimension)
     }
 
-    /// 为维度分配模型（配置项，非数据绑定）
+    /// 为维度绑定模型（★ P2 2026-07 修正注释：这是**数据绑定**，不是纯配置项）
     ///
-    /// 用于跨维度检索时选择使用哪个模型生成查询向量。
-    /// 用户可以随时更改分配，不影响已索引的数据。
+    /// 实际委托 `embedding_dim_repo::update_model_binding` →
+    /// `register_with_model`，属于向量空间身份变更：
+    /// - 指纹变化时会滚动 index profile（旧 profile 转 queryable/retired，
+    ///   新 profile 进入 building/active），并生成新的 Lance 表；
+    /// - 已引用旧 profile 的 Units 会被置回 pending 触发重索引；
+    /// - 若目标 Lance 表中已有其他指纹的数据，绑定会被
+    ///   `ensure_binding_is_compatible` 拒绝。
+    /// 因此**会影响已索引数据的可见性与后续重建**，调用方不要把它当作
+    /// "仅选择查询向量模型"的轻量开关。
     pub fn update_model_assignment(
         db: &VfsDatabase,
         dimension: i32,
@@ -1101,12 +1108,9 @@ mod tests {
         assert!(mm_relaxed.contains(&"res_retry_mm".to_string()));
 
         // 超限资源保持 failed，mm claim 也不会抢占
-        let claimed = VfsIndexStateRepo::claim_mm_indexing_resources(
-            &db,
-            &["res_retry_mm".to_string()],
-            3,
-        )
-        .unwrap();
+        let claimed =
+            VfsIndexStateRepo::claim_mm_indexing_resources(&db, &["res_retry_mm".to_string()], 3)
+                .unwrap();
         assert!(claimed.is_empty());
 
         VfsIndexStateRepo::mark_failed_with_conn(&conn, "res_retry_text", "again").unwrap();

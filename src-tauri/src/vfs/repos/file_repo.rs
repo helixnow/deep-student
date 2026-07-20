@@ -456,6 +456,46 @@ impl VfsFileRepo {
         extracted_text: Option<&str>,
         page_count: Option<i32>,
     ) -> VfsResult<VfsFile> {
+        Self::create_file_with_doc_data_in_folder_outcome(
+            conn,
+            sha256,
+            file_name,
+            size,
+            file_type,
+            mime_type,
+            blob_hash,
+            original_path,
+            folder_id,
+            preview_json,
+            extracted_text,
+            page_count,
+        )
+        .map(|(file, _created)| file)
+    }
+
+    /// 同 [`Self::create_file_with_doc_data_in_folder`]，另返回 `created` 标记：
+    ///
+    /// - `true`：本次调用新建了 resources/files/folder_items 行；
+    /// - `false`：sha256 去重命中，返回的是已存在（或被恢复的软删除）文件，
+    ///   **没有**新建行。
+    ///
+    /// ★ TD-03：上传 saga 依赖该标记决定 blob 引用归属——去重命中时调用方
+    /// 在本次 `store_blob` 中做出的 ref_count +1 没有被任何新文件行接管，
+    /// 必须补偿回退，否则该 blob 的引用计数将永久虚高、无法被清扫。
+    pub fn create_file_with_doc_data_in_folder_outcome(
+        conn: &Connection,
+        sha256: &str,
+        file_name: &str,
+        size: i64,
+        file_type: &str,
+        mime_type: Option<&str>,
+        blob_hash: Option<&str>,
+        original_path: Option<&str>,
+        folder_id: Option<&str>,
+        preview_json: Option<&str>,
+        extracted_text: Option<&str>,
+        page_count: Option<i32>,
+    ) -> VfsResult<(VfsFile, bool)> {
         // ★ SAVEPOINT 事务保护：包裹所有写操作
         conn.execute("SAVEPOINT create_file_doc", []).map_err(|e| {
             error!(
@@ -465,7 +505,7 @@ impl VfsFileRepo {
             VfsError::Database(format!("Failed to create savepoint: {}", e))
         })?;
 
-        let result = (|| -> VfsResult<VfsFile> {
+        let result = (|| -> VfsResult<(VfsFile, bool)> {
             // 1. 检查文件夹存在性
             if let Some(fid) = folder_id {
                 if !VfsFolderRepo::folder_exists_with_conn(conn, fid)? {
@@ -504,13 +544,18 @@ impl VfsFileRepo {
                         params![now, existing.id],
                     )?;
                     ensure_folder_assignment(&existing.id)?;
-                    return Self::get_file_with_conn(conn, &existing.id)?.ok_or_else(|| {
-                        VfsError::Database(format!("File {} not found after restore", existing.id))
-                    });
+                    let restored =
+                        Self::get_file_with_conn(conn, &existing.id)?.ok_or_else(|| {
+                            VfsError::Database(format!(
+                                "File {} not found after restore",
+                                existing.id
+                            ))
+                        })?;
+                    return Ok((restored, false));
                 }
 
                 ensure_folder_assignment(&existing.id)?;
-                return Ok(existing);
+                return Ok((existing, false));
             }
 
             let file_id = VfsFile::generate_id();
@@ -607,39 +652,42 @@ impl VfsFileRepo {
                 file_id, file_name, file_type, extracted_text.is_some(), preview_json.is_some()
             );
 
-            Ok(VfsFile {
-                id: file_id,
-                resource_id: Some(resource_id),
-                blob_hash: blob_hash.map(|s| s.to_string()),
-                sha256: sha256.to_string(),
-                file_name: file_name.to_string(),
-                original_path: original_path.map(|s| s.to_string()),
-                size,
-                page_count,
-                file_type: file_type.to_string(),
-                mime_type: mime_type.map(|s| s.to_string()),
-                tags: vec![],
-                is_favorite: false,
-                last_opened_at: None,
-                last_page: None,
-                bookmarks: vec![],
-                cover_key: None,
-                extracted_text: extracted_text.map(|s| s.to_string()),
-                preview_json: preview_json.map(|s| s.to_string()),
-                ocr_pages_json: None,
-                description: None,
-                status: "active".to_string(),
-                created_at: now.clone(),
-                updated_at: now,
-                deleted_at: None,
-                // PDF 预处理流水线字段
-                processing_status: processing_status.map(|s| s.to_string()),
-                processing_progress,
-                processing_error: None,
-                processing_started_at,
-                processing_completed_at: None,
-                compressed_blob_hash: None,
-            })
+            Ok((
+                VfsFile {
+                    id: file_id,
+                    resource_id: Some(resource_id),
+                    blob_hash: blob_hash.map(|s| s.to_string()),
+                    sha256: sha256.to_string(),
+                    file_name: file_name.to_string(),
+                    original_path: original_path.map(|s| s.to_string()),
+                    size,
+                    page_count,
+                    file_type: file_type.to_string(),
+                    mime_type: mime_type.map(|s| s.to_string()),
+                    tags: vec![],
+                    is_favorite: false,
+                    last_opened_at: None,
+                    last_page: None,
+                    bookmarks: vec![],
+                    cover_key: None,
+                    extracted_text: extracted_text.map(|s| s.to_string()),
+                    preview_json: preview_json.map(|s| s.to_string()),
+                    ocr_pages_json: None,
+                    description: None,
+                    status: "active".to_string(),
+                    created_at: now.clone(),
+                    updated_at: now,
+                    deleted_at: None,
+                    // PDF 预处理流水线字段
+                    processing_status: processing_status.map(|s| s.to_string()),
+                    processing_progress,
+                    processing_error: None,
+                    processing_started_at,
+                    processing_completed_at: None,
+                    compressed_blob_hash: None,
+                },
+                true,
+            ))
         })();
 
         match result {

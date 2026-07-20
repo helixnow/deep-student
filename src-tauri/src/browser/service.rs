@@ -1123,6 +1123,17 @@ impl BrowserService {
         Ok(state)
     }
 
+    /// ACR 4.0（A7）：消费「用户接管后 Agent 首次 claim」提示闩锁。
+    /// 仅在 Agent 成功 claim 控制权后调用；返回 true 表示回执应提示
+    /// 「已从用户手中接管控制」，供 LLM 转告用户。
+    pub fn consume_takeover_notice(&self) -> bool {
+        let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
+        match guard.as_mut().filter(|s| s.alive) {
+            Some(session) => session.consume_takeover_notice(),
+            None => false,
+        }
+    }
+
     /// 若仍处于用户接管冷却期则返回 true（过期闩锁会被清除）
     pub fn is_blocked_by_user_takeover(&self) -> bool {
         let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());

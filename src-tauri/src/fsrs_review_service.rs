@@ -7,9 +7,9 @@ use chrono::{DateTime, Local, TimeZone, Utc};
 use rs_fsrs::{Card as RsFsrsCard, Rating as RsFsrsRating, State as RsFsrsState, FSRS as RsFsrs};
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::database::{AnkiLibraryScope, Database};
 use crate::models::{AppError, AppErrorType};
@@ -99,10 +99,6 @@ pub const DEFAULT_NEW_PER_DAY: u32 = 20;
 pub const DEFAULT_REVIEWS_PER_DAY: u32 = 200;
 /// leech 阈值默认值（Anki 默认 8 次 lapse 标记 leech）
 pub const DEFAULT_LEECH_THRESHOLD: u32 = 8;
-/// 留存率统计中 mature 卡的稳定度阈值（对齐 Anki interval >= 21 天）
-const MATURE_STABILITY_DAYS: f64 = 21.0;
-/// 统计窗口上限（天）
-const MAX_STATISTICS_DAYS: u32 = 366;
 /// rs-fsrs 默认最大间隔（天），fuzz 计算时使用
 const MAXIMUM_INTERVAL_DAYS: f64 = 36_500.0;
 
@@ -402,6 +398,15 @@ pub struct FsrsSchedulerConfigUpdate {
 pub struct FsrsBuryResult {
     pub state: FsrsCardState,
     pub changed: bool,
+}
+
+/// 重置进度结果：清除全部复习历史并以全新 New 状态重建（新 state id）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsResetResult {
+    pub state: FsrsCardState,
+    /// 被清除的复习日志条数
+    pub cleared_logs: u32,
 }
 
 /// 单日复习聚合（供热力图）
@@ -1629,10 +1634,8 @@ impl FsrsReviewService {
             ));
         }
 
-        let config = Self::load_scheduler_config(
-            &tx,
-            before.deck_id.as_deref().unwrap_or(DEFAULT_DECK_ID),
-        )?;
+        let config =
+            Self::load_scheduler_config(&tx, before.deck_id.as_deref().unwrap_or(DEFAULT_DECK_ID))?;
         let state_before_json =
             serde_json::to_string(&FsrsStateBeforeSnapshot::from_state(&before))
                 .map_err(|e| AppError::database(format!("序列化评分前状态失败: {}", e)))?;
@@ -2638,6 +2641,425 @@ impl FsrsReviewService {
         })
     }
 
+    /// 读取默认牌组的调度配置（缺失/损坏时回退默认值，不报错）。
+    pub fn get_scheduler_config(&self) -> Result<FsrsSchedulerConfig> {
+        let conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        Self::load_scheduler_config(&conn, DEFAULT_DECK_ID)
+    }
+
+    /// 部分更新默认牌组的调度配置（None 字段保持不变，未知键保留）。
+    ///
+    /// 存储为 snake_case 键（与 V20260709 种子一致）；同名 camelCase 键在写入时
+    /// 移除，避免 snake/camel 双写后读取歧义。
+    pub fn update_scheduler_config(
+        &self,
+        update: &FsrsSchedulerConfigUpdate,
+    ) -> Result<FsrsSchedulerConfig> {
+        if let Some(v) = update.desired_retention {
+            if !v.is_finite() || v <= 0.0 || v >= 1.0 {
+                return Err(AppError::validation(
+                    "desiredRetention must be within (0, 1)",
+                ));
+            }
+        }
+        if let Some(action) = update.leech_action.as_deref() {
+            if action != "suspend" && action != "mark" {
+                return Err(AppError::validation(
+                    "leechAction must be 'suspend' or 'mark'",
+                ));
+            }
+        }
+
+        let now_rfc = Utc::now().to_rfc3339();
+        let mut conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|e| AppError::database(format!("开启调度配置事务失败: {}", e)))?;
+
+        // 与入队路径同一 seed：默认牌组缺失时先补建
+        tx.execute(
+            "INSERT OR IGNORE INTO anki_decks (id, name, description, config_json, created_at, updated_at, local_version)
+             VALUES (?1, 'Default', 'Default flashcard deck for FSRS reviews', '{\"desired_retention\":0.9}', ?2, ?2, 0)",
+            params![DEFAULT_DECK_ID, now_rfc],
+        )
+        .map_err(|e| AppError::database(format!("确保默认牌组失败: {}", e)))?;
+
+        let raw: Option<String> = tx
+            .query_row(
+                "SELECT config_json FROM anki_decks WHERE id = ?1 AND deleted_at IS NULL",
+                params![DEFAULT_DECK_ID],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()
+            .map_err(|e| AppError::database(format!("读取牌组调度配置失败: {}", e)))?
+            .flatten();
+        let mut value = raw
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        if !value.is_object() {
+            value = serde_json::json!({});
+        }
+        let obj = value
+            .as_object_mut()
+            .expect("config value normalized to object above");
+        fn set_field(
+            obj: &mut serde_json::Map<String, serde_json::Value>,
+            snake: &str,
+            camel: &str,
+            value: serde_json::Value,
+        ) {
+            obj.remove(camel);
+            obj.insert(snake.to_string(), value);
+        }
+        if let Some(v) = update.new_per_day {
+            set_field(obj, "new_per_day", "newPerDay", serde_json::json!(v));
+        }
+        if let Some(v) = update.reviews_per_day {
+            set_field(obj, "reviews_per_day", "reviewsPerDay", serde_json::json!(v));
+        }
+        if let Some(v) = update.desired_retention {
+            set_field(
+                obj,
+                "desired_retention",
+                "desiredRetention",
+                serde_json::json!(v),
+            );
+        }
+        if let Some(v) = update.leech_threshold {
+            set_field(
+                obj,
+                "leech_threshold",
+                "leechThreshold",
+                serde_json::json!(v),
+            );
+        }
+        if let Some(v) = update.leech_action.as_deref() {
+            set_field(obj, "leech_action", "leechAction", serde_json::json!(v));
+        }
+        if let Some(v) = update.enable_fuzz {
+            set_field(obj, "enable_fuzz", "enableFuzz", serde_json::json!(v));
+        }
+
+        let serialized = serde_json::to_string(&value)
+            .map_err(|e| AppError::database(format!("序列化调度配置失败: {}", e)))?;
+        tx.execute(
+            "UPDATE anki_decks
+             SET config_json = ?1,
+                 updated_at = ?2,
+                 local_version = COALESCE(local_version, 0) + 1
+             WHERE id = ?3 AND deleted_at IS NULL",
+            params![serialized, now_rfc, DEFAULT_DECK_ID],
+        )
+        .map_err(|e| AppError::database(format!("写入牌组调度配置失败: {}", e)))?;
+
+        let config = Self::load_scheduler_config(&tx, DEFAULT_DECK_ID)?;
+        tx.commit()
+            .map_err(|e| AppError::database(format!("提交调度配置事务失败: {}", e)))?;
+        Ok(config)
+    }
+
+    /// 一次性聚合统计：热力图（每日复习）/ 评分分布 / 状态构成 / 留存率 /
+    /// 每日限额 / 未来 15 个本地日的到期预测。
+    ///
+    /// 口径与 [`Self::get_stats`] 一致：仅统计存活（未软删）且非诊断错误卡的
+    /// 调度状态与日志；日期按本地时区日切聚合。
+    pub fn get_review_statistics(&self, days: Option<u32>) -> Result<FsrsReviewStatistics> {
+        let days = days.unwrap_or(365).clamp(7, 730);
+        let now_ms = Utc::now().timestamp_millis();
+        let (day_start_ms, next_day_start_ms) = local_day_bounds_ms();
+        let window_start_ms = day_start_ms - (i64::from(days) - 1) * MS_PER_DAY;
+
+        let conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+
+        let config = Self::load_scheduler_config(&conn, DEFAULT_DECK_ID)?;
+        let counters = Self::load_daily_counters(&conn, day_start_ms, next_day_start_ms)?;
+
+        // ---- 窗口内复习日志：每日聚合 / 评分分布 / 留存率 ----
+        let mut daily: BTreeMap<String, FsrsDailyReviewStat> = BTreeMap::new();
+        let mut rating_distribution = FsrsRatingDistribution::default();
+        let mut retention = FsrsRetentionStats::default();
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT l.review_ms, l.rating, l.state_before, l.stability_before
+                     FROM fsrs_review_logs l
+                     INNER JOIN fsrs_card_states s ON s.id = l.card_state_id
+                     INNER JOIN anki_cards a ON a.id = l.anki_card_id
+                     INNER JOIN document_tasks dt ON dt.id = a.task_id
+                     WHERE l.deleted_at IS NULL
+                       AND s.deleted_at IS NULL
+                       AND a.deleted_at IS NULL
+                       AND dt.deleted_at IS NULL
+                       AND COALESCE(a.is_error_card, 0) = 0
+                       AND l.review_ms >= ?1",
+                )
+                .map_err(|e| AppError::database(format!("准备复习日志统计查询失败: {}", e)))?;
+            let rows = stmt
+                .query_map(params![window_start_ms], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                        row.get::<_, Option<f64>>(3)?,
+                    ))
+                })
+                .map_err(|e| AppError::database(format!("查询复习日志统计失败: {}", e)))?;
+            for row in rows {
+                let (review_ms, rating, state_before, stability_before) =
+                    row.map_err(|e| AppError::database(format!("读取复习日志行失败: {}", e)))?;
+                if !(1..=4).contains(&rating) {
+                    continue;
+                }
+                let date = local_date_key(review_ms);
+                let entry = daily.entry(date.clone()).or_insert_with(|| {
+                    FsrsDailyReviewStat {
+                        date,
+                        total: 0,
+                        again: 0,
+                        hard: 0,
+                        good: 0,
+                        easy: 0,
+                        new_introduced: 0,
+                    }
+                });
+                entry.total += 1;
+                rating_distribution.total += 1;
+                match rating {
+                    1 => {
+                        entry.again += 1;
+                        rating_distribution.again += 1;
+                    }
+                    2 => {
+                        entry.hard += 1;
+                        rating_distribution.hard += 1;
+                    }
+                    3 => {
+                        entry.good += 1;
+                        rating_distribution.good += 1;
+                    }
+                    _ => {
+                        entry.easy += 1;
+                        rating_distribution.easy += 1;
+                    }
+                }
+                if state_before == Some(0) {
+                    entry.new_introduced += 1;
+                }
+                if state_before == Some(2) {
+                    let passed = rating >= 2;
+                    let mature = stability_before.map(|s| s >= 21.0).unwrap_or(false);
+                    if mature {
+                        retention.mature_reviews += 1;
+                        if passed {
+                            retention.mature_passed += 1;
+                        }
+                    } else {
+                        retention.young_reviews += 1;
+                        if passed {
+                            retention.young_passed += 1;
+                        }
+                    }
+                }
+            }
+        }
+        let pass_rate = |passed: i64, total: i64| -> f64 {
+            if total > 0 {
+                passed as f64 / total as f64
+            } else {
+                0.0
+            }
+        };
+        retention.young_pass_rate = pass_rate(retention.young_passed, retention.young_reviews);
+        retention.mature_pass_rate = pass_rate(retention.mature_passed, retention.mature_reviews);
+        retention.overall_pass_rate = pass_rate(
+            retention.young_passed + retention.mature_passed,
+            retention.young_reviews + retention.mature_reviews,
+        );
+
+        // ---- 状态构成（与 get_stats 同一查询口径） ----
+        let state_breakdown: FsrsStateBreakdown = conn
+            .query_row(
+                "SELECT
+                    COUNT(*),
+                    COALESCE(SUM(CASE WHEN s.state = 0 AND s.suspended = 0 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN s.state = 1 AND s.suspended = 0 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN s.state = 2 AND s.suspended = 0 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN s.state = 3 AND s.suspended = 0 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN s.suspended = 1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN s.suspended = 0
+                        AND COALESCE(s.buried_until_ms, 0) > ?1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN COALESCE(s.leech, 0) = 1 THEN 1 ELSE 0 END), 0)
+                 FROM fsrs_card_states s
+                 INNER JOIN anki_cards a ON a.id = s.anki_card_id
+                 INNER JOIN document_tasks dt ON dt.id = a.task_id
+                 WHERE s.deleted_at IS NULL
+                   AND a.deleted_at IS NULL
+                   AND dt.deleted_at IS NULL
+                   AND COALESCE(a.is_error_card, 0) = 0",
+                params![now_ms],
+                |row| {
+                    Ok(FsrsStateBreakdown {
+                        total: row.get(0)?,
+                        new_count: row.get(1)?,
+                        learning: row.get(2)?,
+                        review: row.get(3)?,
+                        relearning: row.get(4)?,
+                        suspended: row.get(5)?,
+                        buried: row.get(6)?,
+                        leech: row.get(7)?,
+                    })
+                },
+            )
+            .map_err(|e| AppError::database(format!("查询状态构成失败: {}", e)))?;
+
+        // ---- 每日限额 ----
+        let daily_limits = FsrsDailyLimitsStatus {
+            new_per_day: i64::from(config.new_per_day),
+            reviews_per_day: i64::from(config.reviews_per_day),
+            new_introduced_today: counters.new_introduced,
+            reviews_done_today: counters.reviews_done,
+            new_remaining_today: (i64::from(config.new_per_day) - counters.new_introduced).max(0),
+            reviews_remaining_today: (i64::from(config.reviews_per_day) - counters.reviews_done)
+                .max(0),
+        };
+
+        // ---- 到期预测：今天一桶收全部积压，未来按本地日分桶 ----
+        const FORECAST_DAYS: i64 = 15;
+        let horizon_ms = day_start_ms + FORECAST_DAYS * MS_PER_DAY;
+        let today_key = local_date_key(day_start_ms);
+        let mut forecast: BTreeMap<String, i64> = BTreeMap::new();
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT s.due_ms
+                     FROM fsrs_card_states s
+                     INNER JOIN anki_cards a ON a.id = s.anki_card_id
+                     INNER JOIN document_tasks dt ON dt.id = a.task_id
+                     WHERE s.deleted_at IS NULL
+                       AND a.deleted_at IS NULL
+                       AND dt.deleted_at IS NULL
+                       AND COALESCE(a.is_error_card, 0) = 0
+                       AND s.suspended = 0
+                       AND s.due_ms < ?1",
+                )
+                .map_err(|e| AppError::database(format!("准备到期预测查询失败: {}", e)))?;
+            let rows = stmt
+                .query_map(params![horizon_ms], |row| row.get::<_, i64>(0))
+                .map_err(|e| AppError::database(format!("查询到期预测失败: {}", e)))?;
+            for row in rows {
+                let due_ms =
+                    row.map_err(|e| AppError::database(format!("读取到期预测行失败: {}", e)))?;
+                let key = if due_ms < next_day_start_ms {
+                    today_key.clone()
+                } else {
+                    local_date_key(due_ms)
+                };
+                *forecast.entry(key).or_insert(0) += 1;
+            }
+        }
+        let due_forecast = forecast
+            .into_iter()
+            .filter(|(_, count)| *count > 0)
+            .map(|(date, count)| FsrsDueForecastDay { date, count })
+            .collect();
+
+        Ok(FsrsReviewStatistics {
+            generated_at_ms: now_ms,
+            day_start_ms,
+            days,
+            daily_reviews: daily.into_values().collect(),
+            rating_distribution,
+            state_breakdown,
+            retention,
+            daily_limits,
+            due_forecast,
+        })
+    }
+
+    /// 重置一张卡的调度进度：清除全部复习日志并以全新 New 状态重建。
+    ///
+    /// 复用 tombstone 重入队的原语（DELETE logs + DELETE state + INSERT 新行），
+    /// 返回新 state（id 与旧 state 不同，调用方需刷新引用）。
+    pub fn reset_card_progress(&self, card_state_id: &str) -> Result<FsrsResetResult> {
+        if card_state_id.trim().is_empty() {
+            return Err(AppError::validation("cardStateId is required"));
+        }
+
+        let now_ms = Utc::now().timestamp_millis();
+        let now_rfc = Utc::now().to_rfc3339();
+        let mut conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|e| AppError::database(format!("开启重置进度事务失败: {}", e)))?;
+        let before = Self::load_state_by_id(&tx, card_state_id)?.ok_or_else(|| {
+            AppError::not_found(format!("fsrs card state not found: {}", card_state_id))
+        })?;
+
+        let cleared_logs = tx
+            .execute(
+                "DELETE FROM fsrs_review_logs WHERE card_state_id = ?1",
+                params![card_state_id],
+            )
+            .map_err(|e| AppError::database(format!("清理复习日志失败: {}", e)))?;
+        tx.execute(
+            "DELETE FROM fsrs_card_states WHERE id = ?1",
+            params![card_state_id],
+        )
+        .map_err(|e| AppError::database(format!("清理卡片调度状态失败: {}", e)))?;
+
+        let id = uuid::Uuid::new_v4().to_string();
+        tx.execute(
+            "INSERT INTO fsrs_card_states (
+                id, anki_card_id, deck_id, state, stability, difficulty,
+                elapsed_days, scheduled_days, reps, lapses, due_ms, last_review_ms,
+                suspended, fsrs_params_version, desired_retention, created_at, updated_at
+             ) VALUES (
+                ?1, ?2, ?3, 0, NULL, NULL,
+                0, 0, 0, 0, ?4, NULL,
+                0, ?5, ?6, ?7, ?7
+             )",
+            params![
+                id,
+                before.anki_card_id,
+                before.deck_id.as_deref().unwrap_or(DEFAULT_DECK_ID),
+                now_ms, // 重置后立即到期
+                FSRS_PARAMS_VERSION,
+                before
+                    .desired_retention
+                    .unwrap_or(DEFAULT_DESIRED_RETENTION),
+                now_rfc,
+            ],
+        )
+        .map_err(|e| AppError::database(format!("重建卡片调度状态失败: {}", e)))?;
+
+        let state = Self::load_state_by_id(&tx, &id)?
+            .ok_or_else(|| AppError::database("state missing after progress reset"))?;
+        tx.commit()
+            .map_err(|e| AppError::database(format!("提交重置进度事务失败: {}", e)))?;
+
+        info!(
+            "[FsrsReviewService] reset progress: card_state {} -> {} (cleared {} logs)",
+            card_state_id, state.id, cleared_logs
+        );
+        Ok(FsrsResetResult {
+            state,
+            cleared_logs: cleared_logs as u32,
+        })
+    }
+
     fn map_state_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<FsrsCardState> {
         Ok(FsrsCardState {
             id: row.get(0)?,
@@ -2664,7 +3086,8 @@ impl FsrsReviewService {
 
     /// `map_state_row` 对应的标准列清单（0..=18）。所有加载 FsrsCardState 的
     /// SQL 必须以这 19 列开头，追加列从索引 19 起。
-    const STATE_COLUMNS: &'static str = "s.id, s.anki_card_id, s.deck_id, s.state, s.stability, s.difficulty,
+    const STATE_COLUMNS: &'static str =
+        "s.id, s.anki_card_id, s.deck_id, s.state, s.stability, s.difficulty,
              s.elapsed_days, s.scheduled_days, s.reps, s.lapses, s.due_ms, s.last_review_ms,
              s.suspended, s.fsrs_params_version, s.desired_retention, s.created_at, s.updated_at,
              COALESCE(s.leech, 0), s.buried_until_ms";
@@ -2957,12 +3380,7 @@ impl FsrsReviewService {
                 Self::STATE_COLUMNS
             ),
             params![id],
-            |row| {
-                Ok((
-                    Self::map_state_row(row)?,
-                    row.get::<_, i32>(19)? != 0,
-                ))
-            },
+            |row| Ok((Self::map_state_row(row)?, row.get::<_, i32>(19)? != 0)),
         )
         .optional()
         .map_err(|e| AppError::database(format!("加载待评分 card state 失败: {}", e)))
@@ -2990,6 +3408,99 @@ impl FsrsReviewService {
         .optional()
         .map_err(|e| AppError::database(format!("按 anki_card_id 加载失败: {}", e)))
     }
+
+    /// 读取牌组调度配置（anki_decks.config_json，snake_case 键）。
+    ///
+    /// 牌组缺失、config_json 为空或损坏时回退 [`FsrsSchedulerConfig::default`]，
+    /// 不阻塞复习流程；未知键由逐键解析天然保留（本函数只读不写回）。
+    fn load_scheduler_config(
+        conn: &rusqlite::Connection,
+        deck_id: &str,
+    ) -> Result<FsrsSchedulerConfig> {
+        let config_json: Option<String> = conn
+            .query_row(
+                "SELECT config_json FROM anki_decks WHERE id = ?1 AND deleted_at IS NULL",
+                params![deck_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()
+            .map_err(|e| AppError::database(format!("读取牌组调度配置失败: {}", e)))?
+            .flatten();
+
+        let mut config = FsrsSchedulerConfig::default();
+        let Some(raw) = config_json else {
+            return Ok(config);
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            warn!(
+                "[FsrsReviewService] 牌组 {} 的 config_json 解析失败，使用默认调度配置",
+                deck_id
+            );
+            return Ok(config);
+        };
+        // 存量数据为 snake_case（见 V20260709 种子行）；同时兼容 camelCase 写入方
+        let field = |snake: &str, camel: &str| {
+            value
+                .get(snake)
+                .or_else(|| value.get(camel))
+                .cloned()
+                .unwrap_or(serde_json::Value::Null)
+        };
+        if let Some(v) = field("new_per_day", "newPerDay").as_u64() {
+            config.new_per_day = v.min(u32::MAX as u64) as u32;
+        }
+        if let Some(v) = field("reviews_per_day", "reviewsPerDay").as_u64() {
+            config.reviews_per_day = v.min(u32::MAX as u64) as u32;
+        }
+        if let Some(v) = field("desired_retention", "desiredRetention").as_f64() {
+            if v > 0.0 && v < 1.0 {
+                config.desired_retention = v;
+            }
+        }
+        if let Some(v) = field("leech_threshold", "leechThreshold").as_u64() {
+            config.leech_threshold = v.min(u32::MAX as u64) as u32;
+        }
+        if let Some(v) = field("leech_action", "leechAction").as_str() {
+            if v == "suspend" || v == "mark" {
+                config.leech_action = v.to_string();
+            }
+        }
+        if let Some(v) = field("enable_fuzz", "enableFuzz").as_bool() {
+            config.enable_fuzz = v;
+        }
+        Ok(config)
+    }
+
+    /// 今日额度计数（与 Anki 对齐：Learning/Relearning 队列不占每日额度）。
+    ///
+    /// - `new_introduced`：今日评分前处于 New 状态的复习次数（即今日引入的新卡数）；
+    /// - `reviews_done`：今日评分前处于 Review 状态的复习次数。
+    ///
+    /// 按 `review_ms` 落在本地日窗口 `[day_start, next_day_start)` 统计，
+    /// 由 V20260722 的 `idx_fsrs_logs_review_ms` 部分索引支撑区间扫描。
+    fn load_daily_counters(
+        conn: &rusqlite::Connection,
+        day_start_ms: i64,
+        next_day_start_ms: i64,
+    ) -> Result<FsrsDailyCounters> {
+        conn.query_row(
+            "SELECT
+                COALESCE(SUM(CASE WHEN state_before = 0 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN state_before = 2 THEN 1 ELSE 0 END), 0)
+             FROM fsrs_review_logs
+             WHERE deleted_at IS NULL
+               AND review_ms >= ?1
+               AND review_ms < ?2",
+            params![day_start_ms, next_day_start_ms],
+            |row| {
+                Ok(FsrsDailyCounters {
+                    new_introduced: row.get(0)?,
+                    reviews_done: row.get(1)?,
+                })
+            },
+        )
+        .map_err(|e| AppError::database(format!("读取每日复习计数失败: {}", e)))
+    }
 }
 
 fn day_bounds_ms<Tz>(now: &DateTime<Tz>) -> Option<(i64, i64)>
@@ -3006,6 +3517,74 @@ where
         .from_local_datetime(&tomorrow.and_hms_opt(0, 0, 0)?)
         .earliest()?;
     Some((start.timestamp_millis(), next_start.timestamp_millis()))
+}
+
+/// 本地时区「今天」的毫秒边界 `[day_start, next_day_start)`。
+///
+/// 到期窗口 / 每日额度 / bury 到期均以本地日切为准（对齐 Anki 语义）。
+/// 极端时区折叠导致零点不存在时回退 UTC 日界，保证总能返回。
+fn local_day_bounds_ms() -> (i64, i64) {
+    let local_now = Local::now();
+    day_bounds_ms(&local_now)
+        .or_else(|| day_bounds_ms(&Utc::now()))
+        .unwrap_or_else(|| {
+            let now_ms = Utc::now().timestamp_millis();
+            let start = (now_ms / MS_PER_DAY) * MS_PER_DAY;
+            (start, start + MS_PER_DAY)
+        })
+}
+
+/// 时间戳 → 本地时区日期 key（YYYY-MM-DD）；极端时区解析失败时回退 UTC。
+fn local_date_key(ms: i64) -> String {
+    if let chrono::LocalResult::Single(dt) = Local.timestamp_millis_opt(ms) {
+        return dt.format("%Y-%m-%d").to_string();
+    }
+    Utc.timestamp_millis_opt(ms)
+        .single()
+        .map(|dt| dt.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| "1970-01-01".to_string())
+}
+
+/// 确定性间隔 fuzz（enable_fuzz 时应用）：打散同批卡片的到期聚堆。
+///
+/// - 因子只依赖 `(card_state_id, reps)`：同一张卡在 preview 与 rate 中结果
+///   一致（见 `preview_intervals`），跨进程/重启也可复现；
+/// - 仅对进入 Review 状态且间隔 >= 2.5 天的调度生效（Learning/Relearning
+///   的分钟级步进不抖动），fuzz 幅度分档对齐 Anki；
+/// - 抖动后间隔 clamp 到 `[1, MAXIMUM_INTERVAL_DAYS]`，due/scheduled_days 同步更新。
+fn apply_deterministic_fuzz(outcome: &mut ScheduleOutcome, before: &FsrsCardState, now_ms: i64) {
+    if outcome.state != FsrsState::Review {
+        return;
+    }
+    let interval_days = outcome.scheduled_days;
+    if interval_days < 2.5 {
+        return;
+    }
+
+    // Anki 分档 fuzz 幅度
+    let fuzz_range_days = if interval_days < 7.0 {
+        (interval_days * 0.15).max(1.0)
+    } else if interval_days < 30.0 {
+        (interval_days * 0.10).max(2.0)
+    } else {
+        (interval_days * 0.05).max(4.0)
+    };
+
+    // 稳定种子 → [0, 1) 因子。DefaultHasher（SipHash 固定密钥）跨运行确定。
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    before.id.hash(&mut hasher);
+    outcome.reps.hash(&mut hasher);
+    let unit = (hasher.finish() % 10_000) as f64 / 10_000.0;
+
+    let fuzzed_days = (interval_days + (unit * 2.0 - 1.0) * fuzz_range_days)
+        .clamp(1.0, MAXIMUM_INTERVAL_DAYS)
+        .round();
+    if (fuzzed_days - interval_days).abs() < f64::EPSILON {
+        return;
+    }
+    outcome.scheduled_days = fuzzed_days;
+    outcome.due_ms = now_ms + (fuzzed_days * MS_PER_DAY as f64) as i64;
 }
 
 fn ms_to_datetime(ms: i64) -> chrono::DateTime<Utc> {
@@ -3167,6 +3746,8 @@ mod tests {
             desired_retention: Some(DEFAULT_DESIRED_RETENTION),
             created_at: "t".into(),
             updated_at: "t".into(),
+            leech: false,
+            buried_until_ms: None,
         }
     }
 
@@ -3597,6 +4178,7 @@ mod tests {
                     source_ref: None,
                     images: None,
                     parent_id: None,
+                    structured_data: None,
                 },
             )
             .unwrap()
@@ -3829,6 +4411,154 @@ mod tests {
             .rate(&state_id, 3, Some(250), None)
             .expect("rate card");
         state_id
+    }
+
+    #[test]
+    fn scheduler_config_partial_update_preserves_unknown_keys() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-config", "task-config", "card-config");
+        let service = FsrsReviewService::new(db.clone());
+        service
+            .enqueue_cards(&["card-config".to_string()])
+            .expect("enqueue seeds the default deck");
+        {
+            let conn = db.get_conn_safe().expect("open mistakes connection");
+            conn.execute(
+                "UPDATE anki_decks
+                 SET config_json = '{\"desired_retention\":0.9,\"custom_key\":\"keep\",\"newPerDay\":50}'
+                 WHERE id = ?1",
+                params![DEFAULT_DECK_ID],
+            )
+            .expect("seed custom config");
+        }
+
+        let updated = service
+            .update_scheduler_config(&FsrsSchedulerConfigUpdate {
+                new_per_day: Some(5),
+                desired_retention: Some(0.85),
+                ..Default::default()
+            })
+            .expect("partial update succeeds");
+        assert_eq!(updated.new_per_day, 5);
+        assert_eq!(updated.reviews_per_day, DEFAULT_REVIEWS_PER_DAY);
+        assert!((updated.desired_retention - 0.85).abs() < 1e-9);
+
+        let raw: String = {
+            let conn = db.get_conn_safe().expect("open mistakes connection");
+            conn.query_row(
+                "SELECT config_json FROM anki_decks WHERE id = ?1",
+                params![DEFAULT_DECK_ID],
+                |row| row.get(0),
+            )
+            .expect("load config json")
+        };
+        let value: Value = serde_json::from_str(&raw).expect("config json parses");
+        assert_eq!(value["custom_key"], json!("keep"), "unknown keys survive");
+        assert_eq!(value["new_per_day"], json!(5));
+        assert!(
+            value.get("newPerDay").is_none(),
+            "camelCase duplicate is removed on write"
+        );
+
+        let reloaded = service.get_scheduler_config().expect("reload config");
+        assert_eq!(reloaded, updated);
+
+        assert!(
+            service
+                .update_scheduler_config(&FsrsSchedulerConfigUpdate {
+                    desired_retention: Some(1.2),
+                    ..Default::default()
+                })
+                .is_err(),
+            "retention outside (0,1) is rejected"
+        );
+        assert!(
+            service
+                .update_scheduler_config(&FsrsSchedulerConfigUpdate {
+                    leech_action: Some("explode".to_string()),
+                    ..Default::default()
+                })
+                .is_err(),
+            "unknown leech action is rejected"
+        );
+    }
+
+    #[test]
+    fn review_statistics_aggregate_logs_limits_and_forecast() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-stats", "task-stats", "card-stats");
+        enqueue_and_rate(&db, "card-stats");
+        let service = FsrsReviewService::new(db.clone());
+
+        let stats = service
+            .get_review_statistics(Some(30))
+            .expect("aggregate statistics");
+        assert_eq!(stats.days, 30);
+        assert_eq!(stats.rating_distribution.total, 1);
+        assert_eq!(stats.rating_distribution.good, 1);
+        assert_eq!(stats.daily_reviews.len(), 1);
+        assert_eq!(stats.daily_reviews[0].total, 1);
+        assert_eq!(stats.daily_reviews[0].good, 1);
+        assert_eq!(
+            stats.daily_reviews[0].new_introduced, 1,
+            "New-state review counts as an introduced card"
+        );
+        assert_eq!(stats.state_breakdown.total, 1);
+        assert_eq!(stats.daily_limits.new_introduced_today, 1);
+        assert_eq!(
+            stats.daily_limits.new_remaining_today,
+            i64::from(DEFAULT_NEW_PER_DAY) - 1
+        );
+        // Good on a new card schedules minutes ahead → the card lands in the
+        // 15-day forecast horizon (today or tomorrow around midnight).
+        let forecast_total: i64 = stats.due_forecast.iter().map(|day| day.count).sum();
+        assert_eq!(forecast_total, 1);
+    }
+
+    #[test]
+    fn reset_card_progress_clears_history_and_rebuilds_new_state() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-reset", "task-reset", "card-reset");
+        let old_state_id = enqueue_and_rate(&db, "card-reset");
+        let service = FsrsReviewService::new(db.clone());
+
+        let result = service
+            .reset_card_progress(&old_state_id)
+            .expect("reset progress");
+        assert_ne!(result.state.id, old_state_id, "reset issues a fresh state id");
+        assert_eq!(result.cleared_logs, 1);
+        assert_eq!(result.state.anki_card_id, "card-reset");
+        assert_eq!(result.state.state, 0);
+        assert_eq!(result.state.reps, 0);
+        assert_eq!(result.state.lapses, 0);
+        assert!(result.state.last_review_ms.is_none());
+        assert!(!result.state.suspended);
+
+        let (log_count, state_count): (i64, i64) = {
+            let conn = db.get_conn_safe().expect("open mistakes connection");
+            (
+                conn.query_row(
+                    "SELECT COUNT(*) FROM fsrs_review_logs WHERE anki_card_id = 'card-reset'",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("count logs"),
+                conn.query_row(
+                    "SELECT COUNT(*) FROM fsrs_card_states WHERE anki_card_id = 'card-reset'",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("count states"),
+            )
+        };
+        assert_eq!(log_count, 0, "review history is cleared");
+        assert_eq!(state_count, 1, "exactly one fresh state remains");
+
+        // 重置后立即到期，可直接进入下一轮复习
+        assert_eq!(service.get_due(None).expect("load due").len(), 1);
+
+        // 旧 state id 已不存在：重复重置返回 not found
+        assert!(service.reset_card_progress(&old_state_id).is_err());
     }
 
     fn expect_agent_updated(

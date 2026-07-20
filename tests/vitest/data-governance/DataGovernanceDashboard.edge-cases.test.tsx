@@ -57,10 +57,6 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
   save: mockSaveDialog,
 }));
 
-vi.mock('@/features/settings/components/data-governance/MigrationTab', () => ({
-  MigrationTab: () => <div data-testid="schema-migration-tab">migration-tab</div>,
-}));
-
 vi.mock('@/features/settings/components/MediaCacheSection', () => ({
   MediaCacheSection: () => <div data-testid="media-cache-section">cache-section</div>,
 }));

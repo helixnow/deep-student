@@ -42,10 +42,10 @@ fn extract_plain_text(content: &str) -> String {
                 .join(" ");
         }
     }
-    // 移除 markdown 图片标记
-    let re =
-        regex::Regex::new(r"!\[.*?\]\(.*?\)").unwrap_or_else(|_| regex::Regex::new("").unwrap());
-    re.replace_all(trimmed, "").trim().to_string()
+    // 移除 markdown 图片标记（正则只编译一次，避免每次调用重复编译）
+    static IMAGE_MD_RE: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"!\[.*?\]\(.*?\)").expect("静态正则应合法"));
+    IMAGE_MD_RE.replace_all(trimmed, "").trim().to_string()
 }
 #[cfg(feature = "lance")]
 use crate::llm_manager::LLMManager;
@@ -195,9 +195,32 @@ const CHAT_FTS_VERSION: &str = "2024-05-chat-ngram-v1";
 #[cfg(feature = "lance")]
 const OPTIMIZE_MIN_INTERVAL_CHAT_SECS: i64 = 1800; // 30min
 #[cfg(feature = "lance")]
+const OPTIMIZE_MIN_INTERVAL_KB_SECS: i64 = 1800; // 30min，与聊天表一致但独立记账
+#[cfg(feature = "lance")]
 const LANCE_RELEVANCE_COL: &str = "_relevance_score";
 #[cfg(feature = "lance")]
 const LANCE_FTS_SCORE_COL: &str = "_score";
+
+/// KB 检索热路径的列投影：仅含下游结果构造实际读取的普通列。
+/// `_distance` / `_relevance_score` / `_score` 等系统列由引擎按查询类型
+/// 自动附加，不需要也不应放进 select（vendored lancedb 的 Select::Columns
+/// 只作用于 scanner.project，向量/FTS 分数列独立追加；同仓库
+/// vfs::lance_store::SEARCH_RESULT_COLUMNS 为同款用法）。embedding 列被
+/// 显式排除——结果行的 embedding 字段本就填 Vec::new()，此前整列拉回再丢弃。
+#[cfg(feature = "lance")]
+const KB_SEARCH_RESULT_COLUMNS: &[&str] = &[
+    "chunk_id",
+    "document_id",
+    "sub_library_id",
+    "chunk_index",
+    "text",
+    "metadata",
+    "created_at",
+];
+/// 聊天向量检索热路径的列投影（同上，排除 embedding，系统列由引擎附加）。
+#[cfg(feature = "lance")]
+const CHAT_SEARCH_RESULT_COLUMNS: &[&str] =
+    &["message_id", "mistake_id", "role", "timestamp", "text"];
 
 #[cfg(feature = "lance")]
 const CATEGORY_KB_SQLITE: &str = "kb_sqlite_to_lance";
@@ -224,8 +247,9 @@ const ANN_INDEX_VERSION: &str = "2026-07-ivfpq-cosine-v1";
 /// 本结构体实例都是短生命周期（每个命令新建一个），实例字段无法复用连接，
 /// 此前每次操作都重新 `lancedb::connect`。
 #[cfg(feature = "lance")]
-static LANCE_CONNECTION_CACHE: std::sync::OnceLock<tokio::sync::Mutex<HashMap<String, Connection>>> =
-    std::sync::OnceLock::new();
+static LANCE_CONNECTION_CACHE: std::sync::OnceLock<
+    tokio::sync::Mutex<HashMap<String, Connection>>,
+> = std::sync::OnceLock::new();
 
 /// 进程级"已确保索引"的表缓存（key = "<lance路径>::<表名>"）。
 /// ensure_wide_table / ensure_chat_table 每次调用都会尝试 create_index，
@@ -235,20 +259,35 @@ static LANCE_CONNECTION_CACHE: std::sync::OnceLock<tokio::sync::Mutex<HashMap<St
 static ENSURED_TABLES: std::sync::OnceLock<std::sync::Mutex<HashSet<String>>> =
     std::sync::OnceLock::new();
 
+/// 进程级"行数已确认越过 ANN 训练阈值"的表缓存（key 同 ensured_table_key，
+/// 含 lance 数据集路径与表名）。行数跨过阈值后实际不会回落（即便删除导致
+/// 回落，索引已存在，继续走索引路径也正确），命中后无需每次查询都 count_rows；
+/// 未过阈值的表不入缓存，写入越过阈值后无需重启即可切回索引路径。
+#[cfg(feature = "lance")]
+static ANN_THRESHOLD_PASSED: std::sync::OnceLock<std::sync::Mutex<HashSet<String>>> =
+    std::sync::OnceLock::new();
+
 /// 按路径复用 LanceDB 连接；未命中时新建并缓存。
+///
+/// 注意：不能在持锁期间 await `connect`——首连可能较慢（目录扫描/清单加载），
+/// 持锁 await 会把所有其它路径的连接获取串行卡在同一把全局锁上。
+/// 改为：锁内查缓存 → 未命中释放锁执行 connect → 重新加锁回填。
+/// 并发窗口内可能有多个任务同时首连同一路径，回填时保留先到者。
 #[cfg(feature = "lance")]
 async fn connect_cached(path: &str) -> Result<Connection> {
     let cache = LANCE_CONNECTION_CACHE.get_or_init(|| tokio::sync::Mutex::new(HashMap::new()));
-    let mut guard = cache.lock().await;
-    if let Some(conn) = guard.get(path) {
-        return Ok(conn.clone());
+    {
+        let guard = cache.lock().await;
+        if let Some(conn) = guard.get(path) {
+            return Ok(conn.clone());
+        }
     }
     let conn = lancedb::connect(path)
         .execute()
         .await
         .map_err(|e| AppError::database(format!("连接 LanceDB 失败: {}", e)))?;
-    guard.insert(path.to_string(), conn.clone());
-    Ok(conn)
+    let mut guard = cache.lock().await;
+    Ok(guard.entry(path.to_string()).or_insert(conn).clone())
 }
 
 #[cfg(feature = "lance")]
@@ -871,9 +910,10 @@ impl LanceVectorStore {
 
         if optimized == 0 {
             info!("ℹ️ [Lance优化] 未发现可优化的 Lance 表");
-        } else {
-            self.record_optimization_timestamp(scope);
         }
+        // 无论是否有表被优化都记录时间戳：否则空 scope（如无 KB 表）每次触发
+        // 都会重新枚举+尝试打开全部表，节流形同虚设
+        self.record_optimization_timestamp(scope);
         Ok(optimized)
     }
 
@@ -909,6 +949,41 @@ impl LanceVectorStore {
             .await?;
         if optimized > 0 {
             info!("✅ [Lance优化] 聊天向量表优化完成（{} 张表）", optimized);
+        }
+        Ok(optimized)
+    }
+
+    /// 优化遗留 KB 宽表（`kb_chunks_v2_d*`）：Compact + Prune + Index。
+    ///
+    /// 此前 `optimize_table_internal` 唯一调用链只覆盖聊天表，KB 宽表从未被
+    /// compact/prune，删除产生的旧版本与碎片文件会无限累积。节流策略与聊天表
+    /// 一致（30 分钟），但使用独立的 scope key（`lance.optimize.last.kb`）。
+    #[cfg(feature = "lance")]
+    pub async fn optimize_kb_tables(
+        &self,
+        older_than_days: Option<u64>,
+        delete_unverified: Option<bool>,
+        force: bool,
+    ) -> Result<usize> {
+        let path = self.get_lance_path()?;
+        let db = connect_cached(&path).await?;
+        let mut names: Vec<String> = Vec::new();
+        for (_dim, name) in Self::existing_dim_tables(&db, KB_V2_TABLE_PREFIX).await? {
+            names.push(name);
+        }
+
+        let optimized = self
+            .optimize_table_group(
+                "kb",
+                OPTIMIZE_MIN_INTERVAL_KB_SECS,
+                names,
+                older_than_days,
+                delete_unverified,
+                force,
+            )
+            .await?;
+        if optimized > 0 {
+            info!("✅ [Lance优化] KB 宽表优化完成（{} 张表）", optimized);
         }
         Ok(optimized)
     }
@@ -1054,10 +1129,10 @@ impl LanceVectorStore {
 
     #[cfg(feature = "lance")]
     fn record_ann_version(&self, table_name: &str) {
-        if let Err(err) = self
-            .database
-            .save_setting(Self::ann_version_key(table_name).as_str(), ANN_INDEX_VERSION)
-        {
+        if let Err(err) = self.database.save_setting(
+            Self::ann_version_key(table_name).as_str(),
+            ANN_INDEX_VERSION,
+        ) {
             warn!(
                 "⚠️ [LanceIndex] 保存 ANN 索引版本信息失败 {}: {}",
                 table_name, err
@@ -1067,10 +1142,33 @@ impl LanceVectorStore {
 
     /// 查询是否应绕过 ANN 索引走精确扫描（行数低于训练阈值的小表）。
     /// 出错时保守返回 false（沿用索引路径）。
+    ///
+    /// 性能：此前每次查询都 count_rows。行数跨过 256 阈值后不会回落，故一旦
+    /// 确认过阈值即记入进程级缓存（key 含 lance 数据集路径+表名），后续直接
+    /// 返回 false；未过阈值的表继续每次 count，写入越过阈值后无需重启即生效。
     #[cfg(feature = "lance")]
     async fn should_bypass_ann(tbl: &Table) -> bool {
+        let key = ensured_table_key(tbl.dataset_uri(), tbl.name());
+        let passed_set =
+            ANN_THRESHOLD_PASSED.get_or_init(|| std::sync::Mutex::new(HashSet::new()));
+        if passed_set
+            .lock()
+            .map(|set| set.contains(&key))
+            .unwrap_or(false)
+        {
+            return false;
+        }
         match tbl.count_rows(None::<String>).await {
-            Ok(rows) => rows < MIN_ROWS_FOR_ANN_INDEX,
+            Ok(rows) => {
+                if rows >= MIN_ROWS_FOR_ANN_INDEX {
+                    if let Ok(mut set) = passed_set.lock() {
+                        set.insert(key);
+                    }
+                    false
+                } else {
+                    true
+                }
+            }
             Err(_) => false,
         }
     }
@@ -1423,30 +1521,20 @@ impl LanceVectorStore {
             return Ok(());
         }
         let tbl = self.ensure_wide_table(dim).await?;
-        let chunk_ids: Vec<String> = rows.iter().map(|r| r.chunk_id.clone()).collect();
-        for batch_ids in chunk_ids.chunks(900) {
-            let in_list = batch_ids
-                .iter()
-                .map(|s| format!("'{}'", s.replace("'", "''")))
-                .collect::<Vec<_>>()
-                .join(",");
-            let expr = format!("chunk_id IN ({})", in_list);
-            // P2 修复：upsert 为"先删后插"，删除失败若被忽略会导致同一 chunk_id
-            // 新旧两行并存（重复行挤占 top_k）。删除失败即中止本批写入。
-            tbl.delete(expr.as_str()).await.map_err(|e| {
-                AppError::database(format!(
-                    "upsert 前删除旧 chunk 失败（中止本批写入以避免重复行）: {}",
-                    e
-                ))
-            })?;
-        }
 
+        // ★ 2026-07 修复：upsert 由"先删后插"改为原子 merge_insert。
+        // 旧实现非原子（delete 成功 add 失败丢数据；并发写产生重复行，只能靠
+        // 读侧按 chunk_id 去重兜底），且每次写入产生两个表版本。merge_insert
+        // 按 chunk_id 匹配：命中则整行更新，未命中则插入，单版本原子完成。
         let (schema, batch) = self.build_batch_embeddings_wide(dim, rows)?;
         let iter = RecordBatchIterator::new(vec![Ok(batch)].into_iter(), schema);
-        tbl.add(iter)
-            .execute()
+        let mut builder = tbl.merge_insert(&["chunk_id"]);
+        builder.when_matched_update_all(None);
+        builder.when_not_matched_insert_all();
+        builder
+            .execute(Box::new(iter))
             .await
-            .map_err(|e| AppError::database(format!("写入 Lance 扩展表失败: {}", e)))?;
+            .map_err(|e| AppError::database(format!("写入 Lance 扩展表失败 (merge_insert): {}", e)))?;
         Ok(())
     }
 
@@ -1525,6 +1613,10 @@ impl LanceVectorStore {
             .vector_search(query_embedding)
             .map_err(|e| AppError::database(e.to_string()))?
             .distance_type(DistanceType::Cosine)
+            // P2 修复：只投影结果构造实际读取的列，避免整列拉回 embedding
+            // （每行 dim*4 字节）后又在结果行填 Vec::new() 丢弃；
+            // `_distance` 由引擎自动附加，不放进 select
+            .select(Select::columns(KB_SEARCH_RESULT_COLUMNS))
             .limit(fetch_limit);
         // 小表未建 ANN 索引（或残留旧 L2 索引），显式走精确扫描保证召回
         if Self::should_bypass_ann(&tbl).await {
@@ -1549,6 +1641,11 @@ impl LanceVectorStore {
             batch_counter += 1;
             row_counter += batch.num_rows();
             let schema = batch.schema();
+            // 空表/无匹配时可能返回不含数据列的 batch（参考
+            // vfs::lance_store::extract_search_results），跳过而非报"缺列"错误
+            if batch.num_rows() == 0 || schema.index_of("chunk_id").is_err() {
+                continue;
+            }
             let idx_chunk = schema
                 .index_of("chunk_id")
                 .map_err(|e| AppError::database(e.to_string()))?;
@@ -1731,6 +1828,10 @@ impl LanceVectorStore {
             .nearest_to(query_embedding.to_vec())
             .map_err(|e| AppError::database(e.to_string()))?
             .distance_type(DistanceType::Cosine)
+            // P2 修复：只投影结果构造实际读取的列（execute_hybrid 的 FTS/向量
+            // 两条支路共用本 select）；`_distance`/`_score`/`_relevance_score`
+            // 由引擎与 reranker 自动附加，不放进 select
+            .select(Select::columns(KB_SEARCH_RESULT_COLUMNS))
             .limit(fetch_limit);
         // 小表未建 ANN 索引（或残留旧 L2 索引），混合检索的向量支路走精确扫描
         if Self::should_bypass_ann(&tbl).await {
@@ -1759,6 +1860,12 @@ impl LanceVectorStore {
             batch_counter += 1;
             row_counter += batch.num_rows();
             let schema = batch.schema();
+            // 空结果兜底：混合检索无匹配时 RRF reranker 可能返回只含分数列、
+            // 不含数据列的 batch（参考 vfs::lance_store::extract_search_results_hybrid），
+            // 此时跳过而非报"缺列"错误
+            if batch.num_rows() == 0 || schema.index_of("chunk_id").is_err() {
+                continue;
+            }
             let idx_chunk = schema
                 .index_of("chunk_id")
                 .map_err(|e| AppError::database(e.to_string()))?;
@@ -1979,6 +2086,9 @@ impl LanceVectorStore {
             .vector_search(query_embedding)
             .map_err(|e| AppError::database(e.to_string()))?
             .distance_type(DistanceType::Cosine)
+            // P2 修复：只投影结果构造实际读取的列，排除 embedding；
+            // `_distance` 由引擎自动附加
+            .select(Select::columns(CHAT_SEARCH_RESULT_COLUMNS))
             .limit(fetch_limit);
         // 小表未建 ANN 索引（或残留旧 L2 索引），显式走精确扫描保证召回
         if Self::should_bypass_ann(&tbl).await {
@@ -1999,6 +2109,10 @@ impl LanceVectorStore {
             .map_err(|e| AppError::database(e.to_string()))?
         {
             let schema = batch.schema();
+            // 空表/无匹配时可能返回不含数据列的 batch，跳过而非报"缺列"错误
+            if batch.num_rows() == 0 || schema.index_of("message_id").is_err() {
+                continue;
+            }
             let idx_message = schema
                 .index_of("message_id")
                 .map_err(|e| AppError::database(e.to_string()))?;
@@ -2361,8 +2475,9 @@ impl LanceVectorStore {
 
         let mut doc_revision_map: HashMap<String, String> = HashMap::new();
         let mut per_doc_counts: HashMap<String, usize> = HashMap::new();
-        // P2 修复：upsert 先删后插非原子，历史数据可能存在重复 chunk_id 行；
-        // 检索侧按 chunk_id 去重兜底，保留分数最高的一行（rows 已按分数降序）
+        // P2 兜底：写入路径已改为原子 merge_insert，不再产生新的重复行；
+        // 但历史"先删后插"时期的数据可能残留重复 chunk_id 行，检索侧仍按
+        // chunk_id 去重，保留分数最高的一行（rows 已按分数降序）
         let mut seen_chunk_ids: HashSet<String> = HashSet::new();
         let mut out: Vec<RetrievedChunk> = Vec::with_capacity(top_k);
 
@@ -2528,36 +2643,19 @@ impl LanceVectorStore {
         }
         let dim = rows[0].embedding.len();
         let tbl = self.ensure_chat_table(dim).await?;
-        let mut sanitized: Vec<String> = Vec::with_capacity(rows.len());
-        for row in rows.iter() {
-            sanitized.push(row.message_id.replace("'", "''"));
-        }
-        for chunk in sanitized.chunks(900) {
-            if chunk.is_empty() {
-                continue;
-            }
-            let expr = format!(
-                "message_id IN ({})",
-                chunk
-                    .iter()
-                    .map(|id| format!("'{}'", id))
-                    .collect::<Vec<_>>()
-                    .join(",")
-            );
-            // P2 修复：删除失败即中止本批写入，避免同一 message_id 新旧两行并存
-            tbl.delete(expr.as_str()).await.map_err(|e| {
-                AppError::database(format!(
-                    "upsert 前删除旧聊天向量失败（中止本批写入以避免重复行）: {}",
-                    e
-                ))
-            })?;
-        }
+
+        // ★ 2026-07 修复：upsert 由"先删后插"改为原子 merge_insert（按
+        // message_id 匹配，该表主键列，见 ensure_chat_table 的 schema），
+        // 消除 delete 成功 add 失败丢数据与并发重复行的窗口，版本数减半。
         let (schema, batch) = self.build_batch_embeddings_chat(dim, rows)?;
         let iter = RecordBatchIterator::new(vec![Ok(batch)].into_iter(), schema);
-        tbl.add(iter)
-            .execute()
+        let mut builder = tbl.merge_insert(&["message_id"]);
+        builder.when_matched_update_all(None);
+        builder.when_not_matched_insert_all();
+        builder
+            .execute(Box::new(iter))
             .await
-            .map_err(|e| AppError::database(e.to_string()))?;
+            .map_err(|e| AppError::database(format!("写入聊天向量失败 (merge_insert): {}", e)))?;
         Ok(rows.len())
     }
 
@@ -2598,9 +2696,9 @@ impl LanceVectorStore {
                 );
                 // P2 修复：此前 `let _ =` 吞掉删除失败，调用方（清空/孤儿清理）
                 // 会误报成功；现改为错误上抛
-                tbl.delete(expr.as_str()).await.map_err(|err| {
-                    AppError::database(format!("删除聊天向量失败: {}", err))
-                })?;
+                tbl.delete(expr.as_str())
+                    .await
+                    .map_err(|err| AppError::database(format!("删除聊天向量失败: {}", err)))?;
             }
         }
         Ok(())
@@ -2623,6 +2721,9 @@ impl LanceVectorStore {
             .vector_search(query_embedding)
             .map_err(|e| AppError::database(e.to_string()))?
             .distance_type(DistanceType::Cosine)
+            // P2 修复：下游只读 message_id（`_distance` 由引擎自动附加），
+            // 无需拉回整行（含 embedding）
+            .select(Select::columns(&["message_id"]))
             .limit(fetch_limit);
         // 小表未建 ANN 索引（或残留旧 L2 索引），显式走精确扫描保证召回
         if Self::should_bypass_ann(&tbl).await {
@@ -2640,6 +2741,10 @@ impl LanceVectorStore {
             .map_err(|e| AppError::database(e.to_string()))?
         {
             let schema = batch.schema();
+            // 空表/无匹配时可能返回不含数据列的 batch，跳过而非报"缺列"错误
+            if batch.num_rows() == 0 || schema.index_of("message_id").is_err() {
+                continue;
+            }
             let idx_id = schema
                 .index_of("message_id")
                 .map_err(|e| AppError::database(e.to_string()))?;
@@ -2772,10 +2877,7 @@ impl LanceVectorStore {
                 // P2 修复：删除失败此前仅 warn 吞错，调用方误以为删除成功而
                 // 留下"检索得到但已应删除"的僵尸向量。现改为错误上抛。
                 tbl.delete(expr.as_str()).await.map_err(|err| {
-                    AppError::database(format!(
-                        "从表 {} 删除 chunk 失败: {}",
-                        wide_name, err
-                    ))
+                    AppError::database(format!("从表 {} 删除 chunk 失败: {}", wide_name, err))
                 })?;
             }
         }
@@ -3023,8 +3125,23 @@ impl VectorStore for LanceVectorStore {
                 });
             }
 
-            self.write_chunks_to_sqlite(&rows)?;
+            // ★ P1（2026-07 修复）：与 VFS 栈契约对齐——先写 Lance 再写 SQLite。
+            // 旧顺序（先 SQLite 后 Lance）在 Lance 写入失败时留下脏元数据：
+            // rag_document_chunks 里有块、Lance 无向量，文档呈"已索引但检索不到"。
+            // 现在 Lance 失败直接中止（SQLite 未动，可整体重试）；SQLite 失败则
+            // 补偿删除刚写入的 Lance 行，两侧回到写入前状态。
             self.write_chunks_to_wide_table(dim, &rows).await?;
+            if let Err(sqlite_err) = self.write_chunks_to_sqlite(&rows) {
+                let chunk_ids: Vec<String> = rows.iter().map(|r| r.chunk_id.clone()).collect();
+                // 已持有 KB_MUTATION_LOCK 读锁，直接用不加锁的内部删除
+                if let Err(cleanup_err) = self.delete_chunks_by_ids_inner(&chunk_ids).await {
+                    return Err(AppError::database(format!(
+                        "写入 SQLite 分块元数据失败: {}; 且补偿删除 Lance 行失败（存在孤儿向量，需重建该文档索引）: {}",
+                        sqlite_err, cleanup_err
+                    )));
+                }
+                return Err(sqlite_err);
+            }
             Ok(())
         }
     }
@@ -3475,10 +3592,8 @@ impl LanceVectorStore {
 
     /// 自动迁移：协调 SQLite 旧向量、旧 Lance 表与聊天索引到最新 Lance 宽表结构。
     #[cfg(feature = "lance")]
-    #[deprecated(
-        note = "死入口：当前无任何调用方（启动流程已不再触发遗留迁移）。\
-                保留供手工数据抢修使用，确认无并行任务依赖后可删除。"
-    )]
+    #[deprecated(note = "死入口：当前无任何调用方（启动流程已不再触发遗留迁移）。\
+                保留供手工数据抢修使用，确认无并行任务依赖后可删除。")]
     pub async fn auto_migrate_if_needed(
         database: Arc<Database>,
         llm_manager: Option<Arc<LLMManager>>,

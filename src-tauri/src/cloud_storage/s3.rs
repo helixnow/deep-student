@@ -320,11 +320,11 @@ impl CloudStorage for S3Storage {
         let parent = local_path.parent().unwrap_or_else(|| Path::new("."));
         std::fs::create_dir_all(parent)
             .map_err(|e| AppError::file_system(format!("创建目录失败 {:?}: {}", parent, e)))?;
-        let _temp_file = tempfile::Builder::new()
+        let temp_path = tempfile::Builder::new()
             .prefix(".download-")
             .tempfile_in(parent)
-            .map_err(|e| AppError::file_system(format!("创建临时下载文件失败: {e}")))?;
-        let temp_path = _temp_file.path().to_path_buf();
+            .map_err(|e| AppError::file_system(format!("创建临时下载文件失败: {e}")))?
+            .into_temp_path();
 
         let full_key = self.full_key(key);
         let output = self
@@ -367,6 +367,9 @@ impl CloudStorage for S3Storage {
             file.flush()
                 .await
                 .map_err(|e| AppError::file_system(format!("刷新文件失败: {e}")))?;
+            file.sync_all()
+                .await
+                .map_err(|e| AppError::file_system(format!("同步文件失败: {e}")))?;
         }
 
         let checksum = format!("{:x}", hasher.finalize());
@@ -378,9 +381,9 @@ impl CloudStorage for S3Storage {
                 )));
             }
         }
-        tokio::fs::rename(&temp_path, local_path)
-            .await
-            .map_err(|e| AppError::file_system(format!("保存下载文件失败: {e}")))?;
+        temp_path
+            .persist(local_path)
+            .map_err(|e| AppError::file_system(format!("保存下载文件失败: {}", e.error)))?;
         Ok(checksum)
     }
 

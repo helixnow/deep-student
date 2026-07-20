@@ -7,7 +7,8 @@
 use crate::commands::AppState;
 use crate::fsrs_review_service::{
     FsrsDueCard, FsrsEnqueueResult, FsrsEnqueuedCard, FsrsPreviewResult, FsrsRateResult,
-    FsrsReviewService, FsrsStats, FsrsSuspendResult, FsrsUndoResult,
+    FsrsResetResult, FsrsReviewService, FsrsReviewStatistics, FsrsSchedulerConfig,
+    FsrsSchedulerConfigUpdate, FsrsStats, FsrsSuspendResult, FsrsUndoResult,
 };
 use crate::models::AppError;
 use serde_json::{json, Value};
@@ -276,10 +277,8 @@ pub async fn fsrs_rate(
     rating: u8,
     durationMs: Option<i64>,
     clientOpId: Option<String>,
-    #[allow(non_snake_case)]
-    enforceExpectedLastReview: Option<bool>,
-    #[allow(non_snake_case)]
-    expectedLastReviewMs: Option<i64>,
+    #[allow(non_snake_case)] enforceExpectedLastReview: Option<bool>,
+    #[allow(non_snake_case)] expectedLastReviewMs: Option<i64>,
     state: State<'_, AppState>,
 ) -> Result<FsrsRateResult> {
     let service = FsrsReviewService::new(state.anki_database.clone());
@@ -455,6 +454,53 @@ pub async fn fsrs_unsuspend_card(
 pub async fn fsrs_get_stats(state: State<'_, AppState>) -> Result<FsrsStats> {
     let service = FsrsReviewService::new(state.anki_database.clone());
     service.get_stats()
+}
+
+/// 一次性聚合统计（热力图 / 评分分布 / 状态构成 / 留存率 / 限额 / 到期预测）
+#[tauri::command]
+pub async fn fsrs_get_review_statistics(
+    days: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<FsrsReviewStatistics> {
+    let service = FsrsReviewService::new(state.anki_database.clone());
+    service.get_review_statistics(days)
+}
+
+/// 读取默认牌组的调度配置
+#[tauri::command]
+pub async fn fsrs_get_scheduler_config(
+    state: State<'_, AppState>,
+) -> Result<FsrsSchedulerConfig> {
+    let service = FsrsReviewService::new(state.anki_database.clone());
+    service.get_scheduler_config()
+}
+
+/// 部分更新默认牌组的调度配置（None 字段保持不变），返回合并后的配置
+#[tauri::command]
+pub async fn fsrs_update_scheduler_config(
+    update: FsrsSchedulerConfigUpdate,
+    state: State<'_, AppState>,
+) -> Result<FsrsSchedulerConfig> {
+    let service = FsrsReviewService::new(state.anki_database.clone());
+    service.update_scheduler_config(&update)
+}
+
+/// 重置一张卡的 FSRS 进度（清历史日志 + 重建 New 状态；危险操作，前端二次确认）
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn fsrs_reset_card_progress(
+    app: AppHandle,
+    cardStateId: String,
+    state: State<'_, AppState>,
+) -> Result<FsrsResetResult> {
+    let service = FsrsReviewService::new(state.anki_database.clone());
+    let result = service.reset_card_progress(&cardStateId)?;
+    let cards = [(
+        result.state.id.as_str(),
+        result.state.anki_card_id.as_str(),
+    )];
+    emit_fsrs_changed(&app, true, "user", "reset", &cards, &[]);
+    Ok(result)
 }
 
 #[cfg(test)]

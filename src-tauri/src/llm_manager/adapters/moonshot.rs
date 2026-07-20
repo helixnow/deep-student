@@ -1,6 +1,6 @@
 //! 月之暗面 Kimi 专用适配器
 //!
-//! Kimi K2.5 及以上代际（K2.5 / K2.6 / K2.7-code / 未来 k2.x）有特殊的参数要求：
+//! Kimi K2.5–K2.7 与 K3 使用不同的推理参数契约：
 //!
 //! ## K2.5+ 新代际模型（含 K2.6 旗舰、K2.7-code）
 //! - **thinking 参数**：`{"type": "enabled" | "disabled"}`；K2.6 默认开启思考，
@@ -12,9 +12,13 @@
 //! - **tool_choice 限制**：thinking 模式下只能是 "auto" 或 "none"
 //! - 思维链经 `reasoning_content` 返回，工具调用链内必须回传（DeepSeekStyle）
 //!
+//! ## K3+
+//! - 不接受 K2.x 的 `thinking` 对象
+//! - 推理固定为 `reasoning_effort: "max"`，不可关闭
+//!
 //! ## 版本识别
 //! 不再枚举子串，而是解析模型名中的 `k<major>[./-]<minor>` 版本号：
-//! K2.5 及以上（含未来 k2.x / k3+）统一走新代际路径；
+//! K2.5–K2.7 走 K2 新代际路径；K3+ 必须先进入独立路径；
 //! 快照日期后缀（如 kimi-k2-0905-preview）不会被误判为小版本号。
 //!
 //! ## 已停服模型（2026-07 现状）
@@ -84,35 +88,44 @@ impl MoonshotAdapter {
         None
     }
 
-    /// K2.5 及以上代际（含未来 k2.x 与 k3+）：
+    /// K2.5 及以上的 K2.x 代际：
     /// 锁死采样参数、thinking 参数、max_completion_tokens
     fn is_k25_or_later(model: &str) -> bool {
         match Self::parse_k_version(model) {
-            Some((major, minor)) => major > 2 || (major == 2 && minor >= 5),
+            Some((2, minor)) => minor >= 5,
             None => false,
+            _ => false,
         }
+    }
+
+    fn is_k3_or_later(model: &str) -> bool {
+        matches!(Self::parse_k_version(model), Some((major, _)) if major >= 3)
     }
 
     /// K2.6 及以上支持 `thinking.keep: "all"`（Preserved Thinking）
     fn supports_thinking_keep(model: &str) -> bool {
         match Self::parse_k_version(model) {
-            Some((major, minor)) => major > 2 || (major == 2 && minor >= 6),
+            Some((2, minor)) => minor >= 6,
             None => false,
+            _ => false,
         }
     }
 
     /// K2.7-code 系：强制思考（thinking.type 只接受 enabled）+ 强制 keep: "all"
     fn is_forced_thinking_code_model(model: &str) -> bool {
         let is_k27_or_later = match Self::parse_k_version(model) {
-            Some((major, minor)) => major > 2 || (major == 2 && minor >= 7),
+            Some((2, minor)) => minor >= 7,
             None => false,
+            _ => false,
         };
         is_k27_or_later && model.to_lowercase().contains("code")
     }
 
     /// 检查是否是 Thinking 模型（遗留 K2 Thinking 或 K2.5+ 新代际）
     fn is_thinking_model(model: &str) -> bool {
-        model.to_lowercase().contains("thinking") || Self::is_k25_or_later(model)
+        model.to_lowercase().contains("thinking")
+            || Self::is_k25_or_later(model)
+            || Self::is_k3_or_later(model)
     }
 
     /// 遗留 Thinking 模型的最小 max_tokens
@@ -135,7 +148,7 @@ impl RequestAdapter for MoonshotAdapter {
     }
 
     fn description(&self) -> &'static str {
-        "Kimi K2.5/K2.6/K2.7 系列，thinking 参数 + 锁死采样参数 + max_completion_tokens"
+        "Kimi K2.5–K2.7 thinking 与 K3 reasoning_effort 参数适配"
     }
 
     fn apply_reasoning_config(
@@ -144,6 +157,16 @@ impl RequestAdapter for MoonshotAdapter {
         config: &ApiConfig,
         enable_thinking: Option<bool>,
     ) -> bool {
+        if Self::is_k3_or_later(&config.model) {
+            // K3 的推理不可关闭，且服务端拒绝 K2.x `thinking` 对象。
+            body.remove("thinking");
+            body.remove("enable_thinking");
+            body.remove("thinking_budget");
+            body.remove("include_thoughts");
+            body.insert("reasoning_effort".to_string(), json!("max"));
+            return true;
+        }
+
         let is_new_gen = Self::is_k25_or_later(&config.model);
         let is_thinking = Self::is_thinking_model(&config.model);
 
@@ -240,7 +263,7 @@ impl RequestAdapter for MoonshotAdapter {
     fn should_remove_sampling_params(&self, config: &ApiConfig) -> bool {
         // K2.5+ 已在 apply_reasoning_config 中移除锁死参数
         // 遗留 K2 Thinking 需要特殊处理 temperature，不移除
-        if Self::is_k25_or_later(&config.model) {
+        if Self::is_k25_or_later(&config.model) || Self::is_k3_or_later(&config.model) {
             return true;
         }
         false

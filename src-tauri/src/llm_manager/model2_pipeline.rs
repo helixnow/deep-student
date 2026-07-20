@@ -21,7 +21,7 @@ use reqwest::header::{
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use tauri::{Emitter, Window};
+use tauri::{Emitter, Manager, Window};
 use url::Url;
 use uuid::Uuid;
 
@@ -50,6 +50,179 @@ const STREAMING_REQUEST_TIMEOUT_SECS: u64 = 7_200;
 const STREAMING_IDLE_TIMEOUT_SECS: u64 = 600;
 const CODEX_ERROR_RESPONSE_BODY_LIMIT_BYTES: usize = 256 * 1024;
 const CODEX_NONSTREAM_SSE_BODY_LIMIT_BYTES: usize = 32 * 1024 * 1024;
+
+#[derive(Debug, Default)]
+struct RequestBudgetTrim {
+    removed_messages: usize,
+    tokens_before: usize,
+    tokens_after: usize,
+}
+
+fn effective_request_input_limit(
+    config: &ApiConfig,
+    override_limit: Option<usize>,
+) -> Option<usize> {
+    let window = config.context_window.unwrap_or(32_768);
+    let requested = if config.max_output_tokens > 0 {
+        config.max_output_tokens
+    } else {
+        8_192
+    };
+    let max_output = config
+        .max_tokens_limit
+        .filter(|limit| *limit > 0)
+        .map(|limit| requested.min(limit))
+        .unwrap_or(requested);
+    let provider_limit = Some(window.saturating_sub(max_output) as usize);
+    match (override_limit, provider_limit) {
+        (Some(override_limit), Some(provider_limit)) => Some(override_limit.min(provider_limit)),
+        (Some(limit), None) | (None, Some(limit)) => Some(limit),
+        (None, None) => None,
+    }
+}
+
+fn request_message_text(message: &Value) -> String {
+    match message.get("content") {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Array(parts)) => parts
+            .iter()
+            .filter_map(|part| {
+                part.get("text")
+                    .and_then(Value::as_str)
+                    .or_else(|| part.get("content").and_then(Value::as_str))
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
+fn is_pinned_request_message(message: &Value) -> bool {
+    if message.get("role").and_then(Value::as_str) == Some("system") {
+        return true;
+    }
+    let text = request_message_text(message);
+    text.contains("<compacted_context>")
+        || text.contains("<skill_instructions")
+        || text.contains("<request_context>")
+}
+
+fn removable_request_turns(messages: &[Value]) -> Vec<(usize, usize)> {
+    let starts: Vec<usize> = messages
+        .iter()
+        .enumerate()
+        .filter_map(|(index, message)| {
+            (message.get("role").and_then(Value::as_str) == Some("user")).then_some(index)
+        })
+        .collect();
+    starts
+        .iter()
+        .enumerate()
+        .filter_map(|(position, start)| {
+            if is_pinned_request_message(&messages[*start]) {
+                return None;
+            }
+            Some((
+                *start,
+                starts.get(position + 1).copied().unwrap_or(messages.len()),
+            ))
+        })
+        .collect()
+}
+
+fn redact_image_payloads_for_budget(value: &mut Value) -> usize {
+    match value {
+        Value::String(text) => {
+            if text.trim_start().starts_with("data:image/") {
+                *text = "[image payload]".to_string();
+                1
+            } else {
+                0
+            }
+        }
+        Value::Array(items) => items.iter_mut().map(redact_image_payloads_for_budget).sum(),
+        Value::Object(object) => {
+            let has_inline_image = object
+                .get("media_type")
+                .or_else(|| object.get("mime_type"))
+                .or_else(|| object.get("mimeType"))
+                .and_then(Value::as_str)
+                .is_some_and(|mime| mime.starts_with("image/"));
+            let mut images = 0;
+            if has_inline_image {
+                if let Some(Value::String(data)) = object.get_mut("data") {
+                    if !data.is_empty() {
+                        *data = "[image payload]".to_string();
+                        images += 1;
+                    }
+                }
+            }
+            images
+                + object
+                    .values_mut()
+                    .map(redact_image_payloads_for_budget)
+                    .sum::<usize>()
+        }
+        _ => 0,
+    }
+}
+
+fn enforce_request_input_budget(
+    request_body: &mut Value,
+    max_input_tokens: Option<usize>,
+) -> Result<RequestBudgetTrim> {
+    let Some(max_input_tokens) = max_input_tokens else {
+        return Ok(RequestBudgetTrim::default());
+    };
+    if max_input_tokens == 0 {
+        return Err(AppError::llm(
+            "model context window leaves no usable input budget",
+        ));
+    }
+    let estimate = |body: &Value| {
+        let mut text_only = body.clone();
+        let image_count = redact_image_payloads_for_budget(&mut text_only);
+        let serialized = text_only.to_string();
+        let heuristic = crate::utils::token_budget::estimate_tokens(&serialized);
+        let text_floor = serialized.len() / 4;
+        // 无统一分辨率元数据时按每张 8K token 做保守预留；关键是不能把
+        // Base64 字节逐字符当文本 token，否则普通图片会被虚高数十倍。
+        heuristic.max(text_floor) + image_count * 8_192
+    };
+    let tokens_before = estimate(request_body);
+    let mut stats = RequestBudgetTrim {
+        tokens_before,
+        tokens_after: tokens_before,
+        ..Default::default()
+    };
+    while stats.tokens_after > max_input_tokens {
+        let ranges = request_body
+            .get("messages")
+            .and_then(Value::as_array)
+            .map(|messages| removable_request_turns(messages))
+            .unwrap_or_default();
+        if ranges.len() <= 2 {
+            break;
+        }
+        let (start, end) = ranges[0];
+        let Some(messages) = request_body
+            .get_mut("messages")
+            .and_then(Value::as_array_mut)
+        else {
+            break;
+        };
+        stats.removed_messages += end.saturating_sub(start);
+        messages.drain(start..end);
+        stats.tokens_after = estimate(request_body);
+    }
+    if stats.tokens_after > max_input_tokens {
+        return Err(AppError::llm(format!(
+            "context budget exceeded after safe trimming: estimated_input_tokens={} limit={} removed_messages={}; reduce the current attachment/tool payload or choose a larger-context model",
+            stats.tokens_after, max_input_tokens, stats.removed_messages
+        )));
+    }
+    Ok(stats)
+}
 
 fn chat_messages_require_multimodal(messages: &[ChatMessage]) -> bool {
     messages.iter().any(|message| {
@@ -145,7 +318,7 @@ fn responses_stream_interruption_message(
     let provider = if is_codex {
         "OpenAI Codex"
     } else {
-        "OpenAI Responses"
+        "LLM provider"
     };
     match interruption {
         ResponsesStreamInterruption::IdleTimeout => {
@@ -212,9 +385,14 @@ fn remove_thinking_fields_for_tool_compat(body: &mut Value) {
 /// 某些供应商会为请求层 max_tokens 设置上限，超出会返回 400 错误
 #[inline]
 fn effective_max_tokens(max_output_tokens: u32, max_tokens_limit: Option<u32>) -> u32 {
+    let requested = if max_output_tokens > 0 {
+        max_output_tokens
+    } else {
+        8_192
+    };
     match max_tokens_limit {
-        Some(limit) => max_output_tokens.min(limit),
-        None => max_output_tokens,
+        Some(limit) if limit > 0 => requested.min(limit),
+        None | Some(_) => requested,
     }
 }
 
@@ -234,11 +412,35 @@ fn is_mimo_config(config: &ApiConfig) -> bool {
         || config.model.to_lowercase().starts_with("mimo-v")
 }
 
+fn is_mistral_config(config: &ApiConfig) -> bool {
+    let model = config.model.to_lowercase();
+    let model_slug = model.rsplit('/').next().unwrap_or(&model);
+    config
+        .provider_scope
+        .as_deref()
+        .is_some_and(|value| value.eq_ignore_ascii_case("mistral"))
+        || config
+            .provider_type
+            .as_deref()
+            .is_some_and(|value| value.eq_ignore_ascii_case("mistral"))
+        || config.model_adapter.eq_ignore_ascii_case("mistral")
+        || config.base_url.to_lowercase().contains("mistral.ai")
+        || model_slug.starts_with("mistral-")
+        || model_slug.starts_with("magistral-")
+}
+
 fn apply_generation_token_limit(body: &mut Value, config: &ApiConfig, max_tokens: u32) {
     if is_mimo_config(config) {
         body["max_completion_tokens"] = json!(max_tokens);
         if let Some(map) = body.as_object_mut() {
             map.remove("max_tokens");
+        }
+    } else if is_mistral_config(config) {
+        // Mistral Chat Completions（含 Medium 3.5 / Small 4 reasoning）仍使用
+        // max_tokens；不能因 is_reasoning=true 套用 OpenAI 的 completion 字段。
+        body["max_tokens"] = json!(max_tokens);
+        if let Some(map) = body.as_object_mut() {
+            map.remove("max_completion_tokens");
         }
     } else if config.is_reasoning {
         body["max_completion_tokens"] = json!(max_tokens);
@@ -1339,7 +1541,7 @@ fn apply_runtime_reasoning_overrides(
     }
 }
 
-/// 输出审计日志（info 级别）+ 可选文件持久化（用于无 window 的非流式路径）
+/// 输出 debug 级审计日志 + 可选文件持久化（用于无 window 的非流式路径）
 pub(crate) fn log_llm_request_audit(
     tag: &str,
     url: &str,
@@ -1351,7 +1553,7 @@ pub(crate) fn log_llm_request_audit(
     // 🔒 URL 含 query 密钥（如 Gemini ?key=...）时脱敏后再进日志/落盘
     let url = sanitize_url_for_log(url);
     match serde_json::to_string_pretty(&sanitized) {
-        Ok(pretty) => info!(
+        Ok(pretty) => debug!(
             "[LLM_AUDIT:{}] model={} url={}\n{}",
             tag, model, url, pretty
         ),
@@ -1377,7 +1579,7 @@ pub(crate) struct DebugPersistConfig {
 
 /// ★ 审计日志 + 前端推送 + 可选文件持久化
 ///
-/// 1. 输出 info 级别审计日志（始终 standard 级别）
+/// 1. 输出 debug 级别审计日志（始终 standard 级别）
 /// 2. 如果 stream_event 以 `chat_v2_event_` 开头，推送给前端
 /// 3. 如果 persist_config 存在（Some），将脱敏请求体写入 JSON 文件
 pub(crate) fn log_and_emit_llm_request(
@@ -1396,7 +1598,7 @@ pub(crate) fn log_and_emit_llm_request(
 
     // 1. 审计日志（始终 standard 级别，避免泄漏 base64）
     match serde_json::to_string_pretty(&sanitized) {
-        Ok(pretty) => info!(
+        Ok(pretty) => debug!(
             "[LLM_AUDIT:{}] model={} url={}\n{}",
             tag, model, url, pretty
         ),
@@ -1911,10 +2113,11 @@ impl LLMManager {
         if !enabled {
             return None;
         }
+        let log_root = crate::get_global_app_handle()
+            .and_then(|app| app.path().app_log_dir().ok())
+            .unwrap_or_else(|| self.file_manager.get_app_data_dir().join("logs"));
         Some(DebugPersistConfig {
-            log_dir: crate::debug_log_service::ensure_debug_log_dir(
-                self.file_manager.get_app_data_dir(),
-            ),
+            log_dir: crate::debug_log_service::ensure_debug_log_dir(&log_root),
         })
     }
 
@@ -2003,7 +2206,7 @@ impl LLMManager {
         message_id: Option<&str>,
         _trace_id: Option<&str>,
         disable_tools: bool,
-        _max_input_tokens_override: Option<usize>,
+        max_input_tokens_override: Option<usize>,
         model_override_id: Option<String>,
         temp_override: Option<f32>,
         system_prompt_override: Option<String>,
@@ -2037,8 +2240,9 @@ impl LLMManager {
             )
             .await?;
 
-        let required_is_multimodal =
-            Some(chat_messages_require_multimodal(chat_history) || primary_config.is_multimodal);
+        // 能力约束来自本次输入，而不是主模型自身能力：纯文本请求可以降级到
+        // 文本模型；只有实际携带图片等多模态内容时才强制多模态候选。
+        let required_is_multimodal = Some(chat_messages_require_multimodal(chat_history));
 
         let run = routing::FailoverRun {
             task: task_key.to_string(),
@@ -2056,33 +2260,38 @@ impl LLMManager {
                 max_output_tokens: max_output_tokens_override,
             },
         };
-        self.run_with_failover(run, primary_config, |mut cfg, establish_retries| {
-            // fallback 模型需应用与主模型相同的运行期推理覆盖
-            apply_runtime_reasoning_overrides(
-                &mut cfg,
-                Some(enable_thinking),
-                reasoning_effort_override.clone(),
-                thinking_budget_override,
-            );
-            self.call_unified_model_2_stream_with_config(
-                cfg,
-                establish_retries,
-                context,
-                chat_history,
-                subject,
-                enable_chain_of_thought,
-                enable_thinking,
-                task_context,
-                window.clone(),
-                stream_event,
-                message_id,
-                _trace_id,
-                disable_tools,
-                _max_input_tokens_override,
-                system_prompt_override.clone(),
-            )
-        })
-        .await
+        let result = self
+            .run_with_failover(run, primary_config, |mut cfg, establish_retries| {
+                // fallback 模型需应用与主模型相同的运行期推理覆盖
+                apply_runtime_reasoning_overrides(
+                    &mut cfg,
+                    Some(enable_thinking),
+                    reasoning_effort_override.clone(),
+                    thinking_budget_override,
+                );
+                self.call_unified_model_2_stream_with_config(
+                    cfg,
+                    establish_retries,
+                    context,
+                    chat_history,
+                    subject,
+                    enable_chain_of_thought,
+                    enable_thinking,
+                    task_context,
+                    window.clone(),
+                    stream_event,
+                    message_id,
+                    _trace_id,
+                    disable_tools,
+                    max_input_tokens_override,
+                    system_prompt_override.clone(),
+                )
+            })
+            .await;
+        // 单次尝试可能在建连或状态码处理阶段提前返回；统一清理可避免取消
+        // sender/registry 在最终失败后滞留。
+        self.clear_cancel_artifacts(stream_event).await;
+        result
     }
 
     /// 流式统一出口的单次尝试：用已解析的 config 完成「建立 + 流式读取」。
@@ -2107,7 +2316,7 @@ impl LLMManager {
         message_id: Option<&str>,
         _trace_id: Option<&str>,
         disable_tools: bool,
-        _max_input_tokens_override: Option<usize>,
+        max_input_tokens_override: Option<usize>,
         system_prompt_override: Option<String>,
     ) -> Result<StandardModel2Output> {
         debug!(
@@ -2870,6 +3079,27 @@ impl LLMManager {
         // 简化：不再在此处估算输入token
 
         apply_generation_params(&mut request_body, &config);
+        let input_limit = effective_request_input_limit(&config, max_input_tokens_override);
+        let budget_trim = enforce_request_input_budget(&mut request_body, input_limit)?;
+        if budget_trim.removed_messages > 0 {
+            warn!(
+                "[model2_stream] final input guard removed {} message(s): {} -> {} tokens (limit={:?})",
+                budget_trim.removed_messages,
+                budget_trim.tokens_before,
+                budget_trim.tokens_after,
+                input_limit
+            );
+            let _ = window.emit(
+                "chat_v2_context_budget_trimmed",
+                json!({
+                    "messageId": message_id,
+                    "removedMessages": budget_trim.removed_messages,
+                    "tokensBefore": budget_trim.tokens_before,
+                    "tokensAfter": budget_trim.tokens_after,
+                    "limit": input_limit,
+                }),
+            );
+        }
         if !config.is_reasoning && enable_chain_of_thought {
             warn!(
                 "前端为非推理模型 {} 请求了思维链。通常这由Prompt控制，而非特定API参数。",
@@ -2922,10 +3152,31 @@ impl LLMManager {
         let start_instant = std::time::Instant::now();
 
         let request_id = Uuid::new_v4().to_string();
+        // 在建连前注册取消通道；若取消发生在注册前，registry 会在这里接住。
+        let cancel_rx = self.register_cancel_channel(stream_event).await;
+        if self.take_cancellation_if_any(stream_event).await {
+            self.clear_cancel_channel(stream_event).await;
+            return Err(AppError::llm("请求已被用户取消"));
+        }
         let codex_session_id = chat_v2_session_scope_and_generation(stream_event)
             .map(|(session_id, _)| session_id)
             .or(message_id)
             .unwrap_or(request_id.as_str());
+
+        // 工具与 thinking 互斥必须在 provider request 构建前处理；发送后再改
+        // request_body 不会影响线上请求。
+        if request_body.get("tools").is_some() {
+            let request_adapter = request_adapter_for_config(&config);
+            if request_body.as_object().is_some_and(|body| {
+                request_adapter.should_disable_thinking_for_tools(&config, body)
+            }) {
+                remove_thinking_fields_for_tool_compat(&mut request_body);
+                debug!(
+                    "[LLMManager] Adapter {} disabled thinking for tool calls",
+                    request_adapter.id()
+                );
+            }
+        }
 
         // Provider 适配：构建请求
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
@@ -3021,18 +3272,55 @@ impl LLMManager {
                 }
             }
 
-            let resp = request_builder
-                .json(&preq.body)
-                .send()
-                .await
-                // 🔒 without_url：reqwest 错误 Display 含完整 URL（Gemini 等 query 带 key），脱敏后再进错误消息
-                // 🆕 建立阶段网络层失败：打标供 Failover 分类（可重试瞬态错误）
-                .map_err(|e| {
-                    routing::tag_establish_failure(
-                        AppError::network(format!("模型二API请求失败: {}", e.without_url())),
+            let mut establish_cancel_rx = cancel_rx.clone();
+            let send_result = tokio::select! {
+                response = request_builder.json(&preq.body).send() => response,
+                changed = establish_cancel_rx.changed() => {
+                    if changed.is_ok() && *establish_cancel_rx.borrow() {
+                        let _ = window.emit(
+                            &format!("{}_cancelled", stream_event),
+                            &json!({
+                                "id": request_id,
+                                "reason": "user_cancelled_during_connect"
+                            }),
+                        );
+                        self.clear_cancel_channel(stream_event).await;
+                        return Err(AppError::llm("请求已被用户取消"));
+                    }
+                    continue;
+                }
+            };
+            let resp = match send_result {
+                Ok(response) => response,
+                Err(error) if retry_count < max_retries => {
+                    retry_count += 1;
+                    let wait_ms = Self::compute_retry_delay(MIN_RETRY_DELAY_MS, MAX_RETRY_DELAY_MS);
+                    warn!(
+                        "[模型二API] 建连失败，等待 {}ms 后重试 ({}/{}): {}",
+                        wait_ms,
+                        retry_count,
+                        max_retries,
+                        error.without_url()
+                    );
+                    Self::emit_inner_retry_progress(
+                        &window,
+                        stream_event,
+                        message_id,
+                        retry_count,
+                        max_retries,
+                    );
+                    if self.sleep_checking_cancel(stream_event, wait_ms).await {
+                        return Err(AppError::llm("请求已被用户取消"));
+                    }
+                    continue;
+                }
+                Err(error) => {
+                    return Err(routing::tag_establish_failure(
+                        AppError::network(format!("模型二API请求失败: {}", error.without_url())),
                         None,
-                    )
-                })?;
+                    ));
+                }
+            };
             let resp = if preq.is_codex() {
                 normalize_codex_error_response(resp).await?
             } else {
@@ -3117,17 +3405,27 @@ impl LLMManager {
                         ));
                     }
                 }
-                // 401/403 认证错误：直接返回明确错误
-                401 | 403 => {
+                // 401 明确表示凭据无效；仅在此情况下轮换 key。
+                401 => {
                     let error_text = resp.text().await.unwrap_or_default();
                     let error_msg = format!(
-                        "模型二API认证失败: API Key 无效或已过期 (HTTP {}) - {}",
-                        status_code, error_text
+                        "模型二API认证失败: API Key 无效或已过期 (HTTP 401) - {}",
+                        error_text
                     );
                     error!("{}", error_msg);
                     // 🆕 打标：鉴权失败只允许同 provider 内换 key，不允许换模型
                     return Err(routing::tag_establish_failure(
                         AppError::configuration(error_msg),
+                        Some(status_code),
+                    ));
+                }
+                // 403 通常是模型/组织/地区/策略权限，不能默认归因于 key 失效。
+                403 => {
+                    let error_text = resp.text().await.unwrap_or_default();
+                    let error_msg = format!("模型二API访问被拒绝 (HTTP 403) - {}", error_text);
+                    error!("{}", error_msg);
+                    return Err(routing::tag_establish_failure(
+                        AppError::llm(error_msg),
                         Some(status_code),
                     ));
                 }
@@ -3202,13 +3500,6 @@ impl LLMManager {
         let mut terminal_failure: Option<String> = None;
         // 按完整 SSE 事件缓冲，保留 event: + data: 关联并安全处理跨 chunk UTF-8。
         let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
-        // Proactively clear any stale cancel flags from previous runs for this stream_event
-        // This avoids immediately cancelling a brand-new stream due to a leftover registry flag
-        let _ = self.take_cancellation_if_any(stream_event).await;
-
-        // Register cancel channel for this stream_event
-        let cancel_rx = self.register_cancel_channel(stream_event).await;
-
         debug!(
             "{}[流式请求] 开始处理，请求ID: {}, 事件名: {}",
             chat_timing::format_elapsed_prefix(stream_event),
@@ -3223,18 +3514,7 @@ impl LLMManager {
             config.base_url,
             config.model
         );
-        // P1修复：生命周期对齐 - 发送start和id事件
-        if let Err(e) = window.emit(
-            &format!("{}_start", stream_event),
-            &json!({
-                "id": stream_event,
-                "model": config.model,
-                "request_bytes": request_bytes
-            }),
-        ) {
-            warn!("发送开始事件失败: {}", e);
-        }
-
+        // start 已在 HTTP 建连前发送；此处仅补发稳定的 request id。
         if let Err(e) = window.emit(
             &format!("{}_id", stream_event),
             &json!({
@@ -3245,11 +3525,9 @@ impl LLMManager {
         ) {
             warn!("发送ID事件失败: {}", e);
         }
-        // 用量日志：开始（使用 FileManager 的 app_data_dir）
-        {
-            let dir = self.file_manager.get_app_data_dir().to_path_buf();
-            let logger = crate::debug_logger::DebugLogger::new(dir);
-            let _ = logger
+        // 用量日志：开始（复用全局记录器，由周期任务可靠刷盘）
+        if let Some(logger) = crate::debug_logger::get_global_logger() {
+            logger
                 .log_llm_usage(
                     "start",
                     &config.name,
@@ -3321,12 +3599,10 @@ impl LLMManager {
                             STREAMING_IDLE_TIMEOUT_SECS,
                             stream_event
                         );
-                        if require_terminal_success {
-                            terminal_failure = Some(responses_stream_interruption_message(
-                                ResponsesStreamInterruption::IdleTimeout,
-                                is_codex,
-                            ));
-                        }
+                        terminal_failure = Some(responses_stream_interruption_message(
+                            ResponsesStreamInterruption::IdleTimeout,
+                            is_codex,
+                        ));
                         break;
                     }
                     (None, false)
@@ -3742,12 +4018,10 @@ impl LLMManager {
                         if let Err(emit_err) = window.emit(&truncated_event, &truncated_payload) {
                             warn!("发送截断警示事件失败: {}", emit_err);
                         }
-                        if require_terminal_success {
-                            terminal_failure = Some(responses_stream_interruption_message(
-                                ResponsesStreamInterruption::ReadError,
-                                is_codex,
-                            ));
-                        }
+                        terminal_failure = Some(responses_stream_interruption_message(
+                            ResponsesStreamInterruption::ReadError,
+                            is_codex,
+                        ));
                         break;
                     } else {
                         error!(
@@ -3800,21 +4074,6 @@ impl LLMManager {
                 self.clear_cancel_channel(stream_event).await;
                 pending_tool_calls.clear();
                 return Err(error);
-            }
-        }
-
-        // 运行时互斥修正：某些模型使用函数调用时需要关闭 thinking 字段。
-        // 这里统一覆盖 custom_tools 和普通工具注入两条路径，避免适配逻辑漏跑。
-        if request_body.get("tools").is_some() {
-            let adapter = request_adapter_for_config(&config);
-            if let Some(body_map) = request_body.as_object() {
-                if adapter.should_disable_thinking_for_tools(&config, body_map) {
-                    remove_thinking_fields_for_tool_compat(&mut request_body);
-                    debug!(
-                        "[LLMManager] Adapter {} disabled thinking for tool calls",
-                        adapter.id()
-                    );
-                }
             }
         }
 
@@ -4053,12 +4312,10 @@ impl LLMManager {
             None
         };
 
-        // 用量日志：结束（脱敏写入，使用 FileManager）
+        // 用量日志：结束（脱敏写入全局记录器）
         {
             let approx_tokens_out = crate::utils::token_budget::estimate_tokens(&full_content);
             let dur = start_instant.elapsed().as_millis();
-            let dir = self.file_manager.get_app_data_dir().to_path_buf();
-            let logger = crate::debug_logger::DebugLogger::new(dir);
 
             // 从 API 返回的 usage 数据中提取实际 token 数量
             let (actual_prompt_tokens, actual_completion_tokens, reasoning_tokens, cached_tokens) =
@@ -4068,20 +4325,22 @@ impl LLMManager {
                     (request_bytes / 4).max(1),
                 );
 
-            let _ = logger
-                .log_llm_usage(
-                    "end",
-                    &config.name,
-                    &config.model,
-                    &config.model_adapter,
-                    request_bytes,
-                    response_bytes,
-                    actual_prompt_tokens as usize,
-                    actual_completion_tokens as usize,
-                    Some(dur),
-                    None,
-                )
-                .await;
+            if let Some(logger) = crate::debug_logger::get_global_logger() {
+                logger
+                    .log_llm_usage(
+                        "end",
+                        &config.name,
+                        &config.model,
+                        &config.model_adapter,
+                        request_bytes,
+                        response_bytes,
+                        actual_prompt_tokens as usize,
+                        actual_completion_tokens as usize,
+                        Some(dur),
+                        None,
+                    )
+                    .await;
+            }
 
             // 🔧 修复 Token 双重计费：单变体 Chat V2（task_context="chat_v2"）的用量
             // 由 chat_v2/pipeline/tool_loop.rs 在每轮结束后统一记录到 llm_usage_logs
@@ -4194,8 +4453,6 @@ impl LLMManager {
             image_paths.as_ref().map(|p| p.len()).unwrap_or(0),
             config.model
         );
-
-        let _max_input_tokens_override = max_input_tokens_override;
 
         // 处理图片（如果模型支持多模态且提供了图片）
         // 移除会话级图片回退，不再从 image_paths 读取
@@ -4381,6 +4638,17 @@ impl LLMManager {
         Self::apply_reasoning_config(&mut request_body, &config, None);
 
         apply_generation_params(&mut request_body, &config);
+        let input_limit = effective_request_input_limit(&config, max_input_tokens_override);
+        let budget_trim = enforce_request_input_budget(&mut request_body, input_limit)?;
+        if budget_trim.removed_messages > 0 {
+            warn!(
+                "[model2_non_stream] final input guard removed {} message(s): {} -> {} tokens (limit={:?})",
+                budget_trim.removed_messages,
+                budget_trim.tokens_before,
+                budget_trim.tokens_after,
+                input_limit
+            );
+        }
 
         // 使用 ProviderAdapter 构建请求，确保 Gemini 模型走转换后的URL/Headers/Body
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);

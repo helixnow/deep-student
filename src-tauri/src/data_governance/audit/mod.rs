@@ -219,6 +219,47 @@ impl AuditRepository {
         let status_str = Self::status_to_str(&log.status);
         let details_str = serde_json::to_string(&log.details)?;
         let timestamp_str = log.timestamp.to_rfc3339();
+        let correlation_job_id = log
+            .details
+            .get("job_id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+
+        // 命令层历史上在结束时重新构造 AuditLog（新 UUID），导致每次成功操作都
+        // 永久留下一条 Started。数据治理操作由全局锁串行化；按 operation_type +
+        // target 关闭最近的 Started，保留其原始开始时间，并把结束详情写回同一行。
+        if !matches!(log.status, AuditStatus::Started) {
+            let updated = conn
+                .execute(
+                    "UPDATE __audit_log
+                     SET target = ?1, operation_data = ?2, status = ?3, duration_ms = ?4,
+                         details = ?5, error_message = ?6
+                     WHERE id = (
+                         SELECT id FROM __audit_log
+                         WHERE operation_type = ?7 AND status = 'Started'
+                           AND (
+                               (?9 IS NOT NULL AND json_extract(details, '$.job_id') = ?9)
+                               OR (?9 IS NULL AND target = ?8)
+                           )
+                         ORDER BY timestamp DESC LIMIT 1
+                     )",
+                    params![
+                        log.target,
+                        operation_data,
+                        status_str,
+                        log.duration_ms,
+                        details_str,
+                        log.error_message,
+                        operation_type,
+                        log.target,
+                        correlation_job_id,
+                    ],
+                )
+                .map_err(|e| AuditError::Database(e.to_string()))?;
+            if updated == 1 {
+                return Ok(());
+            }
+        }
 
         conn.execute(
             Self::INSERT_SQL,

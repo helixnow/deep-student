@@ -867,6 +867,10 @@ pub struct ToolConfig {
     pub default_engine: Option<String>,
     #[serde(rename = "web_search.timeout_ms")]
     pub timeout_ms: Option<u64>,
+    /// `web_search.timeout_ms` 是否来自用户显式配置（DB 覆盖）。
+    /// 为 true 时全局超时优先于内置 per-provider 策略默认超时（见 do_search）。
+    #[serde(skip)]
+    pub timeout_ms_overridden: bool,
     #[serde(rename = "web_search.retry")]
     pub retry: Option<RetryConfig>,
     #[serde(rename = "web_search.site_whitelist")]
@@ -883,6 +887,10 @@ pub struct ToolConfig {
     pub cn_whitelist: Option<CnWhitelistConfig>,
     #[serde(rename = "web_search.provider_strategies")]
     pub provider_strategies: Option<ProviderStrategies>,
+    /// `web_search.provider_strategies` 是否来自用户显式配置（DB 覆盖）。
+    /// 为 true 时 per-provider 超时仍优先于全局超时（高级用户显式意图）。
+    #[serde(skip)]
+    pub provider_strategies_overridden: bool,
     #[serde(rename = "web_search.tavily.search_depth")]
     pub tavily_search_depth: Option<String>,
     #[serde(flatten)]
@@ -972,6 +980,7 @@ impl Default for ToolConfig {
         Self {
             default_engine: Some("bing_rss".into()),
             timeout_ms: Some(15_000),
+            timeout_ms_overridden: false,
             retry: Some(RetryConfig {
                 max_attempts: default_max_attempts(),
                 initial_delay_ms: default_initial_delay_ms(),
@@ -991,6 +1000,7 @@ impl Default for ToolConfig {
                 custom_sites: None,
             }),
             provider_strategies: Some(ProviderStrategies::default()),
+            provider_strategies_overridden: false,
             tavily_search_depth: Some("basic".into()),
             keys: ProviderKeys::default(),
         }
@@ -1016,6 +1026,7 @@ impl ToolConfig {
         if let Some(t) = get_s("web_search.timeout_ms") {
             if let Ok(ms) = t.parse::<u64>() {
                 self.timeout_ms = Some(ms);
+                self.timeout_ms_overridden = true;
             }
         }
 
@@ -1094,6 +1105,7 @@ impl ToolConfig {
                 if let Ok(strategies) = serde_json::from_str::<ProviderStrategies>(&strategies_json)
                 {
                     self.provider_strategies = Some(strategies);
+                    self.provider_strategies_overridden = true;
                 } else {
                     log::warn!("解析 web_search.provider_strategies 失败，忽略该覆盖");
                 }
@@ -2881,8 +2893,13 @@ pub async fn do_search(cfg: &ToolConfig, mut input: SearchInput) -> ToolResult {
         runtime_fingerprint = Some(fingerprint);
 
         // 覆盖超时时间
+        // 🔧 2026-07：此前 per-provider 内置默认策略恒覆盖全局 web_search.timeout_ms，
+        // 导致该设置永远失效。现在优先级为：
+        // 用户显式配置的 provider_strategies > 用户显式配置的全局 timeout_ms > 内置策略默认值。
         if let Some(timeout_ms) = strategy.timeout_ms {
-            effective_cfg.timeout_ms = Some(timeout_ms);
+            if cfg.provider_strategies_overridden || !cfg.timeout_ms_overridden {
+                effective_cfg.timeout_ms = Some(timeout_ms);
+            }
         }
 
         // 覆盖重试设置

@@ -910,6 +910,16 @@ impl PdfProcessingService {
                     extracted_text_len,
                     ocr_config.pdf_text_threshold
                 );
+                // ★ 状态显式化：文本层缺失且 OCR 被禁用时，此前静默跳过，
+                // 用户看到"已完成"却检索不到任何内容。记录可重试 issue 让状态页可见。
+                let is_ocr_disabled = !ocr_config.enabled || !ocr_config.ocr_scanned_pdf;
+                if extracted_text_len < ocr_config.pdf_text_threshold && is_ocr_disabled {
+                    issues.push(ProcessingIssue {
+                        stage: ProcessingStage::OcrProcessing.as_str().to_string(),
+                        message: "该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试".to_string(),
+                        retriable: true,
+                    });
+                }
             } else {
                 if cancel_token.is_cancelled() {
                     info!("[PdfProcessingService] Pipeline cancelled for {}", file_id);
@@ -1007,6 +1017,15 @@ impl PdfProcessingService {
                 "[PdfProcessingService] OCR skipped: no preview available for file: {}",
                 file_id
             );
+            // ★ 状态显式化：页面渲染失败/无预览时 OCR 无法执行，
+            // 若文本层也缺失则该文件实际不可检索，记录 issue 让状态页可见
+            if extracted_text_len < ocr_config.pdf_text_threshold {
+                issues.push(ProcessingIssue {
+                    stage: ProcessingStage::OcrProcessing.as_str().to_string(),
+                    message: "PDF 页面渲染失败且缺少文本层，无法执行 OCR，内容不可检索。可尝试删除后重新导入，或检查 PDF 是否损坏/加密".to_string(),
+                    retriable: true,
+                });
+            }
         }
 
         // 如果已有 OCR，添加到就绪模式
@@ -2928,16 +2947,31 @@ impl PdfProcessingService {
         .await;
 
         // 8. 创建 LanceStore 和 FullIndexingService
-        let lance_store = match VfsLanceStore::new(self.db.clone()) {
-            Ok(store) => Arc::new(store),
-            Err(e) => {
-                warn!(
-                    "[PdfProcessingService] Failed to create LanceStore for file {}: {}",
-                    file_id, e
-                );
-                // LanceStore 创建失败，跳过向量索引但不中断流水线
-                return Ok(());
+        // 优先复用 app 托管的 VfsLanceStore 单例（保留 Lance 连接与 ensured_tables
+        // 缓存）；仅当 self.db 与托管 VfsDatabase 是同一实例时才复用，避免测试等
+        // 场景误绑其它数据库。无托管单例（启动降级/headless 测试）时按需新建。
+        let managed_lance_store = crate::get_global_app_handle().and_then(|handle| {
+            let managed_db = handle.try_state::<Arc<VfsDatabase>>()?;
+            if !Arc::ptr_eq(managed_db.inner(), &self.db) {
+                return None;
             }
+            handle
+                .try_state::<Arc<VfsLanceStore>>()
+                .map(|state| state.inner().clone())
+        });
+        let lance_store = match managed_lance_store {
+            Some(store) => store,
+            None => match VfsLanceStore::new(self.db.clone()) {
+                Ok(store) => Arc::new(store),
+                Err(e) => {
+                    warn!(
+                        "[PdfProcessingService] Failed to create LanceStore for file {}: {}",
+                        file_id, e
+                    );
+                    // LanceStore 创建失败，跳过向量索引但不中断流水线
+                    return Ok(());
+                }
+            },
         };
 
         let full_indexing_service = match VfsFullIndexingService::new(

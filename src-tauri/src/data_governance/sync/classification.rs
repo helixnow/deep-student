@@ -58,7 +58,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::Lww,
             business_unique_keys: "hash",
             has_json_blobs: true,
-            merge_notes: "ref_count is derived/recomputed; metadata_json uses row-level LWW/conflict handling",
+            merge_notes: "ref_count is derived/recomputed; metadata_json uses row-level LWW/conflict handling; data uses conditional learner-profile JSON merge (only when both sides match the learner profile shape, see field_merge::merge_learner_profile_data), all other data conflicts stay row-level LWW",
         },
         TableClassification {
             database: "vfs",
@@ -68,7 +68,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: false,
-            merge_notes: "tags field uses set union",
+            merge_notes: "tags field uses set union with single-value tag normalization (memory value-encoded tags like _hits:/_type:, see field_merge NOTES_*_VALUE_TAG_PREFIXES)",
         },
         TableClassification {
             database: "vfs",
@@ -208,7 +208,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "estimated_pomodoros/completed_pomodoros use max; tags_json uses set union; sort_order/todo_list_id rewritten by todo_reorder_items/todo_move_item (per-field LWW inside FieldMerge)",
+            merge_notes: "estimated_pomodoros uses max; completed_pomodoros is a derived cache recomputed from pomodoro_records at sync apply commit boundary (TD-02, no field merge); tags_json uses set union; sort_order/todo_list_id rewritten by todo_reorder_items/todo_move_item (per-field LWW inside FieldMerge)",
         },
         TableClassification {
             database: "vfs",
@@ -218,7 +218,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::Lww,
             business_unique_keys: "",
             has_json_blobs: false,
-            merge_notes: "Focus session records linked to todo items; soft delete via deleted_at (bumps updated_at/local_version, LWW propagates deletion)",
+            merge_notes: "Focus session records linked to todo items; soft delete via deleted_at (bumps updated_at/local_version, LWW propagates deletion); fact table for todo_items.completed_pomodoros which is recomputed after applying changes (TD-02)",
         },
         // --- FileSync ---
         TableClassification {
@@ -412,7 +412,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::NoConflict,
             business_unique_keys: "",
             has_json_blobs: false,
-            merge_notes: "KV config",
+            merge_notes: "KV config; memory_root_folder_id is device-local, so MemoryConfig::get_or_create_root_folder claims the RowSync-synced memory root before creating a new one to avoid cross-device root forks",
         },
         TableClassification {
             database: "vfs",
@@ -549,6 +549,16 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
         },
         TableClassification {
             database: "chat_v2",
+            table_name: "chat_v2_compactions",
+            primary_key: "id",
+            category: SyncCategory::RowSync,
+            conflict_policy: ConflictPolicyClass::Lww,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Append-only summary lineage; active pointer is synchronized on chat_v2_sessions",
+        },
+        TableClassification {
+            database: "chat_v2",
             table_name: "sleep_block",
             primary_key: "id",
             category: SyncCategory::LocalRuntime,
@@ -577,16 +587,6 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             business_unique_keys: "",
             has_json_blobs: false,
             merge_notes: "FTS5 virtual table; rebuilt from chat_v2_blocks",
-        },
-        TableClassification {
-            database: "chat_v2",
-            table_name: "chat_v2_compactions",
-            primary_key: "id",
-            category: SyncCategory::DerivedRebuild,
-            conflict_policy: ConflictPolicyClass::NoConflict,
-            business_unique_keys: "",
-            has_json_blobs: false,
-            merge_notes: "Rebuildable from messages + blocks",
         },
         // ========== Mistakes database ==========
         TableClassification {
@@ -667,9 +667,11 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            // TODO(anki export receipt): anki_note_id / export_status / last_exported_at /
-            // content_hash 已加列，字段级 merge 策略待登记（本地 AnkiConnect receipt，暂不参与双向进度同步）
-            merge_notes: "tags_json uses set union; images_json/extra_fields_json use row-level LWW/conflict handling; APKG rows use id-based identity while generated cards retain content deduplication",
+            // Export receipt 列（anki_note_id/export_status/last_exported_at/content_hash）由
+            // write_anki_export_receipts 在一次 AnkiConnect 导出后整组写回并 bump updated_at。
+            // 四列必须作为一组保持一致，逐列自动合并会产生撕裂 receipt（note id 与时间戳来自
+            // 不同设备），因此登记为 row-level LWW：以最新导出的 receipt 整组为准。
+            merge_notes: "tags_json uses set union; images_json/extra_fields_json use row-level LWW/conflict handling; APKG rows use id-based identity while generated cards retain content deduplication; export receipt columns anki_note_id/export_status/last_exported_at/content_hash use row-level LWW so the latest export receipt wins as a coherent group",
         },
         TableClassification {
             database: "mistakes",
@@ -940,5 +942,66 @@ mod tests {
         assert!(!TableClassification::checksum_tables("vfs")
             .iter()
             .any(|entry| entry.table_name == "vfs_index_profiles"));
+    }
+
+    #[test]
+    fn td02_completed_pomodoros_registered_as_derived_cache_of_pomodoro_records() {
+        let todo = sync_classification_registry()
+            .into_iter()
+            .find(|entry| entry.database == "vfs" && entry.table_name == "todo_items")
+            .expect("todo_items classification");
+        assert!(
+            todo.merge_notes.contains("completed_pomodoros")
+                && todo.merge_notes.contains("derived cache")
+                && todo.merge_notes.contains("pomodoro_records"),
+            "todo_items merge_notes must document completed_pomodoros as a derived cache \
+             recomputed from pomodoro_records"
+        );
+
+        let records = sync_classification_registry()
+            .into_iter()
+            .find(|entry| entry.database == "vfs" && entry.table_name == "pomodoro_records")
+            .expect("pomodoro_records classification");
+        assert_eq!(records.category, SyncCategory::RowSync);
+        assert!(
+            records.merge_notes.contains("fact table"),
+            "pomodoro_records must be documented as the fact table for the derived counter"
+        );
+
+        // 注册层与字段合并层保持一致：completed_pomodoros 不允许自动字段级合并
+        assert!(
+            !crate::data_governance::sync::field_merge::field_merge_columns_for_table(
+                "todo_items"
+            )
+            .contains(&"completed_pomodoros"),
+            "completed_pomodoros must stay out of the field merge picklist"
+        );
+    }
+
+    #[test]
+    fn anki_cards_export_receipt_columns_are_registered_as_row_level_lww() {
+        let entry = sync_classification_registry()
+            .into_iter()
+            .find(|entry| entry.database == "mistakes" && entry.table_name == "anki_cards")
+            .expect("anki_cards classification");
+
+        assert_eq!(entry.category, SyncCategory::RowSync);
+        assert_eq!(entry.conflict_policy, ConflictPolicyClass::FieldMerge);
+        for column in [
+            "anki_note_id",
+            "export_status",
+            "last_exported_at",
+            "content_hash",
+        ] {
+            assert!(
+                entry.merge_notes.contains(column),
+                "anki_cards merge_notes must document receipt column {}",
+                column
+            );
+        }
+        assert!(
+            entry.merge_notes.contains("row-level LWW"),
+            "receipt columns must be registered as row-level LWW"
+        );
     }
 }

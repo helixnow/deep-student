@@ -106,7 +106,11 @@ fn fixture_upgrade_gate() {
          and refuses to pass vacuously",
     );
     let root = PathBuf::from(root);
-    assert!(root.is_dir(), "fixture root {} does not exist", root.display());
+    assert!(
+        root.is_dir(),
+        "fixture root {} does not exist",
+        root.display()
+    );
 
     let mode = std::env::var("MIGRATION_GATE_MODE").unwrap_or_else(|_| "upgrade".into());
     assert!(
@@ -159,7 +163,10 @@ fn fixture_upgrade_gate() {
                 false,
                 "coordinator reported success on corrupted databases (must fail)".to_string(),
             ),
-            ("fault", _) => (true, "coordinator surfaced failure on corrupted databases".to_string()),
+            ("fault", _) => (
+                true,
+                "coordinator surfaced failure on corrupted databases".to_string(),
+            ),
             (_, Err(e)) => (false, format!("migration failed: {e}")),
             (_, Ok(report)) if !report.success => (
                 false,
@@ -184,7 +191,10 @@ fn fixture_upgrade_gate() {
                     }
                 }
                 if mismatches.is_empty() {
-                    (true, format!("upgraded {} databases", report.databases.len()))
+                    (
+                        true,
+                        format!("upgraded {} databases", report.databases.len()),
+                    )
                 } else {
                     (false, mismatches.join("; "))
                 }

@@ -42,6 +42,12 @@ pub struct AttachmentPreviewPage {
     pub height: Option<u32>,
     #[serde(default, alias = "mimeType")]
     pub mime_type: Option<String>,
+    /// 压缩版页面图片的 blob hash（对齐 `PdfPagePreview.compressed_blob_hash`）。
+    ///
+    /// ★ 2026-07-19（B2）：多模态索引优先使用压缩图，与聊天注入口径一致，
+    /// 避免始终把全分辨率原图送进 ME API。
+    #[serde(default, alias = "compressedBlobHash")]
+    pub compressed_blob_hash: Option<String>,
 }
 
 /// 教材预览结构（与 PDF 附件结构一致）

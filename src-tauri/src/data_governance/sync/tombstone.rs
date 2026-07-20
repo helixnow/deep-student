@@ -231,6 +231,26 @@ pub fn path_modified_after(path: &Path, timestamp: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// 文件层 tombstone 也必须遵守与行级 LWW 相同的未来时钟漂移上限。
+///
+/// 旧实现直接用远端 wall-clock 与本地 mtime 比较；一台快时钟设备可以让删除
+/// 在其他设备上长期压过真实发生得更晚的重建。无法证明因果关系时 fail-close，
+/// 且调用方不得推进 watermark。
+pub fn validate_tombstone_timestamp(timestamp: &str, label: &str) -> Result<(), SyncError> {
+    let parsed = parse_flexible_timestamp_public(timestamp).ok_or_else(|| {
+        SyncError::Database(format!("{} tombstone 时间戳无效: {}", label, timestamp))
+    })?;
+    let drift_ms = parsed.timestamp_millis() - Utc::now().timestamp_millis();
+    if drift_ms > super::hlc::MAX_DRIFT_MS {
+        return Err(SyncError::ClockDriftSuspected {
+            table: format!("{}_tombstone", label),
+            record_id: timestamp.to_string(),
+            drift_ms,
+        });
+    }
+    Ok(())
+}
+
 /// [P2 fail-close] 解密失败必须硬错误，与设备清单/变更文件路径口径一致。
 /// fail-open 的两类危害：
 /// - 消费路径把"解不开"当"无 tombstone"，删除静默不传播；
@@ -733,7 +753,7 @@ pub async fn upload_workspace_tombstones(
 }
 
 /// 将一批 tombstone 应用到云端清单 + 本地文件：
-/// - 云端 blob 被删除（尽力删，失败只告警）
+/// - 云端 blob 被删除；任何 I/O 失败都中止本轮，调用方不得推进 tombstone 水位
 /// - 本地 blob 目录下对应文件一并删除
 ///   - 优先用 `relative_path`（由上传端在 tombstone 元数据里提供）
 ///   - 如果没有，尝试 `scan_blobs_dir` 风格的本地扫描（按 hash 前缀分桶查找）
@@ -746,12 +766,25 @@ pub async fn apply_blob_tombstones(
     delete_cloud: bool,
 ) -> Result<Vec<String>, SyncError> {
     let mut affected = Vec::new();
+    // 先验证整批并构建删除计划；HashMap 顺序不稳定，不能在遇到后置非法项前
+    // 已经删除部分有效文件。
+    let mut deletion_plan = Vec::with_capacity(tombstones.entries.len());
     for (hash, entry) in &tombstones.entries {
+        if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(SyncError::Database(format!(
+                "拒绝非法 blob tombstone hash: {hash:?}"
+            )));
+        }
         // 1) 本地文件：优先 relative_path，否则在分桶目录里按 stem 扫描（保留真实扩展名）
         let local_path: Option<PathBuf> = match entry.relative_path.as_deref() {
-            Some(rel) => Some(blobs_dir.join(rel)),
+            Some(rel) => Some(validate_blob_relative_path(blobs_dir, hash, rel)?),
             None => find_blob_by_hash(blobs_dir, hash),
         };
+        validate_tombstone_timestamp(&entry.deleted_at, &format!("blob/{}", hash))?;
+        deletion_plan.push((hash, entry, local_path));
+    }
+
+    for (hash, entry, local_path) in deletion_plan {
         if local_path
             .as_ref()
             .is_some_and(|lp| path_modified_after(lp, &entry.deleted_at))
@@ -765,7 +798,7 @@ pub async fn apply_blob_tombstones(
         }
         if let Some(ref lp) = local_path {
             if lp.exists() {
-                let _ = std::fs::remove_file(lp);
+                std::fs::remove_file(lp)?;
             }
         }
 
@@ -777,18 +810,19 @@ pub async fn apply_blob_tombstones(
 
         if let Some(rel) = entry.relative_path.as_deref() {
             let key = format!("{}/{}", blobs_cloud_prefix, rel);
-            if let Err(e) = storage.delete(&key).await {
-                tracing::warn!("[sync] 删除云端 blob 失败（忽略）: {}: {}", key, e);
-            }
+            storage
+                .delete(&key)
+                .await
+                .map_err(|e| SyncError::Network(format!("删除云端 blob 失败 {}: {}", key, e)))?;
         } else {
             // 如果本地扫描到了路径，用本地相对路径删云端
             if let Some(lp) = local_path {
                 if let Ok(rel) = lp.strip_prefix(blobs_dir) {
                     let rel_str = rel.to_string_lossy().replace('\\', "/");
                     let key = format!("{}/{}", blobs_cloud_prefix, rel_str);
-                    if let Err(e) = storage.delete(&key).await {
-                        tracing::warn!("[sync] 删除云端 blob 失败（忽略）: {}: {}", key, e);
-                    }
+                    storage.delete(&key).await.map_err(|e| {
+                        SyncError::Network(format!("删除云端 blob 失败 {}: {}", key, e))
+                    })?;
                 } else {
                     tracing::warn!(
                         "[sync] tombstone {} 无 relative_path 且本地未找到，跳过云端删除",
@@ -798,11 +832,11 @@ pub async fn apply_blob_tombstones(
             } else {
                 // [orphan 修复] 无 relative_path 且本地无文件：尽力在云端按 hash 前缀桶
                 // 定位真实 key 后删除，避免删除型 tombstone 只标记不落地、云端 blob 永久残留。
-                match find_cloud_blob_key_by_hash(storage, blobs_cloud_prefix, hash).await {
+                match find_cloud_blob_key_by_hash(storage, blobs_cloud_prefix, hash).await? {
                     Some(key) => {
-                        if let Err(e) = storage.delete(&key).await {
-                            tracing::warn!("[sync] 删除云端 blob 失败（忽略）: {}: {}", key, e);
-                        }
+                        storage.delete(&key).await.map_err(|e| {
+                            SyncError::Network(format!("删除云端 blob 失败 {}: {}", key, e))
+                        })?;
                     }
                     None => {
                         tracing::warn!(
@@ -819,14 +853,62 @@ pub async fn apply_blob_tombstones(
     Ok(affected)
 }
 
+fn validate_blob_relative_path(
+    blobs_dir: &Path,
+    hash: &str,
+    relative_path: &str,
+) -> Result<PathBuf, SyncError> {
+    let path = Path::new(relative_path);
+    let components = path.components().collect::<Vec<_>>();
+    if components.len() != 2
+        || components
+            .iter()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err(SyncError::Database(format!(
+            "拒绝不安全的 blob tombstone 相对路径: {relative_path:?}"
+        )));
+    }
+
+    let bucket = components[0].as_os_str();
+    let file_name = components[1].as_os_str();
+    let file_path = Path::new(file_name);
+    if bucket != std::ffi::OsStr::new(&hash[..2])
+        || file_path.file_stem().and_then(|stem| stem.to_str()) != Some(hash)
+    {
+        return Err(SyncError::Database(format!(
+            "blob tombstone 路径与内容 hash 不匹配: {relative_path:?}"
+        )));
+    }
+
+    let bucket_path = blobs_dir.join(bucket);
+    if std::fs::symlink_metadata(&bucket_path)
+        .is_ok_and(|metadata| metadata.file_type().is_symlink())
+    {
+        return Err(SyncError::Database(format!(
+            "blob tombstone 目标桶不能是符号链接: {}",
+            bucket_path.display()
+        )));
+    }
+    let target = bucket_path.join(file_name);
+    if std::fs::symlink_metadata(&target).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        return Err(SyncError::Database(format!(
+            "blob tombstone 目标不能是符号链接: {}",
+            target.display()
+        )));
+    }
+    Ok(target)
+}
+
 /// 按 hash 在 blobs_dir 下扫描：blob 命名约定是 `<hash>.<ext>`，
 /// 放在以 hash 前两位命名的子目录里（`scan_blobs_dir` 的反向操作）。
 fn find_blob_by_hash(blobs_dir: &Path, hash: &str) -> Option<PathBuf> {
-    if hash.len() < 2 {
+    if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return None;
     }
     let bucket = blobs_dir.join(&hash[..2]);
-    if !bucket.exists() {
+    let bucket_metadata = std::fs::symlink_metadata(&bucket).ok()?;
+    if bucket_metadata.file_type().is_symlink() || !bucket_metadata.is_dir() {
         return None;
     }
     let entries = std::fs::read_dir(&bucket).ok()?;
@@ -845,31 +927,37 @@ fn find_blob_by_hash(blobs_dir: &Path, hash: &str) -> Option<PathBuf> {
 ///
 /// 仅在 tombstone 缺 `relative_path`（旧格式）且本地无该文件时使用：列举
 /// `{prefix}/{hash[..2]}/` 前缀，返回 stem 与 hash 相等的对象 key。列表被截断
-/// 时返回 None（宁可漏删也不误删）。
+/// 时返回错误，阻止调用方推进 tombstone 水位。
 async fn find_cloud_blob_key_by_hash(
     storage: &dyn CloudStorage,
     blobs_cloud_prefix: &str,
     hash: &str,
-) -> Option<String> {
+) -> Result<Option<String>, SyncError> {
     if hash.len() < 2 {
-        return None;
+        return Ok(None);
     }
     let bucket = format!(
         "{}/{}",
         blobs_cloud_prefix.trim_end_matches('/'),
         &hash[..2]
     );
-    let outcome = storage.list_outcome(&bucket).await.ok()?;
+    let outcome = storage
+        .list_outcome(&bucket)
+        .await
+        .map_err(|e| SyncError::Network(format!("列举云端 blob 桶失败 {}: {}", bucket, e)))?;
     if outcome.truncated {
-        return None;
+        return Err(SyncError::Network(format!(
+            "云端 blob 桶列表被截断，拒绝确认 tombstone: {}",
+            bucket
+        )));
     }
-    outcome.files.into_iter().map(|f| f.key).find(|key| {
+    Ok(outcome.files.into_iter().map(|f| f.key).find(|key| {
         std::path::Path::new(key)
             .file_stem()
             .and_then(|s| s.to_str())
             .map(|stem| stem == hash)
             .unwrap_or(false)
-    })
+    }))
 }
 
 /// 清理过期的 tombstone（按 deleted_at 与保留天数比较）

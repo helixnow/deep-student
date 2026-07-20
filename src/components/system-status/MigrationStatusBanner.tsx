@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
 import { getMigrationDiagnosticReport } from '@/api/dataGovernance';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 /** warning 级别自动消失时长（ms） */
 const AUTO_DISMISS_MS = 8000;
@@ -111,7 +112,7 @@ export const MigrationStatusBanner: React.FC = () => {
     // 先写入 pending tab，Settings 挂载时会消费该值完成 tab 切换
     setPendingSettingsTab('data-governance');
     // 切换 App 视图到 Settings
-    window.dispatchEvent(new CustomEvent('navigate-to-tab', { detail: { tabName: 'settings' } }));
+    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
   };
 
   return (
@@ -157,17 +158,17 @@ export const MigrationStatusBanner: React.FC = () => {
           </div>
 
           {/* 关闭按钮 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={dismiss} className={cn('shrink-0 !p-1', 'text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label={t('common:actions.close')}>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={dismiss} className={cn('shrink-0 !p-1 [@media(pointer:coarse)]:!p-2.5 [@media(pointer:coarse)]:-m-1.5', 'text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label={t('common:actions.close')}>
             <X size={14} />
           </NotionButton>
         </div>
 
-        {/* 操作区 */}
-        <div className="mt-2.5 flex gap-2 pl-10">
+        {/* 操作区（窄屏/英文长文案允许换行；触屏放大到 ≥36px 命中区） */}
+        <div className="mt-2.5 flex flex-wrap gap-2 pl-10">
           <NotionButton
             variant="ghost"
             size="sm"
-            className="h-7 px-2.5 text-xs"
+            className="h-7 px-2.5 text-xs [@media(pointer:coarse)]:h-9"
             onClick={openDataGovernance}
           >
             {t('data:governance.toast_view_details')}
@@ -178,7 +179,7 @@ export const MigrationStatusBanner: React.FC = () => {
           <NotionButton
             variant="ghost"
             size="sm"
-            className="h-7 px-2.5 text-xs text-muted-foreground"
+            className="h-7 px-2.5 text-xs text-muted-foreground [@media(pointer:coarse)]:h-9"
             onClick={dismiss}
           >
             {t('common:actions.later')}
@@ -213,7 +214,7 @@ const CopyDiagnosticButton: React.FC = () => {
     <NotionButton
       variant="ghost"
       size="sm"
-      className="h-7 px-2.5 text-xs"
+      className="h-7 px-2.5 text-xs [@media(pointer:coarse)]:h-9"
       onClick={handleCopy}
     >
       <Copy size={12} className="mr-1" />

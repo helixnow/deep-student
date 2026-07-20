@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use crate::backup_common::log_and_skip_entry_err;
 use crate::data_governance::backup::zip_export::{export_backup_to_zip, ZipExportOptions};
-use crate::data_governance::backup::{BackupManager, BackupSelection, BackupTier};
+use crate::data_governance::backup::{assets::AssetBackupConfig, BackupManager, BackupTier};
 use crate::database::{Database, DatabaseManager};
 use crate::models::AppError;
 
@@ -211,6 +211,7 @@ fn create_auto_backup_staging_dir(app_data_root: &Path) -> Result<tempfile::Temp
 /// 自动备份调度器 - 在应用启动时调用
 /// 定期检查是否需要执行自动备份
 pub async fn start_auto_backup_scheduler(
+    app: tauri::AppHandle,
     database: Arc<Database>,
     database_manager: Arc<DatabaseManager>,
     file_manager: Arc<FileManager>,
@@ -230,6 +231,7 @@ pub async fn start_auto_backup_scheduler(
         } else {
             // 检查并执行自动备份；无论结果如何都重置标志
             let result = check_and_perform_auto_backup(
+                app.clone(),
                 database.clone(),
                 database_manager.clone(),
                 file_manager.clone(),
@@ -247,6 +249,7 @@ pub async fn start_auto_backup_scheduler(
 }
 
 async fn check_and_perform_auto_backup(
+    app: tauri::AppHandle,
     database: Arc<Database>,
     _database_manager: Arc<DatabaseManager>,
     file_manager: Arc<FileManager>,
@@ -298,29 +301,52 @@ async fn check_and_perform_auto_backup(
         },
     );
 
-    let manifest = if let Some(tiers) = &config.backup_tiers {
-        let selection = BackupSelection {
-            tiers: tiers.clone(),
-            ..Default::default()
-        };
-        manager
-            .backup_tiered(&selection)
-            .map_err(|e| AppError::internal(format!("分级备份失败: {}", e)))?
-            .manifest
-    } else if config.slim_backup {
-        let selection = BackupSelection {
-            tiers: vec![BackupTier::Core],
-            ..Default::default()
-        };
-        manager
-            .backup_tiered(&selection)
-            .map_err(|e| AppError::internal(format!("精简备份失败: {}", e)))?
-            .manifest
-    } else {
-        manager
-            .backup_full()
-            .map_err(|e| AppError::internal(format!("完整备份失败: {}", e)))?
-    };
+    let snapshot_barrier =
+        crate::data_governance::commands_backup::BackupSnapshotBarrier::enter(&app)
+            .map_err(|e| AppError::internal(format!("无法建立一致自动备份快照: {}", e)))?;
+
+    if config.slim_backup || config.backup_tiers.is_some() {
+        tracing::warn!(
+            "[AutoBackup] 已忽略旧版精简/分级自动备份配置：自动恢复点必须是可替换数据槽的完整快照"
+        );
+    }
+    let mut asset_config = AssetBackupConfig::default();
+    // 自动恢复点不能因默认体积阈值静默降级为 PartialOverlay。磁盘不足或文件
+    // 无法读取应让本次自动备份明确失败，而不是轮转一个事故时不可恢复的 ZIP。
+    // 同时把产物限制在导入器 20 GiB 的解压预算内，为数据库、manifest 和 ZIP
+    // 元数据保留余量；超限时 backup_with_assets 会标记 partial，下面的完整性校验
+    // 会拒绝发布。
+    const PORTABLE_ASSET_BUDGET: u64 = 16 * 1024 * 1024 * 1024;
+    asset_config.max_file_size = PORTABLE_ASSET_BUDGET;
+    asset_config.max_total_size = PORTABLE_ASSET_BUDGET;
+    let backup_result = manager.backup_with_assets(Some(asset_config));
+    snapshot_barrier
+        .release()
+        .map_err(|e| AppError::internal(format!("自动备份后恢复数据库连接失败: {}", e)))?;
+    let manifest =
+        backup_result.map_err(|e| AppError::internal(format!("完整自动备份失败: {}", e)))?;
+    manifest.validate_for_slot_restore().map_err(|e| {
+        AppError::internal(format!(
+            "自动备份未达到可恢复完整快照要求，已拒绝导出: {}",
+            e
+        ))
+    })?;
+    let database_bytes = manifest.files.iter().try_fold(0u64, |total, file| {
+        total
+            .checked_add(file.size)
+            .ok_or_else(|| AppError::internal("自动备份数据库大小统计溢出".to_string()))
+    })?;
+    let asset_bytes = manifest
+        .assets
+        .as_ref()
+        .map(|assets| assets.total_size)
+        .unwrap_or(0);
+    const PORTABLE_SNAPSHOT_BUDGET: u64 = 19 * 1024 * 1024 * 1024;
+    if database_bytes.saturating_add(asset_bytes) > PORTABLE_SNAPSHOT_BUDGET {
+        return Err(AppError::validation(
+            "自动备份超过 19 GiB 可移植恢复预算，已拒绝发布无法通过 ZIP 导入的恢复点".to_string(),
+        ));
+    }
 
     let backup_id = &manifest.backup_id;
     let backup_subdir = staging_dir.path().join(backup_id);
@@ -362,12 +388,10 @@ pub(crate) fn get_effective_backup_dir(config: &BackupConfig, root: &Path) -> Re
             if path.exists() && path.is_dir() {
                 Ok(path)
             } else {
-                // 自定义目录不存在，回退到默认目录
-                tracing::warn!(
-                    "[AutoBackup] 自定义备份目录不存在: {}，使用默认目录",
+                Err(AppError::file_system(format!(
+                    "自定义备份目录不可用: {}。为避免误导，未回退到默认目录",
                     custom_dir
-                );
-                Ok(root.join("backups"))
+                )))
             }
         }
         None => Ok(root.join("backups")),
@@ -595,11 +619,10 @@ mod tests {
         };
         let root = PathBuf::from("/tmp/test_root");
 
-        let result = get_effective_backup_dir(&config, &root).unwrap();
-        assert_eq!(
-            result,
-            root.join("backups"),
-            "自定义目录不存在时应回退到默认路径"
+        let result = get_effective_backup_dir(&config, &root);
+        assert!(
+            result.is_err(),
+            "自定义目录不存在时必须显式失败，不能静默回退"
         );
     }
 

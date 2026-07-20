@@ -117,33 +117,37 @@ fn validate_reminder(v: &Option<String>) -> VfsResult<Option<String>> {
 /// 错误。这里把本地日界换算成 UTC 时刻串后做范围比较——UTC ISO 字符串
 /// 字典序与时间序一致，可走 completed_at 索引。
 fn local_today_utc_bounds() -> (String, String) {
-    use chrono::TimeZone;
     let today = chrono::Local::now().date_naive();
-    let to_utc_string = |d: chrono::NaiveDate| -> String {
-        // DST 导致本地午夜不存在/歧义时逐小时后移探测；歧义取较早侧。
-        // 统计口径下该 1 小时级误差每年最多出现两天，可接受。
-        let mut instant = None;
-        for hour in 0..=3u32 {
-            if let Some(naive) = d.and_hms_opt(hour, 0, 0) {
-                match chrono::Local.from_local_datetime(&naive) {
-                    chrono::LocalResult::Single(v) | chrono::LocalResult::Ambiguous(v, _) => {
-                        instant = Some(v);
-                        break;
-                    }
-                    chrono::LocalResult::None => continue,
+    (
+        local_date_start_utc_string(today),
+        local_date_start_utc_string(today + chrono::Days::new(1)),
+    )
+}
+
+/// 本地日历日 00:00 对应的 UTC 时刻串（与 created_at/completed_at 同格式，
+/// 可直接字符串比较）。原为 `local_today_utc_bounds` 内部闭包，
+/// ★ 2026-07-20 提取为模块级函数供统计聚合（stats_overview 等）复用。
+fn local_date_start_utc_string(d: chrono::NaiveDate) -> String {
+    use chrono::TimeZone;
+    // DST 导致本地午夜不存在/歧义时逐小时后移探测；歧义取较早侧。
+    // 统计口径下该 1 小时级误差每年最多出现两天，可接受。
+    let mut instant = None;
+    for hour in 0..=3u32 {
+        if let Some(naive) = d.and_hms_opt(hour, 0, 0) {
+            match chrono::Local.from_local_datetime(&naive) {
+                chrono::LocalResult::Single(v) | chrono::LocalResult::Ambiguous(v, _) => {
+                    instant = Some(v);
+                    break;
                 }
+                chrono::LocalResult::None => continue,
             }
         }
-        instant
-            .map(|v| v.with_timezone(&chrono::Utc))
-            .unwrap_or_else(chrono::Utc::now)
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string()
-    };
-    (
-        to_utc_string(today),
-        to_utc_string(today + chrono::Days::new(1)),
-    )
+    }
+    instant
+        .map(|v| v.with_timezone(&chrono::Utc))
+        .unwrap_or_else(chrono::Utc::now)
+        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string()
 }
 
 // ============================================================================
@@ -348,6 +352,175 @@ fn log_and_skip_err<T>(r: Result<T, rusqlite::Error>) -> Option<T> {
     }
 }
 
+/// 单清单 pending 计数（`todo_counts_snapshot` 命令 per_list 元素，camelCase 契约）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoListCount {
+    pub list_id: String,
+    pub pending_count: i64,
+}
+
+/// 待办计数快照（`todo_counts_snapshot` 命令返回，camelCase 契约，前端 F1 消费）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoCountsSnapshot {
+    /// 今天到期 + 逾期 pending（与 todo_list_today 同口径）
+    pub today_count: i64,
+    /// 未来 7 天 pending（与 todo_list_upcoming days=7 同口径）
+    pub upcoming_count: i64,
+    /// 默认清单（收件箱）pending
+    pub inbox_count: i64,
+    pub all_pending_count: i64,
+    /// 未删清单全量 pending 计数
+    pub per_list: Vec<TodoListCount>,
+}
+
+// ============================================================================
+// 批量操作 / 回收站 / 统计聚合的返回类型（2026-07-20 新增命令契约，
+// 全部 camelCase 序列化；详见 .parallel-notes/backend.md）
+// ============================================================================
+
+/// 单次批量操作允许的最大条目数（防御误传超大数组拖垮单事务）
+pub const MAX_TODO_BATCH_SIZE: usize = 500;
+
+/// 批量写操作结果（返回实体的操作：完成/改期/移动/恢复）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoBatchItemsResult {
+    /// 成功处理（含幂等命中）的条目，按输入顺序返回最新状态
+    pub items: Vec<VfsTodoItem>,
+    /// 被跳过的输入 ID（不存在/已删除/状态不适用），按输入顺序
+    pub skipped_ids: Vec<String>,
+}
+
+/// 批量写操作结果（只返回 ID 的操作：删除/彻底删除）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoBatchIdsResult {
+    /// 实际生效的输入 ID，按输入顺序
+    pub affected_ids: Vec<String>,
+    /// 被跳过的输入 ID（不存在/状态不适用），按输入顺序
+    pub skipped_ids: Vec<String>,
+}
+
+/// 回收站计数（`todo_trash_counts` 命令返回）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoTrashCounts {
+    /// 可独立恢复的已删除条目数（与 list_deleted_todo_items 同口径）
+    pub deleted_items: usize,
+    /// 已删除清单数（与 list_deleted_todo_lists 同口径）
+    pub deleted_lists: usize,
+}
+
+/// 待办完成趋势单日桶（本地日历日）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoDailyCompletionStat {
+    /// 本地日期（YYYY-MM-DD）
+    pub date: String,
+    /// 当日完成数（按 completed_at 转本地日分桶）
+    pub completed_count: i64,
+    /// 当日新建数（按 created_at 转本地日分桶）
+    pub created_count: i64,
+}
+
+/// 按清单的待办分布
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoListDistributionStat {
+    pub list_id: String,
+    pub list_title: String,
+    pub pending_count: i64,
+    pub completed_count: i64,
+}
+
+/// 按标签的待办分布
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoTagDistributionStat {
+    pub tag: String,
+    pub pending_count: i64,
+    pub completed_count: i64,
+}
+
+/// 按优先级的待处理分布（五档全量返回，含 0）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoPriorityDistributionStat {
+    pub priority: String,
+    pub pending_count: i64,
+}
+
+/// 待办统计总览（`todo_stats_overview` 命令返回，一次查询拿全）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoStatsOverview {
+    pub total_pending: i64,
+    pub total_completed: i64,
+    /// 今日完成数（本地日历日口径，与 get_active_todo_summary 一致）
+    pub completed_today: i64,
+    /// 逾期未完成数
+    pub overdue_count: i64,
+    /// 近 N 天完成/新建趋势（升序，无数据天补零）
+    pub completion_trend: Vec<TodoDailyCompletionStat>,
+    /// 按清单分布（顺序与 list_todo_lists 一致）
+    pub by_list: Vec<TodoListDistributionStat>,
+    /// 按优先级分布（urgent/high/medium/low/none 固定顺序）
+    pub by_priority: Vec<TodoPriorityDistributionStat>,
+    /// 按标签分布（按条目总数降序，最多 100 个标签）
+    pub by_tag: Vec<TodoTagDistributionStat>,
+}
+
+/// 标签 + 使用计数（`todo_list_all_tags` 命令返回元素；
+/// ★ 2026-07-20 r3 补齐，count 降序、同 count 按 tag 升序）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TagCountEntry {
+    pub tag: String,
+    /// 含该标签的未删除条目数（同一条目内重复标签只计一次）
+    pub count: i64,
+}
+
+/// 附带子任务统计的待办项（`todo_list_items_with_stats` 命令返回元素；
+/// 条目字段与 VfsTodoItem 平铺合并）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoItemWithChildStats {
+    #[serde(flatten)]
+    pub item: VfsTodoItem,
+    /// 直接子任务数（不含软删除）
+    pub subtask_count: i64,
+    /// 已完成的直接子任务数
+    pub completed_subtask_count: i64,
+}
+
+/// 批量 ID 入参清洗：去空白、去重（保持首现顺序）、限制批量上限。
+fn sanitize_batch_ids(ids: &[String], param: &str) -> VfsResult<Vec<String>> {
+    if ids.len() > MAX_TODO_BATCH_SIZE {
+        return Err(VfsError::InvalidArgument {
+            param: param.to_string(),
+            reason: format!(
+                "Batch size {} exceeds limit {}",
+                ids.len(),
+                MAX_TODO_BATCH_SIZE
+            ),
+        });
+    }
+    let mut seen: HashSet<&str> = HashSet::with_capacity(ids.len());
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        let trimmed = id.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if seen.insert(trimmed) {
+            out.push(trimmed.to_string());
+        }
+    }
+    Ok(out)
+}
+
 /// 待办列表 Repo
 pub struct VfsTodoRepo;
 
@@ -381,10 +554,22 @@ impl VfsTodoRepo {
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
 
+        // ★ 2026-07-19：此前恒写 sort_order=0，新清单全部挤在头部且互相并列
+        // （排序退化为 updated_at DESC），与 reorder_todo_lists 重写的 0..n
+        // 序列冲突。改为未删清单范围内 MAX+1 追加到尾部（与 create_todo_item
+        // 的条目级做法一致）。
+        let next_sort: i32 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM todo_lists WHERE deleted_at IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
         conn.execute(
             r#"
             INSERT INTO todo_lists (id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, 0, ?7, ?8)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9)
             "#,
             params![
                 list_id,
@@ -392,6 +577,7 @@ impl VfsTodoRepo {
                 params.description,
                 params.icon,
                 params.color,
+                next_sort,
                 params.is_default as i32,
                 now,
                 now,
@@ -406,7 +592,7 @@ impl VfsTodoRepo {
             description: params.description,
             icon: params.icon,
             color: params.color,
-            sort_order: 0,
+            sort_order: next_sort,
             is_default: params.is_default,
             is_favorite: false,
             created_at: now.clone(),
@@ -502,10 +688,14 @@ impl VfsTodoRepo {
         // ★ 2026-07-19：WHERE 补 deleted_at IS NULL——读取与写入之间列表可能
         // 被并发软删除，缺谓词会把回收站行改活跃字段（且推进 updated_at 干扰
         // 云同步 LWW）。affected == 0 视为 NotFound。
+        // ★ local_version 与 updated_at 同步推进（本文件所有推进 updated_at
+        // 的写路径统一做法，对齐 reorder_todo_lists；变更捕获主链路仍是
+        // __change_log 触发器，此处保证记录级版本戳不落后）。
         let affected = conn.execute(
             r#"
             UPDATE todo_lists
-            SET title = ?1, description = ?2, icon = ?3, color = ?4, updated_at = ?5
+            SET title = ?1, description = ?2, icon = ?3, color = ?4, updated_at = ?5,
+                local_version = COALESCE(local_version, 0) + 1
             WHERE id = ?6 AND deleted_at IS NULL
             "#,
             params![
@@ -576,7 +766,8 @@ impl VfsTodoRepo {
             r#"
             UPDATE todo_lists
             SET title = COALESCE(?1, title), description = COALESCE(?2, description),
-                icon = COALESCE(?3, icon), color = COALESCE(?4, color), updated_at = ?5
+                icon = COALESCE(?3, icon), color = COALESCE(?4, color), updated_at = ?5,
+                local_version = COALESCE(local_version, 0) + 1
             WHERE id = ?6 AND deleted_at IS NULL AND updated_at = ?7
             "#,
             params![
@@ -666,7 +857,9 @@ impl VfsTodoRepo {
             let now = fresh_updated_at(expected_updated_at);
             let affected = conn.execute(
                 r#"
-                UPDATE todo_lists SET deleted_at = ?1, updated_at = ?1
+                UPDATE todo_lists
+                SET deleted_at = ?1, updated_at = ?1,
+                    local_version = COALESCE(local_version, 0) + 1
                 WHERE id = ?2 AND deleted_at IS NULL AND is_default = 0 AND updated_at = ?3
                 "#,
                 params![now, list_id, expected_updated_at],
@@ -694,7 +887,7 @@ impl VfsTodoRepo {
                 });
             }
             conn.execute(
-                "UPDATE todo_items SET deleted_at = ?1, updated_at = ?1 WHERE todo_list_id = ?2 AND deleted_at IS NULL",
+                "UPDATE todo_items SET deleted_at = ?1, updated_at = ?1, local_version = COALESCE(local_version, 0) + 1 WHERE todo_list_id = ?2 AND deleted_at IS NULL",
                 params![now, list_id],
             )?;
             Ok(previous)
@@ -740,7 +933,7 @@ impl VfsTodoRepo {
             }
 
             let affected = conn.execute(
-                "UPDATE todo_lists SET deleted_at = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NULL",
+                "UPDATE todo_lists SET deleted_at = ?1, updated_at = ?2, local_version = COALESCE(local_version, 0) + 1 WHERE id = ?3 AND deleted_at IS NULL",
                 params![now, now, list_id],
             )?;
 
@@ -762,7 +955,7 @@ impl VfsTodoRepo {
 
             // 同时软删除所有待办项
             conn.execute(
-                "UPDATE todo_items SET deleted_at = ?1, updated_at = ?2 WHERE todo_list_id = ?3 AND deleted_at IS NULL",
+                "UPDATE todo_items SET deleted_at = ?1, updated_at = ?2, local_version = COALESCE(local_version, 0) + 1 WHERE todo_list_id = ?3 AND deleted_at IS NULL",
                 params![now, now, list_id],
             )?;
 
@@ -822,13 +1015,13 @@ impl VfsTodoRepo {
             })?;
 
             conn.execute(
-                "UPDATE todo_lists SET deleted_at = NULL, updated_at = ?1 WHERE id = ?2",
+                "UPDATE todo_lists SET deleted_at = NULL, updated_at = ?1, local_version = COALESCE(local_version, 0) + 1 WHERE id = ?2",
                 params![now, list_id],
             )?;
 
             // 仅恢复同批次删除的待办项
             conn.execute(
-                "UPDATE todo_items SET deleted_at = NULL, updated_at = ?1 WHERE todo_list_id = ?2 AND deleted_at = ?3",
+                "UPDATE todo_items SET deleted_at = NULL, updated_at = ?1, local_version = COALESCE(local_version, 0) + 1 WHERE todo_list_id = ?2 AND deleted_at = ?3",
                 params![now, list_id, batch],
             )?;
 
@@ -869,10 +1062,19 @@ impl VfsTodoRepo {
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
 
-        conn.execute(
-            "UPDATE todo_lists SET is_favorite = ?1, updated_at = ?2 WHERE id = ?3",
+        // ★ 2026-07-20：WHERE 补 deleted_at IS NULL——读取与写入之间列表可能被
+        // 并发软删除，缺谓词会改写回收站行并推进其 updated_at 干扰云同步 LWW
+        // （与 update_todo_list 的同类修复一致）。affected == 0 视为 NotFound。
+        let affected = conn.execute(
+            "UPDATE todo_lists SET is_favorite = ?1, updated_at = ?2, local_version = COALESCE(local_version, 0) + 1 WHERE id = ?3 AND deleted_at IS NULL",
             params![new_favorite as i32, now, list_id],
         )?;
+        if affected == 0 {
+            return Err(VfsError::NotFound {
+                resource_type: "TodoList".to_string(),
+                id: list_id.to_string(),
+            });
+        }
 
         Ok(VfsTodoList {
             is_favorite: new_favorite,
@@ -939,10 +1141,7 @@ impl VfsTodoRepo {
         match result {
             Ok(_) => {
                 conn.execute("RELEASE SAVEPOINT reorder_todo_lists", [])?;
-                info!(
-                    "[VFS::TodoRepo] Reordered {} todo lists",
-                    list_ids.len()
-                );
+                info!("[VFS::TodoRepo] Reordered {} todo lists", list_ids.len());
                 Ok(())
             }
             Err(e) => {
@@ -1135,7 +1334,8 @@ impl VfsTodoRepo {
             )
             .unwrap_or(-1);
 
-        let normalized_reminder = validate_reminder(&normalize_optional_str(params.reminder.clone()))?;
+        let normalized_reminder =
+            validate_reminder(&normalize_optional_str(params.reminder.clone()))?;
 
         // ★ 2026-07-19：条目 INSERT 与列表 updated_at 推进必须原子提交
         // （与 update_todo_item 一致）——中途失败会留下"条目已创建但列表
@@ -1169,7 +1369,7 @@ impl VfsTodoRepo {
 
             // 更新列表的 updated_at
             conn.execute(
-                "UPDATE todo_lists SET updated_at = ?1 WHERE id = ?2",
+                "UPDATE todo_lists SET updated_at = ?1, local_version = COALESCE(local_version, 0) + 1 WHERE id = ?2",
                 params![now, params.todo_list_id],
             )?;
             Ok(())
@@ -1252,6 +1452,21 @@ impl VfsTodoRepo {
         list_id: &str,
         include_completed: bool,
     ) -> VfsResult<Vec<VfsTodoItem>> {
+        Self::list_items_by_list_paged(db, list_id, include_completed, None, None)
+    }
+
+    /// 同上，SQL 级分页（移动端支撑）。
+    ///
+    /// ★ 2026-07-19：此前 handler 全量拉取后内存 skip/take，分页只省 IPC
+    /// 不省 DB/内存。改为 SQL LIMIT/OFFSET；`limit`/`offset` 为 None 时
+    /// 用 `LIMIT -1 OFFSET 0`（SQLite 语义 = 不限量），与全量行为一致。
+    pub fn list_items_by_list_paged(
+        db: &VfsDatabase,
+        list_id: &str,
+        include_completed: bool,
+        limit: Option<u32>,
+        offset: Option<u32>,
+    ) -> VfsResult<Vec<VfsTodoItem>> {
         let conn = db.get_conn_safe()?;
         let sql = if include_completed {
             r#"
@@ -1263,6 +1478,7 @@ impl VfsTodoRepo {
                 CASE status WHEN 'pending' THEN 0 WHEN 'completed' THEN 1 WHEN 'cancelled' THEN 2 END,
                 sort_order ASC,
                 created_at ASC
+            LIMIT ?2 OFFSET ?3
             "#
         } else {
             r#"
@@ -1271,11 +1487,17 @@ impl VfsTodoRepo {
             FROM todo_items
             WHERE todo_list_id = ?1 AND deleted_at IS NULL AND status = 'pending'
             ORDER BY sort_order ASC, created_at ASC
+            LIMIT ?2 OFFSET ?3
             "#
         };
 
+        let limit_param: i64 = limit.map(|v| v as i64).unwrap_or(-1);
+        let offset_param: i64 = offset.unwrap_or(0) as i64;
         let mut stmt = conn.prepare(sql)?;
-        let rows = stmt.query_map(params![list_id], Self::row_to_todo_item)?;
+        let rows = stmt.query_map(
+            params![list_id, limit_param, offset_param],
+            Self::row_to_todo_item,
+        )?;
         let items: Vec<VfsTodoItem> = rows.filter_map(log_and_skip_err).collect();
         Ok(items)
     }
@@ -1296,6 +1518,17 @@ impl VfsTodoRepo {
         item_id: &str,
         params: VfsUpdateTodoItemParams,
     ) -> VfsResult<VfsTodoItem> {
+        Self::update_todo_item_with_conn_ex(conn, item_id, params).map(|(item, _)| item)
+    }
+
+    /// 同上，并额外返回"完成重复任务时派生的下一次实例 id"
+    /// （★ 2026-07-20 r3 补齐：batch_complete 事件的 entityIds 需要包含
+    /// 派生实例；既有调用方走上面的薄包装，返回结构不变）。
+    fn update_todo_item_with_conn_ex(
+        conn: &Connection,
+        item_id: &str,
+        params: VfsUpdateTodoItemParams,
+    ) -> VfsResult<(VfsTodoItem, Option<String>)> {
         let current =
             Self::get_todo_item_with_conn(conn, item_id)?.ok_or_else(|| VfsError::NotFound {
                 resource_type: "TodoItem".to_string(),
@@ -1458,11 +1691,6 @@ impl VfsTodoRepo {
         } else {
             current.estimated_pomodoros
         };
-        let final_completed_pomodoros = if params.completed_pomodoros.is_some() {
-            params.completed_pomodoros.map(|v| v.clamp(0, 9999))
-        } else {
-            current.completed_pomodoros
-        };
 
         // 处理完成时间
         let final_completed_at = if final_status == "completed" && current.status != "completed" {
@@ -1484,9 +1712,10 @@ impl VfsTodoRepo {
                 UPDATE todo_items
                 SET title = ?1, description = ?2, status = ?3, priority = ?4, due_date = ?5, due_time = ?6,
                     reminder = ?7, tags_json = ?8, parent_id = ?9, completed_at = ?10, repeat_json = ?11,
-                    attachments_json = ?12, updated_at = ?13, estimated_pomodoros = ?15, completed_pomodoros = ?16
+                    attachments_json = ?12, updated_at = ?13, estimated_pomodoros = ?15,
+                    local_version = COALESCE(local_version, 0) + 1
                 WHERE id = ?14 AND deleted_at IS NULL
-                  AND (?17 IS NULL OR ?17 = '' OR updated_at = ?17)
+                  AND (?16 IS NULL OR ?16 = '' OR updated_at = ?16)
                 "#,
                 params![
                     final_title,
@@ -1504,24 +1733,41 @@ impl VfsTodoRepo {
                     now,
                     item_id,
                     final_estimated_pomodoros,
-                    final_completed_pomodoros,
                     expected_revision,
                 ],
             )?;
 
             if affected == 0 {
-                return Err(VfsError::Conflict {
-                    key: "todo_items.conflict".to_string(),
-                    message: format!(
-                        "TODO_CONFLICT: expected_updated_at={}, actual_updated_at changed",
-                        expected_revision.as_deref().unwrap_or_default()
-                    ),
+                // ★ 2026-07-20：affected == 0 有两种原因——OCC 失配（Conflict）
+                // 或行在读取后被并发软删除/物理删除（NotFound）。此前不加区分
+                // 一律报 Conflict，未传 expected_updated_at 的调用方会收到
+                // 带空 expected 的假冲突。这里回查行状态给出准确错误。
+                let actual: Option<String> = conn
+                    .query_row(
+                        "SELECT updated_at FROM todo_items WHERE id = ?1 AND deleted_at IS NULL",
+                        params![item_id],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                return Err(match actual {
+                    Some(actual) => VfsError::Conflict {
+                        key: "todo_items.conflict".to_string(),
+                        message: format!(
+                            "TODO_CONFLICT: expected_updated_at={}, actual_updated_at={}",
+                            expected_revision.as_deref().unwrap_or_default(),
+                            actual
+                        ),
+                    },
+                    None => VfsError::NotFound {
+                        resource_type: "TodoItem".to_string(),
+                        id: item_id.to_string(),
+                    },
                 });
             }
 
             // 更新列表的 updated_at
             conn.execute(
-                "UPDATE todo_lists SET updated_at = ?1 WHERE id = ?2",
+                "UPDATE todo_lists SET updated_at = ?1, local_version = COALESCE(local_version, 0) + 1 WHERE id = ?2",
                 params![now, current.todo_list_id],
             )?;
             Ok(())
@@ -1554,7 +1800,8 @@ impl VfsTodoRepo {
             repeat_json: final_repeat_json,
             attachments_json: final_attachments_json,
             estimated_pomodoros: final_estimated_pomodoros,
-            completed_pomodoros: final_completed_pomodoros,
+            // 派生缓存只由 pomodoro_records 重算路径维护，通用更新不得覆盖。
+            completed_pomodoros: current.completed_pomodoros,
             created_at: current.created_at,
             updated_at: now,
             deleted_at: None,
@@ -1564,12 +1811,16 @@ impl VfsTodoRepo {
         // 派生实例可在用户取消完成/再完成时补生成，不值得回滚整个更新）。
         // ★ 2026-07-19：日志级别 warn → error 并带上规则/到期日上下文，
         // 便于用户报告"重复任务没有生成下一次"时定位（保守修复，不改返回结构）。
+        let mut spawned_id: Option<String> = None;
         if was_completed_now {
-            if let Err(e) = Self::spawn_next_recurrence_with_conn(conn, &updated) {
-                error!(
-                    "[VFS::TodoRepo] Failed to spawn next recurrence for {} (title='{}', repeat_json={:?}, due_date={:?}): {}",
-                    item_id, updated.title, updated.repeat_json, updated.due_date, e
-                );
+            match Self::spawn_next_recurrence_with_conn(conn, &updated) {
+                Ok(id) => spawned_id = id,
+                Err(e) => {
+                    error!(
+                        "[VFS::TodoRepo] Failed to spawn next recurrence for {} (title='{}', repeat_json={:?}, due_date={:?}): {}",
+                        item_id, updated.title, updated.repeat_json, updated.due_date, e
+                    );
+                }
             }
         }
 
@@ -1578,7 +1829,7 @@ impl VfsTodoRepo {
             return Err(e.into());
         }
 
-        Ok(updated)
+        Ok((updated, spawned_id))
     }
 
     /// 重复任务引擎：完成一个带重复规则的任务后，按规则生成下一次实例。
@@ -1589,17 +1840,19 @@ impl VfsTodoRepo {
     /// - 防重：同清单同父级下已存在相同标题+到期日+规则的未完成任务时跳过
     ///   （覆盖"完成→取消完成→再完成"的反复操作）；
     /// - 无到期日或规则非法时静默跳过。
+    ///
+    /// 返回派生的新实例 id（未派生返回 `Ok(None)`，供批量完成事件收集）。
     fn spawn_next_recurrence_with_conn(
         conn: &Connection,
         completed: &VfsTodoItem,
-    ) -> VfsResult<()> {
+    ) -> VfsResult<Option<String>> {
         let repeat_json = match completed.repeat_json.as_deref() {
             Some(s) if !s.trim().is_empty() => s,
-            _ => return Ok(()),
+            _ => return Ok(None),
         };
         let rule = match parse_repeat_rule(repeat_json) {
             Some(r) => r,
-            None => return Ok(()),
+            None => return Ok(None),
         };
         let due = match completed
             .due_date
@@ -1607,13 +1860,13 @@ impl VfsTodoRepo {
             .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
         {
             Some(d) => d,
-            None => return Ok(()),
+            None => return Ok(None),
         };
 
         let today = chrono::Local::now().date_naive();
         let next = match compute_next_due_date(&rule, due, today) {
             Some(d) => d,
-            None => return Ok(()),
+            None => return Ok(None),
         };
         let next_str = next.format("%Y-%m-%d").to_string();
 
@@ -1636,7 +1889,7 @@ impl VfsTodoRepo {
             |row| row.get(0),
         )?;
         if dup_exists {
-            return Ok(());
+            return Ok(None);
         }
 
         let item_id = VfsTodoItem::generate_id();
@@ -1682,11 +1935,19 @@ impl VfsTodoRepo {
             ],
         )?;
 
+        // ★ 2026-07-19：派生新条目也是清单内容变更——与 create_todo_item_with_conn
+        // 一致推进所属清单 updated_at / local_version（云同步 LWW 依赖清单时间戳
+        // 判断新旧，此前漏推进会让远端旧清单快照覆盖派生结果）。
+        conn.execute(
+            "UPDATE todo_lists SET updated_at = ?1, local_version = COALESCE(local_version, 0) + 1 WHERE id = ?2",
+            params![now, completed.todo_list_id],
+        )?;
+
         info!(
             "[VFS::TodoRepo] Spawned next recurrence of {}: {} due {}",
             completed.id, item_id, next_str
         );
-        Ok(())
+        Ok(Some(item_id))
     }
 
     /// 切换待办项完成状态
@@ -1724,6 +1985,11 @@ impl VfsTodoRepo {
     /// 软删除待办项（父项 + 整棵子树同批次删除，事务保护）
     pub fn delete_todo_item(db: &VfsDatabase, item_id: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
+        Self::delete_todo_item_with_conn(&conn, item_id)
+    }
+
+    /// 同上（使用现有连接，SAVEPOINT 支持嵌套，供批量操作复用）
+    pub fn delete_todo_item_with_conn(conn: &Connection, item_id: &str) -> VfsResult<()> {
         let now = chrono::Utc::now()
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
@@ -1741,7 +2007,7 @@ impl VfsTodoRepo {
                 .optional()?;
 
             let affected = conn.execute(
-                "UPDATE todo_items SET deleted_at = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NULL",
+                "UPDATE todo_items SET deleted_at = ?1, updated_at = ?2, local_version = COALESCE(local_version, 0) + 1 WHERE id = ?3 AND deleted_at IS NULL",
                 params![now, now, item_id],
             )?;
 
@@ -1773,7 +2039,8 @@ impl VfsTodoRepo {
                     JOIN descendants d ON ti.parent_id = d.id
                     WHERE ti.deleted_at IS NULL AND d.depth < 100
                 )
-                UPDATE todo_items SET deleted_at = ?1, updated_at = ?2
+                UPDATE todo_items SET deleted_at = ?1, updated_at = ?2,
+                    local_version = COALESCE(local_version, 0) + 1
                 WHERE id IN (SELECT id FROM descendants)
                 "#,
                 params![now, now, item_id],
@@ -1782,7 +2049,7 @@ impl VfsTodoRepo {
             // 更新列表时间
             if let Some(lid) = list_id {
                 conn.execute(
-                    "UPDATE todo_lists SET updated_at = ?1 WHERE id = ?2",
+                    "UPDATE todo_lists SET updated_at = ?1, local_version = COALESCE(local_version, 0) + 1 WHERE id = ?2",
                     params![now, lid],
                 )?;
             }
@@ -1827,7 +2094,9 @@ impl VfsTodoRepo {
             let now = fresh_updated_at(expected_updated_at);
             let affected = conn.execute(
                 r#"
-                UPDATE todo_items SET deleted_at = ?1, updated_at = ?1
+                UPDATE todo_items
+                SET deleted_at = ?1, updated_at = ?1,
+                    local_version = COALESCE(local_version, 0) + 1
                 WHERE id = ?2 AND deleted_at IS NULL AND updated_at = ?3
                 "#,
                 params![now, item_id, expected_updated_at],
@@ -1864,13 +2133,14 @@ impl VfsTodoRepo {
                     JOIN descendants d ON ti.parent_id = d.id
                     WHERE ti.deleted_at IS NULL AND d.depth < 100
                 )
-                UPDATE todo_items SET deleted_at = ?1, updated_at = ?1
+                UPDATE todo_items SET deleted_at = ?1, updated_at = ?1,
+                    local_version = COALESCE(local_version, 0) + 1
                 WHERE id IN (SELECT id FROM descendants)
                 "#,
                 params![now, item_id],
             )?;
             conn.execute(
-                "UPDATE todo_lists SET updated_at = ?1 WHERE id = ?2",
+                "UPDATE todo_lists SET updated_at = ?1, local_version = COALESCE(local_version, 0) + 1 WHERE id = ?2",
                 params![now, previous.todo_list_id],
             )?;
             Ok(previous)
@@ -1895,6 +2165,11 @@ impl VfsTodoRepo {
     /// 子项不会被误恢复。
     pub fn restore_todo_item(db: &VfsDatabase, item_id: &str) -> VfsResult<VfsTodoItem> {
         let conn = db.get_conn_safe()?;
+        Self::restore_todo_item_with_conn(&conn, item_id)
+    }
+
+    /// 同上（使用现有连接，SAVEPOINT 支持嵌套，供批量操作复用）
+    pub fn restore_todo_item_with_conn(conn: &Connection, item_id: &str) -> VfsResult<VfsTodoItem> {
         let now = chrono::Utc::now()
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
@@ -1958,14 +2233,15 @@ impl VfsTodoRepo {
                     JOIN descendants d ON ti.parent_id = d.id
                     WHERE ti.deleted_at = ?3 AND d.depth < 100
                 )
-                UPDATE todo_items SET deleted_at = NULL, updated_at = ?1
+                UPDATE todo_items SET deleted_at = NULL, updated_at = ?1,
+                    local_version = COALESCE(local_version, 0) + 1
                 WHERE id IN (SELECT id FROM descendants) AND deleted_at = ?3
                 "#,
                 params![now, item_id, batch],
             )?;
 
             conn.execute(
-                "UPDATE todo_lists SET updated_at = ?1 WHERE id = ?2",
+                "UPDATE todo_lists SET updated_at = ?1, local_version = COALESCE(local_version, 0) + 1 WHERE id = ?2",
                 params![now, list_id],
             )?;
             Ok(())
@@ -1975,7 +2251,7 @@ impl VfsTodoRepo {
             Ok(_) => {
                 conn.execute("RELEASE SAVEPOINT restore_todo_item", [])?;
                 info!("[VFS::TodoRepo] Restored todo item: {}", item_id);
-                Self::get_todo_item_with_conn(&conn, item_id)?.ok_or_else(|| VfsError::NotFound {
+                Self::get_todo_item_with_conn(conn, item_id)?.ok_or_else(|| VfsError::NotFound {
                     resource_type: "TodoItem".to_string(),
                     id: item_id.to_string(),
                 })
@@ -2014,7 +2290,8 @@ impl VfsTodoRepo {
             if let Some(expected) = expected_updated_at {
                 let affected = conn.execute(
                     r#"
-                    UPDATE todo_lists SET updated_at = ?1
+                    UPDATE todo_lists
+                    SET updated_at = ?1, local_version = COALESCE(local_version, 0) + 1
                     WHERE id = ?2 AND deleted_at IS NULL AND updated_at = ?3
                     "#,
                     params![now, list_id, expected],
@@ -2067,14 +2344,14 @@ impl VfsTodoRepo {
             }
             for (i, id) in item_ids.iter().enumerate() {
                 conn.execute(
-                    "UPDATE todo_items SET sort_order = ?1, updated_at = ?2 WHERE id = ?3 AND todo_list_id = ?4 AND deleted_at IS NULL",
+                    "UPDATE todo_items SET sort_order = ?1, updated_at = ?2, local_version = COALESCE(local_version, 0) + 1 WHERE id = ?3 AND todo_list_id = ?4 AND deleted_at IS NULL",
                     params![i as i32, now, id, list_id],
                 )?;
             }
 
             if expected_updated_at.is_none() {
                 let affected = conn.execute(
-                    "UPDATE todo_lists SET updated_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+                    "UPDATE todo_lists SET updated_at = ?1, local_version = COALESCE(local_version, 0) + 1 WHERE id = ?2 AND deleted_at IS NULL",
                     params![now, list_id],
                 )?;
                 if affected == 0 {
@@ -2117,9 +2394,17 @@ impl VfsTodoRepo {
         target_list_id: &str,
     ) -> VfsResult<VfsTodoItem> {
         let conn = db.get_conn_safe()?;
+        Self::move_todo_item_with_conn(&conn, item_id, target_list_id)
+    }
 
+    /// 同上（使用现有连接，SAVEPOINT 支持嵌套，供批量操作复用）
+    pub fn move_todo_item_with_conn(
+        conn: &Connection,
+        item_id: &str,
+        target_list_id: &str,
+    ) -> VfsResult<VfsTodoItem> {
         let current =
-            Self::get_todo_item_with_conn(&conn, item_id)?.ok_or_else(|| VfsError::NotFound {
+            Self::get_todo_item_with_conn(conn, item_id)?.ok_or_else(|| VfsError::NotFound {
                 resource_type: "TodoItem".to_string(),
                 id: item_id.to_string(),
             })?;
@@ -2173,7 +2458,8 @@ impl VfsTodoRepo {
             let affected = conn.execute(
                 r#"
                 UPDATE todo_items
-                SET todo_list_id = ?1, parent_id = NULL, sort_order = ?2, updated_at = ?3
+                SET todo_list_id = ?1, parent_id = NULL, sort_order = ?2, updated_at = ?3,
+                    local_version = COALESCE(local_version, 0) + 1
                 WHERE id = ?4 AND deleted_at IS NULL
                 "#,
                 params![target_list_id, max_sort + 1, now, item_id],
@@ -2188,14 +2474,14 @@ impl VfsTodoRepo {
             // 后代按深度序逐行迁移（保留子树内 parent 关系与相对 sort_order）
             for id in &descendant_ids {
                 conn.execute(
-                    "UPDATE todo_items SET todo_list_id = ?1, updated_at = ?2 WHERE id = ?3",
+                    "UPDATE todo_items SET todo_list_id = ?1, updated_at = ?2, local_version = COALESCE(local_version, 0) + 1 WHERE id = ?3",
                     params![target_list_id, now, id],
                 )?;
             }
 
             // 源/目标清单时间戳推进（云同步 LWW 基准）
             conn.execute(
-                "UPDATE todo_lists SET updated_at = ?1 WHERE id IN (?2, ?3) AND deleted_at IS NULL",
+                "UPDATE todo_lists SET updated_at = ?1, local_version = COALESCE(local_version, 0) + 1 WHERE id IN (?2, ?3) AND deleted_at IS NULL",
                 params![now, source_list_id, target_list_id],
             )?;
             Ok(())
@@ -2208,7 +2494,7 @@ impl VfsTodoRepo {
                     "[VFS::TodoRepo] Moved todo item {} from list {} to list {}",
                     item_id, source_list_id, target_list_id
                 );
-                Self::get_todo_item_with_conn(&conn, item_id)?.ok_or_else(|| VfsError::NotFound {
+                Self::get_todo_item_with_conn(conn, item_id)?.ok_or_else(|| VfsError::NotFound {
                     resource_type: "TodoItem".to_string(),
                     id: item_id.to_string(),
                 })
@@ -2234,6 +2520,16 @@ impl VfsTodoRepo {
         db: &VfsDatabase,
         include_completed: bool,
     ) -> VfsResult<Vec<VfsTodoItem>> {
+        Self::list_today_items_paged(db, include_completed, None, None)
+    }
+
+    /// 同上，SQL 级分页；None 时等价全量（见 list_items_by_list_paged）。
+    pub fn list_today_items_paged(
+        db: &VfsDatabase,
+        include_completed: bool,
+        limit: Option<u32>,
+        offset: Option<u32>,
+    ) -> VfsResult<Vec<VfsTodoItem>> {
         let conn = db.get_conn_safe()?;
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
@@ -2250,6 +2546,7 @@ impl VfsTodoRepo {
                 CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END,
                 due_time ASC NULLS LAST,
                 sort_order ASC
+            LIMIT ?2 OFFSET ?3
             "#
         } else {
             r#"
@@ -2262,12 +2559,18 @@ impl VfsTodoRepo {
                 CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END,
                 due_time ASC NULLS LAST,
                 sort_order ASC
+            LIMIT ?2 OFFSET ?3
             "#
         };
 
+        let limit_param: i64 = limit.map(|v| v as i64).unwrap_or(-1);
+        let offset_param: i64 = offset.unwrap_or(0) as i64;
         let mut stmt = conn.prepare(sql)?;
 
-        let rows = stmt.query_map(params![today], Self::row_to_todo_item)?;
+        let rows = stmt.query_map(
+            params![today, limit_param, offset_param],
+            Self::row_to_todo_item,
+        )?;
         Ok(rows.filter_map(log_and_skip_err).collect())
     }
 
@@ -2275,6 +2578,16 @@ impl VfsTodoRepo {
     pub fn list_overdue_items(
         db: &VfsDatabase,
         include_completed: bool,
+    ) -> VfsResult<Vec<VfsTodoItem>> {
+        Self::list_overdue_items_paged(db, include_completed, None, None)
+    }
+
+    /// 同上，SQL 级分页；None 时等价全量（见 list_items_by_list_paged）。
+    pub fn list_overdue_items_paged(
+        db: &VfsDatabase,
+        include_completed: bool,
+        limit: Option<u32>,
+        offset: Option<u32>,
     ) -> VfsResult<Vec<VfsTodoItem>> {
         let conn = db.get_conn_safe()?;
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
@@ -2288,6 +2601,7 @@ impl VfsTodoRepo {
             ORDER BY due_date ASC,
                 CASE status WHEN 'pending' THEN 0 WHEN 'completed' THEN 1 ELSE 2 END,
                 CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END
+            LIMIT ?2 OFFSET ?3
             "#
         } else {
             r#"
@@ -2297,12 +2611,18 @@ impl VfsTodoRepo {
             WHERE due_date < ?1 AND status = 'pending' AND deleted_at IS NULL
             ORDER BY due_date ASC,
                 CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END
+            LIMIT ?2 OFFSET ?3
             "#
         };
 
+        let limit_param: i64 = limit.map(|v| v as i64).unwrap_or(-1);
+        let offset_param: i64 = offset.unwrap_or(0) as i64;
         let mut stmt = conn.prepare(sql)?;
 
-        let rows = stmt.query_map(params![today], Self::row_to_todo_item)?;
+        let rows = stmt.query_map(
+            params![today, limit_param, offset_param],
+            Self::row_to_todo_item,
+        )?;
         Ok(rows.filter_map(log_and_skip_err).collect())
     }
 
@@ -2471,6 +2791,86 @@ impl VfsTodoRepo {
             rows.filter_map(log_and_skip_err).collect(),
             total.max(0) as usize,
         ))
+    }
+
+    // ========================================================================
+    // 计数快照（前端徽标/侧栏计数，聚合 COUNT，不拉全行）
+    // ========================================================================
+
+    /// 全量视图计数快照：
+    /// - `today_count`：今天到期 + 逾期 pending（与 `list_today_items`
+    ///   include_completed=false 同口径：`status='pending' AND due_date <= 今天`）；
+    /// - `upcoming_count`：未来 7 天 pending（与 `list_upcoming_items(days=7)`
+    ///   同口径：`due_date > 今天 AND due_date <= 今天+7`）；
+    /// - `inbox_count`：默认清单（is_default=1，未删）内 pending；无默认清单时 0；
+    /// - `all_pending_count`：全部未删 pending（与 `list_all_pending_items` 同口径）；
+    /// - `per_list`：全部未删清单的 pending 计数（含 0，LEFT JOIN），
+    ///   顺序与 `list_todo_lists` 一致。
+    pub fn counts_snapshot(db: &VfsDatabase) -> VfsResult<TodoCountsSnapshot> {
+        let conn = db.get_conn_safe()?;
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let upcoming_end = (chrono::Local::now() + chrono::Duration::days(7))
+            .format("%Y-%m-%d")
+            .to_string();
+
+        let today_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM todo_items WHERE status = 'pending' AND due_date <= ?1 AND deleted_at IS NULL",
+            params![today],
+            |row| row.get(0),
+        )?;
+
+        let upcoming_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM todo_items WHERE status = 'pending' AND due_date > ?1 AND due_date <= ?2 AND deleted_at IS NULL",
+            params![today, upcoming_end],
+            |row| row.get(0),
+        )?;
+
+        let inbox_count: i64 = conn.query_row(
+            r#"
+            SELECT COUNT(*)
+            FROM todo_items ti
+            JOIN todo_lists tl ON tl.id = ti.todo_list_id
+            WHERE tl.is_default = 1 AND tl.deleted_at IS NULL
+              AND ti.status = 'pending' AND ti.deleted_at IS NULL
+            "#,
+            [],
+            |row| row.get(0),
+        )?;
+
+        let all_pending_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM todo_items WHERE status = 'pending' AND deleted_at IS NULL",
+            [],
+            |row| row.get(0),
+        )?;
+
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT tl.id, COUNT(ti.id)
+            FROM todo_lists tl
+            LEFT JOIN todo_items ti
+              ON ti.todo_list_id = tl.id AND ti.status = 'pending' AND ti.deleted_at IS NULL
+            WHERE tl.deleted_at IS NULL
+            GROUP BY tl.id
+            ORDER BY tl.is_default DESC, tl.sort_order ASC, tl.updated_at DESC
+            "#,
+        )?;
+        let per_list: Vec<TodoListCount> = stmt
+            .query_map([], |row| {
+                Ok(TodoListCount {
+                    list_id: row.get(0)?,
+                    pending_count: row.get(1)?,
+                })
+            })?
+            .filter_map(log_and_skip_err)
+            .collect();
+
+        Ok(TodoCountsSnapshot {
+            today_count,
+            upcoming_count,
+            inbox_count,
+            all_pending_count,
+            per_list,
+        })
     }
 
     // ========================================================================
@@ -2704,7 +3104,7 @@ impl VfsTodoRepo {
             SELECT id, title, description, icon, color, sort_order, is_default, is_favorite, created_at, updated_at, deleted_at
             FROM todo_lists
             WHERE deleted_at IS NOT NULL
-            ORDER BY deleted_at DESC
+            ORDER BY deleted_at DESC, id ASC
             LIMIT ?1 OFFSET ?2
             "#,
         )?;
@@ -2728,35 +3128,40 @@ impl VfsTodoRepo {
     }
 
     /// 永久删除单个待办列表（仅允许清除已在回收站中的列表）
+    ///
+    /// ★ 2026-07-20："已在回收站"校验移入 BEGIN IMMEDIATE 事务内——此前
+    /// 校验在事务外，校验与删除之间列表可能被并发恢复，会把已恢复的
+    /// 活跃列表连同条目物理删除（TOCTOU）。
     pub fn purge_todo_list(db: &VfsDatabase, list_id: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
 
-        let is_deleted: Option<bool> = conn
-            .query_row(
-                "SELECT deleted_at IS NOT NULL FROM todo_lists WHERE id = ?1",
-                params![list_id],
-                |row| row.get(0),
-            )
-            .optional()?;
-        match is_deleted {
-            None => {
-                return Err(VfsError::NotFound {
-                    resource_type: "TodoList".to_string(),
-                    id: list_id.to_string(),
-                });
-            }
-            Some(false) => {
-                return Err(VfsError::InvalidOperation {
-                    operation: "purge_todo_list".to_string(),
-                    reason: "Cannot purge a list that is not in trash".to_string(),
-                });
-            }
-            Some(true) => {}
-        }
-
         conn.execute("BEGIN IMMEDIATE", [])?;
 
-        let result = Self::purge_todo_list_inner(&conn, list_id);
+        let result = (|| -> VfsResult<()> {
+            let is_deleted: Option<bool> = conn
+                .query_row(
+                    "SELECT deleted_at IS NOT NULL FROM todo_lists WHERE id = ?1",
+                    params![list_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            match is_deleted {
+                None => {
+                    return Err(VfsError::NotFound {
+                        resource_type: "TodoList".to_string(),
+                        id: list_id.to_string(),
+                    });
+                }
+                Some(false) => {
+                    return Err(VfsError::InvalidOperation {
+                        operation: "purge_todo_list".to_string(),
+                        reason: "Cannot purge a list that is not in trash".to_string(),
+                    });
+                }
+                Some(true) => {}
+            }
+            Self::purge_todo_list_inner(&conn, list_id)
+        })();
 
         match result {
             Ok(_) => {
@@ -2850,7 +3255,7 @@ impl VfsTodoRepo {
                     OR EXISTS(SELECT 1 FROM todo_items p WHERE p.id = ti.parent_id AND p.deleted_at IS NULL)
                   )
               AND EXISTS(SELECT 1 FROM todo_lists l WHERE l.id = ti.todo_list_id AND l.deleted_at IS NULL)
-            ORDER BY ti.deleted_at DESC
+            ORDER BY ti.deleted_at DESC, ti.id ASC
             LIMIT ?1 OFFSET ?2
             "#,
         )?;
@@ -2886,33 +3291,42 @@ impl VfsTodoRepo {
     /// 永久删除单个待办项（仅允许清除已在回收站中的项；连同整棵已删除子树）
     pub fn purge_todo_item(db: &VfsDatabase, item_id: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
+        Self::purge_todo_item_with_conn(&conn, item_id)
+    }
 
-        let is_deleted: Option<bool> = conn
-            .query_row(
-                "SELECT deleted_at IS NOT NULL FROM todo_items WHERE id = ?1",
-                params![item_id],
-                |row| row.get(0),
-            )
-            .optional()?;
-        match is_deleted {
-            None => {
-                return Err(VfsError::NotFound {
-                    resource_type: "TodoItem".to_string(),
-                    id: item_id.to_string(),
-                });
-            }
-            Some(false) => {
-                return Err(VfsError::InvalidOperation {
-                    operation: "purge_todo_item".to_string(),
-                    reason: "Cannot purge an item that is not in trash".to_string(),
-                });
-            }
-            Some(true) => {}
-        }
-
-        conn.execute("BEGIN IMMEDIATE", [])?;
+    /// 同上（使用现有连接，SAVEPOINT 支持嵌套，供批量操作复用）
+    ///
+    /// ★ 2026-07-20："已在回收站"校验移入事务内——此前校验在事务外，
+    /// 校验与删除之间条目可能被并发恢复，会把已恢复的活跃条目连同
+    /// 子树物理删除（TOCTOU）。同时由 BEGIN IMMEDIATE 改为 SAVEPOINT，
+    /// 与本仓库其余事务一致并支持嵌套复用。
+    pub fn purge_todo_item_with_conn(conn: &Connection, item_id: &str) -> VfsResult<()> {
+        conn.execute("SAVEPOINT purge_todo_item", [])?;
 
         let result = (|| -> VfsResult<()> {
+            let is_deleted: Option<bool> = conn
+                .query_row(
+                    "SELECT deleted_at IS NOT NULL FROM todo_items WHERE id = ?1",
+                    params![item_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            match is_deleted {
+                None => {
+                    return Err(VfsError::NotFound {
+                        resource_type: "TodoItem".to_string(),
+                        id: item_id.to_string(),
+                    });
+                }
+                Some(false) => {
+                    return Err(VfsError::InvalidOperation {
+                        operation: "purge_todo_item".to_string(),
+                        reason: "Cannot purge an item that is not in trash".to_string(),
+                    });
+                }
+                Some(true) => {}
+            }
+
             // 后代（无论删除批次）一并物理删除，避免遗留悬挂 parent_id。
             // ★ 2026-07-19：depth < 100 防御 parent 环导致递归不终止。
             conn.execute(
@@ -2934,15 +3348,13 @@ impl VfsTodoRepo {
 
         match result {
             Ok(_) => {
-                if let Err(commit_err) = conn.execute("COMMIT", []) {
-                    let _ = conn.execute("ROLLBACK", []);
-                    return Err(commit_err.into());
-                }
+                conn.execute("RELEASE SAVEPOINT purge_todo_item", [])?;
                 info!("[VFS::TodoRepo] Purged todo item: {}", item_id);
                 Ok(())
             }
             Err(e) => {
-                let _ = conn.execute("ROLLBACK", []);
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT purge_todo_item", []);
+                let _ = conn.execute("RELEASE SAVEPOINT purge_todo_item", []);
                 Err(e)
             }
         }
@@ -2966,6 +3378,807 @@ impl VfsTodoRepo {
             info!("[VFS::TodoRepo] Purged {} deleted todo items", count);
         }
         Ok(count)
+    }
+
+    /// 回收站计数（条目 + 清单），供前端徽标/分页控件一次拉取。
+    pub fn trash_counts(db: &VfsDatabase) -> VfsResult<TodoTrashCounts> {
+        Ok(TodoTrashCounts {
+            deleted_items: Self::count_deleted_todo_items(db)?,
+            deleted_lists: Self::count_deleted_todo_lists(db)?,
+        })
+    }
+
+    // ========================================================================
+    // 批量操作（2026-07-20 新增；单事务，全部成功或全部回滚。
+    // 「跳过」不是失败：不存在/已删除/状态不适用的 ID 收集进 skipped_ids，
+    // 其余照常处理——批量操作不因个别条目已被并发删除而整体失败。）
+    // ========================================================================
+
+    /// 批量完成待办项（已完成的条目幂等返回原状态；重复任务照常派生下一次实例）。
+    ///
+    /// 返回 `(结果, 事件 entityIds)`：entityIds = 实际发生写库变更的条目 id
+    /// + 派生的下一次重复实例 id（按发生顺序）。整批幂等命中（无实际写库）
+    /// 时为空——handler 据此决定是否广播 `todo://changed`
+    /// （★ 2026-07-20 r3 补齐：修复"幂等命中也广播"与"entityIds 缺派生实例"）。
+    pub fn batch_complete_items(
+        db: &VfsDatabase,
+        item_ids: &[String],
+    ) -> VfsResult<(TodoBatchItemsResult, Vec<String>)> {
+        let ids = sanitize_batch_ids(item_ids, "item_ids")?;
+        if ids.is_empty() {
+            return Ok((
+                TodoBatchItemsResult {
+                    items: Vec::new(),
+                    skipped_ids: Vec::new(),
+                },
+                Vec::new(),
+            ));
+        }
+        let conn = db.get_conn_safe()?;
+        conn.execute("SAVEPOINT todo_batch_complete", [])?;
+
+        let result = (|| -> VfsResult<(TodoBatchItemsResult, Vec<String>)> {
+            let mut items = Vec::with_capacity(ids.len());
+            let mut skipped_ids = Vec::new();
+            let mut event_ids = Vec::new();
+            for id in &ids {
+                match Self::get_todo_item_with_conn(&conn, id)? {
+                    None => skipped_ids.push(id.clone()),
+                    // 已完成 → 幂等命中，原样返回不再写库（不进事件 entityIds）
+                    Some(current) if current.status == "completed" => items.push(current),
+                    Some(_) => {
+                        let update = Self::update_todo_item_with_conn_ex(
+                            &conn,
+                            id,
+                            VfsUpdateTodoItemParams {
+                                status: Some("completed".to_string()),
+                                ..Default::default()
+                            },
+                        );
+                        match update {
+                            Ok((updated, spawned_id)) => {
+                                event_ids.push(updated.id.clone());
+                                items.push(updated);
+                                if let Some(spawned) = spawned_id {
+                                    event_ids.push(spawned);
+                                }
+                            }
+                            // 读取与更新之间被并发删除 → 跳过而非整体失败
+                            Err(VfsError::NotFound { .. }) => skipped_ids.push(id.clone()),
+                            Err(e) => return Err(e),
+                        }
+                    }
+                }
+            }
+            Ok((TodoBatchItemsResult { items, skipped_ids }, event_ids))
+        })();
+
+        match result {
+            Ok(out) => {
+                conn.execute("RELEASE SAVEPOINT todo_batch_complete", [])?;
+                info!(
+                    "[VFS::TodoRepo] Batch completed {} items ({} skipped)",
+                    out.0.items.len(),
+                    out.0.skipped_ids.len()
+                );
+                Ok(out)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT todo_batch_complete", []);
+                let _ = conn.execute("RELEASE SAVEPOINT todo_batch_complete", []);
+                Err(e)
+            }
+        }
+    }
+
+    /// 批量改期。
+    ///
+    /// - `due_date`：`None` 或空串 → 清空到期日（联动清空到期时间）；
+    ///   `Some("YYYY-MM-DD")` → 设为该日期
+    /// - `due_time`：`None` → 保留各条目现有时间；`Some("")` → 清空；
+    ///   `Some("HH:MM")` → 设为该时间
+    pub fn batch_reschedule_items(
+        db: &VfsDatabase,
+        item_ids: &[String],
+        due_date: Option<String>,
+        due_time: Option<String>,
+    ) -> VfsResult<TodoBatchItemsResult> {
+        // 输入格式提前校验（与逐条更新同一套校验器），失败即整体拒绝
+        validate_due_date(&normalize_optional_str(due_date.clone()))?;
+        validate_due_time(&normalize_optional_str(due_time.clone()))?;
+
+        let ids = sanitize_batch_ids(item_ids, "item_ids")?;
+        if ids.is_empty() {
+            return Ok(TodoBatchItemsResult {
+                items: Vec::new(),
+                skipped_ids: Vec::new(),
+            });
+        }
+        let conn = db.get_conn_safe()?;
+        conn.execute("SAVEPOINT todo_batch_reschedule", [])?;
+
+        let result = (|| -> VfsResult<TodoBatchItemsResult> {
+            let mut items = Vec::with_capacity(ids.len());
+            let mut skipped_ids = Vec::new();
+            for id in &ids {
+                let update = Self::update_todo_item_with_conn(
+                    &conn,
+                    id,
+                    VfsUpdateTodoItemParams {
+                        // Some("") 在更新路径中表示"清空为 NULL"
+                        due_date: Some(due_date.clone().unwrap_or_default()),
+                        due_time: due_time.clone(),
+                        ..Default::default()
+                    },
+                );
+                match update {
+                    Ok(updated) => items.push(updated),
+                    Err(VfsError::NotFound { .. }) => skipped_ids.push(id.clone()),
+                    Err(e) => return Err(e),
+                }
+            }
+            Ok(TodoBatchItemsResult { items, skipped_ids })
+        })();
+
+        match result {
+            Ok(out) => {
+                conn.execute("RELEASE SAVEPOINT todo_batch_reschedule", [])?;
+                info!(
+                    "[VFS::TodoRepo] Batch rescheduled {} items ({} skipped)",
+                    out.items.len(),
+                    out.skipped_ids.len()
+                );
+                Ok(out)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT todo_batch_reschedule", []);
+                let _ = conn.execute("RELEASE SAVEPOINT todo_batch_reschedule", []);
+                Err(e)
+            }
+        }
+    }
+
+    /// 批量设置优先级（★ 2026-07-20 r3 补齐；语义完全镜像 batch_reschedule：
+    /// 单事务、priority 非法时整体拒绝（与单项更新同一套校验器）、
+    /// 不存在/已删除的 ID 进 skipped_ids）。
+    pub fn batch_set_priority_items(
+        db: &VfsDatabase,
+        item_ids: &[String],
+        priority: &str,
+    ) -> VfsResult<TodoBatchItemsResult> {
+        // 输入提前校验，失败即整体拒绝（不部分执行）
+        validate_todo_priority(priority)?;
+
+        let ids = sanitize_batch_ids(item_ids, "item_ids")?;
+        if ids.is_empty() {
+            return Ok(TodoBatchItemsResult {
+                items: Vec::new(),
+                skipped_ids: Vec::new(),
+            });
+        }
+        let conn = db.get_conn_safe()?;
+        conn.execute("SAVEPOINT todo_batch_set_priority", [])?;
+
+        let result = (|| -> VfsResult<TodoBatchItemsResult> {
+            let mut items = Vec::with_capacity(ids.len());
+            let mut skipped_ids = Vec::new();
+            for id in &ids {
+                let update = Self::update_todo_item_with_conn(
+                    &conn,
+                    id,
+                    VfsUpdateTodoItemParams {
+                        priority: Some(priority.to_string()),
+                        ..Default::default()
+                    },
+                );
+                match update {
+                    Ok(updated) => items.push(updated),
+                    Err(VfsError::NotFound { .. }) => skipped_ids.push(id.clone()),
+                    Err(e) => return Err(e),
+                }
+            }
+            Ok(TodoBatchItemsResult { items, skipped_ids })
+        })();
+
+        match result {
+            Ok(out) => {
+                conn.execute("RELEASE SAVEPOINT todo_batch_set_priority", [])?;
+                info!(
+                    "[VFS::TodoRepo] Batch set priority '{}' on {} items ({} skipped)",
+                    priority,
+                    out.items.len(),
+                    out.skipped_ids.len()
+                );
+                Ok(out)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT todo_batch_set_priority", []);
+                let _ = conn.execute("RELEASE SAVEPOINT todo_batch_set_priority", []);
+                Err(e)
+            }
+        }
+    }
+
+    /// 批量移动到目标清单（每个条目连同子树，语义同 move_todo_item）。
+    ///
+    /// 输入中互为祖先-后代的 ID：后代随祖先子树整体迁移，自身跳过
+    /// （skipped_ids），避免"先迁子再迁父"把子树拆散且结果依赖输入顺序。
+    pub fn batch_move_items(
+        db: &VfsDatabase,
+        item_ids: &[String],
+        target_list_id: &str,
+    ) -> VfsResult<TodoBatchItemsResult> {
+        let ids = sanitize_batch_ids(item_ids, "item_ids")?;
+        if ids.is_empty() {
+            return Ok(TodoBatchItemsResult {
+                items: Vec::new(),
+                skipped_ids: Vec::new(),
+            });
+        }
+        let conn = db.get_conn_safe()?;
+
+        let target_exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM todo_lists WHERE id = ?1 AND deleted_at IS NULL)",
+            params![target_list_id],
+            |row| row.get(0),
+        )?;
+        if !target_exists {
+            return Err(VfsError::NotFound {
+                resource_type: "TodoList".to_string(),
+                id: target_list_id.to_string(),
+            });
+        }
+
+        conn.execute("SAVEPOINT todo_batch_move", [])?;
+
+        let result = (|| -> VfsResult<TodoBatchItemsResult> {
+            // 先在任何移动发生前整体计算"祖先在批量集合内"的跳过集，
+            // 保证结果与输入顺序无关
+            let id_set: HashSet<&str> = ids.iter().map(String::as_str).collect();
+            let mut skip_set: HashSet<String> = HashSet::new();
+            {
+                let mut stmt = conn.prepare(
+                    r#"
+                    WITH RECURSIVE ancestors(id, depth) AS (
+                        SELECT parent_id, 1 FROM todo_items
+                        WHERE id = ?1 AND parent_id IS NOT NULL
+                        UNION ALL
+                        SELECT ti.parent_id, a.depth + 1
+                        FROM todo_items ti
+                        JOIN ancestors a ON ti.id = a.id
+                        WHERE ti.parent_id IS NOT NULL AND a.depth < 100
+                    )
+                    SELECT id FROM ancestors
+                    "#,
+                )?;
+                for id in &ids {
+                    let ancestors: Vec<String> = stmt
+                        .query_map(params![id], |row| row.get(0))?
+                        .collect::<Result<_, _>>()?;
+                    if ancestors.iter().any(|a| id_set.contains(a.as_str())) {
+                        skip_set.insert(id.clone());
+                    }
+                }
+            }
+
+            let mut items = Vec::with_capacity(ids.len());
+            let mut skipped_ids = Vec::new();
+            for id in &ids {
+                if skip_set.contains(id) {
+                    skipped_ids.push(id.clone());
+                    continue;
+                }
+                match Self::move_todo_item_with_conn(&conn, id, target_list_id) {
+                    Ok(item) => items.push(item),
+                    Err(VfsError::NotFound { resource_type, .. })
+                        if resource_type == "TodoItem" =>
+                    {
+                        skipped_ids.push(id.clone())
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            Ok(TodoBatchItemsResult { items, skipped_ids })
+        })();
+
+        match result {
+            Ok(out) => {
+                conn.execute("RELEASE SAVEPOINT todo_batch_move", [])?;
+                info!(
+                    "[VFS::TodoRepo] Batch moved {} items to list {} ({} skipped)",
+                    out.items.len(),
+                    target_list_id,
+                    out.skipped_ids.len()
+                );
+                Ok(out)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT todo_batch_move", []);
+                let _ = conn.execute("RELEASE SAVEPOINT todo_batch_move", []);
+                Err(e)
+            }
+        }
+    }
+
+    /// 批量软删除（每个条目连同子树同批次删除，语义同 delete_todo_item）
+    pub fn batch_delete_items(
+        db: &VfsDatabase,
+        item_ids: &[String],
+    ) -> VfsResult<TodoBatchIdsResult> {
+        let ids = sanitize_batch_ids(item_ids, "item_ids")?;
+        if ids.is_empty() {
+            return Ok(TodoBatchIdsResult {
+                affected_ids: Vec::new(),
+                skipped_ids: Vec::new(),
+            });
+        }
+        let conn = db.get_conn_safe()?;
+        conn.execute("SAVEPOINT todo_batch_delete", [])?;
+
+        let result = (|| -> VfsResult<TodoBatchIdsResult> {
+            let mut affected_ids = Vec::with_capacity(ids.len());
+            let mut skipped_ids = Vec::new();
+            for id in &ids {
+                match Self::delete_todo_item_with_conn(&conn, id) {
+                    Ok(()) => affected_ids.push(id.clone()),
+                    Err(VfsError::NotFound { .. }) => skipped_ids.push(id.clone()),
+                    Err(e) => return Err(e),
+                }
+            }
+            Ok(TodoBatchIdsResult {
+                affected_ids,
+                skipped_ids,
+            })
+        })();
+
+        match result {
+            Ok(out) => {
+                conn.execute("RELEASE SAVEPOINT todo_batch_delete", [])?;
+                info!(
+                    "[VFS::TodoRepo] Batch deleted {} items ({} skipped)",
+                    out.affected_ids.len(),
+                    out.skipped_ids.len()
+                );
+                Ok(out)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT todo_batch_delete", []);
+                let _ = conn.execute("RELEASE SAVEPOINT todo_batch_delete", []);
+                Err(e)
+            }
+        }
+    }
+
+    /// 批量从回收站恢复（语义同 restore_todo_item：恢复自身 + 同批次后代；
+    /// 所属清单已删除的条目跳过）
+    pub fn batch_restore_items(
+        db: &VfsDatabase,
+        item_ids: &[String],
+    ) -> VfsResult<TodoBatchItemsResult> {
+        let ids = sanitize_batch_ids(item_ids, "item_ids")?;
+        if ids.is_empty() {
+            return Ok(TodoBatchItemsResult {
+                items: Vec::new(),
+                skipped_ids: Vec::new(),
+            });
+        }
+        let conn = db.get_conn_safe()?;
+        conn.execute("SAVEPOINT todo_batch_restore", [])?;
+
+        let result = (|| -> VfsResult<TodoBatchItemsResult> {
+            let mut items = Vec::with_capacity(ids.len());
+            let mut skipped_ids = Vec::new();
+            for id in &ids {
+                match Self::restore_todo_item_with_conn(&conn, id) {
+                    Ok(item) => items.push(item),
+                    Err(VfsError::NotFound { .. }) | Err(VfsError::InvalidOperation { .. }) => {
+                        skipped_ids.push(id.clone())
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            Ok(TodoBatchItemsResult { items, skipped_ids })
+        })();
+
+        match result {
+            Ok(out) => {
+                conn.execute("RELEASE SAVEPOINT todo_batch_restore", [])?;
+                info!(
+                    "[VFS::TodoRepo] Batch restored {} items ({} skipped)",
+                    out.items.len(),
+                    out.skipped_ids.len()
+                );
+                Ok(out)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT todo_batch_restore", []);
+                let _ = conn.execute("RELEASE SAVEPOINT todo_batch_restore", []);
+                Err(e)
+            }
+        }
+    }
+
+    /// 批量彻底删除（仅回收站中的条目；未在回收站/不存在的 ID 跳过）
+    pub fn batch_purge_items(
+        db: &VfsDatabase,
+        item_ids: &[String],
+    ) -> VfsResult<TodoBatchIdsResult> {
+        let ids = sanitize_batch_ids(item_ids, "item_ids")?;
+        if ids.is_empty() {
+            return Ok(TodoBatchIdsResult {
+                affected_ids: Vec::new(),
+                skipped_ids: Vec::new(),
+            });
+        }
+        let conn = db.get_conn_safe()?;
+        conn.execute("SAVEPOINT todo_batch_purge", [])?;
+
+        let result = (|| -> VfsResult<TodoBatchIdsResult> {
+            let mut affected_ids = Vec::with_capacity(ids.len());
+            let mut skipped_ids = Vec::new();
+            for id in &ids {
+                match Self::purge_todo_item_with_conn(&conn, id) {
+                    Ok(()) => affected_ids.push(id.clone()),
+                    Err(VfsError::NotFound { .. }) | Err(VfsError::InvalidOperation { .. }) => {
+                        skipped_ids.push(id.clone())
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            Ok(TodoBatchIdsResult {
+                affected_ids,
+                skipped_ids,
+            })
+        })();
+
+        match result {
+            Ok(out) => {
+                conn.execute("RELEASE SAVEPOINT todo_batch_purge", [])?;
+                info!(
+                    "[VFS::TodoRepo] Batch purged {} items ({} skipped)",
+                    out.affected_ids.len(),
+                    out.skipped_ids.len()
+                );
+                Ok(out)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT todo_batch_purge", []);
+                let _ = conn.execute("RELEASE SAVEPOINT todo_batch_purge", []);
+                Err(e)
+            }
+        }
+    }
+
+    // ========================================================================
+    // 统计聚合（2026-07-20 新增：前端统计视图一次查询拿全）
+    // ========================================================================
+
+    /// 待办统计总览：总量/今日/逾期 + 近 N 天完成趋势 + 按清单/优先级/标签分布。
+    ///
+    /// - `days` clamp 1-366，趋势按本地日历日分桶（completed_at/created_at
+    ///   为 UTC ISO 串，逐行转本地日，口径与 pomodoro get_daily_stats 一致）
+    /// - 标签来自 tags_json（JSON 数组），Rust 侧解析聚合（不依赖 json1 扩展），
+    ///   仅统计 pending/completed 两态，按总数降序取前 100
+    pub fn stats_overview(db: &VfsDatabase, days: u32) -> VfsResult<TodoStatsOverview> {
+        use chrono::{DateTime, Duration};
+
+        let days = days.clamp(1, 366) as i64;
+        let conn = db.get_conn_safe()?;
+        let today = chrono::Local::now().date_naive();
+        let today_str = today.format("%Y-%m-%d").to_string();
+        let range_start_local = today - Duration::days(days - 1);
+        let range_start_utc = local_date_start_utc_string(range_start_local);
+        let (today_start_utc, today_end_utc) = local_today_utc_bounds();
+
+        let total_pending: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM todo_items WHERE status = 'pending' AND deleted_at IS NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        let total_completed: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM todo_items WHERE status = 'completed' AND deleted_at IS NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        let completed_today: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM todo_items WHERE status = 'completed' AND deleted_at IS NULL AND completed_at >= ?1 AND completed_at < ?2",
+            params![today_start_utc, today_end_utc],
+            |row| row.get(0),
+        )?;
+        let overdue_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM todo_items WHERE status = 'pending' AND due_date < ?1 AND deleted_at IS NULL",
+            params![today_str],
+            |row| row.get(0),
+        )?;
+
+        // 趋势：预填完整日期序列（无数据天补零），逐行按本地日归桶
+        let mut completion_trend: Vec<TodoDailyCompletionStat> = (0..days)
+            .map(|i| TodoDailyCompletionStat {
+                date: (range_start_local + Duration::days(i))
+                    .format("%Y-%m-%d")
+                    .to_string(),
+                completed_count: 0,
+                created_count: 0,
+            })
+            .collect();
+        let bucket_index = |ts: &str| -> Option<usize> {
+            match DateTime::parse_from_rfc3339(ts) {
+                Ok(dt) => {
+                    let idx = (dt.with_timezone(&chrono::Local).date_naive() - range_start_local)
+                        .num_days();
+                    if (0..days).contains(&idx) {
+                        Some(idx as usize)
+                    } else {
+                        None
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        "[VFS::TodoRepo] Skipping non-RFC3339 timestamp '{}' in stats overview: {}",
+                        ts, e
+                    );
+                    None
+                }
+            }
+        };
+        {
+            let mut stmt = conn.prepare(
+                "SELECT completed_at FROM todo_items WHERE status = 'completed' AND deleted_at IS NULL AND completed_at >= ?1",
+            )?;
+            let completed: Vec<String> = stmt
+                .query_map(params![range_start_utc], |row| row.get(0))?
+                .filter_map(log_and_skip_err)
+                .collect();
+            for ts in completed {
+                if let Some(idx) = bucket_index(&ts) {
+                    completion_trend[idx].completed_count += 1;
+                }
+            }
+            let mut stmt = conn.prepare(
+                "SELECT created_at FROM todo_items WHERE deleted_at IS NULL AND created_at >= ?1",
+            )?;
+            let created: Vec<String> = stmt
+                .query_map(params![range_start_utc], |row| row.get(0))?
+                .filter_map(log_and_skip_err)
+                .collect();
+            for ts in created {
+                if let Some(idx) = bucket_index(&ts) {
+                    completion_trend[idx].created_count += 1;
+                }
+            }
+        }
+
+        // 按清单分布（一条聚合 SQL，顺序与 list_todo_lists 一致）
+        let by_list: Vec<TodoListDistributionStat> = {
+            let mut stmt = conn.prepare(
+                r#"
+                SELECT tl.id, tl.title,
+                       COALESCE(SUM(CASE WHEN ti.status = 'pending' THEN 1 ELSE 0 END), 0),
+                       COALESCE(SUM(CASE WHEN ti.status = 'completed' THEN 1 ELSE 0 END), 0)
+                FROM todo_lists tl
+                LEFT JOIN todo_items ti
+                  ON ti.todo_list_id = tl.id AND ti.deleted_at IS NULL
+                WHERE tl.deleted_at IS NULL
+                GROUP BY tl.id
+                ORDER BY tl.is_default DESC, tl.sort_order ASC, tl.updated_at DESC
+                "#,
+            )?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok(TodoListDistributionStat {
+                        list_id: row.get(0)?,
+                        list_title: row.get(1)?,
+                        pending_count: row.get(2)?,
+                        completed_count: row.get(3)?,
+                    })
+                })?
+                .filter_map(log_and_skip_err)
+                .collect();
+            rows
+        };
+
+        // 按优先级分布（五档固定顺序，含 0）
+        let by_priority: Vec<TodoPriorityDistributionStat> = {
+            let mut stmt = conn.prepare(
+                "SELECT priority, COUNT(*) FROM todo_items WHERE status = 'pending' AND deleted_at IS NULL GROUP BY priority",
+            )?;
+            let raw: Vec<(String, i64)> = stmt
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .filter_map(log_and_skip_err)
+                .collect();
+            ["urgent", "high", "medium", "low", "none"]
+                .iter()
+                .map(|p| TodoPriorityDistributionStat {
+                    priority: (*p).to_string(),
+                    pending_count: raw
+                        .iter()
+                        .find(|(k, _)| k == p)
+                        .map(|(_, c)| *c)
+                        .unwrap_or(0),
+                })
+                .collect()
+        };
+
+        // 按标签分布（Rust 侧解析 tags_json，避免依赖 json1 扩展）
+        let by_tag: Vec<TodoTagDistributionStat> = {
+            let mut stmt = conn.prepare(
+                r#"
+                SELECT tags_json, status FROM todo_items
+                WHERE deleted_at IS NULL
+                  AND status IN ('pending', 'completed')
+                  AND tags_json IS NOT NULL AND tags_json != '' AND tags_json != '[]'
+                "#,
+            )?;
+            let rows: Vec<(String, String)> = stmt
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .filter_map(log_and_skip_err)
+                .collect();
+            let mut tag_map: std::collections::BTreeMap<String, (i64, i64)> =
+                std::collections::BTreeMap::new();
+            for (tags_json, status) in rows {
+                let Ok(tags) = serde_json::from_str::<Vec<String>>(&tags_json) else {
+                    continue;
+                };
+                // 同一条目内重复标签只计一次
+                let mut seen: HashSet<String> = HashSet::new();
+                for tag in tags {
+                    let tag = tag.trim().to_string();
+                    if tag.is_empty() || !seen.insert(tag.clone()) {
+                        continue;
+                    }
+                    let entry = tag_map.entry(tag).or_insert((0, 0));
+                    match status.as_str() {
+                        "pending" => entry.0 += 1,
+                        "completed" => entry.1 += 1,
+                        _ => {}
+                    }
+                }
+            }
+            let mut by_tag: Vec<TodoTagDistributionStat> = tag_map
+                .into_iter()
+                .map(|(tag, (pending, completed))| TodoTagDistributionStat {
+                    tag,
+                    pending_count: pending,
+                    completed_count: completed,
+                })
+                .collect();
+            by_tag.sort_by(|a, b| {
+                (b.pending_count + b.completed_count)
+                    .cmp(&(a.pending_count + a.completed_count))
+                    .then_with(|| a.tag.cmp(&b.tag))
+            });
+            by_tag.truncate(100);
+            by_tag
+        };
+
+        Ok(TodoStatsOverview {
+            total_pending,
+            total_completed,
+            completed_today,
+            overdue_count,
+            completion_trend,
+            by_list,
+            by_priority,
+            by_tag,
+        })
+    }
+
+    /// 全量标签词表（`todo_list_all_tags` 命令；★ 2026-07-20 r3 补齐）。
+    ///
+    /// 与 `stats_overview.by_tag` 的差异（该路径为统计视图设计，
+    /// 截断前 100 且不排除软删清单中的条目，口径保留不动）：
+    /// - **无 100 上限**，全量返回；
+    /// - 排除软删除条目 *与* 软删除清单中的条目（软删清单的条目
+    ///   deleted_at 通常已同批置位，EXISTS 子句兜底历史脏数据）；
+    /// - 不分状态，count = 含该标签的条目总数（同一条目内重复标签只计一次）。
+    ///
+    /// tags 以 `tags_json`（JSON 字符串数组文本）落库，沿用本仓库惯例在
+    /// Rust 侧解析聚合（不依赖 SQLite json1 扩展）；SQL 先按
+    /// `tags_json` 非空预过滤，只捞真正带标签的行。
+    /// count 降序、同 count 按 tag 升序（BTreeMap 保证解析序稳定）。
+    pub fn list_all_tags(db: &VfsDatabase) -> VfsResult<Vec<TagCountEntry>> {
+        let conn = db.get_conn_safe()?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT ti.tags_json FROM todo_items ti
+            WHERE ti.deleted_at IS NULL
+              AND ti.tags_json IS NOT NULL AND ti.tags_json != '' AND ti.tags_json != '[]'
+              AND EXISTS(SELECT 1 FROM todo_lists l WHERE l.id = ti.todo_list_id AND l.deleted_at IS NULL)
+            "#,
+        )?;
+        let rows: Vec<String> = stmt
+            .query_map([], |row| row.get(0))?
+            .filter_map(log_and_skip_err)
+            .collect();
+
+        let mut tag_map: std::collections::BTreeMap<String, i64> =
+            std::collections::BTreeMap::new();
+        for tags_json in rows {
+            let Ok(tags) = serde_json::from_str::<Vec<String>>(&tags_json) else {
+                continue;
+            };
+            // 同一条目内重复标签只计一次（与 stats_overview.by_tag 口径一致）
+            let mut seen: HashSet<String> = HashSet::new();
+            for tag in tags {
+                let tag = tag.trim().to_string();
+                if tag.is_empty() || !seen.insert(tag.clone()) {
+                    continue;
+                }
+                *tag_map.entry(tag).or_insert(0) += 1;
+            }
+        }
+
+        let mut out: Vec<TagCountEntry> = tag_map
+            .into_iter()
+            .map(|(tag, count)| TagCountEntry { tag, count })
+            .collect();
+        out.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.tag.cmp(&b.tag)));
+        Ok(out)
+    }
+
+    /// 清单条目 + 直接子任务计数（N+1 消除：一次聚合 JOIN 取代
+    /// "列表 + 每行一次子任务 COUNT"；排序/过滤/分页语义与
+    /// `list_items_by_list_paged` 完全一致）。
+    pub fn list_items_with_child_stats(
+        db: &VfsDatabase,
+        list_id: &str,
+        include_completed: bool,
+        limit: Option<u32>,
+        offset: Option<u32>,
+    ) -> VfsResult<Vec<TodoItemWithChildStats>> {
+        let conn = db.get_conn_safe()?;
+        let sql = if include_completed {
+            r#"
+            SELECT ti.id, ti.todo_list_id, ti.title, ti.description, ti.status, ti.priority, ti.due_date, ti.due_time, ti.reminder,
+                   ti.tags_json, ti.sort_order, ti.parent_id, ti.completed_at, ti.repeat_json, ti.attachments_json, ti.estimated_pomodoros, ti.completed_pomodoros, ti.created_at, ti.updated_at, ti.deleted_at,
+                   COALESCE(cs.total, 0), COALESCE(cs.done, 0)
+            FROM todo_items ti
+            LEFT JOIN (
+                SELECT parent_id,
+                       COUNT(*) AS total,
+                       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS done
+                FROM todo_items
+                WHERE deleted_at IS NULL AND parent_id IS NOT NULL
+                GROUP BY parent_id
+            ) cs ON cs.parent_id = ti.id
+            WHERE ti.todo_list_id = ?1 AND ti.deleted_at IS NULL
+            ORDER BY
+                CASE ti.status WHEN 'pending' THEN 0 WHEN 'completed' THEN 1 WHEN 'cancelled' THEN 2 END,
+                ti.sort_order ASC,
+                ti.created_at ASC
+            LIMIT ?2 OFFSET ?3
+            "#
+        } else {
+            r#"
+            SELECT ti.id, ti.todo_list_id, ti.title, ti.description, ti.status, ti.priority, ti.due_date, ti.due_time, ti.reminder,
+                   ti.tags_json, ti.sort_order, ti.parent_id, ti.completed_at, ti.repeat_json, ti.attachments_json, ti.estimated_pomodoros, ti.completed_pomodoros, ti.created_at, ti.updated_at, ti.deleted_at,
+                   COALESCE(cs.total, 0), COALESCE(cs.done, 0)
+            FROM todo_items ti
+            LEFT JOIN (
+                SELECT parent_id,
+                       COUNT(*) AS total,
+                       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS done
+                FROM todo_items
+                WHERE deleted_at IS NULL AND parent_id IS NOT NULL
+                GROUP BY parent_id
+            ) cs ON cs.parent_id = ti.id
+            WHERE ti.todo_list_id = ?1 AND ti.deleted_at IS NULL AND ti.status = 'pending'
+            ORDER BY ti.sort_order ASC, ti.created_at ASC
+            LIMIT ?2 OFFSET ?3
+            "#
+        };
+
+        let limit_param: i64 = limit.map(|v| v as i64).unwrap_or(-1);
+        let offset_param: i64 = offset.unwrap_or(0) as i64;
+        let mut stmt = conn.prepare(sql)?;
+        let rows = stmt.query_map(params![list_id, limit_param, offset_param], |row| {
+            Ok(TodoItemWithChildStats {
+                item: Self::row_to_todo_item(row)?,
+                subtask_count: row.get(20)?,
+                completed_subtask_count: row.get(21)?,
+            })
+        })?;
+        Ok(rows.filter_map(log_and_skip_err).collect())
     }
 
     fn row_to_todo_item(row: &rusqlite::Row) -> rusqlite::Result<VfsTodoItem> {
@@ -3029,7 +4242,6 @@ impl Default for VfsUpdateTodoItemParams {
             attachments: None,
             repeat_json: None,
             estimated_pomodoros: None,
-            completed_pomodoros: None,
             expected_updated_at: None,
         }
     }

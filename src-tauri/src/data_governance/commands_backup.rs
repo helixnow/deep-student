@@ -952,56 +952,113 @@ pub(super) async fn acquire_backup_global_permit(
     }
 }
 
-fn exit_backup_snapshot_barrier(app: &tauri::AppHandle) {
+#[derive(Default)]
+struct BackupBarrierOwnership {
+    database: bool,
+    database_manager: bool,
+    vfs: bool,
+    chat: bool,
+    usage: bool,
+    workspaces: bool,
+}
+
+fn exit_backup_snapshot_barrier(
+    app: &tauri::AppHandle,
+    ownership: &BackupBarrierOwnership,
+) -> Result<(), String> {
     let Some(state) = app.try_state::<crate::commands::AppState>() else {
-        return;
+        return Err("应用数据库状态已不可用，无法退出备份屏障".to_string());
     };
-    let _ = state.database.exit_maintenance_mode();
-    let _ = state.database_manager.exit_maintenance_mode();
-    if let Some(vfs) = &state.vfs_db {
-        let _ = vfs.exit_maintenance_mode();
+    let mut errors = Vec::new();
+    if ownership.database {
+        if let Err(e) = state.database.exit_maintenance_mode() {
+            errors.push(format!("主数据库: {}", e));
+        }
     }
-    if let Some(chat) = app.try_state::<std::sync::Arc<crate::chat_v2::ChatV2Database>>() {
-        let _ = chat.exit_maintenance_mode();
+    if ownership.database_manager {
+        if let Err(e) = state.database_manager.exit_maintenance_mode() {
+            errors.push(format!("数据库连接池: {}", e));
+        }
     }
-    if let Some(usage) = app.try_state::<std::sync::Arc<crate::llm_usage::LlmUsageDatabase>>() {
-        let _ = usage.exit_maintenance_mode();
+    if ownership.vfs {
+        if let Some(vfs) = &state.vfs_db {
+            if let Err(e) = vfs.exit_maintenance_mode() {
+                errors.push(format!("VFS: {}", e));
+            }
+        }
     }
-    if let Some(workspaces) =
-        app.try_state::<std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>()
-    {
-        let _ = workspaces.exit_maintenance_mode();
+    if ownership.chat {
+        if let Some(chat) = app.try_state::<std::sync::Arc<crate::chat_v2::ChatV2Database>>() {
+            if let Err(e) = chat.exit_maintenance_mode() {
+                errors.push(format!("Chat V2: {}", e));
+            }
+        }
+    }
+    if ownership.usage {
+        if let Some(usage) = app.try_state::<std::sync::Arc<crate::llm_usage::LlmUsageDatabase>>() {
+            if let Err(e) = usage.exit_maintenance_mode() {
+                errors.push(format!("LLM Usage: {}", e));
+            }
+        }
+    }
+    if ownership.workspaces {
+        if let Some(workspaces) =
+            app.try_state::<std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>()
+        {
+            if let Err(e) = workspaces.exit_maintenance_mode() {
+                errors.push(format!("工作区: {}", e));
+            }
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("退出备份快照屏障失败: {}", errors.join("; ")))
     }
 }
 
 /// Freeze every persisted database before assigning one snapshot epoch.
 /// Once the pools have checkpointed and detached, the sequential SQLite
 /// Backup API calls and asset scan observe a stable application-wide cut.
-struct BackupSnapshotBarrier {
+pub(crate) struct BackupSnapshotBarrier {
     app: tauri::AppHandle,
+    ownership: BackupBarrierOwnership,
 }
 
 impl BackupSnapshotBarrier {
-    fn enter(app: &tauri::AppHandle) -> Result<Self, String> {
+    pub(crate) fn enter(app: &tauri::AppHandle) -> Result<Self, String> {
         let state = app
             .try_state::<crate::commands::AppState>()
             .ok_or_else(|| "应用数据库状态尚未初始化".to_string())?;
+        if state.database.is_in_maintenance_mode() {
+            // 启动失败建立的 fail-close 已经冻结业务写入。备份可借用该屏障直接
+            // 读取磁盘快照，但 ownership 为空，Drop 绝不能解除原维护模式。
+            return Ok(Self {
+                app: app.clone(),
+                ownership: BackupBarrierOwnership::default(),
+            });
+        }
+        let mut ownership = BackupBarrierOwnership::default();
         let entered = (|| -> Result<(), String> {
             state
                 .database
                 .enter_maintenance_mode()
                 .map_err(|e| format!("主数据库进入备份快照屏障失败: {}", e))?;
+            ownership.database = true;
             state
                 .database_manager
                 .enter_maintenance_mode()
                 .map_err(|e| format!("数据库连接池进入备份快照屏障失败: {}", e))?;
+            ownership.database_manager = true;
             if let Some(vfs) = &state.vfs_db {
                 vfs.enter_maintenance_mode()
                     .map_err(|e| format!("VFS 进入备份快照屏障失败: {}", e))?;
+                ownership.vfs = true;
             }
             if let Some(chat) = app.try_state::<std::sync::Arc<crate::chat_v2::ChatV2Database>>() {
                 chat.enter_maintenance_mode()
                     .map_err(|e| format!("Chat V2 进入备份快照屏障失败: {}", e))?;
+                ownership.chat = true;
             }
             if let Some(usage) =
                 app.try_state::<std::sync::Arc<crate::llm_usage::LlmUsageDatabase>>()
@@ -1009,6 +1066,7 @@ impl BackupSnapshotBarrier {
                 usage
                     .enter_maintenance_mode()
                     .map_err(|e| format!("LLM Usage 进入备份快照屏障失败: {}", e))?;
+                ownership.usage = true;
             }
             if let Some(workspaces) =
                 app.try_state::<std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>()
@@ -1016,20 +1074,45 @@ impl BackupSnapshotBarrier {
                 workspaces
                     .enter_maintenance_mode()
                     .map_err(|e| format!("工作区进入备份快照屏障失败: {}", e))?;
+                ownership.workspaces = true;
             }
             Ok(())
         })();
         if let Err(error) = entered {
-            exit_backup_snapshot_barrier(app);
-            return Err(error);
+            return match exit_backup_snapshot_barrier(app, &ownership) {
+                Ok(()) => Err(error),
+                Err(rollback_error) => Err(format!(
+                    "{}；且回滚快照屏障失败（应用保持 fail-close）: {}",
+                    error, rollback_error
+                )),
+            };
         }
-        Ok(Self { app: app.clone() })
+        Ok(Self {
+            app: app.clone(),
+            ownership,
+        })
+    }
+
+    pub(crate) fn release(mut self) -> Result<(), String> {
+        match exit_backup_snapshot_barrier(&self.app, &self.ownership) {
+            Ok(()) => {
+                self.ownership = BackupBarrierOwnership::default();
+                Ok(())
+            }
+            // 保留 ownership；self 在返回后进入 Drop，再进行一次恢复尝试。
+            Err(error) => Err(error),
+        }
     }
 }
 
 impl Drop for BackupSnapshotBarrier {
     fn drop(&mut self) {
-        exit_backup_snapshot_barrier(&self.app);
+        if let Err(error) = exit_backup_snapshot_barrier(&self.app, &self.ownership) {
+            tracing::error!(
+                "[data_governance] 备份快照屏障释放失败，应用保持 fail-close: {}",
+                error
+            );
+        }
     }
 }
 
@@ -1582,7 +1665,7 @@ pub async fn data_governance_run_backup(
     if backup_type == "incremental" {
         return Err(super::backup::INCREMENTAL_BACKUP_REMOVED_MESSAGE.to_string());
     }
-    let include_assets = include_assets.unwrap_or(false);
+    let include_assets = include_assets.unwrap_or(true);
     info!(
         "[data_governance] 启动后台备份任务: type={}, include_assets={}",
         backup_type, include_assets
@@ -1818,7 +1901,7 @@ async fn execute_backup_with_progress(
     // 执行完整备份（含可选资产）
     let result = if include_assets {
         // 构建资产备份配置
-        let asset_config = if let Some(types) = asset_types {
+        let mut asset_config = if let Some(types) = asset_types {
             let parsed_types: Vec<AssetType> = types
                 .iter()
                 .filter_map(|s| AssetType::from_str(s))
@@ -1834,6 +1917,10 @@ async fn execute_backup_with_progress(
         } else {
             AssetBackupConfig::default()
         };
+        if asset_config.asset_types == AssetType::all() {
+            asset_config.max_file_size = u64::MAX;
+            asset_config.max_total_size = u64::MAX;
+        }
 
         // 阶段 3: 复制数据库和资产
         job_ctx.mark_running(
@@ -1857,7 +1944,15 @@ async fn execute_backup_with_progress(
 
         manager.backup_full()
     };
-    drop(snapshot_barrier);
+    if let Err(error) = snapshot_barrier.release() {
+        job_ctx.fail(error);
+        return;
+    }
+
+    let result = result.and_then(|manifest| {
+        manifest.validate_for_slot_restore()?;
+        Ok(manifest)
+    });
 
     if job_ctx.is_cancelled() {
         job_ctx.cancelled(Some("用户取消备份".to_string()));
@@ -2585,7 +2680,10 @@ async fn execute_tiered_backup_with_progress(
             return;
         }
     };
-    drop(snapshot_barrier);
+    if let Err(error) = snapshot_barrier.release() {
+        job_ctx.fail(error);
+        return;
+    }
 
     // 阶段 4: 资产备份 (80-95%) - 仅在包含资产时
     if include_assets {

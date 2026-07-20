@@ -165,7 +165,7 @@ pub enum LlmErrorClass {
     RetryableTransient,
     /// 429 速率限制：key 进冷却，先短退避重试一次再轮换
     RateLimited,
-    /// 401/403 鉴权失败：key 进冷却，仅允许同 provider 内换 key，不允许换模型
+    /// 明确的鉴权失败：key 进冷却，仅允许同 provider 内换 key，不允许换模型
     AuthFailed,
 }
 
@@ -184,7 +184,7 @@ pub(crate) fn tag_establish_failure(mut err: AppError, http_status: Option<u16>)
 }
 
 /// 错误分类：区分可重试（网络超时、5xx、429、连接失败）与
-/// 不可重试（401/403 鉴权、400 参数、内容审核拒绝、用户取消、流中断）
+/// 不可重试（权限/内容审核/参数错误、用户取消、流中断）
 pub fn classify_llm_error(err: &AppError) -> LlmErrorClass {
     let msg_lower = err.message.to_lowercase();
     if err.message.contains("取消") || msg_lower.contains("cancel") {
@@ -206,15 +206,17 @@ pub fn classify_llm_error(err: &AppError) -> LlmErrorClass {
         Some(429) => LlmErrorClass::RateLimited,
         Some(401) => LlmErrorClass::AuthFailed,
         Some(403) => {
-            // 部分供应商用 403 表示内容审核拒绝——视为不可重试而非鉴权问题
-            if msg_lower.contains("content")
-                || msg_lower.contains("moderation")
-                || err.message.contains("审核")
-                || err.message.contains("敏感")
+            // 403 更常表示模型权限、地区、组织策略或内容审核。仅在供应商
+            // 明确指出凭据本身无效时轮换 key，避免无意义地耗尽所有密钥。
+            if msg_lower.contains("invalid api key")
+                || msg_lower.contains("invalid_api_key")
+                || msg_lower.contains("invalid credential")
+                || msg_lower.contains("invalid signature")
+                || msg_lower.contains("authentication failed")
             {
-                LlmErrorClass::NonRetryable
-            } else {
                 LlmErrorClass::AuthFailed
+            } else {
+                LlmErrorClass::NonRetryable
             }
         }
         Some(408) => LlmErrorClass::RetryableTransient,
@@ -300,6 +302,8 @@ pub struct ModelKeySet {
     pub config_id: String,
     pub vendor_id: String,
     pub keys: Vec<String>,
+    /// authMode=none 的模型以空字符串表示一次合法的无凭据尝试。
+    pub allows_empty_key: bool,
 }
 
 /// 扁平化后的单次尝试：models[model_idx] + keys[key_idx]
@@ -338,7 +342,7 @@ where
 /// - 每个模型内部先列未冷却的 key（保持配置顺序），冷却中的 key 跳过；
 /// - 只要任一模型仍有未冷却 key，就绝不重试冷却 key；
 /// - 只有全部有效 key 都在冷却时，才确定性地保底尝试首个候选；
-/// - 空 key 一律跳过。
+/// - 空 key 仅对 authMode=none 候选有效。
 pub fn build_attempt_plan(
     models: &[ModelKeySet],
     cooldowns: &CooldownTable,
@@ -348,7 +352,7 @@ pub fn build_attempt_plan(
     let mut all_cooling_fallback = None;
     for (model_idx, set) in models.iter().enumerate() {
         for (key_idx, key) in set.keys.iter().enumerate() {
-            if key.trim().is_empty() {
+            if key.trim().is_empty() && !set.allows_empty_key {
                 continue;
             }
             let cooldown_key = key_fingerprint(&set.vendor_id, key);
@@ -436,15 +440,14 @@ pub(crate) struct FailoverRun {
     pub window: Option<tauri::Window>,
     /// 尝试函数内部是否已自带 429 短退避重试（流式建立循环自带；raw 非流式不带）
     pub attempts_handle_429_internally: bool,
-    /// 已编译请求要求的模型能力。`Some(false)` 表示 TM 编译形态，`Some(true)` 表示
-    /// MM 编译形态；模型级 failover 必须保持完全相同的能力。`None` 仅用于尚未按
-    /// TM/MM 编译的通用后台文本任务。
+    /// 已编译请求要求的输入能力。`Some(true)` 表示请求含多模态输入，候选必须支持；
+    /// `Some(false)` 表示纯文本请求，多模态模型同样可安全接收。
     pub required_is_multimodal: Option<bool>,
     pub param_overrides: ParamOverrides,
 }
 
 fn supports_required_modality(config: &ApiConfig, required_is_multimodal: Option<bool>) -> bool {
-    required_is_multimodal.is_none_or(|required| config.is_multimodal == required)
+    !required_is_multimodal.unwrap_or(false) || config.is_multimodal
 }
 
 fn short_reason(err: &AppError, class: LlmErrorClass) -> String {
@@ -455,6 +458,13 @@ fn short_reason(err: &AppError, class: LlmErrorClass) -> String {
 impl LLMManager {
     /// 收集某个模型配置的候选 API key：主 key + 该供应商配置的额外 key（api_keys）
     pub(crate) async fn candidate_api_keys_for(&self, config: &ApiConfig) -> Vec<String> {
+        if config
+            .auth_mode
+            .as_deref()
+            .is_some_and(|mode| mode.eq_ignore_ascii_case(super::AUTH_MODE_NONE))
+        {
+            return vec![String::new()];
+        }
         let mut keys = vec![config.api_key.clone()];
         if let Some(vendor_id) = config.vendor_id.as_deref() {
             if let Ok(vendors) = self.vendor_configs_for_runtime().await {
@@ -528,9 +538,7 @@ impl LLMManager {
             )));
         }
 
-        // ChatGPT/Codex OAuth is a single authenticated transport, not an API-key pool.
-        // Its intentionally empty api_key must never be filtered by the key planner, and
-        // auth/quota failures must not rotate keys or silently consume a fallback model.
+        // OAuth 是单一受管传输，不参与 API-key 轮换或模型 fallback。
         if primary.auth_mode.as_deref() == Some(super::AUTH_MODE_OPENAI_CODEX_OAUTH) {
             let mut config = primary;
             run.param_overrides.apply(&mut config);
@@ -560,7 +568,7 @@ impl LLMManager {
                                     models.push(cfg.clone());
                                 } else {
                                     warn!(
-                                        "[Failover] fallback 模型配置 {} 与当前请求的 TM/MM 编译形态不兼容，跳过",
+                                        "[Failover] fallback 模型配置 {} 不支持当前多模态输入，跳过",
                                         target,
                                     );
                                 }
@@ -591,6 +599,10 @@ impl LLMManager {
                 config_id: m.id.clone(),
                 vendor_id: m.vendor_id.clone().unwrap_or_default(),
                 keys: keys.clone(),
+                allows_empty_key: m
+                    .auth_mode
+                    .as_deref()
+                    .is_some_and(|mode| mode.eq_ignore_ascii_case(super::AUTH_MODE_NONE)),
             })
             .collect();
         let plan = build_attempt_plan(&metas, key_cooldowns(), Instant::now());
@@ -762,16 +774,18 @@ mod tests {
 
     #[test]
     fn classify_auth_failed() {
-        for status in [401u16, 403] {
-            let err = err_with_status(Some(status), "API Key 无效或已过期");
-            assert_eq!(classify_llm_error(&err), LlmErrorClass::AuthFailed);
-        }
+        let unauthorized = err_with_status(Some(401), "API Key 无效或已过期");
+        assert_eq!(classify_llm_error(&unauthorized), LlmErrorClass::AuthFailed);
+        let forbidden = err_with_status(Some(403), "invalid_api_key");
+        assert_eq!(classify_llm_error(&forbidden), LlmErrorClass::AuthFailed);
     }
 
     #[test]
     fn classify_403_content_moderation_is_non_retryable() {
         let err = err_with_status(Some(403), "请求被内容审核拒绝");
         assert_eq!(classify_llm_error(&err), LlmErrorClass::NonRetryable);
+        let permission = err_with_status(Some(403), "model access forbidden");
+        assert_eq!(classify_llm_error(&permission), LlmErrorClass::NonRetryable);
     }
 
     #[test]
@@ -961,7 +975,7 @@ mod tests {
     }
 
     #[test]
-    fn failover_candidates_must_match_the_compiled_tm_or_mm_shape() {
+    fn text_requests_allow_multimodal_fallbacks_but_images_require_them() {
         let text = ApiConfig {
             enabled: true,
             is_multimodal: false,
@@ -975,7 +989,7 @@ mod tests {
         assert!(!supports_required_modality(&text, Some(true)));
         assert!(supports_required_modality(&multimodal, Some(true)));
         assert!(supports_required_modality(&text, Some(false)));
-        assert!(!supports_required_modality(&multimodal, Some(false)));
+        assert!(supports_required_modality(&multimodal, Some(false)));
         assert!(supports_required_modality(&text, None));
         assert!(supports_required_modality(&multimodal, None));
     }
@@ -1050,6 +1064,7 @@ mod tests {
             config_id: config_id.to_string(),
             vendor_id: vendor_id.to_string(),
             keys: keys.iter().map(|s| s.to_string()).collect(),
+            allows_empty_key: false,
         }
     }
 

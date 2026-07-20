@@ -128,22 +128,35 @@ fn set_restore_cutover_maintenance(app: &tauri::AppHandle, enabled: bool) -> Res
         .try_state::<crate::commands::AppState>()
         .ok_or_else(|| "应用数据库状态尚未初始化".to_string())?;
     if enabled {
+        if state.database.is_in_maintenance_mode() {
+            return Err("应用已处于维护模式，拒绝启动恢复切槽以免解除现有安全屏障".to_string());
+        }
+        let mut entered_database = false;
+        let mut entered_manager = false;
+        let mut entered_vfs = false;
+        let mut entered_chat = false;
+        let mut entered_usage = false;
+        let mut entered_workspaces = false;
         let entered = (|| -> Result<(), String> {
             state
                 .database
                 .enter_maintenance_mode()
                 .map_err(|e| format!("主数据库进入恢复维护模式失败: {}", e))?;
+            entered_database = true;
             state
                 .database_manager
                 .enter_maintenance_mode()
                 .map_err(|e| format!("数据库连接池进入恢复维护模式失败: {}", e))?;
+            entered_manager = true;
             if let Some(vfs) = &state.vfs_db {
                 vfs.enter_maintenance_mode()
                     .map_err(|e| format!("VFS 进入恢复维护模式失败: {}", e))?;
+                entered_vfs = true;
             }
             if let Some(chat) = app.try_state::<std::sync::Arc<crate::chat_v2::ChatV2Database>>() {
                 chat.enter_maintenance_mode()
                     .map_err(|e| format!("Chat V2 进入恢复维护模式失败: {}", e))?;
+                entered_chat = true;
             }
             if let Some(usage) =
                 app.try_state::<std::sync::Arc<crate::llm_usage::LlmUsageDatabase>>()
@@ -151,6 +164,7 @@ fn set_restore_cutover_maintenance(app: &tauri::AppHandle, enabled: bool) -> Res
                 usage
                     .enter_maintenance_mode()
                     .map_err(|e| format!("LLM Usage 进入恢复维护模式失败: {}", e))?;
+                entered_usage = true;
             }
             if let Some(workspaces) =
                 app.try_state::<std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>()
@@ -158,32 +172,87 @@ fn set_restore_cutover_maintenance(app: &tauri::AppHandle, enabled: bool) -> Res
                 workspaces
                     .enter_maintenance_mode()
                     .map_err(|e| format!("工作区进入恢复维护模式失败: {}", e))?;
+                entered_workspaces = true;
             }
             Ok(())
         })();
         if let Err(error) = entered {
-            // Entering the barrier is a multi-component operation. Roll back
-            // every component so a partial failure cannot strand the running
-            // application in maintenance mode.
-            let _ = set_restore_cutover_maintenance(app, false);
+            // 只释放本次调用已经取得的组件；绝不能解除启动失败等其他所有者建立的
+            // fail-close 维护模式。
+            if entered_workspaces {
+                if let Some(workspaces) = app
+                    .try_state::<std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>()
+                {
+                    let _ = workspaces.exit_maintenance_mode();
+                }
+            }
+            if entered_usage {
+                if let Some(usage) =
+                    app.try_state::<std::sync::Arc<crate::llm_usage::LlmUsageDatabase>>()
+                {
+                    let _ = usage.exit_maintenance_mode();
+                }
+            }
+            if entered_chat {
+                if let Some(chat) =
+                    app.try_state::<std::sync::Arc<crate::chat_v2::ChatV2Database>>()
+                {
+                    let _ = chat.exit_maintenance_mode();
+                }
+            }
+            if entered_vfs {
+                if let Some(vfs) = &state.vfs_db {
+                    let _ = vfs.exit_maintenance_mode();
+                }
+            }
+            if entered_manager {
+                let _ = state.database_manager.exit_maintenance_mode();
+            }
+            if entered_database {
+                let _ = state.database.exit_maintenance_mode();
+            }
             return Err(error);
         }
     } else {
-        let _ = state.database.exit_maintenance_mode();
-        let _ = state.database_manager.exit_maintenance_mode();
+        // 退出屏障失败必须显式记录并上报：失败的组件保持 fail-close
+        //（维护屏障不解除，新连接继续被拒绝），绝不能静默吞掉让调用方
+        // 误以为已恢复正常服务。
+        let mut exit_errors: Vec<String> = Vec::new();
+        if let Err(e) = state.database.exit_maintenance_mode() {
+            exit_errors.push(format!("主数据库: {}", e));
+        }
+        if let Err(e) = state.database_manager.exit_maintenance_mode() {
+            exit_errors.push(format!("数据库连接池: {}", e));
+        }
         if let Some(vfs) = &state.vfs_db {
-            let _ = vfs.exit_maintenance_mode();
+            if let Err(e) = vfs.exit_maintenance_mode() {
+                exit_errors.push(format!("VFS: {}", e));
+            }
         }
         if let Some(chat) = app.try_state::<std::sync::Arc<crate::chat_v2::ChatV2Database>>() {
-            let _ = chat.exit_maintenance_mode();
+            if let Err(e) = chat.exit_maintenance_mode() {
+                exit_errors.push(format!("Chat V2: {}", e));
+            }
         }
         if let Some(usage) = app.try_state::<std::sync::Arc<crate::llm_usage::LlmUsageDatabase>>() {
-            let _ = usage.exit_maintenance_mode();
+            if let Err(e) = usage.exit_maintenance_mode() {
+                exit_errors.push(format!("LLM Usage: {}", e));
+            }
         }
         if let Some(workspaces) =
             app.try_state::<std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>()
         {
-            let _ = workspaces.exit_maintenance_mode();
+            if let Err(e) = workspaces.exit_maintenance_mode() {
+                exit_errors.push(format!("工作区: {}", e));
+            }
+        }
+        if !exit_errors.is_empty() {
+            let message = format!(
+                "退出恢复维护屏障失败（失败组件保持 fail-close，需重启恢复）: {}",
+                exit_errors.join("; ")
+            );
+            log::error!("[data_governance] {}", message);
+            return Err(message);
         }
     }
     Ok(())

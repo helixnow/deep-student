@@ -747,13 +747,18 @@ pub const V20260722_NOTE_TAGS: MigrationDef = MigrationDef::new(
 ])
 .idempotent();
 
-/// V20260723: partial index on todo_items.completed_at for local-day "today completed" stats.
-pub const V20260723_TODO_COMPLETED_AT_INDEX: MigrationDef = MigrationDef::new(
+/// V20260723: 修复历史翻译软删除的 folder_items 幽灵挂载，并补齐列表索引。
+pub const V20260723_TRANSLATION_SOFT_DELETE_REPAIR_AND_INDEXES: MigrationDef = MigrationDef::new(
     20260723,
-    "todo_completed_at_index",
-    include_str!("../../../migrations/vfs/V20260723__todo_completed_at_index.sql"),
+    "translation_soft_delete_repair_and_indexes",
+    include_str!(
+        "../../../migrations/vfs/V20260723__translation_soft_delete_repair_and_indexes.sql"
+    ),
 )
-.with_expected_indexes(&["idx_todo_items_completed_at"])
+.with_expected_indexes(&[
+    "idx_translations_created_alive",
+    "idx_folder_items_translation_folder_sort_active",
+])
 .idempotent();
 
 /// V20260724: 笔记全文检索 notes_fts（FTS5 contentless + trigram，触发器维护 + 回填）。
@@ -806,6 +811,64 @@ pub const V20260726_MINDMAP_CONTENT_UPDATED_AT: MigrationDef = MigrationDef::new
 ])
 .idempotent();
 
+/// V20260727: partial index on todo_items.completed_at for local-day "today completed" stats.
+/// （原 V20260723，与并行合入的 translation 迁移版本号冲突，重命名顺延；内容未变。）
+pub const V20260727_TODO_COMPLETED_AT_INDEX: MigrationDef = MigrationDef::new(
+    20260727,
+    "todo_completed_at_index",
+    include_str!("../../../migrations/vfs/V20260727__todo_completed_at_index.sql"),
+)
+.with_expected_indexes(&["idx_todo_items_completed_at"])
+.idempotent();
+
+/// V20260728: todo_items.reminder 部分索引（提醒调度器高频轮询）
+/// 与 (todo_list_id, parent_id, sort_order) 复合部分索引（清单视图排序、
+/// 每次创建/移动/重复派生的 MAX(sort_order) 查询）。
+pub const V20260728_TODO_REMINDER_INDEX_AND_LIST_SORT: MigrationDef = MigrationDef::new(
+    20260728,
+    "todo_reminder_index_and_list_sort",
+    include_str!("../../../migrations/vfs/V20260728__todo_reminder_index_and_list_sort.sql"),
+)
+.with_expected_indexes(&["idx_todo_items_reminder", "idx_todo_items_list_parent_sort"])
+.idempotent();
+
+/// V20260801: 待办/番茄钟统计与批量操作的查询索引（只增索引）。
+/// - (status, due_date) 复合部分索引服务 today/overdue/upcoming/counts 谓词；
+/// - work 记录 created_at 部分索引服务全部番茄钟统计聚合的时间窗扫描；
+/// - (todo_item_id, created_at) 部分索引服务任务关联查询的过滤 + 排序。
+pub const V20260801_TODO_POMODORO_STATS_INDEXES: MigrationDef = MigrationDef::new(
+    20260801,
+    "todo_pomodoro_stats_indexes",
+    include_str!("../../../migrations/vfs/V20260801__todo_pomodoro_stats_indexes.sql"),
+)
+.with_expected_indexes(&[
+    "idx_todo_items_status_due",
+    "idx_pomodoro_records_work_created",
+    "idx_pomodoro_records_item_created",
+])
+.idempotent();
+
+/// V20260806: mindmap_versions 复合查询索引（只增索引）。
+/// (mindmap_id, created_at DESC, version_id DESC) 覆盖自动保存合并窗口检查、
+/// 版本列表分页与保留策略清理的 `WHERE mindmap_id = ? ORDER BY ...` 形态。
+pub const V20260806_MINDMAP_VERSIONS_LOOKUP_INDEX: MigrationDef = MigrationDef::new(
+    20260806,
+    "mindmap_versions_lookup_index",
+    include_str!("../../../migrations/vfs/V20260806__mindmap_versions_lookup_index.sql"),
+)
+.with_expected_indexes(&["idx_mindmap_versions_mindmap_created"])
+.idempotent();
+
+/// V20260807: questions.structured_data 列（新题型结构化答案契约，
+/// true_false/matching/ordering/numeric 与增强填空题）。不参与 FTS 索引。
+/// 裸 ALTER ADD COLUMN 不可重复执行，故不标 idempotent。
+pub const V20260807_QUESTION_STRUCTURED_DATA: MigrationDef = MigrationDef::new(
+    20260807,
+    "question_structured_data",
+    include_str!("../../../migrations/vfs/V20260807__question_structured_data.sql"),
+)
+.with_expected_columns(&[("questions", "structured_data")]);
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -854,10 +917,15 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260720_MASTERY_EVENTS_SYNC,
     V20260721_POMODORO_BACKFILL_UPDATED_AT,
     V20260722_NOTE_TAGS,
-    V20260723_TODO_COMPLETED_AT_INDEX,
+    V20260723_TRANSLATION_SOFT_DELETE_REPAIR_AND_INDEXES,
     V20260724_NOTES_FTS,
     V20260725_NOTE_LINKS,
     V20260726_MINDMAP_CONTENT_UPDATED_AT,
+    V20260727_TODO_COMPLETED_AT_INDEX,
+    V20260728_TODO_REMINDER_INDEX_AND_LIST_SORT,
+    V20260801_TODO_POMODORO_STATS_INDEXES,
+    V20260806_MINDMAP_VERSIONS_LOOKUP_INDEX,
+    V20260807_QUESTION_STRUCTURED_DATA,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1000,11 +1068,11 @@ mod tests {
         assert!(V20260130_INIT.idempotent);
         // V001 init 迁移的最终保留表清单排除 V20260214 删除的 notes_versions
         assert_eq!(V20260130_INIT.expected_tables.len(), 25);
-        // 验证 FTS5 虚拟表和视图的 smoke test 查询已配置
-        assert_eq!(
-            V20260130_INIT.expected_queries.len(),
-            VFS_FTS_TABLE_COUNT + VFS_VIEW_COUNT
-        );
+        // 验证 FTS5 虚拟表和视图的 smoke test 查询已配置。
+        // 注意：这里锚定的是 init 时点的对象（questions_fts + trash_view），
+        // 不能挂钩 VFS_FTS_TABLE_COUNT 等 head 状态常量——
+        // notes_fts 等后续迁移新增的 FTS 表不属于 init 的 smoke 范围。
+        assert_eq!(V20260130_INIT.expected_queries.len(), 2);
     }
 
     #[test]

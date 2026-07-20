@@ -6,6 +6,7 @@
   "platforms": ["linux", "macOS", "windows"],
   "permissions": [
     "allow-quick-assistant-commands",
+    "allow-renderer-logging",
     "core:default",
     "core:event:default",
     "core:window:allow-close",

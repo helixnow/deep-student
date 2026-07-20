@@ -78,7 +78,7 @@
     "title": "端到端加密密码（可选，强烈推荐）",
     "placeholder": "留空则不加密；设置后仅你的设备可解密加密备份",
     "description": "开启后，上传的 ZIP 备份将使用 AES-256-GCM 加密，云服务商无法读取内容。",
-    "warning": "密码仅存储在本机系统凭据库（Keychain/Credential Manager）。若遗忘则无法恢复任何已加密的云端备份。所有连接此云端的设备必须使用同一密码。"
+    "warning": "密码仅以加密形式（AES-256-GCM）保存在本机，不会上传。若遗忘则无法恢复任何已加密的云端备份。所有连接此云端的设备必须使用同一密码。"
   },
 
   "progress": {
@@ -183,6 +183,9 @@
     "connectionSuccess": "连接成功！",
     "configSaved": "配置已保存",
     "configSavedButCredentialsFailed": "配置未保存：凭据无法写入安全存储",
+    "secureStoreIssueTitle": "系统安全存储需要处理",
+    "secureStoreReadFailed": "无法读取已保存的凭据。请恢复系统安全存储的访问权限后重新打开此面板；现有凭据未被修改。",
+    "secureStoreWriteFailed": "凭据尚未保存。请恢复系统安全存储的访问权限后再次点击保存。",
     "configSsotFailed": "配置未保存：无法写入后端同步配置",
     "configCleared": "配置已清除",
     "configClearPartial": "配置已从当前界面移除，但部分后端数据清理失败",

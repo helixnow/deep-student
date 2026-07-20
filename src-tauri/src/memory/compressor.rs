@@ -16,6 +16,38 @@ pub struct MemoryCompressor {
 
 const MAX_UNCOMPRESSED_CHARS: usize = 300;
 
+/// 压缩器输出条目
+///
+/// - 未压缩（透传）：`note_id` 为原始笔记的真实 ID，`source_note_ids` 为空
+/// - 压缩摘要：`note_id` 为 None（不再使用 `__compressed__` 哨兵值，避免
+///   LLM 拿假 ID 调 memory_read/memory_update_by_id 必然 NotFound），
+///   `source_note_ids` 保留压缩前所有成员的真实 note_id 供溯源
+#[derive(Debug, Clone)]
+pub struct CompressedMemoryResult {
+    pub note_id: Option<String>,
+    pub note_title: String,
+    pub folder_path: String,
+    pub chunk_text: String,
+    pub score: f32,
+    pub source_note_ids: Vec<String>,
+}
+
+impl CompressedMemoryResult {
+    fn passthrough(results: &[MemorySearchResult]) -> Vec<Self> {
+        results
+            .iter()
+            .map(|r| Self {
+                note_id: Some(r.note_id.clone()),
+                note_title: r.note_title.clone(),
+                folder_path: r.folder_path.clone(),
+                chunk_text: r.chunk_text.clone(),
+                score: r.score,
+                source_note_ids: Vec::new(),
+            })
+            .collect()
+    }
+}
+
 impl MemoryCompressor {
     pub fn new(llm_manager: Arc<LLMManager>) -> Self {
         Self { llm_manager }
@@ -26,12 +58,12 @@ impl MemoryCompressor {
     /// 策略：
     /// - 总字符数 ≤ MAX_UNCOMPRESSED_CHARS 时跳过压缩（省 API 调用）
     /// - 否则调用 LLM 将所有记忆合并压缩为紧凑摘要
-    /// - LLM 调用失败时降级为截断，不阻塞主流程
+    /// - LLM 调用失败时降级为透传原始结果，不阻塞主流程
     pub async fn compress(
         &self,
         query: &str,
         results: &[MemorySearchResult],
-    ) -> Vec<MemorySearchResult> {
+    ) -> Vec<CompressedMemoryResult> {
         if results.is_empty() {
             return vec![];
         }
@@ -42,7 +74,7 @@ impl MemoryCompressor {
                 "[MemoryCompressor] Total {} chars <= {} threshold, skipping compression",
                 total_chars, MAX_UNCOMPRESSED_CHARS
             );
-            return results.to_vec();
+            return CompressedMemoryResult::passthrough(results);
         }
 
         let prompt = self.build_prompt(query, results);
@@ -56,7 +88,7 @@ impl MemoryCompressor {
                 let compressed_text = output.assistant_message.trim().to_string();
                 if compressed_text.is_empty() {
                     warn!("[MemoryCompressor] LLM returned empty, falling back to originals");
-                    return results.to_vec();
+                    return CompressedMemoryResult::passthrough(results);
                 }
 
                 debug!(
@@ -66,13 +98,20 @@ impl MemoryCompressor {
                     compressed_text.chars().count()
                 );
 
-                vec![MemorySearchResult {
-                    note_id: "__compressed__".to_string(),
+                let source_note_ids: Vec<String> =
+                    results.iter().map(|r| r.note_id.clone()).collect();
+                let chunk_text = format!(
+                    "本条为 {} 条记忆的压缩摘要，可用 memory_read 按 sourceNoteIds 中的 ID 查看原文。\n{}",
+                    results.len(),
+                    compressed_text
+                );
+                vec![CompressedMemoryResult {
+                    note_id: None,
                     note_title: "用户记忆摘要".to_string(),
                     folder_path: String::new(),
-                    chunk_text: compressed_text,
+                    chunk_text,
                     score: results.first().map(|r| r.score).unwrap_or(0.5),
-                    updated_at: None,
+                    source_note_ids,
                 }]
             }
             Err(e) => {
@@ -80,7 +119,7 @@ impl MemoryCompressor {
                     "[MemoryCompressor] LLM compression failed, using originals: {}",
                     e
                 );
-                results.to_vec()
+                CompressedMemoryResult::passthrough(results)
             }
         }
     }

@@ -11,6 +11,7 @@ pub mod learner_profile;
 pub mod llm_decision;
 pub mod query_rewriter;
 pub mod reranker;
+pub mod semantic_dedup;
 pub mod service;
 
 use std::sync::{Mutex, MutexGuard};

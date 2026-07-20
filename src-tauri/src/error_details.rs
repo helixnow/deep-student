@@ -103,6 +103,85 @@ impl ErrorDetails {
     }
 }
 
+// ============================================================================
+// 稳定 IPC 错误 envelope（TD-11）
+// ============================================================================
+
+/// Tauri 命令 `Err` 载荷的稳定契约。
+///
+/// 设计约束：
+/// - `code`：SCREAMING_SNAKE_CASE 稳定错误码，**一经发布不可更名**；前端只允许
+///   依赖该字段做行为分派 / i18n 映射（单测锁定「message 改变但 code 不变」）。
+/// - `message`：人类可读描述，可随时改文案，不得被程序逻辑匹配。
+/// - `data`：可选结构化上下文（如冲突 key、资源 id）。
+/// - `trace_id`：可选追踪 ID，用于前后端日志关联。
+///
+/// 序列化为 camelCase（`traceId`），与前端 `parseCommandErrorEnvelope`
+/// （src/api/tauriClient.ts）对齐。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandError {
+    pub code: String,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+}
+
+impl CommandError {
+    pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            code: code.into(),
+            message: message.into(),
+            data: None,
+            trace_id: None,
+        }
+    }
+
+    /// 内部错误（未分类兜底；前端统一降级处理未知 code）
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::new("INTERNAL_ERROR", message)
+    }
+
+    pub fn with_data(mut self, data: serde_json::Value) -> Self {
+        self.data = Some(data);
+        self
+    }
+
+    pub fn with_trace_id(mut self, trace_id: impl Into<String>) -> Self {
+        self.trace_id = Some(trace_id.into());
+        self
+    }
+}
+
+impl std::fmt::Display for CommandError {
+    // Display 仅用于后端日志；IPC 契约以序列化字段为准，前端不得匹配该文案
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for CommandError {}
+
+impl From<ErrorDetails> for CommandError {
+    fn from(details: ErrorDetails) -> Self {
+        // ErrorCode 的 serde 表示即 SCREAMING_SNAKE_CASE 稳定串，直接复用
+        let code = serde_json::to_value(&details.code)
+            .ok()
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| "UNKNOWN".to_string());
+        Self {
+            code,
+            message: details.message,
+            data: details
+                .context
+                .map(|context| serde_json::json!(context)),
+            trace_id: details.trace_id,
+        }
+    }
+}
+
 /// 错误详情构建器 - 提供常见错误的快速创建方法
 pub struct ErrorDetailsBuilder;
 
@@ -333,6 +412,40 @@ mod tests {
             ErrorCode::HttpTooManyRequests
         );
         assert_eq!(http_status_to_error_code(500), ErrorCode::HttpServerError);
+    }
+
+    #[test]
+    fn command_error_serializes_camel_case_and_skips_none() {
+        let envelope = CommandError::new("VFS_CONFLICT", "optimistic lock conflict")
+            .with_data(serde_json::json!({ "key": "notes.conflict" }))
+            .with_trace_id("trace-123");
+        let value = serde_json::to_value(&envelope).unwrap();
+        assert_eq!(value["code"], "VFS_CONFLICT");
+        assert_eq!(value["message"], "optimistic lock conflict");
+        assert_eq!(value["data"]["key"], "notes.conflict");
+        assert_eq!(value["traceId"], "trace-123");
+
+        let minimal = serde_json::to_value(CommandError::new("X", "y")).unwrap();
+        let obj = minimal.as_object().unwrap();
+        assert!(!obj.contains_key("data"));
+        assert!(!obj.contains_key("traceId"));
+    }
+
+    #[test]
+    fn command_error_from_error_details_reuses_screaming_code() {
+        let details = ErrorDetailsBuilder::api_key_missing("OpenAI");
+        let envelope = CommandError::from(details);
+        assert_eq!(envelope.code, "API_KEY_MISSING");
+        assert!(envelope.message.contains("OpenAI"));
+    }
+
+    /// TD-11 契约：message 是随时可改的展示文案，code 是唯一的程序判断依据
+    #[test]
+    fn command_error_code_is_stable_across_message_changes() {
+        let old = CommandError::new("VFS_NOT_FOUND", "Note not found: n1");
+        let new = CommandError::new("VFS_NOT_FOUND", "笔记不存在（id=n1），可能已被删除");
+        assert_eq!(old.code, new.code);
+        assert_ne!(old.message, new.message);
     }
 
     #[test]

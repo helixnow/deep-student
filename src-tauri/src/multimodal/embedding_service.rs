@@ -380,11 +380,7 @@ impl MultimodalEmbeddingService {
             {
                 Ok(embeddings) => {
                     if attempt > 0 {
-                        log::info!(
-                            "  批次 {} 嵌入在第 {} 次重试后成功",
-                            batch_idx + 1,
-                            attempt
-                        );
+                        log::info!("  批次 {} 嵌入在第 {} 次重试后成功", batch_idx + 1, attempt);
                     }
                     return Ok(embeddings);
                 }
@@ -649,7 +645,10 @@ impl MultimodalEmbeddingService {
 
         let dropped = dropped_progress.load(Ordering::Relaxed);
         if dropped > 0 {
-            log::debug!("DeepSeek-OCR 摘要：{} 条中间进度事件因通道占满被丢弃", dropped);
+            log::debug!(
+                "DeepSeek-OCR 摘要：{} 条中间进度事件因通道占满被丢弃",
+                dropped
+            );
         }
 
         log::info!(
@@ -1137,8 +1136,7 @@ mod tests {
             assert!(delay.as_millis() as u64 >= VL_EMBED_BACKOFF_BASE_MS);
             // 上限 + 25% 抖动
             assert!(
-                delay.as_millis() as u64
-                    <= VL_EMBED_BACKOFF_MAX_MS + VL_EMBED_BACKOFF_MAX_MS / 4
+                delay.as_millis() as u64 <= VL_EMBED_BACKOFF_MAX_MS + VL_EMBED_BACKOFF_MAX_MS / 4
             );
         }
     }

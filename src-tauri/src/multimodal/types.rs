@@ -415,6 +415,9 @@ mod tests {
             Some(MultimodalIndexingMode::VLSummaryThenTextEmbed)
         );
         assert_eq!(MultimodalIndexingMode::VLEmbedding.as_str(), "vl_embedding");
-        assert_eq!(MultimodalIndexingMode::default().vector_table_suffix(), "vl");
+        assert_eq!(
+            MultimodalIndexingMode::default().vector_table_suffix(),
+            "vl"
+        );
     }
 }

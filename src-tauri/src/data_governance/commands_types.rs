@@ -6,6 +6,8 @@ use super::audit::{AuditLog, AuditStatus};
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MaintenanceStatusResponse {
     pub is_in_maintenance_mode: bool,
+    /// 仍处于排空/维护状态的数据库组件（稳定内部标识，供前端诊断与提示）。
+    pub blocked_components: Vec<String>,
 }
 
 /// Schema 注册表响应

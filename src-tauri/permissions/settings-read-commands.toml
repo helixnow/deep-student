@@ -1,0 +1,6 @@
+[[permission]]
+identifier = "allow-settings-read"
+description = "Allows trusted auxiliary windows to read persisted app settings (e.g. global font family/size)."
+commands.allow = [
+  "get_setting",
+]

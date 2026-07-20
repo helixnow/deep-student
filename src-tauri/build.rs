@@ -16,6 +16,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=CARGO_CFG_TARGET_OS");
     println!("cargo:rerun-if-env-changed=CARGO_CFG_TARGET_ENV");
     println!("cargo:rerun-if-env-changed=DEEP_STUDENT_BUILD_NUMBER");
+    println!("cargo:rerun-if-env-changed=SENTRY_DSN");
     println!("cargo:rerun-if-changed=gen/android/app/src/main/AndroidManifest.xml");
 
     configure_windows_test_runtime();

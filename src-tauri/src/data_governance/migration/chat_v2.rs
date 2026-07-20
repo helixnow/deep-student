@@ -406,6 +406,31 @@ pub const V20260719_FTS_BLOCKTYPE_COVERAGE: MigrationDef = MigrationDef::new(
 .with_expected_indexes(&["idx_chat_v2_sessions_status_updated"])
 .idempotent();
 
+pub const V20260720_COMPACTION_LINEAGE_AND_SYNC: MigrationDef = MigrationDef::new(
+    20260720,
+    "compaction_lineage_and_sync",
+    include_str!("../../../migrations/chat_v2/V20260720__compaction_lineage_and_sync.sql"),
+)
+.with_expected_columns(&[
+    ("chat_v2_compactions", "previous_compaction_id"),
+    ("chat_v2_compactions", "range_start_message_id"),
+    ("chat_v2_compactions", "range_end_message_id"),
+    ("chat_v2_compactions", "compacted_message_count"),
+    ("chat_v2_compactions", "model_config_id"),
+    ("chat_v2_compactions", "device_id"),
+    ("chat_v2_compactions", "local_version"),
+    ("chat_v2_compactions", "updated_at"),
+    ("chat_v2_compactions", "deleted_at"),
+])
+.with_expected_indexes(&[
+    "idx_chat_v2_compactions_previous",
+    "idx_chat_v2_compactions_local_version",
+    "idx_chat_v2_compactions_device_version",
+    "idx_chat_v2_compactions_sync_updated_at",
+    "idx_chat_v2_compactions_updated_not_deleted",
+])
+.idempotent();
+
 /// Chat V2 数据库迁移定义列表
 pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -429,6 +454,7 @@ pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260711_SESSION_TAGS_SYNC_COVERAGE,
     V20260717_GROUP_PREFERRED_RUNTIME_ROOT,
     V20260719_FTS_BLOCKTYPE_COVERAGE,
+    V20260720_COMPACTION_LINEAGE_AND_SYNC,
 ];
 
 /// Chat V2 数据库迁移集合
@@ -448,7 +474,7 @@ mod tests {
     #[test]
     fn test_migration_set_structure() {
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
-        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 21); // V20260130 ~ V20260719
+        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 22); // V20260130 ~ V20260720
     }
 
     #[test]

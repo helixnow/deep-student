@@ -42,6 +42,7 @@ pub mod todo_handlers;
 pub mod types;
 pub mod unified_retriever;
 pub mod unit_builder;
+pub mod upload_saga;
 
 pub use database::{VfsDatabase, VfsDatabaseStats, VfsPool, VfsPooledConnection};
 pub use embedding_service::{

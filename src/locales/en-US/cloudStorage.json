@@ -78,7 +78,7 @@
     "title": "End-to-end encryption password (optional, recommended)",
     "placeholder": "Leave blank for no encryption; only your devices can decrypt encrypted backups",
     "description": "When enabled, uploaded ZIP backups use AES-256-GCM encryption and cannot be read by the cloud provider.",
-    "warning": "The password is stored only in this device's secure credential store (Keychain/Credential Manager). If you forget it, encrypted cloud backups cannot be recovered. All devices connected to this cloud must use the same password."
+    "warning": "The password is stored only on this device in encrypted form (AES-256-GCM) and is never uploaded. If you forget it, encrypted cloud backups cannot be recovered. All devices connected to this cloud must use the same password."
   },
 
   "progress": {
@@ -183,6 +183,9 @@
     "connectionSuccess": "Connection successful!",
     "configSaved": "Configuration saved",
     "configSavedButCredentialsFailed": "Configuration was not saved because credentials could not be stored securely",
+    "secureStoreIssueTitle": "Secure storage needs attention",
+    "secureStoreReadFailed": "Saved credentials could not be read. Restore access to your system secure storage, then reopen this panel. Existing credentials were not changed.",
+    "secureStoreWriteFailed": "Credentials were not saved. Restore access to your system secure storage, then click Save again.",
     "configSsotFailed": "Configuration was not saved because the backend sync configuration could not be persisted",
     "configCleared": "Configuration cleared",
     "configClearPartial": "The configuration was removed from this view, but some backend data could not be cleared",

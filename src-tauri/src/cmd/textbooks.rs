@@ -199,7 +199,10 @@ pub async fn textbooks_add(
                     "docx", "txt", "md", "markdown", "xlsx", "xls", "xlsb", "ods", "html", "htm",
                     "pptx", "epub", "rtf", "csv", "json", "xml",
                 ];
-                if supported_extensions.contains(&ext.as_str()) {
+                // ★ 代码/纯文本扩展名（与前端/附件白名单同一清单）按 txt 解析路径处理
+                if supported_extensions.contains(&ext.as_str())
+                    || crate::document_parser::is_plain_text_code_extension(ext)
+                {
                     ext.clone()
                 } else {
                     let reason = format!("{}: 不支持的文件格式 ({})", display_name, ext);
@@ -336,6 +339,10 @@ pub async fn textbooks_add(
             preview_json_str: Option<String>,
             extracted_text: Option<String>,
             page_count: Option<i32>,
+            /// ★ pptx/epub 页级文本（JSON 数组，写入 files.ocr_pages_json）
+            pages_json: Option<String>,
+            /// ★ PDF 渲染失败原因（写入 files.processing_error，状态显式化）
+            render_error: Option<String>,
             size: u64,
         }
 
@@ -388,6 +395,8 @@ pub async fn textbooks_add(
                 .map_err(|e| AppError::database(format!("复制文件进 VFS 失败: {}", e)))?;
 
                 // 2. 渲染 / 解析
+                let mut pages_json: Option<String> = None;
+                let mut render_error: Option<String> = None;
                 let (preview_json_str, extracted_text, page_count) = if is_pdf {
                     let window_clone = window_task.clone();
                     let file_name_clone = file_name_task.clone();
@@ -441,22 +450,49 @@ pub async fn textbooks_add(
                                 "[Textbooks] PDF preview failed, storing without preview: {}",
                                 e
                             );
+                            // ★ 状态显式化：记录可读失败原因，入库后写入 processing_error
+                            render_error = Some(format!(
+                                "PDF 渲染失败，预览与文本提取不可用：{}。可尝试删除后重新导入，或检查 PDF 是否损坏/加密",
+                                e
+                            ));
                             (None, None, None)
                         }
                     }
                 } else {
                     let parser = DocumentParser::new();
-                    match parser.extract_text_from_bytes(&file_name_task, file_bytes) {
-                        Ok(text) => {
+
+                    // ★ pptx/epub 优先页级拆分（按 slide/章节），使检索命中可定位；
+                    // 其他格式或拆分失败回退整篇提取（page_count=1）
+                    match parser.extract_paged_text_from_bytes(&file_name_task, &file_bytes) {
+                        Ok(Some(pages)) if !pages.is_empty() => {
+                            let joined = pages.join("\n\n").trim().to_string();
                             info!(
-                                "[Textbooks] Document text extracted: {} chars from {}",
-                                text.len(),
+                                "[Textbooks] Paged document text extracted: {} pages, {} chars from {}",
+                                pages.len(),
+                                joined.len(),
                                 file_name_task
                             );
-                            (None, Some(text), Some(1))
+                            let count = pages.len() as i32;
+                            pages_json = serde_json::to_string(&pages).ok();
+                            (None, Some(joined), Some(count))
                         }
-                        Err(e) => {
-                            return Err(AppError::file_system(format!("文档解析失败: {}", e)));
+                        Ok(_) | Err(_) => {
+                            match parser.extract_text_from_bytes(&file_name_task, file_bytes) {
+                                Ok(text) => {
+                                    info!(
+                                        "[Textbooks] Document text extracted: {} chars from {}",
+                                        text.len(),
+                                        file_name_task
+                                    );
+                                    (None, Some(text), Some(1))
+                                }
+                                Err(e) => {
+                                    return Err(AppError::file_system(format!(
+                                        "文档解析失败: {}",
+                                        e
+                                    )));
+                                }
+                            }
                         }
                     }
                 };
@@ -466,6 +502,8 @@ pub async fn textbooks_add(
                     preview_json_str,
                     extracted_text,
                     page_count,
+                    pages_json,
+                    render_error,
                     size,
                 })
             },
@@ -535,6 +573,32 @@ pub async fn textbooks_add(
             );
             AppError::database(format!("VFS 创建教材失败: {}", e))
         })?;
+
+        // ★ pptx/epub 页级文本：写入 ocr_pages_json，使检索命中可定位页/章节
+        if let Some(ref pages_json) = outcome.pages_json {
+            if let Err(e) = conn.execute(
+                "UPDATE files SET ocr_pages_json = ?1 WHERE id = ?2",
+                rusqlite::params![pages_json, tb.id],
+            ) {
+                warn!(
+                    "[Textbooks] Failed to write ocr_pages_json for {}: {}",
+                    tb.id, e
+                );
+            }
+        }
+
+        // ★ PDF 渲染失败：显式记录 error 状态与可读原因（此前仅日志，用户不可见）
+        if let Some(ref render_error) = outcome.render_error {
+            if let Err(e) = conn.execute(
+                "UPDATE files SET processing_status = 'error', processing_error = ?1 WHERE id = ?2",
+                rusqlite::params![render_error, tb.id],
+            ) {
+                warn!(
+                    "[Textbooks] Failed to write render failure status for {}: {}",
+                    tb.id, e
+                );
+            }
+        }
 
         // ★ 创建教材后，将其挂载到指定文件夹（若有 folder_id）
         if let Some(ref fid) = folder_id {

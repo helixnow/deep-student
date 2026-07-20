@@ -1279,6 +1279,86 @@ impl VfsExamRepo {
         Ok(())
     }
 
+    /// ACR 4.0 P1：带乐观并发校验（OCC）的 preview_json 更新。
+    ///
+    /// 仅当 `updated_at` 仍等于调用方读取时的 `expected_updated_at` 才写入
+    /// （沿用 questions 表写路径的 revision/updated_at 比对模式）。
+    /// 返回 `Ok(false)` 表示基线已过期（并发修改），调用方应返回结构化 CONFLICT。
+    pub fn update_preview_json_if_unchanged(
+        db: &VfsDatabase,
+        exam_id: &str,
+        preview_json: Value,
+        expected_updated_at: &str,
+    ) -> VfsResult<bool> {
+        let conn = db.get_conn_safe()?;
+        Self::update_preview_json_with_conn_if_unchanged(
+            &conn,
+            exam_id,
+            preview_json,
+            expected_updated_at,
+        )
+    }
+
+    /// 带 OCC 的 preview_json 更新（使用现有连接）；语义见 `update_preview_json_if_unchanged`。
+    pub fn update_preview_json_with_conn_if_unchanged(
+        conn: &Connection,
+        exam_id: &str,
+        preview_json: Value,
+        expected_updated_at: &str,
+    ) -> VfsResult<bool> {
+        let preview_str = serde_json::to_string(&preview_json).map_err(|e| {
+            VfsError::Serialization(format!("Failed to serialize preview_json: {}", e))
+        })?;
+
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        let affected = conn.execute(
+            r#"
+            UPDATE exam_sheets
+            SET preview_json = ?1, updated_at = ?2
+            WHERE id = ?3 AND updated_at = ?4
+            "#,
+            params![preview_str, now, exam_id, expected_updated_at],
+        )?;
+        if affected == 0 {
+            // 区分「不存在」与「基线过期」
+            let exists: Option<String> = conn
+                .query_row(
+                    "SELECT id FROM exam_sheets WHERE id = ?1",
+                    params![exam_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            return match exists {
+                Some(_) => Ok(false),
+                None => Err(VfsError::NotFound {
+                    resource_type: "ExamSheet".to_string(),
+                    id: exam_id.to_string(),
+                }),
+            };
+        }
+
+        let resource_id: Option<String> = conn
+            .query_row(
+                "SELECT resource_id FROM exam_sheets WHERE id = ?1",
+                params![exam_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        if let Some(resource_id) = resource_id {
+            let _ =
+                VfsResourceRepo::update_resource_data_with_conn(conn, &resource_id, &preview_str)?;
+        }
+
+        info!(
+            "[VFS::ExamRepo] Updated preview_json (OCC) for exam {}",
+            exam_id
+        );
+        Ok(true)
+    }
+
     // ========================================================================
     // 断点续导（import checkpoint）
     // ========================================================================

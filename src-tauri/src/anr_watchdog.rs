@@ -68,7 +68,7 @@ pub fn start_anr_watchdog() {
                     STALL_TIMEOUT_MS
                 );
 
-                sentry::capture_message(
+                sentry::Hub::main().capture_message(
                     &format!(
                         "Async runtime starved: tokio heartbeat stalled for {}ms (not a UI main-thread ANR)",
                         frozen_for

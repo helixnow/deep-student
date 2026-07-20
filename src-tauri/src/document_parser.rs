@@ -19,6 +19,39 @@ use rtf_parser::parser::Parser as RtfParser;
 /// 文档文件大小限制 (200MB)
 const MAX_DOCUMENT_SIZE: usize = 200 * 1024 * 1024;
 
+/// ★ 代码/纯文本扩展名（SSOT 统一清单）
+/// 与前端 `src/features/chat/core/constants.ts` 的 `ATTACHMENT_CODE_TEXT_EXTENSIONS`
+/// 保持一致。这些扩展名一律按纯文本处理（复用 txt 的编码探测解码路径）。
+/// 修改时必须同步前端清单与 docs/design/file-format-registry.md。
+pub const PLAIN_TEXT_CODE_EXTENSIONS: &[&str] = &[
+    // 脚本 / 通用语言
+    "py", "pyw", "ipynb", "rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "java", "c", "cpp", "cc",
+    "cxx", "h", "hpp", "hh", "cs", "go", "rb", "php", "swift", "kt", "kts", "scala",
+    // Shell / 批处理
+    "sh", "bash", "zsh", "fish", "ps1", "bat", "cmd",
+    // 数据 / 配置
+    "sql", "yaml", "yml", "toml", "ini", "cfg", "conf", "properties", "env", "log",
+    // 文档标记
+    "tex", "bib", "rst", "adoc",
+    // 前端框架单文件组件
+    "vue", "svelte", "astro",
+    // 其他语言
+    "lua", "pl", "pm", "r", "jl", "dart",
+    // 构建 / 工程配置
+    "gradle", "cmake", "makefile", "mk", "dockerfile", "gitignore", "editorconfig",
+    // Schema / 合约
+    "proto", "graphql", "gql", "prisma", "sol",
+    // 汇编与其他
+    "asm", "s", "vb", "fs", "fsx", "ex", "exs", "erl", "hrl", "clj", "cljs", "hs", "elm", "nim",
+    "zig",
+];
+
+/// 判断扩展名是否属于按纯文本处理的代码/配置类扩展名（大小写不敏感）
+pub fn is_plain_text_code_extension(ext: &str) -> bool {
+    let normalized = ext.trim().to_lowercase();
+    PLAIN_TEXT_CODE_EXTENSIONS.contains(&normalized.as_str())
+}
+
 /// 流式处理时的缓冲区大小 (1MB)
 const BUFFER_SIZE: usize = 1024 * 1024;
 
@@ -728,6 +761,8 @@ impl DocumentParser {
                     bytes,
                 )
             }
+            // ★ 代码/配置类扩展名：一律按纯文本处理（编码探测复用 txt 路径）
+            ext if is_plain_text_code_extension(ext) => self.extract_txt_from_path(file_path),
             _ => Err(ParsingError::UnsupportedFormat(format!(
                 "不支持的文件格式: .{}",
                 extension
@@ -745,11 +780,24 @@ impl DocumentParser {
         self.check_file_size(bytes.len())?;
 
         // 从文件名确定文件类型
-        let extension = Path::new(file_name)
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .ok_or_else(|| ParsingError::UnsupportedFormat("无法确定文件扩展名".to_string()))?
-            .to_lowercase();
+        // ★ 无扩展名文件（如 Makefile/Dockerfile）与点开头文件（.gitignore/.env）：
+        //   回退用完整小写文件名（去掉前导点）作为扩展名候选，命中纯文本清单则按 txt 处理
+        let extension = match Path::new(file_name).extension().and_then(|ext| ext.to_str()) {
+            Some(ext) => ext.to_lowercase(),
+            None => {
+                let fallback = file_name
+                    .trim()
+                    .trim_start_matches('.')
+                    .to_lowercase();
+                if is_plain_text_code_extension(&fallback) {
+                    fallback
+                } else {
+                    return Err(ParsingError::UnsupportedFormat(
+                        "无法确定文件扩展名".to_string(),
+                    ));
+                }
+            }
+        };
 
         match extension.as_str() {
             "docx" => self.extract_docx_from_bytes(bytes),
@@ -764,10 +812,33 @@ impl DocumentParser {
             "csv" => self.extract_csv_from_bytes(bytes),
             "json" => self.extract_json_from_bytes(bytes),
             "xml" => self.extract_xml_from_bytes(bytes),
+            // ★ 代码/配置类扩展名：一律按纯文本处理（编码探测复用 txt 路径）
+            ext if is_plain_text_code_extension(ext) => self.extract_txt_from_bytes(bytes),
             _ => Err(ParsingError::UnsupportedFormat(format!(
                 "不支持的文件格式: .{}",
                 extension
             ))),
+        }
+    }
+
+    /// ★ 页级文本提取（pptx 按幻灯片 / epub 按章节）
+    ///
+    /// 返回 `Ok(Some(pages))` 表示该格式支持页级拆分且拆分成功（每页一个字符串）；
+    /// 返回 `Ok(None)` 表示该格式不支持页级拆分（调用方应回退整篇提取）。
+    pub fn extract_paged_text_from_bytes(
+        &self,
+        file_name: &str,
+        bytes: &[u8],
+    ) -> Result<Option<Vec<String>>, ParsingError> {
+        let extension = Path::new(file_name)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|s| s.to_lowercase());
+
+        match extension.as_deref() {
+            Some("pptx") => self.extract_pptx_pages_from_bytes(bytes.to_vec()).map(Some),
+            Some("epub") => self.extract_epub_pages_from_bytes(bytes.to_vec()).map(Some),
+            _ => Ok(None),
         }
     }
 
@@ -2513,6 +2584,31 @@ impl DocumentParser {
 
     /// 从PPTX文件路径提取文本（内部实现，跳过 ZIP Bomb 检测）
     fn extract_pptx_from_path_internal(&self, file_path: &str) -> Result<String, ParsingError> {
+        let pages = self.extract_pptx_pages_from_path_internal(file_path)?;
+        Ok(pages.join("\n\n").trim().to_string())
+    }
+
+    /// ★ 按幻灯片提取 PPTX 文本（每张 slide 一个字符串，用于页级索引定位）
+    fn extract_pptx_pages_from_bytes(&self, bytes: Vec<u8>) -> Result<Vec<String>, ParsingError> {
+        // 与 extract_pptx_from_bytes 相同的防护检查
+        self.check_file_size(bytes.len())?;
+        self.check_office_encryption(&bytes, "presentation.pptx")?;
+        self.check_zip_bomb(&bytes, "presentation.pptx")?;
+
+        let temp_file = tempfile::Builder::new()
+            .suffix(".pptx")
+            .tempfile()
+            .map_err(|e| ParsingError::IoError(format!("创建临时文件失败: {}", e)))?;
+        fs::write(temp_file.path(), &bytes)?;
+
+        self.extract_pptx_pages_from_path_internal(temp_file.path().to_str().unwrap_or(""))
+    }
+
+    /// 按幻灯片提取 PPTX 文本（内部实现，跳过重复防护检查）
+    fn extract_pptx_pages_from_path_internal(
+        &self,
+        file_path: &str,
+    ) -> Result<Vec<String>, ParsingError> {
         // 使用 pptx-to-md 解析
         let config = ParserConfig::builder().extract_images(false).build();
 
@@ -2523,15 +2619,17 @@ impl DocumentParser {
             .parse_all()
             .map_err(|e| ParsingError::PptxParsingError(format!("解析PPTX失败: {:?}", e)))?;
 
-        let mut markdown = String::with_capacity(8192);
+        let mut pages: Vec<String> = Vec::with_capacity(slides.len());
         for slide in slides {
             if let Some(md_content) = slide.convert_to_md() {
-                markdown.push_str(&md_content);
-                markdown.push_str("\n\n");
+                pages.push(md_content.trim().to_string());
+            } else {
+                // 保留空页占位，维持 slide 序号与页码对应
+                pages.push(String::new());
             }
         }
 
-        Ok(markdown.trim().to_string())
+        Ok(pages)
     }
 
     // ========================================================================
@@ -3548,6 +3646,14 @@ impl DocumentParser {
 
     /// 从EPUB字节流提取文本
     fn extract_epub_from_bytes(&self, bytes: Vec<u8>) -> Result<String, ParsingError> {
+        let pages = self.extract_epub_pages_from_bytes(bytes)?;
+        Ok(pages.join("\n\n").trim().to_string())
+    }
+
+    /// ★ 按章节（spine 条目）提取 EPUB 文本（每章一个字符串，用于页级索引定位）
+    ///
+    /// 第一页为书籍元信息（标题/作者，若有），其后每个 spine 内容文件一页。
+    fn extract_epub_pages_from_bytes(&self, bytes: Vec<u8>) -> Result<Vec<String>, ParsingError> {
         // ★ P1-1 修复：EPUB 同为 ZIP 容器，此前是唯一绕过 ZIP Bomb 防护的格式
         self.check_file_size(bytes.len())?;
         self.check_zip_bomb(&bytes, "book.epub")?;
@@ -3566,17 +3672,21 @@ impl DocumentParser {
         let opf_content = self.epub_read_entry(&mut archive, &opf_path)?;
         let (metadata, spine_hrefs) = self.epub_parse_opf(&opf_content)?;
 
-        let mut text_content = String::with_capacity(8192);
+        let mut pages: Vec<String> = Vec::with_capacity(spine_hrefs.len() + 1);
 
+        let mut header = String::new();
         if let Some(title) = metadata.get("title") {
             if !title.is_empty() {
-                text_content.push_str(&format!("# {}\n\n", title));
+                header.push_str(&format!("# {}\n\n", title));
             }
         }
         if let Some(author) = metadata.get("creator") {
             if !author.is_empty() {
-                text_content.push_str(&format!("作者: {}\n\n", author));
+                header.push_str(&format!("作者: {}\n\n", author));
             }
+        }
+        if !header.trim().is_empty() {
+            pages.push(header.trim().to_string());
         }
 
         for href in &spine_hrefs {
@@ -3599,12 +3709,11 @@ impl DocumentParser {
                 }
             };
             if !plain_text.trim().is_empty() {
-                text_content.push_str(&plain_text);
-                text_content.push_str("\n\n");
+                pages.push(plain_text.trim().to_string());
             }
         }
 
-        Ok(text_content.trim().to_string())
+        Ok(pages)
     }
 
     /// 从 META-INF/container.xml 定位 OPF 根文件路径

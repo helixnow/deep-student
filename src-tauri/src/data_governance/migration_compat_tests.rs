@@ -119,10 +119,7 @@ mod tests {
 
     /// 解析并校验 manifest。空清单 / 0 cases / 未落地的 fixture kind /
     /// seed 文件缺失或哈希漂移都会返回 Err —— CI 必须显式失败而非静默跳过。
-    fn parse_and_validate_manifest(
-        json: &str,
-        root: &Path,
-    ) -> Result<FixtureManifest, String> {
+    fn parse_and_validate_manifest(json: &str, root: &Path) -> Result<FixtureManifest, String> {
         let manifest: FixtureManifest =
             serde_json::from_str(json).map_err(|e| format!("manifest JSON 解析失败: {e}"))?;
 
@@ -133,7 +130,10 @@ mod tests {
             ));
         }
         if manifest.cases.is_empty() {
-            return Err("fixture manifest 为空（0 cases）：迁移兼容性 CI 必须至少包含一个历史 fixture".to_string());
+            return Err(
+                "fixture manifest 为空（0 cases）：迁移兼容性 CI 必须至少包含一个历史 fixture"
+                    .to_string(),
+            );
         }
 
         let mut seen_ids = BTreeSet::new();
@@ -172,16 +172,17 @@ mod tests {
                 }
             }
             if case.seeds.is_empty() {
-                return Err(format!("{ctx}: bootstrap_sql fixture 必须至少包含一个 seed 文件（不允许空 fixture）"));
+                return Err(format!(
+                    "{ctx}: bootstrap_sql fixture 必须至少包含一个 seed 文件（不允许空 fixture）"
+                ));
             }
             for (db, seed) in &case.seeds {
                 if !CORE_DATABASES.contains(&db.as_str()) {
                     return Err(format!("{ctx}: seed 引用未知数据库 '{db}'"));
                 }
                 let path = root.join(&seed.file);
-                let bytes = std::fs::read(&path).map_err(|e| {
-                    format!("{ctx}: seed 文件 {} 不可读: {e}", path.display())
-                })?;
+                let bytes = std::fs::read(&path)
+                    .map_err(|e| format!("{ctx}: seed 文件 {} 不可读: {e}", path.display()))?;
                 let actual = sha256_hex(&bytes);
                 if actual != seed.sha256 {
                     return Err(format!(
@@ -195,12 +196,18 @@ mod tests {
             }
             for oracle in &case.oracles {
                 if !CORE_DATABASES.contains(&oracle.database.as_str()) {
-                    return Err(format!("{ctx}: oracle 引用未知数据库 '{}'", oracle.database));
+                    return Err(format!(
+                        "{ctx}: oracle 引用未知数据库 '{}'",
+                        oracle.database
+                    ));
                 }
             }
             for op in &case.history_ops {
                 if !CORE_DATABASES.contains(&op.database.as_str()) {
-                    return Err(format!("{ctx}: history_op 引用未知数据库 '{}'", op.database));
+                    return Err(format!(
+                        "{ctx}: history_op 引用未知数据库 '{}'",
+                        op.database
+                    ));
                 }
                 match op.op.as_str() {
                     "drop_refinery_history" | "insert_malformed_history_rows" => {}
@@ -355,7 +362,7 @@ mod tests {
 
             let mut conn = open_conn(&db_path);
             let runner = runner_for(db)
-                .set_target(refinery::Target::Version(target))
+                .set_target(refinery::Target::Version(target as _))
                 .set_grouped(false);
             runner.run(&mut conn).unwrap_or_else(|e| {
                 panic!(
@@ -645,9 +652,10 @@ mod tests {
     // 生产升级 + fresh 基线
     // ========================================================================
 
-    fn run_production_upgrade(data_dir: &Path) -> crate::data_governance::migration::MigrationReport {
-        let mut coordinator =
-            MigrationCoordinator::new(data_dir.to_path_buf()).with_audit_db(None);
+    fn run_production_upgrade(
+        data_dir: &Path,
+    ) -> crate::data_governance::migration::MigrationReport {
+        let mut coordinator = MigrationCoordinator::new(data_dir.to_path_buf()).with_audit_db(None);
         coordinator
             .run_all()
             .unwrap_or_else(|e| panic!("生产 run_all() 失败 ({}): {e}", data_dir.display()))
@@ -854,7 +862,11 @@ mod tests {
 
             // 2. 生产升级
             let report = run_production_upgrade(data_dir);
-            assert!(report.success, "{ctx}: run_all 报告失败: {:?}", report.error);
+            assert!(
+                report.success,
+                "{ctx}: run_all 报告失败: {:?}",
+                report.error
+            );
             assert_eq!(
                 report.databases.len(),
                 CORE_DATABASES.len(),

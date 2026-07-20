@@ -1,16 +1,19 @@
-//! 题目集同步冲突策略服务
+//! 题目同步元数据服务（冲突子系统已退役）
 //!
-//! 实现本地-远程题目数据同步，包括：
-//! - 冲突检测（基于 updated_at 和 content_hash）
-//! - 冲突解决（保留本地/远程/较新版本/智能合并/手动选择）
-//! - 同步状态追踪
-//! - 批量操作支持
+//! ## Deprecation inventory
+//! - **owner**: learning-qbank
+//! - **removed (2026-07-20)**: Tauri 命令 `qbank_sync_check` /
+//!   `qbank_get_sync_conflicts` / `qbank_resolve_sync_conflict` /
+//!   `qbank_batch_resolve_conflicts` / `qbank_set_sync_enabled` /
+//!   `qbank_update_sync_config`，以及前端 ExamContentView / SyncConflictDialog /
+//!   questionBankStore 冲突分支（无生产生产者：`detect_conflicts`/`save_conflict` 零调用）
+//! - **keep**: `mark_as_modified*` / `update_content_hash*`（question_repo / grading 仍写）
+//! - **keep**: 历史 DB 列与 `question_sync_conflicts` / `question_sync_logs` 表迁移（勿动）
+//! - **remove target (conflict helpers)**: vNext — 在确认无历史 pending 行后可删
+//!   `detect_conflicts` / `save_conflict*` / resolve* 内部实现
+//! - **real conflict path**: `data_governance` → `__sync_conflicts` + RecordConflictsPanel
 //!
-//! ## 使用流程
-//! 1. `sync_check` - 检查同步状态
-//! 2. `sync_pull` - 拉取远程更新，检测冲突
-//! 3. `resolve_conflicts` - 解决冲突
-//! 4. `sync_push` - 推送本地更新
+//! 下列内部 API 仍编译保留以便审计/测试构造，但不再经 IPC 暴露。
 
 use chrono::{DateTime, Utc};
 use rusqlite::{params, types::Type, Connection, OptionalExtension};
@@ -181,6 +184,9 @@ pub struct QuestionVersion {
     pub answer: Option<String>,
     /// 解析
     pub explanation: Option<String>,
+    /// 结构化题目数据（新题型契约；旧快照缺省为 None）
+    #[serde(default)]
+    pub structured_data: Option<serde_json::Value>,
     /// 题型
     pub question_type: QuestionType,
     /// 难度
@@ -223,6 +229,7 @@ impl QuestionVersion {
             options: q.options.clone(),
             answer: q.answer.clone(),
             explanation: q.explanation.clone(),
+            structured_data: q.structured_data.clone(),
             question_type: q.question_type.clone(),
             difficulty: q.difficulty.clone(),
             tags: q.tags.clone(),
@@ -405,6 +412,9 @@ pub struct RemoteQuestion {
     pub options: Option<Vec<QuestionOption>>,
     pub answer: Option<String>,
     pub explanation: Option<String>,
+    /// 结构化题目数据（新题型契约；旧远端载荷缺省为 None）
+    #[serde(default)]
+    pub structured_data: Option<serde_json::Value>,
     pub question_type: QuestionType,
     pub difficulty: Option<Difficulty>,
     pub tags: Vec<String>,
@@ -495,6 +505,13 @@ impl QuestionSyncService {
             }
         }
 
+        // 向后兼容：仅在存在结构化数据时纳入哈希（None 时与旧算法一致）
+        if let Some(sd) = &question.structured_data {
+            if let Ok(json) = serde_json::to_string(sd) {
+                hasher.update(json.as_bytes());
+            }
+        }
+
         let result = hasher.finalize();
         hex::encode(result)
     }
@@ -532,6 +549,13 @@ impl QuestionSyncService {
         // 向后兼容：仅在有图片时纳入哈希
         if !version.images.is_empty() {
             if let Ok(json) = serde_json::to_string(&version.images) {
+                hasher.update(json.as_bytes());
+            }
+        }
+
+        // 向后兼容：仅在存在结构化数据时纳入哈希（None 时与旧算法一致）
+        if let Some(sd) = &version.structured_data {
+            if let Ok(json) = serde_json::to_string(sd) {
                 hasher.update(json.as_bytes());
             }
         }
@@ -725,6 +749,7 @@ impl QuestionSyncService {
             options: remote.options.clone(),
             answer: remote.answer.clone(),
             explanation: remote.explanation.clone(),
+            structured_data: remote.structured_data.clone(),
             question_type: remote.question_type.clone(),
             difficulty: remote.difficulty.clone(),
             tags: remote.tags.clone(),
@@ -1046,6 +1071,10 @@ impl QuestionSyncService {
 
         let images_json =
             serde_json::to_string(&remote_version.images).unwrap_or_else(|_| "[]".to_string());
+        let structured_data_json = remote_version
+            .structured_data
+            .as_ref()
+            .and_then(|v| serde_json::to_string(v).ok());
 
         let affected = conn.execute(
             r#"
@@ -1066,6 +1095,7 @@ impl QuestionSyncService {
                 is_favorite = ?14,
                 is_bookmarked = ?15,
                 images_json = ?16,
+                structured_data = ?21,
                 sync_status = 'synced',
                 last_synced_at = ?17,
                 content_hash = ?18,
@@ -1094,6 +1124,7 @@ impl QuestionSyncService {
                 remote_version.content_hash,
                 remote_version.remote_version,
                 question_id,
+                structured_data_json,
             ],
         )?;
         if affected == 0 {
@@ -1119,6 +1150,10 @@ impl QuestionSyncService {
         let tags_json = serde_json::to_string(&merged.tags).unwrap_or_else(|_| "[]".to_string());
         let images_json =
             serde_json::to_string(&merged.images).unwrap_or_else(|_| "[]".to_string());
+        let structured_data_json = merged
+            .structured_data
+            .as_ref()
+            .and_then(|v| serde_json::to_string(v).ok());
         let new_hash = Self::compute_version_hash(merged);
 
         let affected = conn.execute(
@@ -1140,6 +1175,7 @@ impl QuestionSyncService {
                 is_favorite = ?14,
                 is_bookmarked = ?15,
                 images_json = ?16,
+                structured_data = ?21,
                 sync_status = 'synced',
                 last_synced_at = ?17,
                 content_hash = ?18,
@@ -1168,6 +1204,7 @@ impl QuestionSyncService {
                 new_hash,
                 merged.remote_version + 1,
                 question_id,
+                structured_data_json,
             ],
         )?;
         if affected == 0 {
@@ -1231,6 +1268,18 @@ impl QuestionSyncService {
         // 合并选项
         if local.options != remote.options {
             conflicting_fields.push("options".to_string());
+        }
+
+        // 合并结构化数据（同 answer/explanation 策略：单边有值取有值方，双边不同视为冲突）
+        if local.structured_data != remote.structured_data {
+            if local.structured_data.is_none() && remote.structured_data.is_some() {
+                merged.structured_data = remote.structured_data.clone();
+                merged_fields.push("structured_data".to_string());
+            } else if local.structured_data.is_some() && remote.structured_data.is_none() {
+                // 保留本地
+            } else {
+                conflicting_fields.push("structured_data".to_string());
+            }
         }
 
         // 合并标签（取并集）
@@ -1568,7 +1617,7 @@ impl QuestionSyncService {
                    status, user_answer, is_correct, attempt_count, correct_count,
                    last_attempt_at, user_note, is_favorite, is_bookmarked,
                    source_type, source_ref, images_json, parent_id, created_at, updated_at,
-                   ai_feedback, ai_score, ai_graded_at
+                   ai_feedback, ai_score, ai_graded_at, structured_data
             FROM questions
             WHERE id = ?1 AND deleted_at IS NULL
             "#,
@@ -1614,6 +1663,21 @@ impl QuestionSyncService {
                 .and_then(|s| serde_json::from_str(s).ok())
                 .unwrap_or_default();
 
+            let structured_data_json: Option<String> = row.get(29)?;
+            let structured_data: Option<serde_json::Value> = structured_data_json
+                .as_ref()
+                .and_then(|s| match serde_json::from_str(s) {
+                    Ok(serde_json::Value::Null) => None,
+                    Ok(v) => Some(v),
+                    Err(e) => {
+                        log::warn!(
+                            "[QuestionSyncService] Failed to parse structured_data: {}",
+                            e
+                        );
+                        None
+                    }
+                });
+
             Ok(Question {
                 id: row.get(0)?,
                 exam_id: row.get(1)?,
@@ -1623,6 +1687,7 @@ impl QuestionSyncService {
                 options,
                 answer: row.get(6)?,
                 explanation: row.get(7)?,
+                structured_data,
                 question_type,
                 difficulty,
                 tags,
@@ -1679,7 +1744,8 @@ impl LocalQuestionWithSync {
                    last_attempt_at, user_note, is_favorite, is_bookmarked,
                    source_type, source_ref, images_json, parent_id, created_at, updated_at,
                    ai_feedback, ai_score, ai_graded_at,
-                   sync_status, last_synced_at, remote_id, content_hash, remote_version
+                   sync_status, last_synced_at, remote_id, content_hash, remote_version,
+                   structured_data
             FROM questions
             WHERE id = ?1 AND deleted_at IS NULL
             "#,
@@ -1735,6 +1801,21 @@ impl LocalQuestionWithSync {
                 let content_hash: Option<String> = row.get(32)?;
                 let remote_version: Option<i32> = row.get(33)?;
 
+                let structured_data_json: Option<String> = row.get(34)?;
+                let structured_data: Option<serde_json::Value> = structured_data_json
+                    .as_ref()
+                    .and_then(|s| match serde_json::from_str(s) {
+                        Ok(serde_json::Value::Null) => None,
+                        Ok(v) => Some(v),
+                        Err(e) => {
+                            log::warn!(
+                                "[QuestionSyncService] Failed to parse structured_data: {}",
+                                e
+                            );
+                            None
+                        }
+                    });
+
                 let question = Question {
                     id: row.get(0)?,
                     exam_id: row.get(1)?,
@@ -1744,6 +1825,7 @@ impl LocalQuestionWithSync {
                     options,
                     answer: row.get(6)?,
                     explanation: row.get(7)?,
+                    structured_data,
                     question_type,
                     difficulty,
                     tags,
@@ -1798,7 +1880,8 @@ impl LocalQuestionWithSync {
                    last_attempt_at, user_note, is_favorite, is_bookmarked,
                    source_type, source_ref, images_json, parent_id, created_at, updated_at,
                    ai_feedback, ai_score, ai_graded_at,
-                   sync_status, last_synced_at, remote_id, content_hash, remote_version
+                   sync_status, last_synced_at, remote_id, content_hash, remote_version,
+                   structured_data
             FROM questions
             WHERE exam_id = ?1 AND deleted_at IS NULL
             "#,
@@ -1853,6 +1936,21 @@ impl LocalQuestionWithSync {
             let content_hash: Option<String> = row.get(32)?;
             let remote_version: Option<i32> = row.get(33)?;
 
+            let structured_data_json: Option<String> = row.get(34)?;
+            let structured_data: Option<serde_json::Value> = structured_data_json
+                .as_ref()
+                .and_then(|s| match serde_json::from_str(s) {
+                    Ok(serde_json::Value::Null) => None,
+                    Ok(v) => Some(v),
+                    Err(e) => {
+                        log::warn!(
+                            "[QuestionSyncService] Failed to parse structured_data: {}",
+                            e
+                        );
+                        None
+                    }
+                });
+
             let question = Question {
                 id: row.get(0)?,
                 exam_id: row.get(1)?,
@@ -1862,6 +1960,7 @@ impl LocalQuestionWithSync {
                 options,
                 answer: row.get(6)?,
                 explanation: row.get(7)?,
+                structured_data,
                 question_type,
                 difficulty,
                 tags,
@@ -1904,96 +2003,8 @@ impl LocalQuestionWithSync {
     }
 }
 
-// ============================================================================
-// Tauri 命令
-// ============================================================================
-
-use crate::commands::AppState;
-use tauri::State;
-
-/// 检查同步状态
-#[tauri::command]
-pub async fn qbank_sync_check(
-    state: State<'_, AppState>,
-    exam_id: String,
-) -> Result<SyncStatusResult, String> {
-    let db = state
-        .vfs_db
-        .as_ref()
-        .ok_or("VFS database not initialized")?;
-    QuestionSyncService::check_sync_status(db, &exam_id).map_err(|e| e.to_string())
-}
-
-/// 获取冲突列表
-#[tauri::command]
-pub async fn qbank_get_sync_conflicts(
-    state: State<'_, AppState>,
-    exam_id: String,
-) -> Result<Vec<SyncConflict>, String> {
-    let db = state
-        .vfs_db
-        .as_ref()
-        .ok_or("VFS database not initialized")?;
-    QuestionSyncService::list_pending_conflicts(db, &exam_id).map_err(|e| e.to_string())
-}
-
-/// 解决单个冲突
-#[tauri::command]
-pub async fn qbank_resolve_sync_conflict(
-    state: State<'_, AppState>,
-    conflict_id: String,
-    strategy: String,
-) -> Result<crate::vfs::repos::question_repo::Question, String> {
-    let db = state
-        .vfs_db
-        .as_ref()
-        .ok_or("VFS database not initialized")?;
-    let strategy = QuestionConflictStrategy::from_str(&strategy);
-    QuestionSyncService::resolve_conflict(db, &conflict_id, strategy).map_err(|e| e.to_string())
-}
-
-/// 批量解决冲突
-#[tauri::command]
-pub async fn qbank_batch_resolve_conflicts(
-    state: State<'_, AppState>,
-    exam_id: String,
-    strategy: String,
-) -> Result<BatchResolveConflictsResult, String> {
-    let db = state
-        .vfs_db
-        .as_ref()
-        .ok_or("VFS database not initialized")?;
-    let strategy = QuestionConflictStrategy::from_str(&strategy);
-    QuestionSyncService::batch_resolve_conflicts(db, &exam_id, strategy).map_err(|e| e.to_string())
-}
-
-/// 启用/禁用同步
-#[tauri::command]
-pub async fn qbank_set_sync_enabled(
-    state: State<'_, AppState>,
-    exam_id: String,
-    enabled: bool,
-) -> Result<(), String> {
-    let db = state
-        .vfs_db
-        .as_ref()
-        .ok_or("VFS database not initialized")?;
-    QuestionSyncService::set_sync_enabled(db, &exam_id, enabled).map_err(|e| e.to_string())
-}
-
-/// 更新同步配置
-#[tauri::command]
-pub async fn qbank_update_sync_config(
-    state: State<'_, AppState>,
-    exam_id: String,
-    config: SyncConfig,
-) -> Result<(), String> {
-    let db = state
-        .vfs_db
-        .as_ref()
-        .ok_or("VFS database not initialized")?;
-    QuestionSyncService::update_sync_config(db, &exam_id, &config).map_err(|e| e.to_string())
-}
+// COMPAT-REMOVED 2026-07-20: qbank_* sync/conflict Tauri 命令已从 lib.rs / permissions 注销。
+// 勿再添加 #[tauri::command] 包装；真冲突走 data_governance。
 
 #[cfg(test)]
 mod tests {
@@ -2019,6 +2030,7 @@ mod tests {
             ]),
             answer: Some("B".to_string()),
             explanation: Some("Basic arithmetic".to_string()),
+            structured_data: None,
             question_type: QuestionType::SingleChoice,
             difficulty: Some(Difficulty::Easy),
             tags: vec!["math".to_string()],
@@ -2096,6 +2108,7 @@ mod tests {
             options: None,
             answer: Some("A".to_string()),
             explanation: None,
+            structured_data: None,
             question_type: QuestionType::SingleChoice,
             difficulty: Some(Difficulty::Easy),
             tags: vec!["tag1".to_string()],
@@ -2119,6 +2132,7 @@ mod tests {
             options: None,
             answer: Some("A".to_string()),
             explanation: Some("Remote explanation".to_string()), // 远程新增
+            structured_data: None,
             question_type: QuestionType::SingleChoice,
             difficulty: Some(Difficulty::Easy),
             tags: vec!["tag1".to_string(), "tag2".to_string()], // 远程多一个标签
@@ -2195,6 +2209,7 @@ mod tests {
                 ai_feedback TEXT,
                 ai_score REAL,
                 ai_graded_at TEXT,
+                structured_data TEXT,
                 sync_status TEXT NOT NULL DEFAULT 'local_only',
                 last_synced_at TEXT,
                 content_hash TEXT,
@@ -2227,6 +2242,7 @@ mod tests {
             options: None,
             answer: Some("A".to_string()),
             explanation: None,
+            structured_data: None,
             question_type: QuestionType::SingleChoice,
             difficulty: None,
             tags: vec![],

@@ -5,6 +5,8 @@
   "windows": ["pomodoro-mini"],
   "platforms": ["linux", "macOS", "windows"],
   "permissions": [
+    "allow-renderer-logging",
+    "allow-settings-read",
     "core:default",
     "core:event:default",
     "core:window:allow-close",

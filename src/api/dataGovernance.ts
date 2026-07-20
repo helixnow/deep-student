@@ -53,8 +53,9 @@ import {
  */
 export async function getMaintenanceStatus(): Promise<{
   is_in_maintenance_mode: boolean;
+  blocked_components: string[];
 }> {
-  return invoke<{ is_in_maintenance_mode: boolean }>(
+  return invoke<{ is_in_maintenance_mode: boolean; blocked_components: string[] }>(
     "data_governance_get_maintenance_status",
   );
 }
@@ -1336,6 +1337,7 @@ export async function countRecordConflicts(): Promise<Record<string, number>> {
  * @param tableName 业务表名
  * @param recordId 记录主键
  * @param resolution "keep_local" | "keep_cloud" | "merged"
+ * @param expectedConflictIds 用户实际看到的冲突 generation，后台变化时后端拒绝旧决策
  * @param mergedDataJson 当 resolution = "merged" 时提供的合并后行 JSON
  */
 export async function resolveRecordConflict(
@@ -1343,14 +1345,19 @@ export async function resolveRecordConflict(
   tableName: string,
   recordId: string,
   resolution: "keep_local" | "keep_cloud" | "merged",
+  expectedConflictIds: number[],
   mergedDataJson?: string,
 ): Promise<void> {
+  if (expectedConflictIds.length === 0) {
+    throw new Error('expectedConflictIds must not be empty');
+  }
   return invoke<void>("data_governance_resolve_record_conflict", {
     databaseName,
     tableName,
     recordId,
     resolution,
     mergedDataJson,
+    expectedConflictIds,
   });
 }
 

@@ -1799,7 +1799,11 @@ impl NotesImporter {
         for pref in manifest.preferences.iter() {
             if let Ok(mut file) = zip.by_name(&pref.file) {
                 if file.size() > MAX_IMPORT_TEXT_BYTES {
-                    log::warn!("跳过异常大偏好条目 {}（声明 {} 字节）", pref.file, file.size());
+                    log::warn!(
+                        "跳过异常大偏好条目 {}（声明 {} 字节）",
+                        pref.file,
+                        file.size()
+                    );
                     continue;
                 }
                 let mut content = String::new();
@@ -2112,11 +2116,7 @@ impl NotesImporter {
                 if let Err(e) =
                     VfsNoteRepo::set_favorite_with_conn(&vfs_conn, &final_note_id, want_favorite)
                 {
-                    log::warn!(
-                        "[VFS Import] 同步收藏状态失败 {}: {}",
-                        final_note_id,
-                        e
-                    );
+                    log::warn!("[VFS Import] 同步收藏状态失败 {}: {}", final_note_id, e);
                 }
             }
 

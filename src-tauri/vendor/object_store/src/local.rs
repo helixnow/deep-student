@@ -352,8 +352,13 @@ impl ObjectStore for LocalFileSystem {
                             match std::fs::rename(&staging_path, &path) {
                                 Ok(_) => None,
                                 Err(source) => match source.kind() {
+                                    // DEEP-STUDENT PATCH: fallback for filesystems without atomic
+                                    // rename/hard_link (e.g. exFAT); see vendor/object_store/PATCHES.md
                                     ErrorKind::PermissionDenied | ErrorKind::Unsupported => {
-                                        let result = std::fs::copy(&staging_path, &path)
+                                        // Copy to a staged sibling and rename it into place
+                                        // instead of copying directly onto `path`, so readers
+                                        // never observe a half-written file.
+                                        let result = copy_via_staged_rename(&staging_path, &path)
                                             .map_err(|copy_err| {
                                                 Error::UnableToCopyFile {
                                                     from: staging_path.clone(),
@@ -381,20 +386,51 @@ impl ObjectStore for LocalFileSystem {
                                     path: path.to_str().unwrap().to_string(),
                                     source,
                                 }),
+                                // DEEP-STUDENT PATCH: fallback for filesystems without atomic
+                                // rename/hard_link (e.g. exFAT); see vendor/object_store/PATCHES.md
                                 ErrorKind::PermissionDenied | ErrorKind::Unsupported => {
-                                    match std::fs::copy(&staging_path, &path) {
-                                        Ok(_) => {
-                                            let _ = std::fs::remove_file(&staging_path);
-                                            None
+                                    // Preserve the create-exclusive contract that `hard_link`
+                                    // provided: claim the destination with `create_new` so an
+                                    // existing object surfaces as AlreadyExists (Lance relies on
+                                    // this for optimistic-concurrency conflict detection). The
+                                    // staged file already lives next to `path`, so the follow-up
+                                    // rename is same-directory and atomic.
+                                    //
+                                    // Close the staging handle first: renaming a file with an
+                                    // open handle fails on Windows.
+                                    std::mem::drop(file);
+                                    match OpenOptions::new()
+                                        .write(true)
+                                        .create_new(true)
+                                        .open(&path)
+                                    {
+                                        Ok(placeholder) => {
+                                            std::mem::drop(placeholder);
+                                            match std::fs::rename(&staging_path, &path) {
+                                                Ok(_) => None,
+                                                Err(rename_err) => {
+                                                    // Roll back the zero-byte placeholder so a
+                                                    // failed put does not leave an empty object
+                                                    // claiming the path.
+                                                    let _ = std::fs::remove_file(&path);
+                                                    Some(Error::UnableToRenameFile {
+                                                        source: rename_err,
+                                                    })
+                                                }
+                                            }
                                         }
-                                        Err(copy_err) => {
-                                            let _ = std::fs::remove_file(&staging_path);
-                                            Some(Error::UnableToCopyFile {
-                                                from: staging_path.clone(),
-                                                to: path.clone(),
-                                                source: copy_err,
+                                        Err(open_err)
+                                            if open_err.kind() == ErrorKind::AlreadyExists =>
+                                        {
+                                            Some(Error::AlreadyExists {
+                                                path: path.to_str().unwrap().to_string(),
+                                                source: open_err,
                                             })
                                         }
+                                        Err(open_err) => Some(Error::UnableToCreateFile {
+                                            path: path.clone(),
+                                            source: open_err,
+                                        }),
                                     }
                                 }
                                 _ => Some(Error::UnableToRenameFile { source }),
@@ -604,6 +640,10 @@ impl ObjectStore for LocalFileSystem {
                         true => create_parent_dirs(&to, source)?,
                         false => return Err(Error::NotFound { path: from, source }.into()),
                     },
+                    // DEEP-STUDENT PATCH: fallback for filesystems without atomic
+                    // rename/hard_link (e.g. exFAT); see vendor/object_store/PATCHES.md
+                    // Copies to the staged sibling of `to`, then renames it into place
+                    // below, so the destination never observes a partial file.
                     ErrorKind::PermissionDenied | ErrorKind::Unsupported => {
                         std::fs::copy(&from, &staged).map_err(|copy_err| {
                             let _ = std::fs::remove_file(&staged);
@@ -644,11 +684,17 @@ impl ObjectStore for LocalFileSystem {
                         true => create_parent_dirs(&to, source)?,
                         false => return Err(Error::NotFound { path: from, source }.into()),
                     },
+                    // DEEP-STUDENT PATCH: fallback for filesystems without atomic
+                    // rename/hard_link (e.g. exFAT); see vendor/object_store/PATCHES.md
                     ErrorKind::PermissionDenied | ErrorKind::Unsupported => {
-                        std::fs::copy(&from, &to).map_err(|copy_err| Error::UnableToCopyFile {
-                            from: from.clone(),
-                            to: to.clone(),
-                            source: copy_err,
+                        // Stage next to `to` and rename into place so the destination
+                        // never observes a half-written file.
+                        copy_via_staged_rename(&from, &to).map_err(|copy_err| {
+                            Error::UnableToCopyFile {
+                                from: from.clone(),
+                                to: to.clone(),
+                                source: copy_err,
+                            }
                         })?;
                         let _ = std::fs::remove_file(&from);
                         return Ok(());
@@ -679,13 +725,44 @@ impl ObjectStore for LocalFileSystem {
                         true => create_parent_dirs(&to, source)?,
                         false => return Err(Error::NotFound { path: from, source }.into()),
                     },
+                    // DEEP-STUDENT PATCH: fallback for filesystems without atomic
+                    // rename/hard_link (e.g. exFAT); see vendor/object_store/PATCHES.md
                     ErrorKind::PermissionDenied | ErrorKind::Unsupported => {
-                        std::fs::copy(&from, &to).map_err(|copy_err| Error::UnableToCopyFile {
-                            from: from.clone(),
-                            to: to.clone(),
-                            source: copy_err,
-                        })?;
-                        return Ok(());
+                        // Preserve the copy-if-not-exists exclusivity contract that
+                        // `hard_link` provided: claim the destination with `create_new`
+                        // (an existing object surfaces as AlreadyExists), then rename a
+                        // staged copy into place so readers never observe a partial file.
+                        match OpenOptions::new().write(true).create_new(true).open(&to) {
+                            Ok(placeholder) => {
+                                std::mem::drop(placeholder);
+                                if let Err(copy_err) = copy_via_staged_rename(&from, &to) {
+                                    // Roll back the zero-byte placeholder so a failed copy
+                                    // does not leave an empty object claiming the path.
+                                    let _ = std::fs::remove_file(&to);
+                                    return Err(Error::UnableToCopyFile {
+                                        from: from.clone(),
+                                        to: to.clone(),
+                                        source: copy_err,
+                                    }
+                                    .into());
+                                }
+                                return Ok(());
+                            }
+                            Err(open_err) if open_err.kind() == ErrorKind::AlreadyExists => {
+                                return Err(Error::AlreadyExists {
+                                    path: to.to_str().unwrap().to_string(),
+                                    source: open_err,
+                                }
+                                .into())
+                            }
+                            Err(open_err) => {
+                                return Err(Error::UnableToCreateFile {
+                                    path: to.clone(),
+                                    source: open_err,
+                                }
+                                .into())
+                            }
+                        }
                     }
                     _ => return Err(Error::UnableToCopyFile { from, to, source }.into()),
                 },
@@ -822,6 +899,41 @@ fn staged_upload_path(dest: &std::path::Path, suffix: &str) -> PathBuf {
     staging_path.push("#");
     staging_path.push(suffix);
     staging_path.into()
+}
+
+// DEEP-STUDENT PATCH: fallback for filesystems without atomic rename/hard_link
+// (e.g. exFAT); see vendor/object_store/PATCHES.md
+//
+/// Copies `from` to a hidden staged file next to `to` and renames it into place.
+///
+/// Used by the copy-based fallbacks so the destination never observes a
+/// partially written file (a direct `std::fs::copy` to the destination is not
+/// atomic and a crash mid-copy would leave a truncated object, e.g. a corrupt
+/// Lance manifest). The staged file uses the crate's `{path}#{digits}` naming
+/// so it is ignored by list operations even if a crash leaves it behind.
+///
+/// A same-directory rename is used for the final step, which is generally
+/// supported even on filesystems (like exFAT) where `hard_link` is not. If the
+/// final rename fails, the staged file is removed and the error returned.
+fn copy_via_staged_rename(from: &std::path::Path, to: &std::path::Path) -> io::Result<()> {
+    // Digit-only suffix (pid + nanos) keeps the staged file inside the
+    // `#\d+` namespace that listing already filters out, and avoids clashes
+    // between concurrent processes.
+    let nanos = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let suffix = format!("{}{}", std::process::id(), nanos);
+    let staged = staged_upload_path(to, &suffix);
+    if let Err(copy_err) = std::fs::copy(from, &staged) {
+        let _ = std::fs::remove_file(&staged);
+        return Err(copy_err);
+    }
+    if let Err(rename_err) = std::fs::rename(&staged, to) {
+        let _ = std::fs::remove_file(&staged);
+        return Err(rename_err);
+    }
+    Ok(())
 }
 
 #[derive(Debug)]

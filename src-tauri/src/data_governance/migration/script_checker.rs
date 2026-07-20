@@ -645,14 +645,18 @@ static RE_UPDATE_SET: LazyLock<Regex> =
 static RE_INSERT_INTO: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^INSERT\s+(?:OR\s+\w+\s+)?INTO\s+(\w+)").unwrap());
 
-/// 解析脚本内 `-- @danger-ack: rule_a, rule_b reason="..."` 注解。
+/// 解析脚本内 `-- @danger-ack: rule_a, rule_b reason="..."` 注解
+/// （`-- @allow-data-change:` 为等价别名，与 Node 侧一致）。
 /// 返回 (已声明规则集合, 未知规则名列表)。
 pub fn parse_danger_acks(sql: &str) -> (HashSet<DangerRule>, Vec<String>) {
     let mut acks = HashSet::new();
     let mut unknown = Vec::new();
     for line in sql.lines() {
         let trimmed = line.trim();
-        let Some(rest) = trimmed.strip_prefix("-- @danger-ack:") else {
+        let Some(rest) = trimmed
+            .strip_prefix("-- @danger-ack:")
+            .or_else(|| trimmed.strip_prefix("-- @allow-data-change:"))
+        else {
             continue;
         };
         // reason="..." 之后为自由文本，不参与规则解析
@@ -1304,6 +1308,20 @@ mod tests {
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].rule, DangerRule::DropTable);
         assert!(findings[0].acknowledged, "注解声明后应标记 acknowledged");
+    }
+
+    #[test]
+    fn test_allow_data_change_alias() {
+        let sql = r#"
+            -- @allow-data-change: drop_table reason="别名注解等价于 @danger-ack"
+            DROP TABLE legacy;
+        "#;
+        let findings = detect_dangerous_statements("V20260601__drop.sql", sql);
+        assert_eq!(findings.len(), 1);
+        assert!(
+            findings[0].acknowledged,
+            "@allow-data-change 别名应等价生效"
+        );
     }
 
     #[test]

@@ -87,6 +87,16 @@ impl ProfileCircuitBreaker {
         self.consecutive_failures = 0;
     }
 
+    /// A route returned without a transport error but with zero hits. Empty recall is a
+    /// data condition, not proof of backend health: it closes a half-open probe (the
+    /// backend did answer) but does not reset the failure streak accumulated in `Closed`,
+    /// so alternating error/empty responses still trip the breaker.
+    pub(crate) fn record_empty_success(&mut self) {
+        if self.phase == ProfileCircuitPhase::HalfOpen {
+            self.phase = ProfileCircuitPhase::Closed;
+        }
+    }
+
     pub(crate) fn record_failure(&mut self, now_ms: u64) {
         match self.phase {
             ProfileCircuitPhase::Closed => {
@@ -730,6 +740,14 @@ pub struct RetrievalHitProvenance {
 pub struct FusedRetrievalHit {
     pub hit: RetrievalHit,
     pub rrf_score: f64,
+    /// `rrf_score / max(rrf_score)` over the fused candidate pool, in `(0, 1]`.
+    /// Comparable across requests unlike the raw RRF value, which depends on route count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub normalized_score: Option<f64>,
+    /// Model-assigned relevance from the optional rerank stage. Absent when no reranker
+    /// ran or when this hit was outside the rerank candidate window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rerank_score: Option<f64>,
     pub provenance: Vec<RetrievalHitProvenance>,
 }
 
@@ -740,11 +758,37 @@ pub struct FusedRetrievalResult {
     pub failures: Vec<RetrievalRouteFailure>,
 }
 
+/// Ranks two representatives of the same identity by metadata richness: a hit that
+/// carries an image blob/URL beats a text-only one, then longer text wins. This never
+/// compares raw scores across vector spaces.
+fn hit_metadata_richness(hit: &RetrievalHit) -> (u8, usize) {
+    let has_image = hit
+        .blob_hash
+        .as_deref()
+        .is_some_and(|value| !value.is_empty())
+        || hit
+            .image_url
+            .as_deref()
+            .is_some_and(|value| !value.is_empty());
+    (u8::from(has_image), hit.text.chars().count())
+}
+
 /// Fuses successful routes without comparing raw scores from unrelated vector spaces.
 /// Failed and timed-out routes are retained as diagnostics and do not suppress other routes.
 pub fn fuse_route_results(
     route_results: Vec<Result<RetrievalRouteResult, RetrievalRouteFailure>>,
     top_k: usize,
+) -> FusedRetrievalResult {
+    let mut result = fuse_route_results_pooled(route_results);
+    result.hits.truncate(top_k);
+    result
+}
+
+/// Same as [`fuse_route_results`] but returns the full sorted candidate pool. Callers that
+/// filter after fusion (e.g. multimodal-only scope) use this so post-filter results can be
+/// backfilled from the remaining pool instead of coming up short of `top_k`.
+pub fn fuse_route_results_pooled(
+    route_results: Vec<Result<RetrievalRouteResult, RetrievalRouteFailure>>,
 ) -> FusedRetrievalResult {
     let mut fused: HashMap<RetrievalIdentity, FusedRetrievalHit> = HashMap::new();
     let mut failures = Vec::new();
@@ -784,13 +828,15 @@ pub fn fuse_route_results(
                     current.rrf_score += contribution;
                     current.provenance.push(provenance.clone());
                     // Keep the richer representative without using cross-space score order.
-                    if current.hit.text.is_empty() && !hit.text.is_empty() {
+                    if hit_metadata_richness(&hit) > hit_metadata_richness(&current.hit) {
                         current.hit = hit.clone();
                     }
                 })
                 .or_insert_with(|| FusedRetrievalHit {
                     hit,
                     rrf_score: contribution,
+                    normalized_score: None,
+                    rerank_score: None,
                     provenance: vec![provenance],
                 });
         }
@@ -821,9 +867,112 @@ pub fn fuse_route_results(
                     .cmp(&right.hit.identity.page_index)
             })
     });
-    hits.truncate(top_k);
+
+    let best_rrf = hits
+        .first()
+        .map(|hit| hit.rrf_score)
+        .filter(|score| score.is_finite() && *score > 0.0);
+    if let Some(best_rrf) = best_rrf {
+        for hit in &mut hits {
+            hit.normalized_score = Some((hit.rrf_score / best_rrf).clamp(0.0, 1.0));
+        }
+    }
 
     FusedRetrievalResult { hits, failures }
+}
+
+/// Cap how many fused hits any single resource may contribute, preserving rank order.
+/// `max_per_resource == 0` disables the cap.
+pub fn apply_max_per_resource(hits: &mut Vec<FusedRetrievalHit>, max_per_resource: usize) {
+    if max_per_resource == 0 {
+        return;
+    }
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    hits.retain(|hit| {
+        let count = counts
+            .entry(hit.hit.identity.resource_id.clone())
+            .or_insert(0);
+        *count += 1;
+        *count <= max_per_resource
+    });
+}
+
+/// Cheap redundancy estimate for MMR. Query embeddings are per-route and per-space, so a
+/// true vector similarity is unavailable at fusion time; identity structure plus a text
+/// bigram overlap is a stable, deterministic approximation.
+fn approximate_hit_similarity(left: &FusedRetrievalHit, right: &FusedRetrievalHit) -> f64 {
+    if left.hit.identity == right.hit.identity {
+        return 1.0;
+    }
+    if left.hit.identity.resource_id == right.hit.identity.resource_id {
+        return if left.hit.identity.page_index == right.hit.identity.page_index {
+            0.9
+        } else {
+            0.6
+        };
+    }
+    text_bigram_jaccard(&left.hit.text, &right.hit.text)
+}
+
+const SIMILARITY_TEXT_PREFIX_CHARS: usize = 160;
+
+fn text_bigram_jaccard(left: &str, right: &str) -> f64 {
+    let bigrams = |text: &str| -> std::collections::HashSet<(char, char)> {
+        let chars: Vec<char> = text
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .take(SIMILARITY_TEXT_PREFIX_CHARS)
+            .collect();
+        chars.windows(2).map(|pair| (pair[0], pair[1])).collect()
+    };
+    let left_set = bigrams(left);
+    let right_set = bigrams(right);
+    if left_set.is_empty() || right_set.is_empty() {
+        return 0.0;
+    }
+    let intersection = left_set.intersection(&right_set).count() as f64;
+    let union = left_set.union(&right_set).count() as f64;
+    if union <= 0.0 {
+        0.0
+    } else {
+        intersection / union
+    }
+}
+
+/// Greedy maximal-marginal-relevance selection over an already rank-sorted pool.
+/// `lambda` in `[0, 1]` weighs relevance against novelty (1.0 keeps pure relevance order).
+/// Returns at most `top_k` hits; relevance uses `normalized_score` when present.
+pub fn apply_mmr_diversity(
+    mut pool: Vec<FusedRetrievalHit>,
+    lambda: f64,
+    top_k: usize,
+) -> Vec<FusedRetrievalHit> {
+    if pool.len() <= 1 || top_k == 0 {
+        pool.truncate(top_k);
+        return pool;
+    }
+    let lambda = lambda.clamp(0.0, 1.0);
+    let relevance = |hit: &FusedRetrievalHit| hit.normalized_score.unwrap_or(hit.rrf_score);
+
+    let mut selected: Vec<FusedRetrievalHit> = Vec::with_capacity(top_k.min(pool.len()));
+    while selected.len() < top_k && !pool.is_empty() {
+        let mut best_index = 0usize;
+        let mut best_score = f64::NEG_INFINITY;
+        for (index, candidate) in pool.iter().enumerate() {
+            let max_similarity = selected
+                .iter()
+                .map(|chosen| approximate_hit_similarity(candidate, chosen))
+                .fold(0.0_f64, f64::max);
+            let score = lambda * relevance(candidate) - (1.0 - lambda) * max_similarity;
+            // Strict comparison keeps the earlier (higher-ranked) hit on ties.
+            if score > best_score {
+                best_score = score;
+                best_index = index;
+            }
+        }
+        selected.push(pool.remove(best_index));
+    }
+    selected
 }
 
 #[cfg(test)]
@@ -1224,6 +1373,138 @@ mod tests {
             .map(|route| route.weight)
             .collect::<Vec<_>>();
         assert_eq!(duplicated_te_weights, vec![0.5, 0.5]);
+    }
+
+    #[test]
+    fn fusion_prefers_media_rich_representative_and_normalizes_scores() {
+        let mut image_hit = hit("shared", 0, Some(0), 0.2);
+        image_hit.text = "short".to_string();
+        image_hit.blob_hash = Some("blob".to_string());
+        let text_hit = hit("shared", 0, Some(0), 0.9);
+
+        let result = fuse_route_results(
+            vec![
+                Ok(RetrievalRouteResult {
+                    route: route("te"),
+                    hits: vec![text_hit, hit("other", 1, Some(0), 0.5)],
+                    elapsed_ms: 1,
+                }),
+                Ok(RetrievalRouteResult {
+                    route: route("me"),
+                    hits: vec![image_hit],
+                    elapsed_ms: 1,
+                }),
+            ],
+            10,
+        );
+        let shared = result
+            .hits
+            .iter()
+            .find(|fused| fused.hit.identity.resource_id == "shared")
+            .unwrap();
+        assert_eq!(shared.hit.blob_hash.as_deref(), Some("blob"));
+        assert_eq!(result.hits[0].normalized_score, Some(1.0));
+        assert!(result
+            .hits
+            .iter()
+            .all(|fused| fused.normalized_score.is_some_and(|s| s > 0.0 && s <= 1.0)));
+    }
+
+    #[test]
+    fn pooled_fusion_keeps_all_candidates_for_post_filter_backfill() {
+        let result = fuse_route_results_pooled(vec![Ok(RetrievalRouteResult {
+            route: route("te"),
+            hits: (0..7).map(|i| hit("resource", i, Some(0), 0.5)).collect(),
+            elapsed_ms: 1,
+        })]);
+        assert_eq!(result.hits.len(), 7);
+    }
+
+    #[test]
+    fn max_per_resource_caps_hits_in_rank_order() {
+        let mut hits = fuse_route_results_pooled(vec![Ok(RetrievalRouteResult {
+            route: route("te"),
+            hits: vec![
+                hit("a", 0, None, 0.9),
+                hit("a", 1, None, 0.8),
+                hit("a", 2, None, 0.7),
+                hit("b", 0, None, 0.6),
+            ],
+            elapsed_ms: 1,
+        })])
+        .hits;
+        apply_max_per_resource(&mut hits, 2);
+        assert_eq!(hits.len(), 3);
+        assert_eq!(
+            hits.iter()
+                .filter(|fused| fused.hit.identity.resource_id == "a")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn mmr_diversifies_across_resources() {
+        let pool = fuse_route_results_pooled(vec![Ok(RetrievalRouteResult {
+            route: route("te"),
+            hits: vec![
+                hit("a", 0, Some(0), 0.9),
+                hit("a", 1, Some(0), 0.8),
+                hit("b", 0, Some(0), 0.7),
+            ],
+            elapsed_ms: 1,
+        })])
+        .hits;
+        let selected = apply_mmr_diversity(pool, 0.5, 2);
+        assert_eq!(selected.len(), 2);
+        assert_eq!(selected[0].hit.identity.resource_id, "a");
+        assert_eq!(selected[1].hit.identity.resource_id, "b");
+
+        let pure_relevance = apply_mmr_diversity(
+            fuse_route_results_pooled(vec![Ok(RetrievalRouteResult {
+                route: route("te"),
+                hits: vec![
+                    hit("a", 0, Some(0), 0.9),
+                    hit("a", 1, Some(0), 0.8),
+                    hit("b", 0, Some(0), 0.7),
+                ],
+                elapsed_ms: 1,
+            })])
+            .hits,
+            1.0,
+            2,
+        );
+        assert!(pure_relevance
+            .iter()
+            .all(|fused| fused.hit.identity.resource_id == "a"));
+    }
+
+    #[test]
+    fn empty_success_does_not_reset_failure_streak_but_closes_half_open_probe() {
+        let mut breaker = ProfileCircuitBreaker::new(3, 100);
+        breaker.record_failure(0);
+        breaker.record_failure(1);
+        breaker.record_empty_success();
+        breaker.record_failure(2);
+        // Empty recall between failures must not have reset the streak.
+        assert!(matches!(
+            breaker.decision(3),
+            ProfileCircuitDecision::RejectOpen { .. }
+        ));
+
+        assert_eq!(
+            breaker.decision(103),
+            ProfileCircuitDecision::AllowHalfOpenProbe
+        );
+        breaker.record_empty_success();
+        // A responsive-but-empty probe closes the circuit again...
+        assert_eq!(breaker.decision(104), ProfileCircuitDecision::Allow);
+        // ...but stays one failure away from re-opening.
+        breaker.record_failure(105);
+        assert!(matches!(
+            breaker.decision(106),
+            ProfileCircuitDecision::RejectOpen { .. }
+        ));
     }
 
     #[test]

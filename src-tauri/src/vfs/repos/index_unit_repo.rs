@@ -387,13 +387,38 @@ pub fn set_index_profile(
 }
 
 /// 删除 Unit
+///
+/// ★ P1（2026-07 修复）：删除路径单一化——裸删除默认把 Unit 名下全部
+/// segment 的 lance_row_id 写入 `__lance_orphan_queue`（同连接/事务），
+/// 再删除 Unit（segments 由 FK CASCADE 级联删除）。入队幂等；若 Lance 行
+/// 已被调用方删除，drain 对不存在的行删除为 no-op。
+/// 明确保证 Lance 已删且想避免队列噪音的调用方可用 [`delete_unsafe`]。
 pub fn delete(conn: &Connection, id: &str) -> Result<bool, VfsError> {
+    super::index_segment_repo::enqueue_lance_orphans_by_unit(conn, id, None)?;
+    delete_unsafe(conn, id)
+}
+
+/// 删除 Unit（不入孤儿队列）。
+///
+/// ⚠️ 仅允许在"对应 Lance 行已删除或已登记删除意图"的前提下调用。
+pub fn delete_unsafe(conn: &Connection, id: &str) -> Result<bool, VfsError> {
     let rows = conn.execute("DELETE FROM vfs_index_units WHERE id = ?1", params![id])?;
     Ok(rows > 0)
 }
 
 /// 删除资源的所有 Units
+///
+/// ★ P1（2026-07 修复）：与 [`purge_index_artifacts_by_resource`] 语义合流——
+/// 裸删除默认先把资源名下全部 segment 的 lance_row_id 入孤儿队列。
+/// 明确保证 Lance 已删的调用方可用 [`delete_by_resource_unsafe`]。
 pub fn delete_by_resource(conn: &Connection, resource_id: &str) -> Result<i64, VfsError> {
+    purge_index_artifacts_by_resource(conn, resource_id)
+}
+
+/// 删除资源的所有 Units（不入孤儿队列）。
+///
+/// ⚠️ 仅允许在"对应 Lance 行已删除或已登记删除意图"的前提下调用。
+pub fn delete_by_resource_unsafe(conn: &Connection, resource_id: &str) -> Result<i64, VfsError> {
     let rows = conn.execute(
         "DELETE FROM vfs_index_units WHERE resource_id = ?1",
         params![resource_id],
@@ -428,11 +453,7 @@ pub fn purge_index_artifacts_by_resource(
                last_error = NULL"#,
         params![resource_id],
     )?;
-    let rows = conn.execute(
-        "DELETE FROM vfs_index_units WHERE resource_id = ?1",
-        params![resource_id],
-    )?;
-    Ok(rows as i64)
+    delete_by_resource_unsafe(conn, resource_id)
 }
 
 /// 清扫孤儿索引单元（resource 已被删除但 units 残留的历史数据）
@@ -640,14 +661,121 @@ pub fn get_by_resource_and_index(
 }
 
 /// 批量创建 Units
+///
+/// ★ P2（2026-07 优化）：改为真正批量——单个 SAVEPOINT + 预编译 INSERT，
+/// 避免逐条 `create()` 每行一次隐式提交 + 一次回读。行为与逐条创建一致。
 pub fn batch_create(
     conn: &Connection,
     inputs: Vec<CreateUnitInput>,
 ) -> Result<Vec<VfsIndexUnit>, VfsError> {
+    if inputs.is_empty() {
+        return Ok(Vec::new());
+    }
+    conn.execute_batch("SAVEPOINT vfs_unit_batch_create")?;
+    let result = batch_create_inner(conn, inputs);
+    match result {
+        Ok(value) => {
+            conn.execute_batch("RELEASE SAVEPOINT vfs_unit_batch_create")?;
+            Ok(value)
+        }
+        Err(error) => {
+            if let Err(rollback_error) = conn.execute_batch(
+                "ROLLBACK TO SAVEPOINT vfs_unit_batch_create;
+                 RELEASE SAVEPOINT vfs_unit_batch_create;",
+            ) {
+                return Err(VfsError::Database(format!(
+                    "{}; unit batch rollback failed: {}",
+                    error, rollback_error
+                )));
+            }
+            Err(error)
+        }
+    }
+}
+
+fn batch_create_inner(
+    conn: &Connection,
+    inputs: Vec<CreateUnitInput>,
+) -> Result<Vec<VfsIndexUnit>, VfsError> {
+    let mut insert_stmt = conn.prepare(
+        "INSERT INTO vfs_index_units (
+            id, resource_id, unit_index, image_blob_hash, image_mime_type,
+            text_content, text_source, content_hash,
+            text_required, text_state, text_chunk_count,
+            mm_required, mm_state,
+            created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, ?11, ?12, ?13, ?14)",
+    )?;
+
     let mut units = Vec::with_capacity(inputs.len());
     for input in inputs {
-        let unit = create(conn, input)?;
-        units.push(unit);
+        let id = generate_unit_id();
+        let now = now_ms();
+        let text_required = input
+            .text_content
+            .as_ref()
+            .map(|t| !t.is_empty())
+            .unwrap_or(false);
+        let mm_required = input.image_blob_hash.is_some();
+        let text_state = if text_required {
+            IndexState::Pending
+        } else {
+            IndexState::Disabled
+        };
+        let mm_state = if mm_required {
+            IndexState::Pending
+        } else {
+            IndexState::Disabled
+        };
+        let content_hash = compute_content_hash(
+            input.image_blob_hash.as_deref(),
+            input.text_content.as_deref(),
+        );
+
+        insert_stmt.execute(params![
+            id,
+            input.resource_id,
+            input.unit_index,
+            input.image_blob_hash,
+            input.image_mime_type,
+            input.text_content,
+            input.text_source,
+            content_hash,
+            text_required as i32,
+            text_state.as_str(),
+            mm_required as i32,
+            mm_state.as_str(),
+            now,
+            now,
+        ])?;
+
+        units.push(VfsIndexUnit {
+            id,
+            resource_id: input.resource_id,
+            unit_index: input.unit_index,
+            image_blob_hash: input.image_blob_hash,
+            image_mime_type: input.image_mime_type,
+            text_content: input.text_content,
+            text_source: input.text_source,
+            content_hash: Some(content_hash),
+            text_required,
+            text_state,
+            text_error: None,
+            text_indexed_at: None,
+            text_chunk_count: 0,
+            text_embedding_dim: None,
+            text_profile_id: None,
+            text_generation: 0,
+            mm_required,
+            mm_state,
+            mm_error: None,
+            mm_indexed_at: None,
+            mm_embedding_dim: None,
+            mm_profile_id: None,
+            mm_generation: 0,
+            created_at: now,
+            updated_at: now,
+        });
     }
     Ok(units)
 }
@@ -658,6 +786,37 @@ pub fn batch_create(
 /// 旧向量对应旧内容，若保留到重索引完成，检索会命中与已更新 `text_content`
 /// 不一致的"幽灵结果"。本函数在变更时立即失效旧索引产物（见分支内注释）。
 pub fn sync_units(
+    conn: &Connection,
+    resource_id: &str,
+    inputs: Vec<CreateUnitInput>,
+) -> Result<SyncUnitsResult, VfsError> {
+    // ★ TD-03：整个增量同步包进 SAVEPOINT（可嵌套于外层事务）。
+    // 旧实现逐条 create/update/delete 自动提交，中途失败会留下"半套 Units"
+    // （部分新建、部分旧 segments 已失效），且孤儿队列写入与业务写不同步。
+    // 现在任一步失败即整体回滚，重试从干净状态开始（同步本身按 content_hash
+    // 比较，重复执行幂等）。
+    conn.execute_batch("SAVEPOINT vfs_sync_units")?;
+    match sync_units_inner(conn, resource_id, inputs) {
+        Ok(value) => {
+            conn.execute_batch("RELEASE SAVEPOINT vfs_sync_units")?;
+            Ok(value)
+        }
+        Err(error) => {
+            if let Err(rollback_error) = conn.execute_batch(
+                "ROLLBACK TO SAVEPOINT vfs_sync_units;
+                 RELEASE SAVEPOINT vfs_sync_units;",
+            ) {
+                return Err(VfsError::Database(format!(
+                    "{}; sync_units rollback failed: {}",
+                    error, rollback_error
+                )));
+            }
+            Err(error)
+        }
+    }
+}
+
+fn sync_units_inner(
     conn: &Connection,
     resource_id: &str,
     inputs: Vec<CreateUnitInput>,
@@ -789,7 +948,8 @@ pub fn sync_units(
                 super::index_segment_repo::enqueue_lance_orphan(conn, row_id, Some(resource_id))?;
             }
             orphaned_lance_row_ids.extend(ids);
-            delete(conn, &existing_unit.id)?;
+            // 上面已显式入队，这里走 unsafe 变体避免重复扫描/入队
+            delete_unsafe(conn, &existing_unit.id)?;
         }
     }
 
@@ -816,6 +976,7 @@ pub fn sync_multimodal_units(
         existing.into_iter().map(|u| (u.unit_index, u)).collect();
     let mut seen = std::collections::HashSet::new();
     let mut units = Vec::with_capacity(inputs.len());
+    let mut orphaned_lance_row_ids = Vec::new();
 
     for input in inputs {
         if !seen.insert(input.unit_index) {
@@ -839,10 +1000,33 @@ pub fn sync_multimodal_units(
             updated.image_mime_type = input.image_mime_type;
             updated.mm_required = true;
             if image_changed || force_rebuild {
+                // ★ P0（2026-07 修复）：与 sync_units 的失效语义对齐。
+                // 旧实现只置 mm_state=pending，保留旧 Segment 与 mm_profile_id——
+                // 重索引完成前检索会命中旧图片的向量（幽灵结果）。现在：
+                // - replace_by_unit_and_modality(…, vec![]) 删除旧 segments，
+                //   并把旧 Lance row IDs 同连接写入 __lance_orphan_queue；
+                // - 摘除 mm_profile_id 后，profile/generation 可见性门禁立刻
+                //   过滤掉尚未物理删除的旧行；
+                // - mm_generation 保持单调不清零（与 generation 协议一致）。
+                orphaned_lance_row_ids.extend(
+                    super::index_segment_repo::list_lance_row_ids_by_unit_and_modality(
+                        conn,
+                        &existing_unit.id,
+                        super::embedding_repo::MODALITY_MULTIMODAL,
+                    )?,
+                );
+                super::index_segment_repo::replace_by_unit_and_modality(
+                    conn,
+                    resource_id,
+                    &existing_unit.id,
+                    super::embedding_repo::MODALITY_MULTIMODAL,
+                    Vec::new(),
+                )?;
                 updated.mm_state = IndexState::Pending;
                 updated.mm_error = None;
                 updated.mm_indexed_at = None;
                 updated.mm_embedding_dim = None;
+                updated.mm_profile_id = None;
             }
             update(conn, &updated)?;
             units.push(
@@ -856,7 +1040,6 @@ pub fn sync_multimodal_units(
         }
     }
 
-    let mut orphaned_lance_row_ids = Vec::new();
     for (index, existing_unit) in existing_map {
         if seen.contains(&index) {
             continue;
@@ -893,6 +1076,11 @@ pub fn sync_multimodal_units(
 }
 
 /// 清除资源的多模态索引账本，保留 Unit 的文本侧数据。
+///
+/// ★ P2（2026-07 修复）：不再把 mm_generation 清零。generation 协议要求
+/// 单调递增（next_generation 依赖递增语义）；清零后一旦重新启用多模态索引，
+/// 新写入的 generation 可能与残留的历史 Segment generation 撞号，
+/// 使可见性门禁误放行旧行。摘除 mm_profile_id 已足以让旧行不可检索。
 pub fn clear_multimodal_index(conn: &Connection, resource_id: &str) -> Result<i64, VfsError> {
     let removed = super::index_segment_repo::enqueue_and_delete_by_resource_and_modality(
         conn,
@@ -908,7 +1096,6 @@ pub fn clear_multimodal_index(conn: &Connection, resource_id: &str) -> Result<i6
             mm_indexed_at = NULL,
             mm_embedding_dim = NULL,
             mm_profile_id = NULL,
-            mm_generation = 0,
             updated_at = ?2
          WHERE resource_id = ?1",
         params![resource_id, now],
@@ -1083,6 +1270,106 @@ mod tests {
         assert!(synced
             .orphaned_lance_row_ids
             .contains(&"lance_stale_text".to_string()));
+    }
+
+    // ★ P0（2026-07）回归测试：图片变化/force_rebuild 必须立即失效旧多模态
+    // 索引产物（segments 入孤儿队列 + 摘除 mm_profile_id + generation 单调）
+    #[test]
+    fn sync_multimodal_image_change_invalidates_stale_segments() {
+        let (_tmp, db) = setup();
+        let conn = db.get_conn_safe().unwrap();
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "INSERT INTO resources (id, hash, type, storage_mode, data, ref_count, created_at, updated_at)
+             VALUES ('res_mm_invalidate', 'hash_mm_invalidate', 'file', 'inline', '', 0, ?1, ?1)",
+            params![now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO vfs_index_units
+             (id, resource_id, unit_index, image_blob_hash, image_mime_type, mm_required,
+              mm_state, mm_profile_id, mm_generation, created_at, updated_at)
+             VALUES ('unit_mm_invalidate', 'res_mm_invalidate', 0, 'blob_old', 'image/png', 1,
+                     'indexed', 'profile_old_mm', 2, ?1, ?1)",
+            params![now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO vfs_index_segments
+             (id, unit_id, segment_index, modality, embedding_dim, lance_row_id,
+              index_profile_id, generation, created_at, updated_at)
+             VALUES ('seg_mm_invalidate', 'unit_mm_invalidate', 0, 'multimodal', 1024,
+                     'lance_stale_mm', 'profile_old_mm', 2, ?1, ?1)",
+            params![now],
+        )
+        .unwrap();
+
+        let synced = sync_multimodal_units(
+            &conn,
+            "res_mm_invalidate",
+            vec![CreateUnitInput {
+                resource_id: "res_mm_invalidate".to_string(),
+                unit_index: 0,
+                image_blob_hash: Some("blob_new".to_string()),
+                image_mime_type: Some("image/png".to_string()),
+                text_content: None,
+                text_source: None,
+            }],
+            false,
+        )
+        .unwrap();
+
+        let updated = &synced.units[0];
+        assert_eq!(updated.mm_state, IndexState::Pending);
+        assert!(
+            updated.mm_profile_id.is_none(),
+            "stale mm profile pointer must be removed so old vectors stop matching"
+        );
+        assert_eq!(
+            updated.mm_generation, 2,
+            "mm generation must stay monotonic"
+        );
+        assert!(synced
+            .orphaned_lance_row_ids
+            .contains(&"lance_stale_mm".to_string()));
+
+        let segments: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM vfs_index_segments WHERE unit_id = 'unit_mm_invalidate'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(segments, 0, "stale mm segments must be deleted");
+        let queued: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __lance_orphan_queue WHERE lance_row_id = 'lance_stale_mm'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            queued, 1,
+            "stale mm lance row must be enqueued for deletion"
+        );
+    }
+
+    // ★ P1（2026-07）回归测试：裸删除默认入孤儿队列
+    #[test]
+    fn bare_unit_delete_enqueues_lance_orphans() {
+        let (_tmp, db) = setup();
+        let conn = db.get_conn_safe().unwrap();
+        seed_resource_with_index(&conn, "res_bare_delete", "lance_bare_delete");
+
+        assert!(delete(&conn, "unit_res_bare_delete").unwrap());
+        let queued: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __lance_orphan_queue WHERE lance_row_id = 'lance_bare_delete'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(queued, 1, "bare unit delete must enqueue lance rows");
     }
 
     #[test]

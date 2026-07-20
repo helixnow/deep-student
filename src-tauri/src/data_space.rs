@@ -6,6 +6,10 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use tracing::{error, info, warn};
 
+const LEGACY_MIGRATION_PENDING_FILE: &str = ".legacy_migration_pending";
+const LEGACY_MIGRATION_COMPLETE_FILE: &str = ".legacy_migration_complete";
+const PURGE_MARKER_FILE: &str = ".purge_on_next_start";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Slot {
     A,
@@ -74,6 +78,12 @@ impl DataSpaceManager {
     fn state_path(&self) -> PathBuf {
         self.slots_dir().join("state.json")
     }
+    fn legacy_migration_pending_path(&self) -> PathBuf {
+        self.slots_dir().join(LEGACY_MIGRATION_PENDING_FILE)
+    }
+    fn legacy_migration_complete_path(&self) -> PathBuf {
+        self.slots_dir().join(LEGACY_MIGRATION_COMPLETE_FILE)
+    }
     pub fn slot_dir(&self, slot: Slot) -> PathBuf {
         self.slots_dir().join(slot.name())
     }
@@ -101,64 +111,127 @@ impl DataSpaceManager {
             // 使用原子写入，即使首次写入也要保证安全
             self.write_state(&st)?;
         }
-        // 一次性迁移：若为首次启用双空间且 slotA/slotB 为空，将 base_dir 下现有数据迁移到 slotA
+        // 一次性迁移：把旧版根目录数据迁入 slotA。
+        //
+        // 不能只依赖“slotA/slotB 都为空”：旧实现发生部分失败后 slotA 已非空，
+        // 后续启动会永久跳过剩余数据。现在使用 pending/complete journal：
+        // - pending 存在表示上次迁移未完成，且应用没有继续打开业务库；
+        // - complete 仅在所有根目录条目迁移完成后写入；
+        // - 老版本留下的部分迁移会继续处理仍位于根目录、且目标不存在的条目；
+        // - 源/目标同时存在且没有本版本 pending 证明时 fail-close，避免覆盖用户
+        //   在残缺 slotA 上继续产生的新数据。
         let slot_a = self.slot_dir(Slot::A);
         let slot_b = self.slot_dir(Slot::B);
-        let slot_a_empty = fs::read_dir(&slot_a)
-            .map(|mut it| it.next().is_none())
-            .unwrap_or(true);
         let slot_b_empty = fs::read_dir(&slot_b)
             .map(|mut it| it.next().is_none())
             .unwrap_or(true);
-        if slot_a_empty && slot_b_empty {
+        let complete_path = self.legacy_migration_complete_path();
+        if !complete_path.exists() {
+            let pending_path = self.legacy_migration_pending_path();
+            let retrying_owned_attempt = pending_path.exists();
+            let mut legacy_entries = Vec::new();
+            for entry in fs::read_dir(&self.base_dir)? {
+                let entry = entry?;
+                let should_migrate = {
+                    let name = entry.file_name();
+                    let name = name.to_string_lossy();
+                    name != "slots" && name != "logs" && name != PURGE_MARKER_FILE
+                };
+                if should_migrate {
+                    legacy_entries.push(entry);
+                }
+            }
+
+            if legacy_entries.is_empty() {
+                fs::write(&complete_path, b"1")?;
+                if pending_path.exists() {
+                    fs::remove_file(&pending_path)?;
+                }
+                return Ok(());
+            }
+
+            if !slot_b_empty && !retrying_owned_attempt {
+                return Err(std::io::Error::other(format!(
+                    "检测到旧版根目录仍有 {} 个数据条目，但 slotB 已包含数据；为避免把不同时间线静默合并，已停止启动，请先备份并人工确认",
+                    legacy_entries.len()
+                )));
+            }
+
+            fs::write(&pending_path, b"1")?;
             info!("[DataSpace] 检测到首次启用双空间模式，开始数据迁移到 slotA...");
             let mut migration_errors: Vec<String> = Vec::new();
 
-            if let Ok(iter) = fs::read_dir(&self.base_dir) {
-                for en in iter.filter_map(log_and_skip_entry_err) {
-                    let p = en.path();
-                    if p.file_name().and_then(|n| n.to_str()) == Some("slots") {
+            for en in legacy_entries {
+                let p = en.path();
+                let dst = slot_a.join(en.file_name());
+
+                if dst.exists() {
+                    if retrying_owned_attempt {
+                        let cleanup = if dst.is_dir() {
+                            fs::remove_dir_all(&dst)
+                        } else {
+                            fs::remove_file(&dst)
+                        };
+                        if let Err(e) = cleanup {
+                            let msg = format!(
+                                "[DataSpace] 清理上次未完成迁移的目标失败 {:?}: {}",
+                                dst, e
+                            );
+                            error!("{}", msg);
+                            migration_errors.push(msg);
+                            continue;
+                        }
+                    } else {
+                        let msg = format!(
+                            "[DataSpace] 旧版部分迁移存在源/目标冲突 {:?} -> {:?}，拒绝覆盖可能已更新的数据",
+                            p, dst
+                        );
+                        error!("{}", msg);
+                        migration_errors.push(msg);
                         continue;
                     }
-                    let dst = slot_a.join(en.file_name());
-                    // 尝试重命名，失败则复制
-                    if fs::rename(&p, &dst).is_err() {
-                        if p.is_dir() {
-                            // P1 修复: 使用安全版本复制，防止符号链接攻击
-                            match copy_directory_safe(&p, &slot_a) {
-                                Ok(_) => {
-                                    if let Err(e) = fs::remove_dir_all(&p) {
-                                        warn!("[DataSpace] 迁移后清理源目录失败 {:?}: {}", p, e);
-                                    }
-                                }
-                                Err(e) => {
-                                    let msg = format!("[DataSpace] 复制目录失败 {:?}: {}", p, e);
+                }
+
+                // 尝试重命名，失败则复制
+                if fs::rename(&p, &dst).is_err() {
+                    if p.is_dir() {
+                        // P1 修复: 使用安全版本复制，防止符号链接攻击
+                        match copy_directory_safe(&p, &slot_a) {
+                            Ok(_) => {
+                                if let Err(e) = fs::remove_dir_all(&p) {
+                                    let msg =
+                                        format!("[DataSpace] 迁移后清理源目录失败 {:?}: {}", p, e);
                                     error!("{}", msg);
                                     migration_errors.push(msg);
                                 }
                             }
-                        } else {
-                            if let Err(e) = fs::create_dir_all(&slot_a) {
-                                let msg =
-                                    format!("[DataSpace] 创建目标目录失败 {:?}: {}", slot_a, e);
+                            Err(e) => {
+                                let msg = format!("[DataSpace] 复制目录失败 {:?}: {}", p, e);
                                 error!("{}", msg);
                                 migration_errors.push(msg);
-                                continue;
                             }
-                            match fs::copy(&p, &dst) {
-                                Ok(_) => {
-                                    if let Err(e) = fs::remove_file(&p) {
-                                        warn!("[DataSpace] 迁移后清理源文件失败 {:?}: {}", p, e);
-                                    }
-                                }
-                                Err(e) => {
-                                    let msg = format!(
-                                        "[DataSpace] 复制文件失败 {:?} -> {:?}: {}",
-                                        p, dst, e
-                                    );
+                        }
+                    } else {
+                        if let Err(e) = fs::create_dir_all(&slot_a) {
+                            let msg = format!("[DataSpace] 创建目标目录失败 {:?}: {}", slot_a, e);
+                            error!("{}", msg);
+                            migration_errors.push(msg);
+                            continue;
+                        }
+                        match fs::copy(&p, &dst) {
+                            Ok(_) => {
+                                if let Err(e) = fs::remove_file(&p) {
+                                    let msg =
+                                        format!("[DataSpace] 迁移后清理源文件失败 {:?}: {}", p, e);
                                     error!("{}", msg);
                                     migration_errors.push(msg);
                                 }
+                            }
+                            Err(e) => {
+                                let msg =
+                                    format!("[DataSpace] 复制文件失败 {:?} -> {:?}: {}", p, dst, e);
+                                error!("{}", msg);
+                                migration_errors.push(msg);
                             }
                         }
                     }
@@ -179,6 +252,8 @@ impl DataSpaceManager {
                     error_summary
                 )));
             } else {
+                fs::write(&complete_path, b"1")?;
+                fs::remove_file(&pending_path)?;
                 info!("[DataSpace] 数据迁移完成");
             }
         }
@@ -224,6 +299,10 @@ impl DataSpaceManager {
                         // 将恢复的状态写回 state.json，防止下次启动时再次走恢复流程
                         if let Err(e) = self.write_state(&st) {
                             error!("[DataSpace] 恢复后回写 state.json 失败: {}", e);
+                        } else if let Err(e) = fs::remove_file(&tmp_path) {
+                            if e.kind() != std::io::ErrorKind::NotFound {
+                                warn!("[DataSpace] 清理旧 state.json.tmp 失败: {}", e);
+                            }
                         }
                         return Ok(st);
                     }
@@ -458,25 +537,26 @@ impl DataSpaceManager {
         self.atomic_write_state_file(&s)
     }
 
-    /// 原子写入 state.json：先写临时文件并 fsync，再 rename 替换，防止崩溃/断电导致文件损坏
+    /// 原子写入 state.json：同目录随机临时文件 fsync 后持久化覆盖。
+    ///
+    /// `TempPath::persist` 在 Windows 使用可覆盖既有目标的原子持久化语义，避免
+    /// `std::fs::rename` 因 state.json 已存在而失败；崩溃前旧 state 仍保持完整。
     fn atomic_write_state_file(&self, content: &str) -> std::io::Result<()> {
         use std::io::Write;
 
         let target = self.state_path();
-        let tmp = self.slots_dir().join("state.json.tmp");
+        let mut temporary = tempfile::Builder::new()
+            .prefix(".state-")
+            .suffix(".tmp")
+            .tempfile_in(self.slots_dir())?;
+        temporary.write_all(content.as_bytes())?;
+        temporary.as_file().sync_all()?;
+        temporary
+            .into_temp_path()
+            .persist(&target)
+            .map_err(|error| error.error)?;
 
-        // 1. 写入临时文件
-        {
-            let mut file = fs::File::create(&tmp)?;
-            file.write_all(content.as_bytes())?;
-            // 2. fsync 确保数据刷盘
-            file.sync_all()?;
-        }
-
-        // 3. 原子性 rename：在 POSIX 系统上 rename 是原子操作
-        fs::rename(&tmp, &target)?;
-
-        // 4. fsync 父目录，确保目录条目更新持久化（防止断电后目录项丢失）
+        // fsync 父目录，确保目录条目更新持久化（防止断电后目录项丢失）
         #[cfg(unix)]
         {
             if let Ok(dir) = fs::File::open(self.slots_dir()) {
@@ -487,36 +567,39 @@ impl DataSpaceManager {
         Ok(())
     }
 
-    pub fn initialize_on_start(&self) {
-        if self.ensure_layout().is_err() {
-            return;
-        }
-        if let Ok(mut st) = self.read_state() {
-            if let Some(pending) = st.pending.take() {
-                // 在应用 pending 切换之前，验证目标 slot 目录有效
-                if let Some(target_slot) = Slot::from_name(&pending) {
-                    let target_dir = self.slot_dir(target_slot);
-                    if target_dir.is_dir() && Self::dir_has_data(&target_dir) {
-                        info!(
-                            "[DataSpace] 启动时应用 pending 切换: {} -> {}",
-                            st.active, pending
-                        );
-                        st.active = pending;
-                    } else {
-                        error!(
-                            "[DataSpace] pending 切换目标 {} 目录无效或为空，取消切换，保持 {}",
-                            pending, st.active
-                        );
-                    }
+    pub fn initialize_on_start(&self) -> std::io::Result<()> {
+        self.ensure_layout()?;
+        let mut st = self.read_state()?;
+        if let Some(pending) = st.pending.take() {
+            // 在应用 pending 切换之前，验证目标 slot 目录有效
+            if let Some(target_slot) = Slot::from_name(&pending) {
+                let target_dir = self.slot_dir(target_slot);
+                if target_dir.is_dir() && Self::dir_has_data(&target_dir) {
+                    info!(
+                        "[DataSpace] 启动时应用 pending 切换: {} -> {}",
+                        st.active, pending
+                    );
+                    st.active = pending;
                 } else {
                     error!(
-                        "[DataSpace] pending 切换目标名称无效: {}，取消切换",
-                        pending
+                        "[DataSpace] pending 切换目标 {} 目录无效或为空，取消切换，保持 {}",
+                        pending, st.active
                     );
                 }
-                let _ = self.write_state(&st);
+            } else {
+                error!(
+                    "[DataSpace] pending 切换目标名称无效: {}，取消切换",
+                    pending
+                );
             }
+            self.write_state(&st)?;
         }
+        // pending 已原子提交后，匹配当前活动槽的 rollback 才失去恢复价值。
+        // 失败恢复只会在非活动槽留下 trash，因此这里不会误删尚未提交的回滚点。
+        if let Some(active_slot) = Slot::from_name(&st.active) {
+            self.cleanup_restore_trash(active_slot)?;
+        }
+        Ok(())
     }
 
     pub fn active_slot(&self) -> Slot {
@@ -546,6 +629,33 @@ impl DataSpaceManager {
     }
     pub fn inactive_dir(&self) -> PathBuf {
         self.slot_dir(self.inactive_slot())
+    }
+
+    /// 删除指定生产槽此前遗留的恢复 rollback 目录。
+    ///
+    /// 每次新恢复只保留本次刚生成的一份 rollback；成功提交后调用方还会删除
+    /// 该份目录，从而避免完整数据槽副本无限累积。
+    pub fn cleanup_restore_trash(&self, target: Slot) -> std::io::Result<usize> {
+        if target.is_test_slot() {
+            return Ok(0);
+        }
+        let prefix = format!("{}.trash-", target.name());
+        let mut removed = 0usize;
+        for entry in fs::read_dir(self.slots_dir())? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !name.starts_with(&prefix) {
+                continue;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                fs::remove_dir_all(&path)?;
+            } else {
+                fs::remove_file(&path)?;
+            }
+            removed += 1;
+        }
+        Ok(removed)
     }
 
     /// 恢复前清空目标插槽（审阅 15-backup-dataspace P1-2）。
@@ -582,9 +692,10 @@ impl DataSpaceManager {
 
         // 1. 优先整体移动到 trash 目录（保留兜底，可手动找回）
         let trash_dir = self.slots_dir().join(format!(
-            "{}.trash-{}",
+            "{}.trash-{}-{}",
             target.name(),
-            chrono::Utc::now().format("%Y%m%d%H%M%S")
+            chrono::Utc::now().format("%Y%m%d%H%M%S%6f"),
+            uuid::Uuid::new_v4()
         ));
         match fs::rename(&target_dir, &trash_dir) {
             Ok(()) => {
@@ -715,10 +826,15 @@ impl DataSpaceManager {
 
 static DATA_SPACE: OnceLock<DataSpaceManager> = OnceLock::new();
 
-pub fn init_data_space_manager(base_dir: PathBuf) {
+pub fn init_data_space_manager(base_dir: PathBuf) -> std::io::Result<()> {
     let mgr = DataSpaceManager::new(base_dir);
-    mgr.initialize_on_start();
-    let _ = DATA_SPACE.set(mgr);
+    mgr.initialize_on_start()?;
+    DATA_SPACE.set(mgr).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "DataSpaceManager 已初始化",
+        )
+    })
 }
 
 pub fn get_data_space_manager() -> Option<&'static DataSpaceManager> {
@@ -835,14 +951,17 @@ pub fn purge_all_database_files() -> Result<String, AppError> {
     Ok("已标记：下次启动将清空所有数据（备份保留），即将重启应用以完成清空。".to_string())
 }
 
-/// ★ F13：立即清空活动数据目录（移动端用——移动端经 WebView reload 生效，无独立进程重启）。
-/// 返回删除报告。保留 `backups`/`temp_restore`/`migration_core_backups`。
+/// 旧版移动端即时清理入口。
+///
+/// WebView reload 不会重建 Rust 进程中的 SQLite 连接池；直接 unlink 活动数据库后，
+/// 旧连接仍可能继续读写已删除 inode。该路径因此 fail-close，统一要求通过
+/// `purge_all_database_files` 写 marker 后完整重启进程。
 #[tauri::command]
 pub fn purge_active_data_dir_now() -> Result<String, AppError> {
-    let mgr = get_data_space_manager()
-        .ok_or_else(|| AppError::internal("数据空间管理器未初始化".to_string()))?;
-    let report = crate::startup_cleanup::purge_active_data_dir(&mgr.active_dir())?;
-    Ok(report.details)
+    Err(AppError::validation(
+        "为保证数据库连接安全，移动端清空数据需要完整退出并重新打开应用，不能仅刷新页面"
+            .to_string(),
+    ))
 }
 
 // ============================================================================

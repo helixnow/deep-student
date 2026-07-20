@@ -45,8 +45,14 @@ const VFS_LANCE_TABLE_PREFIX: &str = "vfs_emb_";
 /// FTS 版本标识
 const VFS_FTS_VERSION: &str = "2026-01-vfs-ngram-v1";
 
-/// 优化最小间隔（秒）
-const OPTIMIZE_MIN_INTERVAL_SECS: i64 = 600; // 10min
+/// 自动优化最小间隔（秒）
+///
+/// `optimize_table_by_name` 对每张表做全量 Compact + 7 天版本 Prune + 索引
+/// delta 合并，大表上是秒到分钟级的重 IO 操作。索引 worker 每 ~5s tick 一次
+/// 就调用 `maybe_optimize_all`，节流必须在本模块内部完成。取 30min 而非原注释
+/// 的 10min：本地单机写入速率有限，30min 已足以约束版本/小文件与未索引 delta
+/// 的累积，同时把常驻后台 IO 压到可忽略；600s 对全表 Compact 偏激进。
+const OPTIMIZE_MIN_INTERVAL_SECS: u64 = 1800; // 30min
 
 /// Lance 相关性得分列名
 const LANCE_RELEVANCE_COL: &str = "_relevance_score";
@@ -149,6 +155,9 @@ pub struct VfsLanceStore {
     /// 仅当索引确认成功（或已存在）才入缓存；失败（如空表暂不能建索引）不缓存，
     /// 保留下次调用重试自愈的机会。
     ensured_tables: std::sync::Mutex<std::collections::HashSet<String>>,
+    /// `maybe_optimize_all` 的节流时间戳（上次尝试自动优化的时刻）。
+    /// 实例内存态：进程重启后首个 tick 会触发一次优化，属可接受行为。
+    last_optimize_at: std::sync::Mutex<Option<Instant>>,
 }
 
 impl VfsLanceStore {
@@ -166,6 +175,7 @@ impl VfsLanceStore {
             lance_base_path,
             connection: tokio::sync::OnceCell::new(),
             ensured_tables: std::sync::Mutex::new(std::collections::HashSet::new()),
+            last_optimize_at: std::sync::Mutex::new(None),
         })
     }
 
@@ -418,15 +428,6 @@ impl VfsLanceStore {
         Ok(embedding_dim_repo::get_by_key(&conn, dim as i32, modality)?
             .map(|registered| registered.lance_table_name)
             .unwrap_or_else(|| Self::table_name(modality, dim)))
-    }
-
-    /// 从数据库获取已注册的维度列表
-    fn get_registered_dimensions(&self, modality: &str) -> VfsResult<Vec<usize>> {
-        use crate::vfs::repos::embedding_dim_repo;
-
-        let conn = self.db.get_conn()?;
-        let dims = embedding_dim_repo::list_by_modality(&conn, modality)?;
-        Ok(dims.iter().map(|d| d.dimension as usize).collect())
     }
 
     /// Discover legacy and profiled Lance tables for diagnostics/cleanup only.
@@ -1003,13 +1004,20 @@ impl VfsLanceStore {
         let (schema, batch) = self.build_batch(dim, rows)?;
         let iter = RecordBatchIterator::new(vec![Ok(batch)].into_iter(), schema);
 
-        let mut builder = tbl.merge_insert(&["embedding_id"]);
-        builder.when_matched_update_all(None);
-        builder.when_not_matched_insert_all();
-        builder
-            .execute(Box::new(iter))
+        // ★ 2026-07：由 merge_insert(&["embedding_id"]) 改为普通 append。
+        // - 两个写入方（embedding_service / multimodal_service）每次调用都为每行
+        //   生成全新 embedding_id（`emb_{nanoid}` / 带 `nanoid!(8)` 后缀），失败
+        //   重试会重新走 index_chunks / index_resource_pages 再生成新 ID，不存在
+        //   稳定 ID 重写场景，when_matched 分支从未命中过；
+        // - embedding_id 列无 scalar index，merge 的 join 退化为逐批全表扫描，
+        //   随表增长写入越来越慢，纯付成本；
+        // - 无重复行由写入协议保证：新代 shadow-write → SQLite Segment 账本原子
+        //   切换 generation → delete_by_unit_except_ids 回收旧代；账本提交失败的
+        //   未引用行由 discard_uncommitted_rows / __lance_orphan_queue 兜底回收。
+        tbl.add(iter)
+            .execute()
             .await
-            .map_err(|e| VfsError::Other(format!("写入 Lance 表失败 (merge_insert): {}", e)))?;
+            .map_err(|e| VfsError::Other(format!("写入 Lance 表失败 (append): {}", e)))?;
 
         if row_count_before < MIN_ROWS_FOR_ANN_INDEX
             && row_count_before.saturating_add(rows.len()) >= MIN_ROWS_FOR_ANN_INDEX
@@ -1020,7 +1028,7 @@ impl VfsLanceStore {
         }
 
         info!(
-            "[VfsLanceStore] Wrote {} chunks to {} (merge_insert)",
+            "[VfsLanceStore] Wrote {} chunks to {} (append)",
             rows.len(),
             profile.lance_table_name
         );
@@ -1555,20 +1563,29 @@ impl VfsLanceStore {
         Ok(profile)
     }
 
-    async fn ensure_profile_secondary_indexes(&self, table: &Table, table_name: &str) -> bool {
+    async fn ensure_profile_secondary_indexes(
+        &self,
+        table: &Table,
+        table_name: &str,
+        modality: &str,
+    ) -> bool {
         let mut all_ready = true;
-        if let Err(error) = table
-            .create_index(&["text"], Index::FTS(self.build_fts_index_builder()))
-            .replace(false)
-            .execute()
-            .await
-        {
-            if !error.to_string().contains("already exists") {
-                all_ready = false;
-                warn!(
-                    "[VfsLanceStore] profile FTS index ensure failed on {}: {}",
-                    table_name, error
-                );
+        // 仅 text profile 表需要 FTS：多模态表的 text 列通常为空（页面文本是
+        // 独立的 text Unit），为其构建/维护 ngram FTS 纯属浪费索引与优化开销。
+        if modality == "text" {
+            if let Err(error) = table
+                .create_index(&["text"], Index::FTS(self.build_fts_index_builder()))
+                .replace(false)
+                .execute()
+                .await
+            {
+                if !error.to_string().contains("already exists") {
+                    all_ready = false;
+                    warn!(
+                        "[VfsLanceStore] profile FTS index ensure failed on {}: {}",
+                        table_name, error
+                    );
+                }
             }
         }
         for (column, index) in [
@@ -1699,7 +1716,7 @@ impl VfsLanceStore {
             )?;
         }
         let secondary_ready = self
-            .ensure_profile_secondary_indexes(&table, &profile.lance_table_name)
+            .ensure_profile_secondary_indexes(&table, &profile.lance_table_name, &profile.modality)
             .await;
         if secondary_ready {
             if let Ok(mut ensured) = self.ensured_tables.lock() {
@@ -1754,6 +1771,13 @@ impl VfsLanceStore {
             .limit((top_k.saturating_mul(3)).max(20).min(500));
         if row_count < MIN_ROWS_FOR_ANN_INDEX {
             query = query.bypass_vector_index();
+        } else {
+            // IVF-PQ 命中索引时 _distance 是量化(PQ)近似距离，排序可能失真。
+            // refine_factor(2) 让 Lance 先取 2×limit 个 ANN 候选，再读取原始
+            // 向量重算真实余弦距离并重排，纠正近似排序；代价是每次查询多读
+            // 一批全精度向量（延迟小幅上升，本地盘可接受）。
+            // nprobes 保持默认（20 分区）；未来可暴露为设置项按库规模调优。
+            query = query.refine_factor(2);
         }
         if let Some(filter) = filter.as_deref() {
             query = query.only_if(filter);
@@ -2298,12 +2322,18 @@ impl VfsLanceStore {
     /// 优化指定表
     pub async fn optimize_table(&self, modality: &str, dim: usize) -> VfsResult<()> {
         let table_name = self.active_table_name(modality, dim)?;
+        self.optimize_table_by_name(&table_name).await
+    }
+
+    /// 按表名优化（Compact + 7 天版本 Prune + 索引 delta 合并）。
+    /// 表不存在时静默返回（可能刚被 retirement sweep 回收）。
+    async fn optimize_table_by_name(&self, table_name: &str) -> VfsResult<()> {
         if let Ok(mut ensured) = self.ensured_tables.lock() {
-            ensured.remove(&table_name);
+            ensured.remove(table_name);
         }
         let conn = self.connect().await?;
 
-        let tbl = match conn.open_table(&table_name).execute().await {
+        let tbl = match conn.open_table(table_name).execute().await {
             Ok(tbl) => tbl,
             Err(lancedb::Error::TableNotFound { .. }) => return Ok(()),
             Err(error) => {
@@ -2363,16 +2393,72 @@ impl VfsLanceStore {
         Ok(())
     }
 
-    /// 优化所有表
+    /// 优化指定 modality 的所有活跃表（强制执行，无节流；节流版见
+    /// `maybe_optimize_all`）。
+    ///
+    /// 除 `vfs_embedding_dims` 指向的当前写入表外，还枚举 `vfs_index_profiles`
+    /// 中仍可查询（active/building/queryable）的 profile 分表：模型滚动迁移
+    /// 期间旧 profile 表继续服务查询，若只优化 dim 级指针指向的新表，旧表的
+    /// 版本与未索引 delta 会持续累积。retired 表交由
+    /// `sweep_retired_profile_tables` 整表回收，无需优化。
     pub async fn optimize_all(&self, modality: &str) -> VfsResult<usize> {
         let mut optimized = 0usize;
 
-        let dims = self.get_registered_dimensions(modality)?;
-        for dim in dims {
-            self.optimize_table(modality, dim).await?;
+        for table_name in self.optimize_table_names(modality)? {
+            self.optimize_table_by_name(&table_name).await?;
             optimized += 1;
         }
 
+        Ok(optimized)
+    }
+
+    /// 枚举某 modality 需要优化的全部表名（dim 级活跃表 ∪ 可查询 profile 表）。
+    fn optimize_table_names(&self, modality: &str) -> VfsResult<Vec<String>> {
+        let conn = self.db.get_conn()?;
+        let mut names = crate::vfs::repos::embedding_dim_repo::list_by_modality(&conn, modality)?
+            .into_iter()
+            .map(|dim| dim.lance_table_name)
+            .collect::<Vec<_>>();
+        let mut stmt = conn.prepare(
+            "SELECT DISTINCT lance_table_name FROM vfs_index_profiles
+             WHERE modality = ?1 AND state IN ('active', 'building', 'queryable')
+             ORDER BY lance_table_name",
+        )?;
+        let profile_names = stmt
+            .query_map(rusqlite::params![modality], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        names.extend(profile_names);
+        names.sort();
+        names.dedup();
+        Ok(names)
+    }
+
+    /// 节流的自动优化入口（后台索引 worker 每个 tick 直接调用即可）。
+    ///
+    /// 距上次尝试不足 `OPTIMIZE_MIN_INTERVAL_SECS` 时直接返回 `Ok(0)`。
+    /// 节流时间戳在优化开始前先占位（而非成功后记账）：
+    /// - 并发调用只会有一个进入优化；
+    /// - 优化失败不会在下一个 ~5s tick 立即重试，避免持续失败时的重 IO 风暴。
+    ///
+    /// 覆盖 text 与 multimodal 两个 modality（与 `vfs_embedding_dims` /
+    /// `vfs_index_profiles` 实际注册的 modality 取值一致）。优化失败向调用方
+    /// 返回 Err，由调用方吞错记日志，不得影响索引主流程。
+    pub async fn maybe_optimize_all(&self) -> VfsResult<usize> {
+        {
+            let mut last = self
+                .last_optimize_at
+                .lock()
+                .map_err(|_| VfsError::Other("optimize throttle lock poisoned".to_string()))?;
+            if last.is_some_and(|at| at.elapsed().as_secs() < OPTIMIZE_MIN_INTERVAL_SECS) {
+                return Ok(0);
+            }
+            *last = Some(Instant::now());
+        }
+
+        let mut optimized = 0usize;
+        for modality in ["text", "multimodal"] {
+            optimized += self.optimize_all(modality).await?;
+        }
         Ok(optimized)
     }
 

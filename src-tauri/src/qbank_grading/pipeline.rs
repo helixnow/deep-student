@@ -23,6 +23,11 @@ use super::types::{
     GRADE_SYSTEM_PROMPT,
 };
 
+/// 建连/响应头超时：send() 在收到响应头后即完成，不限制流式 body 时长
+const REQUEST_HEADER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+/// 流式空闲超时：相邻两个 SSE 数据块之间的最大等待时间
+const STREAM_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
 /// 评判管线依赖
 pub struct QbankGradingDeps {
     pub llm: Arc<LLMManager>,
@@ -42,82 +47,59 @@ pub async fn run_qbank_grading(
     request: QbankGradingRequest,
     deps: QbankGradingDeps,
 ) -> Result<Option<QbankGradingResponse>, AppError> {
-    // 1. 获取题目信息
-    let question = VfsQuestionRepo::get_question(&deps.vfs_db, &request.question_id)
-        .map_err(|e| AppError::database(e.to_string()))?
-        .ok_or_else(|| AppError::not_found(format!("题目不存在: {}", request.question_id)))?;
-
-    // 2. 校验 submission 归属并获取当前答案（必须绑定到本次 submission）
-    let current_submission = match get_submission_by_id(&deps.vfs_db, &request.submission_id)? {
-        Some(sub) => sub,
-        None => {
-            let err = AppError::not_found(format!("作答记录不存在: {}", request.submission_id));
-            deps.emitter
-                .emit_error(&request.stream_session_id, err.message.clone());
-            return Err(err);
-        }
-    };
-    if current_submission.question_id != request.question_id {
-        let err = AppError::validation(format!(
-            "作答记录 {} 不属于题目 {}",
-            request.submission_id, request.question_id
-        ));
+    // 错误传播完整性：任何前置失败都要同时发 error 事件，
+    // 保证只监听流事件（不 await invoke 结果）的前端也能拿到可读错误。
+    let emit_and_return = |err: AppError| -> AppError {
         deps.emitter
             .emit_error(&request.stream_session_id, err.message.clone());
-        return Err(err);
+        err
+    };
+
+    // 1. 获取题目信息
+    let question = VfsQuestionRepo::get_question(&deps.vfs_db, &request.question_id)
+        .map_err(|e| emit_and_return(AppError::database(e.to_string())))?
+        .ok_or_else(|| {
+            emit_and_return(AppError::not_found(format!(
+                "题目不存在: {}",
+                request.question_id
+            )))
+        })?;
+
+    // 2. 校验 submission 归属并获取当前答案（必须绑定到本次 submission）
+    let current_submission = match get_submission_by_id(&deps.vfs_db, &request.submission_id) {
+        Ok(Some(sub)) => sub,
+        Ok(None) => {
+            return Err(emit_and_return(AppError::not_found(format!(
+                "作答记录不存在: {}",
+                request.submission_id
+            ))));
+        }
+        Err(e) => return Err(emit_and_return(e)),
+    };
+    if current_submission.question_id != request.question_id {
+        return Err(emit_and_return(AppError::validation(format!(
+            "作答记录 {} 不属于题目 {}",
+            request.submission_id, request.question_id
+        ))));
     }
 
     // 3. 获取作答历史（最近 5 条）
     let submissions = VfsQuestionRepo::get_submissions(&deps.vfs_db, &request.question_id, 5)
-        .map_err(|e| AppError::database(e.to_string()))?;
+        .map_err(|e| emit_and_return(AppError::database(e.to_string())))?;
 
     // 4. 构造 Prompt
     let (system_prompt, user_prompt) =
-        build_prompts(&question, &current_submission, &submissions, &request.mode)?;
+        build_prompts(&question, &current_submission, &submissions, &request.mode)
+            .map_err(&emit_and_return)?;
 
     // 5. 获取模型配置
-    let config = if let Some(ref model_id) = request.model_config_id {
-        let configs = deps.llm.get_api_configs().await?;
-        let found = configs
-            .into_iter()
-            .find(|c| c.id == *model_id)
-            .ok_or_else(|| AppError::llm(format!("未找到模型配置: {}", model_id)))?;
-        if !found.enabled {
-            return Err(AppError::llm(format!("模型配置已禁用: {}", model_id)));
-        }
-        if found.is_embedding {
-            return Err(AppError::llm(format!(
-                "嵌入模型不支持 AI 评判: {}",
-                model_id
-            )));
-        }
-        found
-    } else {
-        let assignments = deps.llm.get_model_assignments().await?;
-        if let Some(model_id) = assignments.qbank_ai_grading_model_config_id {
-            let configs = deps.llm.get_api_configs().await?;
-            let found = configs
-                .into_iter()
-                .find(|c| c.id == model_id)
-                .ok_or_else(|| AppError::llm(format!("未找到模型配置: {}", model_id)))?;
-            if found.is_embedding {
-                return Err(AppError::llm(format!(
-                    "嵌入模型不支持 AI 评判: {}",
-                    model_id
-                )));
-            }
-            if found.is_reranker {
-                return Err(AppError::llm(format!(
-                    "重排序模型不支持 AI 评判: {}",
-                    model_id
-                )));
-            }
-            found
-        } else {
-            deps.llm.get_model2_config().await?
-        }
-    };
-    let api_key = deps.llm.decrypt_api_key(&config.api_key)?;
+    let config = resolve_grading_config(&deps.llm, request.model_config_id.as_ref())
+        .await
+        .map_err(&emit_and_return)?;
+    let api_key = deps
+        .llm
+        .decrypt_api_key(&config.api_key)
+        .map_err(&emit_and_return)?;
 
     // 6. 流式调用 LLM
     let mut accumulated = String::new();
@@ -285,6 +267,19 @@ pub async fn run_qbank_grading(
             }
         }
 
+        // ④ S-030 口径：AI 评判写入了 ai_feedback/is_correct，与 submit_answer 一样
+        // 需标记同步状态并重算 content hash，否则云同步会用远端旧值覆盖本次评判结果。
+        crate::question_sync_service::QuestionSyncService::mark_as_modified_with_conn(
+            &conn,
+            &request.question_id,
+        )
+        .map_err(|e| AppError::database(format!("标记同步状态失败: {}", e)))?;
+        crate::question_sync_service::QuestionSyncService::update_content_hash_with_conn(
+            &conn,
+            &request.question_id,
+        )
+        .map_err(|e| AppError::database(format!("更新内容哈希失败: {}", e)))?;
+
         conn.execute("RELEASE qbank_grading_persist", [])
             .map_err(|e| AppError::database(format!("提交评判事务失败: {}", e)))?;
         Ok(())
@@ -326,6 +321,62 @@ pub async fn run_qbank_grading(
         score,
         feedback: accumulated,
     }))
+}
+
+/// 解析评判使用的模型配置
+///
+/// 优先级：请求显式指定 > 模型分配表中的 qbank 评判模型 > Model2 默认配置。
+async fn resolve_grading_config(
+    llm: &LLMManager,
+    model_config_id: Option<&String>,
+) -> Result<ApiConfig, AppError> {
+    if let Some(model_id) = model_config_id {
+        let configs = llm.get_api_configs().await?;
+        let found = configs
+            .into_iter()
+            .find(|c| c.id == *model_id)
+            .ok_or_else(|| AppError::llm(format!("未找到模型配置: {}", model_id)))?;
+        if !found.enabled {
+            return Err(AppError::llm(format!("模型配置已禁用: {}", model_id)));
+        }
+        if found.is_embedding {
+            return Err(AppError::llm(format!(
+                "嵌入模型不支持 AI 评判: {}",
+                model_id
+            )));
+        }
+        if found.is_reranker {
+            return Err(AppError::llm(format!(
+                "重排序模型不支持 AI 评判: {}",
+                model_id
+            )));
+        }
+        return Ok(found);
+    }
+
+    let assignments = llm.get_model_assignments().await?;
+    if let Some(model_id) = assignments.qbank_ai_grading_model_config_id {
+        let configs = llm.get_api_configs().await?;
+        let found = configs
+            .into_iter()
+            .find(|c| c.id == model_id)
+            .ok_or_else(|| AppError::llm(format!("未找到模型配置: {}", model_id)))?;
+        if found.is_embedding {
+            return Err(AppError::llm(format!(
+                "嵌入模型不支持 AI 评判: {}",
+                model_id
+            )));
+        }
+        if found.is_reranker {
+            return Err(AppError::llm(format!(
+                "重排序模型不支持 AI 评判: {}",
+                model_id
+            )));
+        }
+        Ok(found)
+    } else {
+        llm.get_model2_config().await
+    }
 }
 
 /// 构造评判 Prompt
@@ -559,13 +610,23 @@ where
                 }
             }
 
-            client
-                .post(&preq.url)
-                .headers(header_map)
-                .json(&preq.body)
-                .send()
-                .await
-                .map_err(|e| AppError::llm(format!("评判请求失败: {}", e)))?
+            // 建连/首包超时：send() 在响应头返回时完成，不会截断后续流式 body
+            tokio::time::timeout(
+                REQUEST_HEADER_TIMEOUT,
+                client
+                    .post(&preq.url)
+                    .headers(header_map)
+                    .json(&preq.body)
+                    .send(),
+            )
+            .await
+            .map_err(|_| {
+                AppError::llm(format!(
+                    "评判请求超时（{} 秒未收到响应），请检查网络后重试",
+                    REQUEST_HEADER_TIMEOUT.as_secs()
+                ))
+            })?
+            .map_err(|e| AppError::llm(format!("评判请求失败: {}", e)))?
         };
 
         if !response.status().is_success() {
@@ -616,6 +677,10 @@ where
                 done
             };
 
+        // watch sender 一旦被清理（Err），停止轮询该分支，
+        // 否则 changed() 每次立即返回 Err 会让 select 空转成忙等。
+        let mut cancel_watch_alive = true;
+
         while !stream_ended && !cancelled {
             if llm.consume_pending_cancel(stream_event).await {
                 cancelled = true;
@@ -623,14 +688,21 @@ where
             }
 
             tokio::select! {
-                changed = cancel_rx.changed() => {
-                    if changed.is_ok() && *cancel_rx.borrow() {
-                        cancelled = true;
+                changed = cancel_rx.changed(), if cancel_watch_alive => {
+                    match changed {
+                        Ok(()) => {
+                            if *cancel_rx.borrow() {
+                                cancelled = true;
+                            }
+                        }
+                        Err(_) => {
+                            cancel_watch_alive = false;
+                        }
                     }
                 }
-                chunk_result = stream.next() => {
+                chunk_result = tokio::time::timeout(STREAM_IDLE_TIMEOUT, stream.next()) => {
                     match chunk_result {
-                        Some(chunk) => {
+                        Ok(Some(chunk)) => {
                             let bytes = chunk.map_err(|e| AppError::llm(format!("读取流失败: {}", e)))?;
                             for line in sse_buffer.process_bytes(&bytes) {
                                 if handle_sse_block(&line, &mut on_chunk, &mut finish_observed) {
@@ -639,8 +711,15 @@ where
                                 }
                             }
                         }
-                        None => {
+                        Ok(None) => {
                             break;
+                        }
+                        Err(_) => {
+                            // 空闲超时：服务端长时间不发数据，视为网络故障而非无限等待
+                            return Err(AppError::llm(format!(
+                                "AI 评判流式响应超时（{} 秒无数据），请检查网络后重试",
+                                STREAM_IDLE_TIMEOUT.as_secs()
+                            )));
                         }
                     }
                 }

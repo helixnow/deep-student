@@ -258,7 +258,10 @@ fn describe_prompt_field(field: &str, rule: Option<&FieldExtractionRule>) -> Str
             "notes" => "补充注释".to_string(),
             _ => field.to_string(),
         });
-    format!("{}（{}，{}）：{}", field, type_label, required_mark, description)
+    format!(
+        "{}（{}，{}）：{}",
+        field, type_label, required_mark, description
+    )
 }
 
 /// 在字段提取规则中按名称查找规则（先精确匹配，再大小写不敏感匹配）。
@@ -659,9 +662,7 @@ impl StreamingAnkiService {
                 });
             let fields_requirement = fields
                 .iter()
-                .map(|field| {
-                    describe_prompt_field(field, find_rule(resolved_prompt_rules, field))
-                })
+                .map(|field| describe_prompt_field(field, find_rule(resolved_prompt_rules, field)))
                 .collect::<Vec<_>>()
                 .join("、");
 
@@ -973,7 +974,9 @@ impl StreamingAnkiService {
                                                 stats.duplicate_cards += 1;
                                                 debug!("[ANKI_CARD_DEBUG] 卡片被跳过（重复或不需要保存）");
                                             }
-                                            Err(e) if e.message.contains(UNREADABLE_FRAGMENT_MSG) => {
+                                            Err(e)
+                                                if e.message.contains(UNREADABLE_FRAGMENT_MSG) =>
+                                            {
                                                 // 残片完全不含可读文本：丢弃并记录 warning，
                                                 // 不再生成 front 为原始 JSON 的噪声卡片
                                                 stats.dropped_fragments += 1;
@@ -2669,7 +2672,11 @@ mod tests {
         assert!(resolved.is_none());
     }
 
-    fn make_rule(is_required: bool, field_type: FieldType, description: &str) -> FieldExtractionRule {
+    fn make_rule(
+        is_required: bool,
+        field_type: FieldType,
+        description: &str,
+    ) -> FieldExtractionRule {
         FieldExtractionRule {
             field_type,
             is_required,
@@ -2710,10 +2717,7 @@ mod tests {
             "template_id": "design-lab",
             "fields": { "Question": "  嵌套问题  " }
         });
-        assert_eq!(
-            extract_readable_text(&value).as_deref(),
-            Some("嵌套问题")
-        );
+        assert_eq!(extract_readable_text(&value).as_deref(), Some("嵌套问题"));
     }
 
     #[test]
@@ -2731,12 +2735,18 @@ mod tests {
     fn describe_prompt_field_honors_is_required_flag() {
         let required_rule = make_rule(true, FieldType::Text, "解析说明");
         let described = describe_prompt_field("explanation", Some(&required_rule));
-        assert!(described.contains("必填"), "required rule must say 必填: {described}");
+        assert!(
+            described.contains("必填"),
+            "required rule must say 必填: {described}"
+        );
         assert!(described.contains("解析说明"));
 
         let optional_rule = make_rule(false, FieldType::Text, "");
         let described = describe_prompt_field("notes", Some(&optional_rule));
-        assert!(described.contains("可选"), "optional rule must say 可选: {described}");
+        assert!(
+            described.contains("可选"),
+            "optional rule must say 可选: {described}"
+        );
         // 空描述回退到内置文案
         assert!(described.contains("补充注释"));
     }
@@ -2762,7 +2772,10 @@ mod tests {
     #[test]
     fn find_rule_matches_case_insensitively() {
         let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
-        rules.insert("Front".to_string(), make_rule(true, FieldType::Text, "正面"));
+        rules.insert(
+            "Front".to_string(),
+            make_rule(true, FieldType::Text, "正面"),
+        );
 
         assert!(find_rule(Some(&rules), "Front").is_some());
         assert!(find_rule(Some(&rules), "front").is_some());

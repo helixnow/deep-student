@@ -28,7 +28,7 @@ mod integration_tests {
         MigrationCoordinator, MigrationError, MigrationReport, MigrationVerifier,
         CHAT_V2_MIGRATION_SET, LLM_USAGE_MIGRATION_SET, MISTAKES_MIGRATIONS, VFS_MIGRATION_SET,
     };
-    use crate::data_governance::schema_registry::{DatabaseId, SchemaRegistry};
+    use crate::data_governance::schema_registry::DatabaseId;
 
     // ============================================================================
     // 辅助函数
@@ -487,10 +487,6 @@ mod integration_tests {
         let vfs_pos = ordered
             .iter()
             .position(|id| *id == DatabaseId::Vfs)
-            .unwrap();
-        let llm_pos = ordered
-            .iter()
-            .position(|id| *id == DatabaseId::LlmUsage)
             .unwrap();
         let chat_pos = ordered
             .iter()

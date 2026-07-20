@@ -426,6 +426,42 @@ pub async fn memory_update_tags(
     Ok(())
 }
 
+/// 恢复过时记忆：摘除 `_stale` 标记（UI"恢复"按钮）。返回是否实际发生了恢复。
+#[tauri::command]
+pub async fn memory_restore_stale(
+    note_id: String,
+    app: tauri::AppHandle,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<bool, String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    let restored = service.restore_stale(&note_id).map_err(|e| e.to_string())?;
+    if restored {
+        emit_memory_changed(&app, "restore_stale", std::slice::from_ref(&note_id));
+    }
+    Ok(restored)
+}
+
+/// 恢复已归档记忆：摘除 `_archived` 并重建索引（UI"恢复"按钮）。返回是否实际发生了恢复。
+#[tauri::command]
+pub async fn memory_restore_archived(
+    note_id: String,
+    app: tauri::AppHandle,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<bool, String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    let restored = service
+        .restore_archived(&note_id)
+        .map_err(|e| e.to_string())?;
+    if restored {
+        emit_memory_changed(&app, "restore_archived", std::slice::from_ref(&note_id));
+    }
+    Ok(restored)
+}
+
 /// 获取记忆标签
 #[tauri::command]
 pub async fn memory_get_tags(

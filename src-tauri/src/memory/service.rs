@@ -1,5 +1,6 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tracing::{debug, info, warn};
@@ -23,7 +24,7 @@ struct FolderIdCache {
     folder_ids: Vec<String>,
 }
 
-use super::audit_log::{MemoryAuditLogger, MemoryOpSource, MemoryOpType, OpTimer};
+use super::audit_log::{MemoryAuditEntry, MemoryAuditLogger, MemoryOpSource, MemoryOpType, OpTimer};
 use super::auto_extractor::MemoryAutoExtractor;
 use super::config::MemoryConfig;
 use super::llm_decision::{
@@ -36,6 +37,66 @@ const SMART_WRITE_MUTATION_CONFIDENCE_THRESHOLD: f32 = 0.65;
 const SMART_WRITE_IDEMPOTENCY_RETENTION_HOURS: i64 = 24;
 const SMART_WRITE_IDEMPOTENCY_IN_PROGRESS: &str = "IN_PROGRESS";
 const SMART_WRITE_IDEMPOTENCY_LEASE_MS: i64 = 5 * 60 * 1000;
+
+/// 空窗盲写防护（J4）：活跃记忆达到该数量而对应索引单元为 0 时，判定去重索引未就绪
+const MEMORY_INDEX_READY_MIN_ACTIVE: u32 = 3;
+/// LLM 决策熔断：连续失败达到该次数后熔断开启
+const DECISION_BREAKER_FAILURE_THRESHOLD: u32 = 5;
+/// LLM 决策熔断：熔断开启后的冷却期（毫秒）
+const DECISION_BREAKER_COOLDOWN_MS: i64 = 10 * 60 * 1000;
+/// 待复核标签：去重管线不可用时的显式写入照常 ADD，但打上该标签供后续
+/// 语义去重 pass（semantic_dedup）复核合并，复核过即摘除
+pub(crate) const TAG_NEEDS_DEDUP_REVIEW: &str = "_needs_dedup_review";
+/// 归档旗标标签：evolution 休眠归档/分类配额归档打上（笔记本体保留、索引已清空），
+/// 与 evolution.rs 的 TAG_ARCHIVED 保持一致
+const TAG_ARCHIVED: &str = "_archived";
+
+/// LLM 决策熔断器（进程级）。
+///
+/// MemoryService 在各调用点即时构造（每次请求一个新实例），因此连续失败
+/// 计数必须挂在进程级 static 上才能跨请求累计。决策模型配置损坏时，
+/// 连续失败达到阈值后开启熔断，冷却期内自动提取来源的写入直接跳过，
+/// 避免去重静默全失效导致的批量盲写 ADD。
+struct DecisionCircuitBreaker {
+    /// 连续失败次数（任何一次成功即清零）
+    consecutive_failures: AtomicU32,
+    /// 熔断开启截止时间（epoch ms）；0 表示从未开启/已关闭
+    open_until_ms: AtomicI64,
+}
+
+impl DecisionCircuitBreaker {
+    fn is_open(&self, now_ms: i64) -> bool {
+        self.open_until_ms.load(Ordering::Relaxed) > now_ms
+    }
+
+    fn consecutive_failures(&self) -> u32 {
+        self.consecutive_failures.load(Ordering::Relaxed)
+    }
+
+    /// 记录一次决策成功；返回是否由此关闭了先前开启过的熔断（用于日志/审计去重）
+    fn record_success(&self) -> bool {
+        self.consecutive_failures.store(0, Ordering::Relaxed);
+        self.open_until_ms.swap(0, Ordering::Relaxed) != 0
+    }
+
+    /// 记录一次决策失败；返回 (累计连续失败次数, 是否本次触发熔断开启)
+    fn record_failure(&self, now_ms: i64) -> (u32, bool) {
+        let failures = self.consecutive_failures.fetch_add(1, Ordering::Relaxed) + 1;
+        if failures >= DECISION_BREAKER_FAILURE_THRESHOLD {
+            let prev = self
+                .open_until_ms
+                .swap(now_ms + DECISION_BREAKER_COOLDOWN_MS, Ordering::Relaxed);
+            (failures, prev <= now_ms)
+        } else {
+            (failures, false)
+        }
+    }
+}
+
+static DECISION_CIRCUIT_BREAKER: DecisionCircuitBreaker = DecisionCircuitBreaker {
+    consecutive_failures: AtomicU32::new(0),
+    open_until_ms: AtomicI64::new(0),
+};
 
 #[derive(Debug, Clone)]
 struct SmartWriteReservation {
@@ -180,6 +241,17 @@ const PROFILE_MAX_ITEMS: usize = 15;
 const TAG_HITS_PREFIX: &str = "_hits:";
 /// 标记记忆最后命中时间的 tag 前缀
 const TAG_LAST_HIT_PREFIX: &str = "_last_hit:";
+/// 标记记忆最后一次随分类摘要注入 system prompt 的时间的 tag 前缀
+/// （注入在场信号，与 `_last_hit:` 一起作为 evolution 降级判据的时效来源）
+const TAG_LAST_INJECTED_PREFIX: &str = "_last_injected:";
+/// 标记记忆被 LLM 主动读取全文（强使用信号）的次数的 tag 前缀
+/// （与 `_hits:` 的曝光计数分层，见 `record_used`；
+/// 已登记 field_merge.rs 单值数值前缀清单，跨设备取 max）
+const TAG_USED_PREFIX: &str = "_used:";
+/// 检索返回中只有排名前 N 的结果递增 `_hits` 计数（top-N 近似"大概率被看到"）。
+/// 其余返回结果仅刷新 `_last_hit` 并摘除 `_stale`，避免一次搜回 10 条只用
+/// 1 条时曝光计数被整批 +1 稀释成噪声。
+const SEARCH_HITS_BOOST_TOP_N: usize = 3;
 /// 时间衰减半衰期（天）：超过此天数的记忆搜索分数减半
 const TIME_DECAY_HALF_LIFE_DAYS: f64 = 60.0;
 
@@ -228,6 +300,9 @@ pub struct MemoryListItem {
     /// 是否被标记为过时（tags 包含 `_stale`）
     #[serde(default)]
     pub is_stale: bool,
+    /// 是否待去重复核（tags 包含 `_needs_dedup_review`，去重管线不可用时写入的显式记忆）
+    #[serde(default)]
+    pub needs_dedup_review: bool,
     /// 记忆类型：fact（原子事实）| study（学习记忆）| note（经验笔记）
     #[serde(default)]
     pub memory_type: String,
@@ -638,8 +713,20 @@ impl MemoryService {
             // 隐私模式下跳过——晋升需要把日志内容送入 LLM
             if !privacy_mode {
                 evolution
-                    .run_promotion_throttled(&svc, llm_manager, frequency.evolution_interval_ms())
+                    .run_promotion_throttled(
+                        &svc,
+                        llm_manager.clone(),
+                        frequency.evolution_interval_ms(),
+                    )
                     .await;
+            }
+
+            // 语义去重 pass：复核 `_needs_dedup_review` 积压 + 常规抽查，
+            // 独立节流（默认 6 小时 / aggressive 档 2 小时）。
+            // 隐私模式下跳过——判定需要把记忆内容送入 LLM。
+            if !privacy_mode {
+                let dedup = super::semantic_dedup::SemanticDedup::new(svc.vfs_db_ref().clone());
+                dedup.run_throttled(&svc, llm_manager, frequency).await;
             }
         });
     }
@@ -744,6 +831,14 @@ impl MemoryService {
                 if !self.is_note_in_memory_root(&note.id, &root_id)? {
                     continue;
                 }
+                // 已归档（`_archived`）记忆不进入检索结果：归档时向量与索引单元
+                // 即时清理（失败由后台孤儿队列 drain 兜底），drain 完成前的残留
+                // 命中在此过滤——否则归档记忆会被命中回写刷新 `_last_hit`，
+                // 形成"最近有命中却仍归档"的不一致状态。复活通道只走恢复按钮
+                // （restore_archived，摘标签 + mark_pending 重建索引）。
+                if note.tags.iter().any(|t| t == TAG_ARCHIVED) {
+                    continue;
+                }
                 if !seen_note_ids.insert(note.id.clone()) {
                     continue;
                 }
@@ -785,7 +880,8 @@ impl MemoryService {
         results.truncate(top_k);
 
         if purpose == SearchPurpose::UserRetrieval {
-            // 异步记录命中（不阻塞搜索返回）
+            // 异步记录命中（不阻塞搜索返回）。hit_ids 按最终排名有序：
+            // record_search_hits 只给前 SEARCH_HITS_BOOST_TOP_N 名递增 `_hits`
             let hit_ids: Vec<String> = results.iter().map(|r| r.note_id.clone()).collect();
             if !hit_ids.is_empty() {
                 let svc = self.clone();
@@ -1809,6 +1905,7 @@ impl MemoryService {
 
         // 1. 先搜索相似记忆（扩大范围以提高冲突检测覆盖率）
         //    embedding 不可用时降级为空结果（跳过去重，直接走 ADD 路径）
+        let mut search_degraded = false;
         let similar_results = match self
             .search_for_purpose(content, 15, SearchPurpose::InternalDedup)
             .await
@@ -1819,9 +1916,52 @@ impl MemoryService {
                     "[Memory] Similar search failed (embedding unavailable?), skipping dedup: {}",
                     e
                 );
+                search_degraded = true;
                 vec![]
             }
         };
+
+        // 1.5 空窗盲写防护（J4）：检索成功但结果为空时，做一次廉价的索引就绪性
+        //     判定。索引明显未就绪（同步完 notes 但 vfs_index_units 尚未重建）时：
+        //     - 自动提取/flush 来源：跳过写入（宁可这轮不记，不可批量重复）；
+        //     - 显式来源（工具/用户）：照常 ADD，但打待复核标签供 evolution 合并。
+        //     判定为就绪但结果确实为空时，保持现有免 LLM 直接 ADD 的行为不变。
+        let mut needs_dedup_review = false;
+        if !search_degraded && similar_results.is_empty() {
+            if let Some(active_count) = self.detect_dedup_index_not_ready() {
+                tracing::warn!(
+                    "[Memory] 去重索引未就绪（活跃记忆 {} 条、已索引单元 0），来源={}：相似检索空结果不可信",
+                    active_count,
+                    source.as_str()
+                );
+                if matches!(source, MemoryOpSource::AutoExtract) {
+                    let output = SmartWriteOutput {
+                        note_id: String::new(),
+                        event: "SKIPPED".to_string(),
+                        is_new: false,
+                        confidence: 1.0,
+                        reason: format!(
+                            "去重索引未就绪（活跃记忆 {} 条、已索引单元 0），自动提取写入已跳过以避免批量重复",
+                            active_count
+                        ),
+                        resource_id: None,
+                        downgraded: false,
+                    };
+                    self.finalize_idempotency_result(reservation.as_ref(), &output)?;
+                    self.audit_logger.log_write_smart_result(
+                        source,
+                        title,
+                        content,
+                        folder_path,
+                        &output,
+                        timer.elapsed_ms(),
+                        session_id,
+                    );
+                    return Ok(output);
+                }
+                needs_dedup_review = true;
+            }
+        }
 
         // 2. 转换为 LLM 决策需要的格式
         let similar_summaries: Vec<SimilarMemorySummary> = similar_results
@@ -1836,19 +1976,111 @@ impl MemoryService {
             similar_results.iter().map(|r| r.note_id.clone()).collect();
 
         // 3. 调用 LLM 决策（失败时安全降级为 ADD，不阻塞用户写入意图）
-        let llm_decision = MemoryLLMDecision::new(self.llm_manager.clone());
-        let decision = match llm_decision
-            .decide(content, Some(title), &similar_summaries)
-            .await
+        //    进程级熔断器：连续失败达阈值后冷却期内不再调用决策模型——
+        //    自动提取来源直接跳过，显式来源降级 ADD 并审计 decision_unavailable。
+        //    similar 为空时 decide() 不触达 LLM，不参与熔断计数。
+        let breaker_now_ms = chrono::Utc::now().timestamp_millis();
+        let decision = if !similar_summaries.is_empty()
+            && DECISION_CIRCUIT_BREAKER.is_open(breaker_now_ms)
         {
-            Ok(d) => d,
-            Err(e) => {
-                tracing::warn!("[Memory] LLM 决策失败，降级为 ADD: {}", e);
-                MemoryDecisionResponse {
-                    event: MemoryEvent::ADD,
-                    target_note_id: None,
-                    confidence: 0.6,
-                    reason: format!("LLM 决策失败（{}），降级为新增", e),
+            let failures = DECISION_CIRCUIT_BREAKER.consecutive_failures();
+            if matches!(source, MemoryOpSource::AutoExtract) {
+                tracing::warn!(
+                    "[Memory] LLM 决策熔断中（连续失败 {} 次），来源={}：自动提取写入已跳过",
+                    failures,
+                    source.as_str()
+                );
+                let output = SmartWriteOutput {
+                    note_id: String::new(),
+                    event: "SKIPPED".to_string(),
+                    is_new: false,
+                    confidence: 1.0,
+                    reason: format!(
+                        "记忆决策服务不可用（连续失败 {} 次，熔断冷却中），自动提取写入已跳过",
+                        failures
+                    ),
+                    resource_id: None,
+                    downgraded: false,
+                };
+                self.finalize_idempotency_result(reservation.as_ref(), &output)?;
+                self.audit_logger.log_write_smart_result(
+                    source,
+                    title,
+                    content,
+                    folder_path,
+                    &output,
+                    timer.elapsed_ms(),
+                    session_id,
+                );
+                return Ok(output);
+            }
+            tracing::warn!(
+                "[Memory] LLM 决策熔断中（连续失败 {} 次），来源={}：跳过决策调用并降级为 ADD",
+                failures,
+                source.as_str()
+            );
+            self.audit_logger.log(&MemoryAuditEntry {
+                source,
+                operation: MemoryOpType::WriteSmart,
+                success: true,
+                note_id: None,
+                title: Some(title.to_string()),
+                content_preview: Some(content.to_string()),
+                folder: folder_path.map(|s| s.to_string()),
+                event: Some("DECISION_UNAVAILABLE".to_string()),
+                confidence: None,
+                reason: Some(format!(
+                    "决策服务熔断中（连续失败 {} 次），显式写入降级为 ADD",
+                    failures
+                )),
+                session_id: session_id.map(|s| s.to_string()),
+                duration_ms: None,
+                extra_json: Some(r#"{"decision_unavailable":true}"#.to_string()),
+            });
+            MemoryDecisionResponse {
+                event: MemoryEvent::ADD,
+                target_note_id: None,
+                confidence: 0.6,
+                reason: "记忆决策服务不可用（熔断冷却中），降级为新增".to_string(),
+            }
+        } else {
+            let llm_decision = MemoryLLMDecision::new(self.llm_manager.clone());
+            match llm_decision
+                .decide(content, Some(title), &similar_summaries)
+                .await
+            {
+                Ok(d) => {
+                    if !similar_summaries.is_empty() && DECISION_CIRCUIT_BREAKER.record_success() {
+                        info!("[Memory] LLM 决策恢复成功，熔断关闭");
+                        self.log_decision_breaker_transition(false, 0, source);
+                    }
+                    d
+                }
+                Err(e) => {
+                    // decide() 仅在 similar 非空时才会触达 LLM，因此这里必然计入熔断
+                    let (failures, newly_opened) =
+                        DECISION_CIRCUIT_BREAKER.record_failure(breaker_now_ms);
+                    tracing::warn!(
+                        "[Memory] LLM 决策失败（连续第 {} 次），来源={}，降级为 ADD: {}",
+                        failures,
+                        source.as_str(),
+                        e
+                    );
+                    if newly_opened {
+                        tracing::warn!(
+                            "[Memory] LLM 决策熔断开启：连续失败 {} 次达到阈值 {}，冷却 {} 分钟内自动提取写入将被跳过",
+                            failures,
+                            DECISION_BREAKER_FAILURE_THRESHOLD,
+                            DECISION_BREAKER_COOLDOWN_MS / 60_000
+                        );
+                        self.log_decision_breaker_transition(true, failures, source);
+                    }
+                    MemoryDecisionResponse {
+                        event: MemoryEvent::ADD,
+                        target_note_id: None,
+                        confidence: 0.6,
+                        reason: format!("LLM 决策失败（{}），降级为新增", e),
+                    }
                 }
             }
         };
@@ -2104,6 +2336,16 @@ impl MemoryService {
                     timer.elapsed_ms(),
                     session_id,
                 );
+                // 空窗盲写防护：显式来源在索引未就绪时照常 ADD，
+                // 但打上待复核标签，便于索引重建后由 evolution 合并去重。
+                if needs_dedup_review && output.event == "ADD" && !output.note_id.is_empty() {
+                    self.apply_needs_dedup_review_tag(
+                        &output.note_id,
+                        source,
+                        session_id,
+                        "去重索引未就绪时的显式写入，已照常 ADD 并标记待复核",
+                    );
+                }
                 if let Some(resource_id) = &output.resource_id {
                     self.index_immediately(resource_id).await;
                 }
@@ -2126,6 +2368,161 @@ impl MemoryService {
         }
 
         result
+    }
+
+    /// 空窗盲写防护（J4）：判定去重索引是否明显未就绪。
+    ///
+    /// 词法/向量检索依赖 vfs_index_units 表，而该表属于 DerivedRebuild、不参与
+    /// 云同步——新设备同步完 notes 但索引尚未重建的窗口期里，相似检索会返回空
+    /// 结果，直接 ADD 会让每条自动提取都与已同步的旧记忆重复落库。
+    ///
+    /// 判定规则：活跃记忆 ≥ MEMORY_INDEX_READY_MIN_ACTIVE 条，且这些记忆对应的
+    /// 索引单元为 0 → 未就绪，返回 Some(活跃记忆数)。判定本身出错时视为就绪
+    /// （保持现有行为，不因防护逻辑阻塞写入）。
+    fn detect_dedup_index_not_ready(&self) -> Option<u32> {
+        let active = match self.count_active_memories() {
+            Ok(n) => n,
+            Err(e) => {
+                debug!("[Memory] 索引就绪性判定失败（统计活跃记忆）: {}", e);
+                return None;
+            }
+        };
+        if active < MEMORY_INDEX_READY_MIN_ACTIVE {
+            return None;
+        }
+        match self.count_indexed_memory_units() {
+            Ok(0) => Some(active),
+            Ok(_) => None,
+            Err(e) => {
+                debug!("[Memory] 索引就绪性判定失败（统计索引单元）: {}", e);
+                None
+            }
+        }
+    }
+
+    /// 统计记忆根目录内活跃记忆对应的索引单元数量（廉价 COUNT 查询）
+    fn count_indexed_memory_units(&self) -> VfsResult<i64> {
+        let root_id = self.ensure_root_folder_id()?;
+        let folder_ids = self.get_memory_folder_ids(&root_id)?;
+        if folder_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let conn = self.vfs_db.get_conn_safe()?;
+        let placeholders = vec!["?"; folder_ids.len()].join(", ");
+        let sql = format!(
+            r#"
+            SELECT COUNT(*)
+            FROM vfs_index_units u
+            JOIN notes n ON n.resource_id = u.resource_id
+            JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
+            WHERE fi.folder_id IN ({}) AND n.deleted_at IS NULL AND fi.deleted_at IS NULL
+              AND n.title NOT LIKE '\_\_%\_\_%' ESCAPE '\'
+            "#,
+            placeholders
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<rusqlite::types::Value> = folder_ids
+            .into_iter()
+            .map(rusqlite::types::Value::from)
+            .collect();
+        let total: i64 = stmt.query_row(rusqlite::params_from_iter(params), |row| row.get(0))?;
+        Ok(total.max(0))
+    }
+
+    /// 为绕过去重管线的显式写入打上待复核标签（best-effort，失败仅告警不回滚写入），
+    /// 并写一条审计日志，便于后续 evolution 合并复核。
+    fn apply_needs_dedup_review_tag(
+        &self,
+        note_id: &str,
+        source: MemoryOpSource,
+        session_id: Option<&str>,
+        reason: &str,
+    ) {
+        let apply = || -> VfsResult<()> {
+            let note = self.ensure_note_in_memory_root(note_id)?;
+            if note.tags.iter().any(|t| t == TAG_NEEDS_DEDUP_REVIEW) {
+                return Ok(());
+            }
+            let mut tags = note.tags.clone();
+            tags.push(TAG_NEEDS_DEDUP_REVIEW.to_string());
+            VfsNoteRepo::update_note(
+                &self.vfs_db,
+                note_id,
+                VfsUpdateNoteParams {
+                    tags: Some(tags),
+                    expected_updated_at: Some(note.updated_at.clone()),
+                    ..Default::default()
+                },
+            )?;
+            Ok(())
+        };
+        match apply() {
+            Ok(()) => {
+                self.audit_logger.log(&MemoryAuditEntry {
+                    source,
+                    operation: MemoryOpType::UpdateTags,
+                    success: true,
+                    note_id: Some(note_id.to_string()),
+                    title: None,
+                    content_preview: None,
+                    folder: None,
+                    event: Some("NEEDS_DEDUP_REVIEW".to_string()),
+                    confidence: None,
+                    reason: Some(reason.to_string()),
+                    session_id: session_id.map(|s| s.to_string()),
+                    duration_ms: None,
+                    extra_json: None,
+                });
+            }
+            Err(e) => {
+                warn!(
+                    "[Memory] 待复核标签写入失败 note_id={} source={}: {}",
+                    note_id,
+                    source.as_str(),
+                    e
+                );
+            }
+        }
+    }
+
+    /// 记录 LLM 决策熔断器状态变更（开启/关闭）到 memory_audit_log
+    fn log_decision_breaker_transition(
+        &self,
+        opened: bool,
+        failures: u32,
+        source: MemoryOpSource,
+    ) {
+        self.audit_logger.log(&MemoryAuditEntry {
+            source,
+            operation: MemoryOpType::DecisionBreaker,
+            success: true,
+            note_id: None,
+            title: None,
+            content_preview: None,
+            folder: None,
+            event: Some((if opened { "OPEN" } else { "CLOSE" }).to_string()),
+            confidence: None,
+            reason: Some(if opened {
+                format!(
+                    "LLM 决策连续失败 {} 次（阈值 {}），熔断开启，冷却 {} 分钟",
+                    failures,
+                    DECISION_BREAKER_FAILURE_THRESHOLD,
+                    DECISION_BREAKER_COOLDOWN_MS / 60_000
+                )
+            } else {
+                "LLM 决策恢复成功，熔断关闭".to_string()
+            }),
+            session_id: None,
+            duration_ms: None,
+            extra_json: Some(
+                serde_json::json!({
+                    "consecutiveFailures": failures,
+                    "cooldownMs": DECISION_BREAKER_COOLDOWN_MS,
+                })
+                .to_string(),
+            ),
+        });
     }
 
     /// 带重排序的增强搜索
@@ -2283,6 +2680,8 @@ impl MemoryService {
                 let hits = Self::extract_hits_from_tags(&note.tags);
                 let is_important = note.tags.iter().any(|t| t == "_important");
                 let is_stale = note.tags.iter().any(|t| t == "_stale");
+                let is_archived = note.tags.iter().any(|t| t == TAG_ARCHIVED);
+                let needs_dedup_review = note.tags.iter().any(|t| t == TAG_NEEDS_DEDUP_REVIEW);
                 let memory_type = MemoryType::from_tags(&note.tags);
                 let memory_purpose = MemoryPurpose::from_tags(&note.tags);
                 items.push(MemoryListItem {
@@ -2293,6 +2692,8 @@ impl MemoryService {
                     hits,
                     is_important,
                     is_stale,
+                    is_archived,
+                    needs_dedup_review,
                     memory_type: memory_type.as_str().to_string(),
                     memory_purpose: memory_purpose.as_str().to_string(),
                 });
@@ -3006,6 +3407,15 @@ impl MemoryService {
                 note.resource_id, e
             );
         }
+        // _ref 悬挂治理（J7）：一次廉价 tags LIKE 查询找到反向引用者，
+        // 顺带摘除指向本笔记的 `_ref:` 标签。失败仅 warn——读取侧
+        // memory_read 已按存活状态过滤 related_note_ids 兜底。
+        if let Err(e) = self.remove_incoming_refs(note_id) {
+            warn!(
+                "[Memory] Failed to clean incoming _ref tags for {}: {}",
+                note_id, e
+            );
+        }
         info!("[Memory] Deleted note: {}", note_id);
 
         self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
@@ -3025,6 +3435,78 @@ impl MemoryService {
         });
 
         Ok(())
+    }
+
+    /// 摘除所有指向 `deleted_note_id` 的反向 `_ref:` 标签（删除卫生）。
+    ///
+    /// 直接改写 tags、不推进 updated_at，避免打断其他调用方已读取的
+    /// OCC 基线（与 record_search_hits 同口径）。返回清理的笔记数。
+    fn remove_incoming_refs(&self, deleted_note_id: &str) -> VfsResult<usize> {
+        let ref_tag = format!("{}{}", TAG_REF_PREFIX, deleted_note_id);
+        let conn = self.vfs_db.get_conn_safe()?;
+        // tags 为 JSON 数组文本；LIKE 中 `_` 是单字符通配，可能少量误召回，
+        // 下面按标签精确比对后才改写。
+        let pattern = format!("%\"{}\"%", ref_tag);
+        let mut stmt =
+            conn.prepare("SELECT id, tags FROM notes WHERE deleted_at IS NULL AND tags LIKE ?1")?;
+        let rows: Vec<(String, String)> = stmt
+            .query_map(params![pattern], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .filter_map(|r| r.ok())
+            .collect();
+        drop(stmt);
+
+        let mut cleaned = 0usize;
+        for (referrer_id, tags_json) in rows {
+            let mut tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            let before = tags.len();
+            tags.retain(|t| t != &ref_tag);
+            if tags.len() == before {
+                continue;
+            }
+            let new_tags_json = serde_json::to_string(&tags).unwrap_or_default();
+            conn.execute(
+                "UPDATE notes SET tags = ?1 WHERE id = ?2",
+                params![new_tags_json, referrer_id],
+            )?;
+            cleaned += 1;
+        }
+        if cleaned > 0 {
+            info!(
+                "[Memory] Removed dangling _ref tags pointing to {} from {} notes",
+                deleted_note_id, cleaned
+            );
+        }
+        Ok(cleaned)
+    }
+
+    /// 批量存活校验（memory_read 支撑）：返回未被软删除的 note_id 子集（保序）。
+    ///
+    /// 用于过滤 related_note_ids 中指向已删笔记的悬挂 `_ref` 引用，
+    /// 覆盖 evolution 合并删除、UI 删除等未清反向引用的历史路径。
+    pub fn filter_alive_note_ids(&self, note_ids: &[String]) -> VfsResult<Vec<String>> {
+        if note_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.vfs_db.get_conn_safe()?;
+        let placeholders = vec!["?"; note_ids.len()].join(", ");
+        let sql = format!(
+            "SELECT id FROM notes WHERE id IN ({}) AND deleted_at IS NULL",
+            placeholders
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let params_vals: Vec<rusqlite::types::Value> = note_ids
+            .iter()
+            .map(|id| rusqlite::types::Value::from(id.clone()))
+            .collect();
+        let alive: std::collections::HashSet<String> = stmt
+            .query_map(rusqlite::params_from_iter(params_vals), |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(note_ids
+            .iter()
+            .filter(|id| alive.contains(*id))
+            .cloned()
+            .collect())
     }
 
     // ========================================================================
@@ -3390,6 +3872,113 @@ impl MemoryService {
         Ok((note, updated))
     }
 
+    /// 用户主动恢复被标记为过时的记忆：仅摘除 `_stale`（及待复核标签 `_needs_dedup_review`
+    /// 之外的其余系统标签全部保留）。UI 的"恢复"按钮走此路径；LLM 工具的复活通道
+    /// 在 memory_executor 中有独立实现（带会话上下文审计）。
+    /// 标签不参与内容索引，无需 mark_pending。
+    pub fn restore_stale(&self, note_id: &str) -> VfsResult<bool> {
+        let note = self.ensure_note_in_memory_root(note_id)?;
+        if !note.tags.iter().any(|t| t == "_stale") {
+            return Ok(false);
+        }
+        // 与 restore_archived 同理：一并摘除陈旧的 `_last_hit:`/`_last_injected:`
+        // 时间戳，否则残留旧信号会让 evolution 在下一周期立即重新降级，恢复
+        // 形同虚设。摘除后计龄回退到本次恢复刷新的 updated_at（`_hits` 保留）。
+        let tags: Vec<String> = note
+            .tags
+            .iter()
+            .filter(|tag| {
+                tag.as_str() != "_stale"
+                    && !tag.starts_with(TAG_LAST_HIT_PREFIX)
+                    && !tag.starts_with(TAG_LAST_INJECTED_PREFIX)
+            })
+            .cloned()
+            .collect();
+        VfsNoteRepo::update_note(
+            &self.vfs_db,
+            note_id,
+            VfsUpdateNoteParams {
+                tags: Some(tags),
+                expected_updated_at: Some(note.updated_at.clone()),
+                ..Default::default()
+            },
+        )?;
+        self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
+            source: MemoryOpSource::Handler,
+            operation: MemoryOpType::UpdateTags,
+            success: true,
+            note_id: Some(note_id.to_string()),
+            title: Some(note.title.clone()),
+            content_preview: None,
+            folder: None,
+            event: Some("STALE_RESTORE".to_string()),
+            confidence: None,
+            reason: Some("用户在记忆界面手动恢复过时标记".to_string()),
+            session_id: None,
+            duration_ms: None,
+            extra_json: None,
+        });
+        Ok(true)
+    }
+
+    /// 用户主动恢复已归档的记忆：摘除 `_archived`（连带 `_stale`，避免恢复后
+    /// 仍以过时态展示），并 mark_pending 重建检索索引（归档时索引单元与向量
+    /// 已清空、索引状态置 disabled，恢复必须重新入索引）。UI 的"恢复归档"
+    /// 按钮走此路径，与 `restore_stale` 平行。
+    ///
+    /// 同时摘除已远超窗口的 `_last_hit:`/`_last_injected:` 时间戳：否则残留的
+    /// 陈旧信号会让 evolution 在下一周期就重新降级乃至再归档，恢复形同虚设。
+    /// 摘除后计龄回退到本次恢复刚刷新的 updated_at，记忆获得一个完整的
+    /// 活跃窗口重新证明自己（`_hits` 累计数保留不动）。
+    pub fn restore_archived(&self, note_id: &str) -> VfsResult<bool> {
+        let note = self.ensure_note_in_memory_root(note_id)?;
+        if !note.tags.iter().any(|t| t == TAG_ARCHIVED) {
+            return Ok(false);
+        }
+        let tags: Vec<String> = note
+            .tags
+            .iter()
+            .filter(|tag| {
+                tag.as_str() != TAG_ARCHIVED
+                    && tag.as_str() != "_stale"
+                    && !tag.starts_with(TAG_LAST_HIT_PREFIX)
+                    && !tag.starts_with(TAG_LAST_INJECTED_PREFIX)
+            })
+            .cloned()
+            .collect();
+        let updated = VfsNoteRepo::update_note(
+            &self.vfs_db,
+            note_id,
+            VfsUpdateNoteParams {
+                tags: Some(tags),
+                expected_updated_at: Some(note.updated_at.clone()),
+                ..Default::default()
+            },
+        )?;
+        if let Err(e) = VfsIndexStateRepo::mark_pending(&self.vfs_db, &updated.resource_id) {
+            warn!(
+                "[Memory] Failed to mark pending after archive restore {}: {}",
+                note_id, e
+            );
+        }
+        self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
+            source: MemoryOpSource::Handler,
+            operation: MemoryOpType::UpdateTags,
+            success: true,
+            note_id: Some(note_id.to_string()),
+            title: Some(note.title.clone()),
+            content_preview: None,
+            folder: None,
+            event: Some("ARCHIVE_RESTORE".to_string()),
+            confidence: None,
+            reason: Some("用户在记忆界面手动恢复归档记忆，已重新排队建立索引".to_string()),
+            session_id: None,
+            duration_ms: None,
+            extra_json: None,
+        });
+        Ok(true)
+    }
+
     /// 获取记忆的标签列表
     pub fn get_tags(&self, note_id: &str) -> VfsResult<Vec<String>> {
         let note = self.ensure_note_in_memory_root(note_id)?;
@@ -3719,6 +4308,12 @@ impl MemoryService {
     // ========================================================================
 
     /// 记录搜索命中（直接 SQL 更新 tags，不触发 updated_at 变更以免重置时间衰减）
+    ///
+    /// 使用信号分层（曝光侧）：`note_ids` 必须按检索最终排名有序传入——
+    /// 只有排名前 `SEARCH_HITS_BOOST_TOP_N` 的结果递增 `_hits` 曝光计数
+    /// （近似"大概率被 LLM 看到"）；所有返回结果统一刷新 `_last_hit`
+    /// 时间戳（时效证据，供 evolution 衰减判断）并摘除 `_stale`。
+    /// "被实际使用"的强信号另见 `record_used`（`_used:` 计数）。
     pub fn record_search_hits(&self, note_ids: &[String]) {
         let now_ms = chrono::Utc::now().timestamp_millis().to_string();
         let conn = match self.vfs_db.get_conn_safe() {
@@ -3733,7 +4328,7 @@ impl MemoryService {
             return;
         }
         let tx_result = {
-            for note_id in note_ids {
+            for (rank, note_id) in note_ids.iter().enumerate() {
                 let tags_json: Option<String> = conn
                     .query_row(
                         "SELECT tags FROM notes WHERE id = ?1 AND deleted_at IS NULL",
@@ -3744,18 +4339,26 @@ impl MemoryService {
                 let Some(tags_json) = tags_json else { continue };
                 let mut tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
 
+                let boost_hits = rank < SEARCH_HITS_BOOST_TOP_N;
                 let mut hits: u32 = 1;
                 tags.retain(|t| {
                     if let Some(val) = t.strip_prefix(TAG_HITS_PREFIX) {
-                        hits = val.parse::<u32>().unwrap_or(0) + 1;
-                        false
+                        if boost_hits {
+                            hits = val.parse::<u32>().unwrap_or(0) + 1;
+                            false
+                        } else {
+                            // 排名靠后：曝光计数原样保留，不递增
+                            true
+                        }
                     } else if t.starts_with(TAG_LAST_HIT_PREFIX) {
                         false
                     } else {
                         t != "_stale"
                     }
                 });
-                tags.push(format!("{}{}", TAG_HITS_PREFIX, hits));
+                if boost_hits {
+                    tags.push(format!("{}{}", TAG_HITS_PREFIX, hits));
+                }
                 tags.push(format!("{}{}", TAG_LAST_HIT_PREFIX, now_ms));
 
                 let new_tags_json = serde_json::to_string(&tags).unwrap_or_default();
@@ -3774,6 +4377,147 @@ impl MemoryService {
         if let Err(e) = tx_result {
             let _ = conn.execute_batch("ROLLBACK");
             warn!("[Memory] Failed to commit search hits transaction: {}", e);
+        }
+    }
+
+    /// 记录注入在场信号：分类摘要注入 system prompt 后，批量刷新成员记忆的
+    /// `_last_injected:<毫秒>` 标签（替换旧值）
+    ///
+    /// 与 `record_search_hits` 同样直接 SQL 重写 tags，不触发 updated_at 变更
+    /// 以免重置时间衰减。区别：不递增 `_hits`、不摘除 `_stale`——注入在场只是
+    /// "该记忆仍在被每轮使用"的时效证据，供 evolution 的 stale 降级判据取
+    /// `_last_hit` 与 `_last_injected` 的较大者计龄，避免被稳定注入、从不
+    /// 需要搜索的高价值记忆坠入"零命中 → stale → 剔出注入"的死亡螺旋。
+    /// 调用方（prompt 注入路径）负责节流，避免每轮对话都写库。
+    pub fn record_injection_presence(&self, note_ids: &[String]) {
+        if note_ids.is_empty() {
+            return;
+        }
+        let now_ms = chrono::Utc::now().timestamp_millis().to_string();
+        let conn = match self.vfs_db.get_conn_safe() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        if let Err(e) = conn.execute_batch("BEGIN IMMEDIATE") {
+            warn!(
+                "[Memory] Failed to begin transaction for injection presence: {}",
+                e
+            );
+            return;
+        }
+        let tx_result = {
+            for note_id in note_ids {
+                let tags_json: Option<String> = conn
+                    .query_row(
+                        "SELECT tags FROM notes WHERE id = ?1 AND deleted_at IS NULL",
+                        params![note_id],
+                        |row| row.get(0),
+                    )
+                    .ok();
+                let Some(tags_json) = tags_json else { continue };
+                let mut tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+
+                tags.retain(|t| !t.starts_with(TAG_LAST_INJECTED_PREFIX));
+                tags.push(format!("{}{}", TAG_LAST_INJECTED_PREFIX, now_ms));
+
+                let new_tags_json = serde_json::to_string(&tags).unwrap_or_default();
+                if let Err(e) = conn.execute(
+                    "UPDATE notes SET tags = ?1 WHERE id = ?2",
+                    params![new_tags_json, note_id],
+                ) {
+                    warn!(
+                        "[Memory] Failed to record injection presence for {}: {}",
+                        note_id, e
+                    );
+                }
+            }
+            conn.execute_batch("COMMIT")
+        };
+        if let Err(e) = tx_result {
+            let _ = conn.execute_batch("ROLLBACK");
+            warn!(
+                "[Memory] Failed to commit injection presence transaction: {}",
+                e
+            );
+        }
+    }
+
+    /// 记录"实际使用"强信号：LLM 通过 memory_read 主动读取一条记忆全文时调用
+    ///
+    /// 使用信号分层设计：
+    /// - `_hits:N`（`record_search_hits`）≈ 曝光计数——被检索返回且排名靠前，
+    ///   只能说明"大概率被看到"；
+    /// - `_used:N`（本方法）= 使用计数——LLM 拿到检索摘要后仍决定读取全文，
+    ///   是远强于曝光的使用证据。
+    ///
+    /// 两者分开存储，便于后续把 evolution 的 `_important` 晋升判据从
+    /// `_hits >= 5` 迁移到基于 `_used` 的口径（后续意图，本次不改 evolution）。
+    ///
+    /// 与 `record_search_hits` 相同：直接 SQL 重写 tags，不触发 updated_at
+    /// 变更以免重置时间衰减；同时刷新 `_last_hit`（读取也是活跃时效证据）
+    /// 并摘除 `_stale`（比"被检索返回"更强的信号，摘除口径保持一致）。
+    /// 调用方应在异步任务（spawn_blocking）中调用，失败只记 warn。
+    pub fn record_used(&self, note_ids: &[String]) {
+        if note_ids.is_empty() {
+            return;
+        }
+        let now_ms = chrono::Utc::now().timestamp_millis().to_string();
+        let conn = match self.vfs_db.get_conn_safe() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        if let Err(e) = conn.execute_batch("BEGIN IMMEDIATE") {
+            warn!(
+                "[Memory] Failed to begin transaction for usage signal: {}",
+                e
+            );
+            return;
+        }
+        let tx_result = {
+            for note_id in note_ids {
+                let tags_json: Option<String> = conn
+                    .query_row(
+                        "SELECT tags FROM notes WHERE id = ?1 AND deleted_at IS NULL",
+                        params![note_id],
+                        |row| row.get(0),
+                    )
+                    .ok();
+                let Some(tags_json) = tags_json else { continue };
+                let mut tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+
+                let mut used: u32 = 1;
+                tags.retain(|t| {
+                    if let Some(val) = t.strip_prefix(TAG_USED_PREFIX) {
+                        used = val.parse::<u32>().unwrap_or(0) + 1;
+                        false
+                    } else if t.starts_with(TAG_LAST_HIT_PREFIX) {
+                        false
+                    } else {
+                        t != "_stale"
+                    }
+                });
+                tags.push(format!("{}{}", TAG_USED_PREFIX, used));
+                tags.push(format!("{}{}", TAG_LAST_HIT_PREFIX, now_ms));
+
+                let new_tags_json = serde_json::to_string(&tags).unwrap_or_default();
+                if let Err(e) = conn.execute(
+                    "UPDATE notes SET tags = ?1 WHERE id = ?2",
+                    params![new_tags_json, note_id],
+                ) {
+                    warn!(
+                        "[Memory] Failed to record usage signal for {}: {}",
+                        note_id, e
+                    );
+                }
+            }
+            conn.execute_batch("COMMIT")
+        };
+        if let Err(e) = tx_result {
+            let _ = conn.execute_batch("ROLLBACK");
+            warn!(
+                "[Memory] Failed to commit usage signal transaction: {}",
+                e
+            );
         }
     }
 

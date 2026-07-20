@@ -5,6 +5,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::path::Path;
 use uuid::Uuid;
 
@@ -19,6 +20,23 @@ const MANIFESTS_DIR: &str = "manifests";
 const BACKUPS_DIR: &str = "backups";
 /// 默认保留版本数
 const DEFAULT_MAX_VERSIONS: usize = 10;
+
+pub(crate) fn normalize_device_id(device_id: &str) -> String {
+    let trimmed = device_id.trim();
+    if !trimmed.is_empty()
+        && trimmed.len() <= 128
+        && !matches!(trimmed, "." | "..")
+        && trimmed
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    {
+        return trimmed.to_string();
+    }
+
+    let mut hasher = Sha256::new();
+    hasher.update(trimmed.as_bytes());
+    format!("device-{}", hex::encode(hasher.finalize()))
+}
 
 /// 备份版本信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,7 +137,7 @@ impl CloudSyncManager {
     pub fn new(storage: Box<dyn CloudStorage>, device_id: String) -> Self {
         Self {
             storage,
-            device_id,
+            device_id: normalize_device_id(&device_id),
             max_versions: DEFAULT_MAX_VERSIONS,
         }
     }
@@ -154,11 +172,70 @@ impl CloudSyncManager {
         }
     }
 
+    fn validate_version_id(id: &str) -> Result<()> {
+        if id.is_empty()
+            || id.len() > 128
+            || !id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        {
+            return Err(AppError::validation(format!(
+                "云端备份版本 ID 非法: {id:?}"
+            )));
+        }
+        Ok(())
+    }
+
+    fn validate_manifest(key: &str, manifest: &CloudManifest) -> Result<()> {
+        const MAX_MANIFEST_VERSIONS: usize = 10_000;
+        if manifest.versions.len() > MAX_MANIFEST_VERSIONS {
+            return Err(AppError::validation(format!(
+                "manifest {key} 版本数量异常: {}",
+                manifest.versions.len()
+            )));
+        }
+
+        let mut seen = HashSet::with_capacity(manifest.versions.len());
+        for version in &manifest.versions {
+            Self::validate_version_id(&version.id)?;
+            if !seen.insert(version.id.as_str()) {
+                return Err(AppError::validation(format!(
+                    "manifest {key} 包含重复版本 ID: {}",
+                    version.id
+                )));
+            }
+            if version.checksum.len() != 64
+                || !version
+                    .checksum
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit())
+            {
+                return Err(AppError::validation(format!(
+                    "manifest {key} 的版本 {} 校验和非法",
+                    version.id
+                )));
+            }
+        }
+
+        match manifest.latest.as_deref() {
+            Some(latest) if !seen.contains(latest) => Err(AppError::validation(format!(
+                "manifest {key} 的 latest 未指向有效版本: {latest}"
+            ))),
+            None if !manifest.versions.is_empty() => Err(AppError::validation(format!(
+                "manifest {key} 含版本但缺少 latest"
+            ))),
+            _ => Ok(()),
+        }
+    }
+
     async fn read_manifest_key(&self, key: &str) -> Result<Option<CloudManifest>> {
         match self.storage.get(key).await? {
-            Some(data) => serde_json::from_slice(&data)
-                .map(Some)
-                .map_err(|e| AppError::internal(format!("manifest {key} 损坏: {e}"))),
+            Some(data) => {
+                let manifest: CloudManifest = serde_json::from_slice(&data)
+                    .map_err(|e| AppError::internal(format!("manifest {key} 损坏: {e}")))?;
+                Self::validate_manifest(key, &manifest)?;
+                Ok(Some(manifest))
+            }
             None => Ok(None),
         }
     }
@@ -181,13 +258,12 @@ impl CloudSyncManager {
             if !file.key.ends_with(".json") {
                 continue;
             }
-            match self.read_manifest_key(&file.key).await {
-                Ok(Some(manifest)) => {
+            match self.read_manifest_key(&file.key).await? {
+                Some(manifest) => {
                     Self::merge_manifest(&mut merged, manifest);
                     found = true;
                 }
-                Ok(None) => {}
-                Err(e) => tracing::warn!("跳过损坏的设备 manifest {}: {}", file.key, e),
+                None => {}
             }
         }
 
@@ -197,12 +273,14 @@ impl CloudSyncManager {
                 found = true;
             }
             Ok(None) => {}
-            Err(e) => {
-                tracing::warn!("主 manifest 解析失败，尝试备份: {e}");
-                if let Some(backup) = self.read_manifest_key(MANIFEST_BACKUP_FILE).await? {
-                    Self::merge_manifest(&mut merged, backup);
-                    found = true;
-                }
+            Err(primary_error) => {
+                tracing::warn!("主 manifest 解析失败，尝试备份: {primary_error}");
+                let backup = self.read_manifest_key(MANIFEST_BACKUP_FILE).await?;
+                let Some(backup) = backup else {
+                    return Err(primary_error);
+                };
+                Self::merge_manifest(&mut merged, backup);
+                found = true;
             }
         }
 
@@ -223,16 +301,16 @@ impl CloudSyncManager {
 
     /// 保存本设备 Manifest（per-device，避免多设备 RMW 覆盖）
     async fn save_manifest(&self, manifest: &CloudManifest) -> Result<()> {
+        self.save_manifest_at_key(&self.device_manifest_key(), manifest)
+            .await
+    }
+
+    async fn save_manifest_at_key(&self, key: &str, manifest: &CloudManifest) -> Result<()> {
+        Self::validate_manifest(key, manifest)?;
         let data = serde_json::to_vec_pretty(manifest)
             .map_err(|e| AppError::internal(format!("序列化 manifest 失败: {e}")))?;
 
-        let key = self.device_manifest_key();
-        let temp_key = format!(
-            "{}/{}.{}.tmp",
-            MANIFESTS_DIR,
-            self.device_id,
-            chrono::Utc::now().timestamp_millis()
-        );
+        let temp_key = format!("{key}.{}.tmp", Uuid::new_v4());
 
         self.storage.put(&temp_key, &data).await?;
 
@@ -247,7 +325,7 @@ impl CloudSyncManager {
             }
         }
 
-        self.storage.put(&key, &data).await?;
+        self.storage.put(key, &data).await?;
         let _ = self.storage.delete(&temp_key).await;
 
         Ok(())
@@ -373,6 +451,7 @@ impl CloudSyncManager {
             device_short,
             nonce
         );
+        Self::validate_version_id(&version_id)?;
         let remote_key = format!("{}/{}.zip", BACKUPS_DIR, version_id);
 
         // 使用流式上传（自动计算 SHA256）
@@ -380,6 +459,12 @@ impl CloudSyncManager {
             .storage
             .put_file(&remote_key, zip_path, progress)
             .await?;
+        if checksum.len() != 64 || !checksum.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            let _ = self.storage.delete(&remote_key).await;
+            return Err(AppError::internal(
+                "云存储 provider 返回了非法 SHA256，已拒绝发布版本".to_string(),
+            ));
+        }
 
         tracing::info!(
             "上传完成: version={}, checksum={}",
@@ -399,20 +484,48 @@ impl CloudSyncManager {
         };
 
         // 更新 Manifest
-        let mut manifest = self.get_device_manifest().await?;
+        let mut manifest = match self.get_device_manifest().await {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                if let Err(cleanup_error) = self.storage.delete(&remote_key).await {
+                    tracing::warn!(
+                        "读取设备 manifest 失败后清理未引用对象 {} 失败: {}",
+                        remote_key,
+                        cleanup_error
+                    );
+                }
+                return Err(error);
+            }
+        };
         manifest.versions.insert(0, version.clone());
         manifest.latest = Some(version_id);
         manifest.updated_at = now;
 
-        // 清理旧版本
-        let pruned = self.prune_versions(&mut manifest).await?;
-
-        // 保存 Manifest
-        self.save_manifest(&manifest).await?;
+        // 先发布不再引用旧对象的 manifest，再做对象 GC。反过来执行会在 manifest
+        // 发布失败或进程崩溃时留下“可见但已不可下载”的恢复点。
+        let pruned = self.prune_versions(&mut manifest);
+        if let Err(error) = self.save_manifest(&manifest).await {
+            // 新对象尚未被任何已发布 manifest 引用，尽力回滚，避免长期孤儿。
+            if let Err(cleanup_error) = self.storage.delete(&remote_key).await {
+                tracing::warn!(
+                    "manifest 发布失败后清理未引用对象 {} 失败: {}",
+                    remote_key,
+                    cleanup_error
+                );
+            }
+            return Err(error);
+        }
+        for old in &pruned {
+            let key = format!("{}/{}.zip", BACKUPS_DIR, old.id);
+            if let Err(error) = self.storage.delete(&key).await {
+                // manifest 已经安全发布；此时失败只会留下不可见孤儿，不会破坏恢复点。
+                tracing::warn!("清理已裁剪云端对象 {} 失败: {}", old.id, error);
+            }
+        }
 
         Ok(UploadResult {
             version,
-            pruned_versions: pruned,
+            pruned_versions: pruned.into_iter().map(|old| old.id).collect(),
         })
     }
 
@@ -446,6 +559,9 @@ impl CloudSyncManager {
         local_dir: &Path,
         progress: Option<super::traits::DownloadProgressCallback>,
     ) -> Result<DownloadResult> {
+        if let Some(version_id) = version_id {
+            Self::validate_version_id(version_id)?;
+        }
         let manifest = self.get_manifest().await?;
 
         // 确定要下载的版本
@@ -461,6 +577,7 @@ impl CloudSyncManager {
         let version = version
             .cloned()
             .ok_or_else(|| AppError::not_found("未找到指定版本"))?;
+        Self::validate_version_id(&version.id)?;
 
         tracing::info!(
             "开始下载备份文件: version={}, size={:.2} MB",
@@ -495,6 +612,7 @@ impl CloudSyncManager {
 
     /// 删除指定版本
     pub async fn delete_version(&self, version_id: &str) -> Result<()> {
+        Self::validate_version_id(version_id)?;
         let mut manifest = self.get_device_manifest().await?;
 
         // 检查是否存在
@@ -504,36 +622,37 @@ impl CloudSyncManager {
             .position(|v| v.id == version_id)
             .ok_or_else(|| AppError::not_found("版本不存在"))?;
 
-        // 删除云端文件
-        let remote_key = format!("{}/{}.zip", BACKUPS_DIR, version_id);
-        self.storage.delete(&remote_key).await?;
-
-        // 更新 Manifest
+        // 先发布逻辑删除，再做对象 GC。这样发布失败时恢复点仍完整可用；对象删除
+        // 失败时最多留下不可见孤儿，不会让 manifest 引用一个不存在的文件。
         manifest.versions.remove(idx);
         if manifest.latest.as_deref() == Some(version_id) {
             manifest.latest = manifest.versions.first().map(|v| v.id.clone());
         }
         manifest.updated_at = Utc::now();
+        self.save_manifest(&manifest).await?;
 
-        self.save_manifest(&manifest).await
+        let remote_key = format!("{}/{}.zip", BACKUPS_DIR, version_id);
+        if let Err(error) = self.storage.delete(&remote_key).await {
+            tracing::warn!(
+                "版本 {} 已从 manifest 移除，但对象 GC 失败，将保留为不可见孤儿: {}",
+                version_id,
+                error
+            );
+        }
+        Ok(())
     }
 
     /// 清理旧版本，保留最近 N 个
-    async fn prune_versions(&self, manifest: &mut CloudManifest) -> Result<Vec<String>> {
+    fn prune_versions(&self, manifest: &mut CloudManifest) -> Vec<BackupVersion> {
         let mut pruned = Vec::new();
 
         while manifest.versions.len() > self.max_versions {
             if let Some(old) = manifest.versions.pop() {
-                let remote_key = format!("{}/{}.zip", BACKUPS_DIR, old.id);
-                // 删除失败不影响整体流程
-                if let Err(e) = self.storage.delete(&remote_key).await {
-                    tracing::warn!("删除旧版本 {} 失败: {}", old.id, e);
-                }
-                pruned.push(old.id);
+                pruned.push(old);
             }
         }
 
-        Ok(pruned)
+        pruned
     }
 
     /// 计算 SHA256 校验和
@@ -554,7 +673,7 @@ pub fn get_device_id() -> String {
     // 优先从环境变量获取
     if let Ok(id) = std::env::var("DEVICE_ID") {
         if !id.is_empty() {
-            return id;
+            return normalize_device_id(&id);
         }
     }
 
@@ -572,7 +691,7 @@ pub fn get_device_id() -> String {
             if let Ok(id) = std::fs::read_to_string(path) {
                 let id = id.trim();
                 if !id.is_empty() {
-                    return id.to_string();
+                    return normalize_device_id(id);
                 }
             }
         }
@@ -584,7 +703,7 @@ pub fn get_device_id() -> String {
         .or_else(|_| std::env::var("HOST")) // macOS
         .unwrap_or_else(|_| "device".to_string());
     let short_uuid = &Uuid::new_v4().to_string()[..8];
-    let new_id = format!("{}-{}", hostname, short_uuid);
+    let new_id = normalize_device_id(&format!("{}-{}", hostname, short_uuid));
 
     // 尝试保存到第一个可用路径
     for path in &possible_paths {
@@ -610,7 +729,7 @@ pub fn generate_device_id_after_restore() -> String {
         .or_else(|_| std::env::var("HOST"))
         .unwrap_or_else(|_| "device".to_string());
     let short_uuid = &Uuid::new_v4().to_string()[..8];
-    format!("{}-{}", hostname, short_uuid)
+    normalize_device_id(&format!("{}-{}", hostname, short_uuid))
 }
 
 /// Persist a pre-generated restore identity. Supplying the identity from the

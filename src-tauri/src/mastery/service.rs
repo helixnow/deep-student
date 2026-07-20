@@ -839,6 +839,7 @@ mod tests {
                 source_ref: None,
                 images: None,
                 parent_id: None,
+                structured_data: None,
             },
         )
         .expect("create question");

@@ -9,9 +9,120 @@ use log::{debug, error, info, warn};
 use serde_json::{json, Value};
 use url::Url;
 
+use super::routing::{key_cooldowns, key_fingerprint, tag_establish_failure};
 use super::{
     build_provider_adapter, normalize_nonstream_response_to_openai, ApiConfig, LLMManager, Result,
 };
+
+// ==================== 嵌入调用错误结构化 ====================
+
+/// 嵌入/重排序 HTTP 错误的结构化分类（写入 `AppError.details["embedding_error"]`）。
+///
+/// 上游消费方（如 `vfs::embedding_service` 的批内重试）依据该分类做
+/// fail-fast / 退避决策，并读取 `retry_after_secs` respect 服务端 Retry-After。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmbeddingErrorKind {
+    /// 401/403：鉴权失败（key 无效/权限不足），不可通过重试恢复
+    Auth,
+    /// 429：速率限制，可在 Retry-After 后重试
+    RateLimited,
+    /// 400/404/422：请求参数/内容问题，不可重试
+    InvalidRequest,
+    /// 5xx/408：服务端瞬态错误，可退避重试
+    Server,
+    /// 建立连接阶段的网络错误（超时/DNS/连接失败），可退避重试
+    Network,
+    /// 其他未识别错误
+    Unknown,
+}
+
+impl EmbeddingErrorKind {
+    fn from_status(status: u16) -> Self {
+        match status {
+            401 | 403 => Self::Auth,
+            429 => Self::RateLimited,
+            400 | 404 | 422 => Self::InvalidRequest,
+            408 => Self::Server,
+            500..=599 => Self::Server,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Auth => "auth",
+            Self::RateLimited => "rate_limited",
+            Self::InvalidRequest => "invalid_request",
+            Self::Server => "server",
+            Self::Network => "network",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+/// 解析 Retry-After 响应头（仅支持秒数形式；HTTP-date 形式返回 None）
+fn parse_retry_after_secs(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    headers
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse::<u64>().ok())
+}
+
+/// 为嵌入类调用错误附加结构化元数据：
+/// - `details["llm_failover"]`：复用 routing 的建立阶段打标（供 classify_llm_error）
+/// - `details["embedding_error"]`：kind / http_status / retry_after_secs
+fn tag_embedding_failure(
+    err: AppError,
+    http_status: Option<u16>,
+    retry_after_secs: Option<u64>,
+) -> AppError {
+    let kind = match http_status {
+        Some(status) => EmbeddingErrorKind::from_status(status),
+        None => EmbeddingErrorKind::Network,
+    };
+    let mut err = tag_establish_failure(err, http_status);
+    let mut details = err.details.take().unwrap_or_else(|| json!({}));
+    if let Some(obj) = details.as_object_mut() {
+        obj.insert(
+            "embedding_error".to_string(),
+            json!({
+                "kind": kind.as_str(),
+                "http_status": http_status,
+                "retry_after_secs": retry_after_secs,
+            }),
+        );
+    }
+    err.details = Some(details);
+    err
+}
+
+/// 从结构化错误中读取服务端建议的 Retry-After 秒数
+pub fn embedding_error_retry_after_secs(err: &AppError) -> Option<u64> {
+    err.details
+        .as_ref()
+        .and_then(|d| d.get("embedding_error"))
+        .and_then(|e| e.get("retry_after_secs"))
+        .and_then(|v| v.as_u64())
+}
+
+/// 从结构化错误中读取错误分类字符串（auth/rate_limited/invalid_request/server/network/unknown）
+pub fn embedding_error_kind(err: &AppError) -> Option<&str> {
+    err.details
+        .as_ref()
+        .and_then(|d| d.get("embedding_error"))
+        .and_then(|e| e.get("kind"))
+        .and_then(|v| v.as_str())
+}
+
+/// 嵌入 key 冷却表键（vendor 优先，缺失时退化到 base_url 作为租户标识）
+fn embedding_cooldown_key(config: &ApiConfig, api_key: &str) -> String {
+    let vendor = config
+        .vendor_id
+        .as_deref()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or(config.base_url.as_str());
+    key_fingerprint(vendor, api_key)
+}
 
 // ==================== RAG相关扩展方法 ====================
 
@@ -297,22 +408,52 @@ impl LLMManager {
             .json(&request_body)
             .send()
             .await
-            .map_err(|e| AppError::network(format!("多模态嵌入API请求失败: {}", e)))?;
+            .map_err(|e| {
+                tag_embedding_failure(
+                    AppError::network(format!("多模态嵌入API请求失败: {}", e)),
+                    None,
+                    None,
+                )
+            })?;
 
         if !response.status().is_success() {
-            let status = response.status();
+            let status = response.status().as_u16();
+            let retry_after_secs = parse_retry_after_secs(response.headers());
             let error_text = response.text().await.unwrap_or_default();
             // 记录完整错误到日志（仅开发调试用）
             error!("[MultimodalEmbedding] API error {}: {}", status, error_text);
             // 返回用户友好的错误消息，不暴露敏感信息
-            let user_message = match status.as_u16() {
+            let user_message = match status {
                 401 => "API 密钥无效或已过期，请检查设置",
                 403 => "API 访问被拒绝，请检查账户权限",
                 429 => "请求过于频繁，请稍后重试",
                 500..=599 => "嵌入服务暂时不可用，请稍后重试",
                 _ => "嵌入请求失败，请重试",
             };
-            return Err(AppError::llm(user_message.to_string()));
+
+            // ★ 2026-07 P1：多模态嵌入同样接入 key 冷却
+            if matches!(status, 401 | 403 | 429) {
+                let default_secs = self
+                    .get_failover_policy()
+                    .await
+                    .unwrap_or_default()
+                    .key_cooldown_secs;
+                let cooldown_secs = retry_after_secs.unwrap_or(default_secs).clamp(1, 3600);
+                key_cooldowns().set_for(
+                    &embedding_cooldown_key(config, &api_key),
+                    std::time::Duration::from_secs(cooldown_secs),
+                );
+                warn!(
+                    "[MultimodalEmbedding] HTTP {} for model {}; key cooled down for {}s",
+                    status, config.model, cooldown_secs
+                );
+            }
+
+            return Err(tag_embedding_failure(
+                AppError::llm(user_message.to_string()),
+                Some(status),
+                retry_after_secs,
+            ));
         }
 
         let response_json: Value = response
@@ -753,6 +894,21 @@ impl LLMManager {
         // 解密API密钥
         let api_key = self.decrypt_api_key_if_needed(&config.api_key)?;
 
+        // ★ 2026-07 P1：嵌入调用接入 key 冷却。刚被 429/401 的 key 在冷却期内
+        // fail-fast，避免批量索引持续轰炸限速中的端点。冷却由下方错误分支写入。
+        let cooldown_key = embedding_cooldown_key(config, &api_key);
+        if key_cooldowns().is_cooling(&cooldown_key) {
+            warn!(
+                "[Embedding] Key for model {} is cooling down; failing fast",
+                config.model
+            );
+            return Err(tag_embedding_failure(
+                AppError::llm("嵌入 API 密钥处于限速/鉴权冷却期，请稍后重试"),
+                Some(429),
+                None,
+            ));
+        }
+
         // 构造请求
         let request_body = match config.model_adapter.as_str() {
             "openai" | "general" => {
@@ -812,22 +968,53 @@ impl LLMManager {
             .json(&request_body)
             .send()
             .await
-            .map_err(|e| AppError::network(format!("嵌入API请求失败: {}", e)))?;
+            .map_err(|e| {
+                // 建立阶段网络失败：打标为可重试的瞬态错误
+                tag_embedding_failure(
+                    AppError::network(format!("嵌入API请求失败: {}", e)),
+                    None,
+                    None,
+                )
+            })?;
 
         if !response.status().is_success() {
-            let status = response.status();
+            let status = response.status().as_u16();
+            // ★ 2026-07 P0：在消费 body 前读取 Retry-After，结构化透传给上游重试逻辑
+            let retry_after_secs = parse_retry_after_secs(response.headers());
             let error_text = response.text().await.unwrap_or_default();
             // 记录完整错误到日志（仅开发调试用）
             error!("[Embedding] API error {}: {}", status, error_text);
             // 返回用户友好的错误消息，不暴露敏感信息
-            let user_message = match status.as_u16() {
+            let user_message = match status {
                 401 => "API 密钥无效或已过期，请检查设置",
                 403 => "API 访问被拒绝，请检查账户权限",
                 429 => "请求过于频繁，请稍后重试",
                 500..=599 => "嵌入服务暂时不可用，请稍后重试",
                 _ => "嵌入请求失败，请重试",
             };
-            return Err(AppError::llm(user_message.to_string()));
+
+            // ★ 2026-07 P1：429 冷却当前 key（respect Retry-After）；
+            // 401/403 同样短冷却，避免坏 key 被批量索引反复重试。
+            if matches!(status, 401 | 403 | 429) {
+                let default_secs = self
+                    .get_failover_policy()
+                    .await
+                    .unwrap_or_default()
+                    .key_cooldown_secs;
+                let cooldown_secs = retry_after_secs.unwrap_or(default_secs).clamp(1, 3600);
+                key_cooldowns()
+                    .set_for(&cooldown_key, std::time::Duration::from_secs(cooldown_secs));
+                warn!(
+                    "[Embedding] HTTP {} for model {}; key cooled down for {}s (retry_after={:?})",
+                    status, config.model, cooldown_secs, retry_after_secs
+                );
+            }
+
+            return Err(tag_embedding_failure(
+                AppError::llm(user_message.to_string()),
+                Some(status),
+                retry_after_secs,
+            ));
         }
 
         let response_json: Value = response

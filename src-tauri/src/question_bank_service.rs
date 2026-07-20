@@ -18,7 +18,7 @@ use crate::models::AppError;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::{
     AnswerSubmission, CreateQuestionParams, Difficulty, Question, QuestionBankStats,
-    QuestionFilters, QuestionHistory, QuestionListResult, QuestionOption, QuestionSearchFilters,
+    QuestionFilters, QuestionHistory, QuestionListResult, QuestionSearchFilters,
     QuestionSearchListResult, QuestionStatus, QuestionType, UpdateQuestionParams, VfsQuestionRepo,
 };
 
@@ -214,33 +214,76 @@ impl QuestionBankService {
     }
 
     /// 批量更新题目
+    ///
+    /// 单连接 + 单事务完成整批操作（此前每题独立走 update_question → 每题各开
+    /// 一个连接与隐式事务，含同步标记/重算 content hash 共 4 条语句，N 题产生
+    /// N 次连接与 4N 次独立提交开销）。每题包在 SAVEPOINT 中：题目更新、同步
+    /// 标记与 content hash 重算保持原子；单题失败仅回滚该题并记入 errors，
+    /// 保持"部分成功"语义不变。
     pub fn batch_update_questions(
         &self,
         question_ids: &[String],
         params: &UpdateQuestionParams,
     ) -> Result<BatchResult, AppError> {
-        let mut success_count = 0;
+        if question_ids.is_empty() {
+            return Ok(BatchResult {
+                success_count: 0,
+                failed_count: 0,
+                errors: Vec::new(),
+            });
+        }
+
+        let conn = self
+            .vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| AppError::database(e.to_string()))?;
+
+        let mut success_count = 0usize;
         let mut errors = Vec::new();
-        let mut exam_ids = std::collections::HashSet::new();
+        let mut exam_ids: HashSet<String> = HashSet::new();
 
         for id in question_ids {
-            match self.update_question_internal(id, params, false, false) {
+            if let Err(e) = tx.execute_batch("SAVEPOINT qbank_batch_update_question") {
+                errors.push(format!("{}: {}", id, e));
+                continue;
+            }
+
+            // update_question_with_conn 内部完成 UPDATE + 同步标记 + content hash
+            // 重算（S-030 口径），与单题 update_question 走同一实现，语义完全一致。
+            match VfsQuestionRepo::update_question_with_conn(&tx, id, params) {
                 Ok(q) => {
+                    if let Err(e) =
+                        tx.execute_batch("RELEASE SAVEPOINT qbank_batch_update_question")
+                    {
+                        let _ = tx.execute_batch(
+                            "ROLLBACK TO SAVEPOINT qbank_batch_update_question; RELEASE SAVEPOINT qbank_batch_update_question;",
+                        );
+                        errors.push(format!("{}: {}", id, e));
+                        continue;
+                    }
                     success_count += 1;
                     exam_ids.insert(q.exam_id);
                 }
                 Err(e) => {
-                    errors.push(format!("{}: {}", id, e));
+                    let _ = tx.execute_batch(
+                        "ROLLBACK TO SAVEPOINT qbank_batch_update_question; RELEASE SAVEPOINT qbank_batch_update_question;",
+                    );
+                    errors.push(format!("{}: {}", id, AppError::database(e.to_string())));
                 }
             }
         }
 
-        // 更新统计
-        for exam_id in exam_ids {
-            if let Err(e) = self.refresh_stats(&exam_id) {
+        // 更新统计（与更新同事务提交，避免中途崩溃留下过期统计）
+        for exam_id in &exam_ids {
+            if let Err(e) = VfsQuestionRepo::refresh_stats_with_conn(&tx, exam_id) {
                 log::warn!("[QuestionBank] 统计刷新失败: {}", e);
             }
         }
+
+        tx.commit().map_err(|e| AppError::database(e.to_string()))?;
 
         Ok(BatchResult {
             success_count,
@@ -270,31 +313,41 @@ impl QuestionBankService {
     }
 
     /// 批量删除题目
+    ///
+    /// 单连接 + 单事务完成整批操作（此前每题各开一个连接和事务，N 题产生 2N+
+    /// 次连接开销）。单题失败只记录错误并继续，保持"部分成功"语义不变。
     pub fn batch_delete_questions(&self, question_ids: &[String]) -> Result<BatchResult, AppError> {
-        // 收集 exam_ids
+        if question_ids.is_empty() {
+            return Ok(BatchResult {
+                success_count: 0,
+                failed_count: 0,
+                errors: Vec::new(),
+            });
+        }
+
+        let conn = self
+            .vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| AppError::database(e.to_string()))?;
+
         let mut exam_ids = std::collections::HashSet::new();
         let mut errors = Vec::new();
         let mut success_count = 0;
 
         for id in question_ids {
-            match self.get_question(id) {
-                Ok(Some(q)) => {
-                    exam_ids.insert(q.exam_id.clone());
-                    match VfsQuestionRepo::batch_delete_questions(
-                        &self.vfs_db,
-                        std::slice::from_ref(id),
-                    ) {
-                        Ok(1) => {
-                            success_count += 1;
-                        }
-                        Ok(_) => {
-                            errors.push(format!("{}: not found or already deleted", id));
-                        }
-                        Err(e) => {
-                            errors.push(format!("{}: {}", id, e));
-                        }
+            match VfsQuestionRepo::get_question_with_conn(&tx, id) {
+                Ok(Some(q)) => match VfsQuestionRepo::delete_question_with_conn(&tx, id) {
+                    Ok(()) => {
+                        success_count += 1;
+                        exam_ids.insert(q.exam_id);
                     }
-                }
+                    Err(e) => {
+                        errors.push(format!("{}: {}", id, e));
+                    }
+                },
                 Ok(None) => {
                     errors.push(format!("{}: not found", id));
                 }
@@ -304,12 +357,14 @@ impl QuestionBankService {
             }
         }
 
-        // 更新统计
-        for exam_id in exam_ids {
-            if let Err(e) = self.refresh_stats(&exam_id) {
+        // 更新统计（与删除同事务，避免中途崩溃留下过期统计）
+        for exam_id in &exam_ids {
+            if let Err(e) = VfsQuestionRepo::refresh_stats_with_conn(&tx, exam_id) {
                 log::warn!("[QuestionBank] 统计刷新失败: {}", e);
             }
         }
+
+        tx.commit().map_err(|e| AppError::database(e.to_string()))?;
 
         Ok(BatchResult {
             success_count,
@@ -433,14 +488,13 @@ impl QuestionBankService {
                 tx.commit().map_err(|e| AppError::database(e.to_string()))?;
 
                 let is_correct = existing_submission.is_correct;
-                let needs_manual_grading = is_correct.is_none()
-                    && Self::is_subjective_question_type(&question.question_type);
-                let message = if needs_manual_grading {
-                    "需要手动批改".to_string()
-                } else if is_correct == Some(true) {
-                    "回答正确！".to_string()
-                } else {
-                    "回答错误".to_string()
+                // is_correct 为 None 一律表示"尚未判定"（主观题或缺少参考答案的客观题），
+                // 与首次提交的返回口径保持一致，避免重放时把待批改误报为"回答错误"。
+                let needs_manual_grading = is_correct.is_none();
+                let message = match is_correct {
+                    None => "需要手动批改".to_string(),
+                    Some(true) => "回答正确！".to_string(),
+                    Some(false) => "回答错误".to_string(),
                 };
 
                 return Ok(SubmitAnswerResult {
@@ -464,6 +518,7 @@ impl QuestionBankService {
                 user_answer,
                 question.answer.as_deref(),
                 &question.question_type,
+                question.structured_data.as_ref(),
             )
         };
         // M-063: 主观题 is_correct 设为 None，避免工具调用方误判为"错误"
@@ -582,35 +637,57 @@ impl QuestionBankService {
         })
     }
 
-    fn is_subjective_question_type(question_type: &QuestionType) -> bool {
-        matches!(
-            question_type,
-            QuestionType::ShortAnswer
-                | QuestionType::Essay
-                | QuestionType::Calculation
-                | QuestionType::Proof
-        )
+    /// 全角字符归一化为半角
+    ///
+    /// - 全角空格 U+3000 → 半角空格
+    /// - 全角 ASCII 区 U+FF01..=U+FF5E（含 Ａ-Ｚ、ａ-ｚ、０-９ 与全角标点）→ 对应半角字符
+    ///
+    /// 用于选择题/填空题判分，避免用户用中文输入法输入 "Ａ" 或 "１２３" 被误判为错误。
+    fn normalize_fullwidth_char(c: char) -> char {
+        match c {
+            '\u{3000}' => ' ',
+            '\u{FF01}'..='\u{FF5E}' => char::from_u32(c as u32 - 0xFEE0).unwrap_or(c),
+            _ => c,
+        }
     }
 
     /// 判断答案正确性
+    ///
+    /// 返回 `(is_correct, needs_manual_grading)`。
+    ///
+    /// 自动判分矩阵：
+    /// - single/multiple/indefinite_choice：选项键集合比较（全角/大小写/标点归一化）
+    /// - true_false：布尔宽松解析（true/false、对/错、√/× 等）
+    /// - numeric：structured_data 携带 answer_value + tolerance（absolute|relative），
+    ///   用户输入宽松解析（"3.14 m"、全角数字、千分位逗号、简单分数）
+    /// - ordering：严格顺序比较（JSON 数组或分隔符序列）
+    /// - matching：配对集合相等（{"pairs":[{"left","right"}]}）
+    /// - fill_blank：有 structured_data.blanks 时逐空判分（多可接受答案 + case/trim 规则），
+    ///   否则回退旧的单串模糊比对
+    /// - short_answer/essay/calculation/proof：手动批改
     fn check_answer_correctness(
         user_answer: &str,
         correct_answer: Option<&str>,
         question_type: &QuestionType,
+        structured_data: Option<&serde_json::Value>,
     ) -> (bool, bool) {
         let user_answer = user_answer.trim();
 
-        // 如果没有标准答案，需要手动批改
-        let correct_answer = match correct_answer {
-            Some(a) if !a.trim().is_empty() => a.trim(),
-            _ => return (false, true),
-        };
+        // 参考答案（去空白后非空才算有效）。matching/ordering/numeric/fill_blank
+        // 的标准答案可能存于 structured_data，因此不能在这里一票否决。
+        let trimmed_answer = correct_answer.map(str::trim).filter(|a| !a.is_empty());
 
         match question_type {
-            // 选择题：忽略大小写与标点
+            // 选择题：忽略大小写、全半角与标点
             QuestionType::SingleChoice => {
+                let Some(correct_answer) = trimmed_answer else {
+                    return (false, true);
+                };
                 let normalize = |s: &str| {
-                    s.to_uppercase()
+                    s.chars()
+                        .map(Self::normalize_fullwidth_char)
+                        .collect::<String>()
+                        .to_uppercase()
                         .chars()
                         .filter(|c| c.is_alphanumeric())
                         .collect::<String>()
@@ -628,9 +705,16 @@ impl QuestionBankService {
                 }
                 (is_correct, false)
             }
+            // 多选/不定项：全对才 correct（漏选、错选均判错）
             QuestionType::MultipleChoice | QuestionType::IndefiniteChoice => {
+                let Some(correct_answer) = trimmed_answer else {
+                    return (false, true);
+                };
                 let normalize = |s: &str| {
-                    s.to_uppercase()
+                    s.chars()
+                        .map(Self::normalize_fullwidth_char)
+                        .collect::<String>()
+                        .to_uppercase()
                         .chars()
                         .filter(|c| c.is_alphanumeric())
                         .collect::<Vec<char>>()
@@ -651,16 +735,35 @@ impl QuestionBankService {
                 }
                 (is_correct, false)
             }
-            // 填空题：模糊匹配
-            QuestionType::FillBlank => {
-                let normalize = |s: &str| -> String {
-                    s.to_lowercase()
-                        .chars()
-                        .filter(|c| !c.is_whitespace())
-                        .collect()
+            // 判断题：布尔宽松解析
+            QuestionType::TrueFalse => {
+                let Some(correct_answer) = trimmed_answer else {
+                    return (false, true);
                 };
-                let is_correct = normalize(user_answer) == normalize(correct_answer);
-                (is_correct, false)
+                match (
+                    Self::parse_bool_answer(user_answer),
+                    Self::parse_bool_answer(correct_answer),
+                ) {
+                    (Some(user_val), Some(correct_val)) => (user_val == correct_val, false),
+                    // 参考答案本身不是布尔值 → 数据问题，走手动批改
+                    (_, None) => (false, true),
+                    // 用户输入无法解析为布尔值 → 判错
+                    (None, Some(_)) => (false, false),
+                }
+            }
+            // 数值题：容差比较
+            QuestionType::Numeric => {
+                Self::grade_numeric(user_answer, trimmed_answer, structured_data)
+            }
+            // 排序题：严格顺序
+            QuestionType::Ordering => {
+                Self::grade_ordering(user_answer, trimmed_answer, structured_data)
+            }
+            // 匹配题：配对集合相等
+            QuestionType::Matching => Self::grade_matching(user_answer, structured_data),
+            // 填空题：优先按 structured_data.blanks 逐空判分，否则旧逻辑单串比对
+            QuestionType::FillBlank => {
+                Self::grade_fill_blank(user_answer, trimmed_answer, structured_data)
             }
             // 主观题：需要手动批改
             QuestionType::ShortAnswer
@@ -669,6 +772,9 @@ impl QuestionBankService {
             | QuestionType::Proof => (false, true),
             // 其他：全部走手动批改，精确匹配时判正确
             QuestionType::Other => {
+                let Some(correct_answer) = trimmed_answer else {
+                    return (false, true);
+                };
                 let is_exact_match = user_answer.to_lowercase() == correct_answer.to_lowercase();
                 if is_exact_match {
                     (true, false) // 完全匹配，判正确
@@ -690,7 +796,10 @@ impl QuestionBankService {
     /// 仅作为标准化精确比较失败后的兜底，避免参考答案携带选项全文时误判。
     fn extract_choice_keys(answer: &str) -> Option<std::collections::BTreeSet<char>> {
         const MAX_KEYS: usize = 8;
-        let trimmed = answer.trim();
+        // 先做全角→半角归一化：全角 "Ａ" / "（Ｂ）" 也应被识别为选项键。
+        // 归一化后全角结构符（（）：．等）会落回下方边界字符集中的半角形式。
+        let normalized: String = answer.chars().map(Self::normalize_fullwidth_char).collect();
+        let trimmed = normalized.trim();
         if trimmed.is_empty() {
             return None;
         }
@@ -739,6 +848,398 @@ impl QuestionBankService {
         } else {
             None
         }
+    }
+
+    /// 布尔答案宽松解析（判断题）
+    ///
+    /// 支持 true/false、t/f、1/0、对/错、正确/错误、是/否、√/×、✓/✗、yes/no 等常见写法。
+    fn parse_bool_answer(raw: &str) -> Option<bool> {
+        let normalized: String = raw
+            .chars()
+            .map(Self::normalize_fullwidth_char)
+            .collect::<String>()
+            .trim()
+            .to_lowercase();
+        match normalized.as_str() {
+            "true" | "t" | "1" | "yes" | "y" | "对" | "正确" | "是" | "真" | "√" | "✓"
+            | "✔" => Some(true),
+            "false" | "f" | "0" | "no" | "n" | "错" | "错误" | "否" | "假" | "不对" | "×"
+            | "✗" | "✘" | "x" => Some(false),
+            _ => None,
+        }
+    }
+
+    /// 数值宽松解析：全角归一化、去千分位逗号、截取首个数字 token（忽略单位后缀），
+    /// 支持 "3.14 m"、"１２３"、"1,234.5"、"-2e3"、简单分数 "3/4"。
+    fn parse_numeric_input(raw: &str) -> Option<f64> {
+        let normalized: String = raw.chars().map(Self::normalize_fullwidth_char).collect();
+        // 全角逗号已归一化为半角，这里统一去掉千分位逗号
+        let cleaned = normalized.replace(',', "");
+        let chars: Vec<char> = cleaned.chars().collect();
+
+        // 在 pos 起始处解析一个数字 token，返回 (值, 结束位置)
+        fn parse_number_at(chars: &[char], start: usize) -> Option<(f64, usize)> {
+            let mut i = start;
+            let mut token = String::new();
+            if i < chars.len() && (chars[i] == '+' || chars[i] == '-') {
+                token.push(chars[i]);
+                i += 1;
+            }
+            let mut seen_digit = false;
+            let mut seen_dot = false;
+            let mut seen_exp = false;
+            while i < chars.len() {
+                let c = chars[i];
+                if c.is_ascii_digit() {
+                    seen_digit = true;
+                    token.push(c);
+                    i += 1;
+                } else if c == '.' && !seen_dot && !seen_exp {
+                    seen_dot = true;
+                    token.push(c);
+                    i += 1;
+                } else if (c == 'e' || c == 'E') && seen_digit && !seen_exp {
+                    // 仅当后随（可带符号的）数字时才视为指数，否则按单位处理（如 "3 eV"）
+                    let mut j = i + 1;
+                    if j < chars.len() && (chars[j] == '+' || chars[j] == '-') {
+                        j += 1;
+                    }
+                    if j < chars.len() && chars[j].is_ascii_digit() {
+                        seen_exp = true;
+                        token.push('e');
+                        if chars[i + 1] == '+' || chars[i + 1] == '-' {
+                            token.push(chars[i + 1]);
+                        }
+                        i = j;
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+            if !seen_digit {
+                return None;
+            }
+            token.parse::<f64>().ok().map(|v| (v, i))
+        }
+
+        // 定位第一个数字 token 的起点（数字，或后随数字的符号/小数点，含 "-.5"）
+        let mut start = None;
+        for (i, c) in chars.iter().enumerate() {
+            let next_is_numeric = chars.get(i + 1).is_some_and(|n| n.is_ascii_digit());
+            let signed_dot = (*c == '+' || *c == '-')
+                && chars.get(i + 1) == Some(&'.')
+                && chars.get(i + 2).is_some_and(|n| n.is_ascii_digit());
+            if c.is_ascii_digit()
+                || ((*c == '+' || *c == '-' || *c == '.') && next_is_numeric)
+                || signed_dot
+            {
+                start = Some(i);
+                break;
+            }
+        }
+        let (value, end) = parse_number_at(&chars, start?)?;
+
+        // 简单分数支持："3/4"、"3 / 4"
+        let mut j = end;
+        while j < chars.len() && chars[j].is_whitespace() {
+            j += 1;
+        }
+        if j < chars.len() && chars[j] == '/' {
+            j += 1;
+            while j < chars.len() && chars[j].is_whitespace() {
+                j += 1;
+            }
+            if let Some((denominator, _)) = parse_number_at(&chars, j) {
+                if denominator != 0.0 {
+                    return Some(value / denominator);
+                }
+                return None;
+            }
+        }
+
+        Some(value)
+    }
+
+    /// 数值题判分
+    ///
+    /// structured_data：{"answer_value":3.14,"tolerance":0.01,"unit":"m","tolerance_mode":"absolute"}
+    /// tolerance_mode 支持 "absolute"（默认）| "relative"。
+    /// 无 structured_data 时回退解析 answer 字符串（相对误差 1e-9 内视为相等）。
+    fn grade_numeric(
+        user_answer: &str,
+        correct_answer: Option<&str>,
+        structured_data: Option<&serde_json::Value>,
+    ) -> (bool, bool) {
+        let structured_answer = structured_data
+            .and_then(|sd| sd.get("answer_value").and_then(|v| v.as_f64()).map(|a| (sd, a)));
+        if let Some((sd, answer_value)) = structured_answer {
+            let Some(user_value) = Self::parse_numeric_input(user_answer) else {
+                return (false, false);
+            };
+            let tolerance = sd
+                .get("tolerance")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0)
+                .abs();
+            let mode = sd
+                .get("tolerance_mode")
+                .and_then(|v| v.as_str())
+                .unwrap_or("absolute");
+            let limit = if mode.eq_ignore_ascii_case("relative") {
+                tolerance * answer_value.abs()
+            } else {
+                tolerance
+            };
+            // 浮点噪声补偿：叠加在容差上（而非取 max），既覆盖 tolerance=0 的
+            // 精确比较，也避免 |3.15-3.14| 这类边界值因二进制表示误差被误判。
+            let epsilon = f64::EPSILON * answer_value.abs().max(1.0) * 4.0;
+            return ((user_value - answer_value).abs() <= limit + epsilon, false);
+        }
+
+        // 回退：从 answer 字符串解析参考值
+        let Some(correct_answer) = correct_answer else {
+            return (false, true);
+        };
+        match (
+            Self::parse_numeric_input(user_answer),
+            Self::parse_numeric_input(correct_answer),
+        ) {
+            (Some(user_value), Some(correct_value)) => {
+                let scale = correct_value.abs().max(1.0);
+                ((user_value - correct_value).abs() <= 1e-9 * scale, false)
+            }
+            // 参考答案不是数字 → 数据问题，走手动批改
+            (_, None) => (false, true),
+            (None, Some(_)) => (false, false),
+        }
+    }
+
+    /// 解析序列答案：优先 JSON 数组（字符串/数字元素），否则按常见分隔符拆分。
+    fn parse_sequence_answer(raw: &str) -> Option<Vec<String>> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        if let Ok(serde_json::Value::Array(items)) = serde_json::from_str(trimmed) {
+            let mut result = Vec::with_capacity(items.len());
+            for item in items {
+                match item {
+                    serde_json::Value::String(s) => result.push(s),
+                    serde_json::Value::Number(n) => result.push(n.to_string()),
+                    _ => return None,
+                }
+            }
+            return if result.is_empty() { None } else { Some(result) };
+        }
+        // 分隔符回退："B,A,C"、"B、A、C"、"B → A → C"
+        let normalized: String = trimmed.chars().map(Self::normalize_fullwidth_char).collect();
+        let replaced = normalized
+            .replace("->", ",")
+            .replace('→', ",")
+            .replace('⇒', ",");
+        let parts: Vec<String> = replaced
+            .split([',', ';', '、', '，', '；', '|', ' '])
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect();
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts)
+        }
+    }
+
+    /// 序列 key 归一化：全角归一化 + trim + 大写（选项 key 通常为字母/短标识）
+    fn normalize_sequence_key(key: &str) -> String {
+        key.chars()
+            .map(Self::normalize_fullwidth_char)
+            .collect::<String>()
+            .trim()
+            .to_uppercase()
+    }
+
+    /// 排序题判分：严格顺序比较
+    ///
+    /// structured_data：{"items":[{"key":"A","content":"..."}],"correct_order":["B","A","C"]}
+    /// user_answer：JSON 数组字符串 ["B","A","C"]（或分隔符序列兜底）。
+    fn grade_ordering(
+        user_answer: &str,
+        correct_answer: Option<&str>,
+        structured_data: Option<&serde_json::Value>,
+    ) -> (bool, bool) {
+        let correct_order: Option<Vec<String>> = structured_data
+            .and_then(|sd| sd.get("correct_order"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .filter(|v: &Vec<String>| !v.is_empty())
+            .or_else(|| correct_answer.and_then(Self::parse_sequence_answer));
+
+        let Some(correct_order) = correct_order else {
+            // 没有可用的标准顺序 → 手动批改
+            return (false, true);
+        };
+        let Some(user_order) = Self::parse_sequence_answer(user_answer) else {
+            return (false, false);
+        };
+
+        let normalized_correct: Vec<String> = correct_order
+            .iter()
+            .map(|k| Self::normalize_sequence_key(k))
+            .collect();
+        let normalized_user: Vec<String> = user_order
+            .iter()
+            .map(|k| Self::normalize_sequence_key(k))
+            .collect();
+        (normalized_user == normalized_correct, false)
+    }
+
+    /// 匹配题判分：配对集合相等
+    ///
+    /// structured_data：{"left":[...],"right":[...],"pairs":[{"left":"L1","right":"R2"}]}
+    /// user_answer：{"pairs":[{"left":"L1","right":"R1"}]}（或裸 pairs 数组兜底）。
+    fn grade_matching(
+        user_answer: &str,
+        structured_data: Option<&serde_json::Value>,
+    ) -> (bool, bool) {
+        fn pairs_from_value(value: &serde_json::Value) -> Option<Vec<(String, String)>> {
+            let array = match value {
+                serde_json::Value::Array(arr) => arr,
+                serde_json::Value::Object(_) => value.get("pairs")?.as_array()?,
+                _ => return None,
+            };
+            let mut pairs = Vec::with_capacity(array.len());
+            for item in array {
+                let left = item.get("left")?.as_str()?;
+                let right = item.get("right")?.as_str()?;
+                pairs.push((left.to_string(), right.to_string()));
+            }
+            Some(pairs)
+        }
+
+        let correct_pairs = structured_data
+            .and_then(pairs_from_value)
+            .filter(|p| !p.is_empty());
+        let Some(correct_pairs) = correct_pairs else {
+            // 没有标准配对 → 手动批改
+            return (false, true);
+        };
+
+        let user_pairs = serde_json::from_str::<serde_json::Value>(user_answer.trim())
+            .ok()
+            .as_ref()
+            .and_then(pairs_from_value);
+        let Some(user_pairs) = user_pairs else {
+            return (false, false);
+        };
+
+        let to_set = |pairs: &[(String, String)]| {
+            pairs
+                .iter()
+                .map(|(l, r)| {
+                    (
+                        Self::normalize_sequence_key(l),
+                        Self::normalize_sequence_key(r),
+                    )
+                })
+                .collect::<std::collections::BTreeSet<_>>()
+        };
+        let user_set = to_set(&user_pairs);
+        let correct_set = to_set(&correct_pairs);
+        // 集合相等且无重复配对（重复配对去重后数量会缩水，防止 "L1-R1" 提交两次凑数）
+        let is_correct = user_set == correct_set && user_pairs.len() == user_set.len();
+        (is_correct, false)
+    }
+
+    /// 填空题判分
+    ///
+    /// 有 structured_data.blanks 时逐空判分：
+    /// {"blanks":[{"answers":["答案1","答案一"],"case_sensitive":false,"trim":true}]}
+    /// user_answer 为 JSON 数组字符串 ["ans1","ans2"]；单空兼容旧的裸字符串。
+    /// 无 structured_data 时回退旧逻辑（忽略空白/大小写/全半角的单串比对）。
+    fn grade_fill_blank(
+        user_answer: &str,
+        correct_answer: Option<&str>,
+        structured_data: Option<&serde_json::Value>,
+    ) -> (bool, bool) {
+        let blanks = structured_data
+            .and_then(|sd| sd.get("blanks"))
+            .and_then(|v| v.as_array())
+            .filter(|arr| !arr.is_empty());
+
+        if let Some(blanks) = blanks {
+            // 解析用户答案：JSON 数组，或（单空时）裸字符串兼容
+            let user_values: Vec<String> = match serde_json::from_str::<serde_json::Value>(
+                user_answer.trim(),
+            ) {
+                Ok(serde_json::Value::Array(items)) => items
+                    .into_iter()
+                    .map(|v| match v {
+                        serde_json::Value::String(s) => s,
+                        other => other.to_string(),
+                    })
+                    .collect(),
+                _ => vec![user_answer.to_string()],
+            };
+            if user_values.len() != blanks.len() {
+                return (false, false);
+            }
+
+            let normalize = |s: &str, case_sensitive: bool, trim: bool| -> String {
+                let mut value: String = s.chars().map(Self::normalize_fullwidth_char).collect();
+                if trim {
+                    value = value.trim().to_string();
+                }
+                if !case_sensitive {
+                    value = value.to_lowercase();
+                }
+                value
+            };
+
+            for (blank, user_value) in blanks.iter().zip(user_values.iter()) {
+                let Some(answers) = blank.get("answers").and_then(|v| v.as_array()) else {
+                    // 空位缺少可接受答案 → 数据问题，走手动批改
+                    return (false, true);
+                };
+                if answers.is_empty() {
+                    return (false, true);
+                }
+                let case_sensitive = blank
+                    .get("case_sensitive")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let trim = blank.get("trim").and_then(|v| v.as_bool()).unwrap_or(true);
+
+                let normalized_user = normalize(user_value, case_sensitive, trim);
+                let matched = answers
+                    .iter()
+                    .filter_map(|a| a.as_str())
+                    .any(|accepted| normalize(accepted, case_sensitive, trim) == normalized_user);
+                if !matched {
+                    return (false, false);
+                }
+            }
+            return (true, false);
+        }
+
+        // 旧逻辑：单串模糊匹配（忽略空白、大小写与全半角差异）
+        let Some(correct_answer) = correct_answer else {
+            return (false, true);
+        };
+        let normalize = |s: &str| -> String {
+            s.chars()
+                .map(Self::normalize_fullwidth_char)
+                .filter(|c| !c.is_whitespace())
+                .collect::<String>()
+                .to_lowercase()
+        };
+        (normalize(user_answer) == normalize(correct_answer), false)
     }
 
     /// 切换收藏状态
@@ -856,6 +1357,22 @@ impl QuestionBankService {
             .map_err(|e| AppError::database(e.to_string()))?;
         }
 
+        // 结构化数据变更（新题型标准答案属于内容变更，纳入历史）
+        if old.structured_data != new.structured_data {
+            let old_val = old.structured_data.as_ref().map(|v| v.to_string());
+            let new_val = new.structured_data.as_ref().map(|v| v.to_string());
+            VfsQuestionRepo::record_history(
+                &self.vfs_db,
+                &new.id,
+                "structured_data",
+                old_val.as_deref(),
+                new_val.as_deref(),
+                operator,
+                None,
+            )
+            .map_err(|e| AppError::database(e.to_string()))?;
+        }
+
         // 图片变更
         if old.images != new.images {
             let old_val = serde_json::to_string(&old.images).ok();
@@ -873,41 +1390,6 @@ impl QuestionBankService {
         }
 
         Ok(())
-    }
-
-    /// 解析选项
-    fn parse_options(&self, card: &serde_json::Value) -> Option<Vec<QuestionOption>> {
-        card.get("options").and_then(|v| v.as_array()).map(|arr| {
-            arr.iter()
-                .filter_map(|opt| {
-                    let key = opt.get("key").and_then(|v| v.as_str())?.to_string();
-                    let content = opt.get("content").and_then(|v| v.as_str())?.to_string();
-                    Some(QuestionOption { key, content })
-                })
-                .collect()
-        })
-    }
-
-    /// 解析题目类型
-    fn parse_question_type(&self, card: &serde_json::Value) -> Option<QuestionType> {
-        card.get("question_type")
-            .and_then(|v| v.as_str())
-            .map(QuestionType::from_str)
-    }
-
-    /// 解析难度
-    fn parse_difficulty(&self, card: &serde_json::Value) -> Option<Difficulty> {
-        card.get("difficulty")
-            .and_then(|v| v.as_str())
-            .map(Difficulty::from_str)
-    }
-
-    /// 解析状态
-    fn parse_status(&self, card: &serde_json::Value) -> QuestionStatus {
-        card.get("status")
-            .and_then(|v| v.as_str())
-            .map(QuestionStatus::from_str)
-            .unwrap_or(QuestionStatus::New)
     }
 
     // ========================================================================
@@ -944,6 +1426,26 @@ impl QuestionBankService {
             rusqlite::params![now, exam_id],
         )
         .map_err(|e| AppError::database(e.to_string()))?;
+
+        // S-030 口径：重置也是本地修改，需标记同步状态并重算 content hash，
+        // 否则云同步会把本地重置当作"未变更"而用远端旧进度覆盖。
+        let question_ids: Vec<String> = {
+            let mut stmt = tx
+                .prepare("SELECT id FROM questions WHERE exam_id = ?1 AND deleted_at IS NULL")
+                .map_err(|e| AppError::database(e.to_string()))?;
+            let rows = stmt
+                .query_map(rusqlite::params![exam_id], |row| row.get::<_, String>(0))
+                .map_err(|e| AppError::database(e.to_string()))?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+        for qid in &question_ids {
+            crate::question_sync_service::QuestionSyncService::mark_as_modified_with_conn(&tx, qid)
+                .map_err(|e| AppError::database(e.to_string()))?;
+            crate::question_sync_service::QuestionSyncService::update_content_hash_with_conn(
+                &tx, qid,
+            )
+            .map_err(|e| AppError::database(e.to_string()))?;
+        }
 
         // 清除作答历史
         VfsQuestionRepo::delete_submissions_by_exam_with_conn(&tx, exam_id)
@@ -1031,6 +1533,18 @@ impl QuestionBankService {
                     return Err(AppError::validation(format!("{}: not found", question_id)));
                 }
 
+                // S-030 口径：重置需标记同步状态并重算 content hash（与 reset_progress 一致）
+                crate::question_sync_service::QuestionSyncService::mark_as_modified_with_conn(
+                    &tx,
+                    question_id,
+                )
+                .map_err(|e| AppError::database(e.to_string()))?;
+                crate::question_sync_service::QuestionSyncService::update_content_hash_with_conn(
+                    &tx,
+                    question_id,
+                )
+                .map_err(|e| AppError::database(e.to_string()))?;
+
                 VfsQuestionRepo::delete_submissions_by_question_with_conn(&tx, question_id)
                     .map_err(|e| AppError::database(e.to_string()))?;
 
@@ -1089,19 +1603,33 @@ impl QuestionBankService {
         start_date: &str,
         end_date: &str,
     ) -> Result<Vec<LearningTrendPoint>, AppError> {
+        // 输入校验：非法/倒置/超大范围此前会静默返回未填充数据或生成上万个填充点
+        let start = chrono::NaiveDate::parse_from_str(start_date, "%Y-%m-%d")
+            .map_err(|_| AppError::validation("开始日期格式无效，应为 YYYY-MM-DD"))?;
+        let end = chrono::NaiveDate::parse_from_str(end_date, "%Y-%m-%d")
+            .map_err(|_| AppError::validation("结束日期格式无效，应为 YYYY-MM-DD"))?;
+        if start > end {
+            return Err(AppError::validation("开始日期不能晚于结束日期"));
+        }
+        if (end - start).num_days() > 3700 {
+            return Err(AppError::validation("日期范围过大（最多支持约 10 年）"));
+        }
+
         let conn = self
             .vfs_db
             .get_conn_safe()
             .map_err(|e| AppError::database(e.to_string()))?;
 
-        // 构建基础查询
+        // 构建基础查询。列名必须带 q. 前缀完全限定：answer_submissions 自
+        // V20260523 起也有 deleted_at 列，裸 `deleted_at` 会在 JOIN 中触发
+        // "ambiguous column name"，导致按题目集查询学习趋势直接报错。
         let (base_condition, params): (String, Vec<String>) = if let Some(eid) = exam_id {
             (
-                "exam_id = ?1 AND deleted_at IS NULL".to_string(),
+                "q.exam_id = ?1 AND q.deleted_at IS NULL".to_string(),
                 vec![eid.to_string()],
             )
         } else {
-            ("deleted_at IS NULL".to_string(), vec![])
+            ("q.deleted_at IS NULL".to_string(), vec![])
         };
 
         // 从 answer_submissions 表统计每日做题次数（而非 questions.last_attempt_at 统计题数）
@@ -1114,7 +1642,7 @@ impl QuestionBankService {
                 SUM(CASE WHEN s.is_correct = 1 THEN 1 ELSE 0 END) as correct_count
             FROM answer_submissions s
             INNER JOIN questions q ON s.question_id = q.id
-            WHERE q.{}
+            WHERE {}
                 AND s.submitted_at IS NOT NULL
                 AND DATE(s.submitted_at, 'localtime') >= ?
                 AND DATE(s.submitted_at, 'localtime') <= ?
@@ -1211,6 +1739,10 @@ impl QuestionBankService {
         exam_id: Option<&str>,
         year: i32,
     ) -> Result<Vec<ActivityHeatmapPoint>, AppError> {
+        if !(1970..=9999).contains(&year) {
+            return Err(AppError::validation("年份无效"));
+        }
+
         let conn = self
             .vfs_db
             .get_conn_safe()
@@ -1422,6 +1954,13 @@ impl QuestionBankService {
         duration_minutes: u32,
         question_count: u32,
     ) -> Result<TimedPracticeSession, AppError> {
+        if question_count == 0 {
+            return Err(AppError::validation("题目数量必须大于 0"));
+        }
+        if duration_minutes == 0 {
+            return Err(AppError::validation("限时时长必须大于 0 分钟"));
+        }
+
         // M-031: 使用 SQL 层随机抽取，避免全量加载
         let question_ids = VfsQuestionRepo::random_question_ids(
             &self.vfs_db,
@@ -1635,6 +2174,12 @@ impl QuestionBankService {
         let time_spent_seconds = (ended_at.timestamp() - started_at.timestamp()).max(0) as u32;
 
         // 获取题目详情计算各维度统计
+        // M-031 同类优化：一次 IN 查询批量取回，替代逐题 get_question 的 N+1
+        let questions = VfsQuestionRepo::get_questions_by_ids(&self.vfs_db, &session.question_ids)
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let question_map: std::collections::HashMap<&str, &Question> =
+            questions.iter().map(|q| (q.id.as_str(), q)).collect();
+
         let mut type_stats: std::collections::HashMap<String, TypeStatItem> =
             std::collections::HashMap::new();
         let mut difficulty_stats: std::collections::HashMap<String, DifficultyStatItem> =
@@ -1642,7 +2187,7 @@ impl QuestionBankService {
         let mut wrong_question_ids: Vec<String> = Vec::new();
 
         for qid in &session.question_ids {
-            if let Ok(Some(question)) = self.get_question(qid) {
+            if let Some(question) = question_map.get(qid.as_str()) {
                 let qtype = format!("{:?}", question.question_type);
                 let is_correct = session.results.get(qid).copied().unwrap_or(false);
 
@@ -1747,6 +2292,11 @@ impl QuestionBankService {
         exam_id: &str,
         count: u32,
     ) -> Result<DailyPracticeResult, AppError> {
+        if count == 0 {
+            // 此前 count=0 时错题档 (count/2).max(1) 仍会选出 1 题，与目标数矛盾
+            return Err(AppError::validation("每日一练题目数量必须大于 0"));
+        }
+
         // "今天"用本地时区（与 todo/review_plan 模块一致）
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let target_count = count as usize;
@@ -1976,6 +2526,13 @@ impl QuestionBankService {
         year: i32,
         month: u32,
     ) -> Result<CheckInCalendar, AppError> {
+        if !(1..=12).contains(&month) {
+            return Err(AppError::validation("月份必须在 1-12 之间"));
+        }
+        if !(1970..=9999).contains(&year) {
+            return Err(AppError::validation("年份无效"));
+        }
+
         let conn = self
             .vfs_db
             .get_conn_safe()
@@ -2056,8 +2613,10 @@ impl QuestionBankService {
             });
         }
 
-        // 计算连续打卡天数
-        let streak_days = self.calculate_streak_days(&days);
+        // 计算连续打卡天数：基于完整历史而非本月数据。
+        // 此前只用当月的 days 计算，跨月连续打卡（如 7/25–8/3）在月初会被截断为
+        // 月内天数；查看历史月份时更是恒为 0。
+        let streak_days = self.query_streak_days(&conn, exam_id)?;
 
         Ok(CheckInCalendar {
             exam_id: exam_id.map(str::to_owned),
@@ -2070,52 +2629,94 @@ impl QuestionBankService {
         })
     }
 
-    /// 计算连续打卡天数
-    fn calculate_streak_days(&self, days: &[DailyCheckIn]) -> u32 {
-        use chrono::{Duration, NaiveDate};
-
-        if days.is_empty() {
-            return 0;
-        }
-
-        // 按日期排序（降序，最新的在前）
-        let mut sorted_days: Vec<&DailyCheckIn> =
-            days.iter().filter(|d| d.question_count > 0).collect();
-        sorted_days.sort_by(|a, b| b.date.cmp(&a.date));
-
-        if sorted_days.is_empty() {
-            return 0;
-        }
-
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-
-        // 如果今天没有打卡，检查昨天
-        let yesterday = (chrono::Local::now() - Duration::days(1))
-            .format("%Y-%m-%d")
-            .to_string();
-
-        let start_date = if sorted_days[0].date == today {
-            today.clone()
-        } else if sorted_days[0].date == yesterday {
-            yesterday.clone()
+    /// 查询连续打卡天数（不限当月，向历史回溯）
+    ///
+    /// 口径与 get_check_in_calendar 一致：answer_submissions 为主，存量无提交
+    /// 记录的题按 last_attempt_at 兜底，DATE(…, 'localtime') 对齐本地日界线。
+    fn query_streak_days(
+        &self,
+        conn: &rusqlite::Connection,
+        exam_id: Option<&str>,
+    ) -> Result<u32, AppError> {
+        let base_condition = if exam_id.is_some() {
+            "q.exam_id = ?1 AND q.deleted_at IS NULL"
         } else {
-            return 0; // 连续打卡已中断
+            "q.deleted_at IS NULL"
         };
 
-        let mut streak = 0u32;
-        let mut current_date = NaiveDate::parse_from_str(&start_date, "%Y-%m-%d").ok();
+        // 连续打卡最多回溯 10 年，足够覆盖任何真实 streak
+        let sql = format!(
+            r#"
+            SELECT DISTINCT date FROM (
+                SELECT DATE(s.submitted_at, 'localtime') as date
+                FROM answer_submissions s
+                INNER JOIN questions q ON q.id = s.question_id
+                WHERE {cond}
+                UNION
+                SELECT DATE(q.last_attempt_at, 'localtime') as date
+                FROM questions q
+                WHERE {cond}
+                    AND q.last_attempt_at IS NOT NULL
+                    AND NOT EXISTS (SELECT 1 FROM answer_submissions s2 WHERE s2.question_id = q.id)
+            )
+            WHERE date IS NOT NULL AND date <= ?
+            ORDER BY date DESC
+            LIMIT 3700
+            "#,
+            cond = base_condition
+        );
 
-        for day in sorted_days {
-            if let Some(ref curr) = current_date {
-                let day_date = NaiveDate::parse_from_str(&day.date, "%Y-%m-%d").ok();
-                if let Some(dd) = day_date {
-                    if dd == *curr {
-                        streak += 1;
-                        current_date = Some(*curr - Duration::days(1));
-                    } else if dd < *curr {
-                        break; // 连续中断
-                    }
-                }
+        let today = chrono::Local::now().date_naive();
+        let today_str = today.format("%Y-%m-%d").to_string();
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let mut rows = if let Some(eid) = exam_id {
+            stmt.query(rusqlite::params![eid, today_str])
+        } else {
+            stmt.query(rusqlite::params![today_str])
+        }
+        .map_err(|e| AppError::database(e.to_string()))?;
+
+        let mut dates_desc: Vec<chrono::NaiveDate> = Vec::new();
+        while let Some(row) = rows.next().map_err(|e| AppError::database(e.to_string()))? {
+            let date_str: String = row.get(0).unwrap_or_default();
+            if let Ok(d) = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
+                dates_desc.push(d);
+            }
+        }
+
+        Ok(Self::compute_streak_days(&dates_desc, today))
+    }
+
+    /// 从降序去重的活跃日期序列计算连续打卡天数
+    ///
+    /// 规则：从今天（或今天未打卡时的昨天）开始，向前逐日连续计数。
+    fn compute_streak_days(dates_desc: &[chrono::NaiveDate], today: chrono::NaiveDate) -> u32 {
+        use chrono::Duration;
+
+        let Some(&latest) = dates_desc.first() else {
+            return 0;
+        };
+
+        let yesterday = today - Duration::days(1);
+        if latest != today && latest != yesterday {
+            return 0; // 连续打卡已中断
+        }
+
+        let mut streak = 1u32;
+        let mut prev = latest;
+        for &d in &dates_desc[1..] {
+            if d >= prev {
+                // 防御：重复或乱序数据跳过，不计入
+                continue;
+            }
+            if prev - d == Duration::days(1) {
+                streak += 1;
+                prev = d;
+            } else {
+                break;
             }
         }
 
@@ -2503,7 +3104,16 @@ mod tests {
     use rusqlite::params;
 
     fn check(user: &str, correct: Option<&str>, qtype: QuestionType) -> (bool, bool) {
-        QuestionBankService::check_answer_correctness(user, correct, &qtype)
+        QuestionBankService::check_answer_correctness(user, correct, &qtype, None)
+    }
+
+    fn check_structured(
+        user: &str,
+        correct: Option<&str>,
+        qtype: QuestionType,
+        structured: serde_json::Value,
+    ) -> (bool, bool) {
+        QuestionBankService::check_answer_correctness(user, correct, &qtype, Some(&structured))
     }
 
     fn setup_qbank() -> (tempfile::TempDir, Arc<VfsDatabase>, QuestionBankService) {
@@ -2534,6 +3144,7 @@ mod tests {
                 options: None,
                 answer: Some("2".into()),
                 explanation: None,
+                structured_data: None,
                 question_type: Some(QuestionType::FillBlank),
                 difficulty: None,
                 tags: Some(vec![tag.to_string()]),
@@ -2768,5 +3379,347 @@ mod tests {
         assert_eq!(keys(""), None);
         // 嵌在词中的字母不是键
         assert_eq!(keys("the answer"), None);
+        // 全角选项键与结构符
+        assert_eq!(keys("Ａ"), Some(set(&['A'])));
+        assert_eq!(keys("（Ｂ）"), Some(set(&['B'])));
+    }
+
+    #[test]
+    fn test_fullwidth_normalization_in_judging() {
+        // 全角选项字母
+        assert_eq!(
+            check("Ａ", Some("A"), QuestionType::SingleChoice),
+            (true, false)
+        );
+        // 多选：全角 + 乱序
+        assert_eq!(
+            check("ＢＡ", Some("AB"), QuestionType::MultipleChoice),
+            (true, false)
+        );
+        // 填空：全角数字/字母等价于半角
+        assert_eq!(
+            check("１２３", Some("123"), QuestionType::FillBlank),
+            (true, false)
+        );
+        assert_eq!(
+            check("ｎｅｗｔｏｎ", Some("Newton"), QuestionType::FillBlank),
+            (true, false)
+        );
+        // 全角空格视为空白被忽略
+        assert_eq!(
+            check(
+                "能量\u{3000}守恒",
+                Some("能量守恒"),
+                QuestionType::FillBlank
+            ),
+            (true, false)
+        );
+        // 全角归一化不应引入误判
+        assert_eq!(
+            check("Ｂ", Some("A"), QuestionType::SingleChoice),
+            (false, false)
+        );
+    }
+
+    #[test]
+    fn test_true_false_lenient_parsing() {
+        assert_eq!(
+            check("true", Some("true"), QuestionType::TrueFalse),
+            (true, false)
+        );
+        assert_eq!(
+            check("对", Some("true"), QuestionType::TrueFalse),
+            (true, false)
+        );
+        assert_eq!(
+            check("√", Some("true"), QuestionType::TrueFalse),
+            (true, false)
+        );
+        assert_eq!(
+            check("错误", Some("false"), QuestionType::TrueFalse),
+            (true, false)
+        );
+        assert_eq!(
+            check("×", Some("true"), QuestionType::TrueFalse),
+            (false, false)
+        );
+        // 用户输入无法解析为布尔 → 判错
+        assert_eq!(
+            check("也许吧", Some("true"), QuestionType::TrueFalse),
+            (false, false)
+        );
+        // 参考答案不是布尔 → 手动批改
+        assert_eq!(
+            check("true", Some("视情况而定"), QuestionType::TrueFalse),
+            (false, true)
+        );
+        assert_eq!(check("true", None, QuestionType::TrueFalse), (false, true));
+    }
+
+    #[test]
+    fn test_numeric_tolerance_and_lenient_input() {
+        let sd = |t: f64, mode: &str| {
+            serde_json::json!({
+                "answer_value": 3.14,
+                "tolerance": t,
+                "unit": "m",
+                "tolerance_mode": mode
+            })
+        };
+        // 绝对容差
+        assert_eq!(
+            check_structured("3.15", None, QuestionType::Numeric, sd(0.01, "absolute")),
+            (true, false)
+        );
+        assert_eq!(
+            check_structured("3.16", None, QuestionType::Numeric, sd(0.01, "absolute")),
+            (false, false)
+        );
+        // 相对容差：3.14 * 0.01 ≈ 0.0314
+        assert_eq!(
+            check_structured("3.17", None, QuestionType::Numeric, sd(0.01, "relative")),
+            (true, false)
+        );
+        // 宽松输入："3.14 m"、全角、千分位
+        assert_eq!(
+            check_structured("3.14 m", None, QuestionType::Numeric, sd(0.0, "absolute")),
+            (true, false)
+        );
+        assert_eq!(
+            check_structured(
+                "３.１４",
+                None,
+                QuestionType::Numeric,
+                sd(0.0, "absolute")
+            ),
+            (true, false)
+        );
+        let big = serde_json::json!({"answer_value": 1234.5, "tolerance": 0.0});
+        assert_eq!(
+            check_structured("1,234.5", None, QuestionType::Numeric, big),
+            (true, false)
+        );
+        // 分数输入
+        let half = serde_json::json!({"answer_value": 0.5, "tolerance": 0.0});
+        assert_eq!(
+            check_structured("1/2", None, QuestionType::Numeric, half),
+            (true, false)
+        );
+        // 无 structured_data 时回退 answer 字符串
+        assert_eq!(
+            check("3.14", Some("3.14"), QuestionType::Numeric),
+            (true, false)
+        );
+        assert_eq!(
+            check("3.14", Some("约等于圆周率"), QuestionType::Numeric),
+            (false, true)
+        );
+        assert_eq!(check("abc", Some("3.14"), QuestionType::Numeric), (false, false));
+    }
+
+    #[test]
+    fn test_ordering_strict_order() {
+        let sd = serde_json::json!({
+            "items": [
+                {"key": "A", "content": "一"},
+                {"key": "B", "content": "二"},
+                {"key": "C", "content": "三"}
+            ],
+            "correct_order": ["B", "A", "C"]
+        });
+        assert_eq!(
+            check_structured(r#"["B","A","C"]"#, None, QuestionType::Ordering, sd.clone()),
+            (true, false)
+        );
+        // 顺序错误
+        assert_eq!(
+            check_structured(r#"["A","B","C"]"#, None, QuestionType::Ordering, sd.clone()),
+            (false, false)
+        );
+        // 数量不符
+        assert_eq!(
+            check_structured(r#"["B","A"]"#, None, QuestionType::Ordering, sd.clone()),
+            (false, false)
+        );
+        // 分隔符输入兜底 + 大小写归一化
+        assert_eq!(
+            check_structured("b、a、c", None, QuestionType::Ordering, sd),
+            (true, false)
+        );
+        // 无标准顺序 → 手动批改
+        assert_eq!(
+            check(r#"["B","A"]"#, None, QuestionType::Ordering),
+            (false, true)
+        );
+    }
+
+    #[test]
+    fn test_matching_pair_set_equality() {
+        let sd = serde_json::json!({
+            "left": [{"key": "L1", "content": "水"}, {"key": "L2", "content": "火"}],
+            "right": [{"key": "R1", "content": "H2O"}, {"key": "R2", "content": "Fire"}],
+            "pairs": [
+                {"left": "L1", "right": "R1"},
+                {"left": "L2", "right": "R2"}
+            ]
+        });
+        // 顺序无关的集合相等
+        assert_eq!(
+            check_structured(
+                r#"{"pairs":[{"left":"L2","right":"R2"},{"left":"L1","right":"R1"}]}"#,
+                None,
+                QuestionType::Matching,
+                sd.clone()
+            ),
+            (true, false)
+        );
+        // 配错
+        assert_eq!(
+            check_structured(
+                r#"{"pairs":[{"left":"L1","right":"R2"},{"left":"L2","right":"R1"}]}"#,
+                None,
+                QuestionType::Matching,
+                sd.clone()
+            ),
+            (false, false)
+        );
+        // 缺配对
+        assert_eq!(
+            check_structured(
+                r#"{"pairs":[{"left":"L1","right":"R1"}]}"#,
+                None,
+                QuestionType::Matching,
+                sd.clone()
+            ),
+            (false, false)
+        );
+        // 重复配对凑数不通过
+        assert_eq!(
+            check_structured(
+                r#"{"pairs":[{"left":"L1","right":"R1"},{"left":"L1","right":"R1"}]}"#,
+                None,
+                QuestionType::Matching,
+                sd.clone()
+            ),
+            (false, false)
+        );
+        // 非法输入 → 判错
+        assert_eq!(
+            check_structured("随便写的", None, QuestionType::Matching, sd),
+            (false, false)
+        );
+        // 无标准配对 → 手动批改
+        assert_eq!(
+            check(r#"{"pairs":[]}"#, None, QuestionType::Matching),
+            (false, true)
+        );
+    }
+
+    #[test]
+    fn test_fill_blank_structured_multi_blank() {
+        let sd = serde_json::json!({
+            "blanks": [
+                {"answers": ["牛顿", "Newton"], "case_sensitive": false, "trim": true},
+                {"answers": ["1687"]}
+            ]
+        });
+        assert_eq!(
+            check_structured(
+                r#"["newton","1687"]"#,
+                None,
+                QuestionType::FillBlank,
+                sd.clone()
+            ),
+            (true, false)
+        );
+        assert_eq!(
+            check_structured(
+                r#"["牛顿"," 1687 "]"#,
+                None,
+                QuestionType::FillBlank,
+                sd.clone()
+            ),
+            (true, false)
+        );
+        // 第二空错误
+        assert_eq!(
+            check_structured(
+                r#"["牛顿","1688"]"#,
+                None,
+                QuestionType::FillBlank,
+                sd.clone()
+            ),
+            (false, false)
+        );
+        // 空数不符
+        assert_eq!(
+            check_structured(r#"["牛顿"]"#, None, QuestionType::FillBlank, sd.clone()),
+            (false, false)
+        );
+        // case_sensitive = true
+        let cs = serde_json::json!({
+            "blanks": [{"answers": ["pH"], "case_sensitive": true, "trim": true}]
+        });
+        assert_eq!(
+            check_structured("pH", None, QuestionType::FillBlank, cs.clone()),
+            (true, false)
+        );
+        assert_eq!(
+            check_structured("ph", None, QuestionType::FillBlank, cs),
+            (false, false)
+        );
+        // 单空兼容裸字符串
+        let single = serde_json::json!({
+            "blanks": [{"answers": ["能量守恒"]}]
+        });
+        assert_eq!(
+            check_structured("能量守恒", None, QuestionType::FillBlank, single),
+            (true, false)
+        );
+    }
+
+    #[test]
+    fn test_question_type_from_str_lenient() {
+        assert_eq!(QuestionType::from_str("true_false"), QuestionType::TrueFalse);
+        assert_eq!(QuestionType::from_str("TrueFalse"), QuestionType::TrueFalse);
+        assert_eq!(QuestionType::from_str("matching"), QuestionType::Matching);
+        assert_eq!(QuestionType::from_str("ordering"), QuestionType::Ordering);
+        assert_eq!(QuestionType::from_str("numeric"), QuestionType::Numeric);
+        assert_eq!(
+            QuestionType::from_str("SingleChoice"),
+            QuestionType::SingleChoice
+        );
+        assert_eq!(
+            QuestionType::from_str("single_choice"),
+            QuestionType::SingleChoice
+        );
+        assert_eq!(QuestionType::from_str("unknown_type"), QuestionType::Other);
+    }
+
+    #[test]
+    fn test_compute_streak_days() {
+        use chrono::NaiveDate;
+        let d = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        let today = d("2026-08-02");
+        let streak = |dates: &[&str]| {
+            let parsed: Vec<NaiveDate> = dates.iter().map(|s| d(s)).collect();
+            QuestionBankService::compute_streak_days(&parsed, today)
+        };
+
+        // 空历史
+        assert_eq!(streak(&[]), 0);
+        // 今天打卡，跨月连续（8/2, 8/1, 7/31, 7/30）
+        assert_eq!(
+            streak(&["2026-08-02", "2026-08-01", "2026-07-31", "2026-07-30"]),
+            4
+        );
+        // 今天没打卡但昨天打了，从昨天起算
+        assert_eq!(streak(&["2026-08-01", "2026-07-31"]), 2);
+        // 前天最后一次打卡：已中断
+        assert_eq!(streak(&["2026-07-31", "2026-07-30"]), 0);
+        // 中间断档只算到断档处
+        assert_eq!(streak(&["2026-08-02", "2026-08-01", "2026-07-30"]), 2);
+        // 重复日期（防御）不应重复计数
+        assert_eq!(streak(&["2026-08-02", "2026-08-02", "2026-08-01"]), 2);
     }
 }

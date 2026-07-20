@@ -29,6 +29,7 @@ use tauri::{
 /// Frontend event ids. Keep in sync with `src/menu/menuEvents.ts`.
 pub const EVENT_PREFERENCES: &str = "menu://preferences";
 pub const EVENT_NEW_SESSION: &str = "menu://new-session";
+pub const EVENT_CLOSE_WINDOW: &str = "menu://close-window";
 pub const EVENT_COMMAND_PALETTE: &str = "menu://command-palette";
 pub const EVENT_TOGGLE_SIDEBAR: &str = "menu://toggle-sidebar";
 pub const EVENT_DOCUMENTATION: &str = "menu://documentation";
@@ -86,6 +87,20 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         Some("CmdOrCtrl+N"),
     )?;
 
+    // Close Window is deliberately NOT the predefined item: its Cmd+W key
+    // equivalent is consumed by performKeyEquivalent before the WKWebView ever
+    // sees the keydown, which would shadow the workbench desktop's ⌘W
+    // (close focused workbench window). Routing through a frontend event lets
+    // the React side decide: workbench active → close the focused workbench
+    // window; otherwise fall back to closing the native window (old behavior).
+    let close_window = MenuItem::with_id(
+        app,
+        "close_window",
+        "Close Window",
+        true,
+        Some("CmdOrCtrl+W"),
+    )?;
+
     let file_submenu = Submenu::with_items(
         app,
         "File",
@@ -93,7 +108,7 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         &[
             &new_session,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::close_window(app, None)?,
+            &close_window,
         ],
     )?;
 
@@ -185,6 +200,7 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
     let event_name = match id {
         "preferences" => Some(EVENT_PREFERENCES),
         "new_session" => Some(EVENT_NEW_SESSION),
+        "close_window" => Some(EVENT_CLOSE_WINDOW),
         "command_palette" => Some(EVENT_COMMAND_PALETTE),
         "toggle_sidebar" => Some(EVENT_TOGGLE_SIDEBAR),
         "documentation" => Some(EVENT_DOCUMENTATION),

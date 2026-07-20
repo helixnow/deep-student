@@ -133,7 +133,8 @@ pub const V20260709_FLASHCARD_FSRS: MigrationDef = MigrationDef::new(
 /// Sync 成功后写回 anki_note_id / export_status / last_exported_at / content_hash。
 /// 与 V20260709 FSRS 迁移错开版本（Refinery 不支持 V20260709_1 后缀命名）。
 ///
-/// TODO(sync classification): 新列尚未登记字段级 merge 策略，见 classification.rs。
+/// 字段级 merge 策略已在 classification.rs 登记：receipt 四列作为一组走 row-level LWW
+/// （以最新导出为准），不进入 field_merge 自动合并 picklist。
 pub const V20260710_ANKI_EXPORT_RECEIPT: MigrationDef = MigrationDef::new(
     20260710,
     "anki_export_receipt",
@@ -230,14 +231,27 @@ pub const V20260721_TRUSTED_AUTOMATION_PROFILE: MigrationDef = MigrationDef::new
 .with_expected_columns(&[("automation_definitions", "trusted_profile_json")])
 .idempotent();
 
-/// V20260722: 内置模板用户态标记（user_modified / user_deleted）
+/// V20260722: FSRS 调度器加固（leech、bury 到期时间与复习统计索引）
+pub const V20260722_FSRS_SCHEDULER_HARDENING: MigrationDef = MigrationDef::new(
+    20260722,
+    "fsrs_scheduler_hardening",
+    include_str!("../../../migrations/mistakes/V20260722__fsrs_scheduler_hardening.sql"),
+)
+.with_expected_columns(&[
+    ("fsrs_card_states", "leech"),
+    ("fsrs_card_states", "buried_until_ms"),
+])
+.with_expected_indexes(&["idx_fsrs_logs_review_ms"])
+.idempotent();
+
+/// V20260723: 内置模板用户态标记（user_modified / user_deleted）
 ///
 /// 支撑模板 CRUD 加固：内置模板版本升级导入跳过用户改过/删过的模板，
 /// 删除内置模板改为打墓碑标记（停用）而非物理删除，保证模板 ID 稳定。
-pub const V20260722_TEMPLATE_USER_STATE: MigrationDef = MigrationDef::new(
-    20260722,
+pub const V20260723_TEMPLATE_USER_STATE: MigrationDef = MigrationDef::new(
+    20260723,
     "template_user_state",
-    include_str!("../../../migrations/mistakes/V20260722__template_user_state.sql"),
+    include_str!("../../../migrations/mistakes/V20260723__template_user_state.sql"),
 )
 .with_expected_columns(&[
     ("custom_anki_templates", "user_modified"),
@@ -395,7 +409,8 @@ pub const MISTAKES_MIGRATIONS: MigrationSet = MigrationSet {
         V20260715_HARDEN_AUTOMATION_RUNTIME,
         V20260720_FSRS_MASTERY_OUTBOX,
         V20260721_TRUSTED_AUTOMATION_PROFILE,
-        V20260722_TEMPLATE_USER_STATE,
+        V20260722_FSRS_SCHEDULER_HARDENING,
+        V20260723_TEMPLATE_USER_STATE,
     ],
 };
 
@@ -609,9 +624,21 @@ mod tests {
             .expected_columns
             .contains(&("fsrs_review_logs", "mastery_synced_at")));
 
-        let template_user_state = MISTAKES_MIGRATIONS
+        let fsrs_scheduler = MISTAKES_MIGRATIONS
             .get(20260722)
             .expect("V20260722 should exist");
+        assert_eq!(fsrs_scheduler.name, "fsrs_scheduler_hardening");
+        assert!(fsrs_scheduler.idempotent);
+        assert!(fsrs_scheduler
+            .expected_columns
+            .contains(&("fsrs_card_states", "leech")));
+        assert!(fsrs_scheduler
+            .expected_columns
+            .contains(&("fsrs_card_states", "buried_until_ms")));
+
+        let template_user_state = MISTAKES_MIGRATIONS
+            .get(20260723)
+            .expect("V20260723 should exist");
         assert_eq!(template_user_state.name, "template_user_state");
         assert!(template_user_state.idempotent);
         assert!(template_user_state
@@ -623,7 +650,7 @@ mod tests {
 
         assert_eq!(
             MISTAKES_MIGRATIONS.latest_version(),
-            20260722,
+            20260723,
             "Latest version should track the newest published mistakes migration"
         );
     }

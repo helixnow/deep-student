@@ -333,16 +333,19 @@ impl WebDavStorage {
     }
 
     /// 解析 PROPFIND 响应获取文件列表（使用 roxmltree 安全解析，防止 XXE 注入）
-    fn parse_propfind_response(&self, xml: &str, prefix: &str) -> Vec<FileInfo> {
-        let doc = match roxmltree::Document::parse(xml) {
-            Ok(d) => d,
-            Err(e) => {
-                tracing::warn!("WebDAV PROPFIND XML 解析失败: {e}");
-                return Vec::new();
-            }
-        };
+    fn parse_propfind_response(&self, xml: &str, prefix: &str) -> Result<Vec<FileInfo>> {
+        let doc = roxmltree::Document::parse(xml)
+            .map_err(|e| AppError::network(format!("WebDAV PROPFIND XML 解析失败: {e}")))?;
 
         let dav_ns = "DAV:";
+        if !doc
+            .descendants()
+            .any(|node| node.has_tag_name((dav_ns, "response")))
+        {
+            return Err(AppError::network(
+                "WebDAV PROPFIND 响应缺少 DAV:response，无法确认列表完整性".to_string(),
+            ));
+        }
         let mut files = Vec::new();
 
         for response in doc
@@ -353,7 +356,10 @@ impl WebDavStorage {
                 .descendants()
                 .find(|n| n.has_tag_name((dav_ns, "href")))
                 .and_then(|n| n.text())
-                .unwrap_or_default();
+                .filter(|href| !href.trim().is_empty())
+                .ok_or_else(|| {
+                    AppError::network("WebDAV PROPFIND 的 DAV:response 缺少有效 href".to_string())
+                })?;
 
             let is_collection = response
                 .descendants()
@@ -395,7 +401,7 @@ impl WebDavStorage {
         }
 
         files.sort_by_key(|b| std::cmp::Reverse(b.last_modified));
-        files
+        Ok(files)
     }
 
     fn extract_relative_key(&self, href: &str, prefix: &str) -> String {
@@ -451,16 +457,20 @@ impl WebDavStorage {
         xml: &str,
         prefix: &str,
         request_dir: &str,
-    ) -> (Vec<FileInfo>, Vec<String>) {
-        let doc = match roxmltree::Document::parse(xml) {
-            Ok(d) => d,
-            Err(e) => {
-                tracing::warn!("WebDAV PROPFIND XML 解析失败: {e}");
-                return (Vec::new(), Vec::new());
-            }
-        };
+    ) -> Result<(Vec<FileInfo>, Vec<String>, usize)> {
+        let doc = roxmltree::Document::parse(xml)
+            .map_err(|e| AppError::network(format!("WebDAV PROPFIND XML 解析失败: {e}")))?;
 
         let dav_ns = "DAV:";
+        let response_count = doc
+            .descendants()
+            .filter(|node| node.has_tag_name((dav_ns, "response")))
+            .count();
+        if response_count == 0 {
+            return Err(AppError::network(
+                "WebDAV PROPFIND 响应缺少 DAV:response，无法确认列表完整性".to_string(),
+            ));
+        }
         let mut files = Vec::new();
         let mut subdirs = Vec::new();
         let request_dir_normalized = request_dir.trim_matches('/');
@@ -474,7 +484,10 @@ impl WebDavStorage {
                 .descendants()
                 .find(|n| n.has_tag_name((dav_ns, "href")))
                 .and_then(|n| n.text())
-                .unwrap_or_default();
+                .filter(|href| !href.trim().is_empty())
+                .ok_or_else(|| {
+                    AppError::network("WebDAV PROPFIND 的 DAV:response 缺少有效 href".to_string())
+                })?;
 
             let is_collection = response
                 .descendants()
@@ -526,7 +539,7 @@ impl WebDavStorage {
             }
         }
 
-        (files, subdirs)
+        Ok((files, subdirs, response_count))
     }
 }
 
@@ -707,11 +720,11 @@ impl CloudStorage for WebDavStorage {
         let parent = local_path.parent().unwrap_or_else(|| Path::new("."));
         std::fs::create_dir_all(parent)
             .map_err(|e| AppError::file_system(format!("创建目录失败 {:?}: {}", parent, e)))?;
-        let _temp_file = tempfile::Builder::new()
+        let temp_path = tempfile::Builder::new()
             .prefix(".download-")
             .tempfile_in(parent)
-            .map_err(|e| AppError::file_system(format!("创建临时下载文件失败: {e}")))?;
-        let temp_path = _temp_file.path().to_path_buf();
+            .map_err(|e| AppError::file_system(format!("创建临时下载文件失败: {e}")))?
+            .into_temp_path();
 
         let mut hasher = Sha256::new();
         let mut downloaded = 0u64;
@@ -745,6 +758,9 @@ impl CloudStorage for WebDavStorage {
             file.flush()
                 .await
                 .map_err(|e| AppError::file_system(format!("刷新文件失败: {e}")))?;
+            file.sync_all()
+                .await
+                .map_err(|e| AppError::file_system(format!("同步文件失败: {e}")))?;
         }
 
         let checksum = format!("{:x}", hasher.finalize());
@@ -756,9 +772,9 @@ impl CloudStorage for WebDavStorage {
                 )));
             }
         }
-        tokio::fs::rename(&temp_path, local_path)
-            .await
-            .map_err(|e| AppError::file_system(format!("保存下载文件失败: {e}")))?;
+        temp_path
+            .persist(local_path)
+            .map_err(|e| AppError::file_system(format!("保存下载文件失败: {}", e.error)))?;
         Ok(checksum)
     }
 
@@ -822,8 +838,6 @@ impl CloudStorage for WebDavStorage {
 
         let mut all_files = Vec::new();
         let mut dirs_to_visit = vec![start_path];
-        // 坚果云单次 PROPFIND 上限 750 条目
-        const JIANGUOYUN_PROPFIND_LIMIT: usize = 750;
         const MAX_DIRS: usize = 200;
         let mut visited = 0usize;
         let mut truncated = false;
@@ -850,15 +864,21 @@ impl CloudStorage for WebDavStorage {
                 continue;
             };
 
-            let (files, subdirs) = self.parse_propfind_entries(&xml, prefix, &dir);
+            let (files, subdirs, response_count) =
+                self.parse_propfind_entries(&xml, prefix, &dir)?;
 
-            let entry_count = files.len() + subdirs.len();
-            if entry_count >= JIANGUOYUN_PROPFIND_LIMIT - 1 {
+            // WebDAV 没有通用分页协议，部分服务会在 100/200/500/750/1000 等
+            // 边界静默截断。命中整百或坚果云 750 响应边界时 fail-closed，由上层
+            // 拒绝在不完整远端视图上推进同步。
+            let likely_page_boundary = response_count >= 100
+                && (response_count % 100 == 0
+                    || (response_count - 1) % 100 == 0
+                    || matches!(response_count, 750 | 751));
+            if likely_page_boundary {
                 tracing::error!(
-                    "[WebDAV] PROPFIND 返回 {} 条目（达到坚果云 {} 上限），\
-                     目录 '{}' 下可能有未列出的文件。",
-                    entry_count,
-                    JIANGUOYUN_PROPFIND_LIMIT,
+                    "[WebDAV] PROPFIND 返回 {} 个 response（疑似服务端分页上限），\
+                     目录 '{}' 下可能有未列出的文件",
+                    response_count,
                     dir
                 );
                 truncated = true;
@@ -896,7 +916,7 @@ impl CloudStorage for WebDavStorage {
             return Ok(None);
         };
 
-        let files = self.parse_propfind_response(&xml, "");
+        let files = self.parse_propfind_response(&xml, "")?;
         Ok(files.into_iter().next())
     }
 }

@@ -255,52 +255,46 @@ fn validate_dimension_and_modality(dimension: i32, modality: &str) -> Result<(),
     Ok(())
 }
 
+/// Guard against writing rows produced by a different model into a Lance
+/// table that already contains committed vectors.
+///
+/// ★ P1（2026-07 修复）：此前该守卫是零调用死代码，且内部用简化版
+/// `model_fingerprint`（不含 transport 信息）自行计算指纹，与注册路径实际
+/// 使用的 transport-aware 指纹（`model_fingerprint_for_config` /
+/// `fingerprint_override`）口径不一致。现改为由
+/// `register_with_model_fingerprint_inner` 在计算出**生效指纹与目标表名**后
+/// 调用（`register_with_model` / `update_model_binding` /
+/// `begin_profile_rebuild` 均经由该路径），保证：
+/// - 判定口径与写入路径完全一致（同一个 effective fingerprint）；
+/// - 只有"目标表 == 现有表、指纹不同、且表内已有数据"时才拒绝——
+///   正常的 profile 滚动（换模型 → 指纹后缀新表）不受影响。
 fn ensure_binding_is_compatible(
-    conn: &Connection,
-    dimension: i32,
-    modality: &str,
-    requested_model_config_id: Option<&str>,
-    requested_model_name: Option<&str>,
+    existing: Option<&VfsEmbeddingDim>,
+    requested_fingerprint: Option<&str>,
+    target_table_name: &str,
 ) -> Result<(), VfsError> {
-    let Some(requested) = requested_model_config_id.filter(|value| !value.is_empty()) else {
+    let (Some(current), Some(requested)) = (existing, requested_fingerprint) else {
         return Ok(());
     };
-    let protocol = embedding_protocol_for_modality(modality)?;
-    let requested_name = requested_model_name.unwrap_or(requested);
-    let requested_fingerprint = model_fingerprint(requested, requested_name, protocol);
-    let existing: Option<(i64, Option<String>, Option<String>, Option<String>)> = conn
-        .query_row(
-            "SELECT record_count, model_config_id, model_name, model_fingerprint
-             FROM vfs_embedding_dims WHERE dimension = ?1 AND modality = ?2",
-            params![dimension, modality],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-        )
-        .optional()?;
-    if let Some((record_count, current, current_name, current_fingerprint)) = existing {
-        let legacy_match = current_fingerprint
-            .as_deref()
-            .is_some_and(|value| value.starts_with("legacy:"))
-            && current.as_deref() == Some(requested)
-            && current_name.as_deref().unwrap_or(requested) == requested_name;
-        let exact_match = current_fingerprint.as_deref() == Some(requested_fingerprint.as_str());
-        if record_count > 0 && !legacy_match && !exact_match {
-            return Err(VfsError::InvalidArgument {
-                param: "model_config_id".to_string(),
-                reason: format!(
-                    "Vector space {}:{} already contains {} rows from model {:?}/{:?} fingerprint {:?}; rebuild into a new index profile before binding model {}/{}",
-                    modality,
-                    dimension,
-                    record_count,
-                    current,
-                    current_name,
-                    current_fingerprint,
-                    requested,
-                    requested_name
-                ),
-            });
-        }
+    if current.record_count <= 0 {
+        return Ok(());
     }
-    Ok(())
+    let same_space = current.model_fingerprint.as_deref() == Some(requested);
+    if same_space || current.lance_table_name != target_table_name {
+        return Ok(());
+    }
+    Err(VfsError::InvalidArgument {
+        param: "model_config_id".to_string(),
+        reason: format!(
+            "Vector space {}:{} already contains {} rows in Lance table {} under fingerprint {:?}; refusing to bind fingerprint {} into the same table. Rebuild into a new index profile first.",
+            current.modality,
+            current.dimension,
+            current.record_count,
+            current.lance_table_name,
+            current.model_fingerprint,
+            requested
+        ),
+    })
 }
 
 /// 生成 LanceDB 表名
@@ -506,6 +500,8 @@ fn register_with_model_fingerprint_inner(
         (Some(current), None) => current.lance_table_name.clone(),
         (None, None) => generate_lance_table_name(modality, dimension),
     };
+    // ★ P1：绑定守卫在此生效（register_with_model / update_model_binding 共用路径）。
+    ensure_binding_is_compatible(existing.as_ref(), fingerprint.as_deref(), &table_name)?;
     let profile_id = if same_space {
         previous_profile_id
             .clone()
@@ -940,50 +936,142 @@ pub fn set_profile_ann_status(
     Ok(())
 }
 
-/// 级联删除维度及其关联数据（事务保护）
+/// 级联删除维度的清理产物。
 ///
-/// 删除顺序：
-/// 1. vfs_index_segments 中该维度的所有记录
-/// 2. 重置受影响的 vfs_index_units 状态（避免孤儿 units）
-/// 3. vfs_embedding_dims 中的维度记录
+/// ★ P0（2026-07 修复）：级联删除必须让 Lance 侧最终一致，因此除了 SQLite
+/// 删除行数外，还返回该向量空间名下**全部** Lance 表名（含 retired/历史
+/// profile 的表），供 handler 层在 SQLite 提交后逐一 drop。
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DimensionCascadeCleanup {
+    /// 本次从 vfs_index_segments 删除的行数。
+    pub deleted_segments: usize,
+    /// 需要在 Lance 侧 drop 的全部表名（active dim 表 + 所有历史 profile 表）。
+    /// 即使 handler 漏 drop，段级 lance_row_id 也已写入 __lance_orphan_queue
+    /// 由后台 drain 兜底删除。
+    pub lance_table_names: Vec<String>,
+}
+
+/// 级联删除维度及其关联数据（事务保护，兼容旧签名）
 ///
-/// S3 fix: 使用事务包裹，确保原子性
-/// ★ 审计修复：删除 segments 后重置受影响 units 的状态，防止孤儿 units
-///
-/// 返回删除的 segment 数量
+/// 返回删除的 segment 数量。新调用方请使用
+/// [`delete_dimension_cascade_collect`]，以拿到需要 drop 的全部 Lance 表名。
 pub fn delete_dimension_cascade(
     conn: &Connection,
     dimension: i32,
     modality: &str,
 ) -> Result<usize, VfsError> {
+    Ok(delete_dimension_cascade_collect(conn, dimension, modality)?.deleted_segments)
+}
+
+/// 级联删除维度及其关联数据（事务保护）
+///
+/// 删除顺序：
+/// 0. 收集该向量空间全部 Lance 表名（vfs_embedding_dims + 所有状态的
+///    vfs_index_profiles，包括 retired/历史 profile）
+/// 1. ★ P0：把该维度全部 segment 的 lance_row_id 写入 __lance_orphan_queue
+///    （与删除同事务）——即使表 drop 失败/被跳过，后台 drain 也能兜底物理删除
+/// 2. 删除 vfs_index_segments 中该维度的所有记录
+/// 3. 重置受影响的 vfs_index_units 状态（避免孤儿 units）
+/// 4. 删除 vfs_embedding_dims / vfs_index_profiles 记录
+///
+/// S3 fix: 使用事务包裹，确保原子性
+/// ★ 审计修复：删除 segments 后重置受影响 units 的状态，防止孤儿 units
+/// ★ P0 修复：多模态维度同时覆盖历史 `image` 与 `multimodal` 两种 segment
+/// modality 取值，避免旧数据漏删。
+pub fn delete_dimension_cascade_collect(
+    conn: &Connection,
+    dimension: i32,
+    modality: &str,
+) -> Result<DimensionCascadeCleanup, VfsError> {
     let tx = conn.unchecked_transaction()?;
+    let segment_modality_filter = if modality == "text" {
+        "('text')"
+    } else {
+        "('image', 'multimodal')"
+    };
+
+    // 0. 收集全部相关 Lance 表名（含 retired/历史 profile 表）
+    let mut lance_table_names: Vec<String> = {
+        let mut stmt = tx.prepare(
+            "SELECT DISTINCT lance_table_name FROM (
+                 SELECT lance_table_name FROM vfs_embedding_dims
+                  WHERE dimension = ?1 AND modality = ?2
+                 UNION
+                 SELECT lance_table_name FROM vfs_index_profiles
+                  WHERE dimension = ?1 AND modality = ?2
+             )",
+        )?;
+        let names = stmt
+            .query_map(params![dimension, modality], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        names
+    };
+    lance_table_names.sort();
+
+    // 1. ★ P0：删除前先把全部 lance_row_id 入孤儿队列（同事务，不可遗漏）
+    tx.execute(
+        &format!(
+            "INSERT INTO __lance_orphan_queue (lance_row_id, resource_id)
+             SELECT s.lance_row_id, u.resource_id
+             FROM vfs_index_segments s
+             LEFT JOIN vfs_index_units u ON u.id = s.unit_id
+             WHERE s.embedding_dim = ?1 AND s.modality IN {segment_modality_filter}
+             ON CONFLICT(lance_row_id) DO UPDATE SET
+                 resource_id = COALESCE(excluded.resource_id, resource_id),
+                 enqueued_at = excluded.enqueued_at,
+                 next_retry_at = 0,
+                 last_error = NULL"
+        ),
+        params![dimension],
+    )?;
 
     let deleted_segments: usize = tx.execute(
-        "DELETE FROM vfs_index_segments WHERE embedding_dim = ?1 AND modality = ?2",
-        params![dimension, modality],
+        &format!(
+            "DELETE FROM vfs_index_segments
+             WHERE embedding_dim = ?1 AND modality IN {segment_modality_filter}"
+        ),
+        params![dimension],
     )?;
 
     // ★ 审计修复：重置受影响 units 的状态，防止孤儿 units
     // 找到不再有任何同模态 segments 的 units，重置其状态为 pending
     let now = now_ms();
     if modality == "multimodal" {
+        // ★ P0 配套：连同 mm_profile_id 一起摘除（对应 profile 行即将被删除，
+        // 保留悬空指针会让可见性门禁比对到已不存在的 profile）。
+        // mm_generation 保持单调不清零。
         tx.execute(
             "UPDATE vfs_index_units SET
                 mm_state = 'pending',
                 mm_embedding_dim = NULL,
+                mm_profile_id = NULL,
                 mm_error = NULL,
                 updated_at = ?1
             WHERE mm_embedding_dim = ?2
             AND id NOT IN (
-                SELECT DISTINCT unit_id FROM vfs_index_segments WHERE modality = 'multimodal'
+                SELECT DISTINCT unit_id FROM vfs_index_segments
+                WHERE modality IN ('image', 'multimodal')
             )",
             params![now, dimension],
+        )?;
+        // 悬空 profile 指针兜底：即使维度不匹配，引用了本空间任一 profile 的
+        // Unit 也必须摘除指针（profile 行马上被删）。
+        tx.execute(
+            "UPDATE vfs_index_units SET
+                mm_profile_id = NULL,
+                updated_at = ?1
+            WHERE mm_profile_id IN (
+                SELECT id FROM vfs_index_profiles WHERE dimension = ?2 AND modality = ?3
+            )",
+            params![now, dimension, modality],
         )?;
     } else {
         tx.execute(
             "UPDATE vfs_index_units SET
                 text_state = 'pending',
                 text_embedding_dim = NULL,
+                text_profile_id = NULL,
                 text_chunk_count = 0,
                 text_error = NULL,
                 updated_at = ?1
@@ -992,6 +1080,15 @@ pub fn delete_dimension_cascade(
                 SELECT DISTINCT unit_id FROM vfs_index_segments WHERE modality = 'text'
             )",
             params![now, dimension],
+        )?;
+        tx.execute(
+            "UPDATE vfs_index_units SET
+                text_profile_id = NULL,
+                updated_at = ?1
+            WHERE text_profile_id IN (
+                SELECT id FROM vfs_index_profiles WHERE dimension = ?2 AND modality = ?3
+            )",
+            params![now, dimension, modality],
         )?;
     }
 
@@ -1006,7 +1103,10 @@ pub fn delete_dimension_cascade(
 
     tx.commit()?;
 
-    Ok(deleted_segments)
+    Ok(DimensionCascadeCleanup {
+        deleted_segments,
+        lance_table_names,
+    })
 }
 
 /// 检查是否有正在索引的 units 使用了指定维度
@@ -1825,6 +1925,90 @@ mod tests {
                 .unwrap()
                 .state,
             "retired"
+        );
+    }
+
+    // ★ P0（2026-07）回归测试：级联删除必须入孤儿队列并返回全部相关表名
+    // （包括 retired/历史 profile 的表）
+    #[test]
+    fn dimension_cascade_enqueues_orphans_and_collects_all_profile_tables() {
+        let (_temp, db) = crate::vfs::database::setup_migrated_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        let now = now_ms();
+
+        let first = register_with_model(&conn, 768, "text", Some("cfg-cascade-a"), Some("model-a"))
+            .unwrap();
+        let first_profile_id = first.active_profile_id.clone().unwrap();
+        conn.execute(
+            "INSERT INTO resources
+             (id, hash, type, storage_mode, data, ref_count, index_state, created_at, updated_at)
+             VALUES ('res_cascade', 'hash_cascade', 'note', 'inline', 'text', 0, 'indexed', ?1, ?1)",
+            params![now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO vfs_index_units
+             (id, resource_id, unit_index, text_content, text_required, text_state,
+              text_embedding_dim, text_profile_id, text_generation, created_at, updated_at)
+             VALUES ('unit_cascade', 'res_cascade', 0, 'text', 1, 'indexed',
+                     768, ?1, 1, ?2, ?2)",
+            params![first_profile_id, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO vfs_index_segments
+             (id, unit_id, segment_index, modality, embedding_dim, lance_row_id,
+              index_profile_id, generation, created_at, updated_at)
+             VALUES ('seg_cascade_old', 'unit_cascade', 0, 'text', 768,
+                     'emb_cascade_old', ?1, 1, ?2, ?2)",
+            params![first_profile_id, now],
+        )
+        .unwrap();
+        refresh_counts_from_segments(&conn).unwrap();
+
+        // 切换模型：旧 profile 转 queryable（历史表），新 profile 建新表
+        let second =
+            register_with_model(&conn, 768, "text", Some("cfg-cascade-b"), Some("model-b"))
+                .unwrap();
+        conn.execute(
+            "INSERT INTO vfs_index_segments
+             (id, unit_id, segment_index, modality, embedding_dim, lance_row_id,
+              index_profile_id, generation, created_at, updated_at)
+             VALUES ('seg_cascade_new', 'unit_cascade', 1, 'text', 768,
+                     'emb_cascade_new', ?1, 1, ?2, ?2)",
+            params![second.active_profile_id.clone().unwrap(), now],
+        )
+        .unwrap();
+
+        let cleanup = delete_dimension_cascade_collect(&conn, 768, "text").unwrap();
+        assert_eq!(cleanup.deleted_segments, 2);
+        assert!(
+            cleanup.lance_table_names.contains(&first.lance_table_name),
+            "retired/queryable profile table must be reported for drop"
+        );
+        assert!(cleanup.lance_table_names.contains(&second.lance_table_name));
+
+        for row_id in ["emb_cascade_old", "emb_cascade_new"] {
+            let queued: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM __lance_orphan_queue WHERE lance_row_id = ?1",
+                    params![row_id],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(queued, 1, "cascade must enqueue {row_id}");
+        }
+
+        let dangling_profile: Option<String> = conn
+            .query_row(
+                "SELECT text_profile_id FROM vfs_index_units WHERE id = 'unit_cascade'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            dangling_profile.is_none(),
+            "unit profile pointers into the deleted space must be cleared"
         );
     }
 

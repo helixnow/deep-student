@@ -2090,6 +2090,20 @@ impl VfsFullIndexingService {
         folder_id: Option<&str>,
         progress_callback: Option<EmbeddingProgressCallback>,
     ) -> VfsResult<(usize, usize)> {
+        // 单资源入口（手动重建/上传后即时索引等）保持"成功后立刻刷新计数"。
+        // 后台批量路径走 index_resource_with_options(refresh_counts=false)，
+        // 由 process_pending_batch 在批次末尾统一刷新一次（见 ★ C3-P2 同款）。
+        self.index_resource_with_options(resource_id, folder_id, progress_callback, true)
+            .await
+    }
+
+    async fn index_resource_with_options(
+        &self,
+        resource_id: &str,
+        folder_id: Option<&str>,
+        progress_callback: Option<EmbeddingProgressCallback>,
+        refresh_counts: bool,
+    ) -> VfsResult<(usize, usize)> {
         // 0. 同步资源到 vfs_index_units 表（VFS 统一索引架构）
         // ★ 2026-02 修复：检查 Units 是否已存在且有效，避免删除 Pipeline 创建的完整 Units
         // ★ P2-7 修复：仅当"资源内容自上次索引后未变、且没有 pending 文本 Unit"时才复用。
@@ -2630,12 +2644,18 @@ impl VfsFullIndexingService {
                     resource_id, count, dim
                 );
 
-                if let Ok(conn) = self.db.get_conn_safe() {
-                    if let Err(e) = embedding_dim_repo::refresh_counts_from_segments(&conn) {
-                        warn!(
-                            "[VfsFullIndexingService] Failed to refresh embedding_dim counts after indexing {}: {}",
-                            resource_id, e
-                        );
+                // ★ 2026-07：refresh_counts_from_segments 对全部 dims/profiles 做
+                // 相关子查询 COUNT + EXISTS UPDATE，批量导入时逐资源刷新是
+                // O(资源数 × 全表)。后台批量路径（refresh_counts=false）由
+                // process_pending_batch 在批次末尾统一刷新一次。
+                if refresh_counts {
+                    if let Ok(conn) = self.db.get_conn_safe() {
+                        if let Err(e) = embedding_dim_repo::refresh_counts_from_segments(&conn) {
+                            warn!(
+                                "[VfsFullIndexingService] Failed to refresh embedding_dim counts after indexing {}: {}",
+                                resource_id, e
+                            );
+                        }
                     }
                 }
 
@@ -3982,7 +4002,11 @@ impl VfsFullIndexingService {
                 let success = Arc::clone(&success_count);
                 let fail = Arc::clone(&fail_count);
                 async move {
-                    match self.index_resource(&resource_id, None, None).await {
+                    // refresh_counts=false：批次末尾统一刷新（见下方）
+                    match self
+                        .index_resource_with_options(&resource_id, None, None, false)
+                        .await
+                    {
                         Ok((count, _)) => {
                             success.fetch_add(1, Ordering::Relaxed);
                             info!(
@@ -4006,6 +4030,20 @@ impl VfsFullIndexingService {
 
         let success = success_count.load(Ordering::Relaxed);
         let fail = fail_count.load(Ordering::Relaxed);
+
+        // ★ 2026-07：批次级刷新（与 index_exam_questions 的 ★ C3-P2 同款）。
+        // 逐资源刷新已在 index_resource_with_options(refresh_counts=false) 关闭，
+        // 这里在批次完成后统一刷新一次 record_count 与 profile 状态。
+        if success > 0 {
+            if let Ok(conn) = self.db.get_conn_safe() {
+                if let Err(e) = embedding_dim_repo::refresh_counts_from_segments(&conn) {
+                    warn!(
+                        "[VfsFullIndexingService] Failed to refresh embedding_dim counts after batch: {}",
+                        e
+                    );
+                }
+            }
+        }
 
         info!(
             "[VfsFullIndexingService] Batch complete: {} success, {} failed",

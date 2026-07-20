@@ -148,19 +148,17 @@ fn import_markdown_note_from_local_path(
         import_path.display()
     );
 
+    // 链接图维护已收敛到 repo 层（VfsNoteRepo::create_note 同事务写 note_links）
     let note = VfsNoteRepo::create_note_in_folder(
         vfs_db,
         VfsCreateNoteParams {
             title: effective_title,
-            content: content.clone(),
+            content,
             tags: vec![],
         },
         folder_id,
     )
     .map_err(|e| AppError::database(format!("导入 Markdown 笔记失败: {}", e)))?;
-
-    // 链接图增量维护（导入正文可能包含 [[...]] / note:// 链接）
-    refresh_note_links_best_effort(vfs_db, &note.id, Some(&content));
 
     Ok(note_to_dstu_node(&note))
 }
@@ -184,43 +182,6 @@ where
 {
     for cleanup_path in cleanup_paths {
         cleanup_materialized_import_file(context, cleanup_path);
-    }
-}
-
-/// 写路径的链接图增量维护（best-effort，不阻塞主流程）。
-///
-/// 已知正文时直接解析；正文未知（canvas 追加/替换等）传 None，从库中重读。
-/// 失败只记 warn —— 链接图是派生数据，全量一致性由 notes_rebuild_links 兜底。
-fn refresh_note_links_best_effort(
-    vfs_db: &crate::vfs::database::VfsDatabase,
-    note_id: &str,
-    content: Option<&str>,
-) {
-    let owned;
-    let content = match content {
-        Some(c) => c,
-        None => match VfsNoteRepo::get_note_content(vfs_db, note_id) {
-            Ok(Some(c)) => {
-                owned = c;
-                &owned
-            }
-            Ok(None) => return,
-            Err(e) => {
-                log::warn!(
-                    "[notes] 链接图维护：读取正文失败（跳过）: note={}, err={}",
-                    note_id,
-                    e
-                );
-                return;
-            }
-        },
-    };
-    if let Err(e) = VfsNoteRepo::replace_note_links_from_content(vfs_db, note_id, content) {
-        log::warn!(
-            "[notes] 链接图维护失败（不阻塞主流程，可用 notes_rebuild_links 重建）: note={}, err={}",
-            note_id,
-            e
-        );
     }
 }
 
@@ -379,19 +340,14 @@ pub async fn notes_create(
     let tags: Vec<String> = note.tags.unwrap_or_default();
 
     // 使用 spawn_blocking 避免在异步上下文中阻塞
+    // 链接图维护已收敛到 repo 层（VfsNoteRepo::create_note 同事务写 note_links）
     let notes_manager = state.notes_manager.clone();
-    let vfs_db = state.vfs_db.clone();
     let title = note.title.clone();
     let content_md = note.content_md.clone();
     let tags_clone = tags.clone();
 
     let created = tokio::task::spawn_blocking(move || {
-        let created = notes_manager.create_note_vfs(&title, &content_md, &tags_clone)?;
-        // 链接图增量维护（正文已知，直接解析）
-        if let Some(db) = vfs_db.as_deref() {
-            refresh_note_links_best_effort(db, &created.id, Some(&content_md));
-        }
-        Ok::<_, AppError>(created)
+        notes_manager.create_note_vfs(&title, &content_md, &tags_clone)
     })
     .await
     .map_err(|e| AppError::internal(format!("创建笔记任务失败: {}", e)))??;
@@ -419,8 +375,8 @@ pub async fn notes_update(
     _window: Window,
 ) -> Result<crate::notes_manager::NoteItem> {
     // 使用 spawn_blocking 避免在异步上下文中阻塞
+    // 链接图维护已收敛到 repo 层（VfsNoteRepo::update_note 正文变化时同事务重写出链）
     let notes_manager = state.notes_manager.clone();
-    let vfs_db = state.vfs_db.clone();
     let note_id = note.id.clone();
     let title = note.title.clone();
     let content_md = note.content_md.clone();
@@ -428,18 +384,13 @@ pub async fn notes_update(
     let expected_updated_at = note.expected_updated_at.clone();
 
     let updated = tokio::task::spawn_blocking(move || {
-        let updated = notes_manager.update_note_vfs(
+        notes_manager.update_note_vfs(
             &note_id,
             title.as_deref(),
             content_md.as_deref(),
             tags.as_deref(),
             expected_updated_at.as_deref(),
-        )?;
-        // 链接图增量维护：仅正文变更时需要重算出链
-        if let (Some(db), Some(content)) = (vfs_db.as_deref(), content_md.as_deref()) {
-            refresh_note_links_best_effort(db, &note_id, Some(content));
-        }
-        Ok::<_, AppError>(updated)
+        )
     })
     .await
     .map_err(|e| AppError::internal(format!("更新笔记任务失败: {}", e)))??;
@@ -536,14 +487,10 @@ pub async fn canvas_note_append(
         section,
         content.len()
     );
+    // 链接图维护已收敛到 repo 层（底层 update_note 正文变化时同事务重写出链）
     let notes_manager = state.notes_manager.clone();
-    let vfs_db = state.vfs_db.clone();
     tokio::task::spawn_blocking(move || {
-        notes_manager.canvas_append_content(&noteId, &content, section.as_deref())?;
-        if let Some(db) = vfs_db.as_deref() {
-            refresh_note_links_best_effort(db, &noteId, None);
-        }
-        Ok(())
+        notes_manager.canvas_append_content(&noteId, &content, section.as_deref())
     })
     .await
     .map_err(|e| AppError::internal(format!("追加笔记内容任务失败: {}", e)))?
@@ -566,17 +513,11 @@ pub async fn canvas_note_replace(
         search.len(),
         isRegex
     );
+    // 链接图维护已收敛到 repo 层（底层 update_note 正文变化时同事务重写出链）
     let notes_manager = state.notes_manager.clone();
-    let vfs_db = state.vfs_db.clone();
     let is_regex = isRegex.unwrap_or(false);
     tokio::task::spawn_blocking(move || {
-        let replaced = notes_manager.canvas_replace_content(&noteId, &search, &replace, is_regex)?;
-        if replaced > 0 {
-            if let Some(db) = vfs_db.as_deref() {
-                refresh_note_links_best_effort(db, &noteId, None);
-            }
-        }
-        Ok(replaced)
+        notes_manager.canvas_replace_content(&noteId, &search, &replace, is_regex)
     })
     .await
     .map_err(|e| AppError::internal(format!("替换笔记内容任务失败: {}", e)))?
@@ -596,17 +537,11 @@ pub async fn canvas_note_set(
         noteId,
         content.len()
     );
+    // 链接图维护已收敛到 repo 层（底层 update_note 正文变化时同事务重写出链）
     let notes_manager = state.notes_manager.clone();
-    let vfs_db = state.vfs_db.clone();
-    tokio::task::spawn_blocking(move || {
-        notes_manager.canvas_set_content(&noteId, &content)?;
-        if let Some(db) = vfs_db.as_deref() {
-            refresh_note_links_best_effort(db, &noteId, Some(&content));
-        }
-        Ok(())
-    })
-    .await
-    .map_err(|e| AppError::internal(format!("设置笔记内容任务失败: {}", e)))?
+    tokio::task::spawn_blocking(move || notes_manager.canvas_set_content(&noteId, &content))
+        .await
+        .map_err(|e| AppError::internal(format!("设置笔记内容任务失败: {}", e)))?
 }
 
 // ============== 回收站（硬删除） ==============
@@ -2434,18 +2369,16 @@ pub async fn notes_mentions_search(
 
 // ============== 笔记链接图（note_links，V20260725 迁移） ==============
 //
-// 数据维护策略：
-// - 增量：notes_create / notes_update（含正文）/ canvas_note_* / Markdown 导入
-//   路径 best-effort 维护（见 refresh_note_links_best_effort）；
-// - 兜底：DSTU 等本模块之外的写路径不做增量维护（不改 DSTU 是所有权约束），
-//   全库一致性由 notes_rebuild_links 重建保证；
+// 数据维护策略（★ 2026-07-20 收敛到 repo 层单一咽喉）：
+// - 增量：VfsNoteRepo::create_note / update_note 在正文落库的同一事务内
+//   写 note_links，所有写路径（本模块 / DSTU / canvas / memory 等）自动受益；
+// - 兜底：启动期一次性全量回填（VfsNoteRepo::backfill_note_links_once，
+//   修复历史存量缺口）+ 手动 notes_rebuild_links 命令；
 // - 硬删除 / 新建 / 重命名的解析状态由数据库触发器自动跟随。
 
 fn map_vfs_error(context: &str, e: crate::vfs::VfsError) -> AppError {
     match e {
-        crate::vfs::VfsError::NotFound { .. } => {
-            AppError::not_found(format!("{}: {}", context, e))
-        }
+        crate::vfs::VfsError::NotFound { .. } => AppError::not_found(format!("{}: {}", context, e)),
         other => AppError::database(format!("{}: {}", context, other)),
     }
 }
@@ -2466,8 +2399,7 @@ pub async fn notes_get_backlinks(
         .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
 
     tokio::task::spawn_blocking(move || {
-        VfsNoteRepo::backlinks_for(&vfs_db, &noteId)
-            .map_err(|e| map_vfs_error("查询反链失败", e))
+        VfsNoteRepo::backlinks_for(&vfs_db, &noteId).map_err(|e| map_vfs_error("查询反链失败", e))
     })
     .await
     .map_err(|e| AppError::internal(format!("查询反链任务失败: {}", e)))?

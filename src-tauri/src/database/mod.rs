@@ -1,3 +1,4 @@
+pub(crate) mod maintenance;
 mod manager;
 
 pub use manager::DatabaseManager;
@@ -36,69 +37,10 @@ fn parse_datetime_flexible(datetime_str: &str) -> Result<DateTime<Utc>> {
     ))
 }
 
-pub(crate) fn ensure_chat_messages_extended_columns(conn: &Connection) -> Result<()> {
-    let mut existing = HashSet::new();
-    {
-        let mut stmt = conn.prepare("PRAGMA table_info('chat_messages')")?;
-        let mut rows = stmt.query([])?;
-        while let Some(row) = rows.next()? {
-            let name: String = row.get(1)?;
-            existing.insert(name);
-        }
-    }
-
-    let required_columns: [(&str, &str); 13] = [
-        ("rag_sources", "TEXT"),
-        ("memory_sources", "TEXT"),
-        ("graph_sources", "TEXT"),
-        ("web_search_sources", "TEXT"),
-        ("image_paths", "TEXT"),
-        ("image_base64", "TEXT"),
-        ("doc_attachments", "TEXT"),
-        ("tool_call", "TEXT"),
-        ("tool_result", "TEXT"),
-        ("overrides", "TEXT"),
-        ("relations", "TEXT"),
-        ("stable_id", "TEXT"),
-        ("metadata", "TEXT"),
-    ];
-
-    for (name, ty) in required_columns.iter() {
-        if !existing.contains(*name) {
-            let sql = format!("ALTER TABLE chat_messages ADD COLUMN {} {}", name, ty);
-            conn.execute(&sql, [])?;
-        }
-    }
-
-    Ok(())
-}
-
-// Re-export for external use
-// pub use std::sync::MutexGuard; // Removed unused import
-
-/// 旧迁移系统的当前数据库版本号。
-///
-/// # ⚠️ 废弃通知 — 旧迁移系统
-///
-/// 此常量是旧版顺序迁移系统（`DatabaseManager::handle_migration`）的一部分，
-/// 通过递增版本号执行 `migrate_to_version(N)` 来变更 schema。
-///
-/// ## 新系统
-/// 新的 schema 变更应通过 **数据治理系统** 的 Refinery 迁移脚本实现：
-/// - 迁移协调器：`data_governance/migration/coordinator.rs`
-/// - 迁移脚本目录：`migrations/{vfs,chat_v2,mistakes,llm_usage}/`
-/// - 版本格式：`V{YYYYMMDD}__{description}.sql`（如 `V20260130__init.sql`）
-///
-/// ## 过渡期说明
-/// - **禁止**再递增此版本号添加新迁移
-/// - 旧迁移逻辑（`handle_migration`、`ensure_compatibility`、`ensure_post_migration_patches`）
-///   仅为兼容尚未升级的用户保留
-/// - 当所有用户均已升级到包含 Refinery 迁移的版本后，旧系统将被移除
-///
-/// ## 不冲突的保障
-/// 旧系统操作**主数据库**的 `schema_version` 表，
-/// 新系统使用独立的 `refinery_schema_history` 表，两者互不干扰。
-pub(crate) const CURRENT_DB_VERSION: u32 = 41;
+// NOTE: 旧迁移系统（`CURRENT_DB_VERSION` 顺序迁移、`ensure_chat_messages_extended_columns`
+// 启动时裸 ALTER 补丁、`DatabaseManager::initialize_schema` 及其调用链）已删除：
+// 生产路径从未调用它们（`Database::new`/`DatabaseManager::new` 不建 schema），
+// schema 的唯一事实源是 `data_governance/migration/coordinator.rs` 的 Refinery 迁移。
 
 // 新的类型别名
 pub type SqlitePool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
@@ -756,7 +698,23 @@ impl Database {
 
     /// 安全获取数据库连接的辅助方法
     /// 如果 Mutex 被中毒（由于 panic），会恢复并返回连接
+    ///
+    /// fail-close：维护屏障（备份/恢复）期间显式拒绝，绝不把一次性的
+    /// 占位连接借给业务代码——之前的实现会让写入落到内存库后被静默丢弃。
     pub fn get_conn_safe(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
+        if self.is_in_maintenance_mode() {
+            return Err(anyhow::anyhow!(
+                "主数据库{}",
+                maintenance::MAINTENANCE_REFUSAL_MESSAGE
+            ));
+        }
+        self.lock_conn_any_phase()
+    }
+
+    /// 内部锁定辅助：无视维护标志直接取得连接守卫（含 poison 恢复）。
+    ///
+    /// 仅供维护屏障自身的进入/退出流程使用；业务代码一律走 `get_conn_safe`。
+    fn lock_conn_any_phase(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
         match self.conn.lock() {
             Ok(guard) => Ok(guard),
             Err(poisoned) => {
@@ -791,28 +749,62 @@ impl Database {
         self.db_path.read().ok().map(|path| path.clone())
     }
 
-    /// 进入维护模式：将底层连接切换为内存数据库，从而释放对磁盘文件的占用
-    /// 用于导入/恢复流程中替换实际数据库文件，避免 Windows 上文件映射锁
+    /// 进入维护模式（fail-close 屏障）：
+    ///
+    /// 1. CAS 抢占维护标志——后续 `get_conn_safe` 立即拒绝新借出；
+    /// 2. 获取连接互斥锁——单连接模型下，拿到锁即证明在途使用者已排空；
+    /// 3. 严格执行 `wal_checkpoint(TRUNCATE)`，失败则回滚标志并向上传播
+    ///    （屏障建立在 WAL 已合并的前提上，忽略失败会让备份读到缺数据的快照）；
+    /// 4. 换入 deny-all 占位连接释放磁盘文件句柄。经 `conn()` 裸 Mutex 绕过
+    ///    标志的调用方也会在 prepare 阶段显式失败，而不是写进内存库被静默丢弃。
     pub fn enter_maintenance_mode(&self) -> Result<()> {
-        // 先尝试做一次 checkpoint 以合并 WAL（若存在）
-        if let Ok(guard) = self.get_conn_safe() {
-            let _ = guard.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+        if self
+            .maintenance_mode
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            )
+            .is_err()
+        {
+            return Err(anyhow::anyhow!(
+                "主数据库已处于维护屏障，拒绝重复进入以免破坏现有屏障"
+            ));
         }
-        // 将连接替换为内存数据库，释放文件句柄
-        let mut guard = self.get_conn_safe()?;
-        let mem_conn = Connection::open_in_memory().with_context(|| "创建内存数据库连接失败")?;
-        // 用内存连接替换原连接，旧连接在离开作用域时被丢弃（关闭）
-        *guard = mem_conn;
-        // 设置维护模式标志
-        self.maintenance_mode
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+
+        let entered = (|| -> Result<()> {
+            // 拿到互斥锁 = 在途使用者已排空（单连接模型的可证明排空）
+            let mut guard = self.lock_conn_any_phase()?;
+            maintenance::checkpoint_truncate_strict(&guard)
+                .map_err(|e| anyhow::anyhow!("主数据库进入维护屏障失败: {e}"))?;
+            let placeholder = maintenance::deny_all_placeholder_connection()
+                .with_context(|| "创建维护占位连接失败")?;
+            // 旧磁盘连接在赋值时被丢弃（关闭），释放文件句柄
+            *guard = placeholder;
+            Ok(())
+        })();
+
+        if let Err(error) = entered {
+            // checkpoint/占位连接失败：磁盘连接未被替换，回滚标志恢复服务
+            self.maintenance_mode
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            return Err(error);
+        }
         Ok(())
     }
 
     /// 退出维护模式：重新打开磁盘数据库文件
     /// 注意：导入完成后通常会重启应用；该方法提供在无需重启时的恢复手段
+    ///
+    /// fail-close：重新打开磁盘库失败时**保持**维护标志不变并返回错误，
+    /// 绝不清除标志让调用方误以为已恢复（否则后续借出的是 deny-all 占位连接）。
+    /// 未处于维护模式时调用为幂等 no-op。
     pub fn exit_maintenance_mode(&self) -> Result<()> {
-        let mut guard = self.get_conn_safe()?;
+        if !self.is_in_maintenance_mode() {
+            log::warn!("[Database] exit_maintenance_mode 在非维护状态被调用，按幂等 no-op 处理");
+            return Ok(());
+        }
         let path = {
             self.db_path
                 .read()
@@ -820,6 +812,7 @@ impl Database {
                 .map(|p| p.clone())
                 .ok_or_else(|| anyhow::anyhow!("无法读取数据库路径"))?
         };
+        // 先完整准备好新连接，任何一步失败都保持维护屏障（fail-close）
         let new_conn = Connection::open(&path)
             .with_context(|| format!("重新打开数据库连接失败: {:?}", path))?;
         // 恢复基础 PRAGMA
@@ -828,7 +821,10 @@ impl Database {
         // 🔒 审计修复: 恢复外键约束（SQLite 每次新连接默认关闭，必须显式启用）
         new_conn.pragma_update(None, "foreign_keys", "ON")?;
         new_conn.pragma_update(None, "busy_timeout", 3000i64)?;
+
+        let mut guard = self.lock_conn_any_phase()?;
         *guard = new_conn;
+        drop(guard);
         // 清除维护模式标志
         self.maintenance_mode
             .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -2823,7 +2819,7 @@ impl Database {
 
     /// 幂等补齐模板表用户态标记列（user_modified / user_deleted）。
     ///
-    /// 正式 schema 由迁移 V20260722__template_user_state.sql 声明；
+    /// 正式 schema 由迁移 V20260723__template_user_state.sql 声明；
     /// 此处为旧库 / 未走治理迁移路径时的运行时兜底，重复执行安全。
     fn ensure_template_user_state_columns(conn: &Connection) -> Result<()> {
         for ddl in [
@@ -7282,8 +7278,9 @@ impl Database {
     }
 
     /// 🔧 Phase 1: 恢复卡住的制卡任务
-    /// 将 Processing/Streaming 状态超过给定分钟数的任务标记为 Paused（可 resume），
-    /// 用户可通过「恢复」继续，而非当作 Failed 重试。
+    /// 将 Processing/Streaming（以及所属文档已无活跃分段、长时间未更新的
+    /// Pending）任务标记为 Paused（可 resume），用户可通过「恢复」继续，
+    /// 而非当作 Failed 重试。
     ///
     /// 注意：updated_at 存储为 RFC3339（带 'T'/'Z'），直接与 datetime('now',...) 的
     /// 空格分隔格式做字符串比较在同一天内恒为假，必须先用 datetime() 规范化两侧。
@@ -7291,7 +7288,12 @@ impl Database {
         self.recover_stuck_document_tasks_older_than_minutes(10)
     }
 
-    /// 将 Processing/Streaming 超过 `minutes` 分钟未更新的任务标记为 Paused。
+    /// 将超过 `minutes` 分钟未更新的“卡死”任务标记为 Paused：
+    /// - `Processing` / `Streaming`：直接按阈值回收；
+    /// - `Pending`：仅当该文档已没有任何未删除的 Processing/Streaming 分段时
+    ///   才回收（调度协程已死、Pending 永远不会被拾起的空洞；文档仍在活跃
+    ///   生成时排队中的 Pending 不能误标，否则大文档长队列会被中途暂停）。
+    ///
     /// `minutes = 0` 表示无条件回收。注意：应用未启用单实例约束，启动路径
     /// 必须走带阈值的 `recover_stuck_document_tasks()`（10 分钟），不要传 0，
     /// 否则并行实例正在跑的任务会被误标为 Paused。
@@ -7302,7 +7304,18 @@ impl Database {
                SET status = 'Paused',
                    error_message = '任务被中断（应用重启），可点击恢复继续',
                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-               WHERE status IN ('Processing', 'Streaming')
+               WHERE (
+                   status IN ('Processing', 'Streaming')
+                   OR (
+                       status = 'Pending'
+                       AND NOT EXISTS (
+                           SELECT 1 FROM document_tasks live
+                           WHERE live.document_id = document_tasks.document_id
+                             AND live.deleted_at IS NULL
+                             AND live.status IN ('Processing', 'Streaming')
+                       )
+                   )
+               )
                AND deleted_at IS NULL
                AND (?1 = 0 OR datetime(updated_at) < datetime('now', '-' || ?1 || ' minutes')
                     OR datetime(updated_at) IS NULL)"#,
@@ -7395,17 +7408,16 @@ impl Database {
         // 新口径：模板库中真实存在的模板数量（含内置模板）。
         // 与 templateCount 并存：前者反映"用过的模板"，后者反映"模板库规模"。
         // 模板表理论上随迁移必建；万一缺失（旧库/部分迁移）降级为 0 并记录警告，避免拖垮整个统计接口。
-        let library_template_count: i64 = match conn.query_row(
-            "SELECT COUNT(*) FROM custom_anki_templates",
-            [],
-            |r| r.get(0),
-        ) {
-            Ok(count) => count,
-            Err(e) => {
-                tracing::warn!("[get_anki_stats] 查询模板库数量失败（降级为 0）: {}", e);
-                0
-            }
-        };
+        let library_template_count: i64 =
+            match conn.query_row("SELECT COUNT(*) FROM custom_anki_templates", [], |r| {
+                r.get(0)
+            }) {
+                Ok(count) => count,
+                Err(e) => {
+                    tracing::warn!("[get_anki_stats] 查询模板库数量失败（降级为 0）: {}", e);
+                    0
+                }
+            };
         let active_library_template_count: i64 = match conn.query_row(
             "SELECT COUNT(*) FROM custom_anki_templates WHERE is_active = 1",
             [],
@@ -7777,6 +7789,76 @@ mod tests {
             .migrate_single(DatabaseId::Mistakes)
             .map_err(|e| anyhow::anyhow!("mistakes migrations failed: {}", e))?;
         Ok(Database::new(&app_data_dir.join("mistakes.db"))?)
+    }
+
+    /// 回归：主库维护屏障必须 fail-close。
+    ///
+    /// - 屏障内 `get_conn_safe` 显式失败；
+    /// - 经 `conn()` 裸 Mutex 绕过标志的调用方拿到的是 deny-all 占位连接，
+    ///   读写都会在 prepare 阶段失败——旧实现换入的是可正常读写的内存库，
+    ///   写入会在退出屏障时被静默丢弃；
+    /// - 退出屏障后屏障前的数据完整可见；
+    /// - 重复进入被拒绝、非维护状态下退出为幂等 no-op。
+    #[test]
+    fn maintenance_barrier_fails_closed_for_all_connection_paths() {
+        let dir = tempdir().expect("tempdir");
+        let db = Database::new(&dir.path().join("barrier.db")).expect("database");
+
+        {
+            let conn = db.get_conn_safe().expect("connection before barrier");
+            conn.execute_batch(
+                "CREATE TABLE barrier_probe (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+                 INSERT INTO barrier_probe (value) VALUES ('before');",
+            )
+            .expect("seed data before barrier");
+        }
+
+        db.exit_maintenance_mode().expect("no-op exit is ok");
+        db.enter_maintenance_mode().expect("enter barrier");
+        assert!(db.is_in_maintenance_mode());
+        assert!(
+            db.enter_maintenance_mode().is_err(),
+            "double enter must fail instead of silently re-entering"
+        );
+
+        // 正门：get_conn_safe 显式拒绝
+        let refused = db.get_conn_safe();
+        assert!(refused.is_err(), "get_conn_safe must refuse in maintenance");
+        assert!(
+            refused.err().unwrap().to_string().contains("维护屏障"),
+            "refusal must carry an explicit maintenance message"
+        );
+
+        // 后门：裸 Mutex 拿到的占位连接必须对读写都显式失败（deny-all authorizer），
+        // 绝不允许"成功"写入一次性内存库
+        {
+            let guard = db.conn().lock().expect("raw mutex lock");
+            assert!(
+                guard.prepare("SELECT 1").is_err(),
+                "reads through the raw connection must fail during maintenance"
+            );
+            assert!(
+                guard
+                    .execute("CREATE TABLE smuggled (id INTEGER)", [])
+                    .is_err(),
+                "writes through the raw connection must fail during maintenance"
+            );
+        }
+
+        db.exit_maintenance_mode().expect("exit barrier");
+        assert!(!db.is_in_maintenance_mode());
+
+        let (count, value): (i64, String) = db
+            .get_conn_safe()
+            .expect("connection after barrier")
+            .query_row(
+                "SELECT COUNT(*), MAX(value) FROM barrier_probe",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("query after barrier");
+        assert_eq!(count, 1, "pre-barrier data must survive the barrier");
+        assert_eq!(value, "before");
     }
 
     fn insert_agent_library_fixture(
@@ -9054,8 +9136,7 @@ mod tests {
         assert!(template.is_built_in);
 
         let states = db.get_template_user_states()?;
-        let (user_modified, user_deleted) =
-            states.get(&builtin_id).copied().expect("状态行存在");
+        let (user_modified, user_deleted) = states.get(&builtin_id).copied().expect("状态行存在");
         assert!(user_deleted, "软删后应有 user_deleted 墓碑");
         assert!(!user_modified);
 

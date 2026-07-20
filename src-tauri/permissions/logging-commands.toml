@@ -1,0 +1,7 @@
+[[permission]]
+identifier = "allow-renderer-logging"
+description = "Allows trusted auxiliary windows to persist bounded renderer diagnostics."
+commands.allow = [
+  "report_frontend_log",
+  "write_debug_logs",
+]

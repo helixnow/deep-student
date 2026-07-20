@@ -2872,6 +2872,14 @@ fn json_to_question_params(
                     crate::vfs::repos::QuestionType::Calculation
                 }
                 "proof" | "证明" | "证明题" => crate::vfs::repos::QuestionType::Proof,
+                "true_false" | "判断" | "判断题" | "judgment" => {
+                    crate::vfs::repos::QuestionType::TrueFalse
+                }
+                "matching" | "匹配" | "匹配题" | "连线" | "连线题" => {
+                    crate::vfs::repos::QuestionType::Matching
+                }
+                "ordering" | "排序" | "排序题" => crate::vfs::repos::QuestionType::Ordering,
+                "numeric" | "数值" | "数值题" => crate::vfs::repos::QuestionType::Numeric,
                 _ => crate::vfs::repos::QuestionType::Other,
             });
 
@@ -2891,6 +2899,13 @@ fn json_to_question_params(
             .collect()
     });
 
+    // 新题型契约：JSON 里携带的 structured_data 对象原样透传（matching/ordering/
+    // numeric 缺少它无法自动判分）；非对象值丢弃，避免把 "null"/字符串写进列。
+    let structured_data = q
+        .get("structured_data")
+        .filter(|v| v.is_object())
+        .cloned();
+
     CreateQuestionParams {
         exam_id: exam_id.to_string(),
         card_id: Some(card_id.to_string()),
@@ -2909,6 +2924,7 @@ fn json_to_question_params(
         source_ref: None,
         images: None,
         parent_id: None,
+        structured_data,
     }
 }
 
@@ -4364,6 +4380,7 @@ impl CsvImportService {
             source_ref: Some("csv".to_string()),
             images: parsed_images,
             parent_id: None,
+            structured_data: None,
         }
     }
 
@@ -4486,6 +4503,14 @@ impl CsvImportService {
                 Some(crate::vfs::repos::QuestionType::Calculation)
             }
             "proof" | "证明" | "证明题" => Some(crate::vfs::repos::QuestionType::Proof),
+            "true_false" | "判断" | "判断题" | "judgment" => {
+                Some(crate::vfs::repos::QuestionType::TrueFalse)
+            }
+            "matching" | "匹配" | "匹配题" | "连线" | "连线题" => {
+                Some(crate::vfs::repos::QuestionType::Matching)
+            }
+            "ordering" | "排序" | "排序题" => Some(crate::vfs::repos::QuestionType::Ordering),
+            "numeric" | "数值" | "数值题" => Some(crate::vfs::repos::QuestionType::Numeric),
             _ => Some(crate::vfs::repos::QuestionType::Other),
         }
     }

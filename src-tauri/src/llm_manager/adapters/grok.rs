@@ -3,7 +3,8 @@
 //! 2026-07 现状（Grok 2/3 全系已于 2026-05-15 退役，旧 slug 自动重定向到 grok-4.3）：
 //!
 //! ## 模型
-//! - grok-4.3（别名 grok-4.3-latest / grok-latest）: 当前旗舰，1M 上下文，
+//! - grok-4.5（grok-latest）: 当前旗舰，500K 上下文，推理不可关闭
+//! - grok-4.3（别名 grok-4.3-latest）: 上一代旗舰，1M 上下文，
 //!   支持 `reasoning_effort`（none / low(默认) / medium / high）
 //! - grok-4.20-*-multi-agent: 多智能体变体，支持 low / medium / high / xhigh，
 //!   其中 xhigh 会使用更多协作 agent，不能关闭推理
@@ -95,6 +96,17 @@ impl GrokAdapter {
             && model.to_lowercase().contains("multi-agent")
     }
 
+    fn requires_reasoning(model: &str) -> bool {
+        let lower = model.to_ascii_lowercase();
+        if lower == "grok-latest" || lower.ends_with("/grok-latest") {
+            return true;
+        }
+        matches!(
+            Self::parse_grok_version(model),
+            Some((major, minor)) if major > 4 || (major == 4 && minor >= 5)
+        ) && !lower.contains("non-reasoning")
+    }
+
     /// 检查是否是 Grok-4 系列（推理模型，不支持 penalties/stop）
     fn is_grok4(model: &str) -> bool {
         let model_lower = model.to_lowercase();
@@ -125,16 +137,17 @@ impl RequestAdapter for GrokAdapter {
         // （旧实现只对已退役的 grok-3-mini 发送，grok-4.3 的 effort 被静默丢弃）
         if Self::supports_reasoning_effort(&config.model) {
             let is_multi_agent = Self::is_grok420_multi_agent(&config.model);
+            let requires_reasoning = Self::requires_reasoning(&config.model);
             let requested_effort = if enable_thinking == Some(false) {
-                Some(if is_multi_agent { "low" } else { "none" })
+                Some(if requires_reasoning { "low" } else { "none" })
             } else {
                 get_trimmed_effort(config)
             };
             if let Some(effort) = requested_effort {
-                // multi-agent 额外支持 xhigh，且不接受 none；其他 Grok
-                // 模型仍按 none / low（默认）/ medium / high 归一化。
+                // multi-agent 额外支持 xhigh；Grok 4.5+ 不接受 none。
+                // 可关闭推理的旧模型仍按 none / low / medium / high 归一化。
                 let normalized = match effort.to_lowercase().as_str() {
-                    "none" if is_multi_agent => "low",
+                    "none" if requires_reasoning => "low",
                     "none" => "none",
                     "minimal" | "low" => "low",
                     "medium" => "medium",

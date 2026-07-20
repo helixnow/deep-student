@@ -230,8 +230,7 @@ impl FtpStorage {
 
     fn is_not_found_error(error: &AppError) -> bool {
         let err = error.to_string().to_lowercase();
-        err.contains("550")
-            || (err.contains("501") && err.contains("no such directory"))
+        (err.contains("501") && err.contains("no such directory"))
             || err.contains("not found")
             || err.contains("no such file")
             || err.contains("no such directory")
@@ -744,8 +743,12 @@ impl CloudStorage for FtpStorage {
             let mut files = Vec::new();
             let start = prefix.trim_matches('/').to_string();
             let mut dirs = vec![start];
+            let mut visited_dirs = std::collections::HashSet::new();
 
             while let Some(relative_dir) = dirs.pop() {
+                if !visited_dirs.insert(relative_dir.clone()) {
+                    continue;
+                }
                 let full_dir = Self::join_paths(&self.root, &relative_dir);
                 let full_dir_abs = Self::absolute_path(&full_dir);
                 let raw_entries = match client.mlsd(Some(&full_dir_abs)).await {
@@ -760,16 +763,26 @@ impl CloudStorage for FtpStorage {
                                 if Self::is_not_found_error(&list_err) {
                                     continue;
                                 }
-                                return Err(mlsd_err);
+                                return Err(list_err);
                             }
                         }
                     }
                 };
 
                 for raw in raw_entries {
-                    let Some(entry) = Self::parse_list_entry(&raw) else {
-                        tracing::warn!("[FtpStorage] 无法解析 LIST/MLSD 条目: {}", raw);
+                    let trimmed = raw.trim();
+                    if trimmed.is_empty()
+                        || trimmed
+                            .strip_prefix("total ")
+                            .is_some_and(|value| value.bytes().all(|byte| byte.is_ascii_digit()))
+                    {
                         continue;
+                    }
+                    let Some(entry) = Self::parse_list_entry(&raw) else {
+                        return Err(AppError::network(format!(
+                            "FTP 列表包含无法解析的条目，已拒绝把不完整结果当作成功: {}",
+                            raw
+                        )));
                     };
                     if entry.name == "." || entry.name == ".." || entry.name.starts_with('.') {
                         continue;
@@ -821,8 +834,7 @@ impl CloudStorage for FtpStorage {
                 Ok(_) => {}
                 Err(e) => {
                     // 文件不存在也算成功
-                    let err_str = e.to_string();
-                    if !err_str.contains("550") && !err_str.contains("not found") {
+                    if !Self::is_not_found_error(&e) {
                         return Err(e);
                     }
                 }
@@ -992,11 +1004,11 @@ impl CloudStorage for FtpStorage {
             }
 
             // 写入临时文件
-            let temp_file = tempfile::Builder::new()
+            let temp_path = tempfile::Builder::new()
                 .prefix("ftp-download-")
                 .tempfile_in(local_path.parent().unwrap_or_else(|| Path::new(".")))
-                .map_err(|e| AppError::file_system(format!("创建临时文件失败：{}", e)))?;
-            let temp_path = temp_file.path().to_path_buf();
+                .map_err(|e| AppError::file_system(format!("创建临时文件失败：{}", e)))?
+                .into_temp_path();
 
             let checksum = client
                 .retr_to_file(filename, &temp_path, total_size, progress.as_ref())
@@ -1018,10 +1030,12 @@ impl CloudStorage for FtpStorage {
                 cb(total_size, total_size);
             }
 
-            // 原子重命名
-            tokio::fs::rename(&temp_path, local_path)
-                .await
-                .map_err(|e| AppError::file_system(format!("保存文件失败：{}", e)))?;
+            std::fs::File::open(&temp_path)
+                .and_then(|file| file.sync_all())
+                .map_err(|e| AppError::file_system(format!("同步下载文件失败：{}", e)))?;
+            temp_path
+                .persist(local_path)
+                .map_err(|e| AppError::file_system(format!("保存文件失败：{}", e.error)))?;
 
             Ok(checksum)
         })

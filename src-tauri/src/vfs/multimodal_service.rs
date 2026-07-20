@@ -210,6 +210,7 @@ impl VfsMultimodalService {
             folder_id,
             pages,
             true,
+            true,
             None,
         )
         .await
@@ -230,11 +231,16 @@ impl VfsMultimodalService {
             folder_id,
             pages,
             true,
+            true,
             progress_tx,
         )
         .await
     }
 
+    /// `refresh_counts`：单资源手动路径传 `true`（成功后立刻刷新维度计数与
+    /// profile 状态）；后台批量路径（`process_pending_batch`）传 `false`，
+    /// 由批次末尾统一刷新一次，避免 O(资源数 × 全表) 的逐资源刷新。
+    #[allow(clippy::too_many_arguments)]
     async fn index_resource_pages_with_options(
         &self,
         resource_id: &str,
@@ -242,6 +248,7 @@ impl VfsMultimodalService {
         folder_id: Option<&str>,
         mut pages: Vec<VfsMultimodalPage>,
         force_rebuild: bool,
+        refresh_counts: bool,
         progress_tx: Option<mpsc::UnboundedSender<IndexProgressEvent>>,
     ) -> VfsResult<VfsMultimodalIndexResult> {
         use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -343,7 +350,11 @@ impl VfsMultimodalService {
             );
             match synced {
                 Ok(result) => {
-                    embedding_dim_repo::refresh_counts_from_segments(&conn)?;
+                    // 批量路径（refresh_counts=false）跳过全表刷新，由批次末尾
+                    // 统一执行；单资源路径保持同事务内即时刷新。
+                    if refresh_counts {
+                        embedding_dim_repo::refresh_counts_from_segments(&conn)?;
+                    }
                     conn.execute("RELEASE SAVEPOINT sync_mm_units", [])?;
                     result.units
                 }
@@ -487,9 +498,8 @@ impl VfsMultimodalService {
 
             // 每个子批的 completed 从 0 计数；转发时叠加偏移，保持整卷进度单调。
             let chunk_progress_tx = embed_progress_tx.as_ref().map(|main_tx| {
-                let (tx, mut rx) = mpsc::channel::<
-                    crate::multimodal::embedding_service::EmbeddingProgress,
-                >(64);
+                let (tx, mut rx) =
+                    mpsc::channel::<crate::multimodal::embedding_service::EmbeddingProgress>(64);
                 let main_tx = main_tx.clone();
                 tokio::spawn(async move {
                     while let Some(mut progress) = rx.recv().await {
@@ -653,8 +663,9 @@ impl VfsMultimodalService {
         }
 
         // 6. 无空窗替换：先写新行，再切换 SQLite Segment 账本。
-        // - write_chunks 内部会按 embedding_id 先删后写，确保同页向量被更新
-        // - 写入成功后再删除 "不在当前页面集合" 的历史行，避免先删后写的空窗
+        // - write_chunks 是纯 append（embedding_id 每次全新生成，不存在同 ID 重写）
+        // - 写入成功并切换账本后，由 delete_by_unit_except_ids 回收旧代行，
+        //   避免先删后写的检索空窗
         if let Err(error) = self
             .ensure_mm_assignment_unchanged(
                 &model_config.id,
@@ -719,7 +730,13 @@ impl VfsMultimodalService {
                     )?;
                     index_unit_repo::set_mm_indexed(&conn, &unit.id, dimension as i32)?;
                 }
-                embedding_dim_repo::refresh_counts_from_segments(&conn)?;
+                // ★ 2026-07：全表相关子查询刷新改为可选。批量路径在批次末尾
+                // 统一刷新（refresh_counts=false 时跳过）；刷新推迟不影响正确
+                // 性——检索与写入的可见性由 Unit generation 判定，profile 的
+                // building→active 提升最迟在批次末尾补上。
+                if refresh_counts {
+                    embedding_dim_repo::refresh_counts_from_segments(&conn)?;
+                }
                 Ok(())
             })();
             match commit_result {
@@ -1077,8 +1094,11 @@ impl VfsMultimodalService {
             "indexing.max_retries",
             3,
         )?;
-        let resource_ids =
-            VfsIndexStateRepo::claim_mm_indexing_resources(&self.vfs_db, &candidate_ids, max_retries)?;
+        let resource_ids = VfsIndexStateRepo::claim_mm_indexing_resources(
+            &self.vfs_db,
+            &candidate_ids,
+            max_retries,
+        )?;
         if resource_ids.len() < candidate_ids.len() {
             info!(
                 "[VfsMultimodalService] process_pending_batch: claimed {}/{} resources (rest busy, backing off, or over retry limit)",
@@ -1119,12 +1139,14 @@ impl VfsMultimodalService {
             // force_rebuild=false：增量优先。sync_multimodal_units 只把图片变化的
             // 页面重新置 pending；若 claim 与处理之间资源已被其他路径补完索引，
             // all_current 短路直接返回，避免整本重复 embedding。
+            // refresh_counts=false：批次末尾统一刷新（见循环后）。
             match self
                 .index_resource_pages_with_options(
                     &resource_id,
                     &resource_type,
                     folder_id.as_deref(),
                     pages,
+                    false,
                     false,
                     None,
                 )
@@ -1144,9 +1166,7 @@ impl VfsMultimodalService {
                     // 否则资源卡死 indexing，要等下次启动 recover_stuck_indexing。
                     let stuck_indexing =
                         VfsIndexStateRepo::get_mm_index_state(&self.vfs_db, &resource_id)?
-                            .map(|state| {
-                                state.state == crate::vfs::repos::INDEX_STATE_INDEXING
-                            })
+                            .map(|state| state.state == crate::vfs::repos::INDEX_STATE_INDEXING)
                             .unwrap_or(false);
                     if stuck_indexing {
                         VfsIndexStateRepo::mark_mm_failed(
@@ -1158,6 +1178,23 @@ impl VfsMultimodalService {
                 }
             }
         }
+
+        // ★ 2026-07：批次级刷新（与文本侧 process_pending_batch 同款）。
+        // 逐资源刷新已在 index_resource_pages_with_options(refresh_counts=false)
+        // 关闭，这里在批次完成后统一刷新一次 record_count 与 profile 状态。
+        // 失败资源也可能在 sync_mm_units 阶段删除过期 Unit/Segment，因此
+        // failed > 0 时同样需要刷新，避免 record_count 漂移。
+        if success > 0 || failed > 0 {
+            if let Ok(conn) = self.vfs_db.get_conn_safe() {
+                if let Err(e) = embedding_dim_repo::refresh_counts_from_segments(&conn) {
+                    warn!(
+                        "[VfsMultimodalService] Failed to refresh embedding_dim counts after batch: {}",
+                        e
+                    );
+                }
+            }
+        }
+
         Ok((success, failed))
     }
 
@@ -1442,6 +1479,7 @@ impl VfsMultimodalService {
                 folder_id,
                 pages.clone(),
                 _force_rebuild,
+                true,
                 progress_tx.clone(),
             )
             .await;

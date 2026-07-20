@@ -2,6 +2,7 @@
 //!
 //! 支持格式：
 //! - Original：原始文件复制（从 blob 存储读取）
+//! - Markdown：导出解析提取的文本（extracted_text，如 docx/pptx/epub/音频转写）
 
 use std::sync::Arc;
 
@@ -19,7 +20,7 @@ impl ResourceExportAdapter for FileExportAdapter {
     }
 
     fn supported_formats(&self) -> Vec<ExportFormat> {
-        vec![ExportFormat::Original]
+        vec![ExportFormat::Original, ExportFormat::Markdown]
     }
 
     fn export(
@@ -30,6 +31,7 @@ impl ResourceExportAdapter for FileExportAdapter {
     ) -> Result<ExportPayload, DstuError> {
         match format {
             ExportFormat::Original => self.export_original(vfs_db, resource_id),
+            ExportFormat::Markdown => self.export_markdown(vfs_db, resource_id),
             _ => Err(DstuError::NotSupported(format!(
                 "文件不支持 {} 格式导出",
                 format.as_str()
@@ -39,6 +41,43 @@ impl ResourceExportAdapter for FileExportAdapter {
 }
 
 impl FileExportAdapter {
+    /// ★ 导出解析提取的文本为 Markdown（extracted_text）
+    fn export_markdown(
+        &self,
+        vfs_db: &Arc<VfsDatabase>,
+        resource_id: &str,
+    ) -> Result<ExportPayload, DstuError> {
+        let file = VfsFileRepo::get_file(vfs_db, resource_id)
+            .map_err(|e| DstuError::Internal(format!("获取文件失败: {}", e)))?
+            .ok_or_else(|| DstuError::not_found(resource_id))?;
+
+        let text = file
+            .extracted_text
+            .as_deref()
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .ok_or_else(|| {
+                DstuError::NotSupported(format!(
+                    "文件 {} 没有可导出的提取文本（仅支持已解析出文本的文档）",
+                    file.file_name
+                ))
+            })?;
+
+        let content = format!("# {}\n\n{}\n", file.file_name, text);
+
+        let stem = std::path::Path::new(&file.file_name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or(&file.file_name);
+        let filename = sanitize_filename(&format!("{}.md", stem));
+
+        Ok(ExportPayload::Text {
+            content,
+            suggested_filename: filename,
+            mime_type: "text/markdown".to_string(),
+        })
+    }
+
     fn export_original(
         &self,
         vfs_db: &Arc<VfsDatabase>,

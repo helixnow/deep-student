@@ -1043,10 +1043,6 @@ pub struct VfsUpdateTodoItemParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimated_pomodoros: Option<i32>,
 
-    /// 新已完成番茄数
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub completed_pomodoros: Option<i32>,
-
     /// 乐观锁：调用方上次读取时的 `updated_at`（可选；None 保持旧行为）
     ///
     /// R1-04 / docs/dev/acr：不匹配时返回含 `TODO_CONFLICT` 的错误。
@@ -1194,10 +1190,14 @@ pub struct CreatePomodoroRecordParams {
 pub struct PomodoroTodayStats {
     /// 今日完成的番茄数
     pub completed_count: usize,
-    /// 今日总专注时长（秒）
+    /// 今日总专注时长（秒，completed + interrupted 的 actual_duration，
+    /// 与 `PomodoroDailyStat.focus_seconds` 口径一致）
     pub total_focus_seconds: i64,
     /// 今日中断次数
     pub interrupted_count: usize,
+    /// 今日严格口径专注时长（秒，仅 completed 的 actual_duration）
+    #[serde(default)]
+    pub completed_focus_seconds: i64,
 }
 
 /// 番茄钟单日聚合（按本地日期分桶，用于趋势/热力图）
@@ -1212,6 +1212,42 @@ pub struct PomodoroDailyStat {
     pub focus_seconds: i64,
     /// 当日中断次数
     pub interrupted_count: usize,
+}
+
+/// 番茄钟连续专注天数统计（按本地日聚合 completed work 记录）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PomodoroStreakStats {
+    /// 当前连续天数（今天无记录时从昨天起算，仍可保持连续）
+    pub current_streak_days: i64,
+    /// 历史最长连续天数
+    pub longest_streak_days: i64,
+}
+
+/// 番茄钟按一天中小时分桶的聚合（0-23，看何时最专注）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PomodoroHourlyStat {
+    /// 本地小时（0-23）
+    pub hour: u8,
+    /// 该小时开始的已完成工作番茄数
+    pub completed_count: i64,
+    /// 该小时开始的专注时长（秒，completed + interrupted 的 actual_duration）
+    pub focus_seconds: i64,
+}
+
+/// 番茄钟按任务聚合的统计（专注时长排行）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PomodoroTodoStat {
+    /// 任务 ID
+    pub todo_item_id: String,
+    /// 任务标题（软删任务仍返回标题；任务行已物理删除时为 None）
+    pub todo_title: Option<String>,
+    /// 已完成工作番茄数
+    pub completed_count: i64,
+    /// 专注时长（秒，completed + interrupted 的 actual_duration）
+    pub focus_seconds: i64,
 }
 
 // ============================================================================

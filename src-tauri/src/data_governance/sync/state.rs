@@ -420,4 +420,35 @@ impl SyncStateStore {
             Ok(())
         })
     }
+
+    /// 清空本机数据后重置所有“已消费”状态。
+    ///
+    /// `upload_seq` 故意保留：同一 device_id 在远端可能已有历史对象，序号回退会
+    /// 复用旧 key，并被其他设备的 consume cursor 静默跳过。其余状态若保留，
+    /// 空白本地库会误以为历史云端变更已经消费，形成永久缺行。
+    pub fn reset_default_after_local_purge() -> Result<(), SyncError> {
+        let store = Self::open_default()?;
+        store.with_conn(|conn| {
+            let transaction = conn
+                .unchecked_transaction()
+                .map_err(|e| SyncError::Database(format!("开始清空同步基线事务失败: {}", e)))?;
+            for table in [
+                "consume_cursor",
+                "legacy_processed_key",
+                "tombstone_watermark",
+                "instance_binding",
+                "device_history",
+            ] {
+                transaction
+                    .execute(&format!("DELETE FROM {}", table), [])
+                    .map_err(|e| {
+                        SyncError::Database(format!("清空同步状态表 {} 失败: {}", table, e))
+                    })?;
+            }
+            transaction
+                .commit()
+                .map_err(|e| SyncError::Database(format!("提交清空同步基线事务失败: {}", e)))?;
+            Ok(())
+        })
+    }
 }

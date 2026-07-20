@@ -261,6 +261,73 @@ fn archive_kind_from_magic(data: &[u8]) -> Option<ArchiveKind> {
     }
 }
 
+/// ZIP 清单条目上限（防注入内容过长 / 存储膨胀）
+const ZIP_MANIFEST_MAX_ENTRIES: usize = 200;
+
+fn format_manifest_size(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else if bytes >= 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+/// ★ 解析 ZIP 中央目录生成文本清单（文件名+大小，最多 200 条）
+///
+/// 只读取目录元信息，不解压条目内容。解析失败返回 None（不阻塞上传）。
+/// 清单文本存入 extracted_text：注入对话与文本索引即可直接使用。
+pub(crate) fn build_zip_manifest_text(name: &str, data: &[u8]) -> Option<String> {
+    let cursor = std::io::Cursor::new(data);
+    let mut archive = match zip::ZipArchive::new(cursor) {
+        Ok(archive) => archive,
+        Err(e) => {
+            warn!(
+                "[VFS::AttachmentRepo] Failed to parse zip central directory for {}: {}",
+                name, e
+            );
+            return None;
+        }
+    };
+    let total = archive.len();
+    let shown = total.min(ZIP_MANIFEST_MAX_ENTRIES);
+    let mut lines: Vec<String> = Vec::with_capacity(shown + 2);
+    lines.push(format!(
+        "[压缩包清单] {}：共 {} 个条目{}",
+        name,
+        total,
+        if total > shown {
+            format!("（仅显示前 {} 条）", shown)
+        } else {
+            String::new()
+        }
+    ));
+    for index in 0..shown {
+        match archive.by_index(index) {
+            Ok(entry) => {
+                if entry.is_dir() {
+                    lines.push(format!("- {} (目录)", entry.name()));
+                } else {
+                    lines.push(format!(
+                        "- {} ({})",
+                        entry.name(),
+                        format_manifest_size(entry.size())
+                    ));
+                }
+            }
+            Err(e) => {
+                warn!(
+                    "[VFS::AttachmentRepo] Failed to inspect zip entry {} of {}: {}",
+                    index, name, e
+                );
+                lines.push(format!("- <条目 {} 无法读取>", index));
+            }
+        }
+    }
+    Some(lines.join("\n"))
+}
+
 fn validate_archive_content(name: &str, mime_type: &str, data: &[u8]) -> VfsResult<()> {
     let extension_kind = archive_kind_from_extension(name);
     let mime_kind = archive_kind_from_mime(mime_type);
@@ -312,7 +379,11 @@ impl VfsAttachmentRepo {
             return true;
         }
         normalize_extension(name)
-            .map(|ext| SUPPORTED_EXTENSIONS.contains(&ext.as_str()))
+            .map(|ext| {
+                SUPPORTED_EXTENSIONS.contains(&ext.as_str())
+                    // ★ 代码/纯文本扩展名（与前端 ATTACHMENT_CODE_TEXT_EXTENSIONS 同一清单）
+                    || crate::document_parser::is_plain_text_code_extension(&ext)
+            })
             .unwrap_or(false)
     }
 
@@ -324,11 +395,15 @@ impl VfsAttachmentRepo {
             });
         }
         if !Self::is_supported_upload_type(name, mime_type) {
+            // ★ 结构化拒绝错误：带上具体文件名/扩展名/MIME，前端可直接展示给用户
+            let ext_display = normalize_extension(name)
+                .map(|ext| format!(".{}", ext))
+                .unwrap_or_else(|| "(无扩展名)".to_string());
             return Err(VfsError::InvalidArgument {
                 param: "mime_type".to_string(),
                 reason: format!(
-                    "Unsupported mime type or file extension: {} ({})",
-                    mime_type, name
+                    "UNSUPPORTED_FILE_TYPE: 不支持的文件类型 {} (文件: {}, MIME: {})",
+                    ext_display, name, mime_type
                 ),
             });
         }
@@ -792,6 +867,11 @@ impl VfsAttachmentRepo {
         let is_pdf =
             params.mime_type == "application/pdf" || params.name.to_lowercase().ends_with(".pdf");
 
+        // ★ PDF 渲染失败时的可读原因（写入 processing_error，状态显式化不再静默降级）
+        let mut pdf_render_error: Option<String> = None;
+        // ★ pptx/epub 页级拆分结果（写入 ocr_pages_json，使检索命中可定位页/章节）
+        let mut paged_text_pages: Option<Vec<String>> = None;
+
         let (preview_json, extracted_text, page_count): (
             Option<String>,
             Option<String>,
@@ -828,11 +908,15 @@ impl VfsAttachmentRepo {
                         "[VFS::AttachmentRepo] PDF preview failed, storing without preview: {}",
                         e
                     );
+                    pdf_render_error = Some(format!(
+                        "PDF 渲染失败，预览与文本提取不可用：{}。可尝试删除后重新导入，或检查 PDF 是否损坏/加密",
+                        e
+                    ));
                     (None, None, None)
                 }
             }
         } else {
-            // 非 PDF 文件：尝试解析文本内容（docx/xlsx/pptx/epub/rtf/txt/md/html 等）
+            // 非 PDF 文件：尝试解析文本内容（docx/xlsx/pptx/epub/rtf/txt/md/html/代码等）
             let extension = std::path::Path::new(&params.name)
                 .extension()
                 .and_then(|ext| ext.to_str())
@@ -842,40 +926,87 @@ impl VfsAttachmentRepo {
             let supported_extensions = [
                 "docx", "xlsx", "xls", "xlsb", "ods",  // Office 文档
                 "pptx", // PowerPoint（pptx-to-md）
-                "epub", // 电子书（epub crate）
+                "epub", // 电子书（zip + quick-xml）
                 "rtf",  // 富文本（rtf-parser）
-                "txt", "md", "html", "htm",  // 文本格式
+                "txt", "md", "markdown", "html", "htm", // 文本格式
                 "csv",  // CSV 表格（csv crate）
                 "json", // JSON 数据（serde_json）
                 "xml",  // XML 数据（quick-xml）
             ];
 
-            if let Some(ref ext) = extension {
-                if supported_extensions.contains(&ext.as_str()) {
+            let is_zip_archive = archive_kind_from_extension(&params.name)
+                .or_else(|| archive_kind_from_mime(&params.mime_type))
+                == Some(ArchiveKind::Zip);
+
+            if is_zip_archive {
+                // ★ ZIP 压缩包：解析中央目录生成条目清单（不解压内容），
+                // 存入 extracted_text 供预览兜底页与对话注入使用
+                match build_zip_manifest_text(&params.name, &data) {
+                    Some(manifest) => {
+                        info!(
+                            "[VFS::AttachmentRepo] Built zip manifest for {}: {} chars",
+                            params.name,
+                            manifest.len()
+                        );
+                        (None, Some(manifest), None)
+                    }
+                    None => (None, None, None),
+                }
+            } else if let Some(ref ext) = extension {
+                let is_parseable = supported_extensions.contains(&ext.as_str())
+                    || crate::document_parser::is_plain_text_code_extension(ext);
+                if is_parseable {
                     let parser = DocumentParser::new();
-                    match parser.extract_text_from_bytes(&params.name, data.clone()) {
-                        Ok(text) => {
-                            if !text.trim().is_empty() {
+
+                    // ★ pptx/epub 优先页级拆分（按 slide/章节），失败回退整篇提取
+                    match parser.extract_paged_text_from_bytes(&params.name, &data) {
+                        Ok(Some(pages)) if !pages.is_empty() => {
+                            let joined = pages.join("\n\n").trim().to_string();
+                            if !joined.is_empty() {
                                 info!(
-                                    "[VFS::AttachmentRepo] Extracted text from {}: {} chars",
+                                    "[VFS::AttachmentRepo] Extracted paged text from {}: {} pages, {} chars",
                                     params.name,
-                                    text.len()
+                                    pages.len(),
+                                    joined.len()
                                 );
-                                (None, Some(text), None)
+                                let count = pages.len() as i32;
+                                paged_text_pages = Some(pages);
+                                (None, Some(joined), Some(count))
                             } else {
                                 debug!(
-                                    "[VFS::AttachmentRepo] No text extracted from {}",
+                                    "[VFS::AttachmentRepo] Paged extraction empty for {}",
                                     params.name
                                 );
                                 (None, None, None)
                             }
                         }
-                        Err(e) => {
-                            warn!(
-                                "[VFS::AttachmentRepo] Failed to extract text from {}: {}",
-                                params.name, e
-                            );
-                            (None, None, None)
+                        Ok(_) | Err(_) => {
+                            // 不支持页级拆分或拆分失败 → 整篇提取
+                            match parser.extract_text_from_bytes(&params.name, data.clone()) {
+                                Ok(text) => {
+                                    if !text.trim().is_empty() {
+                                        info!(
+                                            "[VFS::AttachmentRepo] Extracted text from {}: {} chars",
+                                            params.name,
+                                            text.len()
+                                        );
+                                        (None, Some(text), None)
+                                    } else {
+                                        debug!(
+                                            "[VFS::AttachmentRepo] No text extracted from {}",
+                                            params.name
+                                        );
+                                        (None, None, None)
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "[VFS::AttachmentRepo] Failed to extract text from {}: {}",
+                                        params.name, e
+                                    );
+                                    (None, None, None)
+                                }
+                            }
                         }
                     }
                 } else {
@@ -915,17 +1046,27 @@ impl VfsAttachmentRepo {
                 ready_modes.push("text".to_string());
             }
 
-            let progress = serde_json::json!({
-                "stage": "page_compression",
-                "percent": 25.0,
-                "readyModes": ready_modes
-            });
+            if pdf_render_error.is_some() {
+                // ★ 渲染失败：显式记录 error 状态（此前静默入库，用户不可见）
+                let progress = serde_json::json!({
+                    "stage": "error",
+                    "percent": 0.0,
+                    "readyModes": ready_modes
+                });
+                (Some("error"), Some(progress.to_string()), Some(now_ms))
+            } else {
+                let progress = serde_json::json!({
+                    "stage": "page_compression",
+                    "percent": 25.0,
+                    "readyModes": ready_modes
+                });
 
-            (
-                Some("page_compression"),
-                Some(progress.to_string()),
-                Some(now_ms),
-            )
+                (
+                    Some("page_compression"),
+                    Some(progress.to_string()),
+                    Some(now_ms),
+                )
+            }
         } else {
             (None, None, None)
         };
@@ -1033,6 +1174,24 @@ impl VfsAttachmentRepo {
             } else {
                 None
             }
+        } else if let Some(ref pages) = paged_text_pages {
+            // ★ pptx/epub 页级文本：与 PDF 相同写入 ocr_pages_json，索引可定位页/章节
+            match serde_json::to_string(pages) {
+                Ok(json) => {
+                    info!(
+                        "[VFS::AttachmentRepo] Paged document text stored as {} pages in ocr_pages_json",
+                        pages.len()
+                    );
+                    Some(json)
+                }
+                Err(e) => {
+                    warn!(
+                        "[VFS::AttachmentRepo] Failed to serialize paged ocr_pages_json: {}",
+                        e
+                    );
+                    None
+                }
+            }
         } else {
             None
         };
@@ -1047,6 +1206,18 @@ impl VfsAttachmentRepo {
                 ) {
                     warn!(
                         "[VFS::AttachmentRepo] Failed to write ocr_pages_json for {}: {}",
+                        attachment_id, e
+                    );
+                }
+            }
+            // ★ PDF 渲染失败：写入可读的 processing_error（状态显式化）
+            if let Some(ref render_error) = pdf_render_error {
+                if let Err(e) = conn.execute(
+                    "UPDATE files SET processing_error = ?1 WHERE id = ?2",
+                    params![render_error, attachment_id],
+                ) {
+                    warn!(
+                        "[VFS::AttachmentRepo] Failed to write processing_error for {}: {}",
                         attachment_id, e
                     );
                 }

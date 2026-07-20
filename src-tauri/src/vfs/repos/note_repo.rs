@@ -115,6 +115,104 @@ pub struct NoteUnresolvedLink {
     pub link_type: String,
 }
 
+/// Markdown 代码区域（围栏代码块 + 行内代码）的字节区间集合，半开区间 `[start, end)`。
+///
+/// 静态、保守的行级解析（不做完整 CommonMark 解析）：
+/// - 围栏代码块：行首缩进 <= 3 空格、以 >=3 个连续 `` ` `` 或 `~` 开头的行开栏；
+///   由同字符、长度 >= 开栏长度、且整行仅含该字符的行闭合；
+///   未闭合的围栏延伸到文末（与 CommonMark 一致）。
+/// - 行内代码：围栏外的行内，长度相同的反引号串就近配对（`` `code` ``、``` ``a`b`` ```）。
+/// - 已知取舍：4 空格缩进式代码块不识别（无法与深层嵌套列表的续行区分，
+///   前端编辑器序列化代码块时统一使用围栏语法）。
+///
+/// 反引号/波浪线均为单字节 ASCII，按字节扫描对 UTF-8 安全。
+fn markdown_code_ranges(content: &str) -> Vec<(usize, usize)> {
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+    // (围栏字符, 开栏长度, 区块起始字节)
+    let mut open_fence: Option<(u8, usize, usize)> = None;
+    let mut line_start = 0usize;
+
+    for line in content.split_inclusive('\n') {
+        let line_end = line_start + line.len();
+        let trimmed = line.trim_start_matches(' ');
+        let indent = line.len() - trimmed.len();
+        let trimmed = trimmed.trim_end_matches(|c: char| matches!(c, '\n' | '\r' | ' ' | '\t'));
+
+        if let Some((fence_ch, fence_len, block_start)) = open_fence {
+            // 闭栏：缩进 <= 3、整行仅含围栏字符、长度不小于开栏
+            let is_close = indent <= 3
+                && !trimmed.is_empty()
+                && trimmed.as_bytes().iter().all(|&b| b == fence_ch)
+                && trimmed.len() >= fence_len;
+            if is_close {
+                ranges.push((block_start, line_end));
+                open_fence = None;
+            }
+            line_start = line_end;
+            continue;
+        }
+
+        // 开栏检测
+        if indent <= 3 && !trimmed.is_empty() {
+            let first = trimmed.as_bytes()[0];
+            if first == b'`' || first == b'~' {
+                let run = trimmed.bytes().take_while(|&b| b == first).count();
+                // CommonMark：反引号围栏的 info string 不得再含反引号
+                let info_ok = first == b'~' || !trimmed[run..].contains('`');
+                if run >= 3 && info_ok {
+                    open_fence = Some((first, run, line_start));
+                    line_start = line_end;
+                    continue;
+                }
+            }
+        }
+
+        // 行内代码：同长度反引号串就近配对
+        let bytes = line.as_bytes();
+        let mut i = 0usize;
+        while i < bytes.len() {
+            if bytes[i] != b'`' {
+                i += 1;
+                continue;
+            }
+            let run_start = i;
+            while i < bytes.len() && bytes[i] == b'`' {
+                i += 1;
+            }
+            let run_len = i - run_start;
+            // 向后找长度恰好相同的关闭串
+            let mut j = i;
+            let mut close_end: Option<usize> = None;
+            while j < bytes.len() {
+                if bytes[j] != b'`' {
+                    j += 1;
+                    continue;
+                }
+                let c_start = j;
+                while j < bytes.len() && bytes[j] == b'`' {
+                    j += 1;
+                }
+                if j - c_start == run_len {
+                    close_end = Some(j);
+                    break;
+                }
+            }
+            if let Some(end) = close_end {
+                ranges.push((line_start + run_start, line_start + end));
+                i = end;
+            }
+            // 未闭合：跳过本 run，继续扫描行内剩余部分
+        }
+
+        line_start = line_end;
+    }
+
+    if let Some((_, _, block_start)) = open_fence {
+        ranges.push((block_start, content.len()));
+    }
+    ranges
+}
+
 /// 从 Markdown 正文提取 wiki 链接与 note:// 引用。
 ///
 /// 支持的语法（与前端 Crepe wikilink 插件对齐）：
@@ -123,13 +221,16 @@ pub struct NoteUnresolvedLink {
 /// - `note://<id>`（常见于 `[label](note://id)` Markdown 链接）
 ///
 /// 限制（静态解析的已知取舍）：
-/// - 不感知代码块/行内代码，代码里的链接样文本也会被提取；
-///   全量一致性由 notes_rebuild_links 重建时同样适用，行为一致。
+/// - 围栏代码块与行内代码中的 `[[..]]` / `note://` 不算链接
+///   （见 [`markdown_code_ranges`]；4 空格缩进式代码块除外）。
 /// - `[[#heading]]`（无 target 的本页锚点）不产生链接。
 /// - position 为 UTF-8 字节偏移（`[[` 或 `note://` 的起始处）。
 pub fn extract_note_links(content: &str) -> Vec<ParsedNoteLink> {
     const SCHEME: &str = "note://";
     let mut links: Vec<ParsedNoteLink> = Vec::new();
+    // 代码区域内的链接样文本不算链接（围栏代码块 + 行内代码）
+    let code_ranges = markdown_code_ranges(content);
+    let in_code = |pos: usize| code_ranges.iter().any(|&(s, e)| pos >= s && pos < e);
     // 已识别的 [[...]] 字节区间，用于避免 note:// 扫描器重复捕获 wiki 链接内部的 URI
     let mut wiki_ranges: Vec<(usize, usize)> = Vec::new();
 
@@ -150,6 +251,10 @@ pub fn extract_note_links(content: &str) -> Vec<ParsedNoteLink> {
             continue;
         }
         wiki_ranges.push((start, inner_end + 2));
+        // 代码块/行内代码中的 [[..]] 是字面文本，不算链接
+        if in_code(start) {
+            continue;
+        }
 
         let (target_part, alias) = match inner.find('|') {
             Some(p) => (
@@ -195,10 +300,11 @@ pub fn extract_note_links(content: &str) -> Vec<ParsedNoteLink> {
             .map(|p| id_start + p)
             .unwrap_or(content.len());
         cursor = id_end.max(id_start);
-        if wiki_ranges
-            .iter()
-            .any(|(s, e)| start >= *s && start < *e)
-        {
+        if wiki_ranges.iter().any(|(s, e)| start >= *s && start < *e) {
+            continue;
+        }
+        // 代码块/行内代码中的 note:// 是字面文本，不算链接
+        if in_code(start) {
             continue;
         }
         let id = &content[id_start..id_end];
@@ -219,6 +325,63 @@ pub fn extract_note_links(content: &str) -> Vec<ParsedNoteLink> {
 }
 
 impl VfsNoteRepo {
+    /// 标题最大字符数（防御性上限，正常 UI/导入路径远低于此值）
+    const MAX_TITLE_CHARS: usize = 500;
+    /// 单条笔记最大标签数
+    const MAX_TAGS: usize = 100;
+    /// 单个标签最大字符数
+    const MAX_TAG_CHARS: usize = 100;
+
+    /// 校验笔记标题：非空、长度上限、不含换行等控制字符（制表符除外，
+    /// Markdown H1 导入的标题可能合法地包含 Tab）。
+    fn validate_title(title: &str) -> VfsResult<()> {
+        if title.trim().is_empty() {
+            return Err(VfsError::InvalidArgument {
+                param: "title".to_string(),
+                reason: "标题不能为空".to_string(),
+            });
+        }
+        if title.chars().count() > Self::MAX_TITLE_CHARS {
+            return Err(VfsError::InvalidArgument {
+                param: "title".to_string(),
+                reason: format!("标题过长（最多 {} 个字符）", Self::MAX_TITLE_CHARS),
+            });
+        }
+        if title.chars().any(|c| c.is_control() && c != '\t') {
+            return Err(VfsError::InvalidArgument {
+                param: "title".to_string(),
+                reason: "标题不能包含换行等控制字符".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// 校验标签形状：数量上限、单个标签长度上限、不含控制字符。
+    /// 空白标签不报错（历史行为允许，展示层会过滤）。
+    fn validate_tags(tags: &[String]) -> VfsResult<()> {
+        if tags.len() > Self::MAX_TAGS {
+            return Err(VfsError::InvalidArgument {
+                param: "tags".to_string(),
+                reason: format!("标签数量超出上限（最多 {} 个）", Self::MAX_TAGS),
+            });
+        }
+        for tag in tags {
+            if tag.chars().count() > Self::MAX_TAG_CHARS {
+                return Err(VfsError::InvalidArgument {
+                    param: "tags".to_string(),
+                    reason: format!("标签过长（最多 {} 个字符）", Self::MAX_TAG_CHARS),
+                });
+            }
+            if tag.chars().any(|c| c.is_control()) {
+                return Err(VfsError::InvalidArgument {
+                    param: "tags".to_string(),
+                    reason: "标签不能包含控制字符".to_string(),
+                });
+            }
+        }
+        Ok(())
+    }
+
     // ========================================================================
     // 创建笔记
     // ========================================================================
@@ -241,13 +404,9 @@ impl VfsNoteRepo {
         conn: &Connection,
         params: VfsCreateNoteParams,
     ) -> VfsResult<VfsNote> {
-        // ★ M-011 修复：拒绝空标题，返回验证错误
-        if params.title.trim().is_empty() {
-            return Err(VfsError::InvalidArgument {
-                param: "title".to_string(),
-                reason: "标题不能为空".to_string(),
-            });
-        }
+        // ★ M-011 修复 + 2026-07 防御性校验：空标题/超长/控制字符、tags 形状
+        Self::validate_title(&params.title)?;
+        Self::validate_tags(&params.tags)?;
         let final_title = params.title.clone();
 
         // 1. 预生成 note_id（用于资源 hash 盐值，避免跨笔记资源复用）
@@ -302,6 +461,15 @@ impl VfsNoteRepo {
                 "UPDATE resources SET source_id = ?1 WHERE id = ?2",
                 params![note_id, resource_result.resource_id],
             )?;
+
+            // 5. ★ 2026-07-20：链接图维护收敛到 repo 层 —— 正文落库即在
+            //    同一 SAVEPOINT 内写出链（note_links 为派生数据，见
+            //    V20260725__note_links.sql），所有调用方（DSTU/VFS/legacy/canvas）
+            //    自动受益。新建笔记无存量出链行，无链接时跳过。
+            let parsed_links = extract_note_links(&params.content);
+            if !parsed_links.is_empty() {
+                Self::replace_note_links_with_conn(conn, &note_id, &parsed_links)?;
+            }
 
             info!(
                 "[VFS::NoteRepo] Created note: {} (resource: {})",
@@ -392,6 +560,15 @@ impl VfsNoteRepo {
             }
         }
 
+        // ★ M-011 修复 + 2026-07 防御性校验：空标题/超长/控制字符、tags 形状
+        // （在 SAVEPOINT 外提前校验，避免先建新资源再回滚的无谓开销）
+        if let Some(ref title) = params.title {
+            Self::validate_title(title)?;
+        }
+        if let Some(ref tags) = params.tags {
+            Self::validate_tags(tags)?;
+        }
+
         // ★ SAVEPOINT 事务保护：包裹 create_or_reuse / create_version / UPDATE notes 三步操作
         conn.execute("SAVEPOINT update_note", []).map_err(|e| {
             tracing::error!(
@@ -411,7 +588,6 @@ impl VfsNoteRepo {
             let new_resource_id = if let Some(new_content) = &params.content {
                 // 计算新 hash（使用 note_id 作为盐值，避免跨笔记资源复用）
                 let new_hash = VfsResourceRepo::compute_hash_with_salt(new_content, note_id);
-                let legacy_hash = VfsResourceRepo::compute_hash(new_content);
                 let current_resource =
                     VfsResourceRepo::get_resource_with_conn(conn, &current_note.resource_id)?
                         .ok_or_else(|| VfsError::NotFound {
@@ -419,7 +595,11 @@ impl VfsNoteRepo {
                             id: current_note.resource_id.clone(),
                         })?;
 
-                if new_hash != current_resource.hash && legacy_hash != current_resource.hash {
+                // 兼容历史无盐 hash 的存量资源：仅当盐化 hash 不匹配时才
+                // 计算 legacy hash（大笔记自动保存路径少一次全量 SHA）
+                if new_hash != current_resource.hash
+                    && VfsResourceRepo::compute_hash(new_content) != current_resource.hash
+                {
                     // 内容变化，创建新资源
                     let new_resource_result = VfsResourceRepo::create_or_reuse_with_conn_and_hash(
                         conn,
@@ -443,16 +623,6 @@ impl VfsNoteRepo {
             } else {
                 None
             };
-
-            // ★ M-011 修复：拒绝空标题，返回验证错误
-            if let Some(ref title) = params.title {
-                if title.trim().is_empty() {
-                    return Err(VfsError::InvalidArgument {
-                        param: "title".to_string(),
-                        reason: "标题不能为空".to_string(),
-                    });
-                }
-            }
 
             // 3. 构建更新 SQL
             let new_title = params.title.as_ref().unwrap_or(&current_note.title);
@@ -530,6 +700,20 @@ impl VfsNoteRepo {
                         "[VFS::NoteRepo] Deleted superseded resource {} for note {}",
                         old_rid, note_id
                     );
+                }
+            }
+
+            // ★ 2026-07-20：链接图维护收敛到 repo 层 —— 正文变化时在同一
+            // SAVEPOINT 内重写出链（原子：正文与 note_links 一起提交/回滚）。
+            // new_resource_id 为 Some 当且仅当携带正文且 hash 变化；
+            // 内容未变（hash 相同复用资源）时跳过，节省热路径自动保存开销。
+            if new_resource_id.is_some() {
+                if let Some(new_content) = &params.content {
+                    Self::replace_note_links_with_conn(
+                        conn,
+                        note_id,
+                        &extract_note_links(new_content),
+                    )?;
                 }
             }
 
@@ -807,15 +991,31 @@ impl VfsNoteRepo {
             }
         };
 
-        let chars: Vec<char> = trimmed_text.chars().collect();
+        // 单趟 char_indices 定位窗口的字节边界，避免为整篇正文分配 Vec<char>
+        // （接近 1MB 的笔记每个命中会额外拷贝 ~4MB）；切片天然落在字符边界上，
+        // 不会在多字节字符中间截断。
         let half = max_chars / 2;
-        let start = char_index.saturating_sub(half).min(chars.len());
-        let end = (start + max_chars).min(chars.len());
-        let mut snippet: String = chars[start..end].iter().collect();
-        if start > 0 {
+        let start_char = char_index.saturating_sub(half);
+        let end_char = start_char + max_chars;
+        let mut start_byte: Option<usize> = None;
+        let mut end_byte = trimmed_text.len();
+        let mut truncated_tail = false;
+        for (count, (byte_idx, _)) in trimmed_text.char_indices().enumerate() {
+            if count == start_char {
+                start_byte = Some(byte_idx);
+            }
+            if count == end_char {
+                end_byte = byte_idx;
+                truncated_tail = true;
+                break;
+            }
+        }
+        let start_byte = start_byte.unwrap_or(trimmed_text.len());
+        let mut snippet = trimmed_text[start_byte..end_byte].to_string();
+        if start_byte > 0 {
             snippet.insert(0, '…');
         }
-        if end < chars.len() {
+        if truncated_tail {
             snippet.push('…');
         }
         Some(snippet)
@@ -1638,19 +1838,42 @@ impl VfsNoteRepo {
     }
 
     /// 清空回收站（使用现有连接）
+    ///
+    /// ★ 2026-07 修复：整个清空操作包在一个 SAVEPOINT 里（原实现逐条自提交，
+    /// 中途失败会留下"删了一半"的回收站，且大回收站逐条 fsync 极慢）。
+    /// SAVEPOINT 可安全嵌套在调用方的外层事务内。
     pub fn purge_deleted_notes_with_conn(conn: &Connection) -> VfsResult<usize> {
-        let mut stmt = conn.prepare("SELECT id FROM notes WHERE deleted_at IS NOT NULL")?;
-        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
-        let note_ids: Vec<String> = rows.collect::<rusqlite::Result<Vec<_>>>()?;
-
-        let mut deleted_count = 0usize;
-        for note_id in note_ids {
-            Self::purge_note_with_conn(conn, &note_id)?;
-            deleted_count += 1;
+        let note_ids: Vec<String> = {
+            let mut stmt = conn.prepare("SELECT id FROM notes WHERE deleted_at IS NOT NULL")?;
+            let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        if note_ids.is_empty() {
+            return Ok(0);
         }
 
-        info!("[VFS::NoteRepo] Purged {} deleted notes", deleted_count);
-        Ok(deleted_count)
+        conn.execute("SAVEPOINT purge_deleted_notes", [])?;
+        let result = (|| -> VfsResult<usize> {
+            let mut deleted_count = 0usize;
+            for note_id in &note_ids {
+                Self::purge_note_with_conn(conn, note_id)?;
+                deleted_count += 1;
+            }
+            Ok(deleted_count)
+        })();
+
+        match result {
+            Ok(deleted_count) => {
+                conn.execute("RELEASE purge_deleted_notes", [])?;
+                info!("[VFS::NoteRepo] Purged {} deleted notes", deleted_count);
+                Ok(deleted_count)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO purge_deleted_notes", []);
+                let _ = conn.execute("RELEASE purge_deleted_notes", []);
+                Err(e)
+            }
+        }
     }
 
     // ========================================================================
@@ -2167,8 +2390,8 @@ impl VfsNoteRepo {
             )?;
 
             let mut written = 0usize;
-            let mut resolve_by_id = conn
-                .prepare("SELECT id, title FROM notes WHERE id = ?1 AND deleted_at IS NULL")?;
+            let mut resolve_by_id =
+                conn.prepare("SELECT id, title FROM notes WHERE id = ?1 AND deleted_at IS NULL")?;
             let mut resolve_by_title = conn.prepare(
                 "SELECT id, title FROM notes
                  WHERE deleted_at IS NULL AND title = ?1 COLLATE NOCASE
@@ -2288,10 +2511,7 @@ impl VfsNoteRepo {
     }
 
     /// 出链查询：该笔记链接到谁（含未解析链接）
-    pub fn outgoing_links_for(
-        db: &VfsDatabase,
-        note_id: &str,
-    ) -> VfsResult<Vec<NoteOutgoingLink>> {
+    pub fn outgoing_links_for(db: &VfsDatabase, note_id: &str) -> VfsResult<Vec<NoteOutgoingLink>> {
         let conn = db.get_conn_safe()?;
         Self::outgoing_links_for_with_conn(&conn, note_id)
     }
@@ -2385,7 +2605,9 @@ impl VfsNoteRepo {
             id: note_id.to_string(),
         })?;
         let title = note.title.trim().to_string();
-        if title.is_empty() {
+        // ★ 2026-07：过短标题误报限制——单字符标题（如 "数"）在任意正文中
+        // 命中率过高，候选几乎全是噪音，直接返回空集。
+        if title.is_empty() || title.chars().count() < 2 {
             return Ok(Vec::new());
         }
         let title_norm = title.to_lowercase();
@@ -2397,9 +2619,8 @@ impl VfsNoteRepo {
                  WHERE target_id = ?1
                     OR (target_id IS NULL AND target_title_norm = ?2)",
             )?;
-            let rows = stmt.query_map(params![note_id, title_norm], |row| {
-                row.get::<_, String>(0)
-            })?;
+            let rows =
+                stmt.query_map(params![note_id, title_norm], |row| row.get::<_, String>(0))?;
             rows.collect::<rusqlite::Result<HashSet<_>>>()?
         };
 
@@ -2451,8 +2672,11 @@ impl VfsNoteRepo {
             let tx_result: VfsResult<usize> = (|| {
                 let mut written = 0usize;
                 for (id, content) in &batch {
-                    written +=
-                        Self::replace_note_links_with_conn(&conn, id, &extract_note_links(content))?;
+                    written += Self::replace_note_links_with_conn(
+                        &conn,
+                        id,
+                        &extract_note_links(content),
+                    )?;
                 }
                 Ok(written)
             })();
@@ -2478,6 +2702,56 @@ impl VfsNoteRepo {
             notes_total, links_total
         );
         Ok((notes_total, links_total))
+    }
+
+    /// 一次性链接图回填标志（存于 vfs_indexing_config KV 表；BackupOnly，
+    /// 不进 __change_log 行级同步，与 note_links 派生数据的备份语义一致）。
+    const NOTE_LINKS_BACKFILL_KEY: &'static str = "maintenance.note_links_backfill_done";
+
+    /// 启动期一次性全量回填链接图（修复 DSTU 时期写路径不维护 note_links
+    /// 的存量缺口）。
+    ///
+    /// - 幂等：成功后写入 KV 标志，后续启动直接跳过（返回 `Ok(false)`）；
+    /// - 失败可重试：重建报错时不写标志，下次启动自动重试；
+    /// - 分批：复用 [`Self::rebuild_note_links`]（每批独立 IMMEDIATE 事务）。
+    ///
+    /// 注意：标志直接写 `vfs_indexing_config`（不走
+    /// `VfsIndexStateRepo::set_config`，后者对 key 做白名单校验，维护标志
+    /// 不属于可由前端设置的索引配置项）。
+    ///
+    /// 返回 `Ok(true)` 表示本次执行了回填，`Ok(false)` 表示已回填过、跳过。
+    pub fn backfill_note_links_once(db: &VfsDatabase, batch_size: usize) -> VfsResult<bool> {
+        // 作用域内借出连接检查标志后立即归还，避免与 rebuild 内部再次取连接冲突
+        {
+            let conn = db.get_conn_safe()?;
+            let done: Option<String> = conn
+                .query_row(
+                    "SELECT value FROM vfs_indexing_config WHERE key = ?1",
+                    params![Self::NOTE_LINKS_BACKFILL_KEY],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if done.as_deref() == Some("true") {
+                return Ok(false);
+            }
+        }
+
+        let (notes, links) = Self::rebuild_note_links(db, batch_size)?;
+
+        let conn = db.get_conn_safe()?;
+        conn.execute(
+            "INSERT OR REPLACE INTO vfs_indexing_config (key, value, updated_at)
+             VALUES (?1, 'true', ?2)",
+            params![
+                Self::NOTE_LINKS_BACKFILL_KEY,
+                chrono::Utc::now().timestamp_millis()
+            ],
+        )?;
+        info!(
+            "[VFS::NoteRepo] One-time note links backfill done: {} notes, {} links",
+            notes, links
+        );
+        Ok(true)
     }
 }
 
@@ -2948,6 +3222,112 @@ mod tests {
         assert!(links.windows(2).all(|w| w[0].position < w[1].position));
     }
 
+    /// ★ 2026-07：代码围栏 / 行内代码中的链接样文本不算链接
+    #[test]
+    fn test_extract_note_links_skips_code_regions() {
+        let content = "正文 [[真实链接]]\n\
+                       ```rust\n\
+                       let a = \"[[代码里的假链接]]\"; // note://note_fake1\n\
+                       ```\n\
+                       行内 `[[行内代码假链接]]` 与 `note://note_fake2` 之后\n\
+                       又一个 [[结尾链接]] 和 note://note_real9";
+        let links = extract_note_links(content);
+        let targets: Vec<&str> = links.iter().map(|l| l.raw_target.as_str()).collect();
+        assert_eq!(targets, vec!["真实链接", "结尾链接", "note_real9"]);
+
+        // 未闭合围栏延伸到文末：其中的链接同样不提取
+        let unclosed = "开头 [[可见]]\n```\n[[被吞的]] note://note_x\n";
+        let links = extract_note_links(unclosed);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].raw_target, "可见");
+
+        // ~~~ 围栏、以及围栏关闭后恢复提取
+        let tilde = "~~~\n[[假]]\n~~~\n[[真]]";
+        let links = extract_note_links(tilde);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].raw_target, "真");
+
+        // 未配对的单个反引号不构成行内代码
+        let dangling = "一个 ` 反引号 [[仍是链接]]";
+        let links = extract_note_links(dangling);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].raw_target, "仍是链接");
+    }
+
+    /// ★ 2026-07：snippet 的 UTF-8 边界与省略号行为（多字节字符窗口不 panic）
+    #[test]
+    fn test_make_search_snippet_utf8_boundaries() {
+        // 关键词位于长中文正文中段：前后都应截断并带省略号
+        let body: String = "汉".repeat(300) + "目标关键词" + &"字".repeat(300);
+        let snippet = VfsNoteRepo::make_search_snippet(&body, "目标关键词", 40)
+            .expect("snippet should exist");
+        assert!(snippet.contains("目标关键词"));
+        assert!(snippet.starts_with('…') && snippet.ends_with('…'));
+        // 窗口 40 字符 + 两个省略号
+        assert!(snippet.chars().count() <= 42);
+
+        // 短正文：不加省略号，原样返回
+        let snippet = VfsNoteRepo::make_search_snippet("短正文 emoji 🎯 结尾", "🎯", 160)
+            .expect("snippet should exist");
+        assert_eq!(snippet, "短正文 emoji 🎯 结尾");
+
+        // 关键词未命中（如仅命中标题）：从开头截取
+        let snippet =
+            VfsNoteRepo::make_search_snippet(&"a".repeat(500), "不存在", 10).expect("snippet");
+        assert!(snippet.ends_with('…'));
+        assert!(!snippet.starts_with('…'));
+    }
+
+    /// ★ 2026-07：标题/标签防御性校验
+    #[test]
+    fn test_title_and_tags_validation() {
+        let (_temp_dir, db) = setup_test_db();
+
+        // 超长标题拒绝
+        let err = VfsNoteRepo::create_note(
+            &db,
+            VfsCreateNoteParams {
+                title: "长".repeat(501),
+                content: "x".to_string(),
+                tags: vec![],
+            },
+        );
+        assert!(err.is_err());
+
+        // 标题含换行拒绝
+        let err = VfsNoteRepo::create_note(
+            &db,
+            VfsCreateNoteParams {
+                title: "第一行\n第二行".to_string(),
+                content: "x".to_string(),
+                tags: vec![],
+            },
+        );
+        assert!(err.is_err());
+
+        // 含 Tab 的标题允许（Markdown H1 导入场景）
+        let ok = VfsNoteRepo::create_note(
+            &db,
+            VfsCreateNoteParams {
+                title: "a\tb".to_string(),
+                content: "x".to_string(),
+                tags: vec![],
+            },
+        );
+        assert!(ok.is_ok());
+
+        // 超长标签拒绝
+        let err = VfsNoteRepo::create_note(
+            &db,
+            VfsCreateNoteParams {
+                title: "正常标题".to_string(),
+                content: "x".to_string(),
+                tags: vec!["t".repeat(101)],
+            },
+        );
+        assert!(err.is_err());
+    }
+
     #[test]
     fn test_note_links_resolution_backlinks_and_unresolved() {
         let (_temp_dir, db) = setup_test_db();
@@ -2958,7 +3338,8 @@ mod tests {
             target.id
         );
         let source = create_simple_note(&db, "复习计划", &source_content);
-        // 链接维护由命令层（cmd/notes.rs）负责，repo 测试显式触发
+        // create_note 已在 repo 层同事务维护链接；这里再显式触发一次，
+        // 同时验证 replace_note_links_from_content 的幂等性
         VfsNoteRepo::replace_note_links_from_content(&db, &source.id, &source_content).unwrap();
 
         let outgoing = VfsNoteRepo::outgoing_links_for(&db, &source.id).unwrap();
@@ -2967,7 +3348,9 @@ mod tests {
         assert!(outgoing.len() >= 3);
         let resolved: Vec<_> = outgoing.iter().filter(|l| l.resolved).collect();
         assert_eq!(resolved.len(), 2, "标题与 id 两条链接都应解析成功");
-        assert!(resolved.iter().all(|l| l.target_id.as_deref() == Some(target.id.as_str())));
+        assert!(resolved
+            .iter()
+            .all(|l| l.target_id.as_deref() == Some(target.id.as_str())));
 
         let backlinks = VfsNoteRepo::backlinks_for(&db, &target.id).unwrap();
         assert_eq!(backlinks.len(), 2);
@@ -3039,6 +3422,198 @@ mod tests {
     }
 
     #[test]
+    fn test_create_note_maintains_links_in_repo_layer() {
+        let (_temp_dir, db) = setup_test_db();
+
+        let target = create_simple_note(&db, "目标笔记", "target body");
+        // 不做任何显式链接维护调用 —— create_note 应在同一事务内写出链
+        let source = create_simple_note(
+            &db,
+            "来源笔记",
+            &format!("参考 [[目标笔记]] 与 note://{}", target.id),
+        );
+
+        let outgoing = VfsNoteRepo::outgoing_links_for(&db, &source.id).unwrap();
+        assert_eq!(outgoing.len(), 2, "创建即应产生两条出链");
+        assert!(
+            outgoing
+                .iter()
+                .all(|l| l.resolved && l.target_id.as_deref() == Some(target.id.as_str())),
+            "标题与 id 链接都应解析到目标笔记"
+        );
+
+        let backlinks = VfsNoteRepo::backlinks_for(&db, &target.id).unwrap();
+        assert_eq!(backlinks.len(), 2);
+        assert!(backlinks.iter().all(|b| b.source_id == source.id));
+    }
+
+    #[test]
+    fn test_update_note_refreshes_links_in_repo_layer() {
+        let (_temp_dir, db) = setup_test_db();
+
+        let alpha = create_simple_note(&db, "Alpha", "a");
+        let beta = create_simple_note(&db, "Beta", "b");
+        let source = create_simple_note(&db, "来源", "见 [[Alpha]]");
+
+        // 不做任何显式链接维护调用 —— update_note 应在同一事务内重写出链
+        VfsNoteRepo::update_note(
+            &db,
+            &source.id,
+            VfsUpdateNoteParams {
+                title: None,
+                content: Some("改为 [[Beta]]".to_string()),
+                tags: None,
+                expected_updated_at: None,
+            },
+        )
+        .unwrap();
+
+        let outgoing = VfsNoteRepo::outgoing_links_for(&db, &source.id).unwrap();
+        assert_eq!(outgoing.len(), 1, "旧出链应被替换而非累加");
+        assert_eq!(outgoing[0].target_id.as_deref(), Some(beta.id.as_str()));
+        assert!(VfsNoteRepo::backlinks_for(&db, &alpha.id)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn test_update_note_unchanged_content_and_title_only_skip_link_refresh() {
+        let (_temp_dir, db) = setup_test_db();
+
+        create_simple_note(&db, "Alpha", "a");
+        let content = "见 [[Alpha]]";
+        let source = create_simple_note(&db, "来源", content);
+
+        // 人工清空出链行，用于探测"是否发生了刷新"
+        let clear_links = || {
+            let conn = db.get_conn_safe().unwrap();
+            conn.execute(
+                "DELETE FROM note_links WHERE source_id = ?1",
+                params![source.id],
+            )
+            .unwrap();
+        };
+
+        // 1. 内容未变（hash 相同复用资源）→ 跳过链接刷新
+        clear_links();
+        VfsNoteRepo::update_note(
+            &db,
+            &source.id,
+            VfsUpdateNoteParams {
+                title: None,
+                content: Some(content.to_string()),
+                tags: None,
+                expected_updated_at: None,
+            },
+        )
+        .unwrap();
+        assert!(
+            VfsNoteRepo::outgoing_links_for(&db, &source.id)
+                .unwrap()
+                .is_empty(),
+            "内容未变时不应刷新链接图（热路径跳过）"
+        );
+
+        // 2. 仅改标题（不携带正文）→ 同样跳过
+        VfsNoteRepo::update_note(
+            &db,
+            &source.id,
+            VfsUpdateNoteParams {
+                title: Some("来源改名".to_string()),
+                content: None,
+                tags: None,
+                expected_updated_at: None,
+            },
+        )
+        .unwrap();
+        assert!(VfsNoteRepo::outgoing_links_for(&db, &source.id)
+            .unwrap()
+            .is_empty());
+
+        // 3. 内容真正变化 → 刷新
+        VfsNoteRepo::update_note(
+            &db,
+            &source.id,
+            VfsUpdateNoteParams {
+                title: None,
+                content: Some("还是见 [[Alpha]] 但内容变了".to_string()),
+                tags: None,
+                expected_updated_at: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            VfsNoteRepo::outgoing_links_for(&db, &source.id)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn test_soft_delete_and_restore_preserve_outgoing_links() {
+        let (_temp_dir, db) = setup_test_db();
+
+        let target = create_simple_note(&db, "被引用", "t");
+        let source = create_simple_note(&db, "引用者", "见 [[被引用]]");
+
+        // 软删除不触发 trg_note_links_on_note_delete（仅硬删除触发），出链行保留
+        VfsNoteRepo::delete_note(&db, &source.id).unwrap();
+        {
+            let conn = db.get_conn_safe().unwrap();
+            let rows: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM note_links WHERE source_id = ?1",
+                    params![source.id],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(rows, 1, "软删除应保留出链行（供恢复复用）");
+        }
+
+        // 恢复后出链立即可查，无需重建
+        VfsNoteRepo::restore_note(&db, &source.id).unwrap();
+        let outgoing = VfsNoteRepo::outgoing_links_for(&db, &source.id).unwrap();
+        assert_eq!(outgoing.len(), 1);
+        assert_eq!(outgoing[0].target_id.as_deref(), Some(target.id.as_str()));
+    }
+
+    #[test]
+    fn test_backfill_note_links_once_flag_and_retry_semantics() {
+        let (_temp_dir, db) = setup_test_db();
+
+        create_simple_note(&db, "枢纽", "hub");
+        let source = create_simple_note(&db, "来源", "见 [[枢纽]]");
+
+        // 模拟 DSTU 时期漏维护的存量库：人工清空链接图
+        {
+            let conn = db.get_conn_safe().unwrap();
+            conn.execute("DELETE FROM note_links", []).unwrap();
+        }
+
+        // 首次执行：回填并写标志
+        let ran = VfsNoteRepo::backfill_note_links_once(&db, 100).unwrap();
+        assert!(ran, "标志缺失时应执行回填");
+        assert_eq!(
+            VfsNoteRepo::outgoing_links_for(&db, &source.id)
+                .unwrap()
+                .len(),
+            1
+        );
+
+        // 再次执行：标志已置位，直接跳过（不再重建）
+        {
+            let conn = db.get_conn_safe().unwrap();
+            conn.execute("DELETE FROM note_links", []).unwrap();
+        }
+        let ran = VfsNoteRepo::backfill_note_links_once(&db, 100).unwrap();
+        assert!(!ran, "标志已置位时应跳过");
+        assert!(VfsNoteRepo::outgoing_links_for(&db, &source.id)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
     fn test_search_notes_by_tags_with_snippets_exact_and_keyword() {
         let (_temp_dir, db) = setup_test_db();
 
@@ -3077,7 +3652,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(hits.len(), 1);
-        assert!(hits[0].1.as_deref().unwrap_or_default().contains("derivative"));
+        assert!(hits[0]
+            .1
+            .as_deref()
+            .unwrap_or_default()
+            .contains("derivative"));
 
         // 关键词不命中时无结果
         let hits = VfsNoteRepo::search_notes_by_tags_with_snippets(

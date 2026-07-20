@@ -528,6 +528,109 @@ impl LearnerProfile {
 }
 
 // ============================================================================
+// 跨设备同步合并（J8c）：resources.data 的画像字段级合并
+// ============================================================================
+
+/// 严格判定一段 JSON 是否为学习者画像形状。
+///
+/// 注意不能用"能否反序列化为 LearnerProfile"判定：所有字段都带 serde default，
+/// 任意 JSON 对象都能成功反序列化。`to_json` 的产物恒定包含下列键，
+/// 用键存在性判定可把误伤其他 resources 行的概率降到可忽略。
+fn is_learner_profile_json_shape(value: &serde_json::Value) -> bool {
+    let Some(obj) = value.as_object() else {
+        return false;
+    };
+    ["version", "updated_at", "weak_points", "preferences", "goals"]
+        .iter()
+        .all(|key| obj.contains_key(*key))
+}
+
+/// 供 sync 引擎 field_merge 调用的画像合并入口（纯函数）。
+///
+/// 两侧内容都严格匹配画像 JSON 形状时做结构化合并并返回合并后的 JSON；
+/// 任一侧不是画像（普通笔记内容、画像历史 JSONL 等）时返回 None，
+/// 调用方回退到原有 row-level LWW/conflict 语义。
+pub fn merge_profile_json_for_sync(local_json: &str, remote_json: &str) -> Option<String> {
+    let local_value: serde_json::Value = serde_json::from_str(local_json).ok()?;
+    let remote_value: serde_json::Value = serde_json::from_str(remote_json).ok()?;
+    if !is_learner_profile_json_shape(&local_value) || !is_learner_profile_json_shape(&remote_value)
+    {
+        return None;
+    }
+    let local = LearnerProfile::from_json(local_json)?;
+    let remote = LearnerProfile::from_json(remote_json)?;
+    Some(merge_profiles_for_sync(&local, &remote).to_json())
+}
+
+/// 对称合并两份并发演化的画像（与 local/remote 角色无关）。
+///
+/// 两台设备各自对同一对画像执行本函数会收敛到同一结果：
+/// - "较新一侧"按 updated_at（回退 version，再回退序列化串）判定，与调用顺序无关；
+/// - weak_points 按 (subject, knowledge_point) 键合并，同键取 evidence_count 较大的
+///   整条（相等时取较新一侧），仅一侧存在的键保留（并集）；
+/// - goals 按 goal 文本并集，同文本取较新一侧的 deadline；
+/// - preferences / recent_status / promotion fingerprint 整体取较新一侧；
+/// - version 取 max+1（两侧算得相同），updated_at 取较新值。
+///
+/// 已知边界：并集语义无法表达"并发移除"——一台设备移除的 weak_point/goal 若在
+/// 另一侧仍存在会被合并复活（remove-wins 需要墓碑，超出本次范围）；
+/// promotion fingerprint 只有一个槽位，较旧一侧的指纹丢失后同一批日志在该设备
+/// 重放晋升时可能重复累加证据。
+pub fn merge_profiles_for_sync(a: &LearnerProfile, b: &LearnerProfile) -> LearnerProfile {
+    // 判定较新一侧：updated_at → version → 序列化串（保证全序，两侧判定一致）
+    let a_is_newer = match a.updated_at.cmp(&b.updated_at) {
+        std::cmp::Ordering::Greater => true,
+        std::cmp::Ordering::Less => false,
+        std::cmp::Ordering::Equal => match a.version.cmp(&b.version) {
+            std::cmp::Ordering::Greater => true,
+            std::cmp::Ordering::Less => false,
+            std::cmp::Ordering::Equal => a.to_json() >= b.to_json(),
+        },
+    };
+    let (newer, older) = if a_is_newer { (a, b) } else { (b, a) };
+
+    // weak_points：以较新一侧的顺序为基底，同键取证据较大的整条，较旧一侧独有的键追加
+    let mut weak_points = newer.weak_points.clone();
+    for old_wp in &older.weak_points {
+        match weak_points.iter_mut().find(|wp| {
+            key_eq(
+                &wp.subject,
+                &wp.knowledge_point,
+                &old_wp.subject,
+                &old_wp.knowledge_point,
+            )
+        }) {
+            Some(existing) => {
+                if old_wp.evidence_count > existing.evidence_count {
+                    *existing = old_wp.clone();
+                }
+            }
+            None => weak_points.push(old_wp.clone()),
+        }
+    }
+
+    // goals：按文本并集，同文本保留较新一侧条目（含 deadline）
+    let mut goals = newer.goals.clone();
+    for old_goal in &older.goals {
+        if !goals.iter().any(|g| g.goal.trim() == old_goal.goal.trim()) {
+            goals.push(old_goal.clone());
+        }
+    }
+
+    let mut merged = LearnerProfile {
+        version: newer.version.max(older.version).saturating_add(1),
+        updated_at: newer.updated_at.clone(),
+        weak_points,
+        preferences: newer.preferences.clone(),
+        goals,
+        recent_status: newer.recent_status.clone(),
+        last_promotion_fingerprint: newer.last_promotion_fingerprint.clone(),
+    };
+    merged.enforce_char_limit();
+    merged
+}
+
+// ============================================================================
 // 存储（复用记忆存储底座：__system__ 文件夹下的系统笔记）
 // ============================================================================
 
@@ -1722,6 +1825,91 @@ mod tests {
                 .expect("count reserved notes");
             assert_eq!(count, 1, "reserved note {title} must be unique");
         }
+    }
+
+    #[test]
+    fn sync_merge_is_symmetric_and_keeps_both_sides_increments() {
+        let mut device_a = LearnerProfile {
+            version: 5,
+            updated_at: "2026-07-19T10:00:00+00:00".to_string(),
+            recent_status: Some("A 侧状态".to_string()),
+            ..Default::default()
+        };
+        device_a
+            .weak_points
+            .push(wp("数学", "二次函数", "符号错误", 4));
+        device_a.weak_points.push(wp("英语", "虚拟语气", "时态", 2));
+        device_a.goals.push(LearningGoal {
+            goal: "共同目标".to_string(),
+            deadline: Some("2026-08-01".to_string()),
+        });
+        device_a.goals.push(LearningGoal {
+            goal: "A 侧目标".to_string(),
+            deadline: None,
+        });
+
+        let mut device_b = LearnerProfile {
+            version: 6,
+            updated_at: "2026-07-19T11:00:00+00:00".to_string(),
+            recent_status: Some("B 侧状态".to_string()),
+            ..Default::default()
+        };
+        device_b
+            .weak_points
+            .push(wp("数学", "二次函数", "配方符号错误", 7));
+        device_b.weak_points.push(wp("物理", "受力分析", "漏力", 1));
+        device_b.goals.push(LearningGoal {
+            goal: "共同目标".to_string(),
+            deadline: Some("2026-09-01".to_string()),
+        });
+
+        let merged_ab = merge_profiles_for_sync(&device_a, &device_b);
+        let merged_ba = merge_profiles_for_sync(&device_b, &device_a);
+        // 对称性：两台设备各自合并收敛到同一结果
+        assert_eq!(merged_ab.to_json(), merged_ba.to_json());
+
+        // version = max+1，updated_at 取较新
+        assert_eq!(merged_ab.version, 7);
+        assert_eq!(merged_ab.updated_at, "2026-07-19T11:00:00+00:00");
+        // 同键取证据较大的整条；两侧独有键都保留
+        assert_eq!(merged_ab.weak_points.len(), 3);
+        let math = merged_ab
+            .weak_points
+            .iter()
+            .find(|w| w.knowledge_point == "二次函数")
+            .unwrap();
+        assert_eq!(math.evidence_count, 7);
+        assert_eq!(math.error_pattern, "配方符号错误");
+        assert!(merged_ab
+            .weak_points
+            .iter()
+            .any(|w| w.knowledge_point == "虚拟语气"));
+        assert!(merged_ab
+            .weak_points
+            .iter()
+            .any(|w| w.knowledge_point == "受力分析"));
+        // goals 并集，同文本取较新一侧 deadline
+        assert_eq!(merged_ab.goals.len(), 2);
+        let common = merged_ab
+            .goals
+            .iter()
+            .find(|g| g.goal == "共同目标")
+            .unwrap();
+        assert_eq!(common.deadline.as_deref(), Some("2026-09-01"));
+        // recent_status 取较新一侧
+        assert_eq!(merged_ab.recent_status.as_deref(), Some("B 侧状态"));
+    }
+
+    #[test]
+    fn sync_merge_json_entry_rejects_non_profile_content() {
+        // 普通笔记内容 / 任意 JSON 对象都不应触发画像合并
+        assert!(merge_profile_json_for_sync("普通笔记文本", "{}").is_none());
+        assert!(merge_profile_json_for_sync(r#"{"foo":1}"#, r#"{"bar":2}"#).is_none());
+        // 单侧是画像也不行
+        let profile_json = LearnerProfile::default().to_json();
+        assert!(merge_profile_json_for_sync(&profile_json, r#"{"foo":1}"#).is_none());
+        // 两侧都是画像时返回合并结果
+        assert!(merge_profile_json_for_sync(&profile_json, &profile_json).is_some());
     }
 
     #[test]

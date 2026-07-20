@@ -60,6 +60,34 @@ const CHAT_V2_SESSION_TAGS_SYNC_TRIGGERS: [&str; 3] = [
 const CORE_BACKUP_ROOT_DIR_NAME: &str = "migration_core_backups";
 const CORE_BACKUP_RETENTION_COUNT: usize = 5;
 
+/// 已知历史 checksum 漂移的显式 allowlist（fail-close 的唯一放行通道）。
+///
+/// 条目为 `(database_id, refinery_version)`：该版本的迁移脚本存在**已知**的
+/// 历史草稿版本（发布后被重写），允许在迁移契约验证通过（证明 schema 已被
+/// `repair_recorded_migration_schema_gaps` 等修复收敛）后把 history 中的
+/// checksum 对齐到当前脚本。
+///
+/// 除 baseline（checksum="0"）与本清单外，任何 checksum/名称漂移一律中止
+/// 迁移（`MigrationError::ChecksumMismatch`），不得静默改写迁移历史。
+/// 新增条目必须附带对应的 schema 收敛修复逻辑与测试。
+const LEGACY_CHECKSUM_DRIFT_ALLOWLIST: &[(&str, i32)] = &[
+    // V20260714 vector index profiles 存在多个历史草稿（schema 草稿与 DML
+    // 语义草稿），由 repair_vfs_v20260714_vector_index_profiles 先行收敛。
+    ("vfs", 20260714),
+];
+
+/// 启动时兼容 patch（`make_alter_columns_safe` 的自动重放/补列/标记完成）
+/// 允许作用的最大迁移版本（含）。
+///
+/// 该机制是为修复历史上 `set_grouped(true)` 时代 DDL 回滚不可靠留下的
+/// 中间状态而生：它解析迁移 SQL 里的 `ALTER TABLE ADD COLUMN` 并在运行时
+/// 补列/重放/直接标记迁移完成。这类运行时 ALTER 不应无限期作用于未来的
+/// 迁移——边界固定在引入本 fail-close 修复时仓库中的最新迁移版本；
+/// 之后的新迁移只能由 Refinery 正常执行，残留问题必须显式处理
+///（新增 pre_repair 或迁移脚本自身幂等），不再被自动"修复"。
+#[cfg(feature = "data_governance")]
+const STARTUP_COMPAT_REPLAY_MAX_VERSION: i32 = 20260801;
+
 // 同一进程（一次应用启动）中，针对同一数据目录只做一次“迁移前核心库备份”
 static STARTUP_CORE_BACKUP_GUARD: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
@@ -1295,6 +1323,18 @@ impl MigrationCoordinator {
                 continue;
             }
 
+            // 版本边界（fail-close）：兼容重放只服务于边界内的历史迁移。
+            // 边界之后的新迁移必须由 Refinery 正常执行，运行时 ALTER/重放/
+            // 预标记完成一律不适用，避免"任意未来迁移都可被启动时补丁改写"。
+            if version > STARTUP_COMPAT_REPLAY_MAX_VERSION {
+                tracing::debug!(
+                    version = version,
+                    boundary = STARTUP_COMPAT_REPLAY_MAX_VERSION,
+                    "跳过启动时兼容重放：迁移版本超出兼容边界，交由 Refinery 正常执行"
+                );
+                continue;
+            }
+
             // 解析 SQL 中的 ALTER TABLE ... ADD COLUMN
             let sql = migration.sql().unwrap_or_default();
             let alter_columns = Self::parse_alter_add_columns(sql);
@@ -1572,21 +1612,53 @@ impl MigrationCoordinator {
                     continue; // 已一致，跳过
                 }
 
-                // 安全限制：仅在以下情况修复
-                // 1. baseline 对齐（checksum="0"，由 ensure_legacy_baseline 写入）
-                // 2. 同名迁移的 checksum 漂移（脚本内容变更但名称一致）
+                // fail-close 策略：history 是迁移的唯一事实源，只有两条明确
+                // 允许的对齐路径，其余漂移一律中止迁移（而不是静默改写记录）：
+                // 1. baseline 对齐——checksum="0" 由 ensure_legacy_baseline 在
+                //    首迁移契约验证通过后写入，是显式的占位值；
+                // 2. 显式 allowlist 中的同名漂移——已知历史草稿脚本被重写的
+                //    版本，且必须先通过该版本的迁移契约验证（证明 schema 已由
+                //    repair_recorded_migration_schema_gaps 等修复收敛）。
                 let is_baseline = db_checksum == "0";
                 let is_same_name = db_name == name;
 
                 if !is_baseline && !is_same_name {
-                    tracing::warn!(
-                        database = id.as_str(),
-                        version = version,
-                        db_name = %db_name,
-                        expected_name = %name,
-                        "跳过 checksum 修复：迁移名称不匹配且非 baseline，可能是版本号冲突"
-                    );
-                    continue;
+                    // 版本号冲突/历史被篡改：既不是 baseline 也不是同名脚本漂移
+                    return Err(MigrationError::Database(format!(
+                        "refinery 迁移历史 V{} 名称不匹配（记录 '{}'，期望 '{}'，记录 checksum '{}'）。\
+                         未知漂移 fail-close：请人工核对 {} 库的 refinery_schema_history 后再升级",
+                        version,
+                        db_name,
+                        name,
+                        db_checksum,
+                        id.as_str(),
+                    )));
+                }
+
+                let mut reason = "baseline_alignment";
+                if !is_baseline {
+                    let allowlisted = LEGACY_CHECKSUM_DRIFT_ALLOWLIST
+                        .contains(&(id.as_str(), version));
+                    if !allowlisted {
+                        // 未知 checksum 漂移：可能是脚本被篡改、部分应用或分叉
+                        // 版本，静默对齐会掩盖真实的 schema 分歧，必须中止。
+                        return Err(MigrationError::ChecksumMismatch {
+                            version: version as u32,
+                            expected: checksum.clone(),
+                            actual: db_checksum.clone(),
+                        });
+                    }
+                    // allowlist 只放行"已知草稿版本"，还必须证明 schema 已收敛：
+                    // 该版本的迁移契约（表/列/索引/语义烟测）验证通过才允许对齐。
+                    let migration_set = self.get_migration_set(id);
+                    let definition = migration_set.get(version).ok_or_else(|| {
+                        MigrationError::Database(format!(
+                            "allowlist 中的 V{} 缺少迁移契约定义，无法验证收敛，拒绝对齐 checksum",
+                            version
+                        ))
+                    })?;
+                    MigrationVerifier::verify(conn, definition)?;
+                    reason = "allowlisted_legacy_drift";
                 }
 
                 conn.execute(
@@ -1602,11 +1674,7 @@ impl MigrationCoordinator {
                     &name,
                     &db_checksum.get(..8).unwrap_or(&db_checksum),
                     &checksum.get(..8).unwrap_or(&checksum),
-                    if is_baseline {
-                        "baseline_alignment"
-                    } else {
-                        "checksum_drift"
-                    },
+                    reason,
                 );
                 repair_details.push(detail);
                 repaired += 1;
@@ -5126,6 +5194,155 @@ mod tests {
         assert!(!repaired_again, "a converged schema must remain stable");
     }
 
+    /// 回归（fail-close）：未知的同名 checksum 漂移必须中止迁移，
+    /// 而不是像旧实现那样静默把 history 改写成当前脚本的 checksum。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_unknown_checksum_drift_fails_close() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("llm_usage.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+
+        // 同名迁移、未知 checksum（不在 allowlist，也不是 baseline "0"）
+        conn.execute_batch(
+            "CREATE TABLE refinery_schema_history (
+                version INTEGER PRIMARY KEY, name TEXT, applied_on TEXT, checksum TEXT
+            );
+            INSERT INTO refinery_schema_history VALUES (
+                20260130, 'init', '2026-01-30T00:00:00Z', 'unknown-tampered-checksum'
+            );",
+        )
+        .unwrap();
+
+        let runner = coordinator.create_llm_usage_runner().unwrap();
+        let error = coordinator
+            .repair_refinery_checksums(&conn, &DatabaseId::LlmUsage, &runner)
+            .expect_err("unknown checksum drift must abort the migration");
+        match &error {
+            MigrationError::ChecksumMismatch {
+                version, actual, ..
+            } => {
+                assert_eq!(*version, 20260130);
+                assert_eq!(actual, "unknown-tampered-checksum");
+            }
+            other => panic!("expected ChecksumMismatch, got: {other:?}"),
+        }
+
+        // fail-close：history 记录必须保持原样，不得被部分改写
+        let recorded: String = conn
+            .query_row(
+                "SELECT checksum FROM refinery_schema_history WHERE version = 20260130",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(recorded, "unknown-tampered-checksum");
+    }
+
+    /// 回归（fail-close）：版本号相同但名称不同（版本冲突/历史被篡改）
+    /// 必须中止迁移，而不是旧实现的"warn 后跳过"。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_migration_name_conflict_fails_close() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("llm_usage.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+
+        conn.execute_batch(
+            "CREATE TABLE refinery_schema_history (
+                version INTEGER PRIMARY KEY, name TEXT, applied_on TEXT, checksum TEXT
+            );
+            INSERT INTO refinery_schema_history VALUES (
+                20260130, 'someone_elses_migration', '2026-01-30T00:00:00Z', 'not-zero'
+            );",
+        )
+        .unwrap();
+
+        let runner = coordinator.create_llm_usage_runner().unwrap();
+        let error = coordinator
+            .repair_refinery_checksums(&conn, &DatabaseId::LlmUsage, &runner)
+            .expect_err("name conflict must abort the migration");
+        assert!(
+            error.to_string().contains("名称不匹配"),
+            "error should describe the name conflict: {error}"
+        );
+    }
+
+    /// baseline（checksum="0"）仍是显式允许的对齐路径：
+    /// ensure_legacy_baseline 写入的占位 checksum 会被对齐到真实值。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_baseline_zero_checksum_is_aligned_to_real_checksum() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("llm_usage.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+
+        conn.execute_batch(
+            "CREATE TABLE refinery_schema_history (
+                version INTEGER PRIMARY KEY, name TEXT, applied_on TEXT, checksum TEXT
+            );
+            INSERT INTO refinery_schema_history VALUES (
+                20260130, 'init', '2026-01-30T00:00:00Z', '0'
+            );",
+        )
+        .unwrap();
+
+        let runner = coordinator.create_llm_usage_runner().unwrap();
+        coordinator
+            .repair_refinery_checksums(&conn, &DatabaseId::LlmUsage, &runner)
+            .expect("baseline alignment must stay permitted");
+
+        let expected = runner
+            .get_migrations()
+            .iter()
+            .find(|m| m.version() == 20260130)
+            .expect("init migration exists")
+            .checksum()
+            .to_string();
+        let recorded: String = conn
+            .query_row(
+                "SELECT checksum FROM refinery_schema_history WHERE version = 20260130",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(recorded, expected, "baseline '0' should be aligned");
+    }
+
+    /// 回归：启动时兼容重放存在明确版本边界——边界之后的迁移即使
+    /// 命中"ALTER 列已存在"的残留特征，也不再被自动重放/标记完成，
+    /// 必须交由 Refinery 正常执行。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_startup_compat_replay_respects_version_boundary() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("probe.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+
+        // 目标列已存在：对边界内的迁移，旧机制会重放并预标记完成
+        conn.execute_batch("CREATE TABLE probe (id INTEGER PRIMARY KEY, smuggled TEXT);")
+            .unwrap();
+
+        let future_version = STARTUP_COMPAT_REPLAY_MAX_VERSION + 1;
+        let migration = refinery::Migration::unapplied(
+            &format!("V{}__future_alter", future_version),
+            "ALTER TABLE probe ADD COLUMN smuggled TEXT;",
+        )
+        .unwrap();
+        let runner = refinery::Runner::new(&[migration]);
+
+        coordinator
+            .make_alter_columns_safe(&conn, &runner)
+            .expect("boundary skip must not error");
+
+        assert!(
+            !coordinator
+                .is_migration_recorded(&conn, future_version)
+                .unwrap(),
+            "migrations beyond the compat boundary must not be pre-marked complete"
+        );
+    }
+
     #[cfg(feature = "data_governance")]
     #[test]
     fn test_mistakes_recorded_v20260523_document_tasks_gap_is_repaired_and_rebaselined() {
@@ -6011,8 +6228,7 @@ mod tests {
         DatabaseId::all_ordered()
             .into_iter()
             .map(|id| {
-                let conn =
-                    rusqlite::Connection::open(coordinator.get_database_path(&id)).unwrap();
+                let conn = rusqlite::Connection::open(coordinator.get_database_path(&id)).unwrap();
                 let version = coordinator.get_current_version(&conn).unwrap();
                 (id, version)
             })
@@ -6024,8 +6240,7 @@ mod tests {
     #[cfg(feature = "data_governance")]
     fn new_schema_sentinels(coordinator: &MigrationCoordinator) -> (bool, bool, bool) {
         let chat_conn =
-            rusqlite::Connection::open(coordinator.get_database_path(&DatabaseId::ChatV2))
-                .unwrap();
+            rusqlite::Connection::open(coordinator.get_database_path(&DatabaseId::ChatV2)).unwrap();
         // V20260719 新建复合索引
         let chat_new = coordinator
             .index_exists(&chat_conn, "idx_chat_v2_sessions_status_updated")
@@ -6036,7 +6251,11 @@ mod tests {
                 .unwrap();
         // V20260721 新增列
         let mistakes_new = coordinator
-            .column_exists(&mistakes_conn, "automation_definitions", "trusted_profile_json")
+            .column_exists(
+                &mistakes_conn,
+                "automation_definitions",
+                "trusted_profile_json",
+            )
             .unwrap();
 
         let llm_conn =
@@ -6054,15 +6273,14 @@ mod tests {
     #[cfg(feature = "data_governance")]
     fn assert_markers_intact(coordinator: &MigrationCoordinator, context: &str) {
         for id in DatabaseId::all_ordered() {
-            let conn =
-                rusqlite::Connection::open(coordinator.get_database_path(&id)).unwrap();
+            let conn = rusqlite::Connection::open(coordinator.get_database_path(&id)).unwrap();
             let payload: String = conn
-                .query_row("SELECT payload FROM __test_marker WHERE id = 'm'", [], |r| {
-                    r.get(0)
-                })
-                .unwrap_or_else(|e| {
-                    panic!("[{}] {} marker 丢失: {}", context, id.as_str(), e)
-                });
+                .query_row(
+                    "SELECT payload FROM __test_marker WHERE id = 'm'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap_or_else(|e| panic!("[{}] {} marker 丢失: {}", context, id.as_str(), e));
             assert_eq!(
                 payload,
                 FAULT_MARKER_PAYLOAD,
@@ -6132,7 +6350,12 @@ mod tests {
             let err = coordinator
                 .run_all()
                 .expect_err(&format!("[{}] 注入后 run_all 必须失败", case.point));
-            assert_eq!(guard.hits(), 1, "[{}] failpoint 必须恰好触发一次", case.point);
+            assert_eq!(
+                guard.hits(),
+                1,
+                "[{}] failpoint 必须恰好触发一次",
+                case.point
+            );
 
             if case.expect_recovered_error {
                 match &err {
@@ -6146,11 +6369,7 @@ mod tests {
                             case.point,
                             original_error
                         );
-                        assert_eq!(
-                            *restored_count, 4,
-                            "[{}] 四个核心库都应被恢复",
-                            case.point
-                        );
+                        assert_eq!(*restored_count, 4, "[{}] 四个核心库都应被恢复", case.point);
                     }
                     other => panic!(
                         "[{}] 期望 RecoveredFromBackup，实际: {:?}",
@@ -6302,9 +6521,8 @@ mod tests {
         coordinator: &MigrationCoordinator,
     ) -> rusqlite::Connection {
         build_db_at_version(coordinator, &DatabaseId::Mistakes, 20260715);
-        let conn =
-            rusqlite::Connection::open(coordinator.get_database_path(&DatabaseId::Mistakes))
-                .unwrap();
+        let conn = rusqlite::Connection::open(coordinator.get_database_path(&DatabaseId::Mistakes))
+            .unwrap();
         conn.execute(
             "INSERT INTO document_tasks (
                 id, document_id, original_document_name, segment_index,
@@ -6455,9 +6673,8 @@ mod tests {
             MISTAKES_MIGRATIONS.latest_version() as u32
         );
 
-        let conn =
-            rusqlite::Connection::open(coordinator.get_database_path(&DatabaseId::Mistakes))
-                .unwrap();
+        let conn = rusqlite::Connection::open(coordinator.get_database_path(&DatabaseId::Mistakes))
+            .unwrap();
         let backfilled: String = conn
             .query_row(
                 "SELECT mastery_synced_at FROM fsrs_review_logs WHERE id = 'log-1'",

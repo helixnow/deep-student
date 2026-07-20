@@ -268,6 +268,7 @@ fn create_subjective_question(
             source_ref: Some("qbank-executor-e2e".to_string()),
             images: None,
             parent_id: None,
+            structured_data: None,
         },
     )
     .expect("create subjective qbank fixture through production repository")

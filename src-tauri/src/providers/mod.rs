@@ -99,6 +99,10 @@ fn sse_data_payload(block: &str) -> Option<String> {
 }
 
 impl ProviderAdapter for OpenAIAdapter {
+    fn requires_explicit_stream_completion(&self) -> bool {
+        true
+    }
+
     fn build_request(
         &self,
         base_url: &str,
@@ -111,15 +115,20 @@ impl ProviderAdapter for OpenAIAdapter {
         let trimmed_key = api_key.trim();
         let sanitized_body = sanitize_openai_request_body(body);
 
-        Ok(ProviderRequest {
-            url,
-            headers: vec![
+        let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
+        if !trimmed_key.is_empty() {
+            headers.insert(
+                0,
                 (
                     "Authorization".to_string(),
                     format!("Bearer {}", trimmed_key),
                 ),
-                ("Content-Type".to_string(), "application/json".to_string()),
-            ],
+            );
+        }
+
+        Ok(ProviderRequest {
+            url,
+            headers,
             body: sanitized_body,
         })
     }
@@ -307,6 +316,62 @@ fn push_openai_content_part_events(events: &mut Vec<StreamEvent>, parts: &[Value
             }
         }
     }
+}
+
+/// Normalize OpenAI-compatible non-streaming responses whose message content is
+/// emitted as Mistral ThinkChunk/TextChunk arrays.
+pub(crate) fn normalize_openai_nonstream_response(response: &Value) -> Value {
+    let mut normalized = response.clone();
+    let Some(message) = normalized
+        .get_mut("choices")
+        .and_then(Value::as_array_mut)
+        .and_then(|choices| choices.first_mut())
+        .and_then(|choice| choice.get_mut("message"))
+        .and_then(Value::as_object_mut)
+    else {
+        return normalized;
+    };
+    let Some(parts) = message.get("content").and_then(Value::as_array) else {
+        return normalized;
+    };
+
+    let mut text_segments = Vec::new();
+    let mut reasoning_segments = Vec::new();
+    for part in parts {
+        if let Some(text) = part.as_str() {
+            if !text.is_empty() {
+                text_segments.push(text.to_string());
+            }
+            continue;
+        }
+        let part_type = part.get("type").and_then(Value::as_str).unwrap_or("text");
+        let target = if matches!(part_type, "thinking" | "think" | "reasoning") {
+            &mut reasoning_segments
+        } else {
+            &mut text_segments
+        };
+        match part.get("thinking").or_else(|| part.get("text")) {
+            Some(Value::String(text)) if !text.is_empty() => target.push(text.clone()),
+            Some(Value::Array(chunks)) => {
+                target.extend(chunks.iter().filter_map(|chunk| {
+                    chunk
+                        .as_str()
+                        .or_else(|| chunk.get("text").and_then(Value::as_str))
+                        .filter(|text| !text.is_empty())
+                        .map(str::to_string)
+                }));
+            }
+            _ => {}
+        }
+    }
+    message.insert("content".to_string(), json!(text_segments.join("")));
+    if !reasoning_segments.is_empty() {
+        message.insert(
+            "reasoning_content".to_string(),
+            json!(reasoning_segments.join("")),
+        );
+    }
+    normalized
 }
 
 fn is_meaningful_openai_tool_delta(value: &Value) -> bool {
@@ -1178,15 +1243,20 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
         let url = openai_endpoint_url(base_url, "responses");
         let trimmed_key = api_key.trim();
 
-        Ok(ProviderRequest {
-            url,
-            headers: vec![
+        let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
+        if !trimmed_key.is_empty() {
+            headers.insert(
+                0,
                 (
                     "Authorization".to_string(),
                     format!("Bearer {}", trimmed_key),
                 ),
-                ("Content-Type".to_string(), "application/json".to_string()),
-            ],
+            );
+        }
+
+        Ok(ProviderRequest {
+            url,
+            headers,
             body: Self::convert_to_responses_format_for_endpoint(model, body, base_url),
         })
     }

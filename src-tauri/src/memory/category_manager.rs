@@ -24,6 +24,12 @@ use super::service::{MemoryListItem, MemoryService};
 
 const CATEGORY_NOTE_PREFIX: &str = "__cat_";
 const CATEGORY_NOTE_SUFFIX: &str = "__";
+/// 聚合笔记成员清单的 tag 前缀（`_member:<note_id>`）
+///
+/// 分类摘要注入 system prompt 后，据此批量回写成员记忆的注入在场信号
+/// （见 `MemoryService::record_injection_presence`），与 `_hits:`/`_ref:`
+/// 等既有 tag 编码风格一致，读取时随 notes.tags 一并取出、无额外查询。
+const MEMBER_TAG_PREFIX: &str = "_member:";
 
 /// 预定义的种子分类（首次使用时自动创建，后续通过数据库发现实际分类）
 const SEED_CATEGORIES: &[(&str, &str)] = &[
@@ -136,9 +142,12 @@ impl MemoryCategoryManager {
     ) -> VfsResult<()> {
         let memories = memory_service.list_shallow(Some(folder_path), 50, 0)?;
 
+        // 排除系统笔记、过时（_stale）与已归档（_archived）的记忆：
+        // 归档记忆已移出检索索引，若仍参与聚合会经 `_member:` 清单被每轮注入
+        // 刷新 `_last_injected`，休眠语义即失效
         let memories: Vec<&MemoryListItem> = memories
             .iter()
-            .filter(|m| !m.title.starts_with("__") && !m.is_stale)
+            .filter(|m| !m.title.starts_with("__") && !m.is_stale && !m.is_archived)
             .collect();
 
         if memories.is_empty() {
@@ -180,7 +189,9 @@ impl MemoryCategoryManager {
         // 使用可逆编码保存路径 key，避免路径分隔符与原始字符碰撞。
         let category_key = Self::encode_category_key(category_name, folder_path);
         let cat_title = Self::category_note_title(&category_key);
-        self.upsert_category_note(&sys_folder_id, &cat_title, &summary)?;
+        // 成员 note_id 清单随聚合笔记持久化，供注入在场信号回写底层记忆
+        let member_ids: Vec<String> = memories.iter().map(|m| m.id.clone()).collect();
+        self.upsert_category_note(&sys_folder_id, &cat_title, &summary, &member_ids)?;
 
         info!(
             "[CategoryManager] Refreshed category '{}' with {} memories",
@@ -239,12 +250,31 @@ impl MemoryCategoryManager {
         Ok(output.assistant_message)
     }
 
-    /// 创建或更新分类摘要笔记
+    /// 构建聚合笔记的 tags：`_system` + 成员清单（`_member:<note_id>`）
+    fn build_category_note_tags(member_ids: &[String]) -> Vec<String> {
+        let mut tags = Vec::with_capacity(member_ids.len() + 1);
+        tags.push("_system".to_string());
+        for id in member_ids {
+            tags.push(format!("{}{}", MEMBER_TAG_PREFIX, id));
+        }
+        tags
+    }
+
+    /// 从聚合笔记 tags 中解析成员 note_id 清单
+    fn extract_member_ids(tags: &[String]) -> Vec<String> {
+        tags.iter()
+            .filter_map(|t| t.strip_prefix(MEMBER_TAG_PREFIX))
+            .map(|s| s.to_string())
+            .collect()
+    }
+
+    /// 创建或更新分类摘要笔记（tags 中同步重写成员清单）
     fn upsert_category_note(
         &self,
         root_folder_id: &str,
         title: &str,
         content: &str,
+        member_ids: &[String],
     ) -> VfsResult<()> {
         use rusqlite::params;
 
@@ -270,7 +300,8 @@ impl MemoryCategoryManager {
                 VfsUpdateNoteParams {
                     title: None,
                     content: Some(content.to_string()),
-                    tags: None,
+                    // 每次刷新整体重写成员清单，自动淘汰已删除/已 stale 的旧成员
+                    tags: Some(Self::build_category_note_tags(member_ids)),
                     expected_updated_at: None,
                 },
             )?;
@@ -291,7 +322,7 @@ impl MemoryCategoryManager {
                 VfsCreateNoteParams {
                     title: title.to_string(),
                     content: content.to_string(),
-                    tags: vec!["_system".to_string()],
+                    tags: Self::build_category_note_tags(member_ids),
                 },
                 Some(root_folder_id),
             )?;
@@ -344,6 +375,19 @@ impl MemoryCategoryManager {
         &self,
         root_folder_id: &str,
     ) -> VfsResult<Vec<(String, String)>> {
+        Ok(self
+            .load_all_category_summaries_with_members(root_folder_id)?
+            .into_iter()
+            .map(|(name, content, _)| (name, content))
+            .collect())
+    }
+
+    /// 同 `load_all_category_summaries`，额外返回每个分类的成员 note_id 清单
+    /// （从聚合笔记 tags 的 `_member:` 前缀解析，供注入在场信号回写）
+    pub fn load_all_category_summaries_with_members(
+        &self,
+        root_folder_id: &str,
+    ) -> VfsResult<Vec<(String, String, Vec<String>)>> {
         let sys_folder_id = self.find_system_folder(root_folder_id)?;
         let mut folder_ids = Vec::new();
         if let Some(sys_id) = sys_folder_id {
@@ -354,7 +398,7 @@ impl MemoryCategoryManager {
         let mut dedup_keys = HashSet::new();
         let mut results = Vec::new();
         for folder_id in folder_ids {
-            for (note_id, title) in self.list_category_notes_in_folder(&folder_id)? {
+            for (note_id, title, tags) in self.list_category_notes_in_folder(&folder_id)? {
                 let cat_name = title
                     .strip_prefix(CATEGORY_NOTE_PREFIX)
                     .and_then(|s| s.strip_suffix(CATEGORY_NOTE_SUFFIX))
@@ -366,7 +410,7 @@ impl MemoryCategoryManager {
                 let content =
                     VfsNoteRepo::get_note_content(&self.vfs_db, &note_id)?.unwrap_or_default();
                 if !content.is_empty() {
-                    results.push((decoded, content));
+                    results.push((decoded, content, Self::extract_member_ids(&tags)));
                 }
             }
         }
@@ -374,21 +418,29 @@ impl MemoryCategoryManager {
         Ok(results)
     }
 
-    fn list_category_notes_in_folder(&self, folder_id: &str) -> VfsResult<Vec<(String, String)>> {
+    fn list_category_notes_in_folder(
+        &self,
+        folder_id: &str,
+    ) -> VfsResult<Vec<(String, String, Vec<String>)>> {
         use rusqlite::params;
         let conn = self.vfs_db.get_conn_safe()?;
         let mut stmt = conn.prepare(
             r#"
-            SELECT n.id, n.title FROM notes n
+            SELECT n.id, n.title, n.tags FROM notes n
             JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
             WHERE fi.folder_id = ?1 AND n.deleted_at IS NULL AND fi.deleted_at IS NULL
               AND n.title LIKE '!_!_cat!_%!_!_' ESCAPE '!'
             ORDER BY n.title
             "#,
         )?;
-        let notes: Vec<(String, String)> = stmt
+        let notes: Vec<(String, String, Vec<String>)> = stmt
             .query_map(params![folder_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                let tags_json: Option<String> = row.get(2)?;
+                let tags: Vec<String> = tags_json
+                    .as_deref()
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or_default();
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, tags))
             })?
             .filter_map(|r| r.ok())
             .collect();
@@ -445,5 +497,18 @@ mod tests {
             MemoryCategoryManager::decode_category_key("经历／学科状态"),
             "经历/学科状态"
         );
+    }
+
+    #[test]
+    fn test_member_tags_roundtrip() {
+        let member_ids = vec!["note_a".to_string(), "note_b".to_string()];
+        let tags = MemoryCategoryManager::build_category_note_tags(&member_ids);
+        assert_eq!(tags[0], "_system");
+        assert_eq!(
+            MemoryCategoryManager::extract_member_ids(&tags),
+            member_ids
+        );
+        // 无成员标签的历史聚合笔记解析为空清单
+        assert!(MemoryCategoryManager::extract_member_ids(&["_system".to_string()]).is_empty());
     }
 }

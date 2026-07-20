@@ -42,6 +42,7 @@ pub mod conflict_resolver;
 pub mod emitter;
 pub mod field_merge;
 pub mod hlc;
+pub mod pomodoro_counts;
 pub mod progress;
 pub mod state;
 pub mod tombstone;
@@ -654,7 +655,7 @@ impl SyncManager {
     /// 创建新的同步管理器（不启用 payload 加密）
     pub fn new(device_id: String) -> Self {
         Self {
-            device_id,
+            device_id: crate::cloud_storage::normalize_device_id(&device_id),
             #[cfg(feature = "data_governance")]
             encryption_password: None,
         }
@@ -667,7 +668,7 @@ impl SyncManager {
     pub fn with_encryption(device_id: String, password: Option<String>) -> Self {
         let password = password.filter(|s| !s.is_empty());
         Self {
-            device_id,
+            device_id: crate::cloud_storage::normalize_device_id(&device_id),
             encryption_password: password,
         }
     }
@@ -5021,6 +5022,7 @@ impl SyncManager {
             "notes" | "files" | "exam_sheets" | "translations" | "essays" | "mindmaps"
             | "todo_items" => 40,
             "chat_v2_blocks" => 42,
+            "chat_v2_compactions" => 45,
             "questions" | "essay_sessions" | "pomodoro_records" => 50,
             "chat_messages" | "review_chat_messages" | "anki_cards" | "review_session_mistakes" => {
                 55
@@ -5479,6 +5481,9 @@ impl SyncManager {
             }
 
             Self::recompute_derived_ref_counts_if_relevant(conn, changes)?;
+            // TD-02: completed_pomodoros 是 pomodoro_records 的派生缓存，
+            // 在提交边界按事实表重算（幂等），替代已废弃的 MaxValue 字段合并。
+            pomodoro_counts::recompute_todo_completed_pomodoros_if_relevant(conn, changes)?;
             Self::persist_id_aliases(conn, &id_aliases)?;
             Self::validate_no_new_fk_violations(conn, &fk_baseline, &fk_batch_tables)?;
 
@@ -5824,6 +5829,28 @@ impl SyncManager {
         changes: &[SyncChangeWithData],
         id_column_map: Option<&HashMap<String, String>>,
     ) -> Result<ApplyChangesResult, SyncError> {
+        Self::apply_downloaded_changes_force_exact_with_hooks(
+            conn,
+            changes,
+            id_column_map,
+            |_| Ok(()),
+            |_, _| Ok(()),
+        )
+    }
+
+    /// 与 `apply_downloaded_changes_force_exact` 相同，但允许调用方在同一个
+    /// `BEGIN IMMEDIATE` 事务中执行前置 generation 校验与最终状态提交。
+    pub fn apply_downloaded_changes_force_exact_with_hooks<P, F>(
+        conn: &Connection,
+        changes: &[SyncChangeWithData],
+        id_column_map: Option<&HashMap<String, String>>,
+        preflight: P,
+        finalize: F,
+    ) -> Result<ApplyChangesResult, SyncError>
+    where
+        P: FnOnce(&Connection) -> Result<(), SyncError>,
+        F: FnOnce(&Connection, &ApplyChangesResult) -> Result<(), SyncError>,
+    {
         if changes.is_empty() {
             return Ok(ApplyChangesResult::empty());
         }
@@ -5838,6 +5865,7 @@ impl SyncManager {
 
         let mut result = ApplyChangesResult::empty();
         let apply_result: Result<(), SyncError> = (|| {
+            preflight(conn)?;
             Self::ensure_quarantine_table(conn)?;
             let id_aliases = Self::build_download_id_aliases(conn, changes, id_column_map)?;
             let fk_child_map = Self::build_fk_child_map(conn)?;
@@ -5908,8 +5936,12 @@ impl SyncManager {
             }
 
             Self::recompute_derived_ref_counts_if_relevant(conn, changes)?;
+            // TD-02: completed_pomodoros 是 pomodoro_records 的派生缓存，
+            // 在提交边界按事实表重算（幂等），替代已废弃的 MaxValue 字段合并。
+            pomodoro_counts::recompute_todo_completed_pomodoros_if_relevant(conn, changes)?;
             Self::persist_id_aliases(conn, &id_aliases)?;
             Self::validate_no_new_fk_violations(conn, &fk_baseline, &fk_batch_tables)?;
+            finalize(conn, &result)?;
             Ok(())
         })();
 
@@ -6250,6 +6282,9 @@ impl SyncManager {
             }
 
             Self::recompute_derived_ref_counts_if_relevant(conn, changes)?;
+            // TD-02: completed_pomodoros 是 pomodoro_records 的派生缓存，
+            // 在提交边界按事实表重算（幂等），替代已废弃的 MaxValue 字段合并。
+            pomodoro_counts::recompute_todo_completed_pomodoros_if_relevant(conn, changes)?;
             Self::persist_id_aliases(conn, &id_aliases)?;
             Self::validate_no_new_fk_violations(conn, &fk_baseline, &fk_batch_tables)?;
 
@@ -8234,6 +8269,51 @@ impl SyncManager {
         })
     }
 
+    fn validate_remote_object_key(key: &str, expected_prefix: &str) -> Result<(), SyncError> {
+        let normalized_prefix = expected_prefix.trim_matches('/');
+        let expected_start = format!("{normalized_prefix}/");
+        if key.is_empty()
+            || key.len() > 2048
+            || key.contains('\\')
+            || key.contains("//")
+            || !key.starts_with(&expected_start)
+            || std::path::Path::new(key)
+                .components()
+                .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        {
+            return Err(SyncError::Database(format!(
+                "拒绝越界或非法的云端对象 key: {key:?}"
+            )));
+        }
+        Ok(())
+    }
+
+    fn validate_workspace_file_id(workspace_id: &str) -> Result<(), SyncError> {
+        if workspace_id.is_empty()
+            || workspace_id.len() > 255
+            || !workspace_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        {
+            return Err(SyncError::Database(format!(
+                "拒绝非法 workspace 文件 ID: {workspace_id:?}"
+            )));
+        }
+        Ok(())
+    }
+
+    fn validate_asset_object_key(key: &str) -> Result<(), SyncError> {
+        if Self::validate_remote_object_key(key, Self::ASSET_OBJECTS_PREFIX).is_ok()
+            || Self::validate_remote_object_key(key, Self::ASSETS_CLOUD_PREFIX).is_ok()
+        {
+            Ok(())
+        } else {
+            Err(SyncError::Database(format!(
+                "拒绝越界或非法的资产对象 key: {key:?}"
+            )))
+        }
+    }
+
     /// 文件级 LWW：本地文件是否胜过云端清单条目。
     ///
     /// [P0 收敛性] 设备分量必须中性（双方相同）：旧实现用 "local-file" vs
@@ -8366,6 +8446,13 @@ impl SyncManager {
                 state_store.get_tombstone_watermark(&instance_id, source, "workspaces")
             })
             .await?;
+        for (workspace_id, entry) in &workspace_tombstones.entries {
+            Self::validate_workspace_file_id(workspace_id)?;
+            tombstone::validate_tombstone_timestamp(
+                &entry.deleted_at,
+                &format!("workspace/{}", workspace_id),
+            )?;
+        }
         if !workspace_tombstones.entries.is_empty() {
             let mut manifest_changed = false;
             for (ws_id, entry) in &workspace_tombstones.entries {
@@ -8396,29 +8483,24 @@ impl SyncManager {
                         .unwrap_or_else(|| {
                             format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id)
                         });
-                    if let Err(e) = storage.delete(&key).await {
-                        tracing::warn!("[sync] 删除云端工作区数据库失败（忽略）: {}: {}", key, e);
-                    }
+                    Self::validate_remote_object_key(&key, Self::WORKSPACES_CLOUD_PREFIX)?;
+                    storage.delete(&key).await.map_err(|e| {
+                        SyncError::Network(format!("删除云端工作区数据库失败 {}: {}", key, e))
+                    })?;
                 }
                 if local_db.exists() {
                     // [P2] tombstone 驱动的本地删除前保留冲突副本：
                     // "本设备在对端删除之前的未上传编辑" 不应被无备份清除。
-                    if let Err(e) = Self::save_conflict_copy(&local_db, &self.device_id) {
-                        tracing::warn!(
-                            "[sync] tombstone 删除前保存工作区冲突副本失败: {}: {}",
-                            ws_id,
-                            e
-                        );
-                    }
-                    let _ = std::fs::remove_file(&local_db);
+                    Self::save_conflict_copy(&local_db, &self.device_id)?;
+                    std::fs::remove_file(&local_db)?;
                 }
                 let local_wal = workspaces_dir.join(format!("{}.db-wal", ws_id));
                 if local_wal.exists() {
-                    let _ = std::fs::remove_file(&local_wal);
+                    std::fs::remove_file(&local_wal)?;
                 }
                 let local_shm = workspaces_dir.join(format!("{}.db-shm", ws_id));
                 if local_shm.exists() {
-                    let _ = std::fs::remove_file(&local_shm);
+                    std::fs::remove_file(&local_shm)?;
                 }
                 // Always remove from this round's in-memory view. Download-only
                 // must not rehydrate the just-deleted workspace from a stale
@@ -8566,6 +8648,7 @@ impl SyncManager {
                 let _ = std::fs::create_dir_all(&workspaces_dir);
             }
             for (ws_id, cloud_entry) in &cloud_manifest.entries {
+                Self::validate_workspace_file_id(ws_id)?;
                 let should_download = match local_entries.get(ws_id) {
                     None => true,
                     Some((_path, sha256, _size, local_updated_at)) => {
@@ -8596,6 +8679,7 @@ impl SyncManager {
                     let key = cloud_entry.object_key.clone().unwrap_or_else(|| {
                         format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id)
                     });
+                    Self::validate_remote_object_key(&key, Self::WORKSPACES_CLOUD_PREFIX)?;
                     let transfer_progress = Self::file_transfer_progress(
                         progress.as_ref(),
                         format!("工作区数据库 {}", ws_id),
@@ -9236,8 +9320,9 @@ impl SyncManager {
                 }
                 let Some(dest) = Self::asset_local_path_from_key(active_dir, app_data_dir, key)
                 else {
-                    tracing::warn!("[sync] 非法资产键，跳过下载: {}", key);
-                    continue;
+                    return Err(SyncError::Database(format!(
+                        "拒绝非法资产键，未推进文件同步: {key:?}"
+                    )));
                 };
                 if let Some(parent) = dest.parent() {
                     let _ = std::fs::create_dir_all(parent);
@@ -9251,6 +9336,7 @@ impl SyncManager {
                     .object_key
                     .clone()
                     .unwrap_or_else(|| format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key));
+                Self::validate_asset_object_key(&remote_key)?;
                 let transfer_progress =
                     Self::file_transfer_progress(progress.as_ref(), format!("资产文件 {}", key));
                 match storage
@@ -9449,11 +9535,20 @@ impl SyncManager {
         let root = parts.next()?;
         let top = parts.next()?;
         let rel = parts.next()?;
-        let rel_path = std::path::PathBuf::from(rel);
-        if rel_path.is_absolute()
-            || rel_path
+        if top.is_empty()
+            || matches!(top, "." | "..")
+            || !std::path::Path::new(top)
                 .components()
-                .any(|c| matches!(c, std::path::Component::ParentDir))
+                .all(|component| matches!(component, std::path::Component::Normal(_)))
+        {
+            return None;
+        }
+        let rel_path = std::path::PathBuf::from(rel);
+        let rel_components = rel_path.components().collect::<Vec<_>>();
+        if rel_components.is_empty()
+            || rel_components
+                .iter()
+                .any(|component| !matches!(component, std::path::Component::Normal(_)))
         {
             return None;
         }
@@ -9462,7 +9557,25 @@ impl SyncManager {
             "app_data" => app_data_dir,
             _ => return None,
         };
-        Some(base.join(top).join(rel_path))
+        let top_path = base.join(top);
+        if std::fs::symlink_metadata(&top_path)
+            .is_ok_and(|metadata| metadata.file_type().is_symlink())
+        {
+            return None;
+        }
+        let mut current = top_path.clone();
+        for component in rel_components
+            .iter()
+            .take(rel_components.len().saturating_sub(1))
+        {
+            current.push(component.as_os_str());
+            if std::fs::symlink_metadata(&current)
+                .is_ok_and(|metadata| metadata.file_type().is_symlink())
+            {
+                return None;
+            }
+        }
+        Some(top_path.join(rel_path))
     }
 
     fn scan_blobs_dir(
@@ -9762,6 +9875,9 @@ impl SyncManager {
                 state_store.get_tombstone_watermark(&instance_id, source, "blobs")
             })
             .await?;
+        for (hash, entry) in &tombstones.entries {
+            tombstone::validate_tombstone_timestamp(&entry.deleted_at, &format!("blob/{}", hash))?;
+        }
         let mut excluded_tombstone_hashes = HashSet::new();
         let mut resurrection_timestamps = HashMap::new();
         if !tombstones.entries.is_empty() {
@@ -9904,6 +10020,9 @@ impl SyncManager {
                 state_store.get_tombstone_watermark(&instance_id, source, "assets")
             })
             .await?;
+        for (key, entry) in &tombstones.entries {
+            tombstone::validate_tombstone_timestamp(&entry.deleted_at, &format!("asset/{}", key))?;
+        }
         let mut excluded_tombstone_keys = HashSet::new();
         if !tombstones.entries.is_empty() {
             let mut applied_tombstone_keys = Vec::new();
@@ -9937,14 +10056,15 @@ impl SyncManager {
                         .get(key)
                         .and_then(|manifest| manifest.object_key.clone())
                         .unwrap_or_else(|| format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key));
-                    if let Err(e) = storage.delete(&remote_key).await {
-                        tracing::warn!("[sync] 删除云端资产失败（忽略）: {}: {}", remote_key, e);
-                    }
+                    Self::validate_asset_object_key(&remote_key)?;
+                    storage.delete(&remote_key).await.map_err(|e| {
+                        SyncError::Network(format!("删除云端资产失败 {}: {}", remote_key, e))
+                    })?;
                 }
                 // 本地删除
                 if let Some(local) = local_path {
                     if local.exists() {
-                        let _ = std::fs::remove_file(&local);
+                        std::fs::remove_file(&local)?;
                     }
                 }
                 applied_tombstone_keys.push(key.clone());

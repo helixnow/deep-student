@@ -1,5 +1,8 @@
 -- ============================================================================
--- Mistakes: custom_anki_templates 用户态标记
+-- V20260723: Mistakes custom_anki_templates 用户态标记
+-- ============================================================================
+--
+-- @danger-ack: add_not_null_column reason="两个标记列均提供 DEFAULT 0，SQLite 会为历史行提供确定性非空值"
 --
 -- 背景（模板 CRUD 数据安全加固）：
 -- 1. 内置模板版本升级导入（import_builtin_templates）此前会无条件覆盖，

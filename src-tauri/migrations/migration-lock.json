@@ -192,6 +192,16 @@
       ]
     },
     {
+      "database": "chat_v2",
+      "version": 20260720,
+      "name": "compaction_lineage_and_sync",
+      "path": "chat_v2/V20260720__compaction_lineage_and_sync.sql",
+      "sha256": "183fca857c66925ea5d8b35398d0e410cd0806aae7ef0191d2999512a01f4930",
+      "dangers": [
+        "add_column_backfill"
+      ]
+    },
+    {
       "database": "llm_usage",
       "version": 20260130,
       "name": "init",
@@ -406,10 +416,10 @@
     },
     {
       "database": "mistakes",
-      "version": 20260722,
+      "version": 20260723,
       "name": "template_user_state",
-      "path": "mistakes/V20260722__template_user_state.sql",
-      "sha256": "070d8cfd71ce06ebe6333fcd36aa5b4e04f57fc2c4350a0a550962888d37ab24",
+      "path": "mistakes/V20260723__template_user_state.sql",
+      "sha256": "98575aa6a762376c1bd53cf00bdfa5da2d2412332a3b7f58c19454a33299465c",
       "dangers": []
     },
     {
@@ -808,14 +818,6 @@
     {
       "database": "vfs",
       "version": 20260723,
-      "name": "todo_completed_at_index",
-      "path": "vfs/V20260723__todo_completed_at_index.sql",
-      "sha256": "327c795204f2df3052d28c81396f0f8f97c0ffd9480b93b8b65d2dd951cfad3f",
-      "dangers": []
-    },
-    {
-      "database": "vfs",
-      "version": 20260723,
       "name": "translation_soft_delete_repair_and_indexes",
       "path": "vfs/V20260723__translation_soft_delete_repair_and_indexes.sql",
       "sha256": "77e93094f5ec60542253f829f1bd79a52d9a5248376c999cdedb6559f93a8604",
@@ -843,6 +845,30 @@
       "name": "mindmap_content_updated_at",
       "path": "vfs/V20260726__mindmap_content_updated_at.sql",
       "sha256": "544c3dc9536404af25b0b05e417141c242aaf165000b3d472b87abf78a0f7fc5",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260727,
+      "name": "todo_completed_at_index",
+      "path": "vfs/V20260727__todo_completed_at_index.sql",
+      "sha256": "327c795204f2df3052d28c81396f0f8f97c0ffd9480b93b8b65d2dd951cfad3f",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260728,
+      "name": "todo_reminder_index_and_list_sort",
+      "path": "vfs/V20260728__todo_reminder_index_and_list_sort.sql",
+      "sha256": "f1c890407c4fd1acf616852ecc944586ab9bcaf2727fab23cf45f4fbc27b1fb6",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260801,
+      "name": "todo_pomodoro_stats_indexes",
+      "path": "vfs/V20260801__todo_pomodoro_stats_indexes.sql",
+      "sha256": "2f1dadfaeae3a3220f129c9319d088cf2915f805e7d54dac3c5153243fc5b8b1",
       "dangers": []
     }
   ]

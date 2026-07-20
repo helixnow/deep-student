@@ -21,9 +21,8 @@ static MARKDOWN_LINK_RE: LazyLock<Regex> =
 static NOTES_SCHEME_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"notes://([^\s\]\)]+)").expect("notes:// 正则字面量非法"));
 // 允许 http/https 链接，排除空白、尖括号、方括号、右括号、引号等
-static PLAIN_HTTP_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r##"https?://[^\s<>\]\)"']+"##).expect("http 链接正则字面量非法")
-});
+static PLAIN_HTTP_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r##"https?://[^\s<>\]\)"']+"##).expect("http 链接正则字面量非法"));
 
 /// 从笔记内容中提取纯文本（支持 ProseMirror JSON 和 Markdown）
 fn extract_clean_text_from_note_content(content: &str) -> String {
@@ -870,12 +869,15 @@ impl NotesManager {
             let conn = vfs_db
                 .get_conn_safe()
                 .map_err(|e| AppError::database(format!("获取 VFS 数据库连接失败: {}", e)))?;
+            // ★ 2026-07 性能：VFS 的 updated_at 恒为固定格式 UTC ISO8601，
+            // 字典序即时间序；去掉 datetime() 包装让排序命中
+            // idx_notes_updated_not_deleted 部分索引，避免全表排序。
             let mut stmt = conn
                 .prepare(
                     "SELECT n.id, n.title, n.tags, n.created_at, n.updated_at, COALESCE(n.is_favorite, 0)
                      FROM notes n
                      WHERE n.deleted_at IS NULL
-                     ORDER BY datetime(n.updated_at) DESC
+                     ORDER BY n.updated_at DESC
                      LIMIT ?1",
                 )
                 .map_err(|e| AppError::database(format!("准备 VFS 笔记查询失败: {}", e)))?;
@@ -1712,8 +1714,7 @@ impl NotesManager {
                 if want_level.is_some() && want_level != Some(level) {
                     continue;
                 }
-                let heading_text =
-                    Self::strip_atx_closing(trimmed[level..].trim()).to_lowercase();
+                let heading_text = Self::strip_atx_closing(trimmed[level..].trim()).to_lowercase();
                 if heading_text == want_text {
                     start_idx = Some(i);
                     section_level = level;
@@ -2001,10 +2002,16 @@ impl NotesManager {
             _ => AppError::database(format!("VFS 更新笔记失败: {}", e)),
         })?;
 
-        // 获取更新后的内容
-        let content = VfsNoteRepo::get_note_content(vfs_db, note_id)
-            .map_err(|e| AppError::database(format!("VFS 读取笔记内容失败: {}", e)))?
-            .unwrap_or_default();
+        // 获取更新后的内容。
+        // ★ 2026-07 性能：本次调用已携带正文时，更新成功后的内容必然等于
+        // 传入值（repo 内 hash 相同则复用旧资源，内容不变），无需再整篇回读
+        //（大笔记每次自动保存省一次全量 DB 读取 + 拷贝）。
+        let content = match content_md {
+            Some(c) => c.to_string(),
+            None => VfsNoteRepo::get_note_content(vfs_db, note_id)
+                .map_err(|e| AppError::database(format!("VFS 读取笔记内容失败: {}", e)))?
+                .unwrap_or_default(),
+        };
 
         log::info!("[NotesManager::VFS] Updated note: {}", note_id);
 

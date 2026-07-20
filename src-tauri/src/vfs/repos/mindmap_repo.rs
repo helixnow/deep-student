@@ -54,6 +54,20 @@ fn parse_settings_json(mindmap_id: &str, settings_str: Option<String>) -> Option
 /// 版本快照连续失败计数（进程级）：用于日志提级，连续失败达到阈值时升为 error
 static VERSION_SNAPSHOT_CONSECUTIVE_FAILURES: AtomicU32 = AtomicU32::new(0);
 
+/// 生成严格晚于 `current` 的时间戳（毫秒粒度，与 note_repo::next_updated_at 同理）。
+///
+/// ★ 2026-07 修复（OCC 同毫秒边界）：同一毫秒内的连续两次更新若复用相同
+/// 时间戳，第二个写者携带的过期 expected_updated_at 仍会与当前值相等，
+/// 冲突检测被绕过。时间戳必须相对旧值严格递增；解析失败时回退当前时间。
+fn next_timestamp_after(current: &str) -> String {
+    let now = chrono::Utc::now();
+    let next = chrono::DateTime::parse_from_rfc3339(current)
+        .map(|value| value.with_timezone(&chrono::Utc) + chrono::Duration::milliseconds(1))
+        .map(|minimum| if now > minimum { now } else { minimum })
+        .unwrap_or(now);
+    next.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+}
+
 /// VFS 知识导图表 Repo
 pub struct VfsMindMapRepo;
 
@@ -79,10 +93,13 @@ impl VfsMindMapRepo {
         }
 
         // 兼容：LLM 可能直接传 root 节点（无 version/meta/root）
-        let is_node_like = {
-            let obj = doc.as_object().unwrap();
-            !obj.contains_key("root") && (obj.contains_key("text") || obj.contains_key("children"))
-        };
+        let is_node_like = doc
+            .as_object()
+            .map(|obj| {
+                !obj.contains_key("root")
+                    && (obj.contains_key("text") || obj.contains_key("children"))
+            })
+            .unwrap_or(false);
         if is_node_like {
             doc = serde_json::json!({
                 "version": "1.0",
@@ -319,7 +336,8 @@ impl VfsMindMapRepo {
 
         match result {
             Ok(mindmap) => {
-                if let Err(release_err) = conn.execute("RELEASE SAVEPOINT vfs_mindmap_create_tx", [])
+                if let Err(release_err) =
+                    conn.execute("RELEASE SAVEPOINT vfs_mindmap_create_tx", [])
                 {
                     let _ = conn.execute_batch(
                         "ROLLBACK TO SAVEPOINT vfs_mindmap_create_tx; RELEASE SAVEPOINT vfs_mindmap_create_tx;",
@@ -561,9 +579,16 @@ impl VfsMindMapRepo {
                 .map(|s| s.starts_with("chat"))
                 .unwrap_or(false);
 
-            let now = chrono::Utc::now()
-                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-                .to_string();
+            // ★ 2026-07 修复（OCC 同毫秒边界）：新时间戳必须严格晚于
+            // updated_at 与 content_updated_at 两条基线，否则同毫秒双写时
+            // 第二个写者的过期 expected_updated_at 仍能匹配、冲突漏检。
+            // （两列均为固定格式 UTC ISO8601，字典序即时间序。）
+            let occ_baseline = if current.updated_at >= current.content_updated_at {
+                current.updated_at.as_str()
+            } else {
+                current.content_updated_at.as_str()
+            };
+            let now = next_timestamp_after(occ_baseline);
 
             // 2. 处理内容更新（共享资源 -> 写时复制）
             //
@@ -1646,7 +1671,9 @@ impl VfsMindMapRepo {
             return Ok(None);
         };
         let age = chrono::Utc::now().signed_duration_since(created_at.with_timezone(&chrono::Utc));
-        if age >= chrono::Duration::minutes(Self::AUTOSAVE_MERGE_WINDOW_MINUTES) || age < chrono::Duration::zero() {
+        if age >= chrono::Duration::minutes(Self::AUTOSAVE_MERGE_WINDOW_MINUTES)
+            || age < chrono::Duration::zero()
+        {
             return Ok(None);
         }
 
@@ -1724,10 +1751,7 @@ impl VfsMindMapRepo {
             if mindmap_refs == 0 && version_refs == 0 {
                 super::index_unit_repo::purge_index_artifacts_by_resource(conn, rid)?;
                 conn.execute("DELETE FROM resources WHERE id = ?1", params![rid])?;
-                debug!(
-                    "[VFS::MindMapRepo] Pruned orphan version resource: {}",
-                    rid
-                );
+                debug!("[VFS::MindMapRepo] Pruned orphan version resource: {}", rid);
             }
         }
 
@@ -1904,10 +1928,7 @@ impl VfsMindMapRepo {
     }
 
     /// 恢复思维导图到指定历史版本（使用现有连接）
-    pub fn restore_version_with_conn(
-        conn: &Connection,
-        version_id: &str,
-    ) -> VfsResult<VfsMindMap> {
+    pub fn restore_version_with_conn(conn: &Connection, version_id: &str) -> VfsResult<VfsMindMap> {
         conn.execute("BEGIN IMMEDIATE", [])?;
 
         let result = (|| -> VfsResult<VfsMindMap> {
@@ -1918,21 +1939,20 @@ impl VfsMindMapRepo {
                     id: version_id.to_string(),
                 }
             })?;
-            let target_content =
-                Self::get_version_content_with_conn(conn, version_id)?.ok_or_else(|| {
-                    VfsError::NotFound {
-                        resource_type: "MindMapVersionContent".to_string(),
-                        id: version_id.to_string(),
-                    }
+            let target_content = Self::get_version_content_with_conn(conn, version_id)?
+                .ok_or_else(|| VfsError::NotFound {
+                    resource_type: "MindMapVersionContent".to_string(),
+                    id: version_id.to_string(),
                 })?;
 
             // 2. 当前导图（软删除导图不可恢复版本，需先从回收站还原）
-            let current = Self::get_mindmap_with_conn(conn, &version.mindmap_id)?.ok_or_else(
-                || VfsError::NotFound {
-                    resource_type: "MindMap".to_string(),
-                    id: version.mindmap_id.clone(),
-                },
-            )?;
+            let current =
+                Self::get_mindmap_with_conn(conn, &version.mindmap_id)?.ok_or_else(|| {
+                    VfsError::NotFound {
+                        resource_type: "MindMap".to_string(),
+                        id: version.mindmap_id.clone(),
+                    }
+                })?;
 
             let current_resource =
                 VfsResourceRepo::get_resource_with_conn(conn, &current.resource_id)?.ok_or_else(
@@ -1987,10 +2007,14 @@ impl VfsMindMapRepo {
                 )?;
             }
 
-            // 6. 推进时间戳（内容实际变化，双时间戳一起推进）
-            let now = chrono::Utc::now()
-                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-                .to_string();
+            // 6. 推进时间戳（内容实际变化，双时间戳一起推进；
+            // 与 update 路径一致，保证严格晚于两条旧基线，OCC 不漏检）
+            let occ_baseline = if current.updated_at >= current.content_updated_at {
+                current.updated_at.as_str()
+            } else {
+                current.content_updated_at.as_str()
+            };
+            let now = next_timestamp_after(occ_baseline);
             conn.execute(
                 r#"
                 UPDATE mindmaps

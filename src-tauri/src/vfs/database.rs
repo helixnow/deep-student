@@ -16,11 +16,17 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    RwLock,
+};
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
 use super::error::{VfsError, VfsResult};
+use crate::database::maintenance::{
+    checkpoint_truncate_strict, fail_closed_placeholder_pool,
+};
 
 /// 数据库文件名
 const DATABASE_FILENAME: &str = "vfs.db";
@@ -50,6 +56,8 @@ pub struct VfsDatabase {
     db_path: PathBuf,
     /// Blob 存储目录
     blobs_dir: PathBuf,
+    /// 显式维护闸；维护期间不得把空内存库暴露给业务调用方。
+    maintenance_mode: AtomicBool,
 }
 
 impl VfsDatabase {
@@ -104,6 +112,7 @@ impl VfsDatabase {
             pool: RwLock::new(pool),
             db_path,
             blobs_dir,
+            maintenance_mode: AtomicBool::new(false),
         };
 
         info!(
@@ -150,13 +159,25 @@ impl VfsDatabase {
     /// # Returns
     /// * `VfsResult<VfsPooledConnection>` - 池化连接
     pub fn get_conn(&self) -> VfsResult<VfsPooledConnection> {
+        if self.maintenance_mode.load(Ordering::Acquire) {
+            return Err(VfsError::Maintenance {
+                component: "vfs".to_string(),
+            });
+        }
         let pool = self
             .pool
             .read()
             .map_err(|e| VfsError::Pool(format!("Pool lock poisoned: {}", e)))?;
 
-        pool.get()
-            .map_err(|e| VfsError::Pool(format!("Failed to get connection: {}", e)))
+        let conn = pool
+            .get()
+            .map_err(|e| VfsError::Pool(format!("Failed to get connection: {}", e)))?;
+        if self.maintenance_mode.load(Ordering::Acquire) {
+            return Err(VfsError::Maintenance {
+                component: "vfs".to_string(),
+            });
+        }
+        Ok(conn)
     }
 
     /// 获取数据库连接（安全版本，处理 RwLock poison）
@@ -170,6 +191,11 @@ impl VfsDatabase {
     /// # P2-017修复
     /// 添加重试逻辑，在连接池繁忙时重试最多3次
     pub fn get_conn_safe(&self) -> VfsResult<VfsPooledConnection> {
+        if self.maintenance_mode.load(Ordering::Acquire) {
+            return Err(VfsError::Maintenance {
+                component: "vfs".to_string(),
+            });
+        }
         let mut was_poisoned = false;
         let pool = self.pool.read().unwrap_or_else(|poisoned| {
             error!("[VFS::Database] RwLock poisoned in get_conn_safe! Attempting recovery");
@@ -184,6 +210,11 @@ impl VfsDatabase {
         for attempt in 0..MAX_RETRIES {
             match pool.get() {
                 Ok(conn) => {
+                    if self.maintenance_mode.load(Ordering::Acquire) {
+                        return Err(VfsError::Maintenance {
+                            component: "vfs".to_string(),
+                        });
+                    }
                     if was_poisoned {
                         // 从 poison 恢复后，执行 ROLLBACK 清理可能残留的部分事务
                         let _ = conn.execute("ROLLBACK", []);
@@ -230,17 +261,6 @@ impl VfsDatabase {
         )))
     }
 
-    /// 获取连接池的克隆
-    ///
-    /// # Errors
-    /// * 如果 RwLock 被 poison，返回错误
-    pub fn get_pool(&self) -> VfsResult<VfsPool> {
-        self.pool.read().map(|pool| pool.clone()).map_err(|e| {
-            error!("[VFS::Database] RwLock poisoned in get_pool: {}", e);
-            VfsError::Pool(format!("RwLock poisoned: {}", e))
-        })
-    }
-
     /// 获取数据库文件路径
     pub fn db_path(&self) -> &Path {
         &self.db_path
@@ -255,23 +275,62 @@ impl VfsDatabase {
     ///
     /// 用于恢复流程中替换实际数据库文件，避免 Windows 上文件锁定（os error 32）。
     pub fn enter_maintenance_mode(&self) -> VfsResult<()> {
-        // 先尝试 WAL checkpoint
-        if let Ok(conn) = self.get_conn() {
-            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+        self.maintenance_mode
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| VfsError::InvalidState {
+                message: "VFS 已处于数据治理维护模式".to_string(),
+            })?;
+
+        // 维护标志先关闭新租约，然后等待已借出的连接归还。仅替换 Pool 字段不会
+        // 关闭 PooledConnection 持有的旧 Arc，在 Windows 上还会继续锁住数据库。
+        let disk_pool = self
+            .pool
+            .read()
+            .map_err(|e| VfsError::Pool(format!("Pool lock poisoned: {}", e)))?
+            .clone();
+        let drain_deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let state = disk_pool.state();
+            if state.connections == state.idle_connections {
+                break;
+            }
+            if std::time::Instant::now() >= drain_deadline {
+                self.maintenance_mode.store(false, Ordering::Release);
+                return Err(VfsError::InvalidState {
+                    message: format!(
+                        "等待 VFS 活动连接归还超时（仍有 {} 个租约）",
+                        state.connections.saturating_sub(state.idle_connections)
+                    ),
+                });
+            }
+            std::thread::sleep(Duration::from_millis(25));
         }
 
-        let mem_manager = SqliteConnectionManager::memory();
-        let mem_pool = Pool::builder()
-            .max_size(1)
-            .build(mem_manager)
-            .map_err(|e| VfsError::Pool(format!("创建内存连接池失败: {}", e)))?;
+        // 所有租约归还后再严格 checkpoint；失败时保持磁盘池并撤销屏障。
+        let checkpoint_result = disk_pool
+            .get()
+            .map_err(|e| format!("获取 VFS checkpoint 连接失败: {e}"))
+            .and_then(|conn| checkpoint_truncate_strict(&conn));
+        if let Err(error) = checkpoint_result {
+            self.maintenance_mode.store(false, Ordering::Release);
+            return Err(VfsError::Database(error));
+        }
 
-        {
+        // 即使未来出现绕过 get_conn* 的内部调用，占位池也必须显式拒绝，
+        // 不能让写入在一次性 :memory: 数据库中“成功”后丢失。
+        let placeholder_pool = fail_closed_placeholder_pool();
+
+        let swap_result = (|| -> VfsResult<()> {
             let mut guard = self
                 .pool
                 .write()
                 .map_err(|e| VfsError::Pool(format!("Pool lock poisoned: {}", e)))?;
-            *guard = mem_pool;
+            *guard = placeholder_pool;
+            Ok(())
+        })();
+        if let Err(error) = swap_result {
+            self.maintenance_mode.store(false, Ordering::Release);
+            return Err(error);
         }
 
         info!("[VFS::Database] 已进入维护模式，文件连接已释放");
@@ -290,8 +349,13 @@ impl VfsDatabase {
             *guard = new_pool;
         }
 
+        self.maintenance_mode.store(false, Ordering::Release);
         info!("[VFS::Database] 已退出维护模式，文件连接已恢复");
         Ok(())
+    }
+
+    pub fn is_in_maintenance_mode(&self) -> bool {
+        self.maintenance_mode.load(Ordering::Acquire)
     }
 
     /// 重新初始化数据库连接池
@@ -306,6 +370,11 @@ impl VfsDatabase {
     /// # Returns
     /// * `VfsResult<()>` - 成功返回 Ok(()), 失败返回错误
     pub fn reinitialize(&self) -> VfsResult<()> {
+        if self.is_in_maintenance_mode() {
+            return Err(VfsError::Maintenance {
+                component: "vfs".to_string(),
+            });
+        }
         info!(
             "[VFS::Database] Reinitializing connection pool for: {}",
             self.db_path.display()
@@ -320,6 +389,11 @@ impl VfsDatabase {
                 .pool
                 .write()
                 .map_err(|e| VfsError::Pool(format!("Pool lock poisoned: {}", e)))?;
+            if self.is_in_maintenance_mode() {
+                return Err(VfsError::Maintenance {
+                    component: "vfs".to_string(),
+                });
+            }
             *pool_guard = new_pool;
         }
 

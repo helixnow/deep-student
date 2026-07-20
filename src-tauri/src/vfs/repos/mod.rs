@@ -94,8 +94,10 @@ pub use textbook_repo::{PageIndexMeta, VfsTextbookRepo};
 pub use todo_repo::VfsTodoRepo;
 pub use translation_repo::VfsTranslationRepo;
 
-pub use embedding_dim_repo::VfsEmbeddingDim;
-pub use index_segment_repo::{CreateSegmentInput, ModalityDimStats, VfsIndexSegment};
+pub use embedding_dim_repo::{DimensionCascadeCleanup, VfsEmbeddingDim};
+pub use index_segment_repo::{
+    CreateSegmentInput, LanceTableExpectedCount, ModalityDimStats, VfsIndexSegment,
+};
 pub use index_unit_repo::{CreateUnitInput, IndexState as UnitIndexState, UnitStats, VfsIndexUnit};
 pub use review_plan_repo::{
     CreateReviewPlanParams, DueReviewsFilter, DueReviewsResult, RecordReviewHistoryParams,

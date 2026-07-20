@@ -424,6 +424,72 @@ impl VfsBlobRepo {
         Ok(true)
     }
 
+    /// TD-03：删除"无 DB 行登记"的孤儿物理文件（savepoint 回滚后的补偿）。
+    ///
+    /// 上传 saga 把 `store_blob_with_conn` 的 DB 插入包在 SAVEPOINT 内；
+    /// 回滚只撤销 blobs 行，已 rename 落盘的物理文件无法回滚。本函数在
+    /// 回滚**之后**调用：
+    /// - blobs 行仍存在（hash 在本次上传前已被登记/去重复用）→ no-op，
+    ///   绝不删除被复用的 blob 文件；
+    /// - blobs 行不存在（行随回滚消失，文件为本次调用新写）→ 删除
+    ///   `{prefix}/{hash}.*` 物理文件（跳过 `.tmp`，那是并发写者的活跃临时文件）。
+    ///
+    /// 返回是否删除了至少一个文件。幂等：重复调用为 no-op。
+    ///
+    /// 已知窄竞态：回滚后、删除前，并发 `store_blob_with_conn` 复活同 hash
+    /// 会重新插入行——此处在删除前逐次复查行存在性以尽量收窄窗口；
+    /// 即便误删，内容寻址设计下下次写入会自愈重建。
+    pub fn remove_unregistered_blob_file(
+        conn: &Connection,
+        blobs_dir: &Path,
+        hash: &str,
+    ) -> VfsResult<bool> {
+        if hash.len() < 2 {
+            return Ok(false);
+        }
+        if Self::blob_exists_with_conn(conn, hash)? {
+            return Ok(false);
+        }
+
+        let prefix_dir = blobs_dir.join(&hash[..2]);
+        let Ok(entries) = fs::read_dir(&prefix_dir) else {
+            return Ok(false);
+        };
+
+        let mut removed = false;
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if !name.starts_with(hash) || name.ends_with(".tmp") {
+                continue;
+            }
+            // 删除前复查：并发 store 可能刚复活该 hash 的登记
+            if Self::blob_exists_with_conn(conn, hash)? {
+                debug!(
+                    "[VFS::BlobRepo] Blob {} re-registered concurrently; keep physical file",
+                    hash
+                );
+                return Ok(removed);
+            }
+            match fs::remove_file(entry.path()) {
+                Ok(()) => {
+                    info!(
+                        "[VFS::BlobRepo] Removed unregistered orphan blob file: {}",
+                        name
+                    );
+                    removed = true;
+                }
+                Err(e) => {
+                    warn!(
+                        "[VFS::BlobRepo] Failed to remove orphan blob file {}: {}",
+                        name, e
+                    );
+                }
+            }
+        }
+        Ok(removed)
+    }
+
     /// 清理所有无引用的 Blob
     pub fn cleanup_unreferenced(db: &VfsDatabase) -> VfsResult<u32> {
         let conn = db.get_conn_safe()?;

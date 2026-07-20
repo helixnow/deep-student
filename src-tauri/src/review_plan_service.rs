@@ -201,6 +201,10 @@ impl ReviewPlanService {
         time_spent_seconds: Option<u32>,
         expected_updated_at: Option<&str>,
     ) -> Result<ProcessReviewResult> {
+        // ★ 防御性夹取：Tauri 命令层已校验 quality<=5，但 agent 工具等其他调用方
+        // 可能绕过命令层直接调服务；越界值会让 SM-2 的 EF 公式产出异常增量。
+        let quality = quality.min(5);
+
         // 1. 获取当前复习计划
         let plan = VfsReviewPlanRepo::get_plan(&self.vfs_db, plan_id)
             .with_context(|| format!("Failed to get review plan: {}", plan_id))?
@@ -357,7 +361,10 @@ impl ReviewPlanService {
             until_date: until_date.map(|s| s.to_string()),
             status: None,
             difficult_only: None,
-            limit: Some(100),
+            // ★ 修复：原上限 100 会让 >100 条到期时前端"全部待复习"静默截断
+            // （视图直接用 plans.length 计数且不读 has_more/total）。
+            // 提升到 500 覆盖正常复习积压；更大规模由带 filter 的分页接口承载。
+            limit: Some(500),
             offset: None,
         };
 
@@ -435,9 +442,21 @@ impl ReviewPlanService {
                     plans.push(plan);
                 }
                 Err(e) => {
-                    // 检查是否是已存在的错误
-                    let error_msg = e.to_string();
-                    if error_msg.contains("already exists") || error_msg.contains("AlreadyExists") {
+                    // 检查是否是已存在的错误。
+                    // ★ 修复：create_review_plan 用 with_context 包装过错误，anyhow 的
+                    // to_string() 只显示最外层 context（"Failed to create review plan..."），
+                    // 原先的字符串匹配永远不命中，导致已存在的计划被误计为 failed。
+                    // 改为 downcast 到 VfsError::AlreadyExists（穿透 context 链），
+                    // 并保留全链字符串匹配作为兜底。
+                    let is_already_exists = e
+                        .downcast_ref::<crate::vfs::error::VfsError>()
+                        .map(|ve| matches!(ve, crate::vfs::error::VfsError::AlreadyExists { .. }))
+                        .unwrap_or(false)
+                        || e.chain().any(|cause| {
+                            let msg = cause.to_string();
+                            msg.contains("already exists") || msg.contains("AlreadyExists")
+                        });
+                    if is_already_exists {
                         skipped += 1;
                         debug!(
                             "[ReviewPlanService] Review plan already exists for question_id={}",
@@ -962,6 +981,7 @@ mod tests {
                 source_ref: None,
                 images: None,
                 parent_id: None,
+                structured_data: None,
             },
         )
         .expect("create question");

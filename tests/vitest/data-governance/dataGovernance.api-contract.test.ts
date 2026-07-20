@@ -1685,7 +1685,7 @@ describe('DataGovernanceApi.cleanupAuditLogs() contract', () => {
 
 describe('DataGovernanceApi.getMaintenanceStatus() contract', () => {
   it('calls invoke with correct command name and no params', async () => {
-    mockInvoke.mockResolvedValue({ is_in_maintenance_mode: false });
+    mockInvoke.mockResolvedValue({ is_in_maintenance_mode: false, blocked_components: [] });
     await getMaintenanceStatus();
 
     expect(mockInvoke).toHaveBeenCalledTimes(1);
@@ -1694,19 +1694,24 @@ describe('DataGovernanceApi.getMaintenanceStatus() contract', () => {
   });
 
   it('returns maintenance status as false', async () => {
-    mockInvoke.mockResolvedValue({ is_in_maintenance_mode: false });
+    mockInvoke.mockResolvedValue({ is_in_maintenance_mode: false, blocked_components: [] });
     const result = await getMaintenanceStatus();
 
     expect(result).toHaveProperty('is_in_maintenance_mode');
     expect(typeof result.is_in_maintenance_mode).toBe('boolean');
     expect(result.is_in_maintenance_mode).toBe(false);
+    expect(result.blocked_components).toEqual([]);
   });
 
-  it('returns maintenance status as true', async () => {
-    mockInvoke.mockResolvedValue({ is_in_maintenance_mode: true });
+  it('returns maintenance status and blocked components as true', async () => {
+    mockInvoke.mockResolvedValue({
+      is_in_maintenance_mode: true,
+      blocked_components: ['vfs', 'workspaces'],
+    });
     const result = await getMaintenanceStatus();
 
     expect(result.is_in_maintenance_mode).toBe(true);
+    expect(result.blocked_components).toEqual(['vfs', 'workspaces']);
   });
 });
 

@@ -132,7 +132,18 @@ impl CsvExportService {
             request.file_path
         );
 
-        // 1. 先拉取第一页，既用于空集校验，也用于后续流式导出
+        // 1. 先做纯参数校验（路径 / 字段），再触发数据库查询
+        // M-038: 校验路径，防止目录遍历
+        Self::validate_file_path(&request.file_path)?;
+
+        let fields = if request.fields.is_empty() {
+            Self::get_default_fields(request.include_answers)
+        } else {
+            request.fields.clone()
+        };
+        Self::validate_export_fields(&fields)?;
+
+        // 2. 拉取第一页，既用于空集校验，也用于后续流式导出
         let page_size = 200u32;
         let mut page = 1u32;
         let first_page = VfsQuestionRepo::list_questions(
@@ -147,65 +158,75 @@ impl CsvExportService {
             return Err(AppError::validation("没有可导出的题目"));
         }
 
-        // 2. 确定导出字段
-        let fields = if request.fields.is_empty() {
-            Self::get_default_fields(request.include_answers)
-        } else {
-            request.fields.clone()
-        };
-        Self::validate_export_fields(&fields)?;
-
-        // M-038: 校验路径，防止目录遍历
-        Self::validate_file_path(&request.file_path)?;
-
         // 3. 创建文件并写入
         let file = File::create(&request.file_path)
             .map_err(|e| AppError::internal(format!("创建文件失败: {}", e)))?;
         let mut writer = BufWriter::new(file);
 
-        // 写入 BOM（如果需要）
-        if matches!(request.encoding, ExportEncoding::Utf8Bom) {
+        // 写入过程包在闭包中：任一步失败时删除残留的半成品文件再上抛，
+        // 避免用户目录里留下截断的 CSV 被误当作完整导出。
+        let write_result = (|| -> Result<u32, AppError> {
+            // 写入 BOM（如果需要）
+            if matches!(request.encoding, ExportEncoding::Utf8Bom) {
+                writer
+                    .write_all(&[0xEF, 0xBB, 0xBF])
+                    .map_err(|e| AppError::internal(format!("写入 BOM 失败: {}", e)))?;
+            }
+
+            // 4. 写入表头
+            let headers: Vec<String> = fields
+                .iter()
+                .map(|f| Self::get_field_display_name(f))
+                .collect();
+            Self::write_csv_row(&mut writer, &headers, &request.encoding)?;
+
+            // 5. 分页写入数据行（流式）
+            let mut exported_count = 0u32;
+            let mut current_page = first_page;
+            loop {
+                for question in &current_page.questions {
+                    let row = Self::question_to_row(question, &fields);
+                    Self::write_csv_row(&mut writer, &row, &request.encoding)?;
+                    exported_count += 1;
+                }
+
+                if !current_page.has_more {
+                    break;
+                }
+
+                page += 1;
+                current_page = VfsQuestionRepo::list_questions(
+                    vfs_db,
+                    &request.exam_id,
+                    &request.filters,
+                    page,
+                    page_size,
+                )
+                .map_err(|e| AppError::database(format!("获取题目失败: {}", e)))?;
+            }
+
+            // 6. 刷新缓冲区
             writer
-                .write_all(&[0xEF, 0xBB, 0xBF])
-                .map_err(|e| AppError::internal(format!("写入 BOM 失败: {}", e)))?;
-        }
+                .flush()
+                .map_err(|e| AppError::internal(format!("刷新文件缓冲区失败: {}", e)))?;
 
-        // 4. 写入表头
-        let headers: Vec<String> = fields
-            .iter()
-            .map(|f| Self::get_field_display_name(f))
-            .collect();
-        Self::write_csv_row(&mut writer, &headers, &request.encoding)?;
+            Ok(exported_count)
+        })();
 
-        // 5. 分页写入数据行（流式）
-        let mut exported_count = 0u32;
-        let mut current_page = first_page;
-        loop {
-            for question in &current_page.questions {
-                let row = Self::question_to_row(question, &fields);
-                Self::write_csv_row(&mut writer, &row, &request.encoding)?;
-                exported_count += 1;
+        let exported_count = match write_result {
+            Ok(count) => count,
+            Err(e) => {
+                drop(writer);
+                if let Err(remove_err) = std::fs::remove_file(&request.file_path) {
+                    log::warn!(
+                        "[CsvExport] 清理失败的导出文件失败 {}: {}",
+                        request.file_path,
+                        remove_err
+                    );
+                }
+                return Err(e);
             }
-
-            if !current_page.has_more {
-                break;
-            }
-
-            page += 1;
-            current_page = VfsQuestionRepo::list_questions(
-                vfs_db,
-                &request.exam_id,
-                &request.filters,
-                page,
-                page_size,
-            )
-            .map_err(|e| AppError::database(format!("获取题目失败: {}", e)))?;
-        }
-
-        // 6. 刷新缓冲区
-        writer
-            .flush()
-            .map_err(|e| AppError::internal(format!("刷新文件缓冲区失败: {}", e)))?;
+        };
 
         // 7. 获取文件大小
         let file_size = std::fs::metadata(&request.file_path)
@@ -330,6 +351,10 @@ impl CsvExportService {
             QuestionType::Essay => "论述题",
             QuestionType::Calculation => "计算题",
             QuestionType::Proof => "证明题",
+            QuestionType::TrueFalse => "判断题",
+            QuestionType::Matching => "匹配题",
+            QuestionType::Ordering => "排序题",
+            QuestionType::Numeric => "数值题",
             QuestionType::Other => "其他",
         }
         .to_string()

@@ -25,35 +25,43 @@ use super::commands_backup::{
 };
 
 /// 将本地临时 ZIP 文件复制到虚拟 URI 目标（Android content:// 等），完成后清理临时文件。
-fn copy_temp_zip_to_virtual_uri(window: &tauri::Window, local_path: &str, virtual_uri: &str) {
+fn copy_temp_zip_to_virtual_uri(
+    window: &tauri::Window,
+    local_path: &str,
+    virtual_uri: &str,
+) -> Result<(), String> {
     let local = std::path::Path::new(local_path);
     if !local.exists() {
-        // ZIP 导出失败或被取消，临时文件不存在，无需复制
-        warn!(
-            "[data_governance] 临时 ZIP 文件不存在，跳过复制到虚拟 URI: {}",
+        return Err(format!(
+            "临时 ZIP 文件不存在，无法写入目标 URI: {}",
             local_path
-        );
-        return;
+        ));
     }
 
     info!(
         "[data_governance] 正在将 ZIP 复制到虚拟 URI: {} -> {}",
         local_path, virtual_uri
     );
-    match crate::unified_file_manager::copy_file(window, local_path, virtual_uri) {
-        Ok(bytes) => {
-            info!(
-                "[data_governance] ZIP 已成功复制到虚拟 URI ({} 字节): {}",
-                bytes, virtual_uri
-            );
-        }
+    let bytes = match crate::unified_file_manager::copy_file(window, local_path, virtual_uri) {
+        Ok(bytes) => bytes,
         Err(e) => {
             error!(
                 "[data_governance] 复制 ZIP 到虚拟 URI 失败: {} -> {} ({})",
                 local_path, virtual_uri, e
             );
+            if let Err(cleanup_error) = std::fs::remove_file(local_path) {
+                warn!(
+                    "[data_governance] 复制失败后清理临时 ZIP 失败: {} ({})",
+                    local_path, cleanup_error
+                );
+            }
+            return Err(format!("复制 ZIP 到目标 URI 失败，临时导出已清理: {}", e));
         }
-    }
+    };
+    info!(
+        "[data_governance] ZIP 已成功复制到虚拟 URI ({} 字节): {}",
+        bytes, virtual_uri
+    );
     // 清理本地临时文件
     if let Err(e) = std::fs::remove_file(local_path) {
         warn!(
@@ -61,6 +69,7 @@ fn copy_temp_zip_to_virtual_uri(window: &tauri::Window, local_path: &str, virtua
             local_path, e
         );
     }
+    Ok(())
 }
 
 /// 一步完成「备份 + 导出 ZIP」（后台任务模式）
@@ -120,8 +129,10 @@ pub async fn data_governance_backup_and_export_zip(
     tauri::async_runtime::spawn(async move {
         execute_backup_and_export_zip_with_progress(
             app_clone,
+            Some(window),
             job_ctx,
             local_output_path.clone(),
+            target_virtual_uri,
             compression_level,
             add_to_backup_list,
             use_tiered,
@@ -130,11 +141,6 @@ pub async fn data_governance_backup_and_export_zip(
             asset_types,
         )
         .await;
-
-        // 如果目标是虚拟 URI，将本地临时 ZIP 复制到目标 URI 后清理
-        if let Some(virtual_uri) = target_virtual_uri {
-            copy_temp_zip_to_virtual_uri(&window, &local_output_path, &virtual_uri);
-        }
     });
 
     Ok(BackupJobStartResponse {
@@ -147,8 +153,10 @@ pub async fn data_governance_backup_and_export_zip(
 
 async fn execute_backup_and_export_zip_with_progress(
     app: tauri::AppHandle,
+    window: Option<tauri::Window>,
     job_ctx: BackupJobContext,
     output_path: String,
+    target_virtual_uri: Option<String>,
     compression_level: u32,
     add_to_backup_list: bool,
     use_tiered: bool,
@@ -269,6 +277,14 @@ async fn execute_backup_and_export_zip_with_progress(
 
     let include_assets = include_assets.unwrap_or(!use_tiered);
 
+    let snapshot_barrier = match super::commands_backup::BackupSnapshotBarrier::enter(&app) {
+        Ok(barrier) => barrier,
+        Err(error) => {
+            job_ctx.fail(format!("无法建立一致备份快照: {}", error));
+            return;
+        }
+    };
+
     let backup_result: Result<String, String> = if use_tiered {
         let parsed_tiers: Vec<BackupTier> = tiers
             .unwrap_or_else(|| vec!["core".to_string()])
@@ -319,7 +335,7 @@ async fn execute_backup_and_export_zip_with_progress(
             .map(|result| result.manifest.backup_id)
             .map_err(|e| format!("分层备份失败: {}", e))
     } else if include_assets {
-        let asset_config = if let Some(types) = asset_types.clone() {
+        let mut asset_config = if let Some(types) = asset_types.clone() {
             let parsed_types: Vec<AssetType> = types
                 .iter()
                 .filter_map(|s| AssetType::from_str(s))
@@ -335,17 +351,31 @@ async fn execute_backup_and_export_zip_with_progress(
         } else {
             AssetBackupConfig::default()
         };
+        if asset_types.is_none() {
+            asset_config.max_file_size = u64::MAX;
+            asset_config.max_total_size = u64::MAX;
+        }
 
         manager
             .backup_with_assets(Some(asset_config))
-            .map(|manifest| manifest.backup_id)
+            .and_then(|manifest| {
+                manifest.validate_for_slot_restore()?;
+                Ok(manifest.backup_id)
+            })
             .map_err(|e| format!("完整备份失败: {}", e))
     } else {
         manager
             .backup_full()
-            .map(|manifest| manifest.backup_id)
+            .and_then(|manifest| {
+                manifest.validate_for_slot_restore()?;
+                Ok(manifest.backup_id)
+            })
             .map_err(|e| format!("备份失败: {}", e))
     };
+    if let Err(error) = snapshot_barrier.release() {
+        job_ctx.fail(error);
+        return;
+    }
 
     let backup_id = match backup_result {
         Ok(id) => id,
@@ -392,6 +422,27 @@ async fn execute_backup_and_export_zip_with_progress(
         }
     };
 
+    let final_output_path = if let Some(virtual_uri) = target_virtual_uri {
+        job_ctx.mark_running(
+            BackupJobPhase::Cleanup,
+            98.0,
+            Some("正在将 ZIP 写入所选文件位置...".to_string()),
+            1,
+            1,
+        );
+        let Some(window) = window.as_ref() else {
+            job_ctx.fail("虚拟 URI 导出缺少窗口上下文".to_string());
+            return;
+        };
+        if let Err(e) = copy_temp_zip_to_virtual_uri(window, &output_path, &virtual_uri) {
+            job_ctx.fail(e);
+            return;
+        }
+        virtual_uri
+    } else {
+        export_result.zip_path.to_string_lossy().to_string()
+    };
+
     job_ctx.mark_running(
         BackupJobPhase::Verify,
         96.0,
@@ -412,7 +463,7 @@ async fn execute_backup_and_export_zip_with_progress(
     let duration_ms = start.elapsed().as_millis() as u64;
     let result_payload = BackupJobResultPayload {
         success: true,
-        output_path: Some(export_result.zip_path.to_string_lossy().to_string()),
+        output_path: Some(final_output_path.clone()),
         resolved_path: None,
         message: Some(format!(
             "备份并导出完成: {} 个文件，{} 字节",
@@ -422,7 +473,7 @@ async fn execute_backup_and_export_zip_with_progress(
         duration_ms: Some(duration_ms),
         stats: Some(serde_json::json!({
             "backup_id": backup_id,
-            "zip_path": export_result.zip_path,
+            "zip_path": final_output_path,
             "compression_level": compression_level,
             "compression_ratio": export_result.compression_ratio(),
             "add_to_backup_list": add_to_backup_list,
@@ -529,25 +580,20 @@ pub async fn data_governance_export_zip(
         );
     }
 
-    // 在后台执行 ZIP 导出
-    let local_output_for_copy = local_output_path.clone();
+    // 在后台执行 ZIP 导出。虚拟 URI 的最终复制属于任务提交阶段，只有复制成功
+    // 才允许发出唯一 Completed 终态。
     tauri::async_runtime::spawn(async move {
         execute_zip_export_with_progress(
             app,
+            Some(window),
             job_ctx,
             validated_backup_id,
             local_output_path,
+            target_virtual_uri,
             compression_level,
             include_checksums,
         )
         .await;
-
-        // 如果目标是虚拟 URI，将本地临时 ZIP 复制到目标 URI 后清理
-        if let Some(virtual_uri) = target_virtual_uri {
-            if let Some(local_path) = local_output_for_copy {
-                copy_temp_zip_to_virtual_uri(&window, &local_path, &virtual_uri);
-            }
-        }
     });
 
     Ok(BackupJobStartResponse {
@@ -561,9 +607,11 @@ pub async fn data_governance_export_zip(
 /// 执行 ZIP 导出（内部函数，带进度回调）
 async fn execute_zip_export_with_progress(
     app: tauri::AppHandle,
+    window: Option<tauri::Window>,
     job_ctx: BackupJobContext,
     backup_id: String,
     output_path: Option<String>,
+    target_virtual_uri: Option<String>,
     compression_level: u32,
     include_checksums: bool,
 ) {
@@ -1104,6 +1152,21 @@ async fn execute_zip_export_with_progress(
         total_files as u64,
     );
 
+    let final_output_path = if let Some(virtual_uri) = target_virtual_uri {
+        let Some(window) = window.as_ref() else {
+            job_ctx.fail("虚拟 URI 导出缺少窗口上下文".to_string());
+            return;
+        };
+        let local_path = zip_path.to_string_lossy().to_string();
+        if let Err(e) = copy_temp_zip_to_virtual_uri(window, &local_path, &virtual_uri) {
+            job_ctx.fail(e);
+            return;
+        }
+        virtual_uri
+    } else {
+        zip_path.to_string_lossy().to_string()
+    };
+
     let duration_ms = start.elapsed().as_millis() as u64;
     let compression_ratio = if total_size > 0 {
         1.0 - (compressed_size as f64 / total_size as f64)
@@ -1112,8 +1175,8 @@ async fn execute_zip_export_with_progress(
     };
 
     info!(
-        "[data_governance] ZIP 导出成功: path={:?}, files={}, size={}->{}, ratio={:.1}%, duration={}ms",
-        zip_path, compressed_files, total_size, compressed_size, compression_ratio * 100.0, duration_ms
+        "[data_governance] ZIP 导出成功: path={}, files={}, size={}->{}, ratio={:.1}%, duration={}ms",
+        final_output_path, compressed_files, total_size, compressed_size, compression_ratio * 100.0, duration_ms
     );
 
     #[cfg(feature = "data_governance")]
@@ -1132,7 +1195,7 @@ async fn execute_zip_export_with_progress(
             .with_details(serde_json::json!({
                 "job_id": job_ctx.job_id.clone(),
                 "backup_id": backup_id.clone(),
-                "zip_path": zip_path.to_string_lossy(),
+                "zip_path": final_output_path.clone(),
                 "file_count": compressed_files,
                 "total_size": total_size,
                 "compressed_size": compressed_size,
@@ -1164,8 +1227,8 @@ async fn execute_zip_export_with_progress(
 
     let result_payload = BackupJobResultPayload {
         success: !has_skipped,
-        output_path: Some(zip_path.to_string_lossy().to_string()),
-        resolved_path: Some(zip_path.to_string_lossy().to_string()),
+        output_path: Some(final_output_path.clone()),
+        resolved_path: Some(final_output_path.clone()),
         message: Some(format!(
             "ZIP 导出完成: {} 个文件, 压缩率 {:.1}%{}",
             compressed_files,
@@ -1192,7 +1255,7 @@ async fn execute_zip_export_with_progress(
     };
 
     job_ctx.complete(
-        Some(format!("ZIP 导出完成: {}", zip_path.to_string_lossy())),
+        Some(format!("ZIP 导出完成: {}", final_output_path)),
         compressed_files as u64,
         total_files as u64,
         result_payload,
