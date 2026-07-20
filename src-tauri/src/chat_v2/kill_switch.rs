@@ -134,6 +134,14 @@ fn emit_kill_switch_changed(app_handle: &AppHandle, status: &KillSwitchStatus) {
 }
 
 fn send_emergency_notification(app_handle: &AppHandle, reason: &str) {
+    // 用户全局「从不」系统通知档：紧急停止的结果在应用内（事件 + UI）已可见，
+    // 尊重策略不再发 OS 通知。
+    if crate::system_notification::notifications_disabled_for_app(app_handle) {
+        log::info!(
+            "[ChatV2::kill_switch] system notifications disabled by policy; skipped emergency notification"
+        );
+        return;
+    }
     let body = if reason.trim().is_empty() {
         "All agent streams cancelled. Automations paused until you resume.".to_string()
     } else {
@@ -173,6 +181,11 @@ pub async fn chat_v2_emergency_stop(
     let cancelled_streams = chat_v2_state.cancel_all_streams();
     cancel_active_automation_runs_for_emergency_stop();
 
+    // 🆕 取消语义贯通：脱管的 ChatAnki 后台制卡管线不持有 stream token，
+    // 必须枚举活跃管线注册表逐一取消（非破坏性：保留已生成卡片）。
+    let cancelled_chatanki_pipelines =
+        super::tools::chatanki_executor::cancel_all_active_chatanki_pipelines(&reason);
+
     // 🆕 B2：挂起的工具审批全部以拒绝结果 drain（等待方立即解除阻塞，而非等超时）
     let rejected_approvals = app_handle
         .try_state::<Arc<super::approval_manager::ApprovalManager>>()
@@ -200,11 +213,12 @@ pub async fn chat_v2_emergency_stop(
     emit_kill_switch_changed(&app_handle, &status);
 
     log::warn!(
-        "[ChatV2::kill_switch] emergency_stop: newly_tripped={}, cancelled_streams={}, rejected_approvals={}, cancelled_workers={}, reason={}",
+        "[ChatV2::kill_switch] emergency_stop: newly_tripped={}, cancelled_streams={}, rejected_approvals={}, cancelled_workers={}, cancelled_chatanki_pipelines={}, reason={}",
         newly_tripped,
         cancelled_streams,
         rejected_approvals,
         cancelled_workers,
+        cancelled_chatanki_pipelines,
         reason
     );
 
@@ -478,7 +492,10 @@ mod tests {
         let ks = AgentKillSwitch::new();
         ks.trip("serde-check");
         let json = serde_json::to_value(ks.status_snapshot()).expect("serialize status");
-        assert_eq!(json.get("killSwitchTripped"), Some(&serde_json::json!(true)));
+        assert_eq!(
+            json.get("killSwitchTripped"),
+            Some(&serde_json::json!(true))
+        );
         assert!(
             json.get("automationsPaused").is_some(),
             "automationsPaused must be present as an independent field"

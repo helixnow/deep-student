@@ -13,10 +13,12 @@ use crate::chat_v2::types::{
     ChatMessage, SendMessageRequest as ChatSendMessageRequest, SendOptions,
 };
 use crate::chat_v2::workspace::config::{
-    MAX_CONCURRENT_WORKERS, WORKER_PIPELINE_CANCEL_GRACE_SECS, WORKER_PIPELINE_TIMEOUT_SECS,
+    MAX_CONCURRENT_WORKERS, MAX_SUBAGENT_DEPTH, WORKER_PIPELINE_CANCEL_GRACE_SECS,
+    WORKER_PIPELINE_TIMEOUT_SECS,
 };
 use crate::chat_v2::workspace::{
-    AgentRole, AgentStatus, MessageType, SubagentTaskData, SubagentTaskStatus, WorkspaceCoordinator,
+    AgentProfileResolver, AgentRole, AgentStatus, MessageType, SubagentTaskData,
+    SubagentTaskStatus, WorkspaceCoordinator,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -29,7 +31,10 @@ enum AgentCompletionStatus {
 
 /// Durable parent/child completion protocol. The same envelope is persisted as a
 /// workspace Result message and emitted as `workspace_agent_completion`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+///
+/// 注：`TokenUsage` 未派生 `Eq`，因此本结构体不再派生 `PartialEq, Eq`
+/// （既有代码从不比较信封实例，测试只断言序列化后的 JSON）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct AgentCompletionEnvelope {
     #[serde(rename = "type")]
     kind: String,
@@ -46,6 +51,10 @@ struct AgentCompletionEnvelope {
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
     completed_at: String,
+    /// 契约 C8：本次 run 的 token 归集（camelCase `TokenUsage` 对象）。
+    /// 从 assistant 消息持久化的 meta 读取；读不到时省略。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token_usage: Option<crate::chat_v2::types::TokenUsage>,
 }
 
 impl AgentCompletionEnvelope {
@@ -73,15 +82,101 @@ impl AgentCompletionEnvelope {
 // Worker 生命周期辅助（并发上限 / P38 重试计数 / 结果摘要）
 // ============================================================
 
-/// result_summary 最大字符数（按字符截断，非字节）
-const WORKER_RESULT_SUMMARY_MAX_CHARS: usize = 500;
+/// result_summary 最大字符数（按字符截断，非字节）。
+///
+/// 契约 C1：阻塞式 `subagent_call` 会把 `task.result_summary` 作为工具返回值
+/// output 交回父代理，4000 字符是父上下文预算（成功与失败分支共用）。
+const WORKER_RESULT_SUMMARY_MAX_CHARS: usize = 4000;
 
-/// 全局 worker 管线并发信号量（懒初始化，进程级）
-static WORKER_PIPELINE_SEMAPHORE: std::sync::OnceLock<tokio::sync::Semaphore> =
+/// 按嵌套深度分池的 worker 管线并发信号量（懒初始化，进程级）。
+///
+/// 每层深度各有 `MAX_CONCURRENT_WORKERS` 个槽位。阻塞式 `subagent_call`
+/// （wait=true）会让持有本层 permit 的父 worker 管线原地等待其子代理完成；
+/// 若父子共用同一个池，4 个父辈可以占满全部槽位互相等待各自的子代理排队，
+/// 形成调度饥饿（750s 等待预算兜底后才能解开）。按深度分池后，深度 n 的
+/// worker 只会等待深度 n+1 的池，资源获取严格按深度排序，环等待不可能成立。
+static WORKER_PIPELINE_SEMAPHORES: std::sync::OnceLock<Vec<tokio::sync::Semaphore>> =
     std::sync::OnceLock::new();
 
-fn worker_pipeline_semaphore() -> &'static tokio::sync::Semaphore {
-    WORKER_PIPELINE_SEMAPHORE.get_or_init(|| tokio::sync::Semaphore::new(MAX_CONCURRENT_WORKERS))
+fn worker_pipeline_semaphore_for_depth(depth: u32) -> &'static tokio::sync::Semaphore {
+    let pools = WORKER_PIPELINE_SEMAPHORES.get_or_init(|| {
+        (0..MAX_SUBAGENT_DEPTH)
+            .map(|_| tokio::sync::Semaphore::new(MAX_CONCURRENT_WORKERS))
+            .collect()
+    });
+    // worker 的 subagent_depth 从 1 开始；0（缺失/legacy 行）与超界值夹取到有效层
+    let index = depth.clamp(1, MAX_SUBAGENT_DEPTH) as usize - 1;
+    &pools[index]
+}
+
+/// 读取 worker 会话的嵌套深度（仅用于调度池选择）。
+///
+/// 读取失败回退深度 1：这只是调度分层依据，不承担安全语义（深度上限的
+/// fail-closed 检查在创建路径上，见 subagent_executor / workspace_executor）。
+fn worker_depth_for_scheduling(db: &ChatV2Database, agent_session_id: &str) -> u32 {
+    let depth = db
+        .get_conn_safe()
+        .ok()
+        .and_then(|conn| {
+            crate::chat_v2::repo::ChatV2Repo::get_session_with_conn(&conn, agent_session_id)
+                .ok()
+                .flatten()
+        })
+        .and_then(|session| session.metadata)
+        .and_then(|m| m.get("subagent_depth").and_then(|v| v.as_u64()))
+        .map(|d| d as u32)
+        .unwrap_or(1);
+    if depth == 0 {
+        1
+    } else {
+        depth
+    }
+}
+
+/// drain-then-fail 守卫：`drain_inbox` 之后、异步管线 spawn 之前的任何错误返回
+/// 路径都必须先把已 drain 的消息回补到 inbox（inbox 已标 processed，不回补即
+/// 永久丢失）。回补失败时发工作区警告，并把失败信息注解进返回的错误串。
+fn fail_with_drained_rollback(
+    coordinator: &WorkspaceCoordinator,
+    workspace_id: &str,
+    agent_session_id: &str,
+    drained_message_ids: &[String],
+    error: String,
+) -> String {
+    let mut rollback_failures: Vec<String> = Vec::new();
+    for message_id in drained_message_ids {
+        if let Err(e) = coordinator.re_enqueue_message(workspace_id, agent_session_id, message_id) {
+            let detail = format!("message_id={}, error={}", message_id, e);
+            rollback_failures.push(detail.clone());
+            log::error!(
+                "[Workspace::handlers] Failed to re-enqueue drained message on aborted run: agent_session_id={}, {}",
+                agent_session_id,
+                detail
+            );
+        }
+    }
+    if rollback_failures.is_empty() {
+        return error;
+    }
+    coordinator.emit_warning(crate::chat_v2::workspace::emitter::WorkspaceWarningEvent {
+        workspace_id: workspace_id.to_string(),
+        code: "run_agent_requeue_failed".to_string(),
+        message: format!(
+            "Worker run for {} aborted ({}), and {} drained message(s) could not be re-queued. Please retry the task manually.",
+            agent_session_id,
+            error,
+            rollback_failures.len()
+        ),
+        agent_session_id: Some(agent_session_id.to_string()),
+        message_id: drained_message_ids.first().cloned(),
+        retry_count: None,
+        max_retries: None,
+    });
+    format!(
+        "{} ({} drained message(s) additionally failed to restore to the inbox; please retry manually)",
+        error,
+        rollback_failures.len()
+    )
 }
 
 /// 按字符（非字节）截断文本，避免多字节字符边界 panic
@@ -137,6 +232,34 @@ fn worker_assistant_output(db: &ChatV2Database, assistant_message_id: &str) -> O
         .trim()
         .to_string();
     (!output.is_empty()).then_some(output)
+}
+
+/// 契约 C8：读取 worker assistant 消息持久化的 token usage。
+///
+/// 数据事实（读取路径）：流式完成后管线把 usage 写进
+/// `chat_v2_messages.meta_json`（`MessageMeta.usage`，见
+/// pipeline/persistence.rs 的 save_results 与 repo.rs 的
+/// `update_message_meta_with_conn`）。多变体模式下 usage 挂在变体上
+/// （`Variant.usage`）：消息级读不到时回退激活变体，再退任何带 usage 的变体。
+///
+/// `pub(crate)`：subagent_executor 的阻塞等待路径复用同一实现按 run_id
+/// （= assistant 消息 ID）读取，避免复制。
+pub(crate) fn worker_message_usage(
+    db: &ChatV2Database,
+    assistant_message_id: &str,
+) -> Option<crate::chat_v2::types::TokenUsage> {
+    let message =
+        crate::chat_v2::repo::ChatV2Repo::get_message_v2(db, assistant_message_id).ok()??;
+    if let Some(usage) = message.meta.as_ref().and_then(|meta| meta.usage.clone()) {
+        return Some(usage);
+    }
+    let variants = message.variants.as_ref()?;
+    let active_id = message.active_variant_id.as_deref();
+    variants
+        .iter()
+        .find(|variant| active_id == Some(variant.id.as_str()))
+        .and_then(|variant| variant.usage.clone())
+        .or_else(|| variants.iter().find_map(|variant| variant.usage.clone()))
 }
 
 /// 🆕 取消传播：workspace 关闭/删除前，取消该 workspace 内所有活跃 worker 的流，
@@ -371,6 +494,11 @@ pub struct AgentInfo {
     pub role: String,
     pub status: String,
     pub skill_id: Option<String>,
+    /// agent metadata 中持久化的 AgentProfile id（worker/explorer/自定义名）；
+    /// legacy 行（无 agent_profile 键）为 None，前端回退显示 skill_id
+    pub agent_profile_id: Option<String>,
+    /// 🆕 契约 C12：该 agent inbox 中未消费（unread）的消息数；查询失败按 0
+    pub pending_inbox_count: usize,
     pub joined_at: String,
     pub last_active_at: String,
 }
@@ -707,13 +835,26 @@ pub async fn workspace_list_agents(
 
     Ok(agents
         .into_iter()
-        .map(|a| AgentInfo {
-            session_id: a.session_id,
-            role: format!("{:?}", a.role).to_lowercase(),
-            status: format!("{:?}", a.status).to_lowercase(),
-            skill_id: a.skill_id,
-            joined_at: a.joined_at.to_rfc3339(),
-            last_active_at: a.last_active_at.to_rfc3339(),
+        .map(|a| {
+            let agent_profile_id = AgentProfileResolver::from_metadata(a.metadata.as_ref())
+                .ok()
+                .flatten()
+                .map(|profile| profile.id);
+            // 🆕 契约 C12：每 agent 一次 count 查询（agent 数上限 10，可接受）；
+            // 查询失败按 0，不阻断列表返回
+            let pending_inbox_count = coordinator
+                .pending_inbox_count(&workspace_id, &a.session_id)
+                .unwrap_or(0);
+            AgentInfo {
+                session_id: a.session_id,
+                role: format!("{:?}", a.role).to_lowercase(),
+                status: format!("{:?}", a.status).to_lowercase(),
+                skill_id: a.skill_id,
+                agent_profile_id,
+                pending_inbox_count,
+                joined_at: a.joined_at.to_rfc3339(),
+                last_active_at: a.last_active_at.to_rfc3339(),
+            }
         })
         .collect())
 }
@@ -972,10 +1113,31 @@ pub async fn run_workspace_agent_backend(
     // or externally visible Running state. A queued worker must not consume input or
     // masquerade as running while it is still waiting for scheduler capacity.
     coordinator.update_agent_status(workspace_id, agent_session_id, AgentStatus::Queued)?;
-    let permit = worker_pipeline_semaphore()
+    // 按嵌套深度选择调度池：父 worker 阻塞等待子代理时（subagent_call wait=true），
+    // 父子位于不同深度的池，父辈占满本层槽位不会阻塞子代理起跑。
+    let worker_depth = worker_depth_for_scheduling(&db, agent_session_id);
+    let permit = worker_pipeline_semaphore_for_depth(worker_depth)
         .acquire()
         .await
         .map_err(|_| "Worker scheduler is unavailable".to_string())?;
+
+    // 🆕 排队取消检查：permit 等待期间用户可能已取消/关闭该 agent。
+    // 此时不 drain、不覆盖状态，直接释放 permit 返回 cancelled。
+    if let Some(current) = coordinator.get_agent(workspace_id, agent_session_id)? {
+        if matches!(current.status, AgentStatus::Cancelled | AgentStatus::Closed) {
+            log::info!(
+                "[Workspace::handlers] [RUN_AGENT] Agent {} was {:?} while queued, skipping run",
+                agent_session_id,
+                current.status
+            );
+            drop(permit);
+            return Ok(RunAgentResponse {
+                agent_session_id: agent_session_id.clone(),
+                message_id: String::new(),
+                status: "cancelled".to_string(),
+            });
+        }
+    }
 
     // 2. 从 inbox 获取待处理消息
     // 🔧 P25 修复：inbox 为空时返回成功（幂等），而不是报错
@@ -1042,48 +1204,17 @@ pub async fn run_workspace_agent_backend(
     }
 
     // 4. 检查是否有活跃流
+    // 避免 drain 后因并发流冲突直接返回导致消息丢失：统一走 drain 回滚守卫
     let stream_registration = match chat_v2_state.try_register_stream_owned(agent_session_id) {
         Ok(registration) => registration,
         Err(()) => {
-            // 避免 drain 后因并发流冲突直接返回导致消息丢失：将消息回补到 inbox
-            let mut rollback_failures: Vec<String> = Vec::new();
-            for message_id in &original_message_ids {
-                if let Err(e) =
-                    coordinator.re_enqueue_message(workspace_id, agent_session_id, message_id)
-                {
-                    let detail = format!("message_id={}, error={}", message_id, e);
-                    rollback_failures.push(detail.clone());
-                    log::error!(
-                        "[Workspace::handlers] Failed to re-enqueue drained message on active-stream conflict: agent_session_id={}, {}",
-                        agent_session_id,
-                        detail
-                    );
-                }
-            }
-
-            if !rollback_failures.is_empty() {
-                coordinator.emit_warning(crate::chat_v2::workspace::emitter::WorkspaceWarningEvent {
-                    workspace_id: workspace_id.clone(),
-                    code: "run_agent_conflict_requeue_failed".to_string(),
-                    message: format!(
-                        "Agent {} is already running, and {} drained message(s) could not be re-queued. Wait for completion, then manually retry the task.",
-                        agent_session_id,
-                        rollback_failures.len()
-                    ),
-                    agent_session_id: Some(agent_session_id.clone()),
-                    message_id: original_message_ids.first().cloned(),
-                    retry_count: None,
-                    max_retries: None,
-                });
-
-                return Err(format!(
-                    "Agent {} has an active stream, and {} drained message(s) failed to restore. Please wait for completion and retry manually.",
-                    agent_session_id,
-                    rollback_failures.len()
-                ));
-            }
-
-            return Err("Agent has an active stream. Please wait for completion.".to_string());
+            return Err(fail_with_drained_rollback(
+                &coordinator,
+                workspace_id,
+                agent_session_id,
+                &original_message_ids,
+                "Agent has an active stream. Please wait for completion.".to_string(),
+            ));
         }
     };
     let stream_generation = stream_registration.generation();
@@ -1097,7 +1228,17 @@ pub async fn run_workspace_agent_backend(
     );
 
     // 5. 更新 Agent 状态为 Running
-    coordinator.update_agent_status(workspace_id, agent_session_id, AgentStatus::Running)?;
+    coordinator
+        .update_agent_status(workspace_id, agent_session_id, AgentStatus::Running)
+        .map_err(|e| {
+            fail_with_drained_rollback(
+                &coordinator,
+                workspace_id,
+                agent_session_id,
+                &original_message_ids,
+                e,
+            )
+        })?;
 
     // 🆕 P1 修复：标记子代理任务为 Running（支持重启恢复）
     // 🔧 P38 修复：子代理 session ID 实际是 agent_worker_ 前缀
@@ -1120,22 +1261,79 @@ pub async fn run_workspace_agent_backend(
         }
     }
 
-    // 6. 获取 Agent 的 System Prompt（从 metadata）
+    // 6. 解析运行时配置：优先消费 agent metadata 中持久化的 AgentProfile，
+    // 解析失败时 log warn 并回退 legacy 路径（session metadata 的
+    // system_prompt / recommended_models），不 hard fail。
+    let runtime_config = match AgentProfileResolver::runtime_config_for_agent(agent) {
+        Ok(config) => Some(config),
+        Err(error) => {
+            log::warn!(
+                "[Workspace::handlers] Failed to resolve agent profile for {}, falling back to legacy session metadata: {}",
+                agent_session_id,
+                error
+            );
+            None
+        }
+    };
+    // 只有 agent metadata 里真的持久化了 agent_profile 键时，系统提示词才
+    // 由 profile 接管；legacy 行（仅 skill_id 回退出来的 worker profile）
+    // 继续用 session metadata 里的技能 system_prompt。
+    let has_persisted_profile = matches!(
+        AgentProfileResolver::from_metadata(agent.metadata.as_ref()),
+        Ok(Some(_))
+    );
+
     let conn = db
         .get_conn_safe()
-        .map_err(|e| format!("Failed to get db connection: {}", e))?;
+        .map_err(|e| format!("Failed to get db connection: {}", e))
+        .map_err(|e| {
+            fail_with_drained_rollback(
+                &coordinator,
+                workspace_id,
+                agent_session_id,
+                &original_message_ids,
+                e,
+            )
+        })?;
     let session = crate::chat_v2::repo::ChatV2Repo::get_session_with_conn(&conn, agent_session_id)
-        .map_err(|e| format!("Failed to get agent session: {}", e))?
-        .ok_or_else(|| format!("Agent session not found: {}", agent_session_id))?;
+        .map_err(|e| format!("Failed to get agent session: {}", e))
+        .and_then(|session| {
+            session.ok_or_else(|| format!("Agent session not found: {}", agent_session_id))
+        })
+        .map_err(|e| {
+            fail_with_drained_rollback(
+                &coordinator,
+                workspace_id,
+                agent_session_id,
+                &original_message_ids,
+                e,
+            )
+        })?;
 
-    let system_prompt = session
+    let legacy_system_prompt = session
         .metadata
         .as_ref()
         .and_then(|m| m.get("system_prompt"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    // 获取 Skill 推荐的模型（优先使用第一个）
+    let system_prompt = match (&runtime_config, has_persisted_profile) {
+        (Some(config), true) => {
+            let workspace_name = coordinator
+                .get_workspace(workspace_id)
+                .ok()
+                .flatten()
+                .and_then(|w| w.name)
+                .unwrap_or_else(|| workspace_id.chars().take(8).collect());
+            Some(format!(
+                "{}\n\n# 工作区协作环境\n- 工作区名称: {}\n- 工作区 ID: {}\n\n最终回答会由运行时自动交付给主代理；workspace_send 仅用于进度、提问或中间协作。",
+                config.system_instructions, workspace_name, workspace_id
+            ))
+        }
+        _ => legacy_system_prompt,
+    };
+
+    // 获取 Skill 推荐的模型（legacy 回退：优先使用第一个）
     let recommended_model = session
         .metadata
         .as_ref()
@@ -1144,6 +1342,11 @@ pub async fn run_workspace_agent_backend(
         .and_then(|arr| arr.first())
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
+    // 模型：profile 的 model_id（Some 时优先）→ recommended_models[0] 回退
+    let selected_model = runtime_config
+        .as_ref()
+        .and_then(|config| config.model_id.clone())
+        .or(recommended_model);
     let parent_session_id = session
         .metadata
         .as_ref()
@@ -1151,9 +1354,9 @@ pub async fn run_workspace_agent_backend(
         .and_then(|value| value.as_str())
         .map(str::to_string);
 
-    if let Some(ref model) = recommended_model {
+    if let Some(ref model) = selected_model {
         log::info!(
-            "[Workspace::handlers] Using skill recommended model: {} for agent: {}",
+            "[Workspace::handlers] Using model: {} for agent: {}",
             model,
             agent_session_id
         );
@@ -1212,14 +1415,30 @@ pub async fn run_workspace_agent_backend(
         },
     ];
 
-    // 🆕 执行层工具白名单（fail-closed，参考 headless.rs 的双层防线）：
-    // schema 层只注入 workspace_send/query，但执行层若不设白名单则全放行——
-    // worker 模型输出 subagent_call / workspace_create_agent 等任意工具名都会被执行，
-    // 深度限制可被绕过。白名单直接取注入 schema 的工具集，保持单一事实来源。
-    let worker_allowed_tools: Vec<String> = workspace_tool_schemas
-        .iter()
-        .map(|schema| schema.name.clone())
-        .collect();
+    // 🆕 工具面（fail-closed，参考 headless.rs 的双层防线）：
+    // - 基座：上面两个本地 workspace schema（workspace_send/query 不重复注入）；
+    // - profile 存在时：从 headless 只读 schema 集中按 profile.allowed_tools
+    //   精确匹配追加 schema，执行层白名单取 profile.allowed_tools 全集；
+    // - profile 缺失（解析失败回退 legacy）时：维持现状只放行两个 workspace 工具。
+    let mut workspace_tool_schemas = workspace_tool_schemas;
+    let worker_allowed_tools: Vec<String> = match runtime_config.as_ref() {
+        Some(config) => {
+            for schema in crate::chat_v2::headless::headless_tool_schemas() {
+                if config.allowed_tools.iter().any(|tool| *tool == schema.name)
+                    && !workspace_tool_schemas
+                        .iter()
+                        .any(|existing| existing.name == schema.name)
+                {
+                    workspace_tool_schemas.push(schema);
+                }
+            }
+            config.allowed_tools.clone()
+        }
+        None => workspace_tool_schemas
+            .iter()
+            .map(|schema| schema.name.clone())
+            .collect(),
+    };
 
     let assistant_message_id = ChatMessage::generate_id();
     let send_request = ChatSendMessageRequest {
@@ -1230,8 +1449,8 @@ pub async fn run_workspace_agent_backend(
         workspace_id: Some(workspace_id.clone()),
         options: Some(SendOptions {
             system_prompt_override: system_prompt,
-            // 使用 Skill 推荐的模型
-            model_id: recommended_model,
+            // profile.model_id 优先，legacy recommended_models[0] 回退
+            model_id: selected_model,
             // Worker 默认禁用 RAG 等检索功能
             rag_enabled: Some(false),
             graph_rag_enabled: Some(false),
@@ -1347,6 +1566,10 @@ pub async fn run_workspace_agent_backend(
                         final_output: Some(final_output),
                         error: None,
                         completed_at,
+                        token_usage: worker_message_usage(
+                            &db_clone,
+                            &assistant_message_id_for_task,
+                        ),
                     };
                     let completion_metadata = completion.metadata();
 
@@ -1452,6 +1675,8 @@ pub async fn run_workspace_agent_backend(
                     final_output: None,
                     error: Some("execution cancelled".to_string()),
                     completed_at: chrono::Utc::now().to_rfc3339(),
+                    // 取消时尽力读取（部分轮次可能已持久化 usage），读不到为 None
+                    token_usage: worker_message_usage(&db_clone, &assistant_message_id_for_task),
                 };
                 let completion_metadata = completion.metadata();
                 if let Ok(message) = coordinator_clone.send_message(
@@ -1502,6 +1727,8 @@ pub async fn run_workspace_agent_backend(
                     final_output: None,
                     error: Some(error_summary),
                     completed_at: chrono::Utc::now().to_rfc3339(),
+                    // 失败时尽力读取（部分轮次可能已持久化 usage），读不到为 None
+                    token_usage: worker_message_usage(&db_clone, &assistant_message_id_for_task),
                 };
                 let completion_metadata = completion.metadata();
                 if let Ok(message) = coordinator_clone.send_message(
@@ -1529,7 +1756,7 @@ pub async fn run_workspace_agent_backend(
     })
 }
 
-/// 取消 Worker Agent 执行（手动中止）
+/// 取消 Worker Agent 执行（手动中止）——薄壳：权限校验后委托后端取消函数
 #[tauri::command]
 pub async fn workspace_cancel_agent(
     coordinator: State<'_, Arc<WorkspaceCoordinator>>,
@@ -1539,14 +1766,49 @@ pub async fn workspace_cancel_agent(
     agent_session_id: String,
 ) -> Result<bool, String> {
     coordinator.ensure_member_or_creator(&workspace_id, &session_id)?;
+    cancel_workspace_agent_core(
+        &workspace_id,
+        &agent_session_id,
+        coordinator.inner().as_ref(),
+        chat_v2_state.inner().as_ref(),
+    )
+}
 
-    let stream_cancelled = chat_v2_state.cancel_stream(&agent_session_id);
+/// 契约 C5：后端取消入口，供 subagent_executor 的阻塞等待路径调用。
+/// 不做权限校验（调用方是受信任的后端运行时）；事件通过 coordinator 自带的
+/// emitter 通路发出，不依赖 window。
+/// 签名保持 async 以稳定跨模块契约（内部当前无 await）。
+#[allow(clippy::unused_async)]
+pub async fn cancel_workspace_agent_backend(
+    workspace_id: &str,
+    agent_session_id: &str,
+    coordinator: Arc<WorkspaceCoordinator>,
+    chat_v2_state: Arc<ChatV2State>,
+) -> Result<(), String> {
+    cancel_workspace_agent_core(
+        workspace_id,
+        agent_session_id,
+        coordinator.as_ref(),
+        chat_v2_state.as_ref(),
+    )
+    .map(|_| ())
+}
+
+/// 取消核心逻辑：取消活跃流、把 pending/running 任务置 Cancelled、agent 状态落库。
+/// 返回是否实际取消了任何东西（流或任务）。
+fn cancel_workspace_agent_core(
+    workspace_id: &str,
+    agent_session_id: &str,
+    coordinator: &WorkspaceCoordinator,
+    chat_v2_state: &ChatV2State,
+) -> Result<bool, String> {
+    let stream_cancelled = chat_v2_state.cancel_stream(agent_session_id);
 
     // 🔧 P0 修复：取消必须落库。查该 agent 的 pending/running 任务并置 Cancelled，
     // 否则任务停留 running，重启后被 workspace_restore_executions 当"中断任务"自动重跑。
     let mut task_cancelled = false;
-    match coordinator.get_task_manager(&workspace_id) {
-        Ok(task_manager) => match task_manager.get_agent_task(&agent_session_id) {
+    match coordinator.get_task_manager(workspace_id) {
+        Ok(task_manager) => match task_manager.get_agent_task(agent_session_id) {
             Ok(Some(task)) => match task_manager.update_status(
                 &task.id,
                 SubagentTaskStatus::Cancelled,
@@ -1589,16 +1851,13 @@ pub async fn workspace_cancel_agent(
     let cancelled = stream_cancelled || task_cancelled;
     if cancelled {
         // 🔧 P0 修复：agent 状态用 Cancelled（而非 Idle），避免被当作可复用的空闲 agent
-        let _ = coordinator.update_agent_status(
-            &workspace_id,
-            &agent_session_id,
-            AgentStatus::Cancelled,
-        );
+        let _ =
+            coordinator.update_agent_status(workspace_id, agent_session_id, AgentStatus::Cancelled);
         coordinator.emit_warning(crate::chat_v2::workspace::emitter::WorkspaceWarningEvent {
-            workspace_id,
+            workspace_id: workspace_id.to_string(),
             code: "agent_cancelled".to_string(),
             message: format!("Agent {} execution cancelled by user", agent_session_id),
-            agent_session_id: Some(agent_session_id),
+            agent_session_id: Some(agent_session_id.to_string()),
             message_id: None,
             retry_count: None,
             max_retries: None,
@@ -1836,6 +2095,85 @@ pub async fn workspace_restore_executions(
     })
 }
 
+// ============================================================
+// 子代理档案列表（设置页管理入口）
+// ============================================================
+
+/// 单个子代理档案的列表摘要（内建 + 自定义）。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentProfileSummary {
+    pub id: String,
+    pub description: Option<String>,
+    /// 自定义档案的 base 档案 id；内建档案为 None。
+    /// 注：当前恒为 None——`AgentProfile` 解析后不保留 base 来源
+    /// （custom_agents 从 base 克隆后即丢弃该信息），待后端补存后填充。
+    pub base: Option<String>,
+    pub model: Option<String>,
+    pub tool_count: usize,
+    pub is_builtin: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListAgentProfilesResponse {
+    pub profiles: Vec<AgentProfileSummary>,
+    /// 自定义档案目录（`{workspaces_dir}/agents`）的绝对路径。
+    pub agents_dir: String,
+}
+
+/// 列出全部子代理档案：内建三型 + `{workspaces_dir}/agents/*.md` 自定义档案。
+///
+/// 目录不存在时 best-effort 创建（失败仅 warn，不阻塞列表返回），
+/// 以便前端"打开档案目录"按钮始终有目录可揭示。
+#[tauri::command]
+pub async fn workspace_list_agent_profiles(
+    coordinator: State<'_, Arc<WorkspaceCoordinator>>,
+) -> Result<ListAgentProfilesResponse, String> {
+    use crate::chat_v2::workspace::agent_profile::{
+        DEFAULT_PROFILE_ID, EXPLORER_PROFILE_ID, WORKER_PROFILE_ID,
+    };
+
+    let agents_dir = coordinator.custom_agents_dir();
+    if let Err(e) = std::fs::create_dir_all(&agents_dir) {
+        log::warn!(
+            "[Workspace::handlers] Failed to ensure custom agents dir {}: {}",
+            agents_dir.display(),
+            e
+        );
+    }
+
+    let summarize = |profile: &crate::chat_v2::workspace::AgentProfile,
+                     is_builtin: bool|
+     -> AgentProfileSummary {
+        AgentProfileSummary {
+            id: profile.id.clone(),
+            description: profile.description.clone(),
+            base: None,
+            model: profile.model.clone(),
+            tool_count: profile.allowed_tools.len(),
+            is_builtin,
+        }
+    };
+
+    let mut profiles: Vec<AgentProfileSummary> =
+        [DEFAULT_PROFILE_ID, WORKER_PROFILE_ID, EXPLORER_PROFILE_ID]
+            .iter()
+            .filter_map(|id| AgentProfileResolver::built_in(id))
+            .map(|profile| summarize(&profile, true))
+            .collect();
+    profiles.extend(
+        crate::chat_v2::workspace::load_custom_profiles(&agents_dir)
+            .iter()
+            .map(|profile| summarize(profile, false)),
+    );
+
+    Ok(ListAgentProfilesResponse {
+        profiles,
+        agents_dir: agents_dir.to_string_lossy().into_owned(),
+    })
+}
+
 #[cfg(test)]
 mod runtime_completion_tests {
     use super::*;
@@ -1853,6 +2191,12 @@ mod runtime_completion_tests {
             final_output: Some("done".to_string()),
             error: None,
             completed_at: "2026-07-11T00:00:00Z".to_string(),
+            token_usage: Some(crate::chat_v2::types::TokenUsage {
+                prompt_tokens: 120,
+                completion_tokens: 30,
+                total_tokens: 150,
+                ..Default::default()
+            }),
         };
 
         let value = envelope.metadata();
@@ -1865,6 +2209,10 @@ mod runtime_completion_tests {
         assert_eq!(value["status"], "completed");
         assert_eq!(value["final_output"], "done");
         assert!(value.get("error").is_none());
+        // 契约 C8：token_usage 内部字段是 camelCase TokenUsage 对象
+        assert_eq!(value["token_usage"]["promptTokens"], 120);
+        assert_eq!(value["token_usage"]["completionTokens"], 30);
+        assert_eq!(value["token_usage"]["totalTokens"], 150);
     }
 
     #[test]
@@ -1880,6 +2228,7 @@ mod runtime_completion_tests {
             final_output: None,
             error: Some("pipeline failed".to_string()),
             completed_at: "2026-07-11T00:00:00Z".to_string(),
+            token_usage: None,
         };
 
         let value = envelope.metadata();
@@ -1888,5 +2237,7 @@ mod runtime_completion_tests {
         assert!(value.get("final_output").is_none());
         assert!(value.get("task_id").is_none());
         assert!(value.get("correlation_id").is_none());
+        // usage 读不到时整个键省略
+        assert!(value.get("token_usage").is_none());
     }
 }

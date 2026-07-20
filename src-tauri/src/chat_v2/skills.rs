@@ -119,7 +119,12 @@ fn build_allowed_skills_bases(
         }
     }
 
-    // 当前工作目录下的标准 Skill 目录（项目内，兼容 Agent Skills 开放标准）
+    // 当前工作目录下的标准 Skill 目录（项目内，兼容 Agent Skills 开放标准）。
+    //
+    // ⚠️ 注意：桌面 app 的进程 cwd 不稳定（macOS 下 Finder 启动通常是 `/`，
+    // dev 模式是 src-tauri/），这些派生路径仅作兼容白名单，不应作为主要
+    // 技能目录依赖；主目录以上方 home/appData 派生路径为准。cwd 获取失败
+    // （current_dir=None）时静默跳过，不 panic。
     if let Some(current_dir) = current_dir {
         push_unique_path(&mut bases, current_dir.join(".skills"));
         push_unique_path(&mut bases, current_dir.join(".agents").join("skills"));
@@ -793,7 +798,9 @@ pub async fn skill_delete(path: String) -> Result<(), String> {
     skill_delete_impl(path).await.map_err(String::from)
 }
 
-async fn skill_delete_impl(path: String) -> ChatV2Result<()> {
+/// pub(crate)：`skill_lifecycle_executor` 的 `skill_remove` 工具复用同一套
+/// 路径白名单校验 + SKILL.md 存在性检查 + 递归删除逻辑（治理正门共享实现）。
+pub(crate) async fn skill_delete_impl(path: String) -> ChatV2Result<()> {
     let expanded_path = expand_path(&path);
     debug!("[Skills] 删除目录: {:?}", expanded_path);
 
@@ -857,6 +864,13 @@ pub struct SkillImportZipResult {
     pub requires: Option<crate::chat_v2::skill_requires::SkillRequiresProbe>,
 }
 
+/// zip 条目名安全闸门（只允许收紧，不许放松）：
+/// - 拒绝空名 / 绝对路径（`/` 开头，`\` 已先归一化为 `/`）
+/// - 每个路径段经 `is_portable_skill_path_component` 校验（拒绝 `.`、`..`、
+///   空段、控制字符、Windows 保留名等）
+/// - 通过后仍会经 `safe_staged_relative_path`（仅 Normal 组件）落盘，且
+///   staging 目录发布前由 `sync_directory_tree` 拒绝任何 symlink；
+///   zip 内的 symlink 条目会被当作普通文件字节写入，不产生链接。
 fn is_safe_zip_entry(name: &str) -> bool {
     let normalized = name.replace('\\', "/");
     if normalized.is_empty() || normalized.starts_with('/') {

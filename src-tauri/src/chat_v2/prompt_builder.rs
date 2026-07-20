@@ -780,15 +780,24 @@ fn load_learner_profile_block(options: &SendOptions) -> Option<String> {
         .clone();
 
     let mem_cfg = crate::memory::MemoryConfig::new(vfs_db.clone());
-    if mem_cfg.is_privacy_mode().unwrap_or(false) {
-        return None;
+    // 🔧 P1-8：隐私模式读取失败不再完全静默（保持原「按非隐私继续」语义，但可观测）
+    match mem_cfg.is_privacy_mode() {
+        Ok(true) => return None,
+        Ok(false) => {}
+        Err(e) => {
+            log::warn!(
+                "[PromptBuilder] Failed to read privacy mode: {}; proceeding as non-privacy (unchanged behavior)",
+                e
+            );
+        }
     }
 
     let profile = match crate::memory::learner_profile::load_profile_from_db(&vfs_db) {
         Ok(Some(p)) => p,
         Ok(None) => return None,
         Err(e) => {
-            log::debug!("[PromptBuilder] Failed to load learner profile: {}", e);
+            // 🔧 P1-8：debug → warn（学习者画像注入被静默跳过应可观测）
+            log::warn!("[PromptBuilder] Failed to load learner profile: {}; skipping learner profile injection", e);
             return None;
         }
     };

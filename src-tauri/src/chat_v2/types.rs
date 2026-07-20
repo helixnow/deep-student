@@ -108,6 +108,12 @@ pub mod block_types {
 
     // ACR R1-01：工作台操作工具卡（前端 remap workbench_* → 此块类型）
     pub const WORKBENCH_OPS: &str = "workbench_ops";
+
+    // 🆕 主代理→子代理消息链路（契约 C11/缺口 2）
+    /// 工作区消息注入块（注入内容持久化 + 前端渲染"主代理插话"）
+    pub const WORKSPACE_INJECTION: &str = "workspace_injection";
+    /// workspace_send 工具专属块（历史加载与前端实时块类型对齐）
+    pub const WORKSPACE_SEND: &str = "workspace_send";
 }
 
 /// 块状态字符串常量（与前端 BlockStatus 完全对齐）
@@ -293,7 +299,9 @@ impl TokenUsage {
     pub fn accumulate(&mut self, other: &TokenUsage) {
         // saturating_add：长 agentic 会话多轮累加不应有 debug 溢出 panic 风险
         self.prompt_tokens = self.prompt_tokens.saturating_add(other.prompt_tokens);
-        self.completion_tokens = self.completion_tokens.saturating_add(other.completion_tokens);
+        self.completion_tokens = self
+            .completion_tokens
+            .saturating_add(other.completion_tokens);
         self.total_tokens = self.total_tokens.saturating_add(other.total_tokens);
 
         // 来源混合逻辑
@@ -2514,6 +2522,12 @@ pub struct LoadMessagesPageResponse {
 
     /// 请求的页大小（服务端 clamp 后的实际值）
     pub limit: u32,
+
+    /// 🆕 下一页起始偏移（可选 cursor 信息，向后兼容的附加字段）。
+    /// `None` 表示没有更多历史页。旧前端可继续用 offset/limit 自行推算，
+    /// 新前端可直接以此为游标翻页。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_offset: Option<u32>,
 }
 
 /// 会话设置（用于更新会话）
@@ -2846,7 +2860,7 @@ impl Default for PanelStates {
 /// ## 视图语义
 /// - `tail_start_time_created` 及之后的消息：逐字保留
 /// - 之前的消息：在 LLM 视图中**隐藏**，仅用户点击"展开原文"时可见
-/// - 在 tail 起点前插入一条 system 伪消息承载 summary 文本
+/// - 在 tail 起点前插入一条 user 伪消息承载 summary 文本
 ///
 /// ## 签名保真
 /// tail_start 必须对齐 turn 边界（某个 user turn 的起点），且不能切穿
@@ -2863,14 +2877,24 @@ pub struct CompactionRecord {
     pub tail_start_message_id: String,
     /// 首条逐字保留消息的创建时间（ms epoch），用于 SQL 层过滤
     pub tail_start_time_created: i64,
-    /// 'auto' | 'manual' | 'overflow'
+    /// 'auto' | 'manual' | 'overflow' | 'branch'
     pub reason: String,
     pub is_auto: bool,
     pub is_overflow: bool,
     pub tokens_before: Option<u32>,
     pub tokens_after: Option<u32>,
-    /// 触发压缩的对话主模型 ID（审计用）
+    /// 实际生成摘要的模型名称
     pub model_id: Option<String>,
+    /// 发起请求时使用的模型配置 ID
+    pub model_config_id: Option<String>,
+    /// 上一个活跃压缩记录
+    pub previous_compaction_id: Option<String>,
+    /// 本次新纳入摘要的首条消息
+    pub range_start_message_id: Option<String>,
+    /// 本次摘要区间的右开边界（通常为 tail_start）
+    pub range_end_message_id: Option<String>,
+    /// 本次新纳入摘要的原始消息数量
+    pub compacted_message_count: Option<u32>,
     /// 创建时间戳（ms epoch）
     pub created_at: i64,
 }

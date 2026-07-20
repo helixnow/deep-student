@@ -205,6 +205,15 @@ impl IndexWebpageToolExecutor {
         }
         let db = vfs_db(ctx)?;
         ensure_rebuild_target(&db, &resource_id)?;
+        // 阶段间隙取消检查点：目标校验通过后、获取重量级依赖之前。
+        if ctx.is_cancelled() {
+            return Err(tool_error(
+                "CANCELLED",
+                "Index rebuild was cancelled after target validation, before any index mutation.",
+                "Retry only if the resource still needs rebuilding.",
+                true,
+            ));
+        }
         let llm_manager = ctx.llm_manager.clone().ok_or_else(|| {
             tool_error(
                 "DEPENDENCY_UNAVAILABLE",
@@ -244,11 +253,22 @@ impl IndexWebpageToolExecutor {
                 }),
             );
         });
+        // 阶段间隙取消检查点：依赖就绪后、发出 started 事件并进入重建管线之前。
+        // 管线运行期间的取消由注册表派生的 scoped token 传播处理。
+        if ctx.is_cancelled() {
+            return Err(tool_error(
+                "CANCELLED",
+                "Index rebuild was cancelled after preflight, before any index mutation.",
+                "Retry only if the resource still needs rebuilding.",
+                true,
+            ));
+        }
         let _ = app_handle.emit(
             "vfs-index-progress",
             json!({
                 "type": "agent_rebuild_started",
                 "resourceId": resource_id,
+                "blockId": ctx.block_id,
             }),
         );
 
@@ -268,6 +288,7 @@ impl IndexWebpageToolExecutor {
                     json!({
                         "type": "agent_rebuild_completed",
                         "resourceId": resource_id,
+                        "blockId": ctx.block_id,
                         "chunks": chunks,
                         "embeddingDim": embedding_dim,
                     }),
@@ -280,6 +301,10 @@ impl IndexWebpageToolExecutor {
                         "chunks": chunks,
                         "embeddingDim": embedding_dim,
                         "durationMs": duration_ms,
+                        // 前端可按 blockId 订阅 vfs-index-progress 的
+                        // agent_rebuild_progress 事件渲染进度条。
+                        "blockId": ctx.block_id,
+                        "progressEvent": "vfs-index-progress",
                     }),
                     "chat.tools.index.rebuild",
                     json!({ "resourceId": resource_id }),
@@ -294,6 +319,7 @@ impl IndexWebpageToolExecutor {
                     json!({
                         "type": "agent_rebuild_failed",
                         "resourceId": resource_id,
+                        "blockId": ctx.block_id,
                         "error": error.to_string(),
                     }),
                 );
@@ -367,6 +393,15 @@ impl IndexWebpageToolExecutor {
             ));
         }
         let db = vfs_db(ctx)?;
+        // 最终取消检查点：Markdown 组装与校验完成后、真正写入 VFS 之前。
+        if ctx.is_cancelled() {
+            return Err(tool_error(
+                "CANCELLED",
+                "Webpage save was cancelled before any VFS mutation.",
+                "Retry only if the webpage still needs to be archived.",
+                true,
+            ));
+        }
         let persisted = persist_webpage(
             &db,
             &title,
@@ -391,7 +426,25 @@ impl IndexWebpageToolExecutor {
         };
         emit_watch_event(ctx.window_ref(), event);
 
-        let deduplicated = disposition != WebpageSaveDisposition::Created;
+        // 三态区分：Created=全新保存，Restored=同哈希内容曾被删除后恢复，
+        // Existing=按内容哈希去重命中活跃文件。仅 Existing 视为 deduplicated。
+        let (disposition_label, zh_message, en_message) = match disposition {
+            WebpageSaveDisposition::Created => (
+                "created",
+                "网页已保存到知识库；文本单元已同步，向量索引异步进行中，可用 index_status 查询进度。",
+                "Saved the webpage to the knowledge base; text units are synced and vector indexing continues asynchronously. Check progress with index_status.",
+            ),
+            WebpageSaveDisposition::Restored => (
+                "restored",
+                "相同内容此前已被删除，现已恢复保存到知识库；向量索引异步进行中，可用 index_status 查询进度。",
+                "Identical content existed before but had been removed; it was re-saved to the knowledge base. Vector indexing continues asynchronously; check progress with index_status.",
+            ),
+            WebpageSaveDisposition::Existing => (
+                "deduplicated",
+                "网页内容已存在于知识库（按内容哈希去重），已复核索引单元；向量状态可用 index_status 查询。",
+                "Identical webpage content already exists (content-hash deduplication); index units were re-verified. Check vector status with index_status.",
+            ),
+        };
 
         let output = localized_success(
             json!({
@@ -402,21 +455,21 @@ impl IndexWebpageToolExecutor {
                 "url": url,
                 "blobHash": file.blob_hash,
                 "unitsCreated": units_created,
+                // 诚实的索引状态：本调用只保证 Unit 已同步入队，
+                // 向量嵌入由后台索引管线异步完成。
+                "indexState": "units_synced",
+                "vectorIndexPending": true,
+                "indexStatusTool": "builtin-index_status",
+                "disposition": disposition_label,
+                // 兼容字段：仅内容哈希命中活跃文件时为 true。
+                "deduplicated": disposition == WebpageSaveDisposition::Existing,
+                // 兼容字段：Unit 已入队（不代表向量已写入）。
                 "indexQueued": true,
-                "deduplicated": deduplicated,
             }),
             "chat.tools.index.webpage_saved",
-            json!({ "url": url }),
-            if !deduplicated {
-                "网页已保存到知识库并加入索引队列。"
-            } else {
-                "网页内容已存在于知识库，已确认索引单元。"
-            },
-            if !deduplicated {
-                "Saved the webpage to the knowledge base and queued it for indexing."
-            } else {
-                "The webpage already exists in the knowledge base; its index units are up to date."
-            },
+            json!({ "url": url, "disposition": disposition_label }),
+            zh_message,
+            en_message,
         );
         Ok(output)
     }
@@ -870,14 +923,43 @@ fn format_webpage_markdown(title: &str, url: &str, content: &str) -> String {
         "---\ntitle: {}\nsource: {}\n---\n\n# {}\n\nSource: <{}>\n\n{}\n",
         yaml_scalar(title),
         yaml_scalar(url),
-        title,
+        heading_text(title),
         url,
         content.trim()
     )
 }
 
+/// Encode a string as a safe YAML flow scalar for the frontmatter.
+///
+/// Values without control characters keep the historical single-quoted style
+/// (only `'` doubled) so that re-saving an already archived page still yields
+/// the same bytes and content hash (deduplication stays stable). Values with
+/// newlines/control characters switch to a JSON-encoded double-quoted scalar
+/// — valid YAML 1.2 — which escapes `\n`, `\r`, `\t`, quotes, backslashes and
+/// other control characters so the frontmatter structure can never break.
 fn yaml_scalar(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
+    if value.chars().any(char::is_control) {
+        serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string())
+    } else {
+        format!("'{}'", value.replace('\'', "''"))
+    }
+}
+
+/// Collapse newlines/control characters so a multi-line title cannot break the
+/// single-line `# heading` in the archived Markdown body.
+fn heading_text(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -1154,6 +1236,26 @@ mod tests {
         assert!(markdown.contains("source: 'https://example.com/a'"));
         assert!(markdown.contains("# A title"));
         assert!(markdown.ends_with("Body\n"));
+    }
+
+    #[test]
+    fn yaml_scalar_escapes_newlines_quotes_and_control_characters() {
+        // 无控制字符：保持历史单引号风格，保证既有归档的哈希/去重稳定
+        assert_eq!(yaml_scalar("It's fine"), "'It''s fine'");
+        // 含换行/制表符：切换为 JSON 双引号转义，frontmatter 结构不可能被破坏
+        assert_eq!(yaml_scalar("line1\nline2"), r#""line1\nline2""#);
+        assert_eq!(yaml_scalar("tab\there \"q\""), r#""tab\there \"q\"""#);
+        let markdown =
+            format_webpage_markdown("Multi\nline: title", "https://example.com/a", "Body");
+        // frontmatter 恰好四行（--- / title / source / ---），标题换行被转义，
+        // 不会把 frontmatter 撑成第五行
+        let lines: Vec<&str> = markdown.lines().collect();
+        assert_eq!(lines[0], "---");
+        assert_eq!(lines[1], r#"title: "Multi\nline: title""#);
+        assert!(lines[2].starts_with("source: "));
+        assert_eq!(lines[3], "---");
+        // 正文一级标题内的换行被折叠为空格
+        assert!(markdown.contains("# Multi line: title"));
     }
 
     #[test]

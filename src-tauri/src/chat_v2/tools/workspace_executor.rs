@@ -3,14 +3,14 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::chat_v2::workspace::{
-    AgentRole, AgentStatus, DocumentType, MessageType, SubagentTaskData, WorkspaceCoordinator,
-    WorkspaceDocument,
+    AgentProfileResolver, AgentProfileSelection, AgentRole, AgentStatus, DocumentType, MessageType,
+    SubagentTaskData, WorkspaceCoordinator, WorkspaceDocument,
 };
 
 /// Worker 准备执行事件名称
@@ -135,6 +135,24 @@ impl WorkspaceToolExecutor {
             .get_conn_safe()
             .map_err(|e| format!("Failed to get db connection: {}", e))?;
 
+        // 🆕 子代理深度：从创建者会话 metadata 继承 +1（模仿 subagent_executor
+        // 的 get_subagent_depth，fail-closed：DB 错误时拒绝创建），并做上限检查。
+        let creator_depth =
+            crate::chat_v2::repo::ChatV2Repo::get_session_with_conn(&conn, &ctx.session_id)
+                .map_err(|e| format!("Failed to query creator session for depth: {}", e))?
+                .and_then(|s| s.metadata)
+                .and_then(|m| m.get("subagent_depth").cloned())
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
+        if is_worker && creator_depth >= crate::chat_v2::workspace::config::MAX_SUBAGENT_DEPTH {
+            return Err(format!(
+                "Maximum subagent nesting depth ({}) exceeded. Current depth: {}. \
+                 Recursive subagent creation is not allowed to prevent resource exhaustion.",
+                crate::chat_v2::workspace::config::MAX_SUBAGENT_DEPTH,
+                creator_depth
+            ));
+        }
+
         // 构建 Agent 的初始 System Prompt
         let workspace_info = self
             .coordinator
@@ -146,11 +164,10 @@ impl WorkspaceToolExecutor {
             .as_deref()
             .unwrap_or(&workspace_id[..8.min(workspace_id.len())]);
 
-        // 🔧 P18 修复：使用详细的子代理 Worker 系统提示词
-        // 关键：必须明确告诉子代理如何使用 workspace_send 工具返回结果
+        // Runtime-owned completion：最终回答由运行时自动交付给主代理，
+        // 提示词不再要求模型必须调用 workspace_send 汇报结果。
         let skill_name = skill_id.as_deref().unwrap_or("通用");
         let system_prompt = if is_worker {
-            // Worker 子代理使用详细的执行协议
             format!(
                 r#"# 子代理执行协议
 
@@ -162,36 +179,15 @@ impl WorkspaceToolExecutor {
 
 ## 核心职责
 
-1. **专注执行任务**：认真完成主代理分配给你的任务
-2. **汇报结果**：任务完成后，**必须**调用工具通知主代理
-
-## 任务完成流程（必须遵循！）
-
-### 步骤 1：执行任务
-使用你的能力完成任务。
-
-### 步骤 2：返回结果（必须执行！）
-任务完成后，你**必须**调用 `builtin-workspace_send` 工具将结果发送给主代理：
-
-```json
-{{
-  "workspace_id": "{}",
-  "content": "<你的完整任务结果>",
-  "message_type": "result"
-}}
-```
-
-**重要警告**：
-- `message_type` 必须设置为 `"result"`，这样主代理才会被唤醒
-- 如果不调用此工具，主代理将无法收到你的结果，会一直等待！
-- 这是强制要求，不是可选步骤
+专注执行主代理分配给你的任务，并给出完整、可验证的最终回答。
+最终回答会由运行时自动交付给主代理；`builtin-workspace_send` 仅用于进度、提问或中间协作。
 
 ## 工具使用
 
 你可以使用以下工具：
-- `builtin-workspace_send`: 发送消息给主代理（必须用于返回结果）
+- `builtin-workspace_send`: 发送进度、问题或中间协作消息
 - `builtin-workspace_query`: 查询工作区信息"#,
-                workspace_name, workspace_id, skill_name, workspace_id
+                workspace_name, workspace_id, skill_name
             )
         } else {
             // Coordinator 使用简单提示
@@ -211,6 +207,25 @@ impl WorkspaceToolExecutor {
         use crate::chat_v2::repo::ChatV2Repo;
         use crate::chat_v2::types::{ChatSession, PersistStatus};
 
+        // 🆕 Worker 补齐父子协议字段：parent_session_id / is_subagent /
+        // subagent_depth。缺失时完成信封会被广播、ResultMessage 唤醒永不匹配，
+        // 且深度限制被绕过。
+        let mut session_metadata = json!({
+            "workspace_id": workspace_id,
+            "role": role_str,
+            "skill_id": skill_id,
+            "system_prompt": system_prompt,
+            "recommended_models": recommended_models,
+        });
+        if is_worker {
+            let object = session_metadata
+                .as_object_mut()
+                .expect("session metadata is a JSON object");
+            object.insert("parent_session_id".into(), json!(ctx.session_id));
+            object.insert("is_subagent".into(), json!(true));
+            object.insert("subagent_depth".into(), json!(creator_depth + 1));
+        }
+
         let now = chrono::Utc::now();
         let session = ChatSession {
             id: agent_session_id.clone(),
@@ -229,13 +244,7 @@ impl WorkspaceToolExecutor {
             persist_status: PersistStatus::Active,
             created_at: now,
             updated_at: now,
-            metadata: Some(json!({
-                "workspace_id": workspace_id,
-                "role": role_str,
-                "skill_id": skill_id,
-                "system_prompt": system_prompt,
-                "recommended_models": recommended_models,
-            })),
+            metadata: Some(session_metadata),
             group_id: None,
             tags_hash: None,
             tags: None,
@@ -245,13 +254,23 @@ impl WorkspaceToolExecutor {
             .map_err(|e| format!("Failed to create agent session: {}", e))?;
 
         // 2. 在工作区中注册 Agent 元数据
-        // 注意：MCP 工具调用时 system_prompt 已存储在 session metadata 中
+        // 🆕 Worker 持久化解析后的 AgentProfile（契约 C2：legacy skill 自动映射
+        // worker profile），供 run_workspace_agent_backend 运行时消费。
+        let agent_metadata = if is_worker {
+            let profile = AgentProfileResolver::resolve(AgentProfileSelection {
+                skill_id: skill_id.clone(),
+                ..Default::default()
+            })?;
+            Some(AgentProfileResolver::persist_into_metadata(None, &profile))
+        } else {
+            None
+        };
         let agent = self.coordinator.register_agent(
             workspace_id,
             &agent_session_id,
             role,
             skill_id.clone(),
-            None, // metadata - 已存储在 ChatSession.metadata
+            agent_metadata,
         )?;
 
         // 4. 如果有初始任务，发送任务消息并自动启动 Worker
@@ -287,12 +306,47 @@ impl WorkspaceToolExecutor {
             }
         }
 
-        // 5. 如果是 Worker 且有初始任务，发射事件通知自动启动
+        // 5. Worker + 初始任务：后端运行时直接派发（不再依赖前端拉起）。
+        // worker_ready 事件保留为 UI 兼容观察信号，在派发成功后发出。
+        let mut dispatched_run_id: Option<String> = None;
         if is_worker && has_initial_task {
+            let app_handle = ctx.window_ref().app_handle();
+            let chat_v2_state = app_handle
+                .try_state::<Arc<crate::chat_v2::state::ChatV2State>>()
+                .ok_or("ChatV2State not available for worker runtime")?
+                .inner()
+                .clone();
+            let pipeline = app_handle
+                .try_state::<Arc<crate::chat_v2::pipeline::ChatV2Pipeline>>()
+                .ok_or("ChatV2Pipeline not available for worker runtime")?
+                .inner()
+                .clone();
+            let runtime_db = app_handle
+                .try_state::<Arc<crate::chat_v2::database::ChatV2Database>>()
+                .ok_or("ChatV2Database not available for worker runtime")?
+                .inner()
+                .clone();
+            let run = crate::chat_v2::handlers::workspace_handlers::run_workspace_agent_backend(
+                crate::chat_v2::handlers::workspace_handlers::RunAgentRequest {
+                    workspace_id: workspace_id.to_string(),
+                    agent_session_id: agent_session_id.clone(),
+                    requester_session_id: ctx.session_id.clone(),
+                    reminder: None,
+                },
+                ctx.window_ref().clone(),
+                self.coordinator.clone(),
+                chat_v2_state,
+                pipeline,
+                runtime_db,
+            )
+            .await?;
+            dispatched_run_id = Some(run.message_id);
+
             let event_payload = json!({
                 "workspace_id": workspace_id,
                 "agent_session_id": agent_session_id,
                 "skill_id": skill_id,
+                "runtime_managed": true,
             });
             if let Err(e) = ctx
                 .window_ref()
@@ -304,7 +358,7 @@ impl WorkspaceToolExecutor {
                 );
             } else {
                 log::info!(
-                    "[WorkspaceExecutor] Emitted worker_ready event for agent: {}",
+                    "[WorkspaceExecutor] Emitted worker_ready observation event for agent: {}",
                     agent_session_id
                 );
             }
@@ -347,10 +401,11 @@ impl WorkspaceToolExecutor {
             "workspace_id": agent.workspace_id,
             "role": role_str,
             "skill_id": skill_id,
-            "status": if is_worker && has_initial_task { "auto_starting" } else { "created" },
+            "status": if is_worker && has_initial_task { "dispatched" } else { "created" },
             "auto_run": is_worker && has_initial_task,
+            "run_id": dispatched_run_id,
             "message": if is_worker && has_initial_task {
-                format!("Worker agent created and auto-starting. Session ID: {}", agent_session_id)
+                format!("Worker agent created and dispatched by the backend runtime. Session ID: {}", agent_session_id)
             } else {
                 format!("Agent session created with system prompt configured. Session ID: {}", agent_session_id)
             },

@@ -59,6 +59,88 @@ impl MediaToolExecutor {
         Ok((root_id, relative_path, derived_from))
     }
 
+    /// ★ VFS 附件寻址：source（或顶层参数）中的 resourceId / resource_id
+    ///（会话附件与资源库文件的 files.id，如 file_xxx / att_xxx）
+    fn vfs_resource_locator(args: &Value) -> Option<String> {
+        let source = args.get("source").unwrap_or(args);
+        source
+            .get("resource_id")
+            .or_else(|| source.get("resourceId"))
+            .or_else(|| args.get("resource_id"))
+            .or_else(|| args.get("resourceId"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    }
+
+    /// 从 VFS 读取附件原始字节（inline resources.data / external blob 兜底），
+    /// 并保持与 runtime 路径一致的大小限额。
+    fn read_vfs_attachment_bytes(
+        ctx: &ExecutionContext,
+        resource_id: &str,
+    ) -> Result<Vec<u8>, String> {
+        use crate::vfs::repos::attachment_repo::VfsAttachmentContentSource;
+        use crate::vfs::repos::VfsAttachmentRepo;
+
+        let vfs_db = ctx
+            .vfs_db
+            .clone()
+            .ok_or("MEDIA_SOURCE_NOT_FOUND: VFS database unavailable")?;
+        let conn = vfs_db
+            .get_conn_safe()
+            .map_err(|error| format!("MEDIA_SOURCE_READ_FAILED: {error}"))?;
+        let source =
+            VfsAttachmentRepo::get_content_source_with_conn(&conn, vfs_db.blobs_dir(), resource_id)
+                .map_err(|error| format!("MEDIA_SOURCE_READ_FAILED: {error}"))?
+                .ok_or_else(|| {
+                    format!("MEDIA_SOURCE_NOT_FOUND: attachment {resource_id} not found in VFS")
+                })?;
+
+        let bytes = match source {
+            VfsAttachmentContentSource::File(path) => {
+                let metadata = fs::metadata(&path)
+                    .map_err(|error| format!("MEDIA_SOURCE_READ_FAILED: {error}"))?;
+                if metadata.len() > MAX_AUDIO_BYTES {
+                    return Err(format!(
+                        "MEDIA_TOO_LARGE: {} bytes exceeds {} byte managed ASR limit",
+                        metadata.len(),
+                        MAX_AUDIO_BYTES
+                    ));
+                }
+                fs::read(&path).map_err(|error| format!("MEDIA_SOURCE_READ_FAILED: {error}"))?
+            }
+            VfsAttachmentContentSource::Base64(base64_content) => {
+                let payload = if base64_content.starts_with("data:") {
+                    base64_content
+                        .split_once(',')
+                        .map(|(_, right)| right.to_string())
+                        .ok_or("MEDIA_SOURCE_READ_FAILED: invalid data URL")?
+                } else {
+                    base64_content
+                };
+                // 解码前按编码长度估算限额，避免超限内容先占用峰值内存
+                if payload.len() as u64 / 4 * 3 > MAX_AUDIO_BYTES {
+                    return Err(format!(
+                        "MEDIA_TOO_LARGE: decoded audio may exceed {} byte managed ASR limit",
+                        MAX_AUDIO_BYTES
+                    ));
+                }
+                STANDARD
+                    .decode(payload.trim())
+                    .map_err(|error| format!("MEDIA_SOURCE_READ_FAILED: {error}"))?
+            }
+        };
+        if bytes.len() as u64 > MAX_AUDIO_BYTES {
+            return Err(format!(
+                "MEDIA_TOO_LARGE: {} bytes exceeds {} byte managed ASR limit",
+                bytes.len(),
+                MAX_AUDIO_BYTES
+            ));
+        }
+        Ok(bytes)
+    }
+
     fn media_signature(bytes: &[u8]) -> Result<&'static str, String> {
         if bytes.starts_with(b"ID3")
             || bytes.starts_with(b"\xff\xfb")
@@ -72,16 +154,36 @@ impl MediaToolExecutor {
             Ok("audio/ogg")
         } else if bytes.starts_with(b"fLaC") {
             Ok("audio/flac")
-        } else if bytes.starts_with(b"\x1a\x45\xdf\xa3")
-            || (bytes.len() >= 12 && &bytes[4..8] == b"ftyp")
-        {
+        } else if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" {
+            // ★ ISO BMFF：仅接受签名确认为纯音频的 M4A/M4B/M4P 品牌容器；
+            // 其余 ftyp 品牌（mp42/isom/qt 等）仍按视频容器 fail-closed
+            let brand = &bytes[8..12];
+            if brand.starts_with(b"M4A") || brand.starts_with(b"M4B") || brand.starts_with(b"M4P")
+            {
+                Ok("audio/mp4")
+            } else {
+                Err(
+                    "MEDIA_VIDEO_EXTRACTION_UNSUPPORTED: ISO BMFF containers other than M4A/M4B/M4P are rejected because no application-managed parser has proven they are audio-only"
+                        .into(),
+                )
+            }
+        } else if bytes.len() >= 2 && bytes[0] == 0xff && (bytes[1] & 0xf6) == 0xf0 {
+            // ★ ADTS AAC 帧头（0xFFF1 / 0xFFF9 等）
+            Ok("audio/aac")
+        } else if bytes.starts_with(b"\x30\x26\xb2\x75\x8e\x66\xcf\x11") {
+            // ★ WMA（ASF 容器）：明确不支持而非笼统 unsupported
             Err(
-                "MEDIA_VIDEO_EXTRACTION_UNSUPPORTED: ISO BMFF and EBML containers are rejected because no application-managed parser has proven they are audio-only"
+                "MEDIA_UNSUPPORTED_FORMAT: WMA (ASF container) is not supported by the managed ASR runtime; convert to MP3/WAV/M4A first"
+                    .into(),
+            )
+        } else if bytes.starts_with(b"\x1a\x45\xdf\xa3") {
+            Err(
+                "MEDIA_VIDEO_EXTRACTION_UNSUPPORTED: EBML (WebM/MKV) containers are rejected because no application-managed parser has proven they are audio-only"
                     .into(),
             )
         } else {
             Err(
-                "MEDIA_UNSUPPORTED_FORMAT: supported audio signatures are MP3, WAV, OGG and FLAC"
+                "MEDIA_UNSUPPORTED_FORMAT: supported audio signatures are MP3, WAV, OGG, FLAC, M4A and ADTS AAC"
                     .into(),
             )
         }
@@ -110,7 +212,14 @@ impl MediaToolExecutor {
                 "model": model,
                 "externalProcessing": true,
             },
-            "supportedAudio": ["audio/mpeg", "audio/wav", "audio/ogg", "audio/flac"],
+            "supportedAudio": [
+                "audio/mpeg",
+                "audio/wav",
+                "audio/ogg",
+                "audio/flac",
+                "audio/mp4",
+                "audio/aac"
+            ],
             "unavailableReasonCode": unavailable_reason_code,
             "videoAudioExtraction": {
                 "available": false,
@@ -140,39 +249,55 @@ impl MediaToolExecutor {
                     .into(),
             );
         }
-        let (root_id, relative_raw, derived_from) = Self::source_locator(args)?;
-        let relative = normalize_runtime_relative_path(Some(relative_raw))?;
-        if relative.as_os_str().is_empty() {
-            return Err("MEDIA_INVALID_SOURCE: locator must point to a file".into());
-        }
-        let root = runtime_root_by_id(
-            app,
-            &state.database,
-            &ctx.session_id,
-            None,
-            Some(root_id),
-            false,
-        )?;
-        let root_canon = revalidate_runtime_root(&state.database, &root)?;
-        let target = root_canon.join(relative);
-        let target_canon = target
-            .canonicalize()
-            .map_err(|error| format!("MEDIA_SOURCE_NOT_FOUND: {error}"))?;
-        if !target_canon.starts_with(&root_canon) || !target_canon.is_file() {
-            return Err("MEDIA_SOURCE_UNAUTHORIZED: source escaped its runtime root".into());
-        }
-        let metadata = target_canon
-            .metadata()
-            .map_err(|error| format!("MEDIA_SOURCE_READ_FAILED: {error}"))?;
-        if metadata.len() > MAX_AUDIO_BYTES {
-            return Err(format!(
-                "MEDIA_TOO_LARGE: {} bytes exceeds {} byte managed ASR limit",
-                metadata.len(),
-                MAX_AUDIO_BYTES
-            ));
-        }
-        let bytes = fs::read(&target_canon)
-            .map_err(|error| format!("MEDIA_SOURCE_READ_FAILED: {error}"))?;
+        // ★ 双寻址：优先 VFS resourceId（会话附件/资源库文件），否则走 runtime root 定位
+        let (bytes, source_uri, derived_from_ids): (Vec<u8>, String, Vec<String>) =
+            if let Some(resource_id) = Self::vfs_resource_locator(args) {
+                let bytes = Self::read_vfs_attachment_bytes(ctx, &resource_id)?;
+                let source_uri = format!("vfs://files/{resource_id}");
+                (bytes, source_uri, vec![resource_id])
+            } else {
+                let (root_id, relative_raw, derived_from) = Self::source_locator(args)?;
+                let relative = normalize_runtime_relative_path(Some(relative_raw))?;
+                if relative.as_os_str().is_empty() {
+                    return Err("MEDIA_INVALID_SOURCE: locator must point to a file".into());
+                }
+                let root = runtime_root_by_id(
+                    app,
+                    &state.database,
+                    &ctx.session_id,
+                    None,
+                    Some(root_id),
+                    false,
+                )?;
+                let root_canon = revalidate_runtime_root(&state.database, &root)?;
+                let target = root_canon.join(relative);
+                let target_canon = target
+                    .canonicalize()
+                    .map_err(|error| format!("MEDIA_SOURCE_NOT_FOUND: {error}"))?;
+                if !target_canon.starts_with(&root_canon) || !target_canon.is_file() {
+                    return Err(
+                        "MEDIA_SOURCE_UNAUTHORIZED: source escaped its runtime root".into()
+                    );
+                }
+                let metadata = target_canon
+                    .metadata()
+                    .map_err(|error| format!("MEDIA_SOURCE_READ_FAILED: {error}"))?;
+                if metadata.len() > MAX_AUDIO_BYTES {
+                    return Err(format!(
+                        "MEDIA_TOO_LARGE: {} bytes exceeds {} byte managed ASR limit",
+                        metadata.len(),
+                        MAX_AUDIO_BYTES
+                    ));
+                }
+                let bytes = fs::read(&target_canon)
+                    .map_err(|error| format!("MEDIA_SOURCE_READ_FAILED: {error}"))?;
+                let source_uri = format!("runtime://{root_id}/{relative_raw}");
+                (
+                    bytes,
+                    source_uri,
+                    derived_from.map(str::to_string).into_iter().collect(),
+                )
+            };
         let mime_type = Self::media_signature(&bytes)?;
         let request = VoiceInputTranscribeRequest {
             audio_base64: STANDARD.encode(&bytes),
@@ -230,10 +355,10 @@ impl MediaToolExecutor {
             display_name,
             ObjectProvenance {
                 source: "managed_asr".into(),
-                source_uri: Some(format!("runtime://{root_id}/{relative_raw}")),
+                source_uri: Some(source_uri),
                 server: None,
                 tool: Some("media_transcribe".into()),
-                derived_from: derived_from.map(str::to_string).into_iter().collect(),
+                derived_from: derived_from_ids,
                 observed_at: chrono::Utc::now().to_rfc3339(),
             },
         );
@@ -396,9 +521,25 @@ mod tests {
         assert!(MediaToolExecutor::media_signature(b"\x1a\x45\xdf\xa3webm")
             .unwrap_err()
             .contains("MEDIA_VIDEO_EXTRACTION_UNSUPPORTED"));
-        assert!(MediaToolExecutor::media_signature(b"\0\0\0\x18ftypM4A ")
+        // ★ M4A（MP4 audio 品牌）与 ADTS AAC 现在被接受
+        assert_eq!(
+            MediaToolExecutor::media_signature(b"\0\0\0\x18ftypM4A "),
+            Ok("audio/mp4")
+        );
+        assert_eq!(
+            MediaToolExecutor::media_signature(b"\xff\xf1\x50\x80aac-frame"),
+            Ok("audio/aac")
+        );
+        // 非音频品牌的 MP4 容器仍 fail-closed
+        assert!(MediaToolExecutor::media_signature(b"\0\0\0\x18ftypmp42")
             .unwrap_err()
             .contains("MEDIA_VIDEO_EXTRACTION_UNSUPPORTED"));
+        // WMA 返回明确的不支持原因
+        assert!(MediaToolExecutor::media_signature(
+            b"\x30\x26\xb2\x75\x8e\x66\xcf\x11wma"
+        )
+        .unwrap_err()
+        .contains("WMA"));
     }
 
     #[test]
@@ -406,7 +547,7 @@ mod tests {
         let capability = MediaToolExecutor::capability(None);
         assert_eq!(capability["available"], false);
         assert_eq!(capability["unavailableReasonCode"], "APP_STATE_UNAVAILABLE");
-        assert_eq!(capability["supportedAudio"].as_array().unwrap().len(), 4);
+        assert_eq!(capability["supportedAudio"].as_array().unwrap().len(), 6);
     }
 
     #[test]

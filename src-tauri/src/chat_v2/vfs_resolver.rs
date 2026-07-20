@@ -188,7 +188,7 @@ pub fn resolve_context_ref_data_to_content(
     ref_data: &VfsContextRefData,
     is_multimodal: bool,
 ) -> ResolvedContent {
-    log::info!(
+    log::debug!(
         "[OCR_DIAG] resolve_context_ref_data_to_content: is_multimodal={}, refs_count={}, ref_ids=[{}]",
         is_multimodal,
         ref_data.refs.len(),
@@ -197,7 +197,7 @@ pub fn resolve_context_ref_data_to_content(
     let mut result = ResolvedContent::new();
     for vfs_ref in &ref_data.refs {
         let content = resolve_vfs_ref_to_content(conn, blobs_dir, vfs_ref, is_multimodal);
-        log::info!(
+        log::debug!(
             "[OCR_DIAG] resolve_vfs_ref_to_content result: source_id={}, text_count={}, image_count={}",
             vfs_ref.source_id,
             content.text_contents.len(),
@@ -232,7 +232,7 @@ fn resolve_image(
     let (include_image, include_ocr, downgraded_non_multimodal) =
         resolve_image_inject_modes(image_modes, is_multimodal);
 
-    log::info!(
+    log::debug!(
         "[OCR_DIAG] resolve_image ENTER: source_id={}, name={}, is_multimodal={}, inject_modes={:?}, image_modes={:?} -> include_image={}, include_ocr={}, downgraded={}",
         vfs_ref.source_id,
         vfs_ref.name,
@@ -359,7 +359,7 @@ fn resolve_image(
 ///
 /// 从 resources.ocr_text 或附件关联的 resource 中获取 OCR 文本
 fn get_image_ocr_text(conn: &Connection, vfs_ref: &VfsResourceRef) -> Option<String> {
-    log::info!(
+    log::debug!(
         "[OCR_DIAG] get_image_ocr_text START: source_id={}",
         vfs_ref.source_id
     );
@@ -375,7 +375,7 @@ fn get_image_ocr_text(conn: &Connection, vfs_ref: &VfsResourceRef) -> Option<Str
 
     match &file_check {
         Some((file_id, resource_id)) => {
-            log::info!(
+            log::debug!(
                 "[OCR_DIAG] files table lookup: source_id={} -> file_id={:?}, resource_id={:?}",
                 vfs_ref.source_id,
                 file_id,
@@ -383,7 +383,7 @@ fn get_image_ocr_text(conn: &Connection, vfs_ref: &VfsResourceRef) -> Option<Str
             );
         }
         None => {
-            log::warn!(
+            log::debug!(
                 "[OCR_DIAG] source_id={} NOT FOUND in files table by id, trying resource_id match",
                 vfs_ref.source_id
             );
@@ -395,7 +395,7 @@ fn get_image_ocr_text(conn: &Connection, vfs_ref: &VfsResourceRef) -> Option<Str
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .ok();
-            log::info!(
+            log::debug!(
                 "[OCR_DIAG] files table lookup by resource_id: source_id={} -> result={:?}",
                 vfs_ref.source_id,
                 alt_check
@@ -412,7 +412,7 @@ fn get_image_ocr_text(conn: &Connection, vfs_ref: &VfsResourceRef) -> Option<Str
                 |row| Ok((row.get::<_, i32>(0)? != 0, row.get(1)?)),
             )
             .ok();
-        log::info!(
+        log::debug!(
             "[OCR_DIAG] resources.ocr_text check: resource_id={}, has_ocr_text={:?}, ocr_text_len={:?}",
             rid,
             ocr_check.as_ref().map(|(has, _)| has),
@@ -434,7 +434,7 @@ fn get_image_ocr_text(conn: &Connection, vfs_ref: &VfsResourceRef) -> Option<Str
         row.get::<_, Option<String>>(0)
     }) {
         Ok(Some(text)) if !text.trim().is_empty() => {
-            log::info!(
+            log::debug!(
                 "[OCR_DIAG] get_image_ocr_text FOUND: source_id={}, text_len={}, preview=\"{}\"",
                 vfs_ref.source_id,
                 text.len(),
@@ -443,7 +443,7 @@ fn get_image_ocr_text(conn: &Connection, vfs_ref: &VfsResourceRef) -> Option<Str
             Some(text)
         }
         Ok(Some(text)) => {
-            log::warn!(
+            log::debug!(
                 "[OCR_DIAG] get_image_ocr_text EMPTY: source_id={}, raw_len={} (text is empty/whitespace only)",
                 vfs_ref.source_id,
                 text.len()
@@ -451,14 +451,14 @@ fn get_image_ocr_text(conn: &Connection, vfs_ref: &VfsResourceRef) -> Option<Str
             None
         }
         Ok(None) => {
-            log::warn!(
+            log::debug!(
                 "[OCR_DIAG] get_image_ocr_text NULL: source_id={}, resources.ocr_text is NULL (OCR pipeline may not have completed)",
                 vfs_ref.source_id
             );
             None
         }
         Err(e) => {
-            log::warn!(
+            log::debug!(
                 "[OCR_DIAG] get_image_ocr_text QUERY_FAILED: source_id={}, error={} (JOIN may have failed - no matching files/resources row)",
                 vfs_ref.source_id,
                 e

@@ -1233,8 +1233,7 @@ pub async fn clawhub_verify(
     slug: String,
     version: Option<String>,
 ) -> Result<ClawHubVerifyResult, String> {
-    let client = ClawHubClient::shared()
-        .map_err(|e| String::from(ChatV2Error::IoError(e)))?;
+    let client = ClawHubClient::shared().map_err(|e| String::from(ChatV2Error::IoError(e)))?;
     client
         .verify(&slug, version.as_deref())
         .await

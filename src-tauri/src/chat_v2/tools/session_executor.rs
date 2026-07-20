@@ -15,6 +15,7 @@
 //! | `session_get` | 读 | 获取单个会话详情（含标签） |
 //! | `session_get_messages` | 读 | 分页读取会话消息正文与块摘要 |
 //! | `session_export` | 写 | 导出 Markdown 或创建 VFS 笔记 |
+//! | `session_import` | 写 | 从导出 JSON 导入为新会话（ID 全量重映射） |
 //! | `group_list` | 读 | 列出所有分组 |
 //! | `tag_list_all` | 读 | 列出所有标签及使用次数 |
 //! | `session_stats` | 读 | 会话统计（数量/分布/趋势） |
@@ -35,13 +36,15 @@ use std::time::Instant;
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, SecondsFormat, Utc};
 use serde_json::{json, Value};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 use super::arg_utils::{get_json_array_arg, get_string_array_arg};
+use super::attachment_stage_executor::resolve_staged_file_in_temp_root;
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::repo::ChatV2Repo;
+use crate::chat_v2::runtime_roots::temp_root;
 use crate::chat_v2::types::{
     ChatMessage, ChatSession, MessageBlock, MessageRole, PersistStatus, SessionGroup, ToolCall,
     ToolResultInfo,
@@ -65,6 +68,12 @@ const MAX_TOOL_FIELD_CHARS: usize = 2_000;
 const MAX_TOOL_OUTPUT_PREVIEW_CHARS: usize = 200;
 const MAX_EXPORT_TITLE_CHARS: usize = 120;
 
+// session_import 限额：staged json 文件 / 内联 json 字符 / 消息与块数量
+const MAX_SESSION_IMPORT_FILE_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_SESSION_IMPORT_CONTENT_CHARS: usize = 2_000_000;
+const MAX_SESSION_IMPORT_MESSAGES: usize = 2_000;
+const MAX_SESSION_IMPORT_BLOCKS: usize = 20_000;
+
 /// 所有会话管理工具名
 pub mod tool_names {
     pub const SESSION_LIST: &str = "session_list";
@@ -72,6 +81,7 @@ pub mod tool_names {
     pub const SESSION_GET: &str = "session_get";
     pub const SESSION_GET_MESSAGES: &str = "session_get_messages";
     pub const SESSION_EXPORT: &str = "session_export";
+    pub const SESSION_IMPORT: &str = "session_import";
     pub const GROUP_LIST: &str = "group_list";
     pub const TAG_LIST_ALL: &str = "tag_list_all";
     pub const SESSION_STATS: &str = "session_stats";
@@ -95,6 +105,7 @@ fn is_session_tool(name: &str) -> bool {
             | "session_get"
             | "session_get_messages"
             | "session_export"
+            | "session_import"
             | "group_list"
             | "tag_list_all"
             | "session_stats"
@@ -429,6 +440,153 @@ impl SessionToolExecutor {
             },
             "reversible": true,
             "reverseWith": "builtin-note_delete"
+        }))
+    }
+
+    /// 从导出 JSON（chat_v2_export_session format=json 的结构）导入为新会话。
+    ///
+    /// 与 session_export 对偶：接受内联 json_content 或 attachment_stage
+    /// 物化后的 staged json 文件（root_id=temp + relative_path，会话归属由
+    /// per-session temp root 隔离保证）。导入产生**新会话**（全部 ID 重映射），
+    /// 绝不覆盖既有会话。
+    fn execute_session_import(args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
+        let db = Self::get_db(ctx)?;
+
+        let raw = if let Some(content) = args
+            .get("json_content")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            if content.chars().count() > MAX_SESSION_IMPORT_CONTENT_CHARS {
+                return Err(format!(
+                    "SESSION_IMPORT_TOO_LARGE: json_content exceeds {} chars; stage the file and pass root_id + relative_path instead",
+                    MAX_SESSION_IMPORT_CONTENT_CHARS
+                ));
+            }
+            content.to_string()
+        } else {
+            let root_id = args
+                .get("root_id")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("temp");
+            if !root_id.eq_ignore_ascii_case("temp") {
+                return Err(format!(
+                    "SESSION_IMPORT_INVALID_ROOT: only root_id=temp is accepted, got '{}'",
+                    root_id
+                ));
+            }
+            let relative_path = args
+                .get("relative_path")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .ok_or(
+                    "SESSION_IMPORT_MISSING_SOURCE: provide json_content, or root_id + relative_path of a staged json file",
+                )?;
+            let app_handle = ctx.window_ref().app_handle().clone();
+            let temp = temp_root(&app_handle, &ctx.session_id, true)?;
+            let path = resolve_staged_file_in_temp_root(&temp.path, relative_path)?;
+            let meta = std::fs::metadata(&path)
+                .map_err(|e| format!("SESSION_IMPORT_READ_FAILED: {}", e))?;
+            if meta.len() > MAX_SESSION_IMPORT_FILE_BYTES {
+                return Err(format!(
+                    "SESSION_IMPORT_TOO_LARGE: file is {} bytes, limit is {} bytes",
+                    meta.len(),
+                    MAX_SESSION_IMPORT_FILE_BYTES
+                ));
+            }
+            std::fs::read_to_string(&path)
+                .map_err(|e| format!("SESSION_IMPORT_READ_FAILED: {}", e))?
+        };
+
+        let title_override = optional_non_empty_string(args, "title")?;
+        Self::import_session_payload(db, &raw, title_override)
+    }
+
+    /// 解析 + 重映射 + 落库（从 execute_session_import 拆出，便于单元测试）
+    fn import_session_payload(
+        db: &ChatV2Database,
+        raw: &str,
+        title_override: Option<&str>,
+    ) -> Result<Value, String> {
+        let payload: Value = serde_json::from_str(raw)
+            .map_err(|e| format!("SESSION_IMPORT_INVALID_JSON: {}", e))?;
+        let session_value = payload.get("session").cloned().ok_or(
+            "SESSION_IMPORT_INVALID_FORMAT: missing 'session' field (expected the JSON produced by session export)",
+        )?;
+        let messages_value = payload
+            .get("messages")
+            .cloned()
+            .ok_or("SESSION_IMPORT_INVALID_FORMAT: missing 'messages' field")?;
+        let blocks_value = payload.get("blocks").cloned().unwrap_or_else(|| json!([]));
+
+        let session: ChatSession = serde_json::from_value(session_value)
+            .map_err(|e| format!("SESSION_IMPORT_INVALID_FORMAT: bad session object: {}", e))?;
+        let messages: Vec<ChatMessage> = serde_json::from_value(messages_value)
+            .map_err(|e| format!("SESSION_IMPORT_INVALID_FORMAT: bad messages array: {}", e))?;
+        let blocks: Vec<MessageBlock> = serde_json::from_value(blocks_value)
+            .map_err(|e| format!("SESSION_IMPORT_INVALID_FORMAT: bad blocks array: {}", e))?;
+
+        if messages.is_empty() {
+            return Err("SESSION_IMPORT_EMPTY: the export contains no messages".to_string());
+        }
+        if messages.len() > MAX_SESSION_IMPORT_MESSAGES {
+            return Err(format!(
+                "SESSION_IMPORT_TOO_LARGE: {} messages exceeds the {} limit",
+                messages.len(),
+                MAX_SESSION_IMPORT_MESSAGES
+            ));
+        }
+        if blocks.len() > MAX_SESSION_IMPORT_BLOCKS {
+            return Err(format!(
+                "SESSION_IMPORT_TOO_LARGE: {} blocks exceeds the {} limit",
+                blocks.len(),
+                MAX_SESSION_IMPORT_BLOCKS
+            ));
+        }
+
+        let (new_session, new_messages, new_blocks, stats) =
+            remap_imported_session(session, messages, blocks, title_override);
+
+        let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| format!("SESSION_IMPORT_DB_FAILED: {}", e))?;
+        let insert_result = (|| -> Result<(), String> {
+            ChatV2Repo::create_session_with_conn(&conn, &new_session)
+                .map_err(|e| e.to_string())?;
+            for message in &new_messages {
+                ChatV2Repo::create_message_with_conn(&conn, message).map_err(|e| e.to_string())?;
+            }
+            ChatV2Repo::create_blocks_batch_with_conn(&conn, &new_blocks)
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        })();
+        match insert_result {
+            Ok(()) => {
+                conn.execute_batch("COMMIT")
+                    .map_err(|e| format!("SESSION_IMPORT_DB_FAILED: {}", e))?;
+            }
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(format!("SESSION_IMPORT_DB_FAILED: {}", error));
+            }
+        }
+
+        Ok(json!({
+            "success": true,
+            "sessionId": new_session.id,
+            "title": new_session.title,
+            "mode": new_session.mode,
+            "importedFromSessionId": stats.original_session_id,
+            "messageCount": new_messages.len(),
+            "blockCount": new_blocks.len(),
+            "droppedOrphanBlocks": stats.orphan_blocks,
+            "droppedMissingBlockRefs": stats.missing_block_refs,
+            "attachmentsNote": "消息中的附件仅保留元数据引用；原始附件二进制不随 JSON 导出，跨设备导入后可能无法读取。",
+            "hint": "导入完成：已创建新会话（未分组、无标签），可用 session_get / session_get_messages 验证内容。"
         }))
     }
 
@@ -1886,6 +2044,129 @@ fn markdown_export_to_tool_value(export: PreparedSessionExport) -> Value {
 }
 
 // ============================================================================
+// session_import：ID 重映射
+// ============================================================================
+
+struct ImportRemapStats {
+    original_session_id: String,
+    /// message_id 不在导出消息集内的块（被丢弃）
+    orphan_blocks: usize,
+    /// 消息 block_ids / 变体 block_ids 中指向缺失块的引用（被丢弃）
+    missing_block_refs: usize,
+}
+
+/// 把导出的会话数据重映射为全新 ID，避免与本机既有数据主键冲突。
+///
+/// - 会话/消息/块 ID 全部重新生成；parent_id、supersedes、block_ids、
+///   变体 block_ids 按映射表转换，指向导出集外的引用被置空/丢弃并计数。
+/// - 会话强制 Active、未分组、无标签；metadata 记录 importedFromSessionId。
+fn remap_imported_session(
+    mut session: ChatSession,
+    mut messages: Vec<ChatMessage>,
+    mut blocks: Vec<MessageBlock>,
+    title_override: Option<&str>,
+) -> (ChatSession, Vec<ChatMessage>, Vec<MessageBlock>, ImportRemapStats) {
+    let original_session_id = session.id.clone();
+    let new_session_id = ChatSession::generate_id();
+
+    let message_id_map: HashMap<String, String> = messages
+        .iter()
+        .map(|message| (message.id.clone(), ChatMessage::generate_id()))
+        .collect();
+    let block_id_map: HashMap<String, String> = blocks
+        .iter()
+        .map(|block| (block.id.clone(), MessageBlock::generate_id()))
+        .collect();
+
+    let mut orphan_blocks = 0usize;
+    blocks.retain_mut(|block| {
+        if let Some(new_message_id) = message_id_map.get(&block.message_id) {
+            block.message_id = new_message_id.clone();
+            if let Some(new_id) = block_id_map.get(&block.id) {
+                block.id = new_id.clone();
+            }
+            true
+        } else {
+            orphan_blocks += 1;
+            false
+        }
+    });
+
+    let mut missing_block_refs = 0usize;
+    for message in &mut messages {
+        if let Some(new_id) = message_id_map.get(&message.id) {
+            message.id = new_id.clone();
+        }
+        message.session_id = new_session_id.clone();
+        message.persistent_stable_id = None;
+        message.parent_id = message
+            .parent_id
+            .take()
+            .and_then(|parent| message_id_map.get(&parent).cloned());
+        message.supersedes = message
+            .supersedes
+            .take()
+            .and_then(|superseded| message_id_map.get(&superseded).cloned());
+
+        let before = message.block_ids.len();
+        message.block_ids = message
+            .block_ids
+            .drain(..)
+            .filter_map(|block_id| block_id_map.get(&block_id).cloned())
+            .collect();
+        missing_block_refs += before - message.block_ids.len();
+
+        if let Some(variants) = message.variants.as_mut() {
+            for variant in variants {
+                let before = variant.block_ids.len();
+                variant.block_ids = variant
+                    .block_ids
+                    .drain(..)
+                    .filter_map(|block_id| block_id_map.get(&block_id).cloned())
+                    .collect();
+                missing_block_refs += before - variant.block_ids.len();
+            }
+        }
+    }
+
+    session.id = new_session_id;
+    session.persist_status = PersistStatus::Active;
+    session.group_id = None;
+    session.tags = None;
+    session.tags_hash = None;
+    session.summary_hash = None;
+    session.updated_at = Utc::now();
+    if session.mode.trim().is_empty() {
+        session.mode = "chat".to_string();
+    }
+    if let Some(title) = title_override {
+        session.title = Some(title.to_string());
+        session.title_locked = true;
+    }
+    let mut metadata = match session.metadata.take() {
+        Some(Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    };
+    metadata.insert(
+        "importedFromSessionId".to_string(),
+        json!(original_session_id),
+    );
+    metadata.insert("importedAt".to_string(), json!(Utc::now().to_rfc3339()));
+    session.metadata = Some(Value::Object(metadata));
+
+    (
+        session,
+        messages,
+        blocks,
+        ImportRemapStats {
+            original_session_id,
+            orphan_blocks,
+            missing_block_refs,
+        },
+    )
+}
+
+// ============================================================================
 // ToolExecutor 实现
 // ============================================================================
 
@@ -1913,6 +2194,7 @@ impl ToolExecutor for SessionToolExecutor {
             "session_get" => Self::execute_session_get(&call.arguments, ctx),
             "session_get_messages" => Self::execute_session_get_messages(&call.arguments, ctx),
             "session_export" => Self::execute_session_export(&call.arguments, ctx),
+            "session_import" => Self::execute_session_import(&call.arguments, ctx),
             "group_list" => Self::execute_group_list(ctx),
             "tag_list_all" => Self::execute_tag_list_all(ctx),
             "session_stats" => Self::execute_session_stats(ctx),
@@ -2003,7 +2285,7 @@ impl ToolExecutor for SessionToolExecutor {
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         match strip_tool_namespace(tool_name) {
             "session_archive" => ToolSensitivity::High,
-            "session_export" => ToolSensitivity::Medium,
+            "session_export" | "session_import" => ToolSensitivity::Medium,
             "session_tag_add" | "session_tag_remove" | "session_move" | "session_rename"
             | "session_restore" | "group_create" | "group_update" => ToolSensitivity::Medium,
             "session_batch_tag" | "session_batch_move" | "session_batch_ops" => {
@@ -2396,6 +2678,70 @@ mod tests {
                 .expect("clamp zero session list request");
         assert_eq!(zero_page["limit"], 1);
         assert_eq!(zero_page["sessions"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn session_import_creates_new_session_with_remapped_ids() {
+        let (_temp_dir, db) = setup_chat_db();
+        let (session_id, user_message_id, _assistant_message_id) = seed_persisted_session(&db);
+
+        // 构造与 chat_v2_export_session format=json 相同结构的导出载荷
+        let session = ChatV2Repo::get_session_v2(&db, &session_id)
+            .expect("load session")
+            .expect("session exists");
+        let messages =
+            ChatV2Repo::get_session_messages_v2(&db, &session_id).expect("load messages");
+        let blocks = ChatV2Repo::get_session_blocks_v2(&db, &session_id).expect("load blocks");
+        let payload = json!({
+            "session": session,
+            "messages": messages,
+            "blocks": blocks,
+            "exportedAt": Utc::now().to_rfc3339(),
+        })
+        .to_string();
+
+        let result = SessionToolExecutor::import_session_payload(&db, &payload, Some("导入验证"))
+            .expect("import exported session");
+        assert_eq!(result["success"], true);
+        let new_session_id = result["sessionId"].as_str().unwrap().to_string();
+        assert_ne!(new_session_id, session_id);
+        assert!(new_session_id.starts_with("sess_"));
+        assert_eq!(result["messageCount"], 2);
+        assert_eq!(result["importedFromSessionId"], session_id.as_str());
+
+        let imported = ChatV2Repo::get_session_v2(&db, &new_session_id)
+            .expect("load imported session")
+            .expect("imported session exists");
+        assert_eq!(imported.title.as_deref(), Some("导入验证"));
+        assert_eq!(imported.group_id, None);
+
+        let imported_messages =
+            ChatV2Repo::get_session_messages_v2(&db, &new_session_id).expect("imported messages");
+        assert_eq!(imported_messages.len(), 2);
+        assert!(imported_messages
+            .iter()
+            .all(|message| message.id != user_message_id));
+        let imported_blocks =
+            ChatV2Repo::get_session_blocks_v2(&db, &new_session_id).expect("imported blocks");
+        assert_eq!(imported_blocks.len(), 3);
+
+        // 原会话保持不变
+        let original_messages =
+            ChatV2Repo::get_session_messages_v2(&db, &session_id).expect("original messages");
+        assert_eq!(original_messages.len(), 2);
+    }
+
+    #[test]
+    fn session_import_rejects_invalid_payloads() {
+        let (_temp_dir, db) = setup_chat_db();
+        let bad_json = SessionToolExecutor::import_session_payload(&db, "not-json", None);
+        assert!(bad_json.unwrap_err().contains("SESSION_IMPORT_INVALID_JSON"));
+
+        let missing_session =
+            SessionToolExecutor::import_session_payload(&db, r#"{"messages":[]}"#, None);
+        assert!(missing_session
+            .unwrap_err()
+            .contains("SESSION_IMPORT_INVALID_FORMAT"));
     }
 
     #[test]

@@ -75,7 +75,19 @@ pub(crate) const fn platform_sandbox_contract() -> SandboxRuntimeContract {
         }
     }
 
-    #[cfg(not(any(target_os = "macos", windows)))]
+    // Linux 桌面使用 bubblewrap（bwrap）沙箱。注意：Android 的 target_os 是
+    // "android" 而非 "linux"，因此本分支不会在移动端命中，Android 仍然落入
+    // 下方 fail-closed 的 "unavailable" 契约。
+    #[cfg(target_os = "linux")]
+    {
+        SandboxRuntimeContract {
+            backend: "linux_bwrap",
+            shell_kind: "posix_sh",
+            output_encoding: "utf-8",
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         SandboxRuntimeContract {
             backend: "unavailable",
@@ -296,7 +308,177 @@ mod macos {
     }
 }
 
-#[cfg(not(any(target_os = "macos", windows)))]
+#[cfg(target_os = "linux")]
+mod linux {
+    use super::*;
+    use std::ffi::OsString;
+
+    /// 发行版包管理器安装 bubblewrap 后 bwrap 的常见落点；先探测这些
+    /// 固定路径，再回退到 PATH 逐目录查找（不经 shell，避免注入面）。
+    const BWRAP_CANDIDATES: &[&str] = &["/usr/bin/bwrap", "/usr/local/bin/bwrap", "/bin/bwrap"];
+
+    pub(super) fn locate_bwrap() -> Result<PathBuf, String> {
+        for candidate in BWRAP_CANDIDATES {
+            let path = Path::new(candidate);
+            if path.is_file() {
+                return Ok(path.to_path_buf());
+            }
+        }
+        if let Some(path_value) = std::env::var_os("PATH") {
+            for dir in std::env::split_paths(&path_value) {
+                if dir.as_os_str().is_empty() || !dir.is_absolute() {
+                    continue;
+                }
+                let candidate = dir.join("bwrap");
+                if candidate.is_file() {
+                    return Ok(candidate);
+                }
+            }
+        }
+        Err(
+            "Linux bubblewrap launcher (bwrap) was not found; install the 'bubblewrap' package \
+             to enable the local shell sandbox"
+                .to_string(),
+        )
+    }
+
+    fn canonical_policy_path(path: &Path) -> Result<PathBuf, String> {
+        path.canonicalize().map_err(|error| {
+            format!(
+                "Failed to canonicalize sandbox policy path '{}': {error}",
+                path.display()
+            )
+        })
+    }
+
+    /// 构造 bwrap 参数向量。bwrap 按参数顺序处理挂载，后面的挂载会覆盖
+    /// 前面的，因此顺序即语义：
+    /// 1. 整个根文件系统只读 bind（读边界比 macOS Seatbelt 宽，敏感路径由
+    ///    下方 protected_* 遮蔽补齐）；
+    /// 2. /dev、/proc 换成沙箱私有实例；
+    /// 3. policy 允许写的 roots 重新挂成可写；
+    /// 4. protected_write_roots 再压回只读（覆盖可写挂载内部的保护子树，
+    ///    如 .git、技能包目录）；
+    /// 5. protected_read_roots 用 tmpfs（目录）或 /dev/null bind（文件）
+    ///    遮蔽，读写都不可达真实内容——对应 macOS 的 deny file-read*。
+    ///
+    /// 参数直接进 exec 数组、不经 shell，路径含空格/特殊字符无需转义。
+    pub(super) fn bwrap_args(
+        shell_command: &str,
+        cwd: &Path,
+        policy: &SandboxPolicy,
+    ) -> Result<Vec<OsString>, String> {
+        let mut args: Vec<OsString> = Vec::new();
+        args.push("--ro-bind".into());
+        args.push("/".into());
+        args.push("/".into());
+        args.push("--dev".into());
+        args.push("/dev".into());
+        args.push("--proc".into());
+        args.push("/proc".into());
+
+        for root in &policy.writable_roots {
+            let canonical = canonical_policy_path(root)?;
+            args.push("--bind".into());
+            args.push(canonical.clone().into_os_string());
+            args.push(canonical.into_os_string());
+        }
+        for root in &policy.protected_write_roots {
+            if !root.exists() {
+                continue;
+            }
+            let canonical = canonical_policy_path(root)?;
+            args.push("--ro-bind".into());
+            args.push(canonical.clone().into_os_string());
+            args.push(canonical.into_os_string());
+        }
+        for root in &policy.protected_read_roots {
+            if !root.exists() {
+                continue;
+            }
+            let canonical = canonical_policy_path(root)?;
+            if canonical.is_dir() {
+                args.push("--tmpfs".into());
+                args.push(canonical.into_os_string());
+            } else {
+                // tmpfs 只能挂在目录上；文件型敏感路径（如 .netrc）用
+                // /dev/null 覆盖 bind，读到的内容恒为空。
+                args.push("--ro-bind".into());
+                args.push("/dev/null".into());
+                args.push(canonical.into_os_string());
+            }
+        }
+
+        if !policy.allow_network {
+            args.push("--unshare-net".into());
+        }
+        args.push("--unshare-pid".into());
+        args.push("--die-with-parent".into());
+        // --new-session 隔离控制终端，封堵 TIOCSTI 注入宿主终端输入的路径
+        args.push("--new-session".into());
+        args.push("--chdir".into());
+        args.push(cwd.as_os_str().to_os_string());
+
+        args.push("/bin/sh".into());
+        args.push("-c".into());
+        args.push(shell_command.into());
+        Ok(args)
+    }
+
+    impl SandboxBackend for PlatformSandboxBackend {
+        fn capability(&self) -> SandboxCapability {
+            match locate_bwrap() {
+                Ok(_) => SandboxCapability::Available,
+                Err(reason) => SandboxCapability::Unavailable { reason },
+            }
+        }
+
+        fn command(
+            &self,
+            shell_command: &str,
+            cwd: &Path,
+            policy: &SandboxPolicy,
+        ) -> Result<Command, String> {
+            let bwrap = match locate_bwrap() {
+                Ok(path) => path,
+                Err(reason) => {
+                    return Err(format!(
+                        "Local shell sandbox is unavailable; refusing unsandboxed execution: {reason}"
+                    ));
+                }
+            };
+            let args = bwrap_args(shell_command, cwd, policy)?;
+            let mut command = Command::new(bwrap);
+            command.args(args);
+            configure_stdio(&mut command, cwd);
+            isolate_process_group(&mut command);
+            Ok(command)
+        }
+
+        fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport {
+            let contract = platform_sandbox_contract();
+            SandboxEffectReport {
+                backend: contract.backend,
+                shell_kind: contract.shell_kind,
+                output_encoding: contract.output_encoding,
+                enforced: matches!(self.capability(), SandboxCapability::Available),
+                network_enforced: true,
+                process_group_isolated: true,
+                cpu_time_limit_seconds: Some(SANDBOX_CPU_TIME_LIMIT_SECS),
+                file_size_limit_bytes: Some(SANDBOX_FILE_SIZE_LIMIT_BYTES),
+                active_process_limit: Some(SANDBOX_PROCESS_LIMIT),
+                readable_roots: policy.readable_roots.len(),
+                writable_roots: policy.writable_roots.len(),
+                protected_read_roots: policy.protected_read_roots.len(),
+                protected_write_roots: policy.protected_write_roots.len(),
+            }
+        }
+    }
+}
+
+// 其余平台（含 Android，其 target_os 为 "android" 而非 "linux"）没有
+// 硬沙箱后端，保持 fail-closed。
+#[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
 impl SandboxBackend for PlatformSandboxBackend {
     fn capability(&self) -> SandboxCapability {
         SandboxCapability::Unavailable {
@@ -395,6 +577,168 @@ pub fn cleanup_finished_process_group(process_id: u32) -> Result<(), String> {
     {
         let _ = process_id;
         Err("Process-group cleanup is unavailable on this platform".to_string())
+    }
+}
+
+/// 纯参数构造的单元测试：只校验 bwrap 参数向量与 effect report 的语义，
+/// 不真正执行 bwrap（CI 环境可能未安装 bubblewrap）。
+#[cfg(all(test, target_os = "linux"))]
+mod linux_tests {
+    use super::linux::bwrap_args;
+    use super::*;
+    use std::ffi::OsString;
+
+    fn os(value: &str) -> OsString {
+        OsString::from(value)
+    }
+
+    /// 在参数向量中查找连续的一段参数是否存在
+    fn contains_sequence(args: &[OsString], expected: &[OsString]) -> bool {
+        args.windows(expected.len()).any(|window| window == expected)
+    }
+
+    #[test]
+    fn bwrap_args_readonly_root_and_writable_remount_and_no_network() {
+        let temp = tempfile::tempdir().unwrap();
+        let writable = temp.path().join("writable");
+        let protected = writable.join(".git");
+        std::fs::create_dir_all(&protected).unwrap();
+        let policy = SandboxPolicy {
+            readable_roots: vec![temp.path().to_path_buf()],
+            writable_roots: vec![writable.clone()],
+            protected_read_roots: vec![],
+            protected_write_roots: vec![protected.clone()],
+            allow_network: false,
+        };
+        let args = bwrap_args("printf ok", &writable, &policy).unwrap();
+
+        assert_eq!(args[..3], [os("--ro-bind"), os("/"), os("/")]);
+        assert!(contains_sequence(&args, &[os("--dev"), os("/dev")]));
+        assert!(contains_sequence(&args, &[os("--proc"), os("/proc")]));
+        let writable_canon = writable.canonicalize().unwrap();
+        assert!(contains_sequence(
+            &args,
+            &[
+                os("--bind"),
+                writable_canon.clone().into_os_string(),
+                writable_canon.into_os_string(),
+            ]
+        ));
+        let protected_canon = protected.canonicalize().unwrap();
+        assert!(contains_sequence(
+            &args,
+            &[
+                os("--ro-bind"),
+                protected_canon.clone().into_os_string(),
+                protected_canon.into_os_string(),
+            ]
+        ));
+        assert!(args.contains(&os("--unshare-net")));
+        assert!(args.contains(&os("--unshare-pid")));
+        assert!(args.contains(&os("--die-with-parent")));
+        assert!(args.contains(&os("--new-session")));
+        assert_eq!(
+            args[args.len() - 3..],
+            [os("/bin/sh"), os("-c"), os("printf ok")]
+        );
+    }
+
+    #[test]
+    fn bwrap_args_allow_network_omits_unshare_net() {
+        let temp = tempfile::tempdir().unwrap();
+        let policy = SandboxPolicy {
+            readable_roots: vec![temp.path().to_path_buf()],
+            writable_roots: vec![temp.path().to_path_buf()],
+            protected_read_roots: vec![],
+            protected_write_roots: vec![],
+            allow_network: true,
+        };
+        let args = bwrap_args("printf ok", temp.path(), &policy).unwrap();
+        assert!(!args.contains(&os("--unshare-net")));
+        assert!(args.contains(&os("--unshare-pid")));
+    }
+
+    #[test]
+    fn bwrap_args_mask_protected_read_dirs_and_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let secret_dir = temp.path().join(".ssh");
+        let secret_file = temp.path().join(".netrc");
+        std::fs::create_dir_all(&secret_dir).unwrap();
+        std::fs::write(&secret_file, b"secret").unwrap();
+        let policy = SandboxPolicy {
+            readable_roots: vec![temp.path().to_path_buf()],
+            writable_roots: vec![],
+            protected_read_roots: vec![secret_dir.clone(), secret_file.clone()],
+            protected_write_roots: vec![],
+            allow_network: false,
+        };
+        let args = bwrap_args("printf ok", temp.path(), &policy).unwrap();
+        assert!(contains_sequence(
+            &args,
+            &[
+                os("--tmpfs"),
+                secret_dir.canonicalize().unwrap().into_os_string(),
+            ]
+        ));
+        assert!(contains_sequence(
+            &args,
+            &[
+                os("--ro-bind"),
+                os("/dev/null"),
+                secret_file.canonicalize().unwrap().into_os_string(),
+            ]
+        ));
+    }
+
+    #[test]
+    fn bwrap_args_pass_paths_with_spaces_verbatim() {
+        let temp = tempfile::tempdir().unwrap();
+        let spaced = temp.path().join("dir with spaces");
+        std::fs::create_dir_all(&spaced).unwrap();
+        let policy = SandboxPolicy {
+            readable_roots: vec![temp.path().to_path_buf()],
+            writable_roots: vec![spaced.clone()],
+            protected_read_roots: vec![],
+            protected_write_roots: vec![],
+            allow_network: false,
+        };
+        let spaced_canon = spaced.canonicalize().unwrap();
+        let args = bwrap_args("printf ok", &spaced_canon, &policy).unwrap();
+        // 路径直接进 exec 数组，不做任何 shell 转义
+        assert!(args.contains(&spaced_canon.clone().into_os_string()));
+        assert!(contains_sequence(
+            &args,
+            &[os("--chdir"), spaced_canon.into_os_string()]
+        ));
+    }
+
+    #[test]
+    fn effect_report_exposes_resource_limits_and_contract() {
+        let temp = tempfile::tempdir().unwrap();
+        let policy = SandboxPolicy {
+            readable_roots: vec![temp.path().to_path_buf()],
+            writable_roots: vec![temp.path().to_path_buf()],
+            protected_read_roots: vec![],
+            protected_write_roots: vec![],
+            allow_network: false,
+        };
+        let report = PlatformSandboxBackend::new().effect_report(&policy);
+        assert_eq!(report.backend, "linux_bwrap");
+        assert_eq!(report.shell_kind, "posix_sh");
+        assert_eq!(report.output_encoding, "utf-8");
+        assert!(report.network_enforced);
+        assert!(report.process_group_isolated);
+        assert_eq!(
+            report.cpu_time_limit_seconds,
+            Some(SANDBOX_CPU_TIME_LIMIT_SECS)
+        );
+        assert_eq!(
+            report.file_size_limit_bytes,
+            Some(SANDBOX_FILE_SIZE_LIMIT_BYTES)
+        );
+        assert_eq!(report.active_process_limit, Some(SANDBOX_PROCESS_LIMIT));
+        assert_eq!(report.readable_roots, 1);
+        assert_eq!(report.writable_roots, 1);
     }
 }
 

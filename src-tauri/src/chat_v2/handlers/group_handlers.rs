@@ -322,8 +322,7 @@ pub async fn chat_v2_delete_group(
         decrement_vfs_refs_for_session(db.inner().as_ref(), vfs_db.inner().as_ref(), session_id);
     }
 
-    ChatV2Repo::permanently_delete_group_with_conn(&mut conn, &group_id)
-        .map_err(String::from)?;
+    ChatV2Repo::permanently_delete_group_with_conn(&mut conn, &group_id).map_err(String::from)?;
     Ok(())
 }
 

@@ -258,9 +258,379 @@ fn parse_repo_question_type(value: &Value, field: &str) -> Result<RepoQuestionTy
         qbank_error(
             "INVALID_ARGS",
             format!("{field} 是不支持的题型"),
-            "使用 single_choice/multiple_choice/indefinite_choice/fill_blank/short_answer/essay/calculation/proof/other",
+            "使用 single_choice/multiple_choice/indefinite_choice/fill_blank/true_false/matching/ordering/numeric/short_answer/essay/calculation/proof/other",
         )
     })
+}
+
+/// 题型是否支持 structured_data（新题型契约，见 question_repo.rs）
+fn question_type_supports_structured_data(question_type: &RepoQuestionType) -> bool {
+    matches!(
+        question_type,
+        RepoQuestionType::FillBlank
+            | RepoQuestionType::Matching
+            | RepoQuestionType::Ordering
+            | RepoQuestionType::Numeric
+    )
+}
+
+/// 题型是否必须携带 structured_data（matching/ordering/numeric 没有它无法判分）
+fn question_type_requires_structured_data(question_type: &RepoQuestionType) -> bool {
+    matches!(
+        question_type,
+        RepoQuestionType::Matching | RepoQuestionType::Ordering | RepoQuestionType::Numeric
+    )
+}
+
+fn structured_key_content_entries(
+    value: &Value,
+    field: &str,
+    max_items: usize,
+) -> Result<Vec<String>, String> {
+    let items = value.as_array().ok_or_else(|| {
+        qbank_error(
+            "INVALID_ARGS",
+            format!("{field} 必须是 {{key,content}} 对象数组"),
+            "修正 structured_data 后重试",
+        )
+    })?;
+    if items.is_empty() || items.len() > max_items {
+        return Err(qbank_error(
+            "INVALID_ARGS",
+            format!("{field} 必须包含 1..={max_items} 项"),
+            "修正 structured_data 后重试",
+        ));
+    }
+    let mut keys = Vec::with_capacity(items.len());
+    let mut seen = HashSet::new();
+    for (index, item) in items.iter().enumerate() {
+        let object = item.as_object().ok_or_else(|| {
+            qbank_error(
+                "INVALID_ARGS",
+                format!("{field}[{index}] 必须是对象"),
+                "每项格式为 {key,content}",
+            )
+        })?;
+        let key = object
+            .get("key")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|key| !key.is_empty())
+            .ok_or_else(|| {
+                qbank_error(
+                    "INVALID_ARGS",
+                    format!("{field}[{index}].key 必须是非空字符串"),
+                    "修正 structured_data 后重试",
+                )
+            })?;
+        let content_valid = object
+            .get("content")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .is_some_and(|content| !content.is_empty());
+        if !content_valid {
+            return Err(qbank_error(
+                "INVALID_ARGS",
+                format!("{field}[{index}].content 必须是非空字符串"),
+                "修正 structured_data 后重试",
+            ));
+        }
+        if !seen.insert(key.to_string()) {
+            return Err(qbank_error(
+                "INVALID_ARGS",
+                format!("{field} 包含重复 key: {key}"),
+                "每项 key 必须唯一",
+            ));
+        }
+        keys.push(key.to_string());
+    }
+    Ok(keys)
+}
+
+/// 校验 structured_data 与 question_type 的匹配性（只校验形状，判分逻辑在 question_bank_service）。
+/// 错误信息面向 LLM：指出具体字段与期望格式。
+fn validate_structured_data(
+    question_type: &RepoQuestionType,
+    data: &Value,
+) -> Result<(), String> {
+    if !question_type_supports_structured_data(question_type) {
+        return Err(qbank_error(
+            "INVALID_ARGS",
+            format!(
+                "题型 {} 不支持 structured_data",
+                serde_json::to_value(question_type)
+                    .ok()
+                    .and_then(|v| v.as_str().map(str::to_string))
+                    .unwrap_or_else(|| "unknown".to_string())
+            ),
+            "只有 fill_blank/matching/ordering/numeric 支持 structured_data；其他题型请移除该字段",
+        ));
+    }
+    let serialized_len = serde_json::to_string(data)
+        .map(|text| text.chars().count())
+        .unwrap_or(usize::MAX);
+    if serialized_len > 20_000 {
+        return Err(qbank_error(
+            "INVALID_ARGS",
+            "structured_data 序列化后超过 20000 字符上限",
+            "缩减 structured_data 内容后重试",
+        ));
+    }
+    let object = data.as_object().ok_or_else(|| {
+        qbank_error(
+            "INVALID_ARGS",
+            "structured_data 必须是 JSON 对象",
+            "按对应题型格式传入对象",
+        )
+    })?;
+
+    match question_type {
+        RepoQuestionType::FillBlank => {
+            let blanks = object
+                .get("blanks")
+                .and_then(Value::as_array)
+                .ok_or_else(|| {
+                    qbank_error(
+                        "INVALID_ARGS",
+                        "fill_blank 的 structured_data 缺少 blanks 数组",
+                        r#"格式：{"blanks":[{"answers":["答案1","答案2"],"case_sensitive":false,"trim":true}]}，blanks 顺序与题干 ____ 空位一一对应"#,
+                    )
+                })?;
+            if blanks.is_empty() || blanks.len() > 50 {
+                return Err(qbank_error(
+                    "INVALID_ARGS",
+                    "blanks 必须包含 1..=50 个空位",
+                    "修正 blanks 后重试",
+                ));
+            }
+            for (index, blank) in blanks.iter().enumerate() {
+                let blank = blank.as_object().ok_or_else(|| {
+                    qbank_error(
+                        "INVALID_ARGS",
+                        format!("blanks[{index}] 必须是对象"),
+                        r#"每个空位格式：{"answers":[...],"case_sensitive"?:bool,"trim"?:bool}"#,
+                    )
+                })?;
+                let answers = blank
+                    .get("answers")
+                    .and_then(Value::as_array)
+                    .filter(|answers| !answers.is_empty() && answers.len() <= 20)
+                    .ok_or_else(|| {
+                        qbank_error(
+                            "INVALID_ARGS",
+                            format!("blanks[{index}].answers 必须是 1..=20 项的非空数组"),
+                            "answers 列出该空位所有可接受答案",
+                        )
+                    })?;
+                for (answer_index, answer) in answers.iter().enumerate() {
+                    let valid = answer
+                        .as_str()
+                        .map(str::trim)
+                        .is_some_and(|text| !text.is_empty() && text.chars().count() <= 500);
+                    if !valid {
+                        return Err(qbank_error(
+                            "INVALID_ARGS",
+                            format!(
+                                "blanks[{index}].answers[{answer_index}] 必须是 1..=500 字符的非空字符串"
+                            ),
+                            "修正答案文本后重试",
+                        ));
+                    }
+                }
+                for key in ["case_sensitive", "trim"] {
+                    if let Some(flag) = blank.get(key) {
+                        if !flag.is_boolean() {
+                            return Err(qbank_error(
+                                "INVALID_ARGS",
+                                format!("blanks[{index}].{key} 必须是布尔值"),
+                                "修正后重试",
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        RepoQuestionType::Matching => {
+            let left_keys = structured_key_content_entries(
+                object.get("left").unwrap_or(&Value::Null),
+                "structured_data.left",
+                26,
+            )?;
+            let right_keys = structured_key_content_entries(
+                object.get("right").unwrap_or(&Value::Null),
+                "structured_data.right",
+                26,
+            )?;
+            let pairs = object
+                .get("pairs")
+                .and_then(Value::as_array)
+                .filter(|pairs| !pairs.is_empty())
+                .ok_or_else(|| {
+                    qbank_error(
+                        "INVALID_ARGS",
+                        "matching 的 structured_data 缺少非空 pairs 数组",
+                        r#"格式：{"left":[{"key","content"}],"right":[...],"pairs":[{"left":"L1","right":"R2"}]}"#,
+                    )
+                })?;
+            let left_set: HashSet<&str> = left_keys.iter().map(String::as_str).collect();
+            let right_set: HashSet<&str> = right_keys.iter().map(String::as_str).collect();
+            let mut paired_left = HashSet::new();
+            for (index, pair) in pairs.iter().enumerate() {
+                let pair = pair.as_object().ok_or_else(|| {
+                    qbank_error(
+                        "INVALID_ARGS",
+                        format!("pairs[{index}] 必须是对象"),
+                        r#"每项格式：{"left":"左侧key","right":"右侧key"}"#,
+                    )
+                })?;
+                let left = pair.get("left").and_then(Value::as_str).unwrap_or("");
+                let right = pair.get("right").and_then(Value::as_str).unwrap_or("");
+                if !left_set.contains(left) {
+                    return Err(qbank_error(
+                        "INVALID_ARGS",
+                        format!("pairs[{index}].left 引用了不存在的左侧 key: {left}"),
+                        "pairs 中的 left/right 必须引用 left/right 数组中的 key",
+                    ));
+                }
+                if !right_set.contains(right) {
+                    return Err(qbank_error(
+                        "INVALID_ARGS",
+                        format!("pairs[{index}].right 引用了不存在的右侧 key: {right}"),
+                        "pairs 中的 left/right 必须引用 left/right 数组中的 key",
+                    ));
+                }
+                if !paired_left.insert(left.to_string()) {
+                    return Err(qbank_error(
+                        "INVALID_ARGS",
+                        format!("pairs 中左侧 key {left} 出现多次"),
+                        "每个左侧 key 至多配对一次",
+                    ));
+                }
+            }
+        }
+        RepoQuestionType::Ordering => {
+            let item_keys = structured_key_content_entries(
+                object.get("items").unwrap_or(&Value::Null),
+                "structured_data.items",
+                50,
+            )?;
+            let correct_order = object
+                .get("correct_order")
+                .and_then(Value::as_array)
+                .ok_or_else(|| {
+                    qbank_error(
+                        "INVALID_ARGS",
+                        "ordering 的 structured_data 缺少 correct_order 数组",
+                        r#"格式：{"items":[{"key","content"}],"correct_order":["K2","K1",...]}，correct_order 必须是 items key 的一个排列"#,
+                    )
+                })?;
+            let order_keys: Vec<&str> = correct_order
+                .iter()
+                .filter_map(Value::as_str)
+                .collect();
+            if order_keys.len() != correct_order.len() {
+                return Err(qbank_error(
+                    "INVALID_ARGS",
+                    "correct_order 必须全部是字符串 key",
+                    "修正 correct_order 后重试",
+                ));
+            }
+            let mut expected: Vec<&str> = item_keys.iter().map(String::as_str).collect();
+            let mut actual = order_keys.clone();
+            expected.sort_unstable();
+            actual.sort_unstable();
+            if expected != actual {
+                return Err(qbank_error(
+                    "INVALID_ARGS",
+                    "correct_order 必须恰好是 items 中所有 key 的一个排列",
+                    "检查 correct_order 是否遗漏、重复或引用了不存在的 key",
+                ));
+            }
+        }
+        RepoQuestionType::Numeric => {
+            if !object
+                .get("answer_value")
+                .map(Value::is_number)
+                .unwrap_or(false)
+            {
+                return Err(qbank_error(
+                    "INVALID_ARGS",
+                    "numeric 的 structured_data 缺少数值 answer_value",
+                    r#"格式：{"answer_value":3.14,"tolerance":0.01,"unit":"m","tolerance_mode":"absolute"}"#,
+                ));
+            }
+            if let Some(tolerance) = object.get("tolerance") {
+                let valid = tolerance.as_f64().is_some_and(|value| value >= 0.0);
+                if !valid {
+                    return Err(qbank_error(
+                        "INVALID_ARGS",
+                        "tolerance 必须是 >= 0 的数值",
+                        "修正容差后重试",
+                    ));
+                }
+            }
+            if let Some(mode) = object.get("tolerance_mode") {
+                if !matches!(mode.as_str(), Some("absolute") | Some("relative")) {
+                    return Err(qbank_error(
+                        "INVALID_ARGS",
+                        "tolerance_mode 只能是 absolute 或 relative",
+                        "修正容差模式后重试",
+                    ));
+                }
+            }
+            if let Some(unit) = object.get("unit") {
+                let valid = unit
+                    .as_str()
+                    .is_some_and(|text| text.chars().count() <= 50);
+                if !valid {
+                    return Err(qbank_error(
+                        "INVALID_ARGS",
+                        "unit 必须是不超过 50 字符的字符串",
+                        "修正单位后重试",
+                    ));
+                }
+            }
+        }
+        _ => unreachable!("guarded by question_type_supports_structured_data"),
+    }
+    Ok(())
+}
+
+/// 读取并校验可选的 structured_data 参数；matching/ordering/numeric 缺失时给出必填错误。
+fn parse_structured_data_arg(
+    args: &Value,
+    question_type: &RepoQuestionType,
+    required_when_missing: bool,
+) -> Result<Option<Value>, String> {
+    match args.get("structured_data") {
+        Some(Value::Null) | None => {
+            if required_when_missing && question_type_requires_structured_data(question_type) {
+                return Err(qbank_error(
+                    "INVALID_ARGS",
+                    "matching/ordering/numeric 题型必须提供 structured_data",
+                    r#"matching 需 {"left","right","pairs"}；ordering 需 {"items","correct_order"}；numeric 需 {"answer_value","tolerance"?,"unit"?,"tolerance_mode"?}"#,
+                ));
+            }
+            Ok(None)
+        }
+        Some(data) => {
+            validate_structured_data(question_type, data)?;
+            Ok(Some(data.clone()))
+        }
+    }
+}
+
+/// true_false 题的标准答案必须是 "true"/"false"（user_answer 亦同）。
+fn validate_true_false_answer(answer: &str) -> Result<(), String> {
+    if matches!(answer.trim(), "true" | "false") {
+        Ok(())
+    } else {
+        Err(qbank_error(
+            "INVALID_ARGS",
+            format!("true_false 题的答案必须是 \"true\" 或 \"false\"，收到: {answer}"),
+            "使用小写字符串 true/false 表示判断题答案",
+        ))
+    }
 }
 
 fn parse_difficulty(value: &Value, field: &str) -> Result<Difficulty, String> {
@@ -774,8 +1144,9 @@ fn parse_qbank_grading_mode(args: &Value) -> Result<QbankGradingMode, String> {
 
 /// R1-04 / R2-01 / docs/dev/acr/DESIGN.md §5.6：题库写操作成功后通知前端刷新。
 fn emit_qbank_changed(ctx: &ExecutionContext, action: &str, entity_ids: &[String]) {
+    // ACR 4.0：域事件 source 统一为 "agent"（前端 normalize 仍双认 "ai" 兼容旧持久化事件）
     let payload = json!({
-        "source": "ai",
+        "source": "agent",
         "action": action,
         "entityIds": entity_ids,
         "runId": ctx.run_id(),
@@ -858,6 +1229,37 @@ impl QBankExecutor {
                 "QBANK_SERVICE_UNAVAILABLE",
                 "QuestionBankService 未初始化",
                 "重新打开应用后重试",
+            )
+        })
+    }
+
+    /// 用 question_id 或 session_id+card_id 定位一道 questions 表题目
+    fn resolve_question(
+        &self,
+        service: &QuestionBankService,
+        args: &Value,
+    ) -> Result<Question, String> {
+        let question = if let Some(question_id) = args
+            .get("question_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            service
+                .get_question(question_id)
+                .map_err(|error| error.to_string())?
+        } else {
+            let exam_id = required_non_empty_string(args, "session_id")?;
+            let card_id = required_non_empty_string(args, "card_id")?;
+            service
+                .get_question_by_card_id(&exam_id, &card_id)
+                .map_err(|error| error.to_string())?
+        };
+        question.ok_or_else(|| {
+            qbank_error(
+                "QBANK_QUESTION_NOT_FOUND",
+                "找不到指定题目",
+                "传 question_id，或同时传 session_id 与 card_id；先用 qbank_list_questions 确认题目存在",
             )
         })
     }
@@ -1198,7 +1600,10 @@ impl QBankExecutor {
         }
 
         let total = all_cards.len();
-        let start = (page.saturating_sub(1) * page_size) as usize;
+        // u32 乘法在大页码下会溢出（debug panic / release 回绕），改用 usize saturating 运算
+        let start = (page as usize)
+            .saturating_sub(1)
+            .saturating_mul(page_size as usize);
         let questions: Vec<Value> = all_cards
             .iter()
             .skip(start)
@@ -1265,10 +1670,13 @@ impl QBankExecutor {
                 let updated_at = q.updated_at.clone();
 
                 return Ok(json!({
+                    // questions 表主键：delete/batch_update/toggle_* 的 OCC 版本映射都以它为键
+                    "question_id": q.id,
                     "card_id": q.card_id.clone().unwrap_or_else(|| q.id.clone()),
                     "label": q.question_label,
                     "content": q.content,
                     "question_type": q.question_type,
+                    "structured_data": q.structured_data,
                     "answer": q.answer,
                     "explanation": q.explanation,
                     "difficulty": q.difficulty,
@@ -1280,6 +1688,8 @@ impl QBankExecutor {
                     "correct_count": q.correct_count,
                     "last_attempt_at": q.last_attempt_at,
                     "user_note": q.user_note,
+                    "is_favorite": q.is_favorite,
+                    "is_bookmarked": q.is_bookmarked,
                     "images": q.images,
                     "updated_at": updated_at.clone(),
                     "updatedAt": updated_at,
@@ -1371,6 +1781,13 @@ impl QBankExecutor {
                 "把选项作为 {key,content} 数组传入",
             ));
         }
+        let structured_data = parse_structured_data_arg(&call.arguments, &question_type, true)?;
+        let answer = optional_string(&call.arguments, "answer", 50_000)?;
+        if matches!(question_type, RepoQuestionType::TrueFalse) {
+            if let Some(answer) = &answer {
+                validate_true_false_answer(answer)?;
+            }
+        }
 
         let tags = call
             .arguments
@@ -1419,7 +1836,7 @@ impl QBankExecutor {
             question_label: optional_string(&call.arguments, "question_label", 120)?,
             content,
             options,
-            answer: optional_string(&call.arguments, "answer", 50_000)?,
+            answer,
             explanation: optional_string(&call.arguments, "explanation", 100_000)?,
             question_type: Some(question_type),
             difficulty,
@@ -1428,6 +1845,7 @@ impl QBankExecutor {
             source_ref: optional_string(&call.arguments, "source_ref", 1_000)?,
             images,
             parent_id,
+            structured_data,
         };
         let created = service
             .create_question(&params)
@@ -1655,6 +2073,352 @@ impl QBankExecutor {
         }))
     }
 
+    /// 🆕 完备性补齐：切换书签状态（与收藏独立的第二个标记位）
+    async fn execute_toggle_bookmark(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let expected_updated_at = expected_qbank_revision(&call.arguments)?;
+        let _write_guard = QBANK_WRITE_LOCK.lock().await;
+        let service = self.require_service(ctx)?;
+        let question = self.resolve_question(service, &call.arguments)?;
+        let previous_bookmarked = question.is_bookmarked;
+        let updated = match service.update_question(
+            &question.id,
+            &UpdateQuestionParams {
+                is_bookmarked: Some(!previous_bookmarked),
+                expected_updated_at: Some(expected_updated_at),
+                ..Default::default()
+            },
+            false,
+        ) {
+            Ok(updated) => updated,
+            Err(error) => {
+                let message = error.to_string();
+                if message.contains("QBANK_CONFLICT") {
+                    let current = service
+                        .get_question(&question.id)
+                        .ok()
+                        .flatten()
+                        .map(|current| question_to_bounded_value(&current))
+                        .unwrap_or(Value::Null);
+                    return Err(qbank_conflict_error(
+                        message,
+                        "使用 current.updated_at 重新规划书签变更，禁止盲重试",
+                        current,
+                    ));
+                }
+                return Err(message);
+            }
+        };
+        emit_qbank_changed(ctx, "toggle_bookmark", std::slice::from_ref(&updated.id));
+        let updated_value = question_to_bounded_value(&updated);
+
+        Ok(json!({
+            "success": true,
+            "question": updated_value,
+            "previous": { "is_bookmarked": previous_bookmarked },
+            "reversible": true,
+            "undo": {
+                "tool": "builtin-qbank_toggle_bookmark",
+                "question_id": updated.id,
+                "expected_updated_at": updated.updated_at,
+            },
+        }))
+    }
+
+    /// 🆕 完备性补齐：完整作答历史（get_question 只带最近 5 条）
+    async fn execute_get_submissions(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let service = self.require_service(ctx)?;
+        let question = self.resolve_question(service, &call.arguments)?;
+        let limit = read_strict_u32(&call.arguments, "limit", 10, 1, 20)?;
+        let submissions = service
+            .get_submissions(&question.id, limit)
+            .map_err(|error| error.to_string())?;
+        let items: Vec<Value> = submissions
+            .iter()
+            .map(|submission| {
+                let (user_answer, truncated) = bounded_text(&submission.user_answer, 2_000);
+                json!({
+                    "submission_id": submission.id,
+                    "user_answer": user_answer,
+                    "user_answer_truncated": truncated,
+                    "is_correct": submission.is_correct,
+                    "grading_method": submission.grading_method,
+                    "submitted_at": submission.submitted_at,
+                })
+            })
+            .collect();
+        let count = items.len();
+        Ok(json!({
+            "question_id": question.id,
+            "card_id": question.card_id,
+            "session_id": question.exam_id,
+            "submissions": items,
+            "count": count,
+            "limit": limit,
+            "has_more": count as u32 == limit,
+            "truncated": count as u32 == limit,
+        }))
+    }
+
+    /// 🆕 完备性补齐：题目字段变更历史（谁在何时改了什么）
+    async fn execute_get_question_history(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let service = self.require_service(ctx)?;
+        let question = self.resolve_question(service, &call.arguments)?;
+        let limit = read_strict_u32(&call.arguments, "limit", 10, 1, 20)?;
+        let history = service
+            .get_history(&question.id, Some(limit))
+            .map_err(|error| error.to_string())?;
+        let items: Vec<Value> = history
+            .iter()
+            .map(|entry| {
+                json!({
+                    "field_name": entry.field_name,
+                    "old_value": bounded_optional_text(entry.old_value.as_deref()),
+                    "new_value": bounded_optional_text(entry.new_value.as_deref()),
+                    "operator": entry.operator,
+                    "reason": entry.reason,
+                    "changed_at": entry.created_at,
+                })
+            })
+            .collect();
+        let count = items.len();
+        Ok(json!({
+            "question_id": question.id,
+            "card_id": question.card_id,
+            "session_id": question.exam_id,
+            "history": items,
+            "count": count,
+            "limit": limit,
+            "has_more": count as u32 == limit,
+            "truncated": count as u32 == limit,
+        }))
+    }
+
+    /// 🆕 完备性补齐：批量更新学习元数据（难度/状态/标签），逐题 OCC、逐题上报结果
+    async fn execute_batch_update_questions(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let question_ids = parse_string_array(
+            call.arguments.get("question_ids").ok_or_else(|| {
+                qbank_error(
+                    "INVALID_ARGS",
+                    "缺少 question_ids",
+                    "传入要更新的 questions 表题目 ID（1-20 个）",
+                )
+            })?,
+            "question_ids",
+            20,
+            200,
+        )?;
+        if question_ids.is_empty() {
+            return Err(qbank_error(
+                "INVALID_ARGS",
+                "question_ids 不能为空",
+                "传入至少一个题目 ID",
+            ));
+        }
+        let version_map = call
+            .arguments
+            .get("expected_updated_at_by_id")
+            .and_then(Value::as_object)
+            .ok_or_else(|| {
+                qbank_error(
+                    "QBANK_OCC_REQUIRED",
+                    "批量更新必须提供 expected_updated_at_by_id",
+                    "逐题调用 qbank_get_question，并以 question_id 为键传入最新 updated_at",
+                )
+            })?;
+
+        let updates = call
+            .arguments
+            .get("updates")
+            .and_then(Value::as_object)
+            .ok_or_else(|| {
+                qbank_error(
+                    "INVALID_ARGS",
+                    "缺少 updates 对象",
+                    "在 updates 中提供 difficulty/status/tags 至少一项",
+                )
+            })?;
+        let mut template = UpdateQuestionParams::default();
+        let mut changed_fields: Vec<&str> = Vec::new();
+        if let Some(value) = updates.get("difficulty") {
+            template.difficulty = Some(parse_difficulty(value, "updates.difficulty")?);
+            changed_fields.push("difficulty");
+        }
+        if let Some(value) = updates.get("status") {
+            template.status = Some(parse_status(value, "updates.status")?);
+            changed_fields.push("status");
+        }
+        if let Some(value) = updates.get("tags") {
+            template.tags = Some(parse_string_array(value, "updates.tags", 50, 100)?);
+            changed_fields.push("tags");
+        }
+        if let Some(unknown) = updates
+            .keys()
+            .find(|key| !matches!(key.as_str(), "difficulty" | "status" | "tags"))
+        {
+            return Err(qbank_error(
+                "INVALID_ARGS",
+                format!("updates 包含不支持的字段: {unknown}"),
+                "批量更新只支持 difficulty/status/tags；题干/答案等内容请逐题用 qbank_update_question",
+            ));
+        }
+        if changed_fields.is_empty() {
+            return Err(qbank_error(
+                "INVALID_ARGS",
+                "updates 没有提供任何可更新字段",
+                "在 updates 中提供 difficulty/status/tags 至少一项",
+            ));
+        }
+
+        // 先校验版本映射完整性，再获取写锁逐题提交
+        let mut planned: Vec<(String, String)> = Vec::with_capacity(question_ids.len());
+        for question_id in &question_ids {
+            let version = version_map
+                .get(question_id)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    qbank_error(
+                        "QBANK_OCC_REQUIRED",
+                        format!("缺少 {question_id} 的 expected_updated_at"),
+                        "逐题调用 qbank_get_question 后传入精确版本映射",
+                    )
+                })?;
+            planned.push((question_id.clone(), version.to_string()));
+        }
+
+        let _write_guard = QBANK_WRITE_LOCK.lock().await;
+        let service = self.require_service(ctx)?;
+        let mut results: Vec<Value> = Vec::with_capacity(planned.len());
+        let mut updated_ids: Vec<String> = Vec::new();
+        let mut conflict_count = 0usize;
+        let mut failed_count = 0usize;
+        for (question_id, version) in planned {
+            let mut params = template.clone();
+            params.expected_updated_at = Some(version);
+            match service.update_question(&question_id, &params, true) {
+                Ok(updated) => {
+                    results.push(json!({
+                        "question_id": question_id,
+                        "outcome": "updated",
+                        "updated_at": updated.updated_at,
+                    }));
+                    updated_ids.push(question_id);
+                }
+                Err(error) => {
+                    let message = error.to_string();
+                    if message.contains("QBANK_CONFLICT") {
+                        conflict_count += 1;
+                        let current = service
+                            .get_question(&question_id)
+                            .ok()
+                            .flatten()
+                            .map(|current| question_to_bounded_value(&current))
+                            .unwrap_or(Value::Null);
+                        results.push(json!({
+                            "question_id": question_id,
+                            "outcome": "conflict",
+                            "current": current,
+                        }));
+                    } else {
+                        failed_count += 1;
+                        let (bounded_message, _) = bounded_text(&message, 500);
+                        results.push(json!({
+                            "question_id": question_id,
+                            "outcome": "failed",
+                            "error": bounded_message,
+                        }));
+                    }
+                }
+            }
+        }
+        if !updated_ids.is_empty() {
+            emit_qbank_changed(ctx, "batch_update", &updated_ids);
+        }
+
+        Ok(json!({
+            "success": conflict_count == 0 && failed_count == 0,
+            "changed_fields": changed_fields,
+            "updated_count": updated_ids.len(),
+            "conflict_count": conflict_count,
+            "failed_count": failed_count,
+            "results": results,
+            "atomic": false,
+            "reversible": false,
+            "note": "逐题独立提交：冲突/失败的题目未被修改，需按 results 中的 current 重新规划",
+        }))
+    }
+
+    /// 🆕 完备性补齐：列出题目集源图片元数据（不含 base64，正文请在题库 UI 查看）
+    async fn execute_list_source_images(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let session_id = required_non_empty_string(&call.arguments, "session_id")?;
+        let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
+        let exam = VfsExamRepo::get_exam_sheet(vfs_db, &session_id)
+            .map_err(|error| format!("Failed to get exam sheet: {error}"))?
+            .ok_or("Exam sheet not found")?;
+
+        let mut source_hashes: Vec<String> = exam
+            .metadata_json
+            .get("source_image_hashes")
+            .and_then(|value| serde_json::from_value::<Vec<String>>(value.clone()).ok())
+            .unwrap_or_default();
+        // 回退：OCR 上传流程不写 source_image_hashes，图片在 preview_json pages 的 blob_hash 中
+        if source_hashes.is_empty() {
+            if let Some(pages) = exam.preview_json.get("pages").and_then(Value::as_array) {
+                for page in pages {
+                    if let Some(hash) = page.get("blob_hash").and_then(Value::as_str) {
+                        if !hash.is_empty() {
+                            source_hashes.push(hash.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        let (page, page_size, start, end) = Self::page_bounds(&call.arguments, source_hashes.len())?;
+        let images: Vec<Value> = source_hashes[start..end]
+            .iter()
+            .enumerate()
+            .map(|(offset, hash)| {
+                json!({
+                    "page_index": start + offset,
+                    "blob_hash": hash,
+                })
+            })
+            .collect();
+        Ok(json!({
+            "session_id": session_id,
+            "images": images,
+            "total": source_hashes.len(),
+            "page": page,
+            "page_size": page_size,
+            "has_more": end < source_hashes.len(),
+            "truncated": end < source_hashes.len(),
+            "data_included": false,
+            "note": "仅返回元数据；图片正文请让用户在题库 UI 查看，Agent 不应请求 base64 数据",
+        }))
+    }
+
     async fn execute_search_questions(
         &self,
         call: &ToolCall,
@@ -1753,11 +2517,19 @@ impl QBankExecutor {
             .get("card_id")
             .and_then(|v| v.as_str())
             .ok_or("Missing 'card_id' parameter")?;
-        let user_answer = call
-            .arguments
-            .get("user_answer")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing 'user_answer' parameter")?;
+        // 新题型契约：user_answer 统一为序列化字符串——
+        // true_false "true"/"false"；numeric 数字串；fill_blank 多空 JSON 数组；
+        // matching {"pairs":[...]}；ordering JSON 数组。
+        // 容错：模型直接传 JSON 数组/对象/数字/布尔时按规范序列化为字符串透传。
+        let user_answer: String = match call.arguments.get("user_answer") {
+            Some(Value::String(text)) => text.clone(),
+            Some(value @ (Value::Array(_) | Value::Object(_) | Value::Number(_) | Value::Bool(_))) => {
+                serde_json::to_string(value)
+                    .map_err(|error| format!("user_answer 序列化失败: {error}"))?
+            }
+            _ => return Err("Missing 'user_answer' parameter".to_string()),
+        };
+        let user_answer = user_answer.as_str();
         // M-065: user_answer 长度校验
         if user_answer.len() > 50000 {
             return Err("答案内容过长（上限 50000 字符）".to_string());
@@ -1815,10 +2587,13 @@ impl QBankExecutor {
                         ));
                     }
                     Err(e) => {
+                        // 题目已在 questions 表中：判分/写入失败时必须直接报错。
+                        // 若继续回退到 preview_json 会造成双写发散且把真实错误吞掉。
                         log::warn!(
                             "[QBankExecutor] QuestionBankService submit_answer failed: {}",
                             e
                         );
+                        return Err(e.to_string());
                     }
                 }
             }
@@ -1829,6 +2604,8 @@ impl QBankExecutor {
         let exam = VfsExamRepo::get_exam_sheet(vfs_db, session_id)
             .map_err(|e| format!("Failed to get exam sheet: {}", e))?
             .ok_or("Exam sheet not found")?;
+        // ACR 4.0 P1：preview_json 回落写路径补 OCC——以读取时的 updated_at 为基线
+        let preview_revision = exam.updated_at.clone();
 
         let mut preview: ExamSheetPreviewResult = serde_json::from_value(exam.preview_json)
             .map_err(|e| format!("Failed to parse preview: {}", e))?;
@@ -1902,8 +2679,20 @@ impl QBankExecutor {
         let preview_json = serde_json::to_value(&preview)
             .map_err(|e| format!("Failed to serialize preview: {}", e))?;
 
-        VfsExamRepo::update_preview_json(vfs_db, session_id, preview_json)
-            .map_err(|e| format!("Failed to update exam sheet: {}", e))?;
+        let occ_ok = VfsExamRepo::update_preview_json_if_unchanged(
+            vfs_db,
+            session_id,
+            preview_json,
+            &preview_revision,
+        )
+        .map_err(|e| format!("Failed to update exam sheet: {}", e))?;
+        if !occ_ok {
+            return Err(qbank_conflict_error(
+                "题目集在读取后已被并发修改，本次作答未写入",
+                "重新读取题目集最新状态后再提交作答；不要凭旧状态重试",
+                json!({ "session_id": session_id, "expected_updated_at": preview_revision }),
+            ));
+        }
 
         emit_qbank_changed(ctx, "submit_answer", &[card_id.to_string()]);
 
@@ -2017,17 +2806,25 @@ impl QBankExecutor {
             params.images = Some(parse_question_images(value)?);
             changed_fields.push("images");
         }
+        if call
+            .arguments
+            .get("structured_data")
+            .is_some_and(|value| !value.is_null())
+        {
+            changed_fields.push("structured_data");
+        }
         if changed_fields.is_empty() {
             return Err(qbank_error(
                 "INVALID_ARGS",
                 "没有提供任何可更新字段",
-                "传入 content/options/question_type 或其他更新字段",
+                "传入 content/options/question_type/structured_data 或其他更新字段",
             ));
         }
+        // 拷出最终题型，避免后续对 params 的可变写入与不可变借用冲突
         let final_question_type = params
             .question_type
-            .as_ref()
-            .unwrap_or(&question.question_type);
+            .clone()
+            .unwrap_or_else(|| question.question_type.clone());
         let final_options = params.options.as_ref().or(question.options.as_ref());
         if matches!(
             final_question_type,
@@ -2041,6 +2838,26 @@ impl QBankExecutor {
                 "更新后的选择题必须保留非空 options",
                 "同时传入至少一个 {key,content} 选项，或改为非选择题题型",
             ));
+        }
+        // structured_data 与最终题型的匹配校验：
+        // 切换到 matching/ordering/numeric 时必须同调用携带对应格式的 structured_data，
+        // 否则新题型没有可判分的数据结构。
+        let switching_to_structured_type = params
+            .question_type
+            .as_ref()
+            .is_some_and(|next_type| {
+                question_type_requires_structured_data(next_type)
+                    && *next_type != question.question_type
+            });
+        params.structured_data = parse_structured_data_arg(
+            &call.arguments,
+            &final_question_type,
+            switching_to_structured_type,
+        )?;
+        if matches!(final_question_type, RepoQuestionType::TrueFalse) {
+            if let Some(answer) = &params.answer {
+                validate_true_false_answer(answer)?;
+            }
         }
 
         let updated = match service.update_question(&question.id, &params, true) {
@@ -2560,6 +3377,10 @@ impl QBankExecutor {
                 "multiple_choice",
                 "indefinite_choice",
                 "fill_blank",
+                "true_false",
+                "matching",
+                "ordering",
+                "numeric",
                 "short_answer",
                 "essay",
                 "calculation",
@@ -2903,6 +3724,10 @@ impl QBankExecutor {
                 "multiple_choice",
                 "indefinite_choice",
                 "fill_blank",
+                "true_false",
+                "matching",
+                "ordering",
+                "numeric",
                 "short_answer",
                 "essay",
                 "calculation",
@@ -3047,20 +3872,35 @@ impl QBankExecutor {
         if let Some(service) = &ctx.question_bank_service {
             if let Some(card_ids) = &card_ids {
                 let mut question_ids = Vec::new();
+                let mut found_card_ids: Vec<String> = Vec::new();
+                let mut missing_card_ids: Vec<String> = Vec::new();
                 for card_id in card_ids {
-                    if let Ok(Some(q)) = service.get_question_by_card_id(session_id, card_id) {
-                        question_ids.push(q.id);
+                    match service.get_question_by_card_id(session_id, card_id) {
+                        Ok(Some(q)) => {
+                            question_ids.push(q.id);
+                            found_card_ids.push((*card_id).to_string());
+                        }
+                        Ok(None) => missing_card_ids.push((*card_id).to_string()),
+                        Err(e) => return Err(format!("Failed to resolve card_id {card_id}: {e}")),
                     }
+                }
+                // 之前的实现会静默跳过不存在的 card_id，让调用方误以为全部重置成功
+                if question_ids.is_empty() {
+                    return Err(qbank_error(
+                        "QBANK_QUESTION_NOT_FOUND",
+                        format!("card_ids 均不存在于题目集 {session_id}"),
+                        "先用 qbank_list_questions 确认有效的 card_id 后重试",
+                    ));
                 }
                 let result = service
                     .reset_questions_progress(&question_ids)
                     .map_err(|e| format!("Failed to reset progress: {}", e))?;
-                let entity_ids: Vec<String> = card_ids.iter().map(|id| (*id).to_string()).collect();
-                emit_qbank_changed(ctx, "reset_progress", &entity_ids);
+                emit_qbank_changed(ctx, "reset_progress", &found_card_ids);
                 return Ok(with_localized_message(
                     json!({
                         "success": true,
                         "reset_count": result.success_count,
+                        "missing_card_ids": missing_card_ids,
                         "source": "questions_table"
                     }),
                     "chat.tools.qbank.progress_reset",
@@ -3098,6 +3938,8 @@ impl QBankExecutor {
         let exam = VfsExamRepo::get_exam_sheet(vfs_db, session_id)
             .map_err(|e| format!("Failed to get exam sheet: {}", e))?
             .ok_or("Exam sheet not found")?;
+        // ACR 4.0 P1：preview_json 回落写路径补 OCC
+        let preview_revision = exam.updated_at.clone();
 
         let mut preview: ExamSheetPreviewResult = serde_json::from_value(exam.preview_json)
             .map_err(|e| format!("Failed to parse preview: {}", e))?;
@@ -3125,8 +3967,20 @@ impl QBankExecutor {
         let preview_json = serde_json::to_value(&preview)
             .map_err(|e| format!("Failed to serialize preview: {}", e))?;
 
-        VfsExamRepo::update_preview_json(vfs_db, session_id, preview_json)
-            .map_err(|e| format!("Failed to update exam sheet: {}", e))?;
+        let occ_ok = VfsExamRepo::update_preview_json_if_unchanged(
+            vfs_db,
+            session_id,
+            preview_json,
+            &preview_revision,
+        )
+        .map_err(|e| format!("Failed to update exam sheet: {}", e))?;
+        if !occ_ok {
+            return Err(qbank_conflict_error(
+                "题目集在读取后已被并发修改，进度重置未写入",
+                "重新读取题目集最新状态后再重置进度；不要凭旧状态重试",
+                json!({ "session_id": session_id, "expected_updated_at": preview_revision }),
+            ));
+        }
 
         let entity_ids: Vec<String> = if let Some(ids) = &card_ids {
             ids.iter().map(|id| (*id).to_string()).collect()
@@ -3205,8 +4059,11 @@ impl QBankExecutor {
                         "label": question.question_label,
                         "content": question.content,
                         "question_type": question.question_type,
+                        "options": question.options,
                         "answer": question.answer,
                         "explanation": question.explanation,
+                        // 新题型判分数据随导出携带，保证 JSON 导出→batch_import 回灌可判分
+                        "structured_data": question.structured_data,
                         "difficulty": question.difficulty,
                         "tags": question.tags,
                         "status": question.status,
@@ -3502,6 +4359,20 @@ impl QBankExecutor {
         } else {
             return Err("Missing 'questions' parameter".to_string());
         };
+        if questions.is_empty() {
+            return Err(qbank_error(
+                "INVALID_ARGS",
+                "questions 不能为空",
+                "传入至少一道题目",
+            ));
+        }
+        if questions.len() > 200 {
+            return Err(qbank_error(
+                "INVALID_ARGS",
+                format!("questions 单次最多 200 道，收到 {}", questions.len()),
+                "分批调用 qbank_batch_import 导入",
+            ));
+        }
         let top_parent_card_id = call
             .arguments
             .get("parent_card_id")
@@ -3509,31 +4380,35 @@ impl QBankExecutor {
 
         let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
         let mut is_new_session = false;
-        let (mut session_id, exam_name, mut preview) = if let Some(sid) = session_id {
-            let exam = VfsExamRepo::get_exam_sheet(vfs_db, &sid)
-                .map_err(|e| format!("Failed to get exam sheet: {}", e))?
-                .ok_or("Exam sheet not found")?;
-            let preview: ExamSheetPreviewResult = serde_json::from_value(exam.preview_json)
-                .map_err(|e| format!("Failed to parse preview: {}", e))?;
-            (
-                sid,
-                exam.exam_name.unwrap_or_else(|| "未命名题目集".to_string()),
-                preview,
-            )
-        } else {
-            let new_session_id = uuid::Uuid::new_v4().to_string();
-            let exam_name = name.clone().unwrap_or_else(|| "导入的题目集".to_string());
-            let preview = ExamSheetPreviewResult {
-                temp_id: new_session_id.clone(),
-                exam_name: Some(exam_name.clone()),
-                pages: Vec::new(),
-                raw_model_response: None,
-                instructions: None,
-                session_id: Some(new_session_id.clone()),
+        // ACR 4.0 P1：既有会话的 preview_json 回写带 OCC 基线（新会话无需）
+        let (mut session_id, exam_name, mut preview, preview_revision) =
+            if let Some(sid) = session_id {
+                let exam = VfsExamRepo::get_exam_sheet(vfs_db, &sid)
+                    .map_err(|e| format!("Failed to get exam sheet: {}", e))?
+                    .ok_or("Exam sheet not found")?;
+                let revision = exam.updated_at.clone();
+                let preview: ExamSheetPreviewResult = serde_json::from_value(exam.preview_json)
+                    .map_err(|e| format!("Failed to parse preview: {}", e))?;
+                (
+                    sid,
+                    exam.exam_name.unwrap_or_else(|| "未命名题目集".to_string()),
+                    preview,
+                    Some(revision),
+                )
+            } else {
+                let new_session_id = uuid::Uuid::new_v4().to_string();
+                let exam_name = name.clone().unwrap_or_else(|| "导入的题目集".to_string());
+                let preview = ExamSheetPreviewResult {
+                    temp_id: new_session_id.clone(),
+                    exam_name: Some(exam_name.clone()),
+                    pages: Vec::new(),
+                    raw_model_response: None,
+                    instructions: None,
+                    session_id: Some(new_session_id.clone()),
+                };
+                is_new_session = true;
+                (new_session_id, exam_name, preview, None)
             };
-            is_new_session = true;
-            (new_session_id, exam_name, preview)
-        };
 
         let mut imported_count = 0;
         let mut new_card_ids: Vec<String> = Vec::new();
@@ -3553,10 +4428,19 @@ impl QBankExecutor {
             });
         }
 
-        for q in questions {
-            let content = q.get("content").and_then(|v| v.as_str()).unwrap_or("");
+        for (question_index, q) in questions.iter().enumerate() {
+            let content = q
+                .get("content")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .unwrap_or("");
             if content.is_empty() {
-                continue;
+                // 之前静默 continue 会让模型误以为全部导入成功
+                return Err(qbank_error(
+                    "INVALID_ARGS",
+                    format!("questions[{question_index}].content 必须是非空字符串"),
+                    "修正该题后重新导入；本批次未写入任何题目",
+                ));
             }
 
             let existing_count = preview.pages.iter().map(|p| p.cards.len()).sum::<usize>();
@@ -3566,7 +4450,47 @@ impl QBankExecutor {
                 &uuid::Uuid::new_v4().to_string().replace("-", "")[..12]
             );
             let question_type = q.get("question_type").and_then(|v| v.as_str());
+            // 之前无效题型/难度会被静默降级为 Other/None；改为结构化报错
+            let repo_question_type = q
+                .get("question_type")
+                .map(|value| {
+                    parse_repo_question_type(
+                        value,
+                        &format!("questions[{question_index}].question_type"),
+                    )
+                })
+                .transpose()?;
+            let repo_difficulty = q
+                .get("difficulty")
+                .map(|value| {
+                    parse_difficulty(value, &format!("questions[{question_index}].difficulty"))
+                })
+                .transpose()?;
+            let effective_type = repo_question_type.clone().unwrap_or_default();
+            let structured_data = match q.get("structured_data") {
+                Some(Value::Null) | None => {
+                    if question_type_requires_structured_data(&effective_type) {
+                        return Err(qbank_error(
+                            "INVALID_ARGS",
+                            format!(
+                                "questions[{question_index}] 为 matching/ordering/numeric 题型，必须提供 structured_data"
+                            ),
+                            r#"matching 需 {"left","right","pairs"}；ordering 需 {"items","correct_order"}；numeric 需 {"answer_value",...}"#,
+                        ));
+                    }
+                    None
+                }
+                Some(data) => {
+                    validate_structured_data(&effective_type, data)?;
+                    Some(data.clone())
+                }
+            };
             let answer = q.get("answer").and_then(|v| v.as_str()).map(String::from);
+            if matches!(effective_type, RepoQuestionType::TrueFalse) {
+                if let Some(answer) = &answer {
+                    validate_true_false_answer(answer)?;
+                }
+            }
             let explanation = q
                 .get("explanation")
                 .and_then(|v| v.as_str())
@@ -3620,27 +4544,43 @@ impl QBankExecutor {
             imported_count += 1;
 
             // 解析选项（仅 questions 表需要）
-            let options = q.get("options").and_then(|v| v.as_array()).map(|arr| {
-                arr.iter()
-                    .filter_map(|opt| {
-                        let key = opt
-                            .get("key")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        let content = opt
-                            .get("content")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        if key.is_empty() && content.is_empty() {
-                            None
-                        } else {
-                            Some(QuestionOption { key, content })
-                        }
-                    })
-                    .collect()
-            });
+            let options: Option<Vec<QuestionOption>> =
+                q.get("options").and_then(|v| v.as_array()).map(|arr| {
+                    arr.iter()
+                        .filter_map(|opt| {
+                            let key = opt
+                                .get("key")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let content = opt
+                                .get("content")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            if key.is_empty() && content.is_empty() {
+                                None
+                            } else {
+                                Some(QuestionOption { key, content })
+                            }
+                        })
+                        .collect()
+                });
+            // 与 create_question 一致：选择题必须携带非空 options，
+            // 否则导入后 UI 无法作答（此前会静默写入无选项的选择题）
+            if matches!(
+                effective_type,
+                RepoQuestionType::SingleChoice
+                    | RepoQuestionType::MultipleChoice
+                    | RepoQuestionType::IndefiniteChoice
+            ) && options.as_ref().map(Vec::is_empty).unwrap_or(true)
+            {
+                return Err(qbank_error(
+                    "INVALID_ARGS",
+                    format!("questions[{question_index}] 是选择题但缺少非空 options"),
+                    "把选项作为 {key,content} 数组传入；本批次未写入任何题目",
+                ));
+            }
 
             let question_params = CreateQuestionParams {
                 exam_id: session_id.clone(),
@@ -3653,10 +4593,8 @@ impl QBankExecutor {
                     .get("explanation")
                     .and_then(|v| v.as_str())
                     .map(String::from),
-                question_type: question_type
-                    .and_then(|t| serde_json::from_str(&format!("\"{}\"", t)).ok()),
-                difficulty: difficulty
-                    .and_then(|d| serde_json::from_str(&format!("\"{}\"", d)).ok()),
+                question_type: repo_question_type,
+                difficulty: repo_difficulty,
                 tags: Some(
                     q.get("tags")
                         .and_then(|v| v.as_array())
@@ -3671,6 +4609,7 @@ impl QBankExecutor {
                 source_ref: None,
                 images: None,
                 parent_id: parent_question_id.clone(),
+                structured_data,
             };
             question_params_list.push(question_params);
         }
@@ -3724,8 +4663,24 @@ impl QBankExecutor {
                     // 而非 uuid::Uuid 格式的 temp_id，否则 questions.exam_id FK 会违反约束
                     actual_exam_id = created_exam.id.clone();
                 } else {
-                    VfsExamRepo::update_preview_json_with_conn(&conn, &session_id, preview_json)
-                        .map_err(|e| format!("Failed to update exam sheet: {}", e))?;
+                    // ACR 4.0 P1：OCC 校验读取基线；冲突走 SAVEPOINT 回滚并返回结构化错误
+                    let expected = preview_revision
+                        .as_deref()
+                        .ok_or("Missing preview revision for existing session")?;
+                    let occ_ok = VfsExamRepo::update_preview_json_with_conn_if_unchanged(
+                        &conn,
+                        &session_id,
+                        preview_json,
+                        expected,
+                    )
+                    .map_err(|e| format!("Failed to update exam sheet: {}", e))?;
+                    if !occ_ok {
+                        return Err(qbank_conflict_error(
+                            "题目集在读取后已被并发修改，批量导入未写入",
+                            "重新读取题目集最新状态后再导入；不要凭旧状态重试",
+                            json!({ "session_id": session_id, "expected_updated_at": expected }),
+                        ));
+                    }
                 }
 
                 // 逐条写入 questions 表（不使用 batch 版本，因其内部有独立事务）
@@ -3803,6 +4758,11 @@ impl ToolExecutor for QBankExecutor {
                 | "qbank_create_question"
                 | "qbank_delete_questions"
                 | "qbank_toggle_favorite"
+                | "qbank_toggle_bookmark"
+                | "qbank_get_submissions"
+                | "qbank_get_question_history"
+                | "qbank_batch_update_questions"
+                | "qbank_list_source_images"
                 | "qbank_search_questions"
                 | "qbank_submit_answer"
                 | "qbank_update_question"
@@ -3845,6 +4805,13 @@ impl ToolExecutor for QBankExecutor {
             "qbank_create_question" => self.execute_create_question(call, ctx).await,
             "qbank_delete_questions" => self.execute_delete_questions(call, ctx).await,
             "qbank_toggle_favorite" => self.execute_toggle_favorite(call, ctx).await,
+            "qbank_toggle_bookmark" => self.execute_toggle_bookmark(call, ctx).await,
+            "qbank_get_submissions" => self.execute_get_submissions(call, ctx).await,
+            "qbank_get_question_history" => self.execute_get_question_history(call, ctx).await,
+            "qbank_batch_update_questions" => {
+                self.execute_batch_update_questions(call, ctx).await
+            }
+            "qbank_list_source_images" => self.execute_list_source_images(call, ctx).await,
             "qbank_search_questions" => self.execute_search_questions(call, ctx).await,
             "qbank_submit_answer" => self.execute_submit_answer(call, ctx).await,
             "qbank_update_question" => self.execute_update_question(call, ctx).await,
@@ -3930,8 +4897,10 @@ impl ToolExecutor for QBankExecutor {
             "qbank_delete_questions" => ToolSensitivity::High,
             "qbank_create_question"
             | "qbank_toggle_favorite"
+            | "qbank_toggle_bookmark"
             | "qbank_submit_answer"
             | "qbank_update_question"
+            | "qbank_batch_update_questions"
             | "qbank_generate_paper"
             | "qbank_batch_import"
             | "qbank_import_document"
@@ -3950,6 +4919,9 @@ impl ToolExecutor for QBankExecutor {
             "qbank_list"
             | "qbank_list_questions"
             | "qbank_get_question"
+            | "qbank_get_submissions"
+            | "qbank_get_question_history"
+            | "qbank_list_source_images"
             | "qbank_search_questions"
             | "qbank_get_stats"
             | "qbank_get_learning_trend"
@@ -4100,6 +5072,7 @@ mod occ_contract_tests {
             }]),
             answer: Some(long.clone()),
             explanation: Some(long),
+            structured_data: None,
             question_type: RepoQuestionType::SingleChoice,
             difficulty: Some(Difficulty::Medium),
             tags: vec!["标".repeat(2_001)],
@@ -4175,6 +5148,11 @@ mod occ_contract_tests {
             "qbank_create_question",
             "qbank_delete_questions",
             "qbank_toggle_favorite",
+            "qbank_toggle_bookmark",
+            "qbank_get_submissions",
+            "qbank_get_question_history",
+            "qbank_batch_update_questions",
+            "qbank_list_source_images",
             "qbank_search_questions",
             "qbank_start_timed_practice",
             "qbank_generate_mock_exam",
@@ -4195,7 +5173,9 @@ mod occ_contract_tests {
         for tool in [
             "qbank_create_question",
             "qbank_toggle_favorite",
+            "qbank_toggle_bookmark",
             "qbank_update_question",
+            "qbank_batch_update_questions",
             "qbank_generate_paper",
         ] {
             assert_eq!(
@@ -4259,6 +5239,72 @@ mod occ_contract_tests {
                 Some("INVALID_ARGS" | "QBANK_HANDOFF_INVALID")
             ));
             assert_eq!(structured["retryable"], false);
+        }
+    }
+
+    #[test]
+    fn structured_data_shapes_are_validated_per_question_type() {
+        // fill_blank：合法多空
+        validate_structured_data(
+            &RepoQuestionType::FillBlank,
+            &json!({"blanks": [{"answers": ["答案A", "答案B"], "case_sensitive": false, "trim": true}]}),
+        )
+        .expect("valid fill_blank");
+        // matching：pairs 引用不存在的 key 必须报错
+        let error = validate_structured_data(
+            &RepoQuestionType::Matching,
+            &json!({
+                "left": [{"key": "L1", "content": "左1"}],
+                "right": [{"key": "R1", "content": "右1"}],
+                "pairs": [{"left": "L1", "right": "R9"}],
+            }),
+        )
+        .expect_err("dangling pair ref must fail");
+        let structured: Value = serde_json::from_str(&error).expect("structured error");
+        assert_eq!(structured["code"], "INVALID_ARGS");
+        // ordering：correct_order 必须是 items key 的排列
+        assert!(validate_structured_data(
+            &RepoQuestionType::Ordering,
+            &json!({
+                "items": [{"key": "S1", "content": "步骤1"}, {"key": "S2", "content": "步骤2"}],
+                "correct_order": ["S2", "S1"],
+            }),
+        )
+        .is_ok());
+        assert!(validate_structured_data(
+            &RepoQuestionType::Ordering,
+            &json!({
+                "items": [{"key": "S1", "content": "步骤1"}, {"key": "S2", "content": "步骤2"}],
+                "correct_order": ["S1"],
+            }),
+        )
+        .is_err());
+        // numeric：answer_value 必填且 tolerance_mode 枚举受限
+        assert!(validate_structured_data(
+            &RepoQuestionType::Numeric,
+            &json!({"answer_value": 3.14, "tolerance": 0.01, "unit": "m", "tolerance_mode": "absolute"}),
+        )
+        .is_ok());
+        assert!(validate_structured_data(
+            &RepoQuestionType::Numeric,
+            &json!({"answer_value": "3.14"}),
+        )
+        .is_err());
+        // 不支持 structured_data 的题型必须拒绝
+        assert!(
+            validate_structured_data(&RepoQuestionType::SingleChoice, &json!({"blanks": []}))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn true_false_answers_are_normalized_strings() {
+        assert!(validate_true_false_answer("true").is_ok());
+        assert!(validate_true_false_answer(" false ").is_ok());
+        for invalid in ["True", "对", "1", ""] {
+            let error = validate_true_false_answer(invalid).expect_err("invalid must fail");
+            let structured: Value = serde_json::from_str(&error).expect("structured error");
+            assert_eq!(structured["code"], "INVALID_ARGS");
         }
     }
 

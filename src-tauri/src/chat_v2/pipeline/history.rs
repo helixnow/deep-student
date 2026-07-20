@@ -71,9 +71,10 @@ impl ChatV2Pipeline {
             return Ok(());
         }
 
-        // 🔧 P1修复：使用固定的消息条数限制，而非 context_limit
-        // context_limit 应该用于 LLM 的 max_input_tokens_override
-        let max_messages = DEFAULT_MAX_HISTORY_MESSAGES;
+        // 🔧 P1修复：条数限制与 context_limit（token 语义）分离
+        // 🔧 P1-6 修复：token 预算充裕时按预算放宽条数粗筛上限（50–400 条），
+        // 精确裁剪仍由下方 trim_history_by_token_budget 按 token 完成
+        let max_messages = effective_max_history_messages(ctx.options.context_limit);
         let messages_to_load: Vec<_> = if messages.len() > max_messages {
             // 取最新的 max_messages 条消息
             messages
@@ -433,17 +434,39 @@ impl ChatV2Pipeline {
             ctx.session_id
         );
 
+        // 🆕 零成本前置层（microcompact）：把最近 K 个 user 轮之外的旧工具输出
+        // 替换为占位符。只影响本次发给模型的视图，不动数据库；在插入 compaction
+        // summary 伪消息之前执行（伪消息与瞬态注入均带 pinned 标记，天然豁免）。
+        let microcompacted =
+            microcompact_old_tool_outputs(&mut chat_history, MICROCOMPACT_KEEP_RECENT_USER_TURNS);
+        if microcompacted > 0 {
+            log::info!(
+                "[ChatV2::pipeline] Microcompact: replaced {} old tool output(s) with placeholders for session={}",
+                microcompacted,
+                ctx.session_id
+            );
+        }
+
+        // The summary participates in the same authoritative history budget. Its pinned
+        // metadata prevents FIFO removal while still forcing older tail turns to yield space.
+        if let Some(summary_msg) = compaction_summary_msg {
+            chat_history.insert(0, summary_msg);
+        }
+
         // 🔧 改进 5：验证工具调用链完整性
-        validate_tool_chain(&chat_history);
+        // 🔧 P0-2 修复：破损时就地修复（合成占位结果/丢弃孤儿），不再只 warn 后照送 LLM
+        if !validate_tool_chain(&chat_history) {
+            repair_tool_chain(&mut chat_history);
+        }
 
         // 🔧 Token 预算裁剪：在条数限制基础上，按 token 预算从最旧消息开始移除
         // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
         let max_tokens = effective_history_token_budget(ctx.options.context_limit);
-        trim_history_by_token_budget(&mut chat_history, max_tokens);
-
-        // 🆕 P1: 如果有 compaction 摘要，插到最前面（system 伪消息承载锚定摘要）
-        if let Some(summary_msg) = compaction_summary_msg {
-            chat_history.insert(0, summary_msg);
+        let trim_outcome = trim_history_by_token_budget(&mut chat_history, max_tokens);
+        // 🆕 实际丢弃了消息时挂起报告，由调用方（execute_internal / tool_loop）
+        // 在拿到 emitter 的位置发射 `context_trimmed` 事件
+        if trim_outcome.dropped_messages > 0 {
+            ctx.pending_context_trim = Some(trim_outcome);
         }
 
         ctx.chat_history = chat_history;

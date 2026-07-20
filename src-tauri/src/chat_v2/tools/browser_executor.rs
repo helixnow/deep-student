@@ -63,6 +63,15 @@ pub const BROWSER_PASSWORD_BLOCKED: &str = "BROWSER_PASSWORD_BLOCKED";
 /// 用户显式接管后拒绝 Agent 操作（ACR R1-05）
 pub const BROWSER_USER_TAKEOVER: &str = "USER_TAKEOVER";
 
+/// ACR 4.0（A7）：一次操作类工具调用中的控制权切换结果（用于回执提示字段）
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct AgentControlClaim {
+    /// 本次调用把控制权从用户手中切到 Agent
+    claimed_from_user: bool,
+    /// 且此前存在用户显式接管——冷却结束后的首次操作回执需提示 LLM 转告用户
+    reclaimed_after_user_takeover: bool,
+}
+
 pub struct BrowserToolExecutor;
 
 impl BrowserToolExecutor {
@@ -91,7 +100,9 @@ impl BrowserToolExecutor {
         )
     }
 
-    /// 会改变页面/会话状态的操作类工具（ACR R1-05 ControlMode 闭环）
+    /// 会改变页面/会话状态的操作类工具（ACR R1-05 ControlMode 闭环）。
+    /// ACR 4.0（A7）：close 销毁会话，属于状态改变——纳入 mutating，
+    /// 用户接管冷却期内同样拒绝关闭。
     fn is_mutating_tool(stripped: &str) -> bool {
         matches!(
             stripped,
@@ -102,6 +113,7 @@ impl BrowserToolExecutor {
                 | tool_names::BROWSER_FILE_UPLOAD
                 | tool_names::BROWSER_SCROLL
                 | tool_names::BROWSER_BACK
+                | tool_names::BROWSER_CLOSE
         )
     }
 
@@ -118,13 +130,17 @@ impl BrowserToolExecutor {
 
     /// 操作类工具分发前：接管冷却期拒绝；User 态则 claim Agent 控制权并 emit 事件。
     /// `browser_open` 尚无 session 时跳过（开窗成功后再 claim）。
+    ///
+    /// ACR 4.0（A7）产品裁决：claim 只在本次工具调用需要时发生（本函数即唯一
+    /// claim 入口），并把「从用户手中接管 / 用户显式接管后的首次操作」回传给
+    /// 执行器，由回执提示字段告知 LLM（进而转告用户）。不改 15s 冷却本身。
     fn ensure_agent_control_for_mutate(
         ctx: &ExecutionContext,
         tool_name: &str,
-    ) -> Result<(), String> {
+    ) -> Result<AgentControlClaim, String> {
         let service = Self::service(ctx)?;
         if tool_name == tool_names::BROWSER_OPEN && service.get_active_state().is_none() {
-            return Ok(());
+            return Ok(AgentControlClaim::default());
         }
         if service.is_blocked_by_user_takeover() {
             log::info!(
@@ -136,13 +152,38 @@ impl BrowserToolExecutor {
         if let Some(state) = service.get_active_state() {
             if state.control_mode == ControlMode::User {
                 service.set_agent_control().map_err(Self::map_service_err)?;
+                let reclaimed_after_user_takeover = service.consume_takeover_notice();
                 log::debug!(
-                    "[BrowserToolExecutor] claimed agent control for {}",
-                    tool_name
+                    "[BrowserToolExecutor] claimed agent control for {} (after_user_takeover={})",
+                    tool_name,
+                    reclaimed_after_user_takeover
+                );
+                return Ok(AgentControlClaim {
+                    claimed_from_user: true,
+                    reclaimed_after_user_takeover,
+                });
+            }
+        }
+        Ok(AgentControlClaim::default())
+    }
+
+    /// ACR 4.0（A7）：本次调用发生了控制权切换时，在成功回执上追加提示字段，
+    /// 便于 LLM 在回复中告知用户「已从用户手中接管控制」。
+    fn annotate_control_claim(output: &mut Value, claim: AgentControlClaim) {
+        if !claim.claimed_from_user {
+            return;
+        }
+        if let Some(obj) = output.as_object_mut() {
+            obj.insert("control_claimed_from_user".into(), json!(true));
+            obj.insert("control_notice".into(), json!("已从用户手中接管浏览器控制"));
+            if claim.reclaimed_after_user_takeover {
+                obj.insert("resumed_after_user_takeover".into(), json!(true));
+                obj.insert(
+                    "user_takeover_notice".into(),
+                    json!("用户此前显式接管过浏览器；这是接管冷却结束后 Agent 的首次操作，请在回复中告知用户已恢复自动控制"),
                 );
             }
         }
-        Ok(())
     }
 
     /// 密码 BLOCKED：强制 take_over 交还用户，再返回结构化错误
@@ -1060,35 +1101,43 @@ impl ToolExecutor for BrowserToolExecutor {
             Err(e) => Err(e),
             Ok(()) => {
                 if Self::is_mutating_tool(tool_name) {
-                    if let Err(e) = Self::ensure_agent_control_for_mutate(ctx, tool_name) {
-                        Err(e)
-                    } else {
-                        match tool_name {
-                            tool_names::BROWSER_OPEN => {
-                                self.execute_open(&call.arguments, ctx).await
-                            }
-                            tool_names::BROWSER_NAVIGATE => {
-                                self.execute_navigate(&call.arguments, ctx).await
-                            }
-                            tool_names::BROWSER_CLICK => {
-                                self.execute_click(&call.arguments, ctx).await
-                            }
-                            tool_names::BROWSER_TYPE => {
-                                self.execute_type(&call.arguments, ctx).await
-                            }
-                            tool_names::BROWSER_FILE_UPLOAD => {
-                                self.execute_file_upload(&call.arguments, ctx).await
-                            }
-                            tool_names::BROWSER_SCROLL => {
-                                self.execute_scroll(&call.arguments, ctx).await
-                            }
-                            tool_names::BROWSER_BACK => {
-                                self.execute_back(&call.arguments, ctx).await
-                            }
-                            other => Err(format_err(
-                                "BROWSER_INVALID_ARGS",
-                                &format!("未知浏览器工具: {other}"),
-                            )),
+                    match Self::ensure_agent_control_for_mutate(ctx, tool_name) {
+                        Err(e) => Err(e),
+                        Ok(claim) => {
+                            let exec_result = match tool_name {
+                                tool_names::BROWSER_OPEN => {
+                                    self.execute_open(&call.arguments, ctx).await
+                                }
+                                tool_names::BROWSER_NAVIGATE => {
+                                    self.execute_navigate(&call.arguments, ctx).await
+                                }
+                                tool_names::BROWSER_CLICK => {
+                                    self.execute_click(&call.arguments, ctx).await
+                                }
+                                tool_names::BROWSER_TYPE => {
+                                    self.execute_type(&call.arguments, ctx).await
+                                }
+                                tool_names::BROWSER_FILE_UPLOAD => {
+                                    self.execute_file_upload(&call.arguments, ctx).await
+                                }
+                                tool_names::BROWSER_SCROLL => {
+                                    self.execute_scroll(&call.arguments, ctx).await
+                                }
+                                tool_names::BROWSER_BACK => {
+                                    self.execute_back(&call.arguments, ctx).await
+                                }
+                                tool_names::BROWSER_CLOSE => {
+                                    self.execute_close(&call.arguments, ctx).await
+                                }
+                                other => Err(format_err(
+                                    "BROWSER_INVALID_ARGS",
+                                    &format!("未知浏览器工具: {other}"),
+                                )),
+                            };
+                            exec_result.map(|mut output| {
+                                Self::annotate_control_claim(&mut output, claim);
+                                output
+                            })
                         }
                     }
                 } else {
@@ -1099,7 +1148,6 @@ impl ToolExecutor for BrowserToolExecutor {
                         tool_names::BROWSER_SCREENSHOT => {
                             self.execute_screenshot(&call.arguments, ctx).await
                         }
-                        tool_names::BROWSER_CLOSE => self.execute_close(&call.arguments, ctx).await,
                         tool_names::BROWSER_DOWNLOADS => {
                             self.execute_downloads(&call.arguments, ctx).await
                         }
@@ -1154,9 +1202,11 @@ impl ToolExecutor for BrowserToolExecutor {
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         match Self::strip(tool_name) {
             tool_names::BROWSER_OPEN | tool_names::BROWSER_FILE_UPLOAD => ToolSensitivity::High,
-            tool_names::BROWSER_NAVIGATE | tool_names::BROWSER_CLICK | tool_names::BROWSER_TYPE => {
-                ToolSensitivity::Medium
-            }
+            // ACR 4.0（A7）：close 销毁会话与历史栈，与 navigate/click 同级
+            tool_names::BROWSER_NAVIGATE
+            | tool_names::BROWSER_CLICK
+            | tool_names::BROWSER_TYPE
+            | tool_names::BROWSER_CLOSE => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
         }
     }
@@ -1230,7 +1280,11 @@ mod tests {
         );
         assert_eq!(ex.sensitivity_level("browser_scroll"), ToolSensitivity::Low);
         assert_eq!(ex.sensitivity_level("browser_back"), ToolSensitivity::Low);
-        assert_eq!(ex.sensitivity_level("browser_close"), ToolSensitivity::Low);
+        // ACR 4.0（A7）：close 销毁会话，敏感度提升为 Medium
+        assert_eq!(
+            ex.sensitivity_level("browser_close"),
+            ToolSensitivity::Medium
+        );
     }
 
     #[test]
@@ -1299,9 +1353,50 @@ mod tests {
         assert!(BrowserToolExecutor::is_mutating_tool("browser_type"));
         assert!(BrowserToolExecutor::is_mutating_tool("browser_scroll"));
         assert!(BrowserToolExecutor::is_mutating_tool("browser_back"));
+        // ACR 4.0（A7）：close 销毁会话 → mutating，接管冷却期内被拒绝
+        assert!(BrowserToolExecutor::is_mutating_tool("browser_close"));
         assert!(!BrowserToolExecutor::is_mutating_tool("browser_snapshot"));
         assert!(!BrowserToolExecutor::is_mutating_tool("browser_screenshot"));
-        assert!(!BrowserToolExecutor::is_mutating_tool("browser_close"));
+        assert!(!BrowserToolExecutor::is_mutating_tool("browser_downloads"));
+    }
+
+    /// ACR 4.0（A7）：控制权切换回执提示字段
+    #[test]
+    fn control_claim_annotation() {
+        // 未发生切换：不追加任何字段
+        let mut plain = json!({ "ok": true });
+        BrowserToolExecutor::annotate_control_claim(&mut plain, AgentControlClaim::default());
+        assert_eq!(plain, json!({ "ok": true }));
+
+        // 从用户手中接管：带 control_notice
+        let mut claimed = json!({ "ok": true });
+        BrowserToolExecutor::annotate_control_claim(
+            &mut claimed,
+            AgentControlClaim {
+                claimed_from_user: true,
+                reclaimed_after_user_takeover: false,
+            },
+        );
+        assert_eq!(claimed["control_claimed_from_user"], json!(true));
+        assert_eq!(
+            claimed["control_notice"],
+            json!("已从用户手中接管浏览器控制")
+        );
+        assert!(claimed.get("user_takeover_notice").is_none());
+
+        // 用户显式接管后的首次操作：额外带 user_takeover_notice
+        let mut resumed = json!({ "ok": true });
+        BrowserToolExecutor::annotate_control_claim(
+            &mut resumed,
+            AgentControlClaim {
+                claimed_from_user: true,
+                reclaimed_after_user_takeover: true,
+            },
+        );
+        assert_eq!(resumed["resumed_after_user_takeover"], json!(true));
+        assert!(resumed["user_takeover_notice"]
+            .as_str()
+            .is_some_and(|s| s.contains("接管冷却结束后")));
     }
 
     #[test]

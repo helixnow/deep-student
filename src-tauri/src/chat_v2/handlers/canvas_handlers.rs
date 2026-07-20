@@ -28,9 +28,7 @@ use crate::chat_v2::tools::canvas_executor::{
 #[tauri::command]
 pub fn chat_v2_canvas_edit_result(result: CanvasAIEditResult) -> Result<(), String> {
     if result.request_id.trim().is_empty() {
-        return Err(
-            ChatV2Error::InvalidInput("request_id must not be empty".to_string()).into(),
-        );
+        return Err(ChatV2Error::InvalidInput("request_id must not be empty".to_string()).into());
     }
 
     log::debug!(
@@ -51,9 +49,7 @@ pub fn chat_v2_canvas_edit_result(result: CanvasAIEditResult) -> Result<(), Stri
 #[tauri::command]
 pub fn chat_v2_canvas_edit_ack(request_id: String) -> Result<(), String> {
     if request_id.trim().is_empty() {
-        return Err(
-            ChatV2Error::InvalidInput("request_id must not be empty".to_string()).into(),
-        );
+        return Err(ChatV2Error::InvalidInput("request_id must not be empty".to_string()).into());
     }
 
     log::debug!(

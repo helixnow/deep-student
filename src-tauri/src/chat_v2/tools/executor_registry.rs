@@ -8,10 +8,13 @@
 use std::sync::Arc;
 use tokio::time::{timeout, Duration};
 
-use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
+use super::arg_utils::with_localized_message;
+use super::executor::{
+    apply_tool_result_budget, ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity,
+};
 use super::types::is_external_mcp_tool_name;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 // ============================================================================
 // 全局超时配置
@@ -73,21 +76,36 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
         "cite_format" => 30, // 30 秒
         // 网络请求和 HTML 解析工具（涉及网络请求和 HTML 解析）
         "web_fetch" => 180, // 3 分钟
-        // RAG 检索工具（可能涉及大量数据）
+        // RAG 检索工具（可能涉及大量数据）。
+        // 注意：multimodal_search 已在工具暴露层收敛进 unified_search，但
+        // 检索执行器仍接受该名称（历史会话回放 / retrieval executor 改造中），
+        // 此处的超时配置必须保留，不要删除。
         "rag_search" | "multimodal_search" | "unified_search" => 180, // 3 分钟
+        // VFS 全量索引重建：大 PDF 的抽取 + 分块 + 嵌入远超默认 120s，
+        // 必须使用专用长超时，否则重建中途被 watchdog 掐断。
+        "index_rebuild" => 600, // 10 分钟
+        // 网页存档：大 Markdown（最大 4 MiB）落盘 + Unit 同步可能较慢
+        "webpage_save" => 300, // 5 分钟
         // 文档写入/转换工具（大文件处理可能耗时较长）
         "docx_create" | "pptx_create" | "xlsx_create" | "docx_to_spec" | "pptx_to_spec"
         | "xlsx_to_spec" | "docx_replace_text" | "pptx_replace_text" | "xlsx_replace_text" => 300, // 5 分钟
-        // 子代理调用工具（可能执行复杂任务）
-        "subagent_call" => 300, // 5 分钟
-        "tool_pack" => 600,     // 10 minutes (matches ToolPack schema maximum)
+        // 阻塞型协作工具：默认阻塞等待子代理终态，内部自带
+        // SUBAGENT_WAIT_BUDGET_SECS（750s）等待预算与取消处理，外层看门狗
+        // 若先行掐断会丢弃取消/回收逻辑，因此豁免。
+        "subagent_call" => NO_TOOL_TIMEOUT_SECS,
+        // 阻塞型协作工具：sleep 自身有 60 分钟硬上限 + 取消令牌
+        // （见 sleep_executor.rs），默认睡眠 30 分钟远超 DEFAULT 120s，
+        // 外层看门狗必须豁免，否则所有长睡眠都会被误判超时（P0）。
+        "coordinator_sleep" => NO_TOOL_TIMEOUT_SECS,
+        "tool_pack" => 600, // 10 minutes (matches ToolPack schema maximum)
         // The executor has its own bounded command deadline, but cleanup may need to unwind a
         // Windows AppContainer helper and temporary ACLs. Never drop that cleanup future here.
         "local_shell_execute" => NO_TOOL_TIMEOUT_SECS,
         _ => {
-            // ChatAnki 工具：chatanki_wait 内部有 30 分钟超时，外层需匹配
+            // ChatAnki 工具：chatanki_wait 内部默认 5 分钟、timeoutMs 上限 60 分钟；
+            // 外层看门狗只是防呆兜底，必须覆盖内部上限，否则显式长等待会被误杀。
             if stripped == "chatanki_wait" {
-                35 * 60 // 35 分钟（比内部 30 分钟稍长，避免竞态）
+                61 * 60 // 61 分钟（内部 timeoutMs 上限 60 分钟 + 竞态缓冲）
             } else if stripped.starts_with("chatanki_") {
                 600 // 10 分钟（chatanki_run/start/export/sync 可能涉及大量 IO）
             } else if stripped == "image_generate" {
@@ -103,6 +121,48 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
             }
         }
     }
+}
+
+// ============================================================================
+// 注册表级错误（结构化 + 中英双语，对齐 index 工具的 message/hint/retryable 契约）
+// ============================================================================
+
+/// 注册表级取消错误。
+///
+/// 英文 fallback 必须包含 "cancelled" 关键字：`is_transient_tool_error` 依赖
+/// 该关键字排除自动重试（用户取消绝不重试）。
+fn registry_cancelled_error(tool_name: &str) -> String {
+    with_localized_message(
+        json!({
+            "code": "TOOL_CANCELLED",
+            "hint": "The run was cancelled by the user or a parent task; do not retry automatically.",
+            "retryable": false,
+        }),
+        "chat.tools.registry.errors.tool_cancelled",
+        json!({ "tool": tool_name }),
+        format!("工具 '{tool_name}' 执行已取消。"),
+        format!("Tool '{tool_name}' execution cancelled."),
+    )
+    .to_string()
+}
+
+/// 注册表级超时错误。
+///
+/// 英文 fallback 必须包含 "timed out" 关键字且 `retryable` 为 true：
+/// `is_transient_tool_error` 依赖它们把只读工具的超时判定为可自动重试。
+fn registry_timeout_error(tool_name: &str, timeout_secs: u64) -> String {
+    with_localized_message(
+        json!({
+            "code": "TOOL_TIMEOUT",
+            "hint": "Retry the call; if it keeps timing out, reduce the workload or check network / index status first.",
+            "retryable": true,
+        }),
+        "chat.tools.registry.errors.tool_timeout",
+        json!({ "tool": tool_name, "timeoutSecs": timeout_secs }),
+        format!("工具 '{tool_name}' 执行超时（{timeout_secs} 秒）。"),
+        format!("Tool '{tool_name}' execution timed out after {timeout_secs}s."),
+    )
+    .to_string()
 }
 
 // ============================================================================
@@ -207,7 +267,7 @@ impl ToolExecutorRegistry {
                 call.name,
                 call.id
             );
-            return Err("Tool execution cancelled".to_string());
+            return Err(registry_cancelled_error(&call.name));
         }
 
         // 查找能处理的执行器
@@ -239,7 +299,7 @@ impl ToolExecutorRegistry {
         let exec_ctx = ctx.scoped_with_cancellation_token(scoped_token.clone());
         let execute_future = executor.execute(call, &exec_ctx);
 
-        if timeout_secs == NO_TOOL_TIMEOUT_SECS {
+        let raw_result = if timeout_secs == NO_TOOL_TIMEOUT_SECS {
             log::debug!(
                 "[ToolExecutorRegistry] Tool '{}' timeout disabled",
                 call.name,
@@ -257,7 +317,7 @@ impl ToolExecutorRegistry {
                             call.id
                         );
                         scoped_token.cancel();
-                        Err("Tool execution cancelled".to_string())
+                        Err(registry_cancelled_error(&call.name))
                     }
                 }
             } else {
@@ -309,10 +369,7 @@ impl ToolExecutorRegistry {
                                     call.id
                                 );
                                 scoped_token.cancel();
-                                Err(format!(
-                                    "Tool '{}' execution timed out after {}s",
-                                    call.name, timeout_secs
-                                ))
+                                Err(registry_timeout_error(&call.name, timeout_secs))
                             }
                         }
                     }
@@ -323,7 +380,7 @@ impl ToolExecutorRegistry {
                             call.id
                         );
                         scoped_token.cancel();
-                        Err("Tool execution cancelled".to_string())
+                        Err(registry_cancelled_error(&call.name))
                     }
                 }
             } else {
@@ -337,13 +394,24 @@ impl ToolExecutorRegistry {
                             call.id
                         );
                         scoped_token.cancel();
-                        Err(format!(
-                            "Tool '{}' execution timed out after {}s",
-                            call.name, timeout_secs
-                        ))
+                        Err(registry_timeout_error(&call.name, timeout_secs))
                     }
                 }
             }
+        };
+
+        // 🆕 统一结果截断出口（2026-07）：在注册表返回路径按执行器声明的
+        // 预算包装输出，防止单个工具结果撑爆 LLM 上下文与事件通道。自带
+        // 有界输出控制的执行器（local_shell / tool_pack）覆写
+        // result_char_budget 为 None，保持既有截断行为不回退。
+        match raw_result {
+            Ok(mut result) => {
+                if let Some(budget) = executor.result_char_budget(&call.name) {
+                    result.output = apply_tool_result_budget(result.output, budget);
+                }
+                Ok(result)
+            }
+            Err(error) => Err(error),
         }
     }
 
@@ -590,6 +658,45 @@ mod tests {
     }
 
     #[test]
+    fn index_rebuild_and_webpage_save_use_dedicated_long_timeouts() {
+        assert_eq!(get_tool_timeout_secs("builtin-index_rebuild"), 600);
+        assert_eq!(get_tool_timeout_secs("index_rebuild"), 600);
+        assert_eq!(get_tool_timeout_secs("builtin-webpage_save"), 300);
+        assert_eq!(get_tool_timeout_secs("webpage_save"), 300);
+        // index_status 是只读查询，保持默认超时即可
+        assert_eq!(
+            get_tool_timeout_secs("builtin-index_status"),
+            DEFAULT_TOOL_TIMEOUT_SECS
+        );
+    }
+
+    #[test]
+    fn registry_errors_are_structured_and_keep_retry_keywords() {
+        let cancelled: Value = serde_json::from_str(&registry_cancelled_error("builtin-web_fetch"))
+            .expect("cancelled error must be structured JSON");
+        assert_eq!(cancelled["code"], "TOOL_CANCELLED");
+        assert_eq!(cancelled["retryable"], false);
+        assert!(cancelled["messageFallback"]["zh-CN"]
+            .as_str()
+            .is_some_and(|m| m.contains("已取消")));
+        // is_transient_tool_error 依赖 "cancel" 关键字排除自动重试
+        assert!(cancelled["message"]
+            .as_str()
+            .is_some_and(|m| m.to_lowercase().contains("cancel")));
+
+        let timed_out: Value =
+            serde_json::from_str(&registry_timeout_error("builtin-web_fetch", 180))
+                .expect("timeout error must be structured JSON");
+        assert_eq!(timed_out["code"], "TOOL_TIMEOUT");
+        assert_eq!(timed_out["retryable"], true);
+        assert_eq!(timed_out["messageParams"]["timeoutSecs"], 180);
+        // is_transient_tool_error 依赖 "timed out" 关键字判定可重试
+        assert!(timed_out["message"]
+            .as_str()
+            .is_some_and(|m| m.to_lowercase().contains("timed out")));
+    }
+
+    #[test]
     fn translation_uses_ten_minute_timeout() {
         assert_eq!(get_tool_timeout_secs("builtin-translate_text"), 600);
         assert_eq!(get_tool_timeout_secs("translate_text"), 600);
@@ -602,6 +709,30 @@ mod tests {
             get_tool_timeout_secs("builtin-local_shell_execute"),
             NO_TOOL_TIMEOUT_SECS
         );
+    }
+
+    #[test]
+    fn blocking_collaboration_tools_are_exempt_from_registry_watchdog() {
+        // subagent_call 阻塞等待子代理终态，内部自管理 750s 等待预算与取消
+        assert_eq!(
+            get_tool_timeout_secs("builtin-subagent_call"),
+            NO_TOOL_TIMEOUT_SECS
+        );
+        assert_eq!(get_tool_timeout_secs("subagent_call"), NO_TOOL_TIMEOUT_SECS);
+        // coordinator_sleep 内部有 60 分钟硬上限 + 取消令牌，
+        // 默认 30 分钟睡眠不得被 120s 默认看门狗掐断
+        assert_eq!(
+            get_tool_timeout_secs("builtin-coordinator_sleep"),
+            NO_TOOL_TIMEOUT_SECS
+        );
+        assert_eq!(
+            get_tool_timeout_secs("coordinator_sleep"),
+            NO_TOOL_TIMEOUT_SECS
+        );
+
+        let registry = ToolExecutorRegistry::new();
+        assert!(registry.is_no_timeout_tool("builtin-subagent_call"));
+        assert!(registry.is_no_timeout_tool("builtin-coordinator_sleep"));
     }
 
     #[test]

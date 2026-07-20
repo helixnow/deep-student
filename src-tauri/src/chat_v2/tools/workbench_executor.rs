@@ -252,6 +252,12 @@ fn map_bridge_error(raw: &str) -> String {
         "DUPLICATE_RUN_ID" | "DUPLICATE_CORRELATION_ID" | "RUN_ID_REUSE" => {
             "事务身份已被使用；等待原事务终态，不要覆盖或复用身份"
         }
+        "RUN_ID_EXPIRED" => {
+            "该 run 身份的终态记录已过期；请以新的 tool call 发起请求，不要重放旧身份"
+        }
+        "UNSUPPORTED_ACTION" => "目标应用不支持该动作；请重新 get_capabilities 后改用已声明能力",
+        "UNKNOWN_COMMAND" => "bridge 命令不在冻结协议中；请使用协议列出的命令",
+        "INTERNAL" => "StageManager 内部异常；保留诊断信息，重新读取目标后再决定",
         _ => HINT_UNAVAILABLE,
     };
     let message = parsed
@@ -318,8 +324,14 @@ fn extract_error_code(raw: &str) -> Option<&'static str> {
         "DUPLICATE_RUN_ID",
         "DUPLICATE_CORRELATION_ID",
         "RUN_ID_REUSE",
+        "RUN_ID_EXPIRED",
         "CANCELLED",
         "RESULT_UNKNOWN",
+        // ACR 4.0 收尾：前端 StageManager 自产码（bridgeErr 结构化 JSON），
+        // 缺席会被降级为 WORKBENCH_UNAVAILABLE 误导 LLM 改判环境不可用。
+        "UNSUPPORTED_ACTION",
+        "UNKNOWN_COMMAND",
+        "INTERNAL",
     ];
     // 1) 结构化 JSON 错误优先：解析 "code" 字段精确匹配，避免多码拼接消息
     //    （如 hint 里引用了另一个错误码）时 contains 首次命中错映。

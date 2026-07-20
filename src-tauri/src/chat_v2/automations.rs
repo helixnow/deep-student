@@ -47,6 +47,9 @@ pub const SCHEDULER_POLL_SECS: u64 = 15;
 pub const CATCH_UP_BATCH: usize = 5;
 pub const DEFAULT_MAX_RETRIES: u8 = 2;
 pub const DEFAULT_RETRY_BACKOFF_SECS: u64 = 60;
+/// 单次重试退避的上限（24 小时）：防止较大的 retry_backoff_seconds 基数
+/// 经指数放大后把下一次尝试推迟到数天之后。
+pub const MAX_RETRY_BACKOFF_SECS: u64 = 86_400;
 pub const DEFAULT_TIMEOUT_SECS: u64 = 600;
 pub const AUTOMATION_VERSION_CONFLICT_CODE: &str = "AUTOMATION_VERSION_CONFLICT";
 const AUTOMATION_LEASE_GRACE_SECS: u64 = 60;
@@ -249,9 +252,14 @@ pub struct AutomationSchedule {
     /// 24h `HH:MM`（daily/weekly 必填；interval 可为空）
     #[serde(default)]
     pub time: String,
-    /// 0=Sunday … 6=Saturday (required when kind=weekly)
+    /// 0=Sunday … 6=Saturday (required when kind=weekly, unless `weekdays` is set)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub weekday: Option<u8>,
+    /// weekly 调度的一周多天扩展（编号口径与 `weekday` 完全一致：0=Sunday … 6=Saturday）。
+    /// 与单数 `weekday` 同时存在时以 `weekdays` 优先；缺失时行为与旧版单日一致，
+    /// 存量 schedule JSON 无该字段可原样解析（serde default = None）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weekdays: Option<Vec<u8>>,
     /// monthly 调度的日期（1-31；短月份自动落在该月最后一天）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub day_of_month: Option<u8>,
@@ -626,10 +634,26 @@ pub struct AutomationRunRecord {
     pub summary: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// 追加字段（前端可忽略）：run 执行时长（毫秒，finished_at - started_at）。
+    /// 由查询侧派生，不落库；未完成的 run 为 None。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<i64>,
 }
 
 const fn default_run_attempt() -> u32 {
     1
+}
+
+/// 从 started_at / finished_at 派生 run 时长（毫秒）；任一缺失或不可解析返回 None。
+fn run_duration_ms(started_at: Option<&str>, finished_at: Option<&str>) -> Option<i64> {
+    let started = DateTime::parse_from_rfc3339(started_at?).ok()?;
+    let finished = DateTime::parse_from_rfc3339(finished_at?).ok()?;
+    Some(
+        finished
+            .signed_duration_since(started)
+            .num_milliseconds()
+            .max(0),
+    )
 }
 
 pub fn parse_time_hhmm(raw: &str) -> Result<NaiveTime> {
@@ -670,6 +694,70 @@ fn parse_once_date(schedule: &AutomationSchedule) -> Result<NaiveDate> {
         .map_err(|_| AppError::validation(format!("Invalid date '{}': expected YYYY-MM-DD", raw)))
 }
 
+/// weekly 调度实际生效的星期集合：非空 `weekdays` 优先（去重后升序返回），
+/// 否则回退单数 `weekday` 的单元素集合；两者皆缺返回 None。
+/// 编号口径统一为 0=Sunday … 6=Saturday（chrono `num_days_from_sunday`）。
+fn weekly_effective_weekdays(schedule: &AutomationSchedule) -> Option<Vec<u8>> {
+    if let Some(weekdays) = schedule.weekdays.as_ref() {
+        if !weekdays.is_empty() {
+            let mut sorted = weekdays.clone();
+            sorted.sort_unstable();
+            sorted.dedup();
+            return Some(sorted);
+        }
+    }
+    schedule.weekday.map(|weekday| vec![weekday])
+}
+
+/// weekdays 数组的通用校验（值域 0–6、非空、无重复）。
+fn validate_weekdays_list(weekdays: &[u8]) -> Result<()> {
+    if weekdays.is_empty() {
+        return Err(AppError::validation(
+            "weekdays must not be empty (0=Sunday … 6=Saturday)".to_string(),
+        ));
+    }
+    if weekdays.iter().any(|weekday| *weekday > 6) {
+        return Err(AppError::validation(
+            "weekdays values must be between 0 (Sunday) and 6 (Saturday)".to_string(),
+        ));
+    }
+    let mut deduped = weekdays.to_vec();
+    deduped.sort_unstable();
+    deduped.dedup();
+    if deduped.len() != weekdays.len() {
+        return Err(AppError::validation(
+            "weekdays must not contain duplicates".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// 入库前的 weekly 形状规范化（在 `validate_schedule` 通过后调用，只整形不校验）：
+/// - `weekdays` 去重升序；
+/// - 单元素集合收敛为纯 `weekday` 形态（与存量单日数据形状一致）；
+/// - 多元素时 `weekday` 同步为集合最小值——这是降级安全的关键：旧版本二进制
+///   反序列化时忽略未知的 `weekdays` 字段，必须能读到单数 `weekday` 才不会把
+///   weekly 调度判成"missing weekday"。前端编辑器遵循同一约定，此处兜底
+///   agent 工具/命令请求等未附带 `weekday` 的入口。
+pub fn normalize_schedule_shape(schedule: &mut AutomationSchedule) {
+    if schedule.kind != ScheduleKind::Weekly {
+        return;
+    }
+    let Some(mut weekdays) = schedule.weekdays.take() else {
+        return;
+    };
+    weekdays.sort_unstable();
+    weekdays.dedup();
+    match weekdays.len() {
+        0 => {}
+        1 => schedule.weekday = Some(weekdays[0]),
+        _ => {
+            schedule.weekday = Some(weekdays[0]);
+            schedule.weekdays = Some(weekdays);
+        }
+    }
+}
+
 pub fn validate_schedule(schedule: &AutomationSchedule) -> Result<()> {
     if let Some(timezone) = schedule.timezone.as_deref() {
         timezone
@@ -679,6 +767,11 @@ pub fn validate_schedule(schedule: &AutomationSchedule) -> Result<()> {
     if schedule.kind != ScheduleKind::Once && schedule.date.is_some() {
         return Err(AppError::validation(
             "date is only allowed for once schedule".to_string(),
+        ));
+    }
+    if schedule.kind != ScheduleKind::Weekly && schedule.weekdays.is_some() {
+        return Err(AppError::validation(
+            "weekdays is only allowed for weekly schedule".to_string(),
         ));
     }
     match schedule.kind {
@@ -702,15 +795,30 @@ pub fn validate_schedule(schedule: &AutomationSchedule) -> Result<()> {
         }
         ScheduleKind::Weekly => {
             parse_time_hhmm(&schedule.time)?;
-            let weekday = schedule.weekday.ok_or_else(|| {
-                AppError::validation(
-                    "weekday is required for weekly schedule (0=Sun … 6=Sat)".to_string(),
-                )
-            })?;
-            if weekday > 6 {
-                return Err(AppError::validation(
-                    "weekday must be between 0 (Sunday) and 6 (Saturday)".to_string(),
-                ));
+            // 多天扩展：weekdays 优先；仅有单数 weekday 时行为与旧版一致
+            if let Some(weekdays) = schedule.weekdays.as_ref() {
+                validate_weekdays_list(weekdays)?;
+            } else {
+                let weekday = schedule.weekday.ok_or_else(|| {
+                    AppError::validation(
+                        "weekday is required for weekly schedule (0=Sun … 6=Sat)".to_string(),
+                    )
+                })?;
+                if weekday > 6 {
+                    return Err(AppError::validation(
+                        "weekday must be between 0 (Sunday) and 6 (Saturday)".to_string(),
+                    ));
+                }
+            }
+            // weekdays 与 weekday 并存时，weekday 也做值域校验（避免落库脏数据）
+            if schedule.weekdays.is_some() {
+                if let Some(weekday) = schedule.weekday {
+                    if weekday > 6 {
+                        return Err(AppError::validation(
+                            "weekday must be between 0 (Sunday) and 6 (Saturday)".to_string(),
+                        ));
+                    }
+                }
             }
             if schedule.interval_minutes.is_some() {
                 return Err(AppError::validation(
@@ -1004,10 +1112,11 @@ pub struct AutomationCreateFields {
 
 pub fn create_automation(
     db: &Database,
-    fields: AutomationCreateFields,
+    mut fields: AutomationCreateFields,
 ) -> Result<AutomationDefinition> {
     validate_automation_fields(&fields.name, &fields.prompt)?;
     validate_schedule(&fields.schedule)?;
+    normalize_schedule_shape(&mut fields.schedule);
     if fields.max_retries > 10 {
         return Err(AppError::validation(
             "max_retries must be between 0 and 10".to_string(),
@@ -1232,9 +1341,13 @@ pub fn set_automation_enabled(
             .map_err(|error| db_error("Failed to commit automation no-op", error))?;
         return Ok((previous, current));
     }
+    // once：compute_next_trigger 恒返回固定时点（可能已过）。若该时点已被
+    // claim 消耗（claim 会把 last_run_at 写为该时点），重新启用不得把已过
+    // 时点写回 next_run_at，否则"一次性"任务会被再次触发。
     let next_run_at = if enabled {
         compute_next_trigger(&previous.schedule, Local::now())
             .ok()
+            .filter(|slot| !once_slot_already_consumed(&previous, *slot))
             .map(|value| value.with_timezone(&Utc).to_rfc3339())
     } else {
         None
@@ -1359,8 +1472,9 @@ pub fn update_automation_full(
             "At least one editable field is required".to_string(),
         ));
     }
-    if let Some(schedule) = fields.schedule.as_ref() {
+    if let Some(schedule) = fields.schedule.as_mut() {
         validate_schedule(schedule)?;
+        normalize_schedule_shape(schedule);
     }
     if let Some(name) = fields.name.as_ref() {
         let name = name.trim();
@@ -1748,6 +1862,31 @@ pub fn emit_automations_changed(app_handle: &AppHandle, action: &str, automation
     }
 }
 
+/// once 任务的唯一时点是否已被调度 claim 消耗。
+///
+/// `claim_scheduled_run` 会把 `last_run_at` 写为被消耗的时点，因此
+/// `last_run_at >= slot` 即视为已消耗；手动试跑（manual run）不写
+/// `last_run_at`，不会误判。非 once 调度恒返回 false。
+fn once_slot_already_consumed(automation: &AutomationDefinition, slot: DateTime<Local>) -> bool {
+    automation.schedule.kind == ScheduleKind::Once
+        && parse_last_run_at(automation.last_run_at.as_deref())
+            .ok()
+            .flatten()
+            .is_some_and(|last| last >= slot)
+}
+
+/// once 任务是否已完成（唯一时点已被调度消耗并固化为 disabled）。
+///
+/// `last_run_at` 只由调度 claim 写入（手动试跑不写），因此
+/// once + disabled + next_run_at=NULL + last_run_at 有值 ⇒ 时点已执行完毕，
+/// 后续更新不会使其再次触发（区别于用户到点前手动停用的情况）。
+fn once_automation_completed(automation: &AutomationDefinition) -> bool {
+    automation.schedule.kind == ScheduleKind::Once
+        && !automation.enabled
+        && automation.next_run_at.is_none()
+        && automation.last_run_at.is_some()
+}
+
 /// once 任务在其唯一时点的 run 走到终态后固化为“已完成”暂停态：
 /// enabled=0（保留定义与历史，不删除；属运行时账务，不 bump version）。
 /// 仅当 next_run_at 已为 NULL（时点已被 claim 消耗）时生效——到点前的手动试跑
@@ -1906,6 +2045,8 @@ pub fn list_automation_runs(
         let delivered_json: String = row.get("delivered_json")?;
         let delivered = serde_json::from_str(&delivered_json).unwrap_or_default();
         let scheduled_for: String = row.get("scheduled_for")?;
+        let started_at: Option<String> = row.get("started_at")?;
+        let finished_at: Option<String> = row.get("finished_at")?;
         Ok(AutomationRunRecord {
             id: row.get("id")?,
             automation_id: row.get("automation_id")?,
@@ -1917,8 +2058,9 @@ pub fn list_automation_runs(
             scheduled_for,
             attempt: row.get::<_, i64>("attempt")?.max(1) as u32,
             max_attempts: row.get::<_, i64>("max_attempts")?.max(1) as u32,
-            started_at: row.get("started_at")?,
-            finished_at: row.get("finished_at")?,
+            duration_ms: run_duration_ms(started_at.as_deref(), finished_at.as_deref()),
+            started_at,
+            finished_at,
             next_attempt_at: row.get("next_attempt_at")?,
             summary: row.get("summary")?,
             error: row.get("error")?,
@@ -1964,6 +2106,8 @@ pub fn list_automation_runs_page(
     let map_row = |row: &Row<'_>| -> rusqlite::Result<AutomationRunRecord> {
         let delivered_json: String = row.get("delivered_json")?;
         let scheduled_for: String = row.get("scheduled_for")?;
+        let started_at: Option<String> = row.get("started_at")?;
+        let finished_at: Option<String> = row.get("finished_at")?;
         Ok(AutomationRunRecord {
             id: row.get("id")?,
             automation_id: row.get("automation_id")?,
@@ -1975,8 +2119,9 @@ pub fn list_automation_runs_page(
             scheduled_for,
             attempt: row.get::<_, i64>("attempt")?.max(1) as u32,
             max_attempts: row.get::<_, i64>("max_attempts")?.max(1) as u32,
-            started_at: row.get("started_at")?,
-            finished_at: row.get("finished_at")?,
+            duration_ms: run_duration_ms(started_at.as_deref(), finished_at.as_deref()),
+            started_at,
+            finished_at,
             next_attempt_at: row.get("next_attempt_at")?,
             summary: row.get("summary")?,
             error: row.get("error")?,
@@ -2049,10 +2194,10 @@ fn scheduled_slot_on_date(
         }
         ScheduleKind::Daily => Ok(Some(build_slot(date)?)),
         ScheduleKind::Weekly => {
-            let target = schedule.weekday.ok_or_else(|| {
+            let targets = weekly_effective_weekdays(schedule).ok_or_else(|| {
                 AppError::validation("weekly schedule missing weekday".to_string())
             })?;
-            if date.weekday().num_days_from_sunday() as u8 != target {
+            if !targets.contains(&(date.weekday().num_days_from_sunday() as u8)) {
                 return Ok(None);
             }
             Ok(Some(build_slot(date)?))
@@ -2100,6 +2245,21 @@ pub fn scheduled_slot_today(
 
 /// Due when today's slot time has passed and the automation has not run since that slot.
 /// If the app was offline, the first check after coming back on the same calendar day still fires.
+///
+/// ## ⚠️ 双轨语义（勿单独改动一侧）
+/// 触发判定存在两条并行路径，语义边界不同：
+/// 1. **持久化轨**（生产调度主路径）：`tick_automations` 只信任 DB 里的
+///    `next_run_at`，通过 `claim_scheduled_run` 的 CAS（`WHERE next_run_at = ?`）
+///    原子消耗时点；catch-up 由 `next_after_claim` + `catch_up_policy` 决定。
+/// 2. **计算轨**（本函数）：基于 `schedule` + `last_run_at` 现算"今天的槽位
+///    是否已过"，用于展示/兜底判定，不消耗时点。
+///
+/// 边界差异提示：
+/// - 时区：本函数用 `scheduled_slot_today`，按 schedule.timezone（缺省本地时区）
+///   解析"今天"；持久化轨的 `next_run_at` 是 UTC 字符串，比较前必须统一时区。
+/// - catch-up：本函数只看"同一日历日"，跨天错过不 fire；持久化轨按
+///   `catch_up_policy`（skip/run_once/catch_up_all）处理跨天补跑。
+/// 修改任一侧的触发语义时，必须同步检查另一侧与 `compute_next_trigger`。
 pub fn is_due(
     automation: &AutomationDefinition,
     now: DateTime<Local>,
@@ -2210,12 +2370,25 @@ pub fn compute_next_trigger(
 pub fn automation_to_list_item(automation: &AutomationDefinition, now: DateTime<Local>) -> Value {
     let last_run_at = automation.last_run_at.clone();
     let next_trigger = automation.next_run_at.clone().or_else(|| {
-        automation.enabled.then(|| {
-            compute_next_trigger(&automation.schedule, now)
-                .map(|dt| dt.with_timezone(&Utc).to_rfc3339())
-                .unwrap_or_else(|_| "unknown".to_string())
-        })
+        if !automation.enabled {
+            return None;
+        }
+        match compute_next_trigger(&automation.schedule, now) {
+            // once 的固定时点已被 claim 消耗：不再有下一次触发，不能把已过
+            // 时点当"下次执行"展示
+            Ok(slot) if once_slot_already_consumed(automation, slot) => None,
+            Ok(slot) => Some(slot.with_timezone(&Utc).to_rfc3339()),
+            Err(_) => Some("unknown".to_string()),
+        }
     });
+
+    // notify 类型没有会话概念，诚实输出 null（前端 normalizeAutomation 对
+    // null 归一为 isolated，不会崩）；agent_turn 未显式设置时输出运行时
+    // 实际生效的缺省值 isolated。
+    let session_mode = match automation.action_type {
+        AutomationActionType::Notify => Value::Null,
+        AutomationActionType::AgentTurn => json!(automation.session_mode.unwrap_or_default()),
+    };
 
     json!({
         "id": automation.id,
@@ -2230,7 +2403,7 @@ pub fn automation_to_list_item(automation: &AutomationDefinition, now: DateTime<
         "action_type": automation.action_type,
         "heartbeat": automation.heartbeat,
         "agent_prompt": automation.agent_prompt,
-        "session_mode": automation.session_mode.unwrap_or_default(),
+        "session_mode": session_mode,
         "model_id": automation.model_id,
         "agent_session_id": automation.agent_session_id,
         "catch_up_policy": automation.catch_up_policy,
@@ -2242,12 +2415,93 @@ pub fn automation_to_list_item(automation: &AutomationDefinition, now: DateTime<
     })
 }
 
-fn truncate_prompt_for_notification(prompt: &str) -> String {
+/// OS 通知文案语言（后端无 i18n 框架，仅支持 zh/en 双语其一）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NotificationLang {
+    Zh,
+    En,
+}
+
+/// 读取应用已保存的界面语言（settings 表 `language` 键，取值 zh-CN | en-US，
+/// 由设置保存路径 / Agent settings_set 工具写入）。
+///
+/// 键缺失或读取失败时回落中文：与既有硬编码行为一致，也与前端
+/// `DEFAULT_SETTINGS.language = 'zh-CN'` 对齐。注意 i18next 的即时语言
+/// 存在 localStorage（后端不可读），该键可能滞后于 UI 实际语言，属
+/// 尽力而为的最佳可得来源。
+fn notification_language(db: &Database) -> NotificationLang {
+    match db.get_setting("language") {
+        Ok(Some(value)) if value.trim().to_ascii_lowercase().starts_with("en") => {
+            NotificationLang::En
+        }
+        _ => NotificationLang::Zh,
+    }
+}
+
+fn notification_title_running(lang: NotificationLang, name: &str) -> String {
+    match lang {
+        NotificationLang::Zh => format!("自动化：{}", name),
+        NotificationLang::En => format!("Automation: {}", name),
+    }
+}
+
+fn notification_title_success(lang: NotificationLang, name: &str) -> String {
+    match lang {
+        NotificationLang::Zh => format!("自动化完成：{}", name),
+        NotificationLang::En => format!("Automation completed: {}", name),
+    }
+}
+
+fn notification_title_failed(lang: NotificationLang, name: &str) -> String {
+    match lang {
+        NotificationLang::Zh => format!("自动化失败：{}", name),
+        NotificationLang::En => format!("Automation failed: {}", name),
+    }
+}
+
+/// agent_turn 成功通知正文（完成投递与调度补投共用，消除文案漂移）。
+fn notification_success_body(
+    lang: NotificationLang,
+    summary: &str,
+    session_id: Option<&str>,
+) -> String {
+    match (lang, session_id) {
+        (NotificationLang::Zh, Some(session_id)) if summary.is_empty() => {
+            format!("已完成，打开 Deep Student 查看会话（{}）", session_id)
+        }
+        (NotificationLang::Zh, Some(_)) => {
+            format!("{}\n打开 Deep Student 查看完整会话", summary)
+        }
+        (NotificationLang::En, Some(session_id)) if summary.is_empty() => {
+            format!(
+                "Completed. Open Deep Student to view the session ({}).",
+                session_id
+            )
+        }
+        (NotificationLang::En, Some(_)) => {
+            format!("{}\nOpen Deep Student to view the full session.", summary)
+        }
+        (_, None) => summary.to_string(),
+    }
+}
+
+fn notification_failed_fallback_body(lang: NotificationLang) -> String {
+    match lang {
+        NotificationLang::Zh => "自动化运行失败".to_string(),
+        NotificationLang::En => "Automation run failed".to_string(),
+    }
+}
+
+fn truncate_prompt_for_notification(prompt: &str, lang: NotificationLang) -> String {
     let preview: String = prompt.chars().take(100).collect();
-    if prompt.chars().count() > 100 {
-        format!("{}… 打开 Deep Student 执行此任务", preview)
-    } else {
-        format!("{} 打开 Deep Student 执行此任务", preview)
+    let truncated = prompt.chars().count() > 100;
+    match lang {
+        NotificationLang::Zh if truncated => format!("{}… 打开 Deep Student 执行此任务", preview),
+        NotificationLang::Zh => format!("{} 打开 Deep Student 执行此任务", preview),
+        NotificationLang::En if truncated => {
+            format!("{}… Open Deep Student to run this task.", preview)
+        }
+        NotificationLang::En => format!("{} Open Deep Student to run this task.", preview),
     }
 }
 
@@ -2371,7 +2625,9 @@ fn parse_utc_datetime(raw: &str) -> Result<DateTime<Utc>> {
         .map_err(|error| AppError::internal(format!("Invalid automation timestamp: {}", error)))
 }
 
-fn scheduler_identity() -> String {
+/// 进程生命周期内不变（hostname + pid + boot id），缓存避免热路径上
+/// 每次 claim / 恢复扫描都做一次 hostname 系统调用。
+static SCHEDULER_IDENTITY: LazyLock<String> = LazyLock::new(|| {
     format!(
         "{}:{}:{}",
         hostname::get()
@@ -2381,6 +2637,10 @@ fn scheduler_identity() -> String {
         std::process::id(),
         AUTOMATION_BOOT_ID.as_str(),
     )
+});
+
+fn scheduler_identity() -> String {
+    SCHEDULER_IDENTITY.clone()
 }
 
 fn lease_expires_at(now: DateTime<Utc>, timeout_seconds: u64) -> String {
@@ -2772,6 +3032,57 @@ fn set_notification_retry_at(
     Ok(())
 }
 
+/// 主窗口当前是否可见且持有焦点（用户正在看应用）。
+///
+/// 用于抑制与前端 in-app toast 重复的 OS 完成通知。任一状态查询失败或
+/// 窗口缺失时按"不活跃"处理——保守地照常投递 OS 通知，宁多勿漏。
+fn main_window_is_active(app_handle: &AppHandle) -> bool {
+    let Some(window) = app_handle.get_webview_window("main") else {
+        return false;
+    };
+    let focused = window.is_focused().unwrap_or(false);
+    let visible = window.is_visible().unwrap_or(false);
+    let minimized = window.is_minimized().unwrap_or(false);
+    focused && visible && !minimized
+}
+
+/// [`deliver_run_notification`] 的结果：区分「本次真的投递了 OS 通知」
+/// 与其余已处理分支，供 run_completed 事件的 `osNotificationDelivered`
+/// 字段精确取值（前端据此决定是否补 in-app toast）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunNotificationOutcome {
+    /// 本次调用真正向 OS 投递了一条通知
+    DeliveredOs,
+    /// 主窗口活跃，按约定抑制 OS 通知（前端 in-app toast 覆盖）
+    SuppressedWindowActive,
+    /// 用户策略为「从不」系统通知（settings 表 system-notification-policy），
+    /// 全局拦截；完成类通知由前端 in-app toast 兜底
+    SuppressedByPolicy,
+    /// 该 run 此前已投递过 OS 通知（at-most-once 早退，本次未新发）
+    AlreadyDelivered,
+    /// 预约被并发状态推翻或跨进程投递失败（pending 标记保留，调度补投）
+    Failed,
+}
+
+impl RunNotificationOutcome {
+    /// 与旧布尔返回语义一致：非 Failed 即视为「已妥善处理」
+    fn handled(self) -> bool {
+        !matches!(self, Self::Failed)
+    }
+
+    /// 本次调用是否真的发出了 OS 通知
+    fn delivered_os(self) -> bool {
+        matches!(self, Self::DeliveredOs)
+    }
+}
+
+/// 投递一条 run 相关的 OS 通知（at-most-once：先落 marker 再跨进程投递）。
+///
+/// `suppress_if_window_active=true` 用于「完成通知」类投递：主窗口可见且
+/// 聚焦时前端会基于 `chat_v2_automation_run_completed` 事件弹 in-app toast，
+/// OS 通知会构成双重打扰，此时跳过 OS 投递并清掉 pending 标记（视为已
+/// 由前端通道覆盖；不写 "notification" marker，delivered 列表保持诚实）。
+/// notify 类型的"到点提醒"本身就是交付物且无前端 toast，必须传 false。
 fn deliver_run_notification(
     db: &Database,
     app_handle: &AppHandle,
@@ -2780,7 +3091,8 @@ fn deliver_run_notification(
     expected_status: &str,
     title: &str,
     body: &str,
-) -> bool {
+    suppress_if_window_active: bool,
+) -> RunNotificationOutcome {
     let existing = load_run_deliveries(db, run_id).unwrap_or_default();
     if existing.iter().any(|entry| entry == "notification") {
         let _ = set_run_delivery_marker(
@@ -2791,7 +3103,48 @@ fn deliver_run_notification(
             "notification_pending",
             false,
         );
-        return true;
+        return RunNotificationOutcome::AlreadyDelivered;
+    }
+
+    // 用户全局「从不」档：拦截所有自动化 OS 通知（含 notify 类到点提醒）。
+    // 处理方式与窗口活跃抑制一致——清 pending、不再重试，避免策略开启期间
+    // 积压的补投在用户改回其他档位后突然轰炸。
+    if crate::system_notification::notifications_disabled(db) {
+        let _ = set_run_delivery_marker(
+            db,
+            run_id,
+            expected_attempt,
+            expected_status,
+            "notification_pending",
+            false,
+        );
+        if expected_status != "running" {
+            let _ = set_notification_retry_at(db, run_id, expected_attempt, expected_status, None);
+        }
+        tracing::debug!(
+            "[AutomationScheduler] system notifications disabled by policy; suppressed OS notification for run '{}'",
+            run_id
+        );
+        return RunNotificationOutcome::SuppressedByPolicy;
+    }
+
+    if suppress_if_window_active && main_window_is_active(app_handle) {
+        let _ = set_run_delivery_marker(
+            db,
+            run_id,
+            expected_attempt,
+            expected_status,
+            "notification_pending",
+            false,
+        );
+        if expected_status != "running" {
+            let _ = set_notification_retry_at(db, run_id, expected_attempt, expected_status, None);
+        }
+        tracing::debug!(
+            "[AutomationScheduler] main window active; suppressed OS notification for run '{}' (in-app toast covers it)",
+            run_id
+        );
+        return RunNotificationOutcome::SuppressedWindowActive;
     }
 
     // Reserve before crossing into the OS notification service. Desktop APIs
@@ -2806,13 +3159,13 @@ fn deliver_run_notification(
         true,
     ) {
         Ok(true) => {}
-        Ok(false) => return false,
+        Ok(false) => return RunNotificationOutcome::Failed,
         Err(error) => {
             tracing::warn!(
                 "[AutomationScheduler] reserve notification failed: {}",
                 error
             );
-            return false;
+            return RunNotificationOutcome::Failed;
         }
     }
 
@@ -2828,7 +3181,7 @@ fn deliver_run_notification(
         if expected_status != "running" {
             let _ = set_notification_retry_at(db, run_id, expected_attempt, expected_status, None);
         }
-        true
+        RunNotificationOutcome::DeliveredOs
     } else {
         if let Err(error) = set_run_delivery_marker(
             db,
@@ -2853,7 +3206,7 @@ fn deliver_run_notification(
                 Some(retry_at),
             );
         }
-        false
+        RunNotificationOutcome::Failed
     }
 }
 
@@ -2883,7 +3236,7 @@ fn prune_run_history(conn: &rusqlite::Connection, run_id: &str) -> Result<()> {
            AND id NOT IN (
                SELECT id FROM automation_runs
                WHERE automation_id = ?1
-               ORDER BY created_at DESC
+               ORDER BY created_at DESC, id DESC
                LIMIT ?2
            )",
         params![automation_id, MAX_STORED_RUNS_PER_AUTOMATION as i64],
@@ -2918,9 +3271,11 @@ fn retry_or_finish_run(
     }
     if attempt < max_attempts {
         let exponent = (attempt - 1).clamp(0, 10) as u32;
+        // 指数退避封顶 24h：基数最大 86400s，放大后不能把重试推迟到数天后
         let delay = automation
             .retry_backoff_seconds
-            .saturating_mul(2_u64.saturating_pow(exponent));
+            .saturating_mul(2_u64.saturating_pow(exponent))
+            .min(MAX_RETRY_BACKOFF_SECS);
         let next_attempt = Utc::now() + chrono::Duration::seconds(delay as i64);
         let changed = conn
             .execute(
@@ -2939,6 +3294,18 @@ fn retry_or_finish_run(
                 ],
             )
             .map_err(|cause| db_error("Failed to schedule automation retry", cause))?;
+        if changed == 1 {
+            tracing::info!(
+                "[AutomationScheduler] run '{}' of '{}' failed on attempt {}/{} ({}); retry in {}s at {}",
+                run_id,
+                automation.id,
+                attempt,
+                max_attempts,
+                terminal_status,
+                delay,
+                next_attempt.to_rfc3339()
+            );
+        }
         Ok(if changed == 1 {
             RunFinalizeOutcome::RetryScheduled
         } else {
@@ -2988,7 +3355,7 @@ fn process_due_automation(
             claimed.run_id
         );
         // Run was already claimed; mark cancelled so it does not stay stuck as running.
-        if let Err(error) = complete_run(
+        match complete_run(
             db,
             &claimed.run_id,
             claimed.attempt,
@@ -2998,11 +3365,17 @@ fn process_due_automation(
             Some("Skipped: AgentKillSwitch / automation scheduler paused"),
             None,
         ) {
-            tracing::warn!(
-                "[AutomationScheduler] failed to cancel claimed run '{}' during pause: {}",
-                claimed.run_id,
-                error
-            );
+            // once 的时点在 claim 时已被消耗，取消同样是终态，需要固化收尾，
+            // 否则该 once 定义会以 enabled=1 + next_run_at=NULL 悬空。
+            Ok(true) => finalize_once_automation(db, Some(app_handle), &claimed.automation),
+            Ok(false) => {}
+            Err(error) => {
+                tracing::warn!(
+                    "[AutomationScheduler] failed to cancel claimed run '{}' during pause: {}",
+                    claimed.run_id,
+                    error
+                );
+            }
         }
         // 前端依赖该事件刷新列表：kill switch 取消已 claim 的 run 也要通知
         emit_automations_changed(app_handle, "run_cancelled", &claimed.automation.id);
@@ -3046,14 +3419,18 @@ fn process_due_automation(
                     finalize_once_automation(db, Some(app_handle), automation);
                 }
                 if finalize_outcome == RunFinalizeOutcome::Finished && !automation.heartbeat {
+                    // spawn_error 终态不经过 run_completed 事件（无前端 toast），
+                    // OS 通知是唯一告知渠道，不做窗口活跃抑制。
+                    let lang = notification_language(db);
                     let _ = deliver_run_notification(
                         db,
                         app_handle,
                         &claimed.run_id,
                         claimed.attempt,
                         "spawn_error",
-                        &format!("自动化失败：{}", automation.name),
+                        &notification_title_failed(lang, &automation.name),
                         &truncate_for_notification(&error, 120),
+                        false,
                     );
                 }
             }
@@ -3061,15 +3438,18 @@ fn process_due_automation(
         return None;
     }
 
-    let notification_body = truncate_prompt_for_notification(&automation.prompt);
+    let lang = notification_language(db);
+    let notification_body = truncate_prompt_for_notification(&automation.prompt, lang);
+    // notify 类型的到点提醒是交付物本身（前端无对应 toast），永不抑制
     let _ = deliver_run_notification(
         db,
         app_handle,
         &claimed.run_id,
         claimed.attempt,
         "running",
-        &format!("自动化：{}", automation.name),
+        &notification_title_running(lang, &automation.name),
         &notification_body,
+        false,
     );
 
     let already_delivered = load_run_deliveries(db, &claimed.run_id).unwrap_or_default();
@@ -3419,7 +3799,17 @@ fn spawn_claimed_agent_turn_with_guard(
     // Cancellation can commit after the run row is claimed but before its
     // in-memory token is registered. Re-read the durable state after
     // registration so that such a cancellation wins deterministically.
-    if !automation_run_is_running(&db, &claimed.run_id, claimed.attempt).unwrap_or(false) {
+    // 读取失败按"未运行"处理（放弃启动，run 行留待 lease 过期回收），但必须留痕。
+    let run_is_running = automation_run_is_running(&db, &claimed.run_id, claimed.attempt)
+        .unwrap_or_else(|error| {
+            tracing::warn!(
+                "[AutomationScheduler] failed to verify run '{}' before spawn; deferring to lease recovery: {}",
+                claimed.run_id,
+                error
+            );
+            false
+        });
+    if !run_is_running {
         cancellation_token.cancel();
         return;
     }
@@ -3438,20 +3828,68 @@ async fn execute_agent_turn_automation(
     cancellation_token: CancellationToken,
 ) {
     let automation = claimed.automation;
-    if !automation_run_is_running(&db, &claimed.run_id, claimed.attempt).unwrap_or(false) {
-        return;
+    match automation_run_is_running(&db, &claimed.run_id, claimed.attempt) {
+        Ok(true) => {}
+        Ok(false) => return,
+        Err(error) => {
+            tracing::warn!(
+                "[AutomationScheduler] failed to verify run '{}' before executing; deferring to lease recovery: {}",
+                claimed.run_id,
+                error
+            );
+            return;
+        }
     }
+
+    // 心跳空转优化：非手动触发的心跳在拉起 headless turn 前先做一次纯 DB
+    // 检查（到期复习计划 / 到期或逾期待办计数），全空则跳过整个 LLM 调用，
+    // 直接按既有 heartbeat_ok 成功路径落库（幂等语义与静默行为不变）。
+    if automation.heartbeat && claimed.trigger_type != "manual" {
+        let idle = app_handle
+            .try_state::<Arc<VfsDatabase>>()
+            .map(|vfs_db| match heartbeat_has_pending_work(&vfs_db) {
+                Ok(has_work) => !has_work,
+                Err(error) => {
+                    // 预检失败时 fail-open：照常执行 LLM 检查，不吞掉心跳
+                    tracing::debug!(
+                        "[AutomationScheduler] heartbeat '{}' idle precheck failed ({}); falling back to LLM run",
+                        automation.name,
+                        error
+                    );
+                    false
+                }
+            })
+            .unwrap_or(false);
+        if idle {
+            tracing::debug!(
+                "[AutomationScheduler] heartbeat '{}' idle precheck found no due reviews or todos; skipping LLM call for run={}",
+                automation.name,
+                claimed.run_id
+            );
+            finalize_heartbeat_idle_skip(
+                &app_handle,
+                &db,
+                &automation,
+                &claimed.run_id,
+                claimed.attempt,
+            );
+            return;
+        }
+    }
+
     // 会话由 headless runner 创建/复用：
     // - isolated（默认）：每次新建，metadata 标注 automation_run/source；
     // - named：复用 agent_session_id 指向的固定会话（跨运行积累上下文）
     let session_mode = automation.session_mode.unwrap_or_default();
+    // 通知/会话标题语言：每次运行时读取一次已保存的界面语言设置
+    let lang = notification_language(&db);
     let request = HeadlessTurnRequest {
         prompt: effective_agent_prompt(&automation),
         session_mode,
         named_session_id: automation.agent_session_id.clone(),
         model_id: automation.model_id.clone(),
         source: format!("automation:{}:{}", automation.id, claimed.trigger_type),
-        title: Some(format!("自动化：{}", automation.name)),
+        title: Some(notification_title_running(lang, &automation.name)),
         hard_timeout_secs: Some(automation.timeout_seconds),
         max_tool_rounds: automation
             .trusted_profile
@@ -3621,33 +4059,37 @@ async fn execute_agent_turn_automation(
         finalize_once_automation(&db, Some(&app_handle), &automation);
     }
 
+    // 通知投递闭环：记录后端本次是否真的发出了 OS 通知，随 run_completed
+    // 事件下发（osNotificationDelivered）。前端据此精确互补：已投递则不再弹
+    // in-app toast（消双通知），未投递则由前端兜底（消焦点竞态下的丢通知）。
+    let mut os_notification_delivered = false;
     if successful && status == "success" {
-        let body = match session_id.as_deref() {
-            Some(session_id) if summary.is_empty() => {
-                format!("已完成，打开 Deep Student 查看会话（{}）", session_id)
-            }
-            Some(_) => format!("{}\n打开 Deep Student 查看完整会话", summary),
-            None => summary.clone(),
-        };
-        let _ = deliver_run_notification(
+        let body = notification_success_body(lang, &summary, session_id.as_deref());
+        // 完成通知：紧随其后的 run_completed 事件会让前端在窗口可见时弹
+        // in-app toast，主窗口活跃时抑制 OS 通知避免双重打扰
+        os_notification_delivered = deliver_run_notification(
             &db,
             &app_handle,
             &claimed.run_id,
             claimed.attempt,
             "success",
-            &format!("自动化完成：{}", automation.name),
+            &notification_title_success(lang, &automation.name),
             &body,
-        );
+            true,
+        )
+        .delivered_os();
     } else if !successful && !retry_scheduled && status != "cancelled" && !automation.heartbeat {
-        let _ = deliver_run_notification(
+        os_notification_delivered = deliver_run_notification(
             &db,
             &app_handle,
             &claimed.run_id,
             claimed.attempt,
             &status,
-            &format!("自动化失败：{}", automation.name),
+            &notification_title_failed(lang, &automation.name),
             &summary,
-        );
+            true,
+        )
+        .delivered_os();
     }
 
     let emitted_status = if retry_scheduled {
@@ -3662,9 +4104,14 @@ async fn execute_agent_turn_automation(
             "automationName": automation.name,
             "sessionId": session_id,
             "runId": claimed.run_id,
+            // 前端用 runId:attempt 做精确通知去重（同一 run 手动重试会复用
+            // runId 但 attempt 递增）
+            "attempt": claimed.attempt,
             "status": emitted_status,
             "summary": summary,
             "heartbeat": automation.heartbeat,
+            // 后端实际发出 OS 通知才为 true（抑制/早退/失败均为 false）
+            "osNotificationDelivered": os_notification_delivered,
         }),
     ) {
         tracing::warn!(
@@ -3680,6 +4127,103 @@ async fn execute_agent_turn_automation(
 // Heartbeat 预置自动化
 // ============================================================================
 
+/// 心跳空转预检：纯 DB 查询判断是否有需要 LLM 检查的实质工作。
+///
+/// 口径与默认心跳 prompt 的前两项检查对齐：
+/// - 今日到期或已逾期的待办（同 `VfsTodoRepo::counts_snapshot` 的 today 口径）；
+/// - 到期复习计划（同 `VfsReviewPlanRepo::list_due_reviews`：`next_review_date <= 今天`
+///   且非 suspended）。
+///
+/// 返回 `Ok(true)` 表示有待处理内容，应照常拉起 headless turn。
+/// 查询失败返回 `Err`，调用方 fail-open（照常执行 LLM 检查）。
+fn heartbeat_has_pending_work(vfs_db: &VfsDatabase) -> std::result::Result<bool, String> {
+    let conn = vfs_db
+        .get_conn_safe()
+        .map_err(|error| format!("open VFS database failed: {}", error))?;
+    let today = Local::now().format("%Y-%m-%d").to_string();
+
+    let due_todos: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM todo_items
+             WHERE status = 'pending' AND due_date <= ?1 AND deleted_at IS NULL",
+            params![today],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("count due todos failed: {}", error))?;
+    if due_todos > 0 {
+        return Ok(true);
+    }
+
+    let due_reviews: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM review_plans
+             WHERE next_review_date <= ?1 AND status != 'suspended'",
+            params![today],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("count due reviews failed: {}", error))?;
+    Ok(due_reviews > 0)
+}
+
+/// 空转心跳跳过 LLM 调用后的收尾：按既有 `heartbeat_ok` 成功路径落库并广播，
+/// 与 `execute_agent_turn_automation` 中模型输出哨兵串的静默分支保持一致
+/// （消费触发、终态 run 记录、`run_completed` 事件；不发任何通知）。
+fn finalize_heartbeat_idle_skip(
+    app_handle: &AppHandle,
+    db: &Database,
+    automation: &AutomationDefinition,
+    run_id: &str,
+    attempt: i64,
+) {
+    let finished = match complete_run(
+        db,
+        run_id,
+        attempt,
+        "heartbeat_ok",
+        &[],
+        None,
+        Some(HEARTBEAT_OK_SENTINEL),
+        None,
+    ) {
+        Ok(changed) => changed,
+        Err(error) => {
+            tracing::warn!(
+                "[AutomationScheduler] failed to complete idle heartbeat run '{}': {}",
+                run_id,
+                error
+            );
+            false
+        }
+    };
+    if !finished {
+        emit_automations_changed(app_handle, "run_superseded", &automation.id);
+        return;
+    }
+    finalize_once_automation(db, Some(app_handle), automation);
+    if let Err(error) = app_handle.emit(
+        "chat_v2_automation_run_completed",
+        json!({
+            "automationId": automation.id,
+            "automationName": automation.name,
+            "sessionId": Value::Null,
+            "runId": run_id,
+            "attempt": attempt,
+            "status": "heartbeat_ok",
+            "summary": HEARTBEAT_OK_SENTINEL,
+            "heartbeat": automation.heartbeat,
+            // 空转心跳不发任何通知，与主路径字段保持一致
+            "osNotificationDelivered": false,
+        }),
+    ) {
+        tracing::warn!(
+            "[AutomationScheduler] failed to emit run_completed for idle heartbeat run '{}': {}",
+            run_id,
+            error
+        );
+    }
+    emit_automations_changed(app_handle, "run_completed", &automation.id);
+}
+
 /// 默认心跳自动化定义（enabled=false，用户/前端显式开启后生效）
 pub fn default_heartbeat_definition(now: DateTime<Utc>) -> AutomationDefinition {
     AutomationDefinition {
@@ -3689,6 +4233,7 @@ pub fn default_heartbeat_definition(now: DateTime<Utc>) -> AutomationDefinition 
             kind: ScheduleKind::Interval,
             time: String::new(),
             weekday: None,
+            weekdays: None,
             day_of_month: None,
             interval_minutes: Some(DEFAULT_HEARTBEAT_INTERVAL_MINUTES),
             date: None,
@@ -3732,9 +4277,8 @@ pub fn ensure_heartbeat_in_list(
 
 /// 幂等确保预置心跳自动化存在（默认 disabled，30 分钟间隔）。
 ///
-/// TODO(优化): "无到期任务则跳过 LLM 调用"——在拉起 headless turn 前先做
-/// 一次纯 DB 检查（到期复习计划 / 逾期待办计数），全空则本轮直接跳过，
-/// 省掉一次模型调用（对齐成熟代理运行时的 heartbeat 的空转优化）。
+/// 空转优化（"无到期任务则跳过 LLM 调用"）见 `heartbeat_has_pending_work` /
+/// `execute_agent_turn_automation` 中的心跳预检分支。
 pub fn ensure_heartbeat_automation(db: &Database) -> Result<bool> {
     let exists = load_automations(db)?
         .iter()
@@ -3767,6 +4311,9 @@ pub struct AutomationScheduleCommandRequest {
     pub time: String,
     #[serde(default)]
     pub weekday: Option<u8>,
+    /// weekly 多天扩展（0=Sun … 6=Sat）；与 weekday 并存时 weekdays 优先
+    #[serde(default)]
+    pub weekdays: Option<Vec<u8>>,
     #[serde(default)]
     pub day_of_month: Option<u8>,
     #[serde(default)]
@@ -3783,6 +4330,7 @@ impl From<AutomationScheduleCommandRequest> for AutomationSchedule {
             kind: value.kind,
             time: value.time,
             weekday: value.weekday,
+            weekdays: value.weekdays,
             day_of_month: value.day_of_month,
             interval_minutes: value.interval_minutes,
             date: value.date,
@@ -3983,12 +4531,21 @@ pub async fn chat_v2_automation_update(
         )
         .map_err(automation_command_error)?;
         emit_automations_changed(&app_handle, "update", &automation_id);
-        Ok(json!({
+        let mut response = json!({
             "success": true,
             "previous": automation_to_list_item(&previous, Local::now()),
             "current": automation_to_list_item(&current, Local::now()),
             "next_trigger": current.next_run_at,
-        }))
+        });
+        // 追加式提示：已完成的 once 任务改配置不会使其复燃（需显式重新
+        // 启用或手动运行），前端可据此提示用户，忽略该字段亦不影响行为。
+        if once_automation_completed(&current) {
+            response["once_completed"] = json!(true);
+            response["once_completed_notice"] = json!(
+                "该一次性任务的时点已执行完成，本次更新不会使其再次触发；如需再次运行请重新启用或手动运行。"
+            );
+        }
+        Ok(response)
     })
     .await
 }
@@ -4054,6 +4611,14 @@ pub fn cancel_automation_run(db: &Database, run_id: &str) -> Result<()> {
         return Err(AppError::validation("Run is not cancellable".to_string()));
     }
     prune_run_history(&conn, run_id)?;
+    let automation_id: Option<String> = conn
+        .query_row(
+            "SELECT automation_id FROM automation_runs WHERE id = ?1",
+            params![run_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| db_error("Failed to resolve cancelled run owner", error))?;
     drop(conn);
     if let Some(token) = ACTIVE_AUTOMATION_RUNS
         .lock()
@@ -4062,6 +4627,13 @@ pub fn cancel_automation_run(db: &Database, run_id: &str) -> Result<()> {
         .map(|entry| entry.token.clone())
     {
         token.cancel();
+    }
+    // 取消同样是 run 的终态：once 任务被消耗的时点不会再触发，直接固化收尾
+    // （活着的执行器随后只会观察到 superseded，不会重复 finalize）。
+    if let Some(automation_id) = automation_id {
+        if let Ok(Some(automation)) = get_automation(db, &automation_id) {
+            finalize_once_automation(db, None, &automation);
+        }
     }
     Ok(())
 }
@@ -4157,11 +4729,15 @@ fn automation_summary_response_inner(db: &Database) -> Result<Value> {
                 |row| row.get(0),
             )
             .map_err(db_err)?;
-        // once 完成后固化为 enabled=0（finalize_once_automation），据此统计
+        // once 完成后固化为 enabled=0 + next_run_at=NULL + last_run_at=消耗时点
+        // （finalize_once_automation / claim）。仅靠 enabled=0 会把"用户在触发前
+        // 手动停用"的 once 误计为已完成，因此叠加 last_run_at 判据。
         let once_completed: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM automation_definitions
                  WHERE enabled = 0
+                   AND next_run_at IS NULL
+                   AND last_run_at IS NOT NULL
                    AND json_extract(schedule_json, '$.kind') = 'once'",
                 [],
                 |row| row.get(0),
@@ -4321,26 +4897,54 @@ pub fn run_automation_now_core(
             let vfs_db = app_handle
                 .try_state::<Arc<VfsDatabase>>()
                 .map(|state| state.inner().clone());
-            let claimed = create_manual_run(&db, automation_id, expected_version).map_err(
-                |error| {
+            // claim（互斥检查 + run 行落库）保持同步，冲突/版本错误立刻返回；
+            // 实际投递（OS 通知 + 待办创建）会阻塞，移入后台执行。终态由
+            // process_due_automation 内部落库（complete_run / retry_or_finish_run），
+            // 不依赖本命令返回；即使后台任务 panic，run 行也会经 lease 过期
+            // 由 recover_stale_automation_runs 回收，状态不丢。
+            let claimed =
+                create_manual_run(&db, automation_id, expected_version).map_err(|error| {
                     if agent_facing {
                         serialize_automation_update_error(error, true)
                     } else {
                         automation_command_error(error)
                     }
-                },
-            )?;
+                })?;
             let run_id = claimed.run_id.clone();
-            process_due_automation(&db, vfs_db.as_ref(), &app_handle, claimed, Local::now())
-                .unwrap_or_else(|| {
-                    json!({
-                        "status": "error",
-                        "automationId": automation_id,
-                        "runId": run_id,
-                        "delivered": [],
-                        "error": "Notify automation did not produce a delivery result",
-                    })
+            let db_task = db.clone();
+            let app_handle_task = app_handle.clone();
+            crate::background_tasks::spawn(async move {
+                let delivery_run_id = claimed.run_id.clone();
+                let joined = tokio::task::spawn_blocking(move || {
+                    process_due_automation(
+                        &db_task,
+                        vfs_db.as_ref(),
+                        &app_handle_task,
+                        claimed,
+                        Local::now(),
+                    )
                 })
+                .await;
+                match joined {
+                    Ok(outcome) => tracing::info!(
+                        "[AutomationScheduler] manual notify run '{}' delivered: {:?}",
+                        delivery_run_id,
+                        outcome
+                    ),
+                    Err(error) => tracing::warn!(
+                        "[AutomationScheduler] manual notify run '{}' delivery task failed (lease recovery will finalize it): {}",
+                        delivery_run_id,
+                        error
+                    ),
+                }
+            });
+            // 与 agent_turn 分支对齐的异步启动响应；最终结果经
+            // automations_changed(run_completed) 事件与运行历史获取。
+            json!({
+                "status": "started",
+                "automationId": automation_id,
+                "runId": run_id,
+            })
         }
     };
     emit_automations_changed(&app_handle, "run_now", automation_id);
@@ -4349,8 +4953,9 @@ pub fn run_automation_now_core(
 
 /// 立即运行一条自动化（绕过调度时点）。
 ///
-/// - `agent_turn` 类型：拉起 headless 运行，立即返回隔离会话 ID（单飞保护）；
-/// - `notify` 类型：立即执行通知+待办投递。
+/// - `agent_turn` 类型：拉起 headless 运行后立即返回（单飞保护）；
+/// - `notify` 类型：同步 claim run 后异步投递通知+待办，立即返回
+///   `status=started`，终态见运行历史 / `automations_changed` 事件。
 #[tauri::command]
 pub async fn chat_v2_automation_run_now(
     automation_id: String,
@@ -4544,7 +5149,8 @@ fn claim_retry_run(db: &Database, run_id: &str) -> Result<Option<ClaimedAutomati
         return Ok(None);
     }
     let now = Utc::now().to_rfc3339();
-    let lease_expires_at = lease_expires_at(Utc::now(), effective_lease_timeout_seconds(&automation));
+    let lease_expires_at =
+        lease_expires_at(Utc::now(), effective_lease_timeout_seconds(&automation));
     let changed = tx
         .execute(
             "UPDATE automation_runs
@@ -4619,8 +5225,7 @@ fn recover_stale_automation_runs(db: &Database, app_handle: Option<&AppHandle>) 
         // 大于 lease 计算基准），续租等待其自行落终态，而不是误判失败重试
         // （与 claim_retry_run 的活执行器保护对称）。
         if automation_run_has_live_executor(&run_id) {
-            let renewed_lease =
-                lease_expires_at(now, effective_lease_timeout_seconds(&automation));
+            let renewed_lease = lease_expires_at(now, effective_lease_timeout_seconds(&automation));
             let conn = db
                 .get_conn_safe()
                 .map_err(|error| db_error("Failed to open automation database", error))?;
@@ -4631,14 +5236,16 @@ fn recover_stale_automation_runs(db: &Database, app_handle: Option<&AppHandle>) 
                 params![run_id, renewed_lease, now.to_rfc3339()],
             ) {
                 tracing::warn!(
-                    "[AutomationScheduler] failed to renew lease for live run '{}': {}",
+                    "[AutomationScheduler] failed to renew lease for live run '{}' (automation '{}'): {}",
                     run_id,
+                    automation_id,
                     error
                 );
             } else {
                 tracing::warn!(
-                    "[AutomationScheduler] run '{}' outlived its lease but its executor is alive; lease renewed",
-                    run_id
+                    "[AutomationScheduler] run '{}' (automation '{}') outlived its lease but its executor is alive; lease renewed",
+                    run_id,
+                    automation_id
                 );
             }
             continue;
@@ -4734,6 +5341,7 @@ fn deliver_pending_agent_notifications(db: &Database, app_handle: &AppHandle) ->
             .map_err(|error| db_error("Failed to decode pending notifications", error))?
     };
 
+    let lang = notification_language(db);
     let mut delivered_count = 0;
     for (run_id, attempt, status, session_id, summary, error, delivered_json, name) in candidates {
         let delivered: Vec<String> = serde_json::from_str(&delivered_json).unwrap_or_default();
@@ -4745,25 +5353,24 @@ fn deliver_pending_agent_notifications(db: &Database, app_handle: &AppHandle) ->
         }
         let successful = status == "success";
         let body = if successful {
-            let summary = summary.unwrap_or_default();
-            match session_id.as_deref() {
-                Some(session_id) if summary.is_empty() => {
-                    format!("已完成，打开 Deep Student 查看会话（{}）", session_id)
-                }
-                Some(_) => format!("{}\n打开 Deep Student 查看完整会话", summary),
-                None => summary,
-            }
+            notification_success_body(lang, &summary.unwrap_or_default(), session_id.as_deref())
         } else {
             error
                 .or(summary)
-                .unwrap_or_else(|| "自动化运行失败".to_string())
+                .unwrap_or_else(|| notification_failed_fallback_body(lang))
         };
         let title = if successful {
-            format!("自动化完成：{}", name)
+            notification_title_success(lang, &name)
         } else {
-            format!("自动化失败：{}", name)
+            notification_title_failed(lang, &name)
         };
-        if deliver_run_notification(db, app_handle, &run_id, attempt, &status, &title, &body) {
+        // 补投的同样是完成通知：用户此刻正盯着主窗口时（可从运行历史看到
+        // 结果）不再用迟到的 OS 通知打扰
+        if deliver_run_notification(
+            db, app_handle, &run_id, attempt, &status, &title, &body, true,
+        )
+        .handled()
+        {
             delivered_count += 1;
         }
     }
@@ -4846,14 +5453,35 @@ pub fn tick_automations(
         );
         return Ok(());
     }
-    recover_stale_automation_runs(db, Some(app_handle))?;
-    deliver_pending_agent_notifications(db, app_handle)?;
+    // 错误隔离：孤儿恢复 / 补投通知任一失败（如数据库瞬时繁忙）不阻断本轮
+    // 到期调度，下一 tick 会自然重试这两步。
+    if let Err(error) = recover_stale_automation_runs(db, Some(app_handle)) {
+        tracing::warn!(
+            "[AutomationScheduler] stale run recovery failed this tick: {}",
+            error
+        );
+    }
+    if let Err(error) = deliver_pending_agent_notifications(db, app_handle) {
+        tracing::warn!(
+            "[AutomationScheduler] pending notification delivery failed this tick: {}",
+            error
+        );
+    }
     let automations = load_automations(db)?;
     let now = Local::now();
 
     for run_id in due_retry_ids(db, now.with_timezone(&Utc))? {
-        if let Some(claimed) = claim_retry_run(db, &run_id)? {
-            process_due_automation(db, vfs_db, app_handle, claimed, now);
+        match claim_retry_run(db, &run_id) {
+            Ok(Some(claimed)) => {
+                process_due_automation(db, vfs_db, app_handle, claimed, now);
+            }
+            Ok(None) => {}
+            // 单个 run 的 claim 失败不中断本轮其余重试，且日志带上 run id
+            Err(error) => tracing::warn!(
+                "[AutomationScheduler] failed to claim retry run '{}': {}",
+                run_id,
+                error
+            ),
         }
     }
 
@@ -4861,61 +5489,75 @@ pub fn tick_automations(
         if !automation.enabled {
             continue;
         }
-        let Some(next_run_at) = automation.next_run_at.as_deref() else {
-            initialize_next_run(db, &automation)?;
-            continue;
-        };
-        let now_utc = now.with_timezone(&Utc);
-        let mut expected_next_run_at = next_run_at.to_string();
-        // 时钟回拨/脏数据防护：next_run_at 远超该 schedule 理论最大间隔的 2 倍
-        // 视为异常，按当前时间重算（once/monthly 放行）。
-        if let Some(repaired) =
-            repair_skewed_next_run(db, &automation, &expected_next_run_at, now, now_utc)?
-        {
-            expected_next_run_at = repaired;
-        }
-        // catch_up_all 允许单 tick 补多个错过的槽位，防长离线补齐过慢；
-        // 其余策略保持每 tick 单槽。agent_turn 的活跃 run 互斥会让第二次
-        // claim 自然落空（本轮只补得动同步完成的 notify 类）。
-        let max_slots = if automation.catch_up_policy == CatchUpPolicy::CatchUpAll {
-            CATCH_UP_BATCH
-        } else {
-            1
-        };
-        for _ in 0..max_slots {
-            let scheduled_for = parse_utc_datetime(&expected_next_run_at)?;
-            if scheduled_for > now_utc {
-                break;
-            }
-            let Some(claimed) =
-                claim_scheduled_run(db, &automation.id, &expected_next_run_at, now_utc)?
-            else {
-                break;
+        // 单个自动化的调度错误（脏 next_run_at、claim 失败等）只记录并跳过；
+        // 不能让一个坏定义把整个 tick 打断，否则其后迭代到的自动化永远不会
+        // 被调度，且旧日志里没有 automation id 无从排查。
+        let automation_id = automation.id.clone();
+        let tick_result: Result<()> = (|| {
+            let Some(next_run_at) = automation.next_run_at.as_deref() else {
+                initialize_next_run(db, &automation)?;
+                return Ok(());
             };
-            let advanced_next = claimed.automation.next_run_at.clone();
-            let lateness = now_utc.signed_duration_since(scheduled_for);
-            if automation.catch_up_policy == CatchUpPolicy::Skip
-                && lateness > chrono::Duration::seconds(SCHEDULER_POLL_SECS as i64 * 2)
+            let now_utc = now.with_timezone(&Utc);
+            let mut expected_next_run_at = next_run_at.to_string();
+            // 时钟回拨/脏数据防护：next_run_at 远超该 schedule 理论最大间隔的 2 倍
+            // 视为异常，按当前时间重算（once/monthly 放行）。
+            if let Some(repaired) =
+                repair_skewed_next_run(db, &automation, &expected_next_run_at, now, now_utc)?
             {
-                complete_run(
-                    db,
-                    &claimed.run_id,
-                    claimed.attempt,
-                    "skipped",
-                    &[],
-                    None,
-                    Some("Skipped by catch-up policy after the app was unavailable"),
-                    None,
-                )?;
-                // once 的时点被 skip 消耗后同样进入“已完成”暂停态
-                finalize_once_automation(db, Some(app_handle), &claimed.automation);
+                expected_next_run_at = repaired;
+            }
+            // catch_up_all 允许单 tick 补多个错过的槽位，防长离线补齐过慢；
+            // 其余策略保持每 tick 单槽。agent_turn 的活跃 run 互斥会让第二次
+            // claim 自然落空（本轮只补得动同步完成的 notify 类）。
+            let max_slots = if automation.catch_up_policy == CatchUpPolicy::CatchUpAll {
+                CATCH_UP_BATCH
             } else {
-                process_due_automation(db, vfs_db, app_handle, claimed, now);
+                1
+            };
+            for _ in 0..max_slots {
+                let scheduled_for = parse_utc_datetime(&expected_next_run_at)?;
+                if scheduled_for > now_utc {
+                    break;
+                }
+                let Some(claimed) =
+                    claim_scheduled_run(db, &automation.id, &expected_next_run_at, now_utc)?
+                else {
+                    break;
+                };
+                let advanced_next = claimed.automation.next_run_at.clone();
+                let lateness = now_utc.signed_duration_since(scheduled_for);
+                if automation.catch_up_policy == CatchUpPolicy::Skip
+                    && lateness > chrono::Duration::seconds(SCHEDULER_POLL_SECS as i64 * 2)
+                {
+                    complete_run(
+                        db,
+                        &claimed.run_id,
+                        claimed.attempt,
+                        "skipped",
+                        &[],
+                        None,
+                        Some("Skipped by catch-up policy after the app was unavailable"),
+                        None,
+                    )?;
+                    // once 的时点被 skip 消耗后同样进入“已完成”暂停态
+                    finalize_once_automation(db, Some(app_handle), &claimed.automation);
+                } else {
+                    process_due_automation(db, vfs_db, app_handle, claimed, now);
+                }
+                match advanced_next {
+                    Some(next) => expected_next_run_at = next,
+                    None => break,
+                }
             }
-            match advanced_next {
-                Some(next) => expected_next_run_at = next,
-                None => break,
-            }
+            Ok(())
+        })();
+        if let Err(error) = tick_result {
+            tracing::warn!(
+                "[AutomationScheduler] scheduling tick failed for automation '{}': {}",
+                automation_id,
+                error
+            );
         }
     }
 
@@ -4936,7 +5578,10 @@ pub async fn start_automation_scheduler(
         if let Err(error) = migrate_legacy_automations(&initialization_database) {
             tracing::warn!("[AutomationScheduler] legacy migration failed: {}", error);
         }
-        match recover_stale_automation_runs(&initialization_database, Some(&initialization_app_handle)) {
+        match recover_stale_automation_runs(
+            &initialization_database,
+            Some(&initialization_app_handle),
+        ) {
             Ok(count) if count > 0 => tracing::info!(
                 "[AutomationScheduler] recovered {} stale automation runs",
                 count
@@ -5059,6 +5704,7 @@ mod tests {
                 kind: ScheduleKind::Daily,
                 time: time.to_string(),
                 weekday: None,
+                weekdays: None,
                 day_of_month: None,
                 interval_minutes: None,
                 date: None,
@@ -5093,6 +5739,7 @@ mod tests {
                 kind: ScheduleKind::Interval,
                 time: String::new(),
                 weekday: None,
+                weekdays: None,
                 day_of_month: None,
                 interval_minutes: Some(minutes),
                 date: None,
@@ -5181,6 +5828,7 @@ mod tests {
             kind: ScheduleKind::Daily,
             time: "08:00".to_string(),
             weekday: Some(1),
+            weekdays: None,
             day_of_month: None,
             interval_minutes: None,
             date: None,
@@ -5195,12 +5843,53 @@ mod tests {
             kind: ScheduleKind::Weekly,
             time: "08:00".to_string(),
             weekday: None,
+            weekdays: None,
             day_of_month: None,
             interval_minutes: None,
             date: None,
             timezone: None,
         };
         assert!(validate_schedule(&schedule).is_err());
+    }
+
+    #[test]
+    fn normalize_schedule_shape_weekly_canonicalizes() {
+        let base = AutomationSchedule {
+            kind: ScheduleKind::Weekly,
+            time: "08:00".to_string(),
+            weekday: None,
+            weekdays: None,
+            day_of_month: None,
+            interval_minutes: None,
+            date: None,
+            timezone: None,
+        };
+
+        // 多天：weekday 回填为最小值，集合去重升序
+        let mut multi = base.clone();
+        multi.weekdays = Some(vec![5, 3, 1, 3]);
+        normalize_schedule_shape(&mut multi);
+        assert_eq!(multi.weekday, Some(1));
+        assert_eq!(multi.weekdays, Some(vec![1, 3, 5]));
+
+        // 单元素集合收敛为纯 weekday 形态（与存量单日数据一致）
+        let mut single = base.clone();
+        single.weekdays = Some(vec![4]);
+        normalize_schedule_shape(&mut single);
+        assert_eq!(single.weekday, Some(4));
+        assert_eq!(single.weekdays, None);
+
+        // 无 weekdays / 非 weekly 均不改动
+        let mut plain = base.clone();
+        plain.weekday = Some(2);
+        normalize_schedule_shape(&mut plain);
+        assert_eq!(plain.weekday, Some(2));
+        assert_eq!(plain.weekdays, None);
+        let mut daily = base;
+        daily.kind = ScheduleKind::Daily;
+        normalize_schedule_shape(&mut daily);
+        assert_eq!(daily.weekday, None);
+        assert_eq!(daily.weekdays, None);
     }
 
     #[test]
@@ -5248,6 +5937,7 @@ mod tests {
                 kind: ScheduleKind::Weekly,
                 time: "09:00".to_string(),
                 weekday: Some(1), // Monday
+                weekdays: None,
                 day_of_month: None,
                 interval_minutes: None,
                 date: None,
@@ -5267,6 +5957,7 @@ mod tests {
                 kind: ScheduleKind::Weekly,
                 time: "09:00".to_string(),
                 weekday: Some(3), // Wednesday
+                weekdays: None,
                 day_of_month: None,
                 interval_minutes: None,
                 date: None,
@@ -5284,6 +5975,7 @@ mod tests {
             kind: ScheduleKind::Daily,
             time: "18:00".to_string(),
             weekday: None,
+            weekdays: None,
             day_of_month: None,
             interval_minutes: None,
             date: None,
@@ -5300,6 +5992,7 @@ mod tests {
             kind: ScheduleKind::Daily,
             time: "08:00".to_string(),
             weekday: None,
+            weekdays: None,
             day_of_month: None,
             interval_minutes: None,
             date: None,
@@ -5378,6 +6071,7 @@ mod tests {
             kind: ScheduleKind::Weekly,
             time: "08:30".to_string(),
             weekday: Some(1),
+            weekdays: None,
             day_of_month: None,
             interval_minutes: None,
             date: None,
@@ -5576,6 +6270,7 @@ mod tests {
             kind: ScheduleKind::Interval,
             time: String::new(),
             weekday: None,
+            weekdays: None,
             day_of_month: None,
             interval_minutes: Some(30),
             date: None,
@@ -5603,6 +6298,7 @@ mod tests {
             kind: ScheduleKind::Daily,
             time: "08:00".to_string(),
             weekday: None,
+            weekdays: None,
             day_of_month: None,
             interval_minutes: Some(30),
             date: None,
@@ -5659,6 +6355,7 @@ mod tests {
             kind: ScheduleKind::Interval,
             time: String::new(),
             weekday: None,
+            weekdays: None,
             day_of_month: None,
             interval_minutes: Some(45),
             date: None,
@@ -5678,6 +6375,7 @@ mod tests {
             kind: ScheduleKind::Once,
             time: time.to_string(),
             weekday: None,
+            weekdays: None,
             day_of_month: None,
             interval_minutes: None,
             date: Some(date.to_string()),
@@ -5776,7 +6474,10 @@ mod tests {
         assert!(claimed.automation.next_run_at.is_none());
         let stored = load_automations(&db).unwrap().remove(0);
         assert!(stored.next_run_at.is_none());
-        assert!(stored.enabled, "still enabled until the run reaches a terminal state");
+        assert!(
+            stored.enabled,
+            "still enabled until the run reaches a terminal state"
+        );
 
         complete_run(
             &db,
@@ -5791,8 +6492,126 @@ mod tests {
         .unwrap();
         finalize_once_automation(&db, None, &claimed.automation);
         let finalized = load_automations(&db).unwrap().remove(0);
-        assert!(!finalized.enabled, "once automation is parked after completion");
+        assert!(
+            !finalized.enabled,
+            "once automation is parked after completion"
+        );
         assert!(finalized.next_run_at.is_none());
+    }
+
+    #[test]
+    fn reenabling_a_consumed_once_automation_does_not_rearm_the_past_slot() {
+        let (_temp_dir, db) = setup_automation_db();
+        let slot = Utc.with_ymd_and_hms(2020, 1, 1, 9, 0, 0).unwrap();
+        let mut automation = sample_daily("09:00");
+        automation.schedule = once_schedule("2020-01-01", "09:00");
+        automation.schedule.timezone = Some("UTC".to_string());
+        // 模拟 finalize_once_automation 之后的固化态：时点已被 claim 消耗
+        automation.enabled = false;
+        automation.next_run_at = None;
+        automation.last_run_at = Some(slot.to_rfc3339());
+        save_automations(&db, std::slice::from_ref(&automation)).unwrap();
+
+        let (_, enabled) =
+            set_automation_enabled(&db, &automation.id, automation.version, true).unwrap();
+        assert!(enabled.enabled);
+        assert!(
+            enabled.next_run_at.is_none(),
+            "consumed once slot must not be re-armed"
+        );
+        // 展示层同样不能把已消耗的时点当"下次触发"
+        let item = automation_to_list_item(&enabled, Local::now());
+        assert_eq!(item["next_trigger_at"], Value::Null);
+    }
+
+    #[test]
+    fn reenabling_an_unconsumed_once_automation_restores_its_future_slot() {
+        let (_temp_dir, db) = setup_automation_db();
+        let mut automation = sample_daily("09:00");
+        automation.schedule = once_schedule("2999-01-01", "09:00");
+        automation.schedule.timezone = Some("UTC".to_string());
+        automation.enabled = false;
+        automation.next_run_at = None;
+        save_automations(&db, std::slice::from_ref(&automation)).unwrap();
+
+        let (_, enabled) =
+            set_automation_enabled(&db, &automation.id, automation.version, true).unwrap();
+        assert_eq!(
+            enabled.next_run_at,
+            Some(
+                Utc.with_ymd_and_hms(2999, 1, 1, 9, 0, 0)
+                    .unwrap()
+                    .to_rfc3339()
+            ),
+        );
+    }
+
+    #[test]
+    fn run_listing_appends_duration_ms() {
+        let (_temp_dir, db) = setup_automation_db();
+        let automation = sample_daily("09:00");
+        save_automations(&db, std::slice::from_ref(&automation)).unwrap();
+        let run = create_manual_run(&db, &automation.id, automation.version).unwrap();
+        // 未完成的 run 不派生 duration
+        let running = list_automation_runs(&db, Some(&automation.id), 1).unwrap();
+        assert!(running[0].duration_ms.is_none());
+
+        complete_run(
+            &db,
+            &run.run_id,
+            run.attempt,
+            "success",
+            &[],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let runs = list_automation_runs(&db, Some(&automation.id), 1).unwrap();
+        let duration = runs[0].duration_ms.expect("finished run exposes duration");
+        assert!(duration >= 0);
+        // 追加字段以 duration_ms 键序列化（前端可忽略）
+        let serialized = serde_json::to_value(&runs[0]).unwrap();
+        assert!(serialized.get("duration_ms").is_some());
+    }
+
+    #[test]
+    fn retry_backoff_is_capped_at_24_hours() {
+        let (_temp_dir, db) = setup_automation_db();
+        let mut automation = sample_daily("09:00");
+        automation.max_retries = 5;
+        automation.retry_backoff_seconds = 86_400;
+        save_automations(&db, std::slice::from_ref(&automation)).unwrap();
+        let run = create_manual_run(&db, &automation.id, automation.version).unwrap();
+        // attempt=3 时未封顶的指数退避是 86400*4s，必须被压回 24h 以内
+        db.get_conn_safe()
+            .unwrap()
+            .execute(
+                "UPDATE automation_runs SET attempt = 3 WHERE id = ?1",
+                params![run.run_id],
+            )
+            .unwrap();
+        let before = Utc::now();
+        let outcome = retry_or_finish_run(
+            &db,
+            &run.run_id,
+            3,
+            &automation,
+            "error",
+            None,
+            "boom",
+            false,
+        )
+        .unwrap();
+        assert_eq!(outcome, RunFinalizeOutcome::RetryScheduled);
+        let next_attempt_at = list_automation_runs(&db, Some(&automation.id), 1).unwrap()[0]
+            .next_attempt_at
+            .clone()
+            .expect("retrying run has next_attempt_at");
+        let next = DateTime::parse_from_rfc3339(&next_attempt_at)
+            .unwrap()
+            .with_timezone(&Utc);
+        assert!(next <= before + chrono::Duration::seconds(MAX_RETRY_BACKOFF_SECS as i64 + 60));
     }
 
     #[test]
@@ -5901,6 +6720,7 @@ mod tests {
             kind: ScheduleKind::Monthly,
             time: "09:00".to_string(),
             weekday: None,
+            weekdays: None,
             day_of_month: Some(31),
             interval_minutes: None,
             date: None,
@@ -5924,6 +6744,7 @@ mod tests {
             kind: ScheduleKind::Weekdays,
             time: "09:00".to_string(),
             weekday: None,
+            weekdays: None,
             day_of_month: None,
             interval_minutes: None,
             date: None,
@@ -6318,6 +7139,7 @@ mod tests {
             kind: ScheduleKind::Daily,
             time: "02:30".to_string(),
             weekday: None,
+            weekdays: None,
             day_of_month: None,
             interval_minutes: None,
             date: None,

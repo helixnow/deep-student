@@ -13,7 +13,8 @@ use tauri::Manager;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::mcp_settings_store::{
-    read_mcp_tools_list, restore_list_snapshot, write_mcp_tools_list, MCP_TOOLS_LIST_KEY,
+    emit_mcp_list_changed, read_mcp_tools_list, restore_list_snapshot, write_mcp_tools_list,
+    MCP_TOOLS_LIST_KEY,
 };
 use super::self_inspect_executor::redact_sensitive_json;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
@@ -24,7 +25,8 @@ pub mod tool_names {
     pub const MCP_SERVER_PROPOSE: &str = "mcp_server_propose";
 }
 
-const ENV_PLACEHOLDER: &str = "<REQUIRED>";
+/// env 占位符：与 mcp_manage_executor 共享（用户未填 secret 前保持 disabled）
+pub(crate) const ENV_PLACEHOLDER: &str = "<REQUIRED>";
 const STDIO_TEST_TIMEOUT: Duration = Duration::from_secs(15);
 const REMOTE_TEST_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -39,7 +41,7 @@ const ALLOWED_TOP_LEVEL_KEYS: &[&str] = &[
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum McpTransport {
+pub(crate) enum McpTransport {
     Stdio,
     Sse,
     Http,
@@ -48,7 +50,7 @@ enum McpTransport {
 }
 
 impl McpTransport {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             McpTransport::Stdio => "stdio",
             McpTransport::Sse => "sse",
@@ -58,7 +60,7 @@ impl McpTransport {
         }
     }
 
-    fn parse(raw: &str) -> Result<Self, String> {
+    pub(crate) fn parse(raw: &str) -> Result<Self, String> {
         match raw.trim().to_ascii_lowercase().as_str() {
             "stdio" => Ok(McpTransport::Stdio),
             "sse" => Ok(McpTransport::Sse),
@@ -72,6 +74,115 @@ impl McpTransport {
                 other
             )),
         }
+    }
+}
+
+/// 连测错误脱敏：截断疑似凭据片段并限制长度（propose / manage 共用）。
+pub(crate) fn sanitize_test_error(raw: &str) -> String {
+    let mut out = raw.to_string();
+    for token in ["Bearer ", "api_key=", "apiKey=", "token=", "password="] {
+        if let Some(idx) = out.to_ascii_lowercase().find(&token.to_ascii_lowercase()) {
+            out.truncate(idx + token.len());
+            out.push_str("<redacted>");
+        }
+    }
+    if out.len() > 500 {
+        out.truncate(500);
+        out.push('…');
+    }
+    out
+}
+
+/// 对一条 server entry 做一次真实连测（propose / manage 共用）。
+/// env 中的占位符不会作为真实环境变量传给子进程。
+pub(crate) async fn run_connection_test(transport: McpTransport, entry: &Value) -> Value {
+    let noop_progress = |_: &str| {};
+    let test_future = async {
+        match transport {
+            McpTransport::Stdio => {
+                let command = entry
+                    .get("command")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                let args: Vec<String> = entry
+                    .get("args")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|a| a.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let env: HashMap<String, String> = entry
+                    .get("env")
+                    .and_then(|v| v.as_object())
+                    .map(|map| {
+                        map.iter()
+                            .filter_map(|(k, v)| {
+                                v.as_str()
+                                    .filter(|s| *s != ENV_PLACEHOLDER)
+                                    .map(|s| (k.clone(), s.to_string()))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                crate::cmd::mcp::mcp_test_helpers::test_stdio(
+                    command,
+                    args,
+                    Some(env),
+                    None,
+                    None,
+                    &noop_progress,
+                )
+                .await
+            }
+            McpTransport::WebSocket => {
+                let url = entry
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                crate::cmd::mcp::mcp_test_helpers::test_websocket(url).await
+            }
+            McpTransport::Sse => {
+                let endpoint = entry
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                crate::cmd::mcp::mcp_test_helpers::test_sse(endpoint, None, None).await
+            }
+            McpTransport::Http => {
+                let endpoint = entry
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                crate::cmd::mcp::mcp_test_helpers::test_http(endpoint, None, None).await
+            }
+            McpTransport::StreamableHttp => {
+                let url = entry
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                crate::cmd::mcp::mcp_test_helpers::test_streamable_http_rmcp(url, None).await
+            }
+        }
+    };
+
+    let timeout = match transport {
+        McpTransport::Stdio => STDIO_TEST_TIMEOUT,
+        _ => REMOTE_TEST_TIMEOUT,
+    };
+
+    match tokio::time::timeout(timeout, test_future).await {
+        Ok(result) => result,
+        Err(_) => json!({
+            "success": false,
+            "error": format!("connection test timed out after {}s", timeout.as_secs()),
+        }),
     }
 }
 
@@ -125,7 +236,7 @@ impl McpProposeExecutor {
         Ok(())
     }
 
-    fn parse_required_string(args: &Value, key: &str) -> Result<String, String> {
+    pub(crate) fn parse_required_string(args: &Value, key: &str) -> Result<String, String> {
         let value = args
             .get(key)
             .and_then(Value::as_str)
@@ -140,7 +251,11 @@ impl McpProposeExecutor {
         McpTransport::parse(&raw)
     }
 
-    fn parse_string_array(args: &Value, key: &str, required: bool) -> Result<Vec<String>, String> {
+    pub(crate) fn parse_string_array(
+        args: &Value,
+        key: &str,
+        required: bool,
+    ) -> Result<Vec<String>, String> {
         let Some(value) = args.get(key) else {
             return if required {
                 Err(format!("'{}' is required", key))
@@ -169,7 +284,7 @@ impl McpProposeExecutor {
         Ok(out)
     }
 
-    fn validate_https_url(url: &str) -> Result<(), String> {
+    pub(crate) fn validate_https_url(url: &str) -> Result<(), String> {
         let trimmed = url.trim();
         if !trimmed.to_ascii_lowercase().starts_with("https://") {
             return Err("Remote MCP url must use https://".to_string());
@@ -379,112 +494,6 @@ impl McpProposeExecutor {
             .map_err(|e| format!("failed to write provenance: {}", e))
     }
 
-    fn sanitize_test_error(raw: &str) -> String {
-        let mut out = raw.to_string();
-        for token in ["Bearer ", "api_key=", "apiKey=", "token=", "password="] {
-            if let Some(idx) = out.to_ascii_lowercase().find(&token.to_ascii_lowercase()) {
-                out.truncate(idx + token.len());
-                out.push_str("<redacted>");
-            }
-        }
-        if out.len() > 500 {
-            out.truncate(500);
-            out.push('…');
-        }
-        out
-    }
-
-    async fn run_connection_test(input: &ProposeInput, entry: &Value) -> Value {
-        let noop_progress = |_: &str| {};
-        let test_future = async {
-            match input.transport {
-                McpTransport::Stdio => {
-                    let command = entry
-                        .get("command")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
-                    let args: Vec<String> = entry
-                        .get("args")
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|a| a.as_str().map(str::to_string))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    let env: HashMap<String, String> = entry
-                        .get("env")
-                        .and_then(|v| v.as_object())
-                        .map(|map| {
-                            map.iter()
-                                .filter_map(|(k, v)| {
-                                    v.as_str()
-                                        .filter(|s| *s != ENV_PLACEHOLDER)
-                                        .map(|s| (k.clone(), s.to_string()))
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    crate::cmd::mcp::mcp_test_helpers::test_stdio(
-                        command,
-                        args,
-                        Some(env),
-                        None,
-                        None,
-                        &noop_progress,
-                    )
-                    .await
-                }
-                McpTransport::WebSocket => {
-                    let url = entry
-                        .get("url")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
-                    crate::cmd::mcp::mcp_test_helpers::test_websocket(url).await
-                }
-                McpTransport::Sse => {
-                    let endpoint = entry
-                        .get("url")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
-                    crate::cmd::mcp::mcp_test_helpers::test_sse(endpoint, None, None).await
-                }
-                McpTransport::Http => {
-                    let endpoint = entry
-                        .get("url")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
-                    crate::cmd::mcp::mcp_test_helpers::test_http(endpoint, None, None).await
-                }
-                McpTransport::StreamableHttp => {
-                    let url = entry
-                        .get("url")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
-                    crate::cmd::mcp::mcp_test_helpers::test_streamable_http_rmcp(url, None).await
-                }
-            }
-        };
-
-        let timeout = match input.transport {
-            McpTransport::Stdio => STDIO_TEST_TIMEOUT,
-            _ => REMOTE_TEST_TIMEOUT,
-        };
-
-        match tokio::time::timeout(timeout, test_future).await {
-            Ok(result) => result,
-            Err(_) => json!({
-                "success": false,
-                "error": format!("connection test timed out after {}s", timeout.as_secs()),
-            }),
-        }
-    }
-
     fn server_summary(entry: &Value, input: &ProposeInput) -> Value {
         let mut summary = Map::new();
         summary.insert("name".to_string(), json!(input.name));
@@ -518,23 +527,28 @@ impl McpProposeExecutor {
         ctx: &ExecutionContext,
         input: ProposeInput,
     ) -> Result<Value, String> {
-        let existing = Self::with_database(ctx, read_mcp_tools_list)?;
-        if let Some(reason) = Self::find_duplicate(&existing, &input) {
-            return Err(reason);
-        }
+        // 读→查重→写 临界区：与 mcp_manage_executor 共享同一把进程内锁
+        let (snapshot, entry, should_test) = {
+            let _guard = super::mcp_settings_store::mcp_list_mutation_guard();
+            let existing = Self::with_database(ctx, read_mcp_tools_list)?;
+            if let Some(reason) = Self::find_duplicate(&existing, &input) {
+                return Err(reason);
+            }
 
-        let snapshot = restore_list_snapshot(&existing);
-        let (entry, should_test) = Self::build_server_entry(&input);
-        let mut updated = existing;
-        updated.push(entry.clone());
+            let snapshot = restore_list_snapshot(&existing);
+            let (entry, should_test) = Self::build_server_entry(&input);
+            let mut updated = existing;
+            updated.push(entry.clone());
 
-        Self::with_database(ctx, |db| write_mcp_tools_list(db, &updated))?;
+            Self::with_database(ctx, |db| write_mcp_tools_list(db, &updated))?;
+            (snapshot, entry, should_test)
+        };
         Self::with_database(ctx, |db| {
             Self::write_provenance(db, &input, &ctx.session_id, should_test)
         })?;
 
         if should_test {
-            let test_result = Self::run_connection_test(&input, &entry).await;
+            let test_result = run_connection_test(input.transport, &entry).await;
             let success = test_result
                 .get("success")
                 .and_then(Value::as_bool)
@@ -546,7 +560,7 @@ impl McpProposeExecutor {
                     .get("error")
                     .or_else(|| test_result.get("message"))
                     .and_then(Value::as_str)
-                    .map(Self::sanitize_test_error)
+                    .map(sanitize_test_error)
                     .unwrap_or_else(|| "connection test failed".to_string());
                 return Err(format!(
                     "MCP connection test failed: {}. Configuration has been rolled back.",
@@ -560,6 +574,7 @@ impl McpProposeExecutor {
                 .map(|a| a.len())
                 .unwrap_or(0);
 
+            emit_mcp_list_changed(ctx.window_ref(), "mcp_server_propose");
             return Ok(redact_sensitive_json(json!({
                 "status": "installed_and_tested",
                 "message": format!("MCP server '{}' added and connection test succeeded ({} tools discovered).", input.name, tools_count),
@@ -573,6 +588,7 @@ impl McpProposeExecutor {
             })));
         }
 
+        emit_mcp_list_changed(ctx.window_ref(), "mcp_server_propose");
         Ok(redact_sensitive_json(json!({
             "status": "pending_secrets",
             "message": format!(

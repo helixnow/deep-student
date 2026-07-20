@@ -51,6 +51,19 @@ impl WorkspaceCoordinator {
         }
     }
 
+    /// 自定义子代理定义目录：`{workspaces_dir}/agents/*.md`（契约 C6）。
+    /// 只负责路径拼接，不负责创建目录。
+    pub fn custom_agents_dir(&self) -> std::path::PathBuf {
+        self.workspaces_dir.join("agents")
+    }
+
+    /// 自定义子代理 persona 提案区：`{workspaces_dir}/agents-pending/`。
+    /// 与 agents/ 同级的独立目录（不与 skill 提案区混用），由
+    /// custom_agent_propose 写入、custom_agent_apply 审批后落盘。
+    pub fn custom_agents_pending_dir(&self) -> std::path::PathBuf {
+        self.workspaces_dir.join("agents-pending")
+    }
+
     /// 设置 AppHandle，用于发射事件到前端
     pub fn with_app_handle(mut self, app_handle: AppHandle) -> Self {
         self.emitter = WorkspaceEventEmitter::new(Some(app_handle.clone()));
@@ -222,10 +235,14 @@ impl WorkspaceCoordinator {
             instances.remove(workspace_id)
         };
         if let Some(instance) = removed_instance {
+            // 🔧 生命周期泄漏修复：实例移除前取消所有未决睡眠，
+            // 否则超时 timer（最长 60 分钟）仍在后台跑并写已移除的 DB
+            instance.sleep_manager.cancel_all_active("workspace_closed");
             instance
                 .repo
                 .update_workspace_status(WorkspaceStatus::Completed)?;
         } else if let Ok(instance) = self.get_instance(workspace_id) {
+            instance.sleep_manager.cancel_all_active("workspace_closed");
             let _ = instance
                 .repo
                 .update_workspace_status(WorkspaceStatus::Completed);
@@ -458,6 +475,13 @@ impl WorkspaceCoordinator {
         }
         let mut normalized_type = message_type;
         if target_id.is_none() && !matches!(normalized_type, MessageType::Broadcast) {
+            // 诊断辅助：完成信封等定向消息若未带 target 会被强制广播，这里留痕便于排查
+            log::debug!(
+                "[WorkspaceCoordinator] send_message without target → forced broadcast: sender={}, original_type={:?}, workspace={}",
+                sender_id,
+                normalized_type,
+                workspace_id
+            );
             normalized_type = MessageType::Broadcast;
         }
         if target_id.is_some() && matches!(normalized_type, MessageType::Broadcast) {
@@ -574,6 +598,19 @@ impl WorkspaceCoordinator {
         }
 
         Ok(messages)
+    }
+
+    /// 🆕 契约 C12：查询某 agent inbox 中待消费（unread）的消息数
+    ///
+    /// 直接查 ws 库 inbox 表（DB 为准），不依赖内存 InboxManager——
+    /// 未加载的工作区实例经 get_instance 惰性恢复后同样可查。
+    pub fn pending_inbox_count(
+        &self,
+        workspace_id: &str,
+        session_id: &str,
+    ) -> Result<usize, String> {
+        let instance = self.get_instance(workspace_id)?;
+        instance.repo.count_unread_inbox(session_id)
     }
 
     pub fn has_pending_messages(&self, workspace_id: &str, session_id: &str) -> bool {
@@ -698,6 +735,34 @@ impl WorkspaceCoordinator {
     pub fn get_sleep_manager(&self, workspace_id: &str) -> Result<Arc<SleepManager>, String> {
         let instance = self.get_instance(workspace_id)?;
         Ok(Arc::clone(&instance.sleep_manager))
+    }
+
+    /// 取消所有已加载工作区的未决睡眠（幂等）。
+    ///
+    /// 供未来在应用退出钩子（如 lib.rs 的 on_exit / window close）接线调用，
+    /// 确保退出前所有阻塞在 coordinator_sleep 上的 Pipeline 收到取消式唤醒、
+    /// 超时任务被中止，不残留写半关闭 DB 的后台 timer。
+    /// 当前尚未在 lib.rs 挂载；close_workspace / delete_workspace 已在
+    /// 实例移除前对单个工作区做同样的收敛。
+    pub fn shutdown_all_sleeps(&self) {
+        let instances: Vec<Arc<WorkspaceInstance>> = {
+            let map = self.instances.read().unwrap_or_else(|poisoned| {
+                log::error!("[WorkspaceCoordinator] RwLock poisoned (read)! Attempting recovery");
+                poisoned.into_inner()
+            });
+            map.values().cloned().collect()
+        };
+
+        let mut total = 0usize;
+        for instance in instances {
+            total += instance.sleep_manager.cancel_all_active("app_shutdown");
+        }
+        if total > 0 {
+            log::info!(
+                "[WorkspaceCoordinator] shutdown_all_sleeps cancelled {} pending sleep(s)",
+                total
+            );
+        }
     }
 
     /// 🔧 P33 修复：发射唤醒事件（供 handler 调用）
@@ -1015,6 +1080,7 @@ impl WorkspaceCoordinator {
         });
 
         let mut failures = Vec::new();
+        let mut entered = Vec::new();
         for (id, instance) in instances.iter() {
             if let Err(e) = instance.db.enter_maintenance_mode() {
                 log::warn!(
@@ -1023,6 +1089,8 @@ impl WorkspaceCoordinator {
                     e
                 );
                 failures.push(format!("{}: {}", id, e));
+            } else {
+                entered.push((id, instance));
             }
         }
 
@@ -1032,15 +1100,27 @@ impl WorkspaceCoordinator {
                 instances.len()
             );
         } else {
+            let mut rollback_failures = Vec::new();
+            for (id, instance) in entered {
+                if let Err(error) = instance.db.exit_maintenance_mode() {
+                    rollback_failures.push(format!("{}: {}", id, error));
+                }
+            }
             log::warn!(
-                "[WorkspaceCoordinator] {} 个工作区进入维护模式失败: {:?}",
+                "[WorkspaceCoordinator] {} 个工作区进入维护模式失败，已回滚其余工作区: {:?}",
                 failures.len(),
                 failures
             );
+            let rollback_detail = if rollback_failures.is_empty() {
+                String::new()
+            } else {
+                format!("；回滚失败: {}", rollback_failures.join("; "))
+            };
             return Err(format!(
-                "{} 个工作区无法进入维护模式: {}",
+                "{} 个工作区无法进入维护模式: {}{}",
                 failures.len(),
-                failures.join("; ")
+                failures.join("; "),
+                rollback_detail
             ));
         }
 
@@ -1077,9 +1157,28 @@ impl WorkspaceCoordinator {
                 failures.len(),
                 failures
             );
+            return Err(format!(
+                "{} 个工作区无法退出维护模式（失败工作区保持 fail-close）: {}",
+                failures.len(),
+                failures.join("; ")
+            ));
         }
 
         Ok(())
+    }
+
+    /// 是否仍有已加载工作区处于排空/维护状态。
+    ///
+    /// 数据治理状态查询必须把工作区库纳入聚合；否则主库已恢复、某个
+    /// `ws_*.db` 仍 fail-close 时，前端会错误撤掉维护提示。
+    pub fn is_in_maintenance_mode(&self) -> bool {
+        let instances = self.instances.read().unwrap_or_else(|poisoned| {
+            log::error!("[WorkspaceCoordinator] RwLock poisoned (read)! Attempting recovery");
+            poisoned.into_inner()
+        });
+        instances
+            .values()
+            .any(|instance| instance.db.is_in_maintenance_mode())
     }
 }
 
@@ -1157,6 +1256,34 @@ mod tests {
             .get_unread_inbox(COORD, 10)
             .expect("unread inbox")
             .is_empty());
+    }
+
+    #[test]
+    fn close_workspace_cancels_active_sleeps() {
+        use super::super::sleep_manager::{SleepBlockData, WakeCondition, WakeReason};
+
+        let (_dir, coordinator, ws) = setup_coordinator();
+        let sleep_manager = coordinator
+            .get_sleep_manager(&ws.id)
+            .expect("sleep manager");
+
+        // 不设 timeout，避免依赖 tokio runtime
+        let data = SleepBlockData::new(
+            ws.id.clone(),
+            COORD.to_string(),
+            Vec::new(),
+            WakeCondition::ResultMessage,
+        );
+        let mut rx = sleep_manager.begin_sleep(&data).expect("begin sleep");
+        assert!(sleep_manager.is_sleep_active(&data.id));
+
+        coordinator.close_workspace(&ws.id).expect("close workspace");
+
+        // 未决睡眠收到取消式唤醒，注册表被清空
+        let payload = rx.try_recv().expect("cancel payload delivered");
+        assert_eq!(payload.reason, WakeReason::Cancelled);
+        assert_eq!(payload.awakened_by, "system");
+        assert!(!sleep_manager.is_sleep_active(&data.id));
     }
 
     #[test]

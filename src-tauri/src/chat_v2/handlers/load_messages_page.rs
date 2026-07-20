@@ -69,11 +69,20 @@ pub async fn chat_v2_load_messages_page(
         total
     );
 
+    // 可选 cursor：下一页起始偏移；本页取空或已覆盖到总数末尾时为 None
+    let consumed = offset.saturating_add(messages.len() as u32);
+    let next_offset = if !messages.is_empty() && consumed < total {
+        Some(consumed)
+    } else {
+        None
+    };
+
     Ok(LoadMessagesPageResponse {
         messages,
         blocks,
         total_message_count: total,
         offset,
         limit,
+        next_offset,
     })
 }

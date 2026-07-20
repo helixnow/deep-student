@@ -322,28 +322,61 @@ impl WorkspaceDatabase {
     }
 
     pub fn enter_maintenance_mode(&self) -> Result<(), String> {
-        if let Ok(conn) = self.get_connection() {
-            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
-        }
-
-        self.maintenance_mode
-            .store(true, std::sync::atomic::Ordering::Release);
-
         let mem_manager = SqliteConnectionManager::memory();
         let mem_pool = Pool::builder()
             .max_size(1)
             .build(mem_manager)
-            .map_err(|e| {
-                self.maintenance_mode
-                    .store(false, std::sync::atomic::Ordering::Release);
-                format!("创建内存连接池失败: {}", e)
-            })?;
+            .map_err(|e| format!("创建内存连接池失败: {}", e))?;
+
+        self.maintenance_mode
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+            )
+            .map_err(|_| "工作区数据库已经处于维护模式".to_string())?;
 
         let mut guard = self.pool.write().map_err(|e| {
             self.maintenance_mode
                 .store(false, std::sync::atomic::Ordering::Release);
             format!("Pool lock poisoned: {}", e)
         })?;
+
+        // maintenance flag 阻止新调用，pool 写锁封住已经通过第一次 flag 检查但尚未
+        // 取连接的竞态。等待所有已借出的磁盘连接归还后再 checkpoint；否则裸 DB
+        // 哈希/复制可能遗漏 WAL-only 提交。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let state = guard.state();
+            if state.connections == state.idle_connections {
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                self.maintenance_mode
+                    .store(false, std::sync::atomic::Ordering::Release);
+                return Err(format!(
+                    "等待工作区活动连接归还超时（active={}）",
+                    state.connections.saturating_sub(state.idle_connections)
+                ));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+
+        {
+            let conn = guard.get().map_err(|e| {
+                self.maintenance_mode
+                    .store(false, std::sync::atomic::Ordering::Release);
+                format!("获取工作区 checkpoint 连接失败: {}", e)
+            })?;
+            conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+                .map_err(|e| {
+                    self.maintenance_mode
+                        .store(false, std::sync::atomic::Ordering::Release);
+                    format!("工作区 WAL checkpoint 失败: {}", e)
+                })?;
+        }
+
         *guard = mem_pool;
 
         log::info!("[WorkspaceDatabase:{}] 已进入维护模式", self.workspace_id);
@@ -510,15 +543,7 @@ mod tests {
     #[test]
     fn validate_workspace_id_rejects_path_escapes() {
         for bad in [
-            "",
-            "..",
-            "../evil",
-            "a/b",
-            "a\\b",
-            "ws_..",
-            "ws_1\0",
-            "ws 1",
-            "ws_1.db",
+            "", "..", "../evil", "a/b", "a\\b", "ws_..", "ws_1\0", "ws 1", "ws_1.db",
         ] {
             assert!(
                 validate_workspace_id(bad).is_err(),

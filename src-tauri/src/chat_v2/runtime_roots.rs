@@ -1,3 +1,15 @@
+//! Chat V2 运行时根目录（runtime roots）——**文件系统 workspace root**
+//!
+//! ## ⚠️ 术语区分（防误改）
+//! 本文件中的 "workspace root"（`WORKSPACE_ROOT_KEY` 等）指的是**磁盘上的
+//! 文件系统工作目录**：agent 工具（local_shell / workspace_fs 等）被授权
+//! 读写的根路径，含授权白名单、信任指纹、provenance 台账。
+//!
+//! 与 `chat_v2/workspace/`（`workspace/types.rs` 的 `Workspace`）**不是同一
+//! 概念**：那边是「多 Agent 协作 workspace」——多个 agent 会话共享消息、
+//! 文档与收件箱的逻辑协作空间，与磁盘路径授权无关。修改任一侧时不要把
+//! 两者的类型或语义混用。
+
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
@@ -13,7 +25,8 @@ use crate::commands::AppState;
 
 const AUTHORIZED_ROOTS_KEY: &str = "chat_v2.runtime.authorized_roots";
 const WORKSPACE_ROOT_KEY: &str = "chat_v2.runtime.workspace_root";
-const SKILL_TRUST_KEY_PREFIX: &str = "chat_v2.skill_trust.";
+/// 后端技能信任记录键前缀（`skill_lifecycle_executor` 删除技能时需要清理同名记录）。
+pub(crate) const SKILL_TRUST_KEY_PREFIX: &str = "chat_v2.skill_trust.";
 
 /// Provenance ledger key prefix: `runtime_root.provenance.<root_id>`.
 pub(crate) const RUNTIME_ROOT_PROVENANCE_PREFIX: &str = "runtime_root.provenance.";
@@ -1205,13 +1218,20 @@ fn validate_skill_trust(
         .canonicalize()
         .map_err(|error| format!("Failed to resolve trusted skill package: {error}"))?;
     let identity = runtime_root_identity(&canonical)?;
-    if record.skill_id != skill_id
-        || record.canonical_path != canonical
-        || record.identity != identity
-    {
+    // 分字段报告哪一项绑定失效，便于用户/日志定位（不泄露记录中的敏感细节）
+    let mismatched_field = if record.skill_id != skill_id {
+        Some("skill id")
+    } else if record.canonical_path != canonical {
+        Some("package path")
+    } else if record.identity != identity {
+        Some("filesystem identity (device/inode)")
+    } else {
+        None
+    };
+    if let Some(field) = mismatched_field {
         return Err(format!(
-            "Skill '{}' trust binding no longer matches the installed package",
-            skill_id
+            "Skill '{}' trust binding no longer matches the installed package ({} changed); trust it again",
+            skill_id, field
         ));
     }
     let package_sha256 = current_skill_package_sha256(&canonical)?;

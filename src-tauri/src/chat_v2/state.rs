@@ -160,6 +160,15 @@ impl ChatV2State {
 
     /// 注册新的流式会话
     ///
+    /// # ⚠️ 遗留 API：新代码请使用 [`Self::try_register_stream`]
+    ///
+    /// 本方法会**静默覆盖**同 key 的已有注册（旧 token 不会被 cancel，
+    /// 旧任务失去被取消的能力），存在并发双流竞态。生产主路径
+    /// （send_message / variant / headless）均已改用原子的
+    /// `try_register_stream*`；本方法仅保留给单元测试与遗留调用，
+    /// 覆盖发生时会记录 warn 日志。未加 `#[deprecated]` 属性是为了避免
+    /// 现有测试代码产生编译警告。
+    ///
     /// 返回一个 CancellationToken，可用于：
     /// - 在流水线各阶段检查是否被取消：`token.is_cancelled()`
     /// - 在异步操作中等待取消：`token.cancelled().await`
@@ -189,13 +198,21 @@ impl ChatV2State {
             );
             poisoned.into_inner()
         });
-        guard.insert(
+        let replaced = guard.insert(
             session_id.to_string(),
             ActiveStream {
                 token: token.clone(),
                 generation,
             },
         );
+        if let Some(old) = replaced {
+            log::warn!(
+                "[ChatV2::state] register_stream OVERWROTE existing registration for session {} (old_generation={}, new_generation={}); old task can no longer be cancelled. Use try_register_stream instead.",
+                session_id,
+                old.generation,
+                generation
+            );
+        }
         log::info!(
             "[ChatV2::state] Registered stream for session: {}",
             session_id
@@ -344,35 +361,6 @@ impl ChatV2State {
     pub fn try_register_stream(&self, session_id: &str) -> Result<CancellationToken, ()> {
         self.try_register_stream_owned(session_id)
             .map(StreamRegistration::into_token)
-    }
-
-    /// Atomically register a caller-owned token without replacing an active stream.
-    pub(crate) fn try_register_existing_token(
-        &self,
-        key: &str,
-        token: CancellationToken,
-    ) -> Result<(), ()> {
-        if self.kill_switch.is_tripped() {
-            log::warn!(
-                "[ChatV2::state] try_register_existing_token rejected (AgentKillSwitch): {}",
-                key
-            );
-            return Err(());
-        }
-        let mut guard = self.active_streams.lock().unwrap_or_else(|poisoned| {
-            log::error!(
-                "[ChatV2::state] Mutex poisoned during try_register_existing_token! Attempting recovery"
-            );
-            poisoned.into_inner()
-        });
-        if guard.contains_key(key) {
-            log::warn!("[ChatV2::state] Stream key {} is already active", key);
-            return Err(());
-        }
-
-        let generation = self.allocate_stream_generation();
-        guard.insert(key.to_string(), ActiveStream { token, generation });
-        Ok(())
     }
 
     /// Atomically register a stream and return the token together with its cleanup identity.

@@ -318,8 +318,23 @@ pub fn find_role_pack(pack_id: &str, version: Option<&str>) -> Option<&'static R
         .iter()
         .filter(|pack| pack.id == pack_id);
     match version.map(str::trim).filter(|value| !value.is_empty()) {
+        // 显式指定版本时允许命中 deprecated 版本（调用方明确知道自己要什么）
         Some(version) => matches.into_iter().find(|pack| pack.version == version),
-        None => matches.max_by_key(|pack| version_parts(&pack.version)),
+        // 未指定版本时取「未弃用的最新版」；仅当该 id 全部弃用时才回退到弃用版最新，
+        // 避免默认解析到 deprecated pack。
+        None => {
+            let candidates: Vec<&'static RolePack> = matches.collect();
+            candidates
+                .iter()
+                .filter(|pack| !pack.deprecated)
+                .max_by_key(|pack| version_parts(&pack.version))
+                .or_else(|| {
+                    candidates
+                        .iter()
+                        .max_by_key(|pack| version_parts(&pack.version))
+                })
+                .copied()
+        }
     }
 }
 

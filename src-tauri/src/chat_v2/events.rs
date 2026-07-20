@@ -90,6 +90,8 @@ pub mod event_types {
     pub const TOOL_LIMIT: &str = "tool_limit";
     /// 技能瞬态注入审计（hidden transient skill messages）
     pub const SKILL_INJECTION_AUDIT: &str = "skill_injection_audit";
+    /// 🆕 工作区消息注入（契约 C11：主代理插话在子代理对话中实时渲染）
+    pub const WORKSPACE_INJECTION: &str = "workspace_injection";
 }
 
 // ============================================================
@@ -119,6 +121,12 @@ pub mod session_event_type {
     /// 注：原 `title_updated` 事件已废弃 —— 自动生成路径从未发射，
     /// 所有标题/简介更新统一走 `summary_updated`。
     pub const SUMMARY_UPDATED: &str = "summary_updated";
+    /// 🆕 自动压缩失败/被放弃（payload: {"reason": "<code>"}）
+    /// 仅自动触发（检查点/兜底）路径发射；手动压缩结果走命令返回值。
+    pub const COMPACTION_FAILED: &str = "compaction_failed";
+    /// 🆕 FIFO 截断实际丢弃了历史消息
+    /// （payload: {"droppedMessages": N, "estimatedDroppedTokens": M}）
+    pub const CONTEXT_TRIMMED: &str = "context_trimmed";
 }
 
 // ============================================================
@@ -496,6 +504,11 @@ pub struct SessionEvent {
     /// 简介（summary_updated 事件时提供）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+
+    /// 🆕 通用附加数据（compaction_failed / context_trimmed 等事件使用）。
+    /// `skip_serializing_if` 保持既有事件序列化形态不变（向后兼容）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload: Option<Value>,
 }
 
 impl SessionEvent {
@@ -524,6 +537,7 @@ impl SessionEvent {
             usage: None,
             title: None,
             description: None,
+            payload: None,
         }
     }
 
@@ -551,6 +565,7 @@ impl SessionEvent {
             usage: None,
             title: None,
             description: None,
+            payload: None,
         }
     }
 
@@ -573,6 +588,7 @@ impl SessionEvent {
             usage: None,
             title: None,
             description: None,
+            payload: None,
         }
     }
 
@@ -606,6 +622,7 @@ impl SessionEvent {
             usage,
             title: None,
             description: None,
+            payload: None,
         }
     }
 
@@ -628,6 +645,7 @@ impl SessionEvent {
             usage: None,
             title: None,
             description: None,
+            payload: None,
         }
     }
 
@@ -650,6 +668,7 @@ impl SessionEvent {
             usage: None,
             title: None,
             description: None,
+            payload: None,
         }
     }
 
@@ -672,6 +691,7 @@ impl SessionEvent {
             usage: None,
             title: None,
             description: None,
+            payload: None,
         }
     }
 
@@ -694,6 +714,68 @@ impl SessionEvent {
             usage: None,
             title: None,
             description: None,
+            payload: None,
+        }
+    }
+
+    /// 创建自动压缩失败事件
+    ///
+    /// 契约（与前端逐字约定）：eventType = "compaction_failed"，
+    /// payload = `{"reason": "<code>"}`（code 见 `CompactionSkipReason::as_code`）。
+    pub fn compaction_failed(session_id: &str, reason: &str) -> Self {
+        Self {
+            sequence_id: None,
+            session_id: session_id.to_string(),
+            event_type: session_event_type::COMPACTION_FAILED.to_string(),
+            message_id: None,
+            stream_generation: None,
+            skill_state_version: None,
+            replay_mode: None,
+            model_id: None,
+            retry_attempt: None,
+            retry_max: None,
+            error: None,
+            duration_ms: None,
+            timestamp: chrono::Utc::now().timestamp_millis(),
+            usage: None,
+            title: None,
+            description: None,
+            payload: Some(serde_json::json!({ "reason": reason })),
+        }
+    }
+
+    /// 创建 FIFO 截断可见化事件
+    ///
+    /// 契约（与前端逐字约定）：eventType = "context_trimmed"，
+    /// payload = `{"droppedMessages": N, "estimatedDroppedTokens": M}`
+    /// （estimatedDroppedTokens 可选，仅在有估算值时携带）。
+    pub fn context_trimmed(
+        session_id: &str,
+        dropped_messages: usize,
+        estimated_dropped_tokens: Option<usize>,
+    ) -> Self {
+        let mut payload = serde_json::json!({ "droppedMessages": dropped_messages });
+        if let Some(tokens) = estimated_dropped_tokens {
+            payload["estimatedDroppedTokens"] = serde_json::json!(tokens);
+        }
+        Self {
+            sequence_id: None,
+            session_id: session_id.to_string(),
+            event_type: session_event_type::CONTEXT_TRIMMED.to_string(),
+            message_id: None,
+            stream_generation: None,
+            skill_state_version: None,
+            replay_mode: None,
+            model_id: None,
+            retry_attempt: None,
+            retry_max: None,
+            error: None,
+            duration_ms: None,
+            timestamp: chrono::Utc::now().timestamp_millis(),
+            usage: None,
+            title: None,
+            description: None,
+            payload: Some(payload),
         }
     }
 
@@ -716,6 +798,7 @@ impl SessionEvent {
             usage: None,
             title: Some(title.to_string()),
             description: Some(description.to_string()),
+            payload: None,
         }
     }
 }
@@ -766,6 +849,15 @@ pub fn emit_failure_count() -> u64 {
     EMIT_FAILURE_COUNT.load(Ordering::Relaxed)
 }
 
+/// 只读诊断命令：读取跨会话累计的事件发射（window.emit）失败次数。
+///
+/// 用于前端诊断面板 / 排障时确认「事件丢失」是否来自 IPC 发射失败。
+/// 计数为进程级累计值，重启后归零。
+#[tauri::command]
+pub async fn chat_v2_get_emit_failure_count() -> Result<u64, String> {
+    Ok(emit_failure_count())
+}
+
 fn get_or_create_session_counter(session_id: &str) -> Arc<AtomicU64> {
     SESSION_SEQUENCE_COUNTERS
         .entry(session_id.to_string())
@@ -785,6 +877,14 @@ pub fn next_session_sequence_id(session_id: &str) -> u64 {
     counter.fetch_add(1, Ordering::SeqCst)
 }
 
+/// 清理会话的事件序列计数器（块级 + 会话级）。
+///
+/// 调用时机：硬删除、清空回收站、软删除（进回收站）。
+///
+/// 膨胀防护策略：计数器条目随会话删除即时回收；仍存活会话的条目数量
+/// 与「本次进程运行期间实际发生过流式的会话数」同阶（每条 ~几十字节），
+/// 属可接受上界，无需 TTL/LRU。若未来出现海量短生命周期会话场景，
+/// 可在此追加基于最近使用时间的定期清扫。
 pub fn clear_session_sequence_counter(session_id: &str) {
     SESSION_SEQUENCE_COUNTERS.remove(session_id);
     SESSION_EVENT_SEQUENCE_COUNTERS.remove(session_id);
@@ -1460,6 +1560,26 @@ impl ChatV2EventEmitter {
         self.emit_session(event);
     }
 
+    /// 🆕 发射自动压缩失败事件（仅自动路径；手动压缩结果走命令返回值）
+    pub fn emit_compaction_failed(&self, reason: &str) {
+        let event = SessionEvent::compaction_failed(&self.session_id, reason);
+        self.emit_session(event);
+    }
+
+    /// 🆕 发射 FIFO 截断可见化事件（仅在实际丢弃消息时调用）
+    pub fn emit_context_trimmed(
+        &self,
+        dropped_messages: usize,
+        estimated_dropped_tokens: Option<usize>,
+    ) {
+        let event = SessionEvent::context_trimmed(
+            &self.session_id,
+            dropped_messages,
+            estimated_dropped_tokens,
+        );
+        self.emit_session(event);
+    }
+
     // ========== 变体生命周期事件 ==========
 
     /// 发射 variant_start 事件
@@ -1704,6 +1824,7 @@ mod tests {
             usage: None,
             title: None, // stream_complete 事件不需要 title
             description: None,
+            payload: None,
         };
 
         let json = serde_json::to_string(&event).unwrap();
@@ -1863,6 +1984,47 @@ mod tests {
 
         assert_eq!(event.event_type, session_event_type::SAVE_COMPLETE);
         assert!(event.message_id.is_none());
+    }
+
+    /// 🆕 compaction_failed 事件：事件名与 payload 键名是与前端逐字约定的契约
+    #[test]
+    fn test_session_event_compaction_failed_contract() {
+        let event = SessionEvent::compaction_failed("sess_abc", "summaryFailed");
+        assert_eq!(event.event_type, "compaction_failed");
+        assert_eq!(event.session_id, "sess_abc");
+
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["eventType"], "compaction_failed");
+        assert_eq!(json["payload"]["reason"], "summaryFailed");
+    }
+
+    /// 🆕 context_trimmed 事件：payload 键名逐字契约；estimatedDroppedTokens 可选
+    #[test]
+    fn test_session_event_context_trimmed_contract() {
+        let event = SessionEvent::context_trimmed("sess_abc", 5, Some(1234));
+        assert_eq!(event.event_type, "context_trimmed");
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["eventType"], "context_trimmed");
+        assert_eq!(json["payload"]["droppedMessages"], 5);
+        assert_eq!(json["payload"]["estimatedDroppedTokens"], 1234);
+
+        // 无估算值时不携带 estimatedDroppedTokens 键
+        let event = SessionEvent::context_trimmed("sess_abc", 3, None);
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["payload"]["droppedMessages"], 3);
+        assert!(json["payload"].get("estimatedDroppedTokens").is_none());
+    }
+
+    /// 🆕 向后兼容：payload 为 None 的既有事件序列化中不出现 payload 键
+    #[test]
+    fn test_session_event_payload_absent_for_legacy_events() {
+        let event = SessionEvent::stream_complete("sess_abc", "msg_def", 100);
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(!json.contains("\"payload\""));
+        // 旧事件（无 payload 字段）也能反序列化
+        let legacy = r#"{"sessionId":"s","eventType":"stream_complete","timestamp":1}"#;
+        let parsed: SessionEvent = serde_json::from_str(legacy).unwrap();
+        assert!(parsed.payload.is_none());
     }
 
     #[test]

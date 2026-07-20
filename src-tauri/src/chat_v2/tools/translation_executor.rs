@@ -419,7 +419,11 @@ fn parse_translation_result_read_args(
     )?;
 
     Ok(TranslationResultReadArgs {
-        result_id: required_trimmed_string(arguments, "translation_result_id", MAX_RESULT_ID_CHARS)?,
+        result_id: required_trimmed_string(
+            arguments,
+            "translation_result_id",
+            MAX_RESULT_ID_CHARS,
+        )?,
         offset_chars: optional_bounded_usize(
             arguments,
             "offset_chars",
@@ -751,11 +755,9 @@ impl TranslationResultCache {
             return ClaimOutcome::NotFound;
         };
         if entry.claimed {
-            let stale = entry
-                .claimed_at
-                .is_none_or(|claimed_at| {
-                    now.saturating_duration_since(claimed_at) >= STALE_CLAIM_REDEEM_AFTER
-                });
+            let stale = entry.claimed_at.is_none_or(|claimed_at| {
+                now.saturating_duration_since(claimed_at) >= STALE_CLAIM_REDEEM_AFTER
+            });
             if !stale {
                 return ClaimOutcome::Busy;
             }
@@ -883,8 +885,7 @@ impl SegmentCheckpoint<'_> {
         let completed_source = &self.text[..self.completed_source_bytes];
         let completed_source_chars = completed_source.chars().count();
         let translated_chars = self.translated.chars().count();
-        let (translated_preview, _) =
-            unicode_preview(&self.translated, MAX_TOOL_TEXT_FIELD_CHARS);
+        let (translated_preview, _) = unicode_preview(&self.translated, MAX_TOOL_TEXT_FIELD_CHARS);
         let mut partial = json!({
             "partial": true,
             "completed_segments": self.completed_segments,
@@ -920,8 +921,7 @@ impl SegmentCheckpoint<'_> {
         match insert_result {
             Ok(result_id) => {
                 partial["translation_result_id"] = Value::String(result_id);
-                partial["expires_in_seconds"] =
-                    Value::from(TRANSLATION_RESULT_TTL.as_secs());
+                partial["expires_in_seconds"] = Value::from(TRANSLATION_RESULT_TTL.as_secs());
             }
             Err(cache_error) => {
                 log::warn!(
@@ -1990,7 +1990,8 @@ mod tests {
             segment_count: 3,
             ..CachedTranslationMeta::default()
         };
-        let metadata = TranslationToolExecutor::build_persisted_metadata(&partial_meta, "cached_result");
+        let metadata =
+            TranslationToolExecutor::build_persisted_metadata(&partial_meta, "cached_result");
         assert_eq!(metadata["partial"], true);
         assert_eq!(metadata["completedSegments"], 1);
         assert_eq!(metadata["segmentCount"], 3);

@@ -1,6 +1,19 @@
-//! ⚠️ DEPRECATED: 资源存储已迁移到 VFS (vfs.db)。
-//! 此模块操作 chat_v2.db 中的 resources 表，已被 vfs/repos/resource_repo.rs 替代。
-//! 计划在下一次大版本中移除。参见 P1-#9 审计发现。
+//! ⚠️⚠️⚠️ DEPRECATED — 禁止新增调用 ⚠️⚠️⚠️
+//!
+//! ## Deprecation inventory
+//! - **owner**: platform-chat
+//! - **removed**: `resource_*` Tauri 命令 / `resource_handlers.rs`（2026-07-20，零前端 invoke）
+//! - **remove target**: vNext（可删 chat_v2.db `resources` 表只读路径后整模块移除）
+//! - **replacement**: `crate::vfs::repos::VfsResourceRepo` / `vfs_*` 命令
+//!
+//! 资源存储的真源（source of truth）已迁移到 VFS (vfs.db)。
+//! 此模块操作 chat_v2.db 中的旧 resources 表；`resource_handlers` 已注销后本仓库
+//! 暂无生产调用方，仅保留以兼容历史 chat_v2.db 行与迁移/审计路径。
+//!
+//! ## 新代码指引
+//! - 读写资源请使用 `crate::vfs::repos::VfsResourceRepo` / `VfsFileRepo` / `VfsBlobRepo`。
+//! - 不要在任何新功能中 import 本模块的 `ResourceRepo`。
+//! - 若需要新的资源字段/查询，请加在 VFS 侧仓库并走 vfs migrations。
 //!
 //! ---
 //!

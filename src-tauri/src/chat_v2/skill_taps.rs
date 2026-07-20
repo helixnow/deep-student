@@ -348,8 +348,12 @@ pub(crate) fn repack_skill_subdir(
         if relative.is_empty() || relative.contains("..") {
             continue;
         }
-        // 排除隐藏文件/目录（.git、.DS_Store 等）
-        if relative.split('/').any(|seg| seg.starts_with('.')) {
+        // 排除隐藏文件/目录（.git、.DS_Store 等）；空段（绝对路径 "/x" 或
+        // "a//b"）一并拒绝，防止畸形条目混入重打包结果
+        if relative
+            .split('/')
+            .any(|seg| seg.is_empty() || seg.starts_with('.'))
+        {
             continue;
         }
         members.push((format!("{}/{}", dir_name, relative), i));

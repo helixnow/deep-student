@@ -57,8 +57,16 @@ pub struct SkillUpdateCheckResult {
     pub update_available: bool,
     pub source_kind: String,
     pub source_summary: String,
+    /// 本地记录的包哈希（provenance 中的 `package_sha256`，所有来源均为真实哈希）。
     pub current_sha256: String,
+    /// 远端包哈希。clawhub 来源的检查只比对 version、不下载包，故为 `None`。
     pub remote_sha256: Option<String>,
+    /// 已安装版本（目前仅 clawhub 来源填充）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_version: Option<String>,
+    /// 远端最新版本（目前仅 clawhub 来源填充）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_version: Option<String>,
     pub error: Option<String>,
 }
 
@@ -209,6 +217,8 @@ async fn check_clawhub_one(
                 source_summary,
                 current_sha256: provenance.package_sha256,
                 remote_sha256: None,
+                current_version: None,
+                remote_version: None,
                 error: Some(e),
             };
         }
@@ -223,8 +233,10 @@ async fn check_clawhub_one(
                 update_available: false,
                 source_kind: provenance.source_kind,
                 source_summary,
-                current_sha256: installed_version,
+                current_sha256: provenance.package_sha256,
                 remote_sha256: None,
+                current_version: Some(installed_version),
+                remote_version: None,
                 error: Some(e),
             };
         }
@@ -243,9 +255,13 @@ async fn check_clawhub_one(
                 update_available: outdated,
                 source_kind: provenance.source_kind,
                 source_summary,
-                // ClawHub 检查以 version 为准；复用 sha 字段承载版本字符串便于前端展示
-                current_sha256: installed_version,
-                remote_sha256: if remote_version.is_empty() {
+                // ClawHub 检查只比对 version、不重新下载包：sha 字段保留本地
+                // 真实哈希，remote_sha256 无法得知故为 None；版本漂移在
+                // current_version/remote_version 中表达。
+                current_sha256: provenance.package_sha256,
+                remote_sha256: None,
+                current_version: Some(installed_version),
+                remote_version: if remote_version.is_empty() {
                     None
                 } else {
                     Some(remote_version)
@@ -259,8 +275,10 @@ async fn check_clawhub_one(
             update_available: false,
             source_kind: provenance.source_kind,
             source_summary,
-            current_sha256: installed_version,
+            current_sha256: provenance.package_sha256,
             remote_sha256: None,
+            current_version: Some(installed_version),
+            remote_version: None,
             error: Some(e),
         },
     }
@@ -285,6 +303,8 @@ async fn check_one(
             source_summary,
             current_sha256: provenance.package_sha256,
             remote_sha256: None,
+            current_version: None,
+            remote_version: None,
             error: None,
         };
     }
@@ -301,6 +321,8 @@ async fn check_one(
                 source_summary,
                 current_sha256: provenance.package_sha256,
                 remote_sha256: Some(remote),
+                current_version: None,
+                remote_version: None,
                 error: None,
             }
         }
@@ -312,6 +334,8 @@ async fn check_one(
             source_summary,
             current_sha256: provenance.package_sha256,
             remote_sha256: None,
+            current_version: None,
+            remote_version: None,
             error: Some(e),
         },
     }

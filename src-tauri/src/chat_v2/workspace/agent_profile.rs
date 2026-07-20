@@ -2,6 +2,13 @@
 //!
 //! A profile is resolved before an agent is persisted. `skill_id` remains a
 //! compatibility alias, but never acts as the agent's runtime configuration.
+//!
+//! Profiles are consumed for real by `run_workspace_agent_backend`
+//! (handlers/workspace_handlers.rs): `system_instructions` becomes the worker
+//! system prompt (plus a workspace preamble), `model_id` selects the model, and
+//! `allowed_tools` drives both schema injection (headless read-only schemas)
+//! and the fail-closed execution whitelist. Tool names must therefore match
+//! real executor names (`builtin-*`).
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -73,6 +80,9 @@ pub struct AgentPermissions {
 #[serde(rename_all = "camelCase")]
 pub struct AgentProfile {
     pub id: String,
+    /// 人类可读的一句话简介（列表/管理 UI 展示用，不参与运行时行为）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     pub instructions: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -145,24 +155,28 @@ impl AgentProfileResolver {
         match id {
             DEFAULT_PROFILE_ID => Some(AgentProfile {
                 id: DEFAULT_PROFILE_ID.into(),
+                description: Some("通用子代理：完成委派任务并向父代理返回简明结论。".into()),
                 instructions: "Complete the delegated task and return a concise, evidence-backed result to the parent agent.".into(),
                 model: None,
                 reasoning_effort: Some(ReasoningEffort::Medium),
-                allowed_tools: vec!["workspace_send".into(), "workspace_query".into()],
+                allowed_tools: vec![
+                    "builtin-workspace_send".into(),
+                    "builtin-workspace_query".into(),
+                ],
                 permissions: AgentPermissions::default(),
                 context_inheritance: ContextInheritance::Summary,
                 skills: vec![],
             }),
             WORKER_PROFILE_ID => Some(AgentProfile {
                 id: WORKER_PROFILE_ID.into(),
+                description: Some("执行型子代理：独立完成任务、自行验证并汇报结果。".into()),
                 instructions: "Execute the delegated task independently. Use the available tools, verify the result, and report completion to the parent agent.".into(),
                 model: None,
                 reasoning_effort: Some(ReasoningEffort::High),
+                // Worker 定位是纯执行 + 汇报：与 default 相同的协作工具面
                 allowed_tools: vec![
-                    "workspace_send".into(),
-                    "workspace_query".into(),
-                    "read_file".into(),
-                    "search_files".into(),
+                    "builtin-workspace_send".into(),
+                    "builtin-workspace_query".into(),
                 ],
                 permissions: AgentPermissions {
                     sandbox: SandboxMode::WorkspaceWrite,
@@ -174,15 +188,24 @@ impl AgentProfileResolver {
             }),
             EXPLORER_PROFILE_ID => Some(AgentProfile {
                 id: EXPLORER_PROFILE_ID.into(),
+                description: Some("调研型子代理：只读探索与检索，产出带出处的调研结论。".into()),
                 instructions: "Investigate the delegated question. Prefer primary evidence, keep exploration read-only, and return findings with concrete references.".into(),
                 model: None,
                 reasoning_effort: Some(ReasoningEffort::High),
+                // 除协作工具外，全部为 headless 只读白名单的子集（backend 有现成 schema）
                 allowed_tools: vec![
-                    "workspace_send".into(),
-                    "workspace_query".into(),
-                    "read_file".into(),
-                    "search_files".into(),
-                    "web_search".into(),
+                    "builtin-workspace_send".into(),
+                    "builtin-workspace_query".into(),
+                    "builtin-unified_search".into(),
+                    "builtin-rag_search".into(),
+                    "builtin-web_search".into(),
+                    "builtin-web_fetch".into(),
+                    "builtin-resource_list".into(),
+                    "builtin-resource_read".into(),
+                    "builtin-resource_search".into(),
+                    "builtin-folder_list".into(),
+                    "builtin-memory_read".into(),
+                    "builtin-memory_list".into(),
                 ],
                 permissions: AgentPermissions {
                     sandbox: SandboxMode::ReadOnly,
@@ -197,6 +220,26 @@ impl AgentProfileResolver {
     }
 
     pub fn resolve(selection: AgentProfileSelection) -> Result<AgentProfile, String> {
+        Self::resolve_with_custom(selection, None)
+    }
+
+    /// 契约 C6：与 [`Self::resolve`] 相同，但允许附加一个自定义子代理定义
+    /// 目录（`{workspaces_dir}/agents/*.md`，见 `custom_agents` 模块）。
+    ///
+    /// 解析顺序：显式 `profile_id` → 内建优先，内建没有再查 custom
+    /// （[`super::custom_agents::find_custom_profile`]）；都没有时错误信息
+    /// 列出全部可用 profile id（内建 + 目录里的自定义名单）。
+    ///
+    /// - `custom_agents_dir=None` 时行为与原 `resolve` 完全一致；
+    /// - overrides（model 等）在 custom profile 上同样生效；
+    /// - `skill_id` legacy 别名逻辑不变：只有内建 id 能作为别名选中 profile，
+    ///   未知值仍作为技能记录挂到选中的 profile 上；
+    /// - 注意：自定义文件的 `skills:` 字段解析后写入 `profile.skills` 仅作
+    ///   记录，运行时**不会**自动加载技能内容（当前限制，防止误导）。
+    pub fn resolve_with_custom(
+        selection: AgentProfileSelection,
+        custom_agents_dir: Option<&std::path::Path>,
+    ) -> Result<AgentProfile, String> {
         let legacy_skill = selection
             .skill_id
             .as_deref()
@@ -209,8 +252,29 @@ impl AgentProfileResolver {
             .filter(|s| !s.is_empty())
             .or_else(|| legacy_skill.filter(|id| Self::built_in(id).is_some()))
             .unwrap_or(WORKER_PROFILE_ID);
-        let mut profile = Self::built_in(selected_id)
-            .ok_or_else(|| format!("Unknown agent profile: {selected_id}"))?;
+        let mut profile = match Self::built_in(selected_id) {
+            Some(profile) => profile,
+            None => custom_agents_dir
+                .and_then(|dir| super::custom_agents::find_custom_profile(dir, selected_id))
+                .ok_or_else(|| {
+                    let mut available: Vec<String> = vec![
+                        DEFAULT_PROFILE_ID.to_string(),
+                        WORKER_PROFILE_ID.to_string(),
+                        EXPLORER_PROFILE_ID.to_string(),
+                    ];
+                    if let Some(dir) = custom_agents_dir {
+                        available.extend(
+                            super::custom_agents::load_custom_profiles(dir)
+                                .into_iter()
+                                .map(|p| p.id),
+                        );
+                    }
+                    format!(
+                        "Unknown agent profile: {selected_id}. Available profiles: {}",
+                        available.join(", ")
+                    )
+                })?,
+        };
 
         if let Some(skill) = legacy_skill.filter(|id| Self::built_in(id).is_none()) {
             profile.skills.push(skill.to_string());
@@ -304,6 +368,12 @@ impl AgentProfileResolver {
                 profile.model = None;
             }
         }
+        if let Some(description) = &mut profile.description {
+            *description = description.trim().to_string();
+            if description.is_empty() {
+                profile.description = None;
+            }
+        }
         normalize_ids(&mut profile.allowed_tools, "tool")?;
         normalize_ids(&mut profile.skills, "skill")?;
         Ok(())
@@ -339,7 +409,66 @@ mod tests {
         .unwrap();
         assert_eq!(profile.id, WORKER_PROFILE_ID);
         assert_eq!(profile.skills, vec!["code_review"]);
-        assert!(!profile.allowed_tools.is_empty());
+        assert_eq!(
+            profile.allowed_tools,
+            vec!["builtin-workspace_send", "builtin-workspace_query"]
+        );
+    }
+
+    #[test]
+    fn built_in_tools_use_real_executor_names() {
+        for id in [DEFAULT_PROFILE_ID, WORKER_PROFILE_ID, EXPLORER_PROFILE_ID] {
+            let profile = AgentProfileResolver::built_in(id).unwrap();
+            assert!(profile
+                .allowed_tools
+                .iter()
+                .all(|tool| tool.starts_with("builtin-")));
+            assert!(profile
+                .allowed_tools
+                .contains(&"builtin-workspace_send".to_string()));
+            assert!(profile
+                .allowed_tools
+                .contains(&"builtin-workspace_query".to_string()));
+        }
+    }
+
+    #[test]
+    fn explorer_extra_tools_are_headless_read_only_subset() {
+        let profile = AgentProfileResolver::built_in(EXPLORER_PROFILE_ID).unwrap();
+        for tool in profile
+            .allowed_tools
+            .iter()
+            .filter(|tool| !tool.starts_with("builtin-workspace_"))
+        {
+            assert!(
+                crate::chat_v2::headless::is_headless_allowed_tool(tool),
+                "explorer tool {tool} must be part of the headless read-only whitelist"
+            );
+        }
+    }
+
+    #[test]
+    fn description_is_trimmed_and_empty_becomes_none() {
+        let mut profile = AgentProfileResolver::built_in(DEFAULT_PROFILE_ID).unwrap();
+        profile.description = Some("  一句话简介  ".into());
+        AgentProfileResolver::validate_and_normalize(&mut profile).unwrap();
+        assert_eq!(profile.description.as_deref(), Some("一句话简介"));
+
+        profile.description = Some("   ".into());
+        AgentProfileResolver::validate_and_normalize(&mut profile).unwrap();
+        assert_eq!(profile.description, None);
+
+        // 旧持久化 metadata 无 description 字段：serde default 反序列化安全
+        let legacy = serde_json::json!({
+            "agent_profile": {
+                "id": "worker",
+                "instructions": "legacy instructions",
+            }
+        });
+        let restored = AgentProfileResolver::from_metadata(Some(&legacy))
+            .unwrap()
+            .unwrap();
+        assert_eq!(restored.description, None);
     }
 
     #[test]
@@ -359,7 +488,10 @@ mod tests {
             profile_id: Some(DEFAULT_PROFILE_ID.into()),
             overrides: AgentProfileOverride {
                 model: Some(" model-config-1 ".into()),
-                allowed_tools: Some(vec!["read_file".into(), "read_file".into()]),
+                allowed_tools: Some(vec![
+                    "builtin-web_search".into(),
+                    "builtin-web_search".into(),
+                ]),
                 ..Default::default()
             },
             ..Default::default()
@@ -367,7 +499,69 @@ mod tests {
         .unwrap();
         let runtime = AgentRuntimeConfig::from(&profile);
         assert_eq!(runtime.model_id.as_deref(), Some("model-config-1"));
-        assert_eq!(runtime.allowed_tools, vec!["read_file"]);
+        assert_eq!(runtime.allowed_tools, vec!["builtin-web_search"]);
+    }
+
+    #[test]
+    fn resolve_with_custom_falls_back_to_directory_and_applies_overrides() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("paper-summarizer.md"),
+            "---\nname: paper-summarizer\nbase: explorer\nmodel: file-model\n---\nSummarize papers.\n",
+        )
+        .unwrap();
+
+        // 内建优先：worker 不会被目录内容影响
+        let built_in = AgentProfileResolver::resolve_with_custom(
+            AgentProfileSelection {
+                profile_id: Some(WORKER_PROFILE_ID.into()),
+                ..Default::default()
+            },
+            Some(dir.path()),
+        )
+        .unwrap();
+        assert_eq!(built_in.id, WORKER_PROFILE_ID);
+
+        // 内建没有 → 查 custom；overrides（model）在 custom 上生效
+        let custom = AgentProfileResolver::resolve_with_custom(
+            AgentProfileSelection {
+                profile_id: Some("paper-summarizer".into()),
+                overrides: AgentProfileOverride {
+                    model: Some("override-model".into()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            Some(dir.path()),
+        )
+        .unwrap();
+        assert_eq!(custom.id, "paper-summarizer");
+        assert_eq!(custom.instructions, "Summarize papers.");
+        assert_eq!(custom.model.as_deref(), Some("override-model"));
+
+        // 都没有 → 错误信息列出内建 + 自定义全部可用 id
+        let error = AgentProfileResolver::resolve_with_custom(
+            AgentProfileSelection {
+                profile_id: Some("nonexistent".into()),
+                ..Default::default()
+            },
+            Some(dir.path()),
+        )
+        .unwrap_err();
+        for id in ["default", "worker", "explorer", "paper-summarizer"] {
+            assert!(error.contains(id), "error must list available id {id}: {error}");
+        }
+
+        // custom_dir=None 等价原 resolve：仅列内建
+        let error_no_dir = AgentProfileResolver::resolve_with_custom(
+            AgentProfileSelection {
+                profile_id: Some("paper-summarizer".into()),
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap_err();
+        assert!(error_no_dir.contains("Unknown agent profile"));
     }
 
     #[test]

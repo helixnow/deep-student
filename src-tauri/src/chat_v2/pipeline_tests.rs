@@ -2126,7 +2126,7 @@ fn test_runtime_facts_describes_non_interactive_shell_limits() {
 }
 
 #[test]
-fn test_runtime_facts_platform_contract_covers_windows_and_macos() {
+fn test_runtime_facts_platform_contract_covers_desktop_platforms() {
     let macos = super::context::local_shell_contract_for_platform("macos");
     assert_eq!(macos.invocation, Some("/bin/sh -c"));
     assert_eq!(macos.shell_kind, "posix_sh");
@@ -2138,4 +2138,16 @@ fn test_runtime_facts_platform_contract_covers_windows_and_macos() {
     );
     assert_eq!(windows.shell_kind, "windows_powershell");
     assert_eq!(windows.output_encoding, Some("utf-8"));
+
+    let linux = super::context::local_shell_contract_for_platform("linux");
+    assert_eq!(linux.invocation, Some("/bin/sh -c"));
+    assert_eq!(linux.sandbox_backend, "linux_bwrap");
+    assert_eq!(linux.shell_kind, "posix_sh");
+    assert_eq!(linux.output_encoding, Some("utf-8"));
+    assert!(linux.execution_supported);
+
+    // 移动端（Android target_os = "android"）不命中 linux 分支，保持 fail-closed
+    let android = super::context::local_shell_contract_for_platform("android");
+    assert_eq!(android.sandbox_backend, "unavailable");
+    assert!(!android.execution_supported);
 }

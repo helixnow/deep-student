@@ -51,9 +51,7 @@ pub async fn chat_v2_tool_approval_respond(
     arguments: Option<Value>,
 ) -> Result<(), String> {
     if tool_call_id.trim().is_empty() {
-        return Err(
-            ChatV2Error::InvalidInput("tool_call_id must not be empty".to_string()).into(),
-        );
+        return Err(ChatV2Error::InvalidInput("tool_call_id must not be empty".to_string()).into());
     }
     let remember_session = remember_session.unwrap_or(false);
     log::info!(

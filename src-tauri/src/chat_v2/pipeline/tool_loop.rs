@@ -151,6 +151,11 @@ impl ChatV2Pipeline {
         // 工具轮次必须在同一个 future 内迭代。这里曾通过 Box::pin 自递归，
         // 每轮都会嵌套 poll 一个体积很大的 future，多轮工具调用可耗尽 Tokio worker 栈。
         let mut recursion_depth = recursion_depth;
+        // 工作区注入节流状态：在整个工具循环生命周期内复用，
+        // 让冷却时间与 max_injections_per_round 跨多轮工具检查点真实生效
+        // （此前每个检查点都 new 一个注入器，节流形同虚设）
+        let mut workspace_injection_throttle =
+            super::super::workspace::injector::InjectionThrottle::new();
         loop {
             // ============================================================
             // 🆕 2026-07 Doom loop 终止：上一轮检测到同一「工具名+参数」指纹
@@ -262,6 +267,77 @@ impl ChatV2Pipeline {
                 return Ok(());
             }
 
+            // ============================================================
+            // 🔧 P1-4：工具环内 compaction —— 检查点 A/B 命中阈值后不再只设标志
+            // 等回合结束（pipeline 阶段 7），改为在下一轮 LLM 调用前真正执行压缩，
+            // 防止长工具链在环内上下文溢出。防重入由 session 级 compaction_locks
+            // 保证（与回合末路径复用同一把锁）。
+            // ============================================================
+            if ctx.needs_compaction {
+                match self.run_compaction(ctx).await {
+                    Ok(outcome) if outcome.did_compact() => {
+                        // 压缩已落盘：重新加载历史并重编译冻结上下文，让本轮 prompt
+                        // 立即应用压缩视图（隐藏旧消息 + 注入锚定摘要）。
+                        // ctx.tool_results（当前环内工具链）独立于 chat_history，
+                        // 仍会在下方全量追加，不受重载影响。
+                        let prev_history = ctx.chat_history.clone();
+                        let reload_ok = match self.load_chat_history(ctx).await {
+                            Ok(()) => match self.compile_frozen_context(ctx).await {
+                                Ok(()) => true,
+                                Err(e) => {
+                                    log::warn!(
+                                        "[ChatV2::pipeline] In-loop context recompile after compaction failed: {}; keeping pre-compaction in-memory history",
+                                        e
+                                    );
+                                    false
+                                }
+                            },
+                            Err(e) => {
+                                log::warn!(
+                                    "[ChatV2::pipeline] In-loop history reload after compaction failed: {}; keeping pre-compaction in-memory history",
+                                    e
+                                );
+                                false
+                            }
+                        };
+                        if reload_ok {
+                            log::info!(
+                                "[ChatV2::pipeline] In-loop compaction applied at depth={}: history now {} messages",
+                                recursion_depth,
+                                ctx.chat_history.len()
+                            );
+                            // 🆕 重载后若压缩视图仍不够、发生了 FIFO 截断，上报事件
+                            self.notify_context_trimmed(ctx, &emitter);
+                        } else {
+                            // 回滚到压缩前的内存历史（压缩记录已落盘，下次
+                            // load_chat_history 仍会应用视图），本轮沿用旧 prompt
+                            ctx.chat_history = prev_history;
+                        }
+                    }
+                    // 跳过/无需（锁占用/会话过短等），标志已在 run_compaction 内清零；
+                    // 🆕 真正失败（摘要失败/lineage 失效）时发 compaction_failed 事件
+                    Ok(outcome) => {
+                        if outcome.is_failed() {
+                            if let Some(reason) = outcome.reason_code() {
+                                emitter.emit_compaction_failed(reason);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        // DB 硬错误：清零标志防止环内反复重试，退化为 FIFO 截断
+                        log::error!(
+                            "[ChatV2::pipeline] In-loop compaction failed for session={} (non-fatal, falling back to FIFO trim): {}",
+                            ctx.session_id,
+                            e
+                        );
+                        ctx.needs_compaction = false;
+                        emitter.emit_compaction_failed(
+                            super::compaction::CompactionSkipReason::InternalError.as_code(),
+                        );
+                    }
+                }
+            }
+
             log::info!(
             "[ChatV2::pipeline] Executing LLM call: session={}, recursion_depth={}, tool_results={}",
             ctx.session_id,
@@ -307,10 +383,7 @@ impl ChatV2Pipeline {
                 skill_contents,
                 ctx.options.skill_dependencies.as_ref(),
                 // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
-                ctx.options
-                    .context_limit
-                    .filter(|v| *v > 0)
-                    .map(|v| v as usize),
+                ctx.options.context_limit.map(|v| v as usize),
             );
             let skill_audit = transient_skill_messages.audit.clone();
             let injected_skill_count = skill_audit.injected_skill_ids.len();
@@ -758,7 +831,10 @@ impl ChatV2Pipeline {
             // 🔧 F2 修复：超时语义从「总时长 600s」改为「空闲 600s + 绝对上限 2h」。
             // 长 agentic 生成只要流式持续健康输出就不会被掐断；
             // 真正挂起（10 分钟无任何数据）或病态慢滴流（总时长 2h）才超时。
-            let idle_limit = Duration::from_secs(LLM_STREAM_TIMEOUT_SECS);
+            // 🔧 2026-07：空闲阈值与是否断流改为每次请求时读取设置
+            // chat.stream.timeout_ms / chat.stream.auto_cancel_on_timeout（无需重启生效）。
+            let stream_idle_cfg = load_stream_idle_config(self.main_db.as_ref());
+            let idle_limit = stream_idle_cfg.idle_limit;
             let total_limit = Duration::from_secs(LLM_STREAM_MAX_TOTAL_SECS);
             let timeout_error = |reason: String| crate::models::AppError::llm(reason);
             let is_retryable_llm_error = |err_str: &str| {
@@ -782,6 +858,7 @@ impl ChatV2Pipeline {
                     llm_future,
                     idle_limit,
                     total_limit,
+                    stream_idle_cfg.cancel_on_idle,
                     move || adapter_for_idle.idle_elapsed(),
                 )
                 .await
@@ -917,6 +994,7 @@ impl ChatV2Pipeline {
                             retry_future,
                             idle_limit,
                             total_limit,
+                            stream_idle_cfg.cancel_on_idle,
                             move || adapter_for_idle.idle_elapsed(),
                         )
                         .await
@@ -965,7 +1043,8 @@ impl ChatV2Pipeline {
             // 🔧 P1-1 修复：llm_manager 存在与 pipeline CancellationToken 平行的第二条取消通道
             // （registry / cancel channel），触发时正常返回 Ok(cancelled=true)。
             // 必须记录该标志并在下方短路，否则「已停止」的会话仍会执行带副作用的工具调用并继续递归。
-            let mut llm_stream_cancelled = false;
+            // （Err 分支所有路径都会提前 return，因此这里不需要初始值。）
+            let llm_stream_cancelled;
             match call_result {
                 Ok(output) => {
                     llm_stream_cancelled = output.cancelled;
@@ -1241,12 +1320,13 @@ impl ChatV2Pipeline {
                 // 确保 thinking 块等已生成内容在工具执行（可能阻塞）前被持久化
                 // 关键场景：coordinator_sleep 会阻塞，如果只在工具执行后保存，保存永远不会执行
                 // ============================================================
-                if let Err(e) = self.save_intermediate_results(ctx).await {
-                    log::warn!(
-                    "[ChatV2::pipeline] Failed to save intermediate results before tool execution: {}",
-                    e
-                );
-                } else if !ctx.interleaved_blocks.is_empty() {
+                // 🔧 P0-3 修复：进入可能长阻塞的工具执行前，关键保存失败重试一次，
+                // 仍失败升级 error（见 save_intermediate_results_with_retry），不中断流程
+                if self
+                    .save_intermediate_results_with_retry(ctx, "pre-tool-execution")
+                    .await
+                    && !ctx.interleaved_blocks.is_empty()
+                {
                     log::info!(
                         "[ChatV2::pipeline] Pre-tool intermediate save completed, blocks={}",
                         ctx.interleaved_block_ids.len()
@@ -1537,13 +1617,12 @@ impl ChatV2Pipeline {
                 // 🆕 P15 修复：工具执行后中间保存点
                 // 确保工具执行结果被持久化，防止后续阻塞操作（如睡眠）期间刷新丢失数据
                 // ============================================================
-                if let Err(e) = self.save_intermediate_results(ctx).await {
-                    log::warn!(
-                    "[ChatV2::pipeline] Failed to save intermediate results after tool execution: {}",
-                    e
-                );
-                    // 不阻塞流程，继续执行
-                } else {
+                // 🔧 P0-3 修复：工具结果保存同样重试一次（后续可能进入阻塞等待），
+                // 仍失败升级 error，不阻塞流程
+                if self
+                    .save_intermediate_results_with_retry(ctx, "post-tool-execution")
+                    .await
+                {
                     log::info!(
                     "[ChatV2::pipeline] Intermediate save completed after tool round {}, blocks={}",
                     recursion_depth,
@@ -1560,16 +1639,30 @@ impl ChatV2Pipeline {
                         use super::super::workspace::WorkspaceInjector;
 
                         let injector = WorkspaceInjector::new(coordinator.clone());
-                        let max_injections = 2u32; // 工具执行后最多处理 2 批消息
+                        let max_injections = 2u32; // 整个工具循环内最多处理 2 批消息
 
-                        if let Ok(injection_result) =
-                            injector.check_and_inject(workspace_id, &ctx.session_id, max_injections)
-                        {
+                        if let Ok(injection_result) = injector.check_and_inject(
+                            &mut workspace_injection_throttle,
+                            workspace_id,
+                            &ctx.session_id,
+                            max_injections,
+                        ) {
                             if !injection_result.messages.is_empty() {
                                 let formatted = WorkspaceInjector::format_injected_messages(
                                     &injection_result.messages,
                                 );
-                                ctx.inject_workspace_messages(formatted);
+                                // 🆕 契约 C11：内存注入照旧，持久化 + 事件发射为附加动作
+                                // （借用冲突规避：workspace_id 借自 ctx，先克隆再传 &mut ctx）
+                                let workspace_id_owned = workspace_id.to_string();
+                                ctx.inject_workspace_messages(formatted.clone());
+                                self.persist_and_emit_workspace_injection(
+                                    ctx,
+                                    &emitter,
+                                    &workspace_id_owned,
+                                    &injection_result.messages,
+                                    &formatted,
+                                    Some(round_id.as_str()),
+                                );
 
                                 log::info!(
                                 "[ChatV2::pipeline] Workspace tool-phase injection: {} messages, depth={}",
@@ -1704,6 +1797,207 @@ impl ChatV2Pipeline {
             block_id,
             ctx.assistant_message_id
         );
+    }
+
+    /// 🆕 契约 C11：工作区注入消息持久化 + 事件发射
+    ///
+    /// 两个注入检查点（pipeline.rs 空闲期 / tool_loop.rs 工具轮间）共用。
+    /// `ctx.inject_workspace_messages` 只把消息 push 进内存 chat_history 喂 LLM，
+    /// 用户在子代理嵌入对话里看不到"主代理插话了什么"。本方法作为**附加**动作：
+    /// 1. 构造 `workspace_injection` 块并收进 interleaved 列表（后续
+    ///    save_results / 中间保存会据此重建消息 block_ids，只写 DB 不进列表
+    ///    会被最终保存覆盖丢块）；
+    /// 2. 立即落库（create_block + 追加消息 block_ids，参考 sleep_executor
+    ///    的 P16 预存模式），防止后续阻塞/崩溃期间刷新丢数据；失败只 warn；
+    /// 3. 发射 start/chunk/end 事件供前端实时渲染。
+    ///
+    /// 同步方法：连接获取、写入、drop 均在本函数内完成，不跨 await。
+    pub(super) fn persist_and_emit_workspace_injection(
+        &self,
+        ctx: &mut PipelineContext,
+        emitter: &Arc<ChatV2EventEmitter>,
+        workspace_id: &str,
+        messages: &[crate::chat_v2::workspace::WorkspaceMessage],
+        formatted: &str,
+        round_id: Option<&str>,
+    ) {
+        let block_id = MessageBlock::generate_id();
+        let now_ms = chrono::Utc::now().timestamp_millis();
+
+        // 发送者 session_id 去重列表（保持首次出现顺序）
+        let mut senders: Vec<String> = Vec::new();
+        for msg in messages {
+            if !senders.iter().any(|s| s == &msg.sender_session_id) {
+                senders.push(msg.sender_session_id.clone());
+            }
+        }
+        // 类型字符串列表（snake_case，与 format_injected_messages 的序列化一致）
+        let message_types: Vec<String> = messages
+            .iter()
+            .map(|msg| {
+                serde_json::to_string(&msg.message_type)
+                    .unwrap_or_default()
+                    .trim_matches('"')
+                    .to_string()
+            })
+            .collect();
+
+        let injection_meta = json!({
+            "workspace_id": workspace_id,
+            "message_count": messages.len(),
+            "senders": senders,
+            "message_types": message_types,
+            "injected_at": chrono::Utc::now().to_rfc3339(),
+        });
+
+        let mut block = MessageBlock {
+            id: block_id.clone(),
+            message_id: ctx.assistant_message_id.clone(),
+            block_type: block_types::WORKSPACE_INJECTION.to_string(),
+            status: block_status::SUCCESS.to_string(),
+            content: Some(formatted.to_string()),
+            tool_name: None,
+            tool_input: None,
+            tool_output: Some(injection_meta.clone()),
+            citations: None,
+            error: None,
+            started_at: Some(now_ms),
+            ended_at: Some(now_ms),
+            first_chunk_at: Some(now_ms),
+            block_index: 0, // 会被 add_interleaved_block 重新分配
+        };
+
+        // 1. 收进 interleaved 列表（最终保存的 block_ids 来源），
+        //    并把分配到的时序索引同步给即将落库的副本
+        block.block_index = ctx.add_interleaved_block(block.clone());
+
+        // 2. 立即落库（崩溃安全）；失败只 log warn，不中断注入
+        match self.db.get_conn_safe() {
+            Ok(conn) => {
+                if let Err(e) = ChatV2Repo::create_block_with_conn(&conn, &block) {
+                    log::warn!(
+                        "[ChatV2::pipeline] Failed to persist workspace_injection block: id={}, err={:?}",
+                        block_id,
+                        e
+                    );
+                }
+                if let Err(e) = Self::append_block_id_to_message_block_ids(
+                    &conn,
+                    &ctx.session_id,
+                    &ctx.assistant_message_id,
+                    &block_id,
+                ) {
+                    log::warn!(
+                        "[ChatV2::pipeline] Failed to append workspace_injection block to message: msg={}, block={}, err={}",
+                        ctx.assistant_message_id,
+                        block_id,
+                        e
+                    );
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "[ChatV2::pipeline] No DB connection for workspace_injection persistence (injection continues): {:?}",
+                    e
+                );
+            }
+        }
+
+        // 3. 事件发射（前端实时渲染）
+        let skill_state_version = ctx.options.skill_state_version;
+        emitter.emit_start_with_meta(
+            event_types::WORKSPACE_INJECTION,
+            &ctx.assistant_message_id,
+            Some(&block_id),
+            Some(json!({
+                "workspaceId": workspace_id,
+                "messageCount": messages.len(),
+            })),
+            None,
+            skill_state_version,
+            round_id,
+        );
+        emitter.emit_chunk_with_meta(
+            event_types::WORKSPACE_INJECTION,
+            &block_id,
+            formatted,
+            None,
+            skill_state_version,
+            round_id,
+        );
+        emitter.emit_end_with_meta(
+            event_types::WORKSPACE_INJECTION,
+            &block_id,
+            Some(json!({ "result": injection_meta })),
+            None,
+            skill_state_version,
+            round_id,
+        );
+
+        log::info!(
+            "[ChatV2::pipeline] Created workspace_injection block: id={}, message_id={}, messages={}",
+            block_id,
+            ctx.assistant_message_id,
+            messages.len()
+        );
+    }
+
+    /// 追加 block_id 到消息的 block_ids_json（消息不存在则创建）。
+    ///
+    /// 与 sleep_executor 的 P16 append 逻辑同构：workspace_injection 块
+    /// 在两个注入检查点落库时，必须同步进消息 block_ids，否则刷新后
+    /// 加载消息不会包含该块。
+    fn append_block_id_to_message_block_ids(
+        conn: &rusqlite::Connection,
+        session_id: &str,
+        message_id: &str,
+        block_id: &str,
+    ) -> Result<(), String> {
+        let existing_block_ids: Result<Option<String>, _> = conn.query_row(
+            "SELECT block_ids_json FROM chat_v2_messages WHERE id = ?1",
+            rusqlite::params![message_id],
+            |row| row.get(0),
+        );
+
+        let now_ms = chrono::Utc::now().timestamp_millis();
+
+        match existing_block_ids {
+            Ok(block_ids_json) => {
+                let mut block_ids: Vec<String> = block_ids_json
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default();
+
+                if !block_ids.iter().any(|id| id == block_id) {
+                    block_ids.push(block_id.to_string());
+                }
+
+                let block_ids_json = serde_json::to_string(&block_ids)
+                    .map_err(|e| format!("Failed to serialize block_ids: {}", e))?;
+
+                conn.execute(
+                    "UPDATE chat_v2_messages SET block_ids_json = ?1 WHERE id = ?2",
+                    rusqlite::params![block_ids_json, message_id],
+                )
+                .map_err(|e| format!("Failed to update message block_ids: {}", e))?;
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                let block_ids = vec![block_id.to_string()];
+                let block_ids_json = serde_json::to_string(&block_ids)
+                    .map_err(|e| format!("Failed to serialize block_ids: {}", e))?;
+
+                conn.execute(
+                    r#"INSERT INTO chat_v2_messages (id, session_id, role, block_ids_json, timestamp)
+                       VALUES (?1, ?2, 'assistant', ?3, ?4)"#,
+                    rusqlite::params![message_id, session_id, block_ids_json, now_ms],
+                )
+                .map_err(|e| format!("Failed to create message: {}", e))?;
+            }
+            Err(e) => {
+                return Err(format!("Failed to read message: {}", e));
+            }
+        }
+
+        Ok(())
     }
 
     /// 🆕 2026-07 Doom loop 检测：按执行顺序观察本轮工具调用，拦截连续重复调用
@@ -3130,6 +3424,13 @@ impl ChatV2Pipeline {
         .with_main_db(self.main_db.clone())
         .with_anki_db(self.anki_db.clone())
         .with_vfs_db(self.vfs_db.clone()) // 🆕 学习资源工具需要访问 VFS 数据库
+        // 托管 VfsLanceStore 单例注入：Memory-as-VFS 搜索 / 资源删除时的向量清理依赖它。
+        // 启动初始化失败或 headless 测试时为 None，工具侧按各自策略降级。
+        .with_vfs_lance_store(
+            self.vfs_db
+                .as_ref()
+                .and_then(managed_vfs_lance_store_for),
+        )
         .with_llm_manager(Some(self.llm_manager.clone())) // 🆕 VFS RAG 工具需要 LLM 管理器
         .with_chat_v2_db(Some(self.db.clone())) // 🆕 工具块防闪退保存
         .with_question_bank_service(self.question_bank_service.clone()) // 🆕 智能题目集工具
@@ -4224,7 +4525,7 @@ mod tests {
         String,
     ) {
         use crate::chat_v2::database::ChatV2Database;
-        use crate::chat_v2::types::{AuthorityMode, ChatSession};
+        use crate::chat_v2::types::ChatSession;
         use crate::data_governance::migration::coordinator::MigrationCoordinator;
         use crate::data_governance::schema_registry::DatabaseId;
         use crate::database::Database;

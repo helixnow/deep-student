@@ -1,3 +1,13 @@
+//! 多 Agent 协作 workspace 的领域类型
+//!
+//! ## ⚠️ 术语区分（防误改）
+//! 这里的 `Workspace` 指「**多 Agent 协作 workspace**」：多个 agent 会话
+//! 共享消息路由、文档与收件箱的逻辑协作空间（见 `workspace/coordinator.rs`）。
+//!
+//! 与 `chat_v2/runtime_roots.rs` 中的 "workspace root" **不是同一概念**：
+//! 那边指磁盘上的**文件系统工作目录**（agent 工具被授权读写的根路径）。
+//! 修改任一侧时不要把两者的类型或语义混用。
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

@@ -79,10 +79,7 @@ impl WorkspaceRepo {
         let conn = self.db.get_connection()?;
         conn.execute(
             "UPDATE workspace SET status = ?1, updated_at = ?2",
-            params![
-                enum_to_db_str(&status),
-                Utc::now().to_rfc3339(),
-            ],
+            params![enum_to_db_str(&status), Utc::now().to_rfc3339(),],
         )
         .map_err(|e| format!("Failed to update workspace status: {}", e))?;
         Ok(())
@@ -140,11 +137,7 @@ impl WorkspaceRepo {
         let conn = self.db.get_connection()?;
         conn.execute(
             "UPDATE agent SET status = ?1, last_active_at = ?2 WHERE session_id = ?3",
-            params![
-                enum_to_db_str(&status),
-                Utc::now().to_rfc3339(),
-                session_id,
-            ],
+            params![enum_to_db_str(&status), Utc::now().to_rfc3339(), session_id,],
         )
         .map_err(|e| format!("Failed to update agent status: {}", e))?;
         Ok(())
@@ -252,10 +245,7 @@ impl WorkspaceRepo {
         let conn = self.db.get_connection()?;
         conn.execute(
             "UPDATE message SET status = ?1 WHERE id = ?2",
-            params![
-                enum_to_db_str(&status),
-                message_id,
-            ],
+            params![enum_to_db_str(&status), message_id,],
         )
         .map_err(|e| format!("Failed to update message status: {}", e))?;
         Ok(())
@@ -312,6 +302,19 @@ impl WorkspaceRepo {
             .collect();
 
         Ok(items)
+    }
+
+    /// 🆕 契约 C12：统计某会话 inbox 中待消费（unread）的消息数
+    pub fn count_unread_inbox(&self, session_id: &str) -> Result<usize, String> {
+        let conn = self.db.get_connection()?;
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM inbox WHERE session_id = ?1 AND status = 'unread'",
+                params![session_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("Failed to count unread inbox: {}", e))?;
+        Ok(count as usize)
     }
 
     pub fn mark_inbox_processed(&self, inbox_ids: &[i64]) -> Result<(), String> {

@@ -4,9 +4,11 @@
 //! `attachment_read` 只能返回解析后的文本/base64，拿不到磁盘路径，
 //! xlsx/zip/图片等二进制附件无法交给 local_shell_execute / workspace 文件工具处理。
 //!
-//! 执行一个内置工具：
+//! 执行两个内置工具：
 //! - `builtin-attachment_stage` / `attachment_stage` - 把附件原始字节物化到
 //!   当前会话 temp runtime root 的 `attachments/` 子目录，返回 `root_id + relative_path`。
+//! - `builtin-attachment_extract` / `attachment_extract` - 把已物化的 zip 安全解压到
+//!   temp root 的 `extracted/` 子目录（纯 Rust，移动端无 shell 时的解包途径）。
 //!
 //! ## 设计说明
 //! - 附件定位与 `attachment_executor.rs` 的 `attachment_read` 保持一致：
@@ -52,6 +54,9 @@ use crate::vfs::repos::VfsAttachmentRepo;
 
 /// temp root 内的物化子目录
 const STAGE_SUBDIR: &str = "attachments";
+
+/// temp root 内的受管解压子目录（attachment_extract 的输出根）
+const EXTRACT_SUBDIR: &str = "extracted";
 
 /// 旁置去重索引文件名（sha256 → 已物化文件名）
 const STAGE_INDEX_FILE: &str = ".staged_index.json";
@@ -319,6 +324,240 @@ fn scan_staged_archive_or_cleanup(
             Err(error)
         }
     }
+}
+
+// ============================================================================
+// 纯函数：受管解压（attachment_extract）
+// ============================================================================
+
+/// 在 temp root 内解析一个已物化文件的安全绝对路径。
+///
+/// 校验与 skill_install 的 runtime_path 读取一致：
+/// `normalize_runtime_relative_path` 拒绝绝对路径/`..`，canonicalize 后必须
+/// 仍在 temp root 内，且必须是常规文件（拒绝 symlink/目录）。
+///
+/// `pub(crate)`：notes_import / session_import 等消费 staged 附件的执行器复用。
+pub(crate) fn resolve_staged_file_in_temp_root(
+    temp_root_path: &Path,
+    relative_path: &str,
+) -> Result<std::path::PathBuf, String> {
+    let relative = normalize_runtime_relative_path(Some(relative_path))?;
+    let root_canon = temp_root_path
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize temp root: {}", e))?;
+    let target = temp_root_path.join(&relative);
+    let meta = fs::symlink_metadata(&target)
+        .map_err(|_| format!("Staged file not found: {}", relative_path))?;
+    if meta.file_type().is_symlink() || !meta.is_file() {
+        return Err("Staged path must be a regular file".to_string());
+    }
+    let target_canon = target
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve staged file path: {}", e))?;
+    if !target_canon.starts_with(&root_canon) {
+        return Err("Staged path escapes the session temp root".to_string());
+    }
+    Ok(target_canon)
+}
+
+/// 在 `extracted/` 下创建唯一目标目录（同名自动加 `_N` 序号后缀）。
+fn create_unique_extract_dir(
+    temp_root_path: &Path,
+    requested_name: &str,
+) -> Result<(std::path::PathBuf, String), String> {
+    let base_name = sanitize_file_name(requested_name);
+    let extract_base = temp_root_path.join(EXTRACT_SUBDIR);
+    fs::create_dir_all(&extract_base)
+        .map_err(|e| format!("Failed to create extract base dir: {}", e))?;
+    let root_canon = temp_root_path
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize temp root: {}", e))?;
+    let base_canon = extract_base
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize extract base dir: {}", e))?;
+    if !base_canon.starts_with(&root_canon) {
+        return Err("Extract directory escapes the temp root".to_string());
+    }
+
+    for attempt in 0..=MAX_SUFFIX_ATTEMPTS {
+        let candidate = if attempt == 0 {
+            base_name.clone()
+        } else {
+            format!("{}_{}", base_name, attempt)
+        };
+        let relative = format!("{}/{}", EXTRACT_SUBDIR, candidate);
+        if normalize_runtime_relative_path(Some(&relative))
+            .map(|p| p.components().count() != 2)
+            .unwrap_or(true)
+        {
+            return Err("Sanitized extract dir name must resolve to a plain name".to_string());
+        }
+        let target = base_canon.join(&candidate);
+        match fs::create_dir(&target) {
+            Ok(()) => return Ok((target, relative)),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(format!("Failed to create extract dir: {}", err)),
+        }
+    }
+    Err(format!(
+        "Too many name conflicts in the extract directory for '{}'",
+        base_name
+    ))
+}
+
+/// 把 temp root 内已物化的 zip 解压到 `extracted/<name>/`。
+///
+/// 安全模型（与 `scan_zip_archive` 同级）：
+/// - 解压前先做完整 scan（签名/条目数/zip-bomb 压缩比/总量/entry 路径穿越/symlink）；
+/// - 写入阶段再次逐条校验 `enclosed_name`，并对每个条目和总量做有界拷贝，
+///   防止 scan 与 extract 之间文件被替换（TOCTOU）；
+/// - 所有输出都限定在 temp root 的 `extracted/` 子目录内。
+fn extract_zip_into_temp_root(
+    temp_root_path: &Path,
+    zip_relative_path: &str,
+    target_dir_name: Option<&str>,
+) -> Result<Value, String> {
+    let zip_path = resolve_staged_file_in_temp_root(temp_root_path, zip_relative_path)?;
+    let file_name = zip_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("archive.zip");
+
+    match archive_format(file_name, None) {
+        Some("zip") | None => {}
+        Some(other) => {
+            return Err(format!(
+                "EXTRACT_UNSUPPORTED_FORMAT: '{}' archives are not supported; only zip can be extracted. \
+                 Ask the user to re-package as zip, or (desktop only) use local_shell_execute.",
+                other
+            ));
+        }
+    }
+
+    // 有界预检：签名、条目数、压缩比、总解压量、路径穿越、symlink
+    scan_zip_archive(&zip_path)?;
+
+    let requested_dir = target_dir_name
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| split_stem_ext(file_name).0);
+    let (extract_dir, extract_relative) =
+        create_unique_extract_dir(temp_root_path, &requested_dir)?;
+    let extract_dir_canon = extract_dir
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize extract dir: {}", e))?;
+
+    let result = (|| -> Result<Value, String> {
+        let file =
+            fs::File::open(&zip_path).map_err(|e| format!("Failed to open ZIP archive: {e}"))?;
+        let mut archive =
+            zip::ZipArchive::new(file).map_err(|e| format!("Invalid ZIP archive: {e}"))?;
+        if archive.len() > MAX_ARCHIVE_ENTRIES {
+            return Err(format!(
+                "Archive contains too many entries: {} exceeds {}",
+                archive.len(),
+                MAX_ARCHIVE_ENTRIES
+            ));
+        }
+
+        let mut total_written = 0u64;
+        let mut file_count = 0usize;
+        let mut dir_count = 0usize;
+        let mut manifest = Vec::new();
+        for index in 0..archive.len() {
+            let mut entry = archive
+                .by_index(index)
+                .map_err(|e| format!("Failed to read ZIP entry {index}: {e}"))?;
+            let entry_name = entry.name().to_string();
+            let enclosed = entry
+                .enclosed_name()
+                .ok_or_else(|| format!("Archive entry has unsafe path: {entry_name}"))?
+                .to_path_buf();
+            if entry
+                .unix_mode()
+                .is_some_and(|mode| mode & 0o170000 == 0o120000)
+            {
+                return Err(format!("Archive entry is a symbolic link: {entry_name}"));
+            }
+
+            let dest = extract_dir_canon.join(&enclosed);
+            if entry.is_dir() {
+                fs::create_dir_all(&dest)
+                    .map_err(|e| format!("Failed to create dir '{entry_name}': {e}"))?;
+                dir_count += 1;
+                continue;
+            }
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create parent dir for '{entry_name}': {e}"))?;
+                let parent_canon = parent
+                    .canonicalize()
+                    .map_err(|e| format!("Failed to canonicalize entry parent dir: {e}"))?;
+                if !parent_canon.starts_with(&extract_dir_canon) {
+                    return Err(format!("Archive entry escapes extract dir: {entry_name}"));
+                }
+            }
+
+            let mut output = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&dest)
+                .map_err(|e| format!("Failed to create extracted file '{entry_name}': {e}"))?;
+            // 有界拷贝：scan 之后文件仍可能被替换，写入阶段独立限额
+            let mut limited = (&mut entry).take(MAX_ARCHIVE_ENTRY_UNCOMPRESSED_BYTES + 1);
+            let written = std::io::copy(&mut limited, &mut output)
+                .map_err(|e| format!("Failed to extract '{entry_name}': {e}"))?;
+            if written > MAX_ARCHIVE_ENTRY_UNCOMPRESSED_BYTES {
+                return Err(format!(
+                    "Archive entry is too large after extraction: {entry_name}"
+                ));
+            }
+            total_written = total_written
+                .checked_add(written)
+                .ok_or("Archive expanded size overflow")?;
+            if total_written > MAX_ARCHIVE_TOTAL_UNCOMPRESSED_BYTES {
+                return Err("Archive total expanded size exceeds limit".to_string());
+            }
+
+            file_count += 1;
+            if manifest.len() < MAX_ARCHIVE_MANIFEST_ENTRIES {
+                let relative_out = format!(
+                    "{}/{}",
+                    extract_relative,
+                    enclosed
+                        .components()
+                        .map(|c| c.as_os_str().to_string_lossy())
+                        .collect::<Vec<_>>()
+                        .join("/")
+                );
+                manifest.push(json!({
+                    "path": relative_out,
+                    "sizeBytes": written,
+                }));
+            }
+        }
+
+        Ok(json!({
+            "success": true,
+            "format": "zip",
+            "root_id": "temp",
+            "extract_dir": extract_relative,
+            "source": zip_relative_path,
+            "fileCount": file_count,
+            "directoryCount": dir_count,
+            "totalUncompressedBytes": total_written,
+            "files": manifest,
+            "filesTruncated": file_count > MAX_ARCHIVE_MANIFEST_ENTRIES,
+            "hint": "解压完成：可用 workspace_file_list / workspace_file_read（root_id=temp, path=extract_dir 下的相对路径）继续处理；此工具是移动端等无 shell 环境下的受管解包途径。",
+        }))
+    })();
+
+    if result.is_err() {
+        // 失败时清理半成品目录，避免残留部分解压内容
+        let _ = fs::remove_dir_all(&extract_dir_canon);
+    }
+    result
 }
 
 // ============================================================================
@@ -1263,6 +1502,60 @@ impl AttachmentStageExecutor {
 
         Ok(output)
     }
+
+    /// 执行受管解压（attachment_extract）
+    ///
+    /// 入参为 attachment_stage 返回的 `root_id`（必须是 temp）+ `relative_path`。
+    /// temp root 按会话隔离解析，天然完成会话归属校验。
+    async fn execute_extract(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let root_id = call
+            .arguments
+            .get("root_id")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("temp");
+        if !root_id.eq_ignore_ascii_case("temp") {
+            return Err(format!(
+                "attachment_extract only accepts root_id=temp (staged attachments), got '{}'",
+                root_id
+            ));
+        }
+        let relative_path = call
+            .arguments
+            .get("relative_path")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or("Missing 'relative_path' parameter (use the path returned by attachment_stage)")?
+            .to_string();
+        let target_dir = call
+            .arguments
+            .get("target_dir")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+
+        let start_time = Instant::now();
+        let app_handle = ctx.window_ref().app_handle().clone();
+        let session_id = ctx.session_id.clone();
+
+        let mut output = tokio::task::spawn_blocking(move || {
+            let temp = temp_root(&app_handle, &session_id, true)?;
+            extract_zip_into_temp_root(&temp.path, &relative_path, target_dir.as_deref())
+        })
+        .await
+        .map_err(|e| format!("Attachment extraction task failed: {}", e))??;
+
+        let duration = start_time.elapsed().as_millis() as u64;
+        output["durationMs"] = json!(duration);
+        Ok(output)
+    }
 }
 
 /// Materialize binary user ContextRefs before the model turn begins.
@@ -1327,7 +1620,10 @@ impl Default for AttachmentStageExecutor {
 #[async_trait]
 impl ToolExecutor for AttachmentStageExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
-        strip_tool_namespace(tool_name) == "attachment_stage"
+        matches!(
+            strip_tool_namespace(tool_name),
+            "attachment_stage" | "attachment_extract"
+        )
     }
 
     async fn execute(
@@ -1344,7 +1640,10 @@ impl ToolExecutor for AttachmentStageExecutor {
 
         ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
-        let result = self.execute_stage(call, ctx).await;
+        let result = match strip_tool_namespace(&call.name) {
+            "attachment_extract" => self.execute_extract(call, ctx).await,
+            _ => self.execute_stage(call, ctx).await,
+        };
         let duration = start_time.elapsed().as_millis() as u64;
 
         match result {
@@ -1414,6 +1713,8 @@ mod tests {
         let executor = AttachmentStageExecutor::new();
         assert!(executor.can_handle("builtin-attachment_stage"));
         assert!(executor.can_handle("attachment_stage"));
+        assert!(executor.can_handle("builtin-attachment_extract"));
+        assert!(executor.can_handle("attachment_extract"));
         assert!(!executor.can_handle("builtin-attachment_read"));
         assert!(!executor.can_handle("builtin-attachment_list"));
     }
@@ -1673,6 +1974,76 @@ mod tests {
             fs::read(temp_dir.path().join(&second.relative_path)).unwrap(),
             b"original"
         );
+    }
+
+    #[test]
+    fn extract_zip_writes_files_under_extracted_subdir() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let staged =
+            stage_bytes_into_temp_root(temp_dir.path(), "bundle.zip", b"placeholder").unwrap();
+        // 覆盖为真实 zip 内容
+        let zip_path = temp_dir.path().join(&staged.relative_path);
+        write_test_zip(
+            &zip_path,
+            &[("docs/readme.txt", b"hello"), ("data.csv", b"a,b")],
+        );
+
+        let result =
+            extract_zip_into_temp_root(temp_dir.path(), &staged.relative_path, None).unwrap();
+        assert_eq!(result["success"], true);
+        assert_eq!(result["fileCount"], 2);
+        let extract_dir = result["extract_dir"].as_str().unwrap();
+        assert!(extract_dir.starts_with("extracted/"));
+        assert_eq!(
+            fs::read(temp_dir.path().join(extract_dir).join("docs/readme.txt")).unwrap(),
+            b"hello"
+        );
+        assert_eq!(
+            fs::read(temp_dir.path().join(extract_dir).join("data.csv")).unwrap(),
+            b"a,b"
+        );
+    }
+
+    #[test]
+    fn extract_rejects_traversal_and_cleans_up_partial_output() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let staged =
+            stage_bytes_into_temp_root(temp_dir.path(), "unsafe.zip", b"placeholder").unwrap();
+        let zip_path = temp_dir.path().join(&staged.relative_path);
+        write_test_zip(&zip_path, &[("../outside.txt", b"escape")]);
+
+        let error =
+            extract_zip_into_temp_root(temp_dir.path(), &staged.relative_path, None).unwrap_err();
+        assert!(error.contains("unsafe path"), "{error}");
+        // 预检失败发生在建目录之前，temp root 外不得有任何写入
+        assert!(!temp_dir.path().parent().unwrap().join("outside.txt").exists());
+    }
+
+    #[test]
+    fn extract_rejects_non_zip_formats_with_structured_error() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let staged =
+            stage_bytes_into_temp_root(temp_dir.path(), "bundle.rar", b"Rar!\x1a\x07\x01\x00x")
+                .unwrap();
+        let error =
+            extract_zip_into_temp_root(temp_dir.path(), &staged.relative_path, None).unwrap_err();
+        assert!(error.contains("EXTRACT_UNSUPPORTED_FORMAT"), "{error}");
+    }
+
+    #[test]
+    fn extract_rejects_paths_outside_temp_root() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        assert!(resolve_staged_file_in_temp_root(temp_dir.path(), "../evil.zip").is_err());
+        assert!(resolve_staged_file_in_temp_root(temp_dir.path(), "/abs/evil.zip").is_err());
+    }
+
+    #[test]
+    fn extract_dir_names_get_numeric_suffix_on_conflict() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let (_, first) = create_unique_extract_dir(temp_dir.path(), "bundle").unwrap();
+        let (_, second) = create_unique_extract_dir(temp_dir.path(), "bundle").unwrap();
+        assert_eq!(first, "extracted/bundle");
+        assert_eq!(second, "extracted/bundle_1");
     }
 
     #[test]

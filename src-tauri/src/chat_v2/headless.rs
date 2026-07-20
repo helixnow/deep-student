@@ -26,7 +26,9 @@
 //!    （fail-closed：任何校验失败/异常都回到人工审批路径）。
 //! 4. **超时与预算**：整个 turn 有硬超时（默认 10 分钟，可配），超时后先
 //!    触发 CancellationToken 让管线走取消保存路径，再限时等待收尾；
-//!    工具轮次上限默认 15（`max_tool_recursion`）。
+//!    工具轮次上限默认 15（`max_tool_recursion`）。管线 future 全程包在
+//!    `catch_unwind` 中：单次 run 的 panic 被隔离为 error 结果回传调用方，
+//!    不会沿 spawn 边界拖垮自动化调度器。
 //! 5. **会话模式**（采用成熟代理运行时的 cron 的 isolated / session:custom-id）：
 //!    - `isolated`：每次新建会话，metadata 标记 `automation_run=true`；
 //!    - `named`：复用固定会话，跨运行积累上下文（如"每周学情报告"）。
@@ -39,9 +41,11 @@
 //! - `run_headless_agent_turn(&app, HeadlessSessionTurn)`：低层入口，
 //!   供已自管会话 ID 的调用方使用（返回未截断的最终回复全文）。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, LazyLock, Mutex as StdMutex};
 
+use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, Window};
@@ -71,10 +75,19 @@ struct TrustedAutomationSessionGuard {
 impl TrustedAutomationSessionGuard {
     fn install(session_id: &str, profile: Option<&TrustedAutomationProfile>) -> Option<Self> {
         let profile = profile?.clone();
-        TRUSTED_AUTOMATION_SESSIONS
+        let replaced = TRUSTED_AUTOMATION_SESSIONS
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .insert(session_id.to_string(), profile);
+        if let Some(previous) = replaced {
+            // 不应发生：安装发生在会话流原子注册之后，同会话不可能有并发 run。
+            // 一旦出现说明上游排他性被破坏，记录以便追查（fail-loud）。
+            log::error!(
+                "[ChatV2::headless] trusted profile install OVERWROTE existing profile: session={}, previous_hash={}",
+                session_id,
+                previous.profile_hash
+            );
+        }
         Some(Self {
             session_id: session_id.to_string(),
         })
@@ -169,8 +182,7 @@ pub fn validate_trusted_automation_tool_call(
     } else {
         format!("builtin-{tool_name}")
     };
-    if !headless_allowed_tools().contains(&canonical) && !profile.allowed_tools.contains(&canonical)
-    {
+    if !is_headless_allowed_tool(&canonical) && !profile.allowed_tools.contains(&canonical) {
         return Err(format!(
             "Tool '{tool_name}' is not allowed by the trusted automation profile"
         ));
@@ -299,8 +311,11 @@ pub fn validate_trusted_automation_tool_call(
 /// - 其余写工具（如 `attachment_stage`）当前没有已实现的回滚路径 → 不可用。
 fn trusted_write_tool_rollback_available(short_name: &str, arguments: &Value) -> bool {
     match short_name {
-        "workspace_file_write" | "workspace_file_move" | "workspace_file_delete"
-        | "workspace_artifact_write" | "workspace_change_revert" => true,
+        "workspace_file_write"
+        | "workspace_file_move"
+        | "workspace_file_delete"
+        | "workspace_artifact_write"
+        | "workspace_change_revert" => true,
         "local_shell_execute" => {
             arguments.get("track_file_changes").and_then(Value::as_bool) == Some(true)
         }
@@ -397,6 +412,8 @@ pub const DEFAULT_HARD_TIMEOUT_SECS: u64 = 600;
 pub const MAX_HARD_TIMEOUT_SECS: u64 = 3600;
 /// 超时取消后给管线保存部分结果的收尾窗口（秒）
 pub const CANCEL_GRACE_SECS: u64 = 30;
+/// 长时间运行的 headless turn 周期性进度日志间隔（秒）
+const PROGRESS_LOG_INTERVAL_SECS: u64 = 60;
 /// 工具轮次上限默认值（取较小值，headless 不做长程任务）
 pub const DEFAULT_MAX_TOOL_ROUNDS: u32 = 15;
 /// 工具轮次上限硬顶
@@ -446,9 +463,18 @@ pub const HEADLESS_BLOCKED_TOOLS: &[(&str, &str)] = &[
     ("local_shell_execute", "write-risk"),
     ("runtime_root_request", "write-risk"),
     ("mcp_server_propose", "write-risk"),
+    ("mcp_server_update", "write-risk"),
+    ("mcp_server_set_enabled", "write-risk"),
+    ("mcp_server_remove", "write-risk"),
     ("skill_install", "write-risk"),
     ("skill_workshop_propose", "write-risk"),
     ("skill_workshop_apply", "write-risk"),
+    ("skill_set_enabled", "write-risk"),
+    ("skill_remove", "write-risk"),
+    ("skill_trust_request", "write-risk"),
+    ("custom_agent_propose", "write-risk"),
+    ("custom_agent_apply", "write-risk"),
+    ("custom_agent_remove", "write-risk"),
     ("automation_propose", "write-risk"),
     ("automation_set_enabled", "write-risk"),
     ("automation_update", "write-risk"),
@@ -560,10 +586,13 @@ pub fn headless_allowed_tools() -> Vec<String> {
     .collect()
 }
 
+/// 白名单的 O(1) 查找缓存（白名单是编译期常量集合，进程内不变）。
+static HEADLESS_ALLOWED_TOOL_SET: LazyLock<HashSet<String>> =
+    LazyLock::new(|| headless_allowed_tools().into_iter().collect());
+
 /// 判断某工具是否允许出现在 headless 上下文（schema 注入前的预过滤）。
 pub fn is_headless_allowed_tool(tool_name: &str) -> bool {
-    let allowed = headless_allowed_tools();
-    allowed.iter().any(|entry| entry == tool_name)
+    HEADLESS_ALLOWED_TOOL_SET.contains(tool_name)
 }
 
 /// fail-closed 预过滤：从任意 schema 列表中剔除不在白名单内的工具。
@@ -1168,7 +1197,7 @@ pub struct HeadlessSessionTurn {
     pub model_id: Option<String>,
     /// 额外的 system prompt 追加段（headless 约束说明之外的补充）
     pub system_prompt_append: Option<String>,
-    /// 本次 turn 硬超时
+    /// 本次 turn 硬超时（防御性钳制到 [1s, `MAX_HARD_TIMEOUT_SECS`]）
     pub timeout: std::time::Duration,
 }
 
@@ -1233,13 +1262,14 @@ pub async fn run_headless_turn(
 
     // —— 会话：isolated 新建 / named 复用（失效则新建）
     let session_id = ensure_headless_session(&chat_v2_db, &req)?;
-    let _trusted_profile_guard =
-        TrustedAutomationSessionGuard::install(&session_id, req.trusted_profile.as_ref());
 
     // —— 超时/轮次预算：一次解析（profile > 请求值 > 全局设置 > 默认值 + 硬顶），
     //    结果贯穿传递给 execute_headless_pipeline，内部不再重算（消除维护漂移）
     let (hard_timeout_secs, max_tool_rounds) = resolve_budget(&app, &req);
 
+    // trusted profile 的会话级安装发生在 execute_headless_pipeline 内部、
+    // 流注册成功**之后**：注册的排他性保证同一会话此刻没有其他活跃流，
+    // 消除“先安装 profile、后注册失败”窗口内其他流被误预授权的竞态。
     let assistant_message_id = ChatMessage::generate_id();
     let exec = execute_headless_pipeline(
         &app,
@@ -1251,6 +1281,7 @@ pub async fn run_headless_turn(
         std::time::Duration::from_secs(hard_timeout_secs),
         Some(max_tool_rounds),
         req.cancellation_token,
+        req.trusted_profile.as_ref(),
     )
     .await;
 
@@ -1270,6 +1301,14 @@ pub async fn run_headless_turn(
         ),
         Err(HeadlessPipelineTermination::Failed(error)) => ("error".to_string(), Some(error)),
     };
+
+    log::info!(
+        "[ChatV2::headless] headless turn 结束: session={}, status={}, duration_ms={}, summary_chars={}",
+        session_id,
+        status,
+        duration_ms,
+        summary.chars().count()
+    );
 
     Ok(HeadlessTurnResult {
         session_id,
@@ -1310,6 +1349,9 @@ pub async fn run_headless_agent_turn(
         .inner()
         .clone();
 
+    // 防御性钳制：0 时长会导致 turn 立即按超时取消；过大时长会让后台任务失控。
+    let timeout = clamp_session_turn_timeout(req.timeout, &req.session_id);
+
     let assistant_message_id = ChatMessage::generate_id();
     execute_headless_pipeline(
         app,
@@ -1318,7 +1360,8 @@ pub async fn run_headless_agent_turn(
         &prompt,
         req.model_id.as_deref(),
         req.system_prompt_append.as_deref(),
-        req.timeout,
+        timeout,
+        None,
         None,
         None,
     )
@@ -1477,6 +1520,7 @@ async fn execute_headless_pipeline(
     hard_timeout: std::time::Duration,
     max_tool_rounds_override: Option<u32>,
     external_cancellation_token: Option<CancellationToken>,
+    trusted_profile: Option<&TrustedAutomationProfile>,
 ) -> Result<(), HeadlessPipelineTermination> {
     // —— 解析托管状态（缺失说明 Chat V2 降级运行，headless 不可用）
     let pipeline = app
@@ -1521,20 +1565,11 @@ async fn execute_headless_pipeline(
         ))
     })?;
 
-    let trusted_profile = TRUSTED_AUTOMATION_SESSIONS
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .get(session_id)
-        .cloned();
     // 轮次预算：run_headless_turn 已经通过 resolve_budget（profile > 请求 >
     // 设置 > 默认 + 硬顶）解析并经 override 传入，这里直接采信不再重算；
     // override 为 None 的低层路径（run_headless_agent_turn）保留原有解析链。
     let max_tool_rounds = max_tool_rounds_override
-        .or_else(|| {
-            trusted_profile
-                .as_ref()
-                .map(|profile| profile.max_tool_rounds)
-        })
+        .or_else(|| trusted_profile.map(|profile| profile.max_tool_rounds))
         .or_else(|| {
             read_main_db_setting_u64(app, SETTING_HEADLESS_MAX_TOOL_ROUNDS).map(|v| v as u32)
         })
@@ -1543,7 +1578,7 @@ async fn execute_headless_pipeline(
 
     // —— system prompt 追加：headless 约束说明 + 调用方补充段
     let mut system_append = headless_system_prompt_note();
-    if let Some(profile) = trusted_profile.as_ref() {
+    if let Some(profile) = trusted_profile {
         system_append.push_str(&format!(
             "\n\nTrusted automation profile {} is active. Use only its pinned tools, roots, command prefixes, network domains and budgets; write operations must preserve rollback evidence.",
             profile.profile_hash
@@ -1557,7 +1592,7 @@ async fn execute_headless_pipeline(
     // —— 构建请求（工具双层 fail-closed：schema 白名单注入 + 执行白名单拦截）
     let mut schemas = headless_tool_schemas();
     let mut allowed_tools = headless_allowed_tools();
-    if let Some(profile) = trusted_profile.as_ref() {
+    if let Some(profile) = trusted_profile {
         schemas.extend(trusted_profile_tool_schemas(profile));
         allowed_tools.extend(profile.allowed_tools.iter().cloned());
         allowed_tools.sort();
@@ -1603,123 +1638,147 @@ async fn execute_headless_pipeline(
         return Err(HeadlessPipelineTermination::Cancelled);
     }
 
-    // The pipeline owns an independent token. A hard timeout cancels only this
+    // The pipeline owns an independent token (minted by the atomic
+    // registration). A hard timeout or external cancellation cancels only this
     // token; it must never mutate the caller's token because that token carries
     // user/shutdown intent back to the durable scheduler.
-    let cancel_token = if external_cancellation_token.is_some() {
-        let pipeline_token = CancellationToken::new();
-        chat_v2_state
-            .try_register_existing_token(session_id, pipeline_token.clone())
-            .map_err(|_| {
-                HeadlessPipelineTermination::Failed(format!(
-                    "会话 {} 已有活跃流，headless turn 取消（会话可能正被使用）",
-                    session_id
-                ))
-            })?;
-        pipeline_token
-    } else {
-        chat_v2_state.try_register_stream(session_id).map_err(|_| {
+    //
+    // 统一走 try_register_stream_owned：同时取得 token 与 generation，
+    // 收尾兜底可以做 compare-and-remove（remove_stream_if_generation），
+    // 不会误删本次 run 结束后紧接着注册的其他调用方的流。
+    let registration = chat_v2_state
+        .try_register_stream_owned(session_id)
+        .map_err(|_| {
             HeadlessPipelineTermination::Failed(format!(
                 "会话 {} 已有活跃流，headless turn 取消（会话可能正被使用）",
                 session_id
             ))
-        })?
-    };
+        })?;
+    let stream_generation = registration.generation();
+    let cancel_token = registration.token().clone();
+
+    // trusted profile：流注册成功后才安装（注册的排他性保证此刻该会话没有
+    // 其他活跃流，杜绝“先安装、后注册失败”窗口内同会话其他流被误预授权）。
+    // guard 存活至本函数返回，覆盖管线全程与 grace 收尾。
+    let _trusted_profile_guard =
+        TrustedAutomationSessionGuard::install(session_id, trusted_profile);
 
     log::info!(
-        "[ChatV2::headless] 启动 headless turn: session={}, timeout={}s, max_rounds={}",
+        "[ChatV2::headless] 启动 headless turn: session={}, timeout={}s, max_rounds={}, generation={}",
         session_id,
         hard_timeout.as_secs(),
-        max_tool_rounds
+        max_tool_rounds,
+        stream_generation
     );
 
     // —— 执行：复用 send_message 的内部管线路径（StreamGuard + Pipeline::execute），
     //    硬超时命中后先 cancel 让管线走"取消保存部分结果"路径，再限时收尾。
     //    Box::pin 拥有 future 所有权：超时收尾路径可以显式 drop 触发
     //    StreamGuard 的清理，再做流注册泄漏兜底检查。
-    let mut pipeline_fut = Box::pin(super::handlers::send_message::run_send_message_pipeline(
-        pipeline,
-        chat_v2_state.clone(),
-        window,
-        request,
-        cancel_token.clone(),
-    ));
+    //    catch_unwind 隔离 panic：单次 run 的 panic 转化为 error 结果回传，
+    //    unwind 过程中 StreamGuard 照常 drop 清理，调度器不受影响。
+    let mut pipeline_fut = Box::pin(
+        AssertUnwindSafe(super::handlers::send_message::run_send_message_pipeline(
+            pipeline,
+            chat_v2_state.clone(),
+            window,
+            request,
+            cancel_token.clone(),
+        ))
+        .catch_unwind(),
+    );
 
     let hard_timeout_sleep = tokio::time::sleep(hard_timeout);
     tokio::pin!(hard_timeout_sleep);
 
-    if let Some(external_token) = external_cancellation_token.as_ref() {
-        tokio::select! {
-            biased;
-            result = &mut pipeline_fut => {
-                return match result {
-                    Ok(_msg_id) => {
-                        log::info!(
-                            "[ChatV2::headless] headless turn 完成: session={}",
-                            session_id
-                        );
-                        Ok(())
-                    }
-                    Err(ChatV2Error::Cancelled) => Err(HeadlessPipelineTermination::Cancelled),
-                    Err(error) => Err(HeadlessPipelineTermination::Failed(error.to_string())),
-                };
-            }
-            _ = external_token.cancelled() => {
-                log::info!(
-                    "[ChatV2::headless] headless turn received external cancellation: session={}",
-                    session_id
-                );
-                cancel_token.cancel();
-                let graceful = tokio::time::timeout(
-                    std::time::Duration::from_secs(CANCEL_GRACE_SECS),
-                    &mut pipeline_fut,
-                )
-                .await
-                .is_ok();
-                finalize_overrun_pipeline(
-                    pipeline_fut,
-                    graceful,
-                    &cancel_token,
-                    &chat_v2_state,
-                    session_id,
-                    assistant_message_id,
-                    "external-cancel",
-                );
-                return Err(HeadlessPipelineTermination::Cancelled);
-            }
-            _ = &mut hard_timeout_sleep => {}
-        }
-    } else {
-        tokio::select! {
-            result = &mut pipeline_fut => {
-                return match result {
-                    Ok(_msg_id) => {
-                        log::info!(
-                            "[ChatV2::headless] headless turn 完成: session={}",
-                            session_id
-                        );
-                        Ok(())
-                    }
-                    Err(ChatV2Error::Cancelled) => Err(HeadlessPipelineTermination::Cancelled),
-                    Err(error) => Err(HeadlessPipelineTermination::Failed(error.to_string())),
-                };
-            }
-            _ = &mut hard_timeout_sleep => {}
-        }
-    }
-
-    log::warn!(
-        "[ChatV2::headless] headless turn 超过硬超时 {}s，触发取消并等待收尾: session={}",
-        hard_timeout.as_secs(),
-        session_id
+    // 周期性进度日志：长时间运行时每分钟报告一次存活状态与已耗时，
+    // 便于从日志区分"仍在推进"与"已挂死等超时"。
+    let monitor_started = std::time::Instant::now();
+    let progress_interval = std::time::Duration::from_secs(PROGRESS_LOG_INTERVAL_SECS);
+    let mut progress_ticker = tokio::time::interval_at(
+        tokio::time::Instant::now() + progress_interval,
+        progress_interval,
     );
+
+    let termination = loop {
+        if let Some(external_token) = external_cancellation_token.as_ref() {
+            tokio::select! {
+                biased;
+                result = &mut pipeline_fut => {
+                    return conclude_pipeline_result(result, session_id);
+                }
+                _ = external_token.cancelled() => {
+                    log::info!(
+                        "[ChatV2::headless] headless turn received external cancellation: session={}",
+                        session_id
+                    );
+                    break HeadlessPipelineTermination::Cancelled;
+                }
+                _ = &mut hard_timeout_sleep => {
+                    break HeadlessPipelineTermination::Timeout { seconds: hard_timeout.as_secs() };
+                }
+                _ = progress_ticker.tick() => {
+                    log::info!(
+                        "[ChatV2::headless] headless turn 进行中: session={}, elapsed_s={}, timeout_s={}",
+                        session_id,
+                        monitor_started.elapsed().as_secs(),
+                        hard_timeout.as_secs()
+                    );
+                }
+            }
+        } else {
+            tokio::select! {
+                result = &mut pipeline_fut => {
+                    return conclude_pipeline_result(result, session_id);
+                }
+                _ = &mut hard_timeout_sleep => {
+                    break HeadlessPipelineTermination::Timeout { seconds: hard_timeout.as_secs() };
+                }
+                _ = progress_ticker.tick() => {
+                    log::info!(
+                        "[ChatV2::headless] headless turn 进行中: session={}, elapsed_s={}, timeout_s={}",
+                        session_id,
+                        monitor_started.elapsed().as_secs(),
+                        hard_timeout.as_secs()
+                    );
+                }
+            }
+        }
+    };
+
+    // —— 超时 / 外部取消统一收尾：先 cancel 让管线走取消保存路径，再限时等待
+    let reason = match &termination {
+        HeadlessPipelineTermination::Cancelled => "external-cancel",
+        _ => "hard-timeout",
+    };
+    if matches!(&termination, HeadlessPipelineTermination::Timeout { .. }) {
+        log::warn!(
+            "[ChatV2::headless] headless turn 超过硬超时 {}s，触发取消并等待收尾: session={}",
+            hard_timeout.as_secs(),
+            session_id
+        );
+    }
     cancel_token.cancel();
-    let graceful = tokio::time::timeout(
+    let graceful = match tokio::time::timeout(
         std::time::Duration::from_secs(CANCEL_GRACE_SECS),
         &mut pipeline_fut,
     )
     .await
-    .is_ok();
+    {
+        // grace 窗口内正常结束（结果按取消/超时语义丢弃，块已由管线落库）
+        Ok(Ok(_)) => true,
+        // grace 窗口内以 panic 结束：future 已终止，记录根因后按已结束处理
+        Ok(Err(payload)) => {
+            log::error!(
+                "[ChatV2::headless] pipeline 在取消收尾期间 panic（已隔离）: session={}, reason={}, panic={}",
+                session_id,
+                reason,
+                panic_message(payload.as_ref())
+            );
+            true
+        }
+        Err(_) => false,
+    };
     finalize_overrun_pipeline(
         pipeline_fut,
         graceful,
@@ -1727,18 +1786,61 @@ async fn execute_headless_pipeline(
         &chat_v2_state,
         session_id,
         assistant_message_id,
-        "hard-timeout",
+        stream_generation,
+        reason,
     );
-    Err(HeadlessPipelineTermination::Timeout {
-        seconds: hard_timeout.as_secs(),
-    })
+    Err(termination)
+}
+
+/// `run_send_message_pipeline` 经 `catch_unwind` 包装后的输出类型。
+type PipelineRunOutput = Result<Result<String, ChatV2Error>, Box<dyn std::any::Any + Send>>;
+
+/// 从 panic payload 中尽量还原可读的根因文本。
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(text) = payload.downcast_ref::<String>() {
+        text.clone()
+    } else if let Some(text) = payload.downcast_ref::<&str>() {
+        (*text).to_string()
+    } else {
+        "non-string panic payload".to_string()
+    }
+}
+
+/// 管线在超时前自然结束时的结果归一化（完成 / 取消 / 失败 / panic）。
+fn conclude_pipeline_result(
+    result: PipelineRunOutput,
+    session_id: &str,
+) -> Result<(), HeadlessPipelineTermination> {
+    match result {
+        Ok(Ok(_msg_id)) => {
+            log::info!(
+                "[ChatV2::headless] headless turn 完成: session={}",
+                session_id
+            );
+            Ok(())
+        }
+        Ok(Err(ChatV2Error::Cancelled)) => Err(HeadlessPipelineTermination::Cancelled),
+        Ok(Err(error)) => Err(HeadlessPipelineTermination::Failed(error.to_string())),
+        Err(payload) => {
+            let reason = panic_message(payload.as_ref());
+            log::error!(
+                "[ChatV2::headless] headless pipeline panic（已隔离，单次 run 失败，不影响调度器）: session={}, panic={}",
+                session_id,
+                reason
+            );
+            Err(HeadlessPipelineTermination::Failed(format!(
+                "headless pipeline panicked: {reason}"
+            )))
+        }
+    }
 }
 
 /// 超时/外部取消收尾兜底：确保 cancel token 已触发、pipeline future 被显式
 /// drop（触发其内部 StreamGuard 的 remove_stream 清理），并在极端情况下
-/// （StreamGuard 未建立的兼容路径竞态）显式清除残留的流注册，防止会话被
-/// 永久锁定。`graceful=false` 表示 grace 窗口内 future 仍未结束，此时用
-/// log::error 带 run 上下文记录强制收尾。
+/// （StreamGuard 未建立的兼容路径竞态）按 generation 精确清除残留的流注册，
+/// 防止会话被永久锁定。`graceful=false` 表示 grace 窗口内 future 仍未结束，
+/// 此时用 log::error 带 run 上下文记录强制收尾。
+#[allow(clippy::too_many_arguments)]
 fn finalize_overrun_pipeline<F>(
     pipeline_fut: std::pin::Pin<Box<F>>,
     graceful: bool,
@@ -1746,12 +1848,13 @@ fn finalize_overrun_pipeline<F>(
     chat_v2_state: &Arc<ChatV2State>,
     session_id: &str,
     assistant_message_id: &str,
+    stream_generation: u64,
     reason: &str,
 ) where
     F: std::future::Future + ?Sized,
 {
     if !cancel_token.is_cancelled() {
-        // 不应发生（两个调用点都先 cancel）；防御性兜底
+        // 不应发生（调用点先 cancel 再进入收尾）；防御性兜底
         log::error!(
             "[ChatV2::headless] finalize_overrun_pipeline 发现 cancel token 未触发，补触发: session={}, reason={}",
             session_id,
@@ -1771,16 +1874,16 @@ fn finalize_overrun_pipeline<F>(
     // 显式 drop：正常情况下 StreamGuard::drop → remove_stream_if_generation
     drop(pipeline_fut);
     // 兜底：StreamGuard::from_registered_token 在 token 已取消的竞态下可能返回
-    // None（无 guard），导致注册残留。走到这里 future 已被 drop、token 已取消，
-    // 该会话键若仍处于 active 只能是本次 run 的残留（headless 注册持键期间其他
-    // 调用方无法注册同键），显式清除并告警。
-    if chat_v2_state.has_active_stream(session_id) {
+    // None（无 guard），导致注册残留。compare-and-remove 只清理本次 run 的
+    // generation：若其他调用方在 future drop 后立即注册了同会话键的新流，
+    // generation 不匹配、不受影响。
+    if chat_v2_state.remove_stream_if_generation(session_id, stream_generation) {
         log::error!(
-            "[ChatV2::headless] 检测到残留的流注册（StreamGuard 未生效），显式清理: session={}, reason={}",
+            "[ChatV2::headless] 检测到残留的流注册（StreamGuard 未生效），已按 generation 精确清理: session={}, generation={}, reason={}",
             session_id,
+            stream_generation,
             reason
         );
-        chat_v2_state.remove_stream(session_id);
     }
 }
 
@@ -1820,6 +1923,24 @@ fn resolve_budget(app: &AppHandle, req: &HeadlessTurnRequest) -> (u64, u32) {
         .unwrap_or(DEFAULT_MAX_TOOL_ROUNDS)
         .clamp(1, MAX_TOOL_ROUNDS_CAP);
     (timeout, rounds)
+}
+
+/// 低层入口（`run_headless_agent_turn`）调用方自带超时的防御性钳制：
+/// 0 时长会导致 turn 立即按超时取消，过大时长会让后台任务失控。
+fn clamp_session_turn_timeout(
+    requested: std::time::Duration,
+    session_id: &str,
+) -> std::time::Duration {
+    let clamped_secs = requested.as_secs().clamp(1, MAX_HARD_TIMEOUT_SECS);
+    if clamped_secs != requested.as_secs() {
+        log::warn!(
+            "[ChatV2::headless] session turn 超时被钳制: session={}, requested={}s, effective={}s",
+            session_id,
+            requested.as_secs(),
+            clamped_secs
+        );
+    }
+    std::time::Duration::from_secs(clamped_secs)
 }
 
 fn read_main_db_setting_u64(app: &AppHandle, key: &str) -> Option<u64> {
@@ -2549,6 +2670,65 @@ mod tests {
                 "command": "unzip bundle.zip",
                 "max_output_bytes": 4096
             })
+        ));
+    }
+
+    #[test]
+    fn whitelist_lookup_set_matches_vec() {
+        for tool in headless_allowed_tools() {
+            assert!(is_headless_allowed_tool(&tool), "{tool} 应在白名单查找集内");
+        }
+        assert!(!is_headless_allowed_tool("builtin-local_shell_execute"));
+        assert!(!is_headless_allowed_tool("mcp_anything"));
+    }
+
+    #[test]
+    fn session_turn_timeout_is_clamped_defensively() {
+        use std::time::Duration;
+        assert_eq!(
+            clamp_session_turn_timeout(Duration::from_secs(0), "s"),
+            Duration::from_secs(1)
+        );
+        assert_eq!(
+            clamp_session_turn_timeout(Duration::from_millis(200), "s"),
+            Duration::from_secs(1)
+        );
+        assert_eq!(
+            clamp_session_turn_timeout(Duration::from_secs(300), "s"),
+            Duration::from_secs(300)
+        );
+        assert_eq!(
+            clamp_session_turn_timeout(Duration::from_secs(MAX_HARD_TIMEOUT_SECS + 1), "s"),
+            Duration::from_secs(MAX_HARD_TIMEOUT_SECS)
+        );
+    }
+
+    #[test]
+    fn panic_message_extracts_common_payload_types() {
+        let boxed: Box<dyn std::any::Any + Send> = Box::new("static str panic");
+        assert_eq!(panic_message(boxed.as_ref()), "static str panic");
+        let boxed: Box<dyn std::any::Any + Send> = Box::new("owned panic".to_string());
+        assert_eq!(panic_message(boxed.as_ref()), "owned panic");
+        let boxed: Box<dyn std::any::Any + Send> = Box::new(42_u32);
+        assert_eq!(panic_message(boxed.as_ref()), "non-string panic payload");
+    }
+
+    #[test]
+    fn conclude_pipeline_result_maps_all_terminations() {
+        assert!(conclude_pipeline_result(Ok(Ok("msg_1".to_string())), "s").is_ok());
+        assert!(matches!(
+            conclude_pipeline_result(Ok(Err(ChatV2Error::Cancelled)), "s"),
+            Err(HeadlessPipelineTermination::Cancelled)
+        ));
+        assert!(matches!(
+            conclude_pipeline_result(Ok(Err(ChatV2Error::Other("boom".to_string()))), "s"),
+            Err(HeadlessPipelineTermination::Failed(message)) if message.contains("boom")
+        ));
+        let payload: Box<dyn std::any::Any + Send> = Box::new("pipeline exploded".to_string());
+        assert!(matches!(
+            conclude_pipeline_result(Err(payload), "s"),
+            Err(HeadlessPipelineTermination::Failed(message))
+                if message.contains("panicked") && message.contains("pipeline exploded")
         ));
     }
 

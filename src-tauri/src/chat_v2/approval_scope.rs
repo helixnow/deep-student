@@ -228,12 +228,26 @@ fn is_governance_always_confirm_tool(tool_name: &str) -> bool {
 }
 
 /// 权限升级类工具短名清单（ADR-B2 never-remember）。
+///
+/// `skill_remove`（删除技能包，破坏性）与 `skill_trust_request`（授予绑定指纹的
+/// 技能信任，权限升级）与 skill_install / skill_workshop_apply 同族：必审批、
+/// 不可 remember / 本会话允许 / 始终允许。
 const PRIVILEGE_ESCALATION_TOOLS: &[&str] = &[
     "skill_install",
     "skill_workshop_apply",
+    "skill_remove",
+    "skill_trust_request",
     "mcp_server_propose",
+    // MCP server 配置修改/删除与 propose 同族：必审批、never-remember
+    // （mcp_server_set_enabled 为 Medium、可 remember，不在此清单）
+    "mcp_server_update",
+    "mcp_server_remove",
     "runtime_root_request",
     "automation_propose",
+    // custom_agent_apply 落盘自定义子代理 persona（改变后续 subagent 行为），
+    // custom_agent_remove 删除 persona 文件（破坏性）：同族 never-remember
+    "custom_agent_apply",
+    "custom_agent_remove",
 ];
 
 fn is_privilege_escalation_tool(tool_name: &str) -> bool {
@@ -898,6 +912,272 @@ fn make_skill_workshop_approval_scope(
     })
 }
 
+/// skill_remove / skill_trust_request 的审批 scope：无 shell 语义，向审批卡
+/// 暴露目标技能 id、（trust）当前包指纹前缀与声明风险等级，并携带
+/// `remember_disabled`（与 never-remember 三层防线对齐）。
+///
+/// 关键识别字段缺失时 fail-closed 返回 None（不产生通配 scope），
+/// 与 make_skill_install_approval_scope 的策略一致。
+fn make_skill_lifecycle_approval_scope(
+    tool_name: &str,
+    args: &Value,
+    risk_level: &str,
+) -> Option<RuntimeApprovalScope> {
+    let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    if short != "skill_remove" && short != "skill_trust_request" {
+        return None;
+    }
+    let (tool_source, short_tool_name) = tool_source_namespace(tool_name, args);
+    let skill_id = extract_str_field(args, &["skill_id", "skillId"])?;
+
+    let (approval_identity, source_summary, sha_prefix, declared_risk) =
+        if short == "skill_trust_request" {
+            // inspect（Low）不会走审批；grant 必须携带 inspect 返回的整包指纹
+            let expected_sha256 = extract_str_field(
+                args,
+                &["expected_package_sha256", "expectedPackageSha256"],
+            )?;
+            let declared_risk = extract_str_field(args, &["declared_risk_level", "declaredRiskLevel"])
+                .unwrap_or_else(|| "low".to_string());
+            let reason_summary = extract_str_field(args, &["reason"])
+                .map(|reason| reason.chars().take(120).collect::<String>());
+            let identity = format!("trust:{}:{}:{}", skill_id, expected_sha256, declared_risk);
+            let prefix: String = expected_sha256.chars().take(12).collect();
+            (identity, reason_summary, Some(prefix), Some(declared_risk))
+        } else {
+            let identity = format!("remove:{}", skill_id);
+            let summary = format!(
+                "{}/{}",
+                crate::chat_v2::skills::DEFAULT_AGENT_SKILLS_BASE,
+                skill_id
+            );
+            (identity, Some(summary), None, None)
+        };
+
+    Some(RuntimeApprovalScope {
+        kind: "skill_lifecycle".to_string(),
+        tool_source,
+        tool_name: short_tool_name.to_string(),
+        root_id: "-".to_string(),
+        cwd: "-".to_string(),
+        command_prefix: "-".to_string(),
+        command_hash: raw_hash(&approval_identity)
+            .strip_prefix("raw:")
+            .unwrap_or("")
+            .to_string(),
+        env_plan_hash: "-".to_string(),
+        inherit_env: None,
+        inherited_env_keys: None,
+        explicit_env_keys: None,
+        timeout_ms: 0,
+        max_output_bytes: 0,
+        track_file_changes: false,
+        risk_level: risk_level.to_string(),
+        network_allowed: false,
+        has_shell_operators: false,
+        uses_script_runner: false,
+        first_token: None,
+        skill_root_id: None,
+        root_path: None,
+        root_access: None,
+        root_session_scoped: None,
+        root_binding: None,
+        readable_roots: None,
+        contains_potential_secret: None,
+        sandbox_backend: None,
+        shell_kind: None,
+        output_encoding: None,
+        execution_location: None,
+        sandbox_enforced: None,
+        remember_disabled: Some(true),
+        source_summary,
+        expected_sha256_prefix: sha_prefix,
+        declared_risk_level: declared_risk,
+        skill_id: Some(skill_id),
+    })
+}
+
+/// custom_agent_apply / custom_agent_remove 的审批 scope：无 shell 语义，
+/// 向审批卡暴露目标 persona 文件名与（apply）审阅内容指纹前缀，并携带
+/// `remember_disabled`（与 never-remember 三层防线对齐）。
+///
+/// 关键识别字段缺失时 fail-closed 返回 None（不产生通配 scope），
+/// 与 make_skill_lifecycle_approval_scope 的策略一致。
+fn make_custom_agent_approval_scope(
+    tool_name: &str,
+    args: &Value,
+    risk_level: &str,
+) -> Option<RuntimeApprovalScope> {
+    let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    if short != "custom_agent_apply" && short != "custom_agent_remove" {
+        return None;
+    }
+    let (tool_source, short_tool_name) = tool_source_namespace(tool_name, args);
+    let file_name = extract_str_field(args, &["file_name", "fileName"])?;
+
+    let (approval_identity, source_summary, sha_prefix) = if short == "custom_agent_apply" {
+        let proposal_id = extract_str_field(args, &["proposal_id", "proposalId"])?;
+        let content_sha256 =
+            extract_str_field(args, &["expected_content_sha256", "expectedContentSha256"])?;
+        let proposal_revision = extract_str_field(
+            args,
+            &["expected_proposal_revision", "expectedProposalRevision"],
+        )?;
+        // change_summary 来自 propose 结果（新旧字节数/首行标题），仅作展示；
+        // 完整性由 content_sha256 + proposal_revision 指纹保证
+        let summary = extract_str_field(args, &["change_summary", "changeSummary"])
+            .map(|s| s.chars().take(160).collect::<String>())
+            .unwrap_or_else(|| format!("workspaces/agents/{}", file_name));
+        let identity = format!(
+            "apply:{}:{}:{}:{}",
+            proposal_id, file_name, content_sha256, proposal_revision
+        );
+        let prefix: String = content_sha256.chars().take(12).collect();
+        (identity, Some(summary), Some(prefix))
+    } else {
+        let identity = format!("remove:{}", file_name);
+        (
+            identity,
+            Some(format!("workspaces/agents/{}", file_name)),
+            None,
+        )
+    };
+
+    Some(RuntimeApprovalScope {
+        kind: "custom_agent".to_string(),
+        tool_source,
+        tool_name: short_tool_name.to_string(),
+        root_id: "-".to_string(),
+        cwd: "-".to_string(),
+        command_prefix: "-".to_string(),
+        command_hash: raw_hash(&approval_identity)
+            .strip_prefix("raw:")
+            .unwrap_or("")
+            .to_string(),
+        env_plan_hash: "-".to_string(),
+        inherit_env: None,
+        inherited_env_keys: None,
+        explicit_env_keys: None,
+        timeout_ms: 0,
+        max_output_bytes: 0,
+        track_file_changes: false,
+        risk_level: risk_level.to_string(),
+        network_allowed: false,
+        has_shell_operators: false,
+        uses_script_runner: false,
+        first_token: None,
+        skill_root_id: None,
+        root_path: None,
+        root_access: None,
+        root_session_scoped: None,
+        root_binding: None,
+        readable_roots: None,
+        contains_potential_secret: None,
+        sandbox_backend: None,
+        shell_kind: None,
+        output_encoding: None,
+        execution_location: None,
+        sandbox_enforced: None,
+        remember_disabled: Some(true),
+        source_summary,
+        expected_sha256_prefix: sha_prefix,
+        declared_risk_level: None,
+        skill_id: None,
+    })
+}
+
+/// mcp_server_update / mcp_server_remove 的审批 scope：无 shell 语义，向审批卡
+/// 暴露目标 server 与关键变更摘要（remove 含 transport 摘要），并携带
+/// `remember_disabled`（与 never-remember 三层防线对齐）。
+///
+/// 匹配规则同 PRIVILEGE_ESCALATION_TOOLS 的 P2-1 修复：裸名 `mcp_server_*`
+/// 会被 tool_source_namespace 剥成 `server_*`，因此先做完整名直接比对；
+/// 关键识别字段缺失时 fail-closed 返回 None。
+fn make_mcp_manage_approval_scope(
+    tool_name: &str,
+    args: &Value,
+    risk_level: &str,
+) -> Option<RuntimeApprovalScope> {
+    let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    let canonical = if tool_name == "mcp_server_update" || short == "mcp_server_update" {
+        "mcp_server_update"
+    } else if tool_name == "mcp_server_remove" || short == "mcp_server_remove" {
+        "mcp_server_remove"
+    } else {
+        return None;
+    };
+    let (tool_source, short_tool_name) = tool_source_namespace(tool_name, args);
+    let server_id = extract_str_field(args, &["server_id", "serverId"])?;
+
+    let (approval_identity, source_summary) = if canonical == "mcp_server_remove" {
+        let expected_transport =
+            extract_str_field(args, &["expected_transport", "expectedTransport"])?;
+        (
+            format!("remove:{}:{}", server_id, expected_transport),
+            Some(format!("{} (transport={})", server_id, expected_transport)),
+        )
+    } else {
+        // update：审批绑定完整参数对象（凭据红线由执行器拒 env 字段，
+        // 参数中只可能出现 env_required 变量名，无泄密面）
+        let encoded = serde_json::to_string(args).ok()?;
+        let changed_fields: Vec<&str> = args
+            .as_object()
+            .map(|obj| {
+                obj.keys()
+                    .map(String::as_str)
+                    .filter(|k| !matches!(*k, "server_id" | "serverId" | "reason"))
+                    .collect()
+            })
+            .unwrap_or_default();
+        (
+            format!("update:{}:{}", server_id, raw_hash(&encoded)),
+            Some(format!("{}: [{}]", server_id, changed_fields.join(", "))),
+        )
+    };
+
+    Some(RuntimeApprovalScope {
+        kind: "mcp_manage".to_string(),
+        tool_source,
+        tool_name: short_tool_name.to_string(),
+        root_id: "-".to_string(),
+        cwd: "-".to_string(),
+        command_prefix: "-".to_string(),
+        command_hash: raw_hash(&approval_identity)
+            .strip_prefix("raw:")
+            .unwrap_or("")
+            .to_string(),
+        env_plan_hash: "-".to_string(),
+        inherit_env: None,
+        inherited_env_keys: None,
+        explicit_env_keys: None,
+        timeout_ms: 0,
+        max_output_bytes: 0,
+        track_file_changes: false,
+        risk_level: risk_level.to_string(),
+        network_allowed: false,
+        has_shell_operators: false,
+        uses_script_runner: false,
+        first_token: None,
+        skill_root_id: None,
+        root_path: None,
+        root_access: None,
+        root_session_scoped: None,
+        root_binding: None,
+        readable_roots: None,
+        contains_potential_secret: None,
+        sandbox_backend: None,
+        shell_kind: None,
+        output_encoding: None,
+        execution_location: None,
+        sandbox_enforced: None,
+        remember_disabled: Some(true),
+        source_summary,
+        expected_sha256_prefix: None,
+        declared_risk_level: None,
+        skill_id: None,
+    })
+}
+
 /// automation_propose 的审批 scope：无 shell 语义，仅用于把 `remember_disabled`
 /// 带到前端审批卡（隐藏「本会话允许 / 始终允许」），与 never-remember 三层防线对齐。
 fn make_automation_propose_approval_scope(
@@ -967,6 +1247,15 @@ pub fn make_runtime_approval_scope(
         return Some(scope);
     }
     if let Some(scope) = make_skill_workshop_approval_scope(tool_name, args, risk_level) {
+        return Some(scope);
+    }
+    if let Some(scope) = make_skill_lifecycle_approval_scope(tool_name, args, risk_level) {
+        return Some(scope);
+    }
+    if let Some(scope) = make_custom_agent_approval_scope(tool_name, args, risk_level) {
+        return Some(scope);
+    }
+    if let Some(scope) = make_mcp_manage_approval_scope(tool_name, args, risk_level) {
         return Some(scope);
     }
     if let Some(scope) = make_automation_propose_approval_scope(tool_name, args, risk_level) {
@@ -1291,6 +1580,83 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
                 )),
                 _ => None,
             }
+        }
+
+        // --- 技能生命周期 ---
+        // skill_set_enabled（Medium，可 remember）：绑定目标技能 + 启停方向，
+        // reason 等展示性字段不参与指纹，避免同一决策因文案变化而反复审批。
+        "skill_set_enabled" => {
+            let skill_id = extract_str_field(args, &["skill_id", "skillId"]);
+            let enabled = args.get("enabled").and_then(Value::as_bool);
+            match (skill_id, enabled) {
+                (Some(id), Some(enabled)) => Some(format!("skill={}:enabled={}", id, enabled)),
+                _ => None,
+            }
+        }
+        // skill_remove / skill_trust_request：never-remember，指纹仅用于单次审批绑定
+        "skill_remove" => {
+            extract_str_field(args, &["skill_id", "skillId"]).map(|id| format!("skill={}", id))
+        }
+        "skill_trust_request" => {
+            let skill_id = extract_str_field(args, &["skill_id", "skillId"]);
+            let package_sha256 = extract_str_field(
+                args,
+                &["expected_package_sha256", "expectedPackageSha256"],
+            );
+            match (skill_id, package_sha256) {
+                (Some(id), Some(sha)) => Some(format!("skill={}:sha={}", id, sha)),
+                _ => None,
+            }
+        }
+
+        // --- MCP server 生命周期 ---
+        // 注意：只匹配 builtin- 前缀剥离后的短名（builtin-mcp_server_*）。
+        // 裸名会被 tool_source_namespace 剥成 server_*，不在此匹配以免与外部
+        // MCP 工具重名塌陷；裸名调用回退 v1 完整参数指纹（更窄，fail-closed）。
+        // mcp_server_set_enabled（Medium，可 remember）：绑定目标 server + 启停方向
+        "mcp_server_set_enabled" => {
+            let server_id = extract_str_field(args, &["server_id", "serverId"]);
+            let enabled = args.get("enabled").and_then(Value::as_bool);
+            match (server_id, enabled) {
+                (Some(id), Some(enabled)) => Some(format!("server={}:enabled={}", id, enabled)),
+                _ => None,
+            }
+        }
+        // mcp_server_update / mcp_server_remove：never-remember，指纹仅用于单次审批绑定
+        "mcp_server_update" => {
+            let server_id = extract_str_field(args, &["server_id", "serverId"])?;
+            let encoded = serde_json::to_string(args).ok()?;
+            Some(format!("server={}:args:{}", server_id, raw_hash(&encoded)))
+        }
+        "mcp_server_remove" => {
+            let server_id = extract_str_field(args, &["server_id", "serverId"]);
+            let transport = extract_str_field(args, &["expected_transport", "expectedTransport"]);
+            match (server_id, transport) {
+                (Some(id), Some(t)) => Some(format!("server={}:transport={}", id, t)),
+                _ => None,
+            }
+        }
+
+        // --- 自定义子代理 persona（never-remember，指纹仅用于单次审批绑定）---
+        "custom_agent_apply" => {
+            let proposal_id = extract_str_field(args, &["proposal_id", "proposalId"]);
+            let file_name = extract_str_field(args, &["file_name", "fileName"]);
+            let content_sha256 =
+                extract_str_field(args, &["expected_content_sha256", "expectedContentSha256"]);
+            let revision = extract_str_field(
+                args,
+                &["expected_proposal_revision", "expectedProposalRevision"],
+            );
+            match (proposal_id, file_name, content_sha256, revision) {
+                (Some(id), Some(file), Some(sha), Some(revision)) => Some(format!(
+                    "proposal={}:file={}:sha={}:revision={}",
+                    id, file, sha, revision
+                )),
+                _ => None,
+            }
+        }
+        "custom_agent_remove" => {
+            extract_str_field(args, &["file_name", "fileName"]).map(|file| format!("file={}", file))
         }
 
         // --- 未知工具：尝试从通用资源字段中保守提取；否则 fallback v1 ---
@@ -3190,10 +3556,16 @@ mod tests {
     fn never_remember_approval_covers_privilege_tools() {
         assert!(never_remember_approval("builtin-skill_install"));
         assert!(never_remember_approval("builtin-skill_workshop_apply"));
+        assert!(never_remember_approval("builtin-skill_remove"));
+        assert!(never_remember_approval("builtin-skill_trust_request"));
         assert!(never_remember_approval("mcp_server_propose"));
         assert!(never_remember_approval("runtime_root_request"));
         assert!(never_remember_approval("automation_propose"));
+        assert!(never_remember_approval("builtin-custom_agent_apply"));
+        assert!(never_remember_approval("custom_agent_remove"));
         assert!(!never_remember_approval("builtin-local_shell_execute"));
+        assert!(!never_remember_approval("builtin-skill_set_enabled"));
+        assert!(!never_remember_approval("builtin-custom_agent_propose"));
     }
 
     /// SECURITY 回归（02 号报告 P2-1）：never-remember 判定不得依赖 `builtin-` 前缀。
@@ -3210,6 +3582,8 @@ mod tests {
             "automation_propose",
             "skill_install",
             "skill_workshop_apply",
+            "skill_remove",
+            "skill_trust_request",
         ] {
             assert!(
                 never_remember_approval(name),
@@ -3367,6 +3741,215 @@ mod tests {
             make_runtime_scope_key_v2("builtin-skill_workshop_apply", &missing_review_hash)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn skill_lifecycle_runtime_scopes_are_never_remember_and_fingerprint_bound() {
+        // skill_remove：scope 携带目标技能与安装目录摘要
+        let remove_args = json!({ "skill_id": "pdf-tools" });
+        let remove_scope = make_runtime_approval_scope("builtin-skill_remove", &remove_args, "high")
+            .expect("skill_remove scope");
+        assert_eq!(remove_scope.kind, "skill_lifecycle");
+        assert_eq!(remove_scope.remember_disabled, Some(true));
+        assert_eq!(remove_scope.skill_id.as_deref(), Some("pdf-tools"));
+        assert!(remove_scope.source_summary.unwrap().contains("pdf-tools"));
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-skill_remove", &remove_args).as_deref(),
+            Some("builtin:skill_remove::skill=pdf-tools")
+        );
+        assert!(make_runtime_scope_key_v2("builtin-skill_remove", &json!({})).is_none());
+
+        // skill_trust_request grant：scope 绑定 inspect 返回的整包指纹与声明风险
+        let trust_args = json!({
+            "action": "grant",
+            "skill_id": "external-tools",
+            "reason": "需要运行包内 scripts 完成用户任务",
+            "expected_package_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "declared_risk_level": "medium"
+        });
+        let trust_scope =
+            make_runtime_approval_scope("builtin-skill_trust_request", &trust_args, "high")
+                .expect("skill_trust_request scope");
+        assert_eq!(trust_scope.kind, "skill_lifecycle");
+        assert_eq!(trust_scope.remember_disabled, Some(true));
+        assert_eq!(trust_scope.skill_id.as_deref(), Some("external-tools"));
+        assert_eq!(
+            trust_scope.expected_sha256_prefix.as_deref(),
+            Some("0123456789ab")
+        );
+        assert_eq!(trust_scope.declared_risk_level.as_deref(), Some("medium"));
+        assert!(trust_scope.source_summary.unwrap().contains("scripts"));
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-skill_trust_request", &trust_args).as_deref(),
+            Some("builtin:skill_trust_request::skill=external-tools:sha=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+        );
+        // 缺指纹时 fail-closed：不产生可复用 scope 键
+        assert!(make_runtime_scope_key_v2(
+            "builtin-skill_trust_request",
+            &json!({ "action": "grant", "skill_id": "external-tools" })
+        )
+        .is_none());
+
+        for tool in ["builtin-skill_remove", "builtin-skill_trust_request"] {
+            assert!(requires_precise_approval_scope(tool), "{tool}");
+            assert!(ignores_broad_approval_bypass(tool), "{tool}");
+        }
+    }
+
+    /// mcp_server_update / mcp_server_remove 与 propose 同族：never-remember，
+    /// scope 绑定目标 server；remove 的审批卡携带 transport 摘要。
+    #[test]
+    fn mcp_manage_runtime_scopes_are_never_remember_and_fingerprint_bound() {
+        // 裸名与带前缀形态都必须命中 never-remember（P2-1 口径）
+        for name in [
+            "mcp_server_update",
+            "builtin-mcp_server_update",
+            "mcp_server_remove",
+            "builtin-mcp_server_remove",
+        ] {
+            assert!(never_remember_approval(name), "{name}");
+            assert!(requires_precise_approval_scope(name), "{name}");
+            assert!(ignores_broad_approval_bypass(name), "{name}");
+        }
+        // set_enabled 是 Medium、可 remember
+        assert!(!never_remember_approval("builtin-mcp_server_set_enabled"));
+
+        // remove：scope 展示 server + transport 摘要
+        let remove_args = json!({ "server_id": "brave", "expected_transport": "stdio" });
+        let remove_scope =
+            make_runtime_approval_scope("builtin-mcp_server_remove", &remove_args, "high")
+                .expect("mcp_server_remove scope");
+        assert_eq!(remove_scope.kind, "mcp_manage");
+        assert_eq!(remove_scope.remember_disabled, Some(true));
+        let summary = remove_scope.source_summary.unwrap();
+        assert!(summary.contains("brave"));
+        assert!(summary.contains("stdio"));
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-mcp_server_remove", &remove_args).as_deref(),
+            Some("builtin:mcp_server_remove::server=brave:transport=stdio")
+        );
+        // 缺 transport 摘要时 fail-closed
+        assert!(
+            make_runtime_approval_scope(
+                "builtin-mcp_server_remove",
+                &json!({ "server_id": "brave" }),
+                "high"
+            )
+            .is_none()
+        );
+
+        // update：scope 绑定完整参数对象哈希，摘要列出变更字段
+        let update_args = json!({
+            "server_id": "brave",
+            "url": "https://example.com/sse",
+            "transport": "sse",
+            "reason": "migrate to remote"
+        });
+        let update_scope =
+            make_runtime_approval_scope("builtin-mcp_server_update", &update_args, "high")
+                .expect("mcp_server_update scope");
+        assert_eq!(update_scope.kind, "mcp_manage");
+        assert_eq!(update_scope.remember_disabled, Some(true));
+        let summary = update_scope.source_summary.unwrap();
+        assert!(summary.contains("brave"));
+        assert!(summary.contains("url"));
+        assert!(!summary.contains("reason"));
+        assert!(
+            make_runtime_scope_key_v2("builtin-mcp_server_update", &update_args)
+                .expect("update scope key")
+                .starts_with("builtin:mcp_server_update::server=brave:args:")
+        );
+
+        // set_enabled：scope 指纹绑定 server + 启停方向
+        let enable_args = json!({ "server_id": "brave", "enabled": false });
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-mcp_server_set_enabled", &enable_args).as_deref(),
+            Some("builtin:mcp_server_set_enabled::server=brave:enabled=false")
+        );
+        assert!(make_runtime_scope_key_v2(
+            "builtin-mcp_server_set_enabled",
+            &json!({ "server_id": "brave" })
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn custom_agent_runtime_scopes_are_never_remember_and_fingerprint_bound() {
+        // custom_agent_apply：scope 绑定提案 + 文件 + 审阅内容指纹 + revision
+        let apply_args = json!({
+            "proposal_id": "cap_1234567890_abcd",
+            "file_name": "paper-summarizer.md",
+            "expected_content_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "expected_proposal_revision": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+            "change_summary": "覆盖 paper-summarizer.md：980 → 1200 字节"
+        });
+        let apply_scope =
+            make_runtime_approval_scope("builtin-custom_agent_apply", &apply_args, "high")
+                .expect("custom_agent_apply scope");
+        assert_eq!(apply_scope.kind, "custom_agent");
+        assert_eq!(apply_scope.remember_disabled, Some(true));
+        assert_eq!(
+            apply_scope.expected_sha256_prefix.as_deref(),
+            Some("0123456789ab")
+        );
+        assert!(apply_scope.source_summary.unwrap().contains("字节"));
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-custom_agent_apply", &apply_args).as_deref(),
+            Some("builtin:custom_agent_apply::proposal=cap_1234567890_abcd:file=paper-summarizer.md:sha=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef:revision=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")
+        );
+        // 缺审阅指纹时 fail-closed：不产生可复用 scope 键
+        assert!(make_runtime_scope_key_v2(
+            "builtin-custom_agent_apply",
+            &json!({ "proposal_id": "cap_1234567890_abcd", "file_name": "paper-summarizer.md" })
+        )
+        .is_none());
+
+        // custom_agent_remove：scope 携带目标文件名
+        let remove_args = json!({ "file_name": "paper-summarizer.md" });
+        let remove_scope =
+            make_runtime_approval_scope("builtin-custom_agent_remove", &remove_args, "high")
+                .expect("custom_agent_remove scope");
+        assert_eq!(remove_scope.kind, "custom_agent");
+        assert_eq!(remove_scope.remember_disabled, Some(true));
+        assert!(remove_scope
+            .source_summary
+            .unwrap()
+            .contains("paper-summarizer.md"));
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-custom_agent_remove", &remove_args).as_deref(),
+            Some("builtin:custom_agent_remove::file=paper-summarizer.md")
+        );
+
+        for tool in ["builtin-custom_agent_apply", "builtin-custom_agent_remove"] {
+            assert!(never_remember_approval(tool), "{tool}");
+            assert!(requires_precise_approval_scope(tool), "{tool}");
+            assert!(ignores_broad_approval_bypass(tool), "{tool}");
+        }
+    }
+
+    /// skill_set_enabled（Medium，可 remember）：scope 键绑定技能 + 启停方向，
+    /// 停用的批准不得复用到重新启用（反之亦然），缺关键字段 fail-closed。
+    #[test]
+    fn skill_set_enabled_scope_binds_skill_and_direction() {
+        let disable = json!({ "skill_id": "pdf-tools", "enabled": false });
+        let enable = json!({ "skill_id": "pdf-tools", "enabled": true });
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-skill_set_enabled", &disable).as_deref(),
+            Some("builtin:skill_set_enabled::skill=pdf-tools:enabled=false")
+        );
+        assert_ne!(
+            make_runtime_scope_key_v2("builtin-skill_set_enabled", &disable),
+            make_runtime_scope_key_v2("builtin-skill_set_enabled", &enable),
+        );
+        assert!(
+            make_runtime_scope_key_v2("builtin-skill_set_enabled", &json!({ "skill_id": "x" }))
+                .is_none()
+        );
+        assert!(make_runtime_scope_key_v2(
+            "builtin-skill_set_enabled",
+            &json!({ "enabled": false })
+        )
+        .is_none());
     }
 
     #[test]

@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use tauri::Manager;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::shell_sandbox::{PlatformSandboxBackend, SandboxBackend, SandboxCapability};
 use super::strip_tool_namespace;
 use crate::chat_v2::approval_scope::{analyze_shell_command, redact_shell_command_for_display};
 use crate::chat_v2::context::local_shell_contract_for_platform;
@@ -198,6 +199,16 @@ impl LocalShellPreflightExecutor {
                 platform
             ));
         }
+        // 🔒 运行时沙箱能力探测：平台契约声明支持但沙箱启动器实际不可用
+        // （如 Linux 桌面未安装 bubblewrap）时，预检直接标 blocked，
+        // 并把安装指引透传给模型/用户，避免 execute 阶段才失败。
+        let sandbox_capability = PlatformSandboxBackend::new().capability();
+        let sandbox_available = matches!(&sandbox_capability, SandboxCapability::Available);
+        if shell.execution_supported && !sandbox_available {
+            if let SandboxCapability::Unavailable { reason } = &sandbox_capability {
+                reasons.push(format!("local shell sandbox is unavailable: {}", reason));
+            }
+        }
         let state = ctx.window_ref().state::<AppState>();
         let effective_root_id = resolve_effective_runtime_root_id_for_session(
             ctx.window_ref().app_handle(),
@@ -361,6 +372,7 @@ impl LocalShellPreflightExecutor {
         let blocked = command.is_empty()
             || command.len() > 8192
             || !shell.execution_supported
+            || !sandbox_available
             || command_policy.effective_effect
                 == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
             || touches_skills_directory
@@ -413,6 +425,7 @@ impl LocalShellPreflightExecutor {
             "os": shell.os,
             "shell_path": shell.shell_path,
             "sandbox_backend": shell.sandbox_backend,
+            "sandbox_available": sandbox_available,
             "shell_kind": shell.shell_kind,
             "shell_invocation": shell.invocation,
             "output_encoding": shell.output_encoding,
@@ -598,11 +611,20 @@ mod tests {
         assert!(windows.execution_supported);
 
         let linux = local_shell_contract_for_platform("linux");
-        assert_eq!(linux.shell_path, None);
-        assert_eq!(linux.sandbox_backend, "unavailable");
-        assert_eq!(linux.shell_kind, "unavailable");
-        assert_eq!(linux.output_encoding, Some("unknown"));
-        assert!(!linux.execution_supported);
+        assert_eq!(linux.shell_path, Some("/bin/sh"));
+        assert_eq!(linux.sandbox_backend, "linux_bwrap");
+        assert_eq!(linux.shell_kind, "posix_sh");
+        assert_eq!(linux.output_encoding, Some("utf-8"));
+        assert!(linux.execution_supported);
+
+        // Android 的 target_os / std::env::consts::OS 是 "android"，
+        // 不会命中 linux 分支，必须保持 fail-closed。
+        let android = local_shell_contract_for_platform("android");
+        assert_eq!(android.shell_path, None);
+        assert_eq!(android.sandbox_backend, "unavailable");
+        assert_eq!(android.shell_kind, "unavailable");
+        assert_eq!(android.output_encoding, Some("unknown"));
+        assert!(!android.execution_supported);
     }
 
     #[test]

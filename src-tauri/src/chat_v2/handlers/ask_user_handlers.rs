@@ -50,9 +50,7 @@ pub async fn chat_v2_ask_user_respond(
     source: String,
 ) -> Result<(), String> {
     if tool_call_id.trim().is_empty() {
-        return Err(
-            ChatV2Error::InvalidInput("tool_call_id must not be empty".to_string()).into(),
-        );
+        return Err(ChatV2Error::InvalidInput("tool_call_id must not be empty".to_string()).into());
     }
     if !VALID_ASK_USER_SOURCES.contains(&source.as_str()) {
         return Err(ChatV2Error::InvalidInput(format!(

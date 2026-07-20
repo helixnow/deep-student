@@ -27,6 +27,7 @@ pub const MEMORY_BATCH_MOVE: &str = "builtin-memory_batch_move";
 pub const MEMORY_ADD_RELATION: &str = "builtin-memory_add_relation";
 pub const MEMORY_REMOVE_RELATION: &str = "builtin-memory_remove_relation";
 pub const MEMORY_UPDATE_TAGS: &str = "builtin-memory_update_tags";
+pub const MEMORY_LOG_ACTIVITY: &str = "builtin-memory_log_activity";
 pub const MEMORY_EXPORT_ALL: &str = "builtin-memory_export_all";
 pub const LEARNER_PROFILE_GET: &str = "builtin-learner_profile_get";
 pub const LEARNER_PROFILE_UPDATE: &str = "builtin-learner_profile_update";
@@ -38,6 +39,8 @@ const MEMORY_EXPORT_CONTENT_CHARS: usize = 2_000;
 const MEMORY_TAG_LIMIT: usize = 50;
 const MEMORY_TAG_CHARS: usize = 200;
 const MEMORY_FOLDER_PATH_CHARS: usize = 1_000;
+/// memory_log_activity 单条活动文本上限（日志条目应是一句话概括）
+const MEMORY_LOG_ACTIVITY_MAX_CHARS: usize = 80;
 
 pub struct MemoryToolExecutor;
 
@@ -69,6 +72,7 @@ impl MemoryToolExecutor {
                 | "memory_add_relation"
                 | "memory_remove_relation"
                 | "memory_update_tags"
+                | "memory_log_activity"
                 | "memory_export_all"
                 | "learner_profile_get"
                 | "learner_profile_update"
@@ -426,8 +430,9 @@ impl MemoryToolExecutor {
     }
 
     fn emit_memory_changed(ctx: &ExecutionContext, action: &str, note_ids: &[String]) {
+        // ACR 4.0：域事件 source 统一为 "agent"（前端 normalize 仍双认 "ai"）
         let payload = json!({
-            "source": "ai",
+            "source": "agent",
             "action": action,
             "entityIds": note_ids,
             "runId": ctx.run_id(),
@@ -447,9 +452,12 @@ impl MemoryToolExecutor {
             .as_ref()
             .ok_or("LLM manager not available")?;
 
+        // 依次尝试：ctx 注入的实例 → app 托管单例（保留连接/表状态缓存）→
+        // 按需新建（启动降级或 headless 测试时的最终兜底）。
         let lance_store = ctx
             .vfs_lance_store
             .clone()
+            .or_else(|| crate::chat_v2::pipeline::managed_vfs_lance_store_for(vfs_db))
             .map(Ok)
             .unwrap_or_else(|| VfsLanceStore::new(vfs_db.clone()).map(Arc::new))
             .map_err(|e| format!("Failed to create lance store: {}", e))?;
@@ -600,6 +608,18 @@ impl MemoryToolExecutor {
 
         match result {
             Some((note, content)) => {
+                // 使用信号分层（读取强化）：memory_read 是 LLM 主动读取单条记忆
+                // 全文的强使用信号（远强于"被检索返回"的曝光）。异步记 `_used`
+                // 计数并刷新 `_last_hit`，不阻塞读取返回；失败在 service 内只 warn。
+                // 系统笔记（`__` 前缀，如 __user_profile__/__cat_*）不参与
+                // 使用统计与进化判据，跳过。
+                if !note.title.starts_with("__") {
+                    let svc_for_usage = service.clone();
+                    let used_id = note.id.clone();
+                    tokio::task::spawn_blocking(move || {
+                        svc_for_usage.record_used(&[used_id])
+                    });
+                }
                 let folder_path = service
                     .get_note_relative_folder_path(&note.id)
                     .map_err(|error| error.to_string())?;
@@ -608,6 +628,18 @@ impl MemoryToolExecutor {
                     .iter()
                     .filter_map(|tag| tag.strip_prefix("_ref:").map(str::to_string))
                     .collect();
+                // _ref 悬挂治理：过滤指向已删除笔记的引用，避免 LLM 拿到
+                // 必然 NotFound 的关联 ID（覆盖所有历史删除路径）
+                let related_note_ids = match service.filter_alive_note_ids(&related_note_ids) {
+                    Ok(alive) => alive,
+                    Err(error) => {
+                        log::warn!(
+                            "[MemoryToolExecutor] Failed to filter dangling _ref targets: {}",
+                            error
+                        );
+                        related_note_ids
+                    }
+                };
                 Ok(json!({
                     "found": true,
                     "note_id": note.id,
@@ -1567,6 +1599,56 @@ impl MemoryToolExecutor {
         ))
     }
 
+    /// stale 复活支撑：在 update_tags 写入完成的基础上，用其返回的新版本做
+    /// 第二次 OCC 写，仅摘除 `_stale`，其余系统标签原样保留。
+    /// 标签不参与内容索引，无需 mark_pending；单独写一条审计便于追溯复活操作。
+    fn remove_stale_tag(
+        service: &MemoryService,
+        note: &crate::vfs::types::VfsNote,
+        ctx: &ExecutionContext,
+    ) -> Result<crate::vfs::types::VfsNote, VfsError> {
+        // 与 service 的 restore_stale/restore_archived 同口径：连带摘除陈旧的
+        // `_last_hit:`/`_last_injected:` 时间戳，防止 evolution 下一周期依据
+        // 残留旧信号立即重新降级（计龄回退到本次写入刷新的 updated_at）。
+        let tags: Vec<String> = note
+            .tags
+            .iter()
+            .filter(|tag| {
+                tag.as_str() != "_stale"
+                    && !tag.starts_with("_last_hit:")
+                    && !tag.starts_with("_last_injected:")
+            })
+            .cloned()
+            .collect();
+        let updated = crate::vfs::repos::note_repo::VfsNoteRepo::update_note(
+            service.vfs_db_ref(),
+            &note.id,
+            crate::vfs::types::VfsUpdateNoteParams {
+                tags: Some(tags),
+                expected_updated_at: Some(note.updated_at.clone()),
+                ..Default::default()
+            },
+        )?;
+        service
+            .audit_logger()
+            .log(&crate::memory::audit_log::MemoryAuditEntry {
+                source: MemoryOpSource::ToolCall,
+                operation: MemoryOpType::UpdateTags,
+                success: true,
+                note_id: Some(note.id.clone()),
+                title: None,
+                content_preview: None,
+                folder: None,
+                event: None,
+                confidence: None,
+                reason: Some("移除 _stale 标记（用户确认记忆仍然有效）".to_string()),
+                session_id: Some(ctx.session_id.clone()),
+                duration_ms: None,
+                extra_json: None,
+            });
+        Ok(updated)
+    }
+
     async fn execute_update_tags(
         &self,
         call: &ToolCall,
@@ -1586,6 +1668,13 @@ impl MemoryToolExecutor {
         let note_id = Self::required_string(&call.arguments, "note_id")?;
         let expected_updated_at = Self::required_string(&call.arguments, "expected_updated_at")?;
         let tags = Self::parse_tags(&call.arguments)?;
+        // stale 复活通道：用户表示某记忆仍然有效时，允许摘除 `_stale`
+        // （且仅 `_stale`——`_type:`/`_purpose:`/`_hits:` 等系统标签仍受保护）
+        let remove_stale = call
+            .arguments
+            .get("remove_stale")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         let service_for_task = service.clone();
         let task_note_id = note_id.clone();
         let session_id = ctx.session_id.clone();
@@ -1601,7 +1690,7 @@ impl MemoryToolExecutor {
         })
         .await
         .map_err(|error| error.to_string())?;
-        let (previous, updated) = operation.map_err(|error| {
+        let (previous, mut updated) = operation.map_err(|error| {
             Self::service_error(
                 &service,
                 "update_tags",
@@ -1609,6 +1698,18 @@ impl MemoryToolExecutor {
                 error,
             )
         })?;
+        let mut stale_removed = false;
+        if remove_stale && updated.tags.iter().any(|tag| tag == "_stale") {
+            updated = Self::remove_stale_tag(&service, &updated, ctx).map_err(|error| {
+                Self::service_error(
+                    &service,
+                    "update_tags",
+                    std::slice::from_ref(&note_id),
+                    error,
+                )
+            })?;
+            stale_removed = true;
+        }
         Self::emit_memory_changed(ctx, "update_tags", std::slice::from_ref(&note_id));
         let previous_user_tags: Vec<String> = previous
             .tags
@@ -1632,6 +1733,7 @@ impl MemoryToolExecutor {
                 "tags": updated.tags,
                 "user_tags": user_tags,
                 "system_tags_preserved": true,
+                "stale_removed": stale_removed,
                 "updated_at": updated_at,
                 "reversible": true,
                 "undo": {
@@ -1645,6 +1747,74 @@ impl MemoryToolExecutor {
             json!({ "noteId": updated_id }),
             "记忆标签已更新",
             "The memory tags were updated.",
+        ))
+    }
+
+    /// 记录一条"今天做了什么"的学习活动到每日学习日志（J6：日志→画像闭环的手动供给方）
+    ///
+    /// 复用 daily_log::append_entry：同日去重、`- [HH:MM]` 前缀、4000 字上限丢弃最旧行。
+    /// 自动提取关闭时，LLM 可经此工具维持日志供给，供晋升管道蒸馏进学习者画像。
+    async fn execute_log_activity(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        if ctx.is_cancelled() {
+            return Err(Self::invalid_args(
+                "cancellation",
+                "学习活动记录在开始前已取消",
+                "The activity logging was cancelled before it started.",
+            ));
+        }
+        let service = self.get_service(ctx)?;
+        if let Err(hint) = self.ensure_root_configured(&service) {
+            return Ok(hint);
+        }
+        let activity = Self::required_string(&call.arguments, "activity")?;
+        if activity.chars().count() > MEMORY_LOG_ACTIVITY_MAX_CHARS {
+            return Err(Self::invalid_args(
+                "activity",
+                format!("activity 最多允许 {MEMORY_LOG_ACTIVITY_MAX_CHARS} 个字符（一句话概括即可）"),
+                format!(
+                    "activity may contain at most {MEMORY_LOG_ACTIVITY_MAX_CHARS} characters."
+                ),
+            ));
+        }
+
+        let service_for_task = service.clone();
+        let task_activity = activity.clone();
+        let outcome = tokio::task::spawn_blocking(move || {
+            crate::memory::daily_log::append_entry(&service_for_task, &task_activity)
+        })
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| Self::service_error(&service, "log_activity", &[], error))?;
+
+        let appended = outcome.appended;
+        Ok(with_localized_message(
+            json!({
+                "success": true,
+                "appended": appended,
+                "note_id": outcome.note_id,
+                "date": crate::memory::daily_log::today_local_date(),
+                "reason": outcome.reason,
+            }),
+            if appended {
+                "chat.tools.memory.activity_logged"
+            } else {
+                "chat.tools.memory.activity_skipped"
+            },
+            json!({ "appended": appended }),
+            if appended {
+                "学习活动已记入今日学习日志"
+            } else {
+                "该学习活动今日已有相同记录，已跳过"
+            },
+            if appended {
+                "The activity was appended to today's study log."
+            } else {
+                "Today's log already contains this activity; skipped."
+            },
         ))
     }
 
@@ -1912,6 +2082,7 @@ impl ToolExecutor for MemoryToolExecutor {
             "memory_add_relation" => self.execute_relation(call, ctx, true).await,
             "memory_remove_relation" => self.execute_relation(call, ctx, false).await,
             "memory_update_tags" => self.execute_update_tags(call, ctx).await,
+            "memory_log_activity" => self.execute_log_activity(call, ctx).await,
             "memory_export_all" => self.execute_export_all(call, ctx).await,
             "learner_profile_get" => self.execute_learner_profile_get(call, ctx).await,
             "learner_profile_update" => self.execute_learner_profile_update(call, ctx).await,
@@ -1957,6 +2128,7 @@ impl ToolExecutor for MemoryToolExecutor {
             | "memory_add_relation"
             | "memory_remove_relation"
             | "memory_update_tags"
+            | "memory_log_activity"
             | "memory_write"
             | "memory_write_smart"
             | "memory_write_batch"
@@ -2009,6 +2181,7 @@ mod tests {
             "builtin-memory_add_relation",
             "builtin-memory_remove_relation",
             "builtin-memory_update_tags",
+            "builtin-memory_log_activity",
             "builtin-memory_write",
             "builtin-memory_write_smart",
             "builtin-memory_write_batch",

@@ -628,9 +628,7 @@ impl ApprovalManager {
         };
 
         // pending_key 格式：`{session_id}\n{tool_call_id}`（见 make_pending_key）
-        let (session_id, tool_call_id) = pending_key
-            .split_once('\n')
-            .unwrap_or(("", pending_key));
+        let (session_id, tool_call_id) = pending_key.split_once('\n').unwrap_or(("", pending_key));
         let response = ApprovalResponse::rejected(
             session_id.to_string(),
             tool_call_id.to_string(),
@@ -1040,6 +1038,188 @@ impl ApprovalManager {
             | "browser_close"
             | "builtin-browser_close" => {
                 format!("将执行浏览器操作: {}", tool_name)
+            }
+            "skill_set_enabled" | "builtin-skill_set_enabled" => {
+                let skill_id = arguments
+                    .get("skill_id")
+                    .or(arguments.get("skillId"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("未知技能");
+                if arguments
+                    .get("enabled")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    format!("将启用技能: {}", skill_id)
+                } else {
+                    format!("将停用技能: {}（保留技能文件，可随时重新启用）", skill_id)
+                }
+            }
+            "skill_remove" | "builtin-skill_remove" => {
+                let skill_id = arguments
+                    .get("skill_id")
+                    .or(arguments.get("skillId"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("未知技能");
+                format!(
+                    "将删除技能包: {}（不可恢复；builtin 技能不受影响）",
+                    skill_id
+                )
+            }
+            "skill_trust_request" | "builtin-skill_trust_request" => {
+                let skill_id = arguments
+                    .get("skill_id")
+                    .or(arguments.get("skillId"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("未知技能");
+                match arguments
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|reason| !reason.is_empty())
+                {
+                    Some(reason) => format!(
+                        "将信任技能 {}（信任绑定当前包指纹）: {}",
+                        skill_id, reason
+                    ),
+                    None => format!("将信任技能 {}（信任绑定当前包指纹）", skill_id),
+                }
+            }
+            "mcp_server_update" | "builtin-mcp_server_update" => {
+                let server_id = arguments
+                    .get("server_id")
+                    .or(arguments.get("serverId"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("未知服务器");
+                // 只列字段名，不回显值（env 值本就被执行器拒绝，url 等值在参数区可见）
+                let changed_fields = arguments
+                    .as_object()
+                    .map(|obj| {
+                        obj.keys()
+                            .map(String::as_str)
+                            .filter(|k| !matches!(*k, "server_id" | "serverId" | "reason"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .unwrap_or_default();
+                if changed_fields.is_empty() {
+                    format!("将修改 MCP 服务器配置: {}", server_id)
+                } else {
+                    format!(
+                        "将修改 MCP 服务器配置: {}（字段: {}；修改后自动连测，失败回滚）",
+                        server_id, changed_fields
+                    )
+                }
+            }
+            "mcp_server_set_enabled" | "builtin-mcp_server_set_enabled" => {
+                let server_id = arguments
+                    .get("server_id")
+                    .or(arguments.get("serverId"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("未知服务器");
+                if arguments
+                    .get("enabled")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    format!("将启用 MCP 服务器: {}", server_id)
+                } else {
+                    format!(
+                        "将停用 MCP 服务器: {}（断开连接，保留配置与已填密钥）",
+                        server_id
+                    )
+                }
+            }
+            "mcp_server_remove" | "builtin-mcp_server_remove" => {
+                let server_id = arguments
+                    .get("server_id")
+                    .or(arguments.get("serverId"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("未知服务器");
+                let transport = arguments
+                    .get("expected_transport")
+                    .or(arguments.get("expectedTransport"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("未知传输");
+                format!(
+                    "将删除 MCP 服务器: {}（transport: {}；连同已填密钥一并删除，不可恢复）",
+                    server_id, transport
+                )
+            }
+            "custom_agent_propose" | "builtin-custom_agent_propose" => {
+                match arguments
+                    .get("action")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("propose")
+                {
+                    "list" => "将查看待审阅的子代理 persona 提案列表".to_string(),
+                    "reject" => {
+                        let proposal_id = arguments
+                            .get("proposal_id")
+                            .or(arguments.get("proposalId"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("未知提案");
+                        format!("将拒绝子代理 persona 提案: {}", proposal_id)
+                    }
+                    _ => {
+                        let file_name = arguments
+                            .get("file_name")
+                            .or(arguments.get("fileName"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("未知文件");
+                        format!(
+                            "将起草子代理 persona 提案: {}（写入 pending 提案区，不落盘 agents/，生效需后续审批）",
+                            file_name
+                        )
+                    }
+                }
+            }
+            "custom_agent_apply" | "builtin-custom_agent_apply" => {
+                let file_name = arguments
+                    .get("file_name")
+                    .or(arguments.get("fileName"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("未知文件");
+                // change_summary 来自 propose 结果（新旧字节数/首行标题），仅作展示；
+                // 落盘完整性由 executor 复核 content_sha256 + proposal_revision 保证
+                match arguments
+                    .get("change_summary")
+                    .or(arguments.get("changeSummary"))
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|summary| !summary.is_empty())
+                {
+                    Some(summary) => format!(
+                        "将写入自定义子代理 persona {}: {}",
+                        file_name, summary
+                    ),
+                    None => format!(
+                        "将写入自定义子代理 persona: workspaces/agents/{}",
+                        file_name
+                    ),
+                }
+            }
+            "custom_agent_remove" | "builtin-custom_agent_remove" => {
+                let file_name = arguments
+                    .get("file_name")
+                    .or(arguments.get("fileName"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("未知文件");
+                match arguments
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|title| !title.is_empty())
+                {
+                    Some(title) => format!(
+                        "将删除自定义子代理 persona: {}（{}，不可恢复）",
+                        file_name, title
+                    ),
+                    None => format!(
+                        "将删除自定义子代理 persona: {}（不可恢复）",
+                        file_name
+                    ),
+                }
             }
             _ => format!("将执行工具: {}", tool_name),
         }
@@ -1656,6 +1836,109 @@ mod tests {
         );
         assert!(restore.contains("reports/a.json"));
     }
+
+    #[test]
+    fn skill_lifecycle_approval_descriptions_name_the_target_skill() {
+        let disable = ApprovalManager::generate_description(
+            "builtin-skill_set_enabled",
+            &serde_json::json!({"skill_id": "pdf-tools", "enabled": false}),
+        );
+        assert!(disable.contains("pdf-tools"));
+        assert!(disable.contains("停用"));
+
+        let enable = ApprovalManager::generate_description(
+            "builtin-skill_set_enabled",
+            &serde_json::json!({"skill_id": "pdf-tools", "enabled": true}),
+        );
+        assert!(enable.contains("启用"));
+
+        let remove = ApprovalManager::generate_description(
+            "builtin-skill_remove",
+            &serde_json::json!({"skill_id": "external-tools"}),
+        );
+        assert!(remove.contains("external-tools"));
+        assert!(remove.contains("删除"));
+
+        let trust = ApprovalManager::generate_description(
+            "builtin-skill_trust_request",
+            &serde_json::json!({
+                "action": "grant",
+                "skill_id": "external-tools",
+                "reason": "需要运行包内脚本"
+            }),
+        );
+        assert!(trust.contains("external-tools"));
+        assert!(trust.contains("需要运行包内脚本"));
+    }
+
+    /// mcp_server_update / set_enabled / remove 审批卡必须点名目标 server；
+    /// remove 额外展示 transport 摘要，update 列出变更字段名（不回显值）。
+    #[test]
+    fn mcp_manage_approval_descriptions_name_server_and_transport() {
+        let update = ApprovalManager::generate_description(
+            "builtin-mcp_server_update",
+            &serde_json::json!({
+                "server_id": "brave",
+                "url": "https://example.com/sse",
+                "transport": "sse",
+                "reason": "migrate"
+            }),
+        );
+        assert!(update.contains("brave"));
+        assert!(update.contains("url"));
+        assert!(update.contains("回滚"));
+        assert!(!update.contains("reason"));
+
+        let disable = ApprovalManager::generate_description(
+            "builtin-mcp_server_set_enabled",
+            &serde_json::json!({"server_id": "brave", "enabled": false}),
+        );
+        assert!(disable.contains("brave"));
+        assert!(disable.contains("停用"));
+
+        let enable = ApprovalManager::generate_description(
+            "builtin-mcp_server_set_enabled",
+            &serde_json::json!({"server_id": "brave", "enabled": true}),
+        );
+        assert!(enable.contains("启用"));
+
+        let remove = ApprovalManager::generate_description(
+            "builtin-mcp_server_remove",
+            &serde_json::json!({"server_id": "brave", "expected_transport": "stdio"}),
+        );
+        assert!(remove.contains("brave"));
+        assert!(remove.contains("stdio"));
+        assert!(remove.contains("删除"));
+    }
+
+    #[test]
+    fn custom_agent_approval_descriptions_name_the_target_persona() {
+        let apply_with_summary = ApprovalManager::generate_description(
+            "builtin-custom_agent_apply",
+            &serde_json::json!({
+                "proposal_id": "cap_1234567890_abcd",
+                "file_name": "paper-summarizer.md",
+                "change_summary": "覆盖 paper-summarizer.md：980 → 1200 字节；标题 # 旧 → # 新"
+            }),
+        );
+        assert!(apply_with_summary.contains("paper-summarizer.md"));
+        assert!(apply_with_summary.contains("980 → 1200"));
+
+        let apply_bare = ApprovalManager::generate_description(
+            "builtin-custom_agent_apply",
+            &serde_json::json!({ "file_name": "paper-summarizer.md" }),
+        );
+        assert!(apply_bare.contains("workspaces/agents/paper-summarizer.md"));
+
+        let remove = ApprovalManager::generate_description(
+            "builtin-custom_agent_remove",
+            &serde_json::json!({ "file_name": "paper-summarizer.md", "title": "# 论文摘要员" }),
+        );
+        assert!(remove.contains("paper-summarizer.md"));
+        assert!(remove.contains("论文摘要员"));
+        assert!(remove.contains("删除"));
+    }
+
     #[test]
     fn permission_presets_only_remember_relaxed_medium_for_current_session() {
         let manager = ApprovalManager::new();

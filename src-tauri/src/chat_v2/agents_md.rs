@@ -132,11 +132,21 @@ pub fn read_agents_md_file(path: &Path, allowed_root: &Path) -> Result<String, A
     let mtime = file_mtime(&canon);
     let cache_key = canon.to_string_lossy().to_string();
 
-    if let Ok(guard) = agents_md_cache().lock() {
-        if let Some(entry) = guard.get(&cache_key) {
-            if entry.mtime == mtime {
-                return Ok(entry.content.clone());
+    match agents_md_cache().lock() {
+        Ok(guard) => {
+            if let Some(entry) = guard.get(&cache_key) {
+                if entry.mtime == mtime {
+                    return Ok(entry.content.clone());
+                }
             }
+        }
+        Err(e) => {
+            // 锁中毒时跳过缓存直接读盘（功能不受影响），但要留痕便于排查
+            log::warn!(
+                "[AgentsMd] Cache lock poisoned on read ({}); bypassing cache for {}",
+                e,
+                cache_key
+            );
         }
     }
 
@@ -144,14 +154,23 @@ pub fn read_agents_md_file(path: &Path, allowed_root: &Path) -> Result<String, A
     let sanitized = sanitize_agents_md_content(&raw);
     let content = truncate_agents_md_content(&sanitized, AGENTS_MD_MAX_CHARS);
 
-    if let Ok(mut guard) = agents_md_cache().lock() {
-        guard.insert(
-            cache_key,
-            CacheEntry {
-                mtime,
-                content: content.clone(),
-            },
-        );
+    match agents_md_cache().lock() {
+        Ok(mut guard) => {
+            guard.insert(
+                cache_key,
+                CacheEntry {
+                    mtime,
+                    content: content.clone(),
+                },
+            );
+        }
+        Err(e) => {
+            log::warn!(
+                "[AgentsMd] Cache lock poisoned on write ({}); skipping cache update for {}",
+                e,
+                cache_key
+            );
+        }
     }
 
     Ok(content)

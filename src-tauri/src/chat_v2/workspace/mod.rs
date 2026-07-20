@@ -1,24 +1,19 @@
 //! Chat V2 工作区模块 - 多 Agent 协作共享空间
 
-pub mod agent_control;
 pub mod agent_profile;
 pub mod config;
 pub mod coordinator;
+pub mod custom_agents;
 pub mod database;
 pub mod emitter;
 pub mod inbox;
 pub mod injector;
 pub mod repo;
 pub mod router;
-pub mod skills;
 pub mod sleep_manager;
 pub mod subagent_task;
 pub mod types;
 
-pub use agent_control::{
-    AgentControl, AgentControlConfig, AgentControlRuntime, AgentControlSnapshot, AgentControlState,
-    AgentSpawnRequest, AgentSpawnResult, DetachedAgentRuntime,
-};
 pub use agent_profile::{
     AgentPermissions, AgentProfile, AgentProfileOverride, AgentProfileResolver,
     AgentProfileSelection, AgentRuntimeConfig, ApprovalPolicy, ContextInheritance, ReasoningEffort,
@@ -35,13 +30,13 @@ pub use config::{
     MAX_AGENT_RETRY_ATTEMPTS, MAX_INBOX_SIZE, MAX_MESSAGES_PER_INJECTION,
 };
 pub use coordinator::WorkspaceCoordinator;
+pub use custom_agents::{find_custom_profile, load_custom_profiles};
 pub use database::{WorkspaceDatabase, WorkspaceDatabaseManager, WorkspaceDatabasePool};
 pub use emitter::{workspace_events, WorkspaceEventEmitter};
 pub use inbox::InboxManager;
 pub use injector::{InjectionResult, WorkspaceInjector};
 pub use repo::WorkspaceRepo;
 pub use router::MessageRouter;
-pub use skills::{get_skill, get_skill_recommended_models, list_skills, WorkspaceSkill};
 pub use sleep_manager::{
     SleepBlockData, SleepError, SleepManager, SleepStatus, WakeCondition, WakeReason, WakeUpPayload,
 };

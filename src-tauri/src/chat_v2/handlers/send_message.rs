@@ -757,8 +757,8 @@ pub async fn chat_v2_retry_message(
     // 🔧 修复：删除助手消息之后的所有消息（含自身），确保前后端一致
     let messages_to_delete: Vec<String> = {
         let conn = db.get_conn_safe().map_err(String::from)?;
-        let all_messages = ChatV2Repo::get_session_messages_with_conn(&conn, &session_id)
-            .map_err(String::from)?;
+        let all_messages =
+            ChatV2Repo::get_session_messages_with_conn(&conn, &session_id).map_err(String::from)?;
 
         log::info!(
             "[ChatV2::handlers] Retry: found {} total messages in session",
@@ -1137,19 +1137,23 @@ pub async fn chat_v2_edit_and_resend(
 
     // 更新原用户消息的内容块
     {
-        let conn = db.get_conn_safe().map_err(String::from)?;
+        let mut conn = db.get_conn_safe().map_err(String::from)?;
+        let tx = conn
+            .transaction()
+            .map_err(|error| String::from(ChatV2Error::Database(error.to_string())))?;
+        ChatV2Repo::invalidate_compaction_for_message_with_conn(&tx, &session_id, &message_id)
+            .map_err(String::from)?;
 
         // 获取原消息的块
-        let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &message_id)
-            .map_err(String::from)?;
+        let blocks =
+            ChatV2Repo::get_message_blocks_with_conn(&tx, &message_id).map_err(String::from)?;
 
         // 找到 content 块并更新
         for block in blocks {
             if block.block_type == "content" {
                 let mut updated_block = block.clone();
                 updated_block.content = Some(new_content.clone());
-                ChatV2Repo::update_block_with_conn(&conn, &updated_block)
-                    .map_err(String::from)?;
+                ChatV2Repo::update_block_with_conn(&tx, &updated_block).map_err(String::from)?;
                 log::debug!(
                     "[ChatV2::handlers] Updated content block: block_id={}",
                     block.id
@@ -1184,21 +1188,22 @@ pub async fn chat_v2_edit_and_resend(
             }
             updated_message.meta = Some(meta);
 
-            ChatV2Repo::update_message_with_conn(&conn, &updated_message)
-                .map_err(String::from)?;
+            ChatV2Repo::update_message_with_conn(&tx, &updated_message).map_err(String::from)?;
 
             log::info!(
                 "[ChatV2::handlers] Updated context_snapshot for edited user message: user_refs={}",
                 user_refs.len()
             );
         }
+        tx.commit()
+            .map_err(|error| String::from(ChatV2Error::Database(error.to_string())))?;
     }
 
     // 🔧 P0 修复：使用 index-based 删除（与 retry_message 对齐），避免 timestamp 相同时误删前序消息
     let messages_to_delete: Vec<String> = {
         let conn = db.get_conn_safe().map_err(String::from)?;
-        let all_messages = ChatV2Repo::get_session_messages_with_conn(&conn, &session_id)
-            .map_err(String::from)?;
+        let all_messages =
+            ChatV2Repo::get_session_messages_with_conn(&conn, &session_id).map_err(String::from)?;
 
         // 按稳定排序（timestamp ASC, rowid ASC）定位用户消息的 index
         let target_index = all_messages
@@ -1454,8 +1459,7 @@ fn find_preceding_user_message_content(
     assistant_message: &ChatMessage,
 ) -> Result<String, String> {
     // 获取会话的所有消息（按 timestamp ASC, rowid ASC 稳定排序）
-    let messages =
-        ChatV2Repo::get_session_messages_v2(db, session_id).map_err(String::from)?;
+    let messages = ChatV2Repo::get_session_messages_v2(db, session_id).map_err(String::from)?;
 
     match locate_preceding_user_message(&messages, assistant_message) {
         Some(msg) => get_message_content(db, &msg.id),
@@ -1520,8 +1524,7 @@ fn find_preceding_user_message_with_attachments(
     assistant_message: &ChatMessage,
 ) -> Result<UserMessageRestoreResult, String> {
     // 获取会话的所有消息（按 timestamp ASC, rowid ASC 稳定排序）
-    let messages =
-        ChatV2Repo::get_session_messages_v2(db, session_id).map_err(String::from)?;
+    let messages = ChatV2Repo::get_session_messages_v2(db, session_id).map_err(String::from)?;
 
     // 🔧 修复：index-based 向前查找，避免相同时间戳时选错消息
     let user_message = locate_preceding_user_message(&messages, assistant_message);
@@ -1739,7 +1742,10 @@ pub async fn chat_v2_continue_message(
 
     // 加载持久化的 TodoList (活跃流检查由 try_register_stream 原子完成)
     let todo_info = load_persisted_todo_list(&db, &session_id).map_err(|e| {
-        String::from(ChatV2Error::Other(format!("Failed to load TodoList: {}", e)))
+        String::from(ChatV2Error::Other(format!(
+            "Failed to load TodoList: {}",
+            e
+        )))
     })?;
 
     let (todo_list, persisted_message_id, persisted_variant_id) = match todo_info {

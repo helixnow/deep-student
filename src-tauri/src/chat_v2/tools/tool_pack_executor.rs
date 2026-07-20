@@ -12,6 +12,15 @@
 //!   user-configured `tool_approval.*` overrides, same resolver as the main
 //!   tool loop) is not Low; unknown sensitivity is fail-closed. Shell deny
 //!   rules are enforced before execution as well.
+//! - Exception (2026-07): a small allowlist of Medium sub-tools
+//!   (`webpage_save`) may run inside a pack to support the common
+//!   web_fetch→webpage_save workflow. Allowlisted Medium sub-tools are
+//!   serialized through a dedicated single-permit semaphore; High and unknown
+//!   sensitivity stay blocked, and user overrides that raise a tool to High
+//!   still block it.
+//! - Returns a pack-level **failure** (success=false, per-sub results kept in
+//!   `output`) when every sub-tool failed; partial failure stays a success
+//!   with `status: "partial"`.
 //! - Propagates cancellation with a child `CancellationToken`.
 //! - Wraps each spawned task with `catch_unwind` for panic isolation.
 
@@ -40,6 +49,22 @@ const MAX_CONCURRENCY: usize = 10;
 const DEFAULT_PACK_TIMEOUT_SECS: u64 = 300;
 /// Grace period for running sub-tools to drain after pack timeout/cancel.
 const CANCEL_GRACE_PERIOD_SECS: u64 = 3;
+/// Maximum characters of a single sub-tool error quoted in the pack-level
+/// failure summary.
+const MAX_FAILURE_SAMPLE_CHARS: usize = 300;
+
+/// Medium-sensitivity sub-tools explicitly allowed inside a pack.
+///
+/// Approval dialogs cannot run inside parallel spawns, so Medium tools are
+/// blocked by default. `webpage_save` is allowlisted because the canonical
+/// web_fetch→webpage_save archive workflow otherwise cannot use tool_pack;
+/// its writes are idempotent (content-hash deduplicated) and it is further
+/// serialized via a single-permit semaphore. High sensitivity — including a
+/// user override raising `webpage_save` to High — is still blocked.
+fn is_medium_allowlisted_sub_tool(name: &str) -> bool {
+    let stripped = name.strip_prefix("builtin-").unwrap_or(name);
+    matches!(stripped, "webpage_save")
+}
 
 /// ToolPackExecutor — parallel built-in tool pack executor.
 pub struct ToolPackExecutor {
@@ -254,6 +279,8 @@ impl ToolExecutor for ToolPackExecutor {
 
         // === Execute sub-tools in parallel ===
         let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENCY));
+        // Allowlisted Medium sub-tools run one-at-a-time within the pack.
+        let medium_semaphore = Arc::new(Semaphore::new(1));
         let total = sub_tools.len();
         let expected_sub_tools: Vec<(String, Value)> = sub_tools
             .iter()
@@ -265,6 +292,7 @@ impl ToolExecutor for ToolPackExecutor {
             let sub_index = sub.index;
             let registry_clone = registry.clone();
             let sem = semaphore.clone();
+            let medium_sem = medium_semaphore.clone();
             let token = child_token.clone();
             let sub_block_id = format!("{}-tool_pack-{}", ctx.block_id, sub.index);
             let sub_call_id = format!("{}-tp-{}", ctx.block_id, sub.index);
@@ -434,6 +462,9 @@ impl ToolExecutor for ToolPackExecutor {
                 //    inside parallel async spawns, so anything that is not
                 //    effectively Low is blocked; an unknown sensitivity (no executor
                 //    mapping) is fail-closed, matching the main path.
+                //    Exception: allowlisted Medium sub-tools (webpage_save) are
+                //    admitted and serialized through `medium_sem`; High stays
+                //    blocked even for allowlisted names.
                 let base_sensitivity =
                     registry_clone.get_sensitivity_for_call(&sub.name, &sub.args);
                 let effective_sensitivity = if let Some(db) = sub_ctx.main_db.as_ref() {
@@ -446,7 +477,9 @@ impl ToolExecutor for ToolPackExecutor {
                 } else {
                     base_sensitivity
                 };
-                if effective_sensitivity != Some(ToolSensitivity::Low) {
+                let is_allowlisted_medium = effective_sensitivity == Some(ToolSensitivity::Medium)
+                    && is_medium_allowlisted_sub_tool(&sub.name);
+                if effective_sensitivity != Some(ToolSensitivity::Low) && !is_allowlisted_medium {
                     log::warn!(
                         "[ToolPack] Sub-tool '{}' effective sensitivity {:?} (base {:?}) — blocking in parallel context",
                         sub.name,
@@ -474,6 +507,47 @@ impl ToolExecutor for ToolPackExecutor {
                     finalize_synthetic_sub_result(&sub_ctx, &result, true);
                     return result;
                 }
+
+                // Allowlisted Medium sub-tools execute serially (single permit)
+                // so pack parallelism never interleaves their writes.
+                let _medium_permit = if is_allowlisted_medium {
+                    let permit = tokio::select! {
+                        result = medium_sem.acquire() => match result {
+                            Ok(permit) => permit,
+                            Err(e) => {
+                                log::error!(
+                                    "[ToolPack] Medium-serial semaphore error for '{}': {}",
+                                    sub.name,
+                                    e
+                                );
+                                let result = ToolResultInfo::failure(
+                                    Some(sub_call_id),
+                                    Some(sub_block_id),
+                                    sub.name.clone(),
+                                    sub.args.clone(),
+                                    format!("Medium-serial concurrency error: {}", e),
+                                    0,
+                                );
+                                finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                                return result;
+                            }
+                        },
+                        _ = token.cancelled() => {
+                            let result = ToolResultInfo::cancelled(
+                                Some(sub_call_id),
+                                Some(sub_block_id),
+                                sub.name.clone(),
+                                sub.args.clone(),
+                                sub_start.elapsed().as_millis() as u64,
+                            );
+                            finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                            return result;
+                        }
+                    };
+                    Some(permit)
+                } else {
+                    None
+                };
 
                 // Execute with catch_unwind to prevent panic propagation
                 let result =
@@ -708,12 +782,64 @@ impl ToolExecutor for ToolPackExecutor {
             })
             .collect();
 
+        // Pack status: "ok" (all succeeded) / "partial" (some failed) /
+        // "all_failed" (nothing succeeded → the pack itself is a failure).
+        let status = if succeeded == 0 {
+            "all_failed"
+        } else if failed > 0 {
+            "partial"
+        } else {
+            "ok"
+        };
+
         let output = json!({
             "total_ms": total_ms,
             "succeeded": succeeded,
             "failed": failed,
+            "status": status,
             "results": results_json,
         });
+
+        if succeeded == 0 {
+            // Every sub-tool failed: report the pack as failed instead of a
+            // misleading success. Keep per-sub results in `output` so the LLM
+            // and the UI can still inspect each failure.
+            let failure_samples: Vec<String> = results
+                .iter()
+                .filter_map(|(_, r)| {
+                    r.error.as_ref().map(|error| {
+                        let bounded: String =
+                            error.chars().take(MAX_FAILURE_SAMPLE_CHARS).collect();
+                        format!("{}: {}", r.tool_name, bounded)
+                    })
+                })
+                .take(3)
+                .collect();
+            let error_summary = format!(
+                "tool_pack 全部 {total} 个子工具执行失败 / all {total} sub-tool(s) failed. Sample failures: {}",
+                failure_samples.join(" | ")
+            );
+
+            ctx.emit_tool_call_error(&error_summary);
+            log::warn!(
+                "[ToolPack] All {} sub-tools failed, {}ms total",
+                total,
+                total_ms
+            );
+
+            return Ok(ToolResultInfo {
+                tool_call_id: Some(call.id.clone()),
+                block_id: Some(ctx.block_id.clone()),
+                tool_name: call.name.clone(),
+                input: call.arguments.clone(),
+                output,
+                success: false,
+                error: Some(error_summary),
+                duration_ms: Some(total_ms),
+                reasoning_content: None,
+                thought_signature: None,
+            });
+        }
 
         // Emit pack-level end event
         ctx.emit_tool_call_end(Some(json!({
@@ -722,9 +848,10 @@ impl ToolExecutor for ToolPackExecutor {
         })));
 
         log::info!(
-            "[ToolPack] Completed: {}/{} succeeded, {}ms total",
+            "[ToolPack] Completed: {}/{} succeeded ({}), {}ms total",
             succeeded,
             total,
+            status,
             total_ms
         );
 
@@ -775,5 +902,15 @@ mod tests {
         assert_eq!(MAX_SUB_TOOLS, 20);
         assert_eq!(MAX_CONCURRENCY, 10);
         assert_eq!(DEFAULT_PACK_TIMEOUT_SECS, 300);
+    }
+
+    #[test]
+    fn medium_allowlist_only_admits_webpage_save() {
+        assert!(is_medium_allowlisted_sub_tool("builtin-webpage_save"));
+        assert!(is_medium_allowlisted_sub_tool("webpage_save"));
+        // 其他 Medium/High 工具一律不放行
+        assert!(!is_medium_allowlisted_sub_tool("builtin-index_rebuild"));
+        assert!(!is_medium_allowlisted_sub_tool("builtin-memory_write"));
+        assert!(!is_medium_allowlisted_sub_tool("builtin-note_set"));
     }
 }

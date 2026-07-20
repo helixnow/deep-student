@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use super::arg_utils::get_string_array_arg;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::chat_v2::workspace::{SleepBlockData, WakeCondition, WorkspaceCoordinator};
+use crate::chat_v2::workspace::{SleepBlockData, SleepManager, WakeCondition, WorkspaceCoordinator};
 
 pub const COORDINATOR_SLEEP_TOOL_NAME: &str = "coordinator_sleep";
 
@@ -29,6 +29,50 @@ pub struct CoordinatorSleepExecutor {
 impl CoordinatorSleepExecutor {
     pub fn new(coordinator: Arc<WorkspaceCoordinator>) -> Self {
         Self { coordinator }
+    }
+
+    /// 判断当前会话是否为子代理（worker）会话。
+    ///
+    /// 控制工具豁免执行白名单，worker 幻觉调用 coordinator_sleep 只会白白阻塞自己。
+    /// 读取方式与 subagent_executor::get_subagent_depth 一致：查 chat_v2_db 中
+    /// session.metadata 的 `is_subagent` / `mode` 字段。
+    ///
+    /// DB 不可用/查询失败时放行（返回 false）：睡眠本身无副作用，
+    /// 不必 fail-closed 到阻断 coordinator 的正常睡眠。
+    fn is_subagent_session(&self, ctx: &ExecutionContext) -> bool {
+        use crate::chat_v2::repo::ChatV2Repo;
+
+        let Some(chat_v2_db) = ctx.chat_v2_db.as_ref() else {
+            return false;
+        };
+        let Ok(conn) = chat_v2_db.get_conn_safe() else {
+            log::warn!(
+                "[CoordinatorSleepExecutor] DB unavailable for subagent guard, allowing sleep"
+            );
+            return false;
+        };
+        let session = match ChatV2Repo::get_session_with_conn(&conn, &ctx.session_id) {
+            Ok(session) => session,
+            Err(e) => {
+                log::warn!(
+                    "[CoordinatorSleepExecutor] Failed to query session for subagent guard (allowing sleep): {:?}",
+                    e
+                );
+                return false;
+            }
+        };
+
+        session
+            .and_then(|s| s.metadata)
+            .map(|m| {
+                let is_subagent = m
+                    .get("is_subagent")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let mode_is_subagent = m.get("mode").and_then(|v| v.as_str()) == Some("subagent");
+                is_subagent || mode_is_subagent
+            })
+            .unwrap_or(false)
     }
 
     /// 解析唤醒条件
@@ -262,10 +306,46 @@ impl CoordinatorSleepExecutor {
             awaiting_agents
         );
 
-        // 🆕 取消支持：使用 tokio::select! 同时监听睡眠和取消信号
+        // ============================================================
+        // 🔧 P0 修复：拆开 sleep() 为 begin_sleep + 初始检查 + 等待，
+        // 修复"结果先到、睡眠后建"竞态——若子代理在睡眠注册前已发出 result
+        // 或已全部终态，check_and_wake_by_* 永远不会再触发，主代理会睡满超时。
+        // ============================================================
+
+        // 1. 同步阶段：持久化 + 注册 active_sleeps + 启动超时任务
+        let rx = sleep_manager
+            .begin_sleep(&sleep_data)
+            .map_err(|e| format!("Sleep failed to start: {:?}", e))?;
+
+        // 2. 初始唤醒条件检查：命中既成事实（inbox 已有结果 / 全员终态）时，
+        //    try_wake 已通过 rx 发送 payload，后续等待会立即完成。
+        //    检查出错只记 warn，不中断正常睡眠。
+        match sleep_manager.check_initial_wake_conditions(&sleep_id) {
+            Ok(awakened) => {
+                for wake_info in &awakened {
+                    log::info!(
+                        "[CoordinatorSleepExecutor] Initial wake condition already satisfied: sleep={}, by={}, reason={}",
+                        wake_info.sleep_id,
+                        wake_info.awakened_by,
+                        wake_info.wake_reason
+                    );
+                    // 与其他唤醒路径保持一致：通知前端恢复管线
+                    self.coordinator.emit_coordinator_awakened(wake_info);
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "[CoordinatorSleepExecutor] Initial wake condition check failed (sleep continues normally): sleep={}, error={:?}",
+                    sleep_id,
+                    e
+                );
+            }
+        }
+
+        // 3. 🆕 取消支持：使用 tokio::select! 同时监听睡眠和取消信号
         let wake_result = if let Some(cancel_token) = ctx.cancellation_token() {
             tokio::select! {
-                result = sleep_manager.sleep(sleep_data) => result,
+                result = SleepManager::wait_for_wake(rx, &sleep_id) => result,
                 _ = cancel_token.cancelled() => {
                     log::info!(
                         "[CoordinatorSleepExecutor] Sleep cancelled: id={}, workspace={}",
@@ -278,8 +358,8 @@ impl CoordinatorSleepExecutor {
                 }
             }
         } else {
-            // 无取消令牌，使用原有逻辑
-            sleep_manager.sleep(sleep_data).await
+            // 无取消令牌，直接等待唤醒
+            SleepManager::wait_for_wake(rx, &sleep_id).await
         };
 
         let duration_ms = start.elapsed().as_millis() as u64;
@@ -350,6 +430,31 @@ impl ToolExecutor for CoordinatorSleepExecutor {
         ctx: &ExecutionContext,
     ) -> Result<ToolResultInfo, String> {
         let start = Instant::now();
+
+        // 🔒 守卫：子代理（worker）不允许调用 coordinator_sleep。
+        // 该工具豁免执行看门狗，worker 误调只会阻塞自己直到超时。
+        if self.is_subagent_session(ctx) {
+            log::warn!(
+                "[CoordinatorSleepExecutor] Rejected coordinator_sleep from subagent session: {}",
+                ctx.session_id
+            );
+            return Ok(ToolResultInfo {
+                tool_call_id: Some(call.id.clone()),
+                block_id: Some(ctx.block_id.clone()),
+                tool_name: call.name.clone(),
+                input: call.arguments.clone(),
+                output: json!(null),
+                success: false,
+                error: Some(
+                    "coordinator_sleep 仅供主代理（coordinator）使用：子代理不允许睡眠等待。\
+                     建议：请直接完成分配给你的任务，最终回答会自动交付主代理，无需等待其他代理的消息。"
+                        .to_string(),
+                ),
+                duration_ms: Some(start.elapsed().as_millis() as u64),
+                reasoning_content: None,
+                thought_signature: None,
+            });
+        }
 
         // 🔧 P19 修复：先填充 awaiting_agents，再发射事件
         // 问题：LLM 可能没有传递 awaiting_agents，导致前端收到空列表

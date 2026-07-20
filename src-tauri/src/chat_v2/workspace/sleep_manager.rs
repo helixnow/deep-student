@@ -161,6 +161,9 @@ pub struct SleepManager {
     db: Arc<WorkspaceDatabase>,
     /// 活跃的睡眠 (sleepId -> oneshot::Sender<WakeUpPayload>)
     active_sleeps: Arc<Mutex<HashMap<String, oneshot::Sender<WakeUpPayload>>>>,
+    /// 超时任务句柄 (sleepId -> JoinHandle)：唤醒/取消时中止对应 timer，
+    /// 避免长达 60 分钟的超时任务在工作区实例移除后仍在后台运行
+    timeout_handles: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>>,
     app_handle: Option<AppHandle>,
     /// 🆕 P1修复：任务追踪器，用于追踪超时任务
     task_tracker: TaskTracker,
@@ -171,6 +174,7 @@ impl SleepManager {
         Self {
             db,
             active_sleeps: Arc::new(Mutex::new(HashMap::new())),
+            timeout_handles: Arc::new(Mutex::new(HashMap::new())),
             app_handle: None,
             task_tracker: TaskTracker::new(),
         }
@@ -231,11 +235,23 @@ impl SleepManager {
     }
 
     /// 创建睡眠，返回一个 Future 等待唤醒
+    ///
+    /// ⚠️ 注意：本方法不做初始唤醒条件检查。生产路径（sleep_executor）应改用
+    /// `begin_sleep` + `check_initial_wake_conditions` + `wait_for_wake` 三步，
+    /// 避免"结果先到、睡眠后建"的竞态。保留本方法向后兼容。
     pub async fn sleep(&self, data: SleepBlockData) -> Result<WakeUpPayload, SleepError> {
         let sleep_id = data.id.clone();
         let rx = self.begin_sleep(&data)?;
+        Self::wait_for_wake(rx, &sleep_id).await
+    }
 
-        // 等待唤醒
+    /// 等待 begin_sleep 返回的 Receiver 被唤醒（含统一日志与错误映射）。
+    ///
+    /// 供 sleep_executor 在 begin_sleep + check_initial_wake_conditions 之后调用。
+    pub async fn wait_for_wake(
+        rx: oneshot::Receiver<WakeUpPayload>,
+        sleep_id: &str,
+    ) -> Result<WakeUpPayload, SleepError> {
         match rx.await {
             Ok(payload) => {
                 log::info!(
@@ -257,10 +273,12 @@ impl SleepManager {
 
     fn spawn_timeout_task(&self, sleep_id: String, timeout_at: DateTime<Utc>) {
         let active_sleeps = self.active_sleeps.clone();
+        let timeout_handles = self.timeout_handles.clone();
         let db = self.db.clone();
+        let task_sleep_id = sleep_id.clone();
 
         // 🆕 P1修复：使用 TaskTracker 追踪超时任务
-        self.task_tracker.spawn(async move {
+        let handle = self.task_tracker.spawn(async move {
             let duration = (timeout_at - Utc::now()).to_std().unwrap_or_default();
             tokio::time::sleep(duration).await;
 
@@ -270,14 +288,23 @@ impl SleepManager {
                     log::error!("[SleepManager] Mutex poisoned! Attempting recovery");
                     poisoned.into_inner()
                 });
-                sleeps.remove(&sleep_id)
+                sleeps.remove(&task_sleep_id)
             };
 
+            // 自清理：从句柄注册表移除自身（此时任务已接近结束，abort 无害）
+            {
+                let mut handles = timeout_handles.lock().unwrap_or_else(|poisoned| {
+                    log::error!("[SleepManager] Mutex poisoned! Attempting recovery");
+                    poisoned.into_inner()
+                });
+                handles.remove(&task_sleep_id);
+            }
+
             if let Some(tx) = sender {
-                log::info!("[SleepManager] Sleep timeout: {}", sleep_id);
+                log::info!("[SleepManager] Sleep timeout: {}", task_sleep_id);
 
                 let payload = WakeUpPayload {
-                    sleep_id: sleep_id.clone(),
+                    sleep_id: task_sleep_id.clone(),
                     awakened_by: "system".to_string(),
                     message: None,
                     reason: WakeReason::Timeout,
@@ -287,7 +314,7 @@ impl SleepManager {
                 // 更新数据库状态
                 if let Err(e) = Self::update_sleep_status_static(
                     &db,
-                    &sleep_id,
+                    &task_sleep_id,
                     SleepStatus::Timeout,
                     None,
                     None,
@@ -299,6 +326,27 @@ impl SleepManager {
                 // 避免 SleepManager 直接持有 AppHandle 产生的生命周期耦合
             }
         });
+
+        let mut handles = self.timeout_handles.lock().unwrap_or_else(|poisoned| {
+            log::error!("[SleepManager] Mutex poisoned! Attempting recovery");
+            poisoned.into_inner()
+        });
+        handles.insert(sleep_id, handle);
+    }
+
+    /// 中止并移除指定睡眠的超时任务（若存在）。唤醒/取消后调用，
+    /// 避免已结束的睡眠仍挂着最长 60 分钟的后台 timer。
+    fn abort_timeout_task(&self, sleep_id: &str) {
+        let handle = {
+            let mut handles = self.timeout_handles.lock().unwrap_or_else(|poisoned| {
+                log::error!("[SleepManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            });
+            handles.remove(sleep_id)
+        };
+        if let Some(handle) = handle {
+            handle.abort();
+        }
     }
 
     /// 尝试唤醒指定的睡眠
@@ -321,6 +369,7 @@ impl SleepManager {
             )?;
 
             let _ = tx.send(payload);
+            self.abort_timeout_task(sleep_id);
             Ok(true)
         } else {
             Ok(false)
@@ -842,10 +891,80 @@ impl SleepManager {
                 reason: WakeReason::Cancelled,
             };
             let _ = tx.send(payload);
+            self.abort_timeout_task(sleep_id);
             Ok(true)
         } else {
             Ok(false)
         }
+    }
+
+    /// 取消所有活跃睡眠（幂等）。
+    ///
+    /// 用于工作区实例被移除（close/delete/替换）或应用退出时收敛睡眠生命周期：
+    /// 1. 向每个未决睡眠发送取消式唤醒（awakened_by="system", reason=Cancelled），
+    ///    让阻塞在 wait_for_wake 上的 Pipeline 立即恢复；
+    /// 2. 更新 DB 状态为 cancelled（写失败只记日志，不阻塞收敛）；
+    /// 3. 中止全部未决超时任务，避免实例移除后 timer 继续后台运行并写已移除的 DB。
+    ///
+    /// 返回被取消的睡眠数量。
+    pub fn cancel_all_active(&self, reason: &str) -> usize {
+        let drained: Vec<(String, oneshot::Sender<WakeUpPayload>)> = {
+            let mut sleeps = self.active_sleeps.lock().unwrap_or_else(|poisoned| {
+                log::error!("[SleepManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            });
+            sleeps.drain().collect()
+        };
+
+        if drained.is_empty() {
+            return 0;
+        }
+
+        let count = drained.len();
+        log::info!(
+            "[SleepManager] Cancelling {} active sleep(s), reason={}",
+            count,
+            reason
+        );
+
+        for (sleep_id, tx) in drained {
+            if let Err(e) = self.update_sleep_status(
+                &sleep_id,
+                SleepStatus::Cancelled,
+                Some("system"),
+                Some(reason),
+            ) {
+                log::warn!(
+                    "[SleepManager] Failed to persist cancelled status for {}: {:?}",
+                    sleep_id,
+                    e
+                );
+            }
+
+            let payload = WakeUpPayload {
+                sleep_id: sleep_id.clone(),
+                awakened_by: "system".to_string(),
+                message: None,
+                reason: WakeReason::Cancelled,
+            };
+            let _ = tx.send(payload);
+
+            self.abort_timeout_task(&sleep_id);
+        }
+
+        // 兜底：清掉可能残留的孤儿超时任务（如 sender 已被消费但 handle 未清理）
+        let leftover_handles: Vec<tokio::task::JoinHandle<()>> = {
+            let mut handles = self.timeout_handles.lock().unwrap_or_else(|poisoned| {
+                log::error!("[SleepManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            });
+            handles.drain().map(|(_, h)| h).collect()
+        };
+        for handle in leftover_handles {
+            handle.abort();
+        }
+
+        count
     }
 
     /// 恢复持久化的睡眠（应用启动时）- 仅读取数据
@@ -1263,6 +1382,91 @@ mod tests {
 
         let payload = rx.try_recv().expect("wake payload delivered");
         assert_eq!(payload.reason, WakeReason::AllCompleted);
+    }
+
+    /// 端到端模拟 sleep_executor 的生产路径：
+    /// 消息在 begin_sleep 之前已到 → 初始检查触发唤醒 → wait_for_wake 立即完成
+    #[tokio::test]
+    async fn executor_flow_initial_check_then_wait_completes_immediately() {
+        let (_dir, manager) = setup_manager();
+        insert_unread_inbox_message(&manager, "result", "早到的结果");
+
+        let data = make_sleep_data(WakeCondition::ResultMessage);
+        let rx = manager.begin_sleep(&data).expect("begin sleep");
+
+        let awakened = manager
+            .check_initial_wake_conditions(&data.id)
+            .expect("initial check");
+        assert_eq!(awakened.len(), 1);
+        assert_eq!(awakened[0].wake_reason, "message");
+
+        // 初始检查已通过 try_wake 发送 payload，等待应立即完成而非睡到超时
+        let payload = tokio::time::timeout(
+            std::time::Duration::from_millis(200),
+            SleepManager::wait_for_wake(rx, &data.id),
+        )
+        .await
+        .expect("wait_for_wake must complete immediately")
+        .expect("wake payload");
+        assert_eq!(payload.reason, WakeReason::Message);
+        assert_eq!(
+            payload.message.as_ref().map(|m| m.content.as_str()),
+            Some("早到的结果")
+        );
+
+        let stored = manager.get_sleep(&data.id).unwrap().unwrap();
+        assert_eq!(stored.status, SleepStatus::Awakened);
+    }
+
+    #[test]
+    fn cancel_all_active_cancels_and_is_idempotent() {
+        let (_dir, manager) = setup_manager();
+        let data_a = make_sleep_data(WakeCondition::ResultMessage);
+        let data_b = make_sleep_data(WakeCondition::AnyMessage);
+        let mut rx_a = manager.begin_sleep(&data_a).expect("begin sleep a");
+        let mut rx_b = manager.begin_sleep(&data_b).expect("begin sleep b");
+
+        let cancelled = manager.cancel_all_active("workspace_closed");
+        assert_eq!(cancelled, 2);
+
+        // 两个等待方都收到取消式唤醒
+        for rx in [&mut rx_a, &mut rx_b] {
+            let payload = rx.try_recv().expect("cancel payload delivered");
+            assert_eq!(payload.reason, WakeReason::Cancelled);
+            assert_eq!(payload.awakened_by, "system");
+        }
+
+        // 注册表清空，DB 状态更新
+        assert!(!manager.is_sleep_active(&data_a.id));
+        assert!(!manager.is_sleep_active(&data_b.id));
+        for id in [&data_a.id, &data_b.id] {
+            let stored = manager.get_sleep(id).unwrap().unwrap();
+            assert_eq!(stored.status, SleepStatus::Cancelled);
+            assert_eq!(stored.awaken_message.as_deref(), Some("workspace_closed"));
+        }
+
+        // 幂等：再次调用无副作用
+        assert_eq!(manager.cancel_all_active("workspace_closed"), 0);
+    }
+
+    /// 带超时的睡眠被取消后，超时任务句柄应被中止并清理
+    #[tokio::test]
+    async fn cancel_all_active_aborts_timeout_tasks() {
+        let (_dir, manager) = setup_manager();
+        let data = make_sleep_data(WakeCondition::ResultMessage).with_timeout(60_000);
+        let mut rx = manager.begin_sleep(&data).expect("begin sleep");
+
+        {
+            let handles = manager.timeout_handles.lock().unwrap();
+            assert!(handles.contains_key(&data.id));
+        }
+
+        assert_eq!(manager.cancel_all_active("test_shutdown"), 1);
+        let payload = rx.try_recv().expect("cancel payload delivered");
+        assert_eq!(payload.reason, WakeReason::Cancelled);
+
+        let handles = manager.timeout_handles.lock().unwrap();
+        assert!(handles.is_empty());
     }
 
     #[test]

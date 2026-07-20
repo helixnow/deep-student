@@ -10,7 +10,9 @@
 //! - `builtin-chatanki_wait`：等待 anki_cards 块完成（完成/错误/超时）。
 //! - `builtin-chatanki_get_cards`：分页读回卡片内容并执行验收。
 //! - `builtin-chatanki_update_card`：带乐观锁地修改一张卡片。
+//! - `builtin-chatanki_batch_update_cards`：批量（≤100 张）带乐观锁修改卡片，逐卡返回成功/冲突。
 //! - `builtin-chatanki_delete_card`：按内容与复习版本删除当前会话拥有的一张卡片。
+//! - `builtin-chatanki_delete_cards`：批量（≤100 张）按双版本锁删除卡片，逐卡返回结果。
 //! - `builtin-chatanki_add_cards`：向当前制卡文档补充卡片。
 //! - `builtin-chatanki_enqueue_review`：将当前会话拥有的卡片加入 FSRS 复习队列。
 //! - `builtin-chatanki_review_stats`：读取库级 FSRS 复习统计。
@@ -44,6 +46,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tauri::Emitter;
 use tokio::time::{sleep, Duration};
+use tokio_util::sync::CancellationToken;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
@@ -93,41 +96,81 @@ fn next_chatanki_state_revision() -> i64 {
 // Active pipeline registry (F2)
 // ============================================================================
 //
-// 进程内“真在跑”的制卡管线注册表，按 anki_cards 块 ID 索引。
+// 进程内“真在跑”的制卡管线注册表，按 anki_cards 块 ID 索引，值为该管线的
+// 取消令牌（取消语义贯通：kill switch / 聊天取消可以停掉脱管的后台管线）。
 // 会话删除路径用它区分「活跃管线」与「崩溃/强退遗留的僵尸 running 块」：
 // 注册发生在块首次落库之前，因此任何 DB 可见但未注册的 running 块，
 // 要么其管线已退出，要么来自上一个已死亡的进程。
 
-static ACTIVE_CHATANKI_PIPELINES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+static ACTIVE_CHATANKI_PIPELINES: OnceLock<Mutex<HashMap<String, CancellationToken>>> =
+    OnceLock::new();
 
-fn active_chatanki_pipelines() -> &'static Mutex<HashSet<String>> {
-    ACTIVE_CHATANKI_PIPELINES.get_or_init(|| Mutex::new(HashSet::new()))
+fn active_chatanki_pipelines() -> &'static Mutex<HashMap<String, CancellationToken>> {
+    ACTIVE_CHATANKI_PIPELINES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn lock_active_chatanki_pipelines() -> std::sync::MutexGuard<'static, HashSet<String>> {
-    active_chatanki_pipelines().lock().unwrap_or_else(|poisoned| {
-        log::error!("[ChatAnkiToolExecutor] active pipeline registry mutex poisoned; recovering");
-        poisoned.into_inner()
-    })
+fn lock_active_chatanki_pipelines(
+) -> std::sync::MutexGuard<'static, HashMap<String, CancellationToken>> {
+    active_chatanki_pipelines()
+        .lock()
+        .unwrap_or_else(|poisoned| {
+            log::error!(
+                "[ChatAnkiToolExecutor] active pipeline registry mutex poisoned; recovering"
+            );
+            poisoned.into_inner()
+        })
 }
 
 /// 该 anki_cards 块是否有本进程内仍在运行的后台制卡管线。
 pub(crate) fn is_chatanki_pipeline_active(anki_block_id: &str) -> bool {
-    lock_active_chatanki_pipelines().contains(anki_block_id)
+    lock_active_chatanki_pipelines().contains_key(anki_block_id)
 }
 
-/// RAII 注册守卫：创建时注册，Drop（含 panic 展开）时注销，
+/// 紧急停止（kill switch）联动：取消全部活跃制卡管线，返回本次新取消的数量。
+///
+/// 取消是**非破坏性**的：管线轮询环观察到令牌后走既有的用户取消路径
+///（停止调度协程 + 断流 + 未完成任务置 Cancelled），已生成卡片全部保留。
+pub(crate) fn cancel_all_active_chatanki_pipelines(reason: &str) -> usize {
+    let guard = lock_active_chatanki_pipelines();
+    let mut cancelled = 0usize;
+    for (anki_block_id, token) in guard.iter() {
+        if !token.is_cancelled() {
+            token.cancel();
+            cancelled += 1;
+            log::warn!(
+                "[ChatAnkiToolExecutor] cancel_all_active_chatanki_pipelines: cancelled pipeline for block {} (reason: {})",
+                anki_block_id,
+                reason
+            );
+        }
+    }
+    cancelled
+}
+
+/// RAII 注册守卫：创建时注册（携带取消令牌），Drop（含 panic 展开）时注销，
 /// 保证管线以任何方式退出后注册表不残留。
 struct ChatAnkiPipelineGuard {
     anki_block_id: String,
+    cancel_token: CancellationToken,
 }
 
 impl ChatAnkiPipelineGuard {
-    fn register(anki_block_id: &str) -> Self {
-        lock_active_chatanki_pipelines().insert(anki_block_id.to_string());
+    /// `parent` 传入工具执行上下文的取消令牌时，聊天流取消（用户点停止/
+    /// emergency_stop 的 cancel_all_streams）会通过 child token 自动传播到管线。
+    fn register(anki_block_id: &str, parent: Option<&CancellationToken>) -> Self {
+        let cancel_token = parent
+            .map(|token| token.child_token())
+            .unwrap_or_default();
+        lock_active_chatanki_pipelines()
+            .insert(anki_block_id.to_string(), cancel_token.clone());
         Self {
             anki_block_id: anki_block_id.to_string(),
+            cancel_token,
         }
+    }
+
+    fn cancel_token(&self) -> CancellationToken {
+        self.cancel_token.clone()
     }
 }
 
@@ -653,6 +696,9 @@ struct ChatAnkiUpdateCardArgs {
     patch: ChatAnkiCardPatch,
     #[serde(alias = "expectedVersion")]
     expected_version: String,
+    /// 截断防御豁免：显式声明“我知道新值可能基于截断输出，仍要整字段覆盖”。
+    #[serde(alias = "allowTruncatedSource", default)]
+    allow_truncated_source: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -690,6 +736,126 @@ impl ChatAnkiDeleteCardArgs {
 
     fn expected_review_version(&self) -> Option<i64> {
         self.expected_review_version.flatten()
+    }
+}
+
+/// 批量修改的单项：与 `chatanki_update_card` 相同的 CAS + patch 语义。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiBatchUpdateCardItem {
+    #[serde(alias = "cardId")]
+    card_id: String,
+    #[serde(alias = "expectedVersion")]
+    expected_version: String,
+    patch: ChatAnkiCardPatch,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiBatchUpdateCardsArgs {
+    #[serde(alias = "documentId")]
+    document_id: String,
+    updates: Vec<ChatAnkiBatchUpdateCardItem>,
+    /// 截断防御豁免（对整批生效）。
+    #[serde(alias = "allowTruncatedSource", default)]
+    allow_truncated_source: bool,
+}
+
+const CHATANKI_BATCH_MUTATION_LIMIT: usize = 100;
+
+impl ChatAnkiBatchUpdateCardsArgs {
+    fn normalize(mut self) -> Result<Self, String> {
+        self.document_id = self.document_id.trim().to_string();
+        if self.document_id.is_empty() {
+            return Err("documentId is required".to_string());
+        }
+        if self.updates.is_empty() || self.updates.len() > CHATANKI_BATCH_MUTATION_LIMIT {
+            return Err(format!(
+                "updates must contain 1..={} items",
+                CHATANKI_BATCH_MUTATION_LIMIT
+            ));
+        }
+        let mut seen_ids = HashSet::new();
+        for item in &mut self.updates {
+            item.card_id = item.card_id.trim().to_string();
+            item.expected_version = item.expected_version.trim().to_string();
+            if item.card_id.is_empty() || item.expected_version.is_empty() {
+                return Err("each update requires cardId and expectedVersion".to_string());
+            }
+            if item.patch.is_empty() {
+                return Err(format!(
+                    "update for card {} has an empty patch",
+                    item.card_id
+                ));
+            }
+            if !seen_ids.insert(item.card_id.clone()) {
+                return Err(format!("duplicate cardId in updates: {}", item.card_id));
+            }
+        }
+        Ok(self)
+    }
+}
+
+/// 批量删除的单项：与 `chatanki_delete_card` 相同的双 CAS 语义
+///（内容 version + 复习 reviewVersion，未入队时后者显式为 null）。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiDeleteCardsItem {
+    #[serde(alias = "cardId")]
+    card_id: String,
+    #[serde(alias = "expectedVersion")]
+    expected_version: String,
+    #[serde(default, deserialize_with = "deserialize_required_nullable_i64")]
+    expected_review_version: Option<Option<i64>>,
+}
+
+impl ChatAnkiDeleteCardsItem {
+    fn expected_review_version(&self) -> Option<i64> {
+        self.expected_review_version.flatten()
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiDeleteCardsArgs {
+    cards: Vec<ChatAnkiDeleteCardsItem>,
+}
+
+impl ChatAnkiDeleteCardsArgs {
+    fn normalize(mut self) -> Result<Self, String> {
+        if self.cards.is_empty() || self.cards.len() > CHATANKI_BATCH_MUTATION_LIMIT {
+            return Err(format!(
+                "cards must contain 1..={} items",
+                CHATANKI_BATCH_MUTATION_LIMIT
+            ));
+        }
+        let mut seen_ids = HashSet::new();
+        for item in &mut self.cards {
+            item.card_id = item.card_id.trim().to_string();
+            item.expected_version = item.expected_version.trim().to_string();
+            if item.card_id.is_empty() || item.expected_version.is_empty() {
+                return Err("each card requires cardId and expectedVersion".to_string());
+            }
+            match item.expected_review_version {
+                None => {
+                    return Err(format!(
+                        "expectedReviewVersion is required for card {}; use null to assert the card is not enqueued",
+                        item.card_id
+                    ));
+                }
+                Some(Some(version)) if version < 0 => {
+                    return Err(format!(
+                        "expectedReviewVersion for card {} must be null or non-negative",
+                        item.card_id
+                    ));
+                }
+                _ => {}
+            }
+            if !seen_ids.insert(item.card_id.clone()) {
+                return Err(format!("duplicate cardId in cards: {}", item.card_id));
+            }
+        }
+        Ok(self)
     }
 }
 
@@ -1250,7 +1416,9 @@ impl ChatAnkiToolExecutor {
                 | "chatanki_wait"
                 | "chatanki_get_cards"
                 | "chatanki_update_card"
+                | "chatanki_batch_update_cards"
                 | "chatanki_delete_card"
+                | "chatanki_delete_cards"
                 | "chatanki_add_cards"
                 | "chatanki_enqueue_review"
                 | "chatanki_review_stats"
@@ -1355,7 +1523,11 @@ impl ToolExecutor for ChatAnkiToolExecutor {
             "chatanki_wait" => self.execute_wait(call, ctx, start_time).await,
             "chatanki_get_cards" => self.execute_get_cards(call, ctx, start_time).await,
             "chatanki_update_card" => self.execute_update_card(call, ctx, start_time).await,
+            "chatanki_batch_update_cards" => {
+                self.execute_batch_update_cards(call, ctx, start_time).await
+            }
             "chatanki_delete_card" => self.execute_delete_card(call, ctx, start_time).await,
+            "chatanki_delete_cards" => self.execute_delete_cards(call, ctx, start_time).await,
             "chatanki_add_cards" => self.execute_add_cards(call, ctx, start_time).await,
             "chatanki_enqueue_review" => self.execute_enqueue_review(call, ctx, start_time).await,
             "chatanki_review_stats" => self.execute_review_stats(call, ctx, start_time).await,
@@ -1405,7 +1577,10 @@ impl ToolExecutor for ChatAnkiToolExecutor {
             | "chatanki_delete_library_card" => ToolSensitivity::High,
             "chatanki_set_suspended"
             | "chatanki_enqueue_library_review"
-            | "chatanki_set_library_suspended" => ToolSensitivity::Medium,
+            | "chatanki_set_library_suspended"
+            // 批量写工具：单次可影响 ≤100 张卡（含批量删除），定级 Medium。
+            | "chatanki_batch_update_cards"
+            | "chatanki_delete_cards" => ToolSensitivity::Medium,
             // ★ 2026-02-09: chatanki_export/chatanki_sync 降为 Low
             // 理由：制卡是创建性操作（生成新卡片），非破坏性，不应打断制卡体验流
             // 2026-05-16 (Audit C-02): chatanki_export/sync 提升为 Medium
@@ -1524,7 +1699,7 @@ impl ChatAnkiToolExecutor {
             }
         };
 
-        let output = match serde_json::to_value(&imported) {
+        let mut output = match serde_json::to_value(&imported) {
             Ok(output) => output,
             Err(error) => {
                 let error = apkg_tool_error(
@@ -1535,6 +1710,17 @@ impl ChatAnkiToolExecutor {
                 return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
             }
         };
+        // 导入后体验：在工具结果中附带后续操作建议（AI 可据此继续编排），
+        // 不改变 ApkgImportResult 本身的序列化契约。
+        if let Some(object) = output.as_object_mut() {
+            object.insert(
+                "nextSteps".to_string(),
+                json!([
+                    "调用 chatanki_enqueue_review 并传入本次返回的 documentId，把导入的卡片加入复习队列",
+                    "向用户简要汇报导入结果（卡片数、模板数、媒体与告警），并询问是否立即开始复习"
+                ]),
+            );
+        }
 
         emit_fsrs_import_changed(ctx, &imported.document_id, &imported.card_ids);
 
@@ -1684,6 +1870,9 @@ impl ChatAnkiToolExecutor {
             "documentId": document_id,
             "counts": counts,
             "cardsCount": cards.len(),
+            // 可用卡（非诊断/错误卡）数量：completed_with_errors 时必须结合该值
+            // 判断是否属于“0 可用卡”的完全失败，而不能仅凭状态名。
+            "usableCards": cards.iter().filter(|c| !c.is_error_card).count(),
             // 达到 maxCards 上限提前停止时为 true，提示 AI 这是预期行为而非异常取消
             "limitReached": tasks_limit_reached(&tasks),
             "error": error,
@@ -1824,6 +2013,13 @@ impl ChatAnkiToolExecutor {
                 "pageSize": page_size,
                 "filter": args.filter.as_str(),
                 "cards": page_cards,
+                // P8：get_cards 返回库中全部 live 卡（含超限保留卡）；该字段表示
+                // 其中有多少张因 maxCards 上限未展示在预览块里。
+                "hiddenOverLimitCount": lookup_hidden_over_limit_count(
+                    ctx.chat_v2_db.as_deref(),
+                    &ctx.session_id,
+                    document_id,
+                ),
             }),
         ))
     }
@@ -1871,6 +2067,22 @@ impl ChatAnkiToolExecutor {
                 return Ok(finish_chatanki_failure(call, ctx, start_time, error));
             }
         };
+        // 截断防御：疑似把 get_cards 的截断输出当作完整字段整体回写。
+        if !args.allow_truncated_source {
+            let suspected_fields = detect_truncated_source_fields(&card, &args.patch);
+            if !suspected_fields.is_empty() {
+                return Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    chatanki_truncated_source_blocked_payload(
+                        &document_id,
+                        card_id,
+                        &suspected_fields,
+                    ),
+                ));
+            }
+        }
         args.patch.apply_to(&mut card);
         if !card_content_is_valid(&card) {
             return Ok(finish_chatanki_failure(
@@ -2074,6 +2286,426 @@ impl ChatAnkiToolExecutor {
                 "deleted": true,
                 "mutationApplied": true,
                 "retryable": false,
+                "uiSync": ui_sync,
+            }),
+        ))
+    }
+
+    /// 批量带乐观锁修改卡片（≤100 张）：逐卡执行与 `chatanki_update_card` 相同的
+    /// CAS + patch 语义并返回逐卡报告；成功卡片汇总为一次块 patch 同步（复用
+    /// retemplate 已验证的 preflight + persist_and_emit 模式）。
+    ///
+    /// 注意：受文件所有权约束未在 database 层新增批量原语，逐卡各自使用既有的
+    /// IMMEDIATE 事务 CAS 原语；冲突卡跳过、成功卡生效（与逐卡报告语义一致）。
+    async fn execute_batch_update_cards(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args = match serde_json::from_value::<ChatAnkiBatchUpdateCardsArgs>(
+            call.arguments.clone(),
+        )
+        .map_err(|error| error.to_string())
+        .and_then(ChatAnkiBatchUpdateCardsArgs::normalize)
+        {
+            Ok(args) => args,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Invalid chatanki_batch_update_cards arguments: {}", error),
+                ));
+            }
+        };
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let document_id = args.document_id.clone();
+        if let Err(error) = verify_document_ownership(db, &document_id, &ctx.session_id) {
+            return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+        }
+        let mutation_target =
+            match preflight_card_mutation(ctx.chat_v2_db.as_deref(), &ctx.session_id, &document_id)
+            {
+                Ok(target) => target,
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(
+                        call,
+                        ctx,
+                        start_time,
+                        format!("Unable to prepare card UI synchronization: {}", error),
+                    ));
+                }
+            };
+
+        let total = args.updates.len();
+        let mut results: Vec<Value> = Vec::with_capacity(total);
+        let mut updated_cards: Vec<crate::models::AnkiCard> = Vec::new();
+        let mut conflict_count = 0usize;
+        let mut blocked_count = 0usize;
+        let mut failed_count = 0usize;
+
+        for item in args.updates {
+            let card_id = item.card_id.clone();
+            let (mut card, card_document_id) =
+                match load_owned_chatanki_card(db, &card_id, &ctx.session_id) {
+                    Ok(owned) => owned,
+                    Err(error) => {
+                        failed_count += 1;
+                        results.push(json!({
+                            "cardId": card_id,
+                            "status": "not_found",
+                            "error": error,
+                        }));
+                        continue;
+                    }
+                };
+            if card_document_id != document_id {
+                failed_count += 1;
+                results.push(json!({
+                    "cardId": card_id,
+                    "status": "rejected",
+                    "error": "document_mismatch",
+                    "documentId": card_document_id,
+                }));
+                continue;
+            }
+            if !args.allow_truncated_source {
+                let suspected_fields = detect_truncated_source_fields(&card, &item.patch);
+                if !suspected_fields.is_empty() {
+                    blocked_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "blocked",
+                        "error": "truncated_source_overwrite",
+                        "fields": suspected_fields,
+                    }));
+                    continue;
+                }
+            }
+            item.patch.apply_to(&mut card);
+            if !card_content_is_valid(&card) {
+                failed_count += 1;
+                results.push(json!({
+                    "cardId": card_id,
+                    "status": "invalid",
+                    "error": "blocks.ankiCards.errors.cardContentRequired",
+                }));
+                continue;
+            }
+            match db.update_anki_card_if_version_for_session(
+                &card,
+                item.expected_version.as_str(),
+                &ctx.session_id,
+            ) {
+                Ok(AnkiCardVersionUpdate::Updated(updated)) => {
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "ok",
+                        "card": convert_card_for_tool(&updated, None),
+                    }));
+                    updated_cards.push(updated);
+                }
+                Ok(AnkiCardVersionUpdate::Conflict(current)) => {
+                    conflict_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "conflict",
+                        "error": "version_conflict",
+                        "current": convert_card_for_tool(&current, None),
+                    }));
+                }
+                Ok(AnkiCardVersionUpdate::NotFound) => {
+                    failed_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "not_found",
+                        "error": "blocks.ankiCards.errors.statusNotFound",
+                    }));
+                }
+                Err(error) => {
+                    failed_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "failed",
+                        "error": format!("Failed to update card: {}", error),
+                    }));
+                }
+            }
+        }
+
+        let updated_count = updated_cards.len();
+        let (ui_status, ui_sync) = if updated_count > 0 {
+            let event_cards: Vec<Value> = updated_cards.iter().map(convert_backend_card).collect();
+            let updated_ids: Vec<String> =
+                updated_cards.iter().map(|card| card.id.clone()).collect();
+            let receipt = mutation_ui_sync_receipt(persist_and_emit_card_mutation(
+                ctx,
+                &mutation_target,
+                &document_id,
+                json!({
+                    "documentId": document_id,
+                    "cardMutation": "upsert",
+                    "cards": event_cards,
+                }),
+            ));
+            emit_fsrs_cards_changed_with_cards(
+                ctx,
+                "card_updated",
+                &updated_ids,
+                updated_cards.iter().map(convert_backend_card).collect(),
+            );
+            receipt
+        } else {
+            (
+                "ok",
+                json!({ "status": "not_required", "eventAttempted": false }),
+            )
+        };
+
+        let status = if updated_count == total && ui_status == "ok" {
+            "ok"
+        } else if updated_count > 0 {
+            "partial"
+        } else if conflict_count > 0 {
+            "conflict"
+        } else if blocked_count > 0 {
+            "blocked"
+        } else {
+            "failed"
+        };
+
+        Ok(finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            json!({
+                "status": status,
+                "documentId": document_id,
+                "total": total,
+                "updated": updated_count,
+                "conflicts": conflict_count,
+                "blocked": blocked_count,
+                "failed": failed_count,
+                "results": results,
+                "mutationApplied": updated_count > 0,
+                "retryable": conflict_count > 0,
+                "uiSync": ui_sync,
+            }),
+        ))
+    }
+
+    /// 批量删除卡片（≤100 张）：逐卡执行与 `chatanki_delete_card` 相同的双 CAS
+    ///（内容 version + 复习 reviewVersion）语义，单次调用替代 N 次 delete_card；
+    /// 成功删除汇总为一次块 patch 同步。选择必须来自同一文档。
+    async fn execute_delete_cards(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args = match serde_json::from_value::<ChatAnkiDeleteCardsArgs>(call.arguments.clone())
+            .map_err(|error| error.to_string())
+            .and_then(ChatAnkiDeleteCardsArgs::normalize)
+        {
+            Ok(args) => args,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Invalid chatanki_delete_cards arguments: {}", error),
+                ));
+            }
+        };
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+
+        // 预解析每张卡所属文档：批量删除必须来自同一文档（对齐 retemplate 语义）。
+        let mut resolved: Vec<(ChatAnkiDeleteCardsItem, String)> = Vec::new();
+        let mut early_results: Vec<Value> = Vec::new();
+        let mut document_ids: HashSet<String> = HashSet::new();
+        for item in args.cards {
+            match load_owned_chatanki_card(db, &item.card_id, &ctx.session_id) {
+                Ok((_, item_document_id)) => {
+                    document_ids.insert(item_document_id.clone());
+                    resolved.push((item, item_document_id));
+                }
+                Err(error) => {
+                    early_results.push(json!({
+                        "cardId": item.card_id,
+                        "status": "not_found",
+                        "error": error,
+                    }));
+                }
+            }
+        }
+        if document_ids.len() > 1 {
+            let mut ids: Vec<String> = document_ids.into_iter().collect();
+            ids.sort();
+            return Ok(finish_chatanki_success(
+                call,
+                ctx,
+                start_time,
+                json!({
+                    "status": "rejected",
+                    "error": "cross_document_selection",
+                    "documentIds": ids,
+                    "mutationApplied": false,
+                    "retryable": false,
+                }),
+            ));
+        }
+        let document_id = document_ids.into_iter().next();
+        if document_id.is_none() {
+            // 所有卡都不可见/不属于当前会话：与单卡删除的 not-found 语义一致。
+            return Ok(finish_chatanki_failure(
+                call,
+                ctx,
+                start_time,
+                "blocks.ankiCards.errors.statusNotFound".to_string(),
+            ));
+        }
+        let document_id = document_id.expect("checked above");
+        let mutation_target =
+            match preflight_card_mutation(ctx.chat_v2_db.as_deref(), &ctx.session_id, &document_id)
+            {
+                Ok(target) => target,
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(
+                        call,
+                        ctx,
+                        start_time,
+                        format!("Unable to prepare card UI synchronization: {}", error),
+                    ));
+                }
+            };
+
+        let total = resolved.len() + early_results.len();
+        let mut results = early_results;
+        let mut deleted_ids: Vec<String> = Vec::new();
+        let mut conflict_count = 0usize;
+        let mut failed_count = results.len();
+
+        for (item, _) in resolved {
+            let card_id = item.card_id.clone();
+            match db.delete_anki_card_for_session(
+                &card_id,
+                &item.expected_version,
+                item.expected_review_version(),
+                &ctx.session_id,
+            ) {
+                Ok(AnkiCardVersionDelete::Deleted) => {
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "ok",
+                        "deleted": true,
+                    }));
+                    deleted_ids.push(card_id);
+                }
+                Ok(AnkiCardVersionDelete::Conflict(current)) => {
+                    conflict_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "conflict",
+                        "error": "version_conflict",
+                        "current": convert_card_for_tool(&current, None),
+                    }));
+                }
+                Ok(AnkiCardVersionDelete::ReviewConflict { current, review: _ }) => {
+                    conflict_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "conflict",
+                        "error": "review_state_conflict",
+                        "current": convert_card_for_tool(&current, None),
+                        "guidance": "Call builtin-chatanki_get_cards to refresh reviewState before retrying.",
+                    }));
+                }
+                Ok(AnkiCardVersionDelete::NotFound) => {
+                    failed_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "not_found",
+                        "error": "blocks.ankiCards.errors.statusNotFound",
+                    }));
+                }
+                Err(error) => {
+                    failed_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "failed",
+                        "error": format!("Failed to delete card: {}", error),
+                    }));
+                }
+            }
+        }
+
+        let deleted_count = deleted_ids.len();
+        let (ui_status, ui_sync) = if deleted_count > 0 {
+            let receipt = mutation_ui_sync_receipt(persist_and_emit_card_mutation(
+                ctx,
+                &mutation_target,
+                &document_id,
+                json!({
+                    "documentId": document_id,
+                    "cardMutation": "delete",
+                    "deletedCardIds": deleted_ids.clone(),
+                }),
+            ));
+            emit_fsrs_cards_changed(ctx, "card_deleted", &deleted_ids);
+            receipt
+        } else {
+            (
+                "ok",
+                json!({ "status": "not_required", "eventAttempted": false }),
+            )
+        };
+
+        let status = if deleted_count == total && ui_status == "ok" {
+            "ok"
+        } else if deleted_count > 0 {
+            "partial"
+        } else if conflict_count > 0 {
+            "conflict"
+        } else {
+            "failed"
+        };
+
+        Ok(finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            json!({
+                "status": status,
+                "documentId": document_id,
+                "total": total,
+                "deleted": deleted_count,
+                "conflicts": conflict_count,
+                "failed": failed_count,
+                "deletedCardIds": deleted_ids,
+                "results": results,
+                "mutationApplied": deleted_count > 0,
+                "retryable": conflict_count > 0,
                 "uiSync": ui_sync,
             }),
         ))
@@ -3365,7 +3997,9 @@ impl ChatAnkiToolExecutor {
         let chat_db = ctx.chat_v2_db.clone();
         let anki_db = ctx.anki_db.clone();
 
-        const DEFAULT_TIMEOUT_MS: u64 = 30 * 60 * 1000;
+        // 默认 5 分钟（由 30 分钟下调）：促使 agent 分轮轮询而不是单次 wait
+        // 占死整个回合；需要更久时显式传 timeoutMs（上限 60 分钟不变）。
+        const DEFAULT_TIMEOUT_MS: u64 = 5 * 60 * 1000;
         const MAX_TIMEOUT_MS: u64 = 60 * 60 * 1000;
         const BLOCK_DISCOVERY_GRACE_MS: u64 = 8_000;
         const POLL_INTERVAL: Duration = Duration::from_millis(900);
@@ -3763,6 +4397,9 @@ impl ChatAnkiToolExecutor {
             "ankiBlockId": final_anki_block_id.or_else(|| args.anki_block_id.clone()).unwrap_or_default(),
             "documentId": final_document_id,
             "cardsCount": final_cards_count.unwrap_or(0),
+            // 可用卡（非诊断/错误卡）数量；文档卡片可读取时在下方回填。
+            // completed_with_errors 且 usableCards=0 等价于完全失败，禁止当作部分成功汇报。
+            "usableCards": Value::Null,
             "progress": final_progress,
             "ankiConnect": final_anki_connect,
             // 达到 maxCards 上限提前停止时为 true，提示 AI 这是预期行为而非异常取消
@@ -3781,6 +4418,8 @@ impl ChatAnkiToolExecutor {
                 let cards = db
                     .get_cards_for_document(document_id)
                     .map_err(|error| error.to_string())?;
+                tool_output["usableCards"] =
+                    json!(cards.iter().filter(|c| !c.is_error_card).count());
                 if !tasks.is_empty() {
                     let projection = project_chatanki_workflow(&tasks, &cards, None, 0);
                     deep_merge_value(&mut tool_output, projection.output_patch);
@@ -4318,6 +4957,13 @@ impl ChatAnkiToolExecutor {
             "deckName": deck_name,
             "noteType": final_note_type,
             "cardsCount": cards_count,
+            // P8：导出包含库中全部非错误卡（含超限保留卡）；该字段表示其中
+            // 有多少张未展示在预览块里，导出数可能大于块内可见数。
+            "hiddenOverLimitCount": lookup_hidden_over_limit_count(
+                ctx.chat_v2_db.as_deref(),
+                &ctx.session_id,
+                &args.document_id,
+            ),
         });
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
@@ -5221,7 +5867,11 @@ impl ChatAnkiToolExecutor {
 
         // F2：先注册活跃管线再落库块，保证「DB 可见的 running 块但未注册」
         // 一定意味着管线已死（供会话删除路径识别僵尸块）。
-        let pipeline_guard = ChatAnkiPipelineGuard::register(&anki_block_id);
+        // 取消语义贯通：注册令牌挂到工具执行上下文令牌下，聊天取消可传播到管线；
+        // kill switch 通过 cancel_all_active_chatanki_pipelines 枚举注册表取消。
+        let pipeline_guard =
+            ChatAnkiPipelineGuard::register(&anki_block_id, ctx.cancellation_token());
+        let pipeline_cancel_token = pipeline_guard.cancel_token();
 
         // Persist anki_cards block early so user sees progress even if pipeline takes long.
         let anki_block = MessageBlock {
@@ -5315,6 +5965,7 @@ impl ChatAnkiToolExecutor {
                 preferred_resource_ids,
                 pre_allocated_document_id: pre_doc_id_for_spawn.clone(),
                 max_cards,
+                cancel_token: pipeline_cancel_token,
             })
             .await
             {
@@ -5379,6 +6030,8 @@ struct BackgroundParams {
     pre_allocated_document_id: String,
     /// 用户指定的最大卡片数量（可选）
     max_cards: Option<i32>,
+    /// 取消令牌：kill switch / 聊天取消触发时走非破坏性取消（保留已生成卡片）
+    cancel_token: CancellationToken,
 }
 
 fn derive_document_name_from_goal(goal: &str) -> String {
@@ -5441,6 +6094,99 @@ fn ensure_failed_document_session(
     Ok(())
 }
 
+/// 取消语义贯通：管线在任务落库之前就被取消时，插入一条 Cancelled 占位任务，
+/// 让 `chatanki_wait` / `chatanki_status` 能以 cancelled 终态收敛而非 not_found。
+fn ensure_cancelled_document_session(
+    db: &crate::database::Database,
+    document_id: &str,
+    session_id: &str,
+    document_name: &str,
+) -> Result<(), String> {
+    match db.get_tasks_for_document(document_id) {
+        Ok(existing) if !existing.is_empty() => return Ok(()),
+        Ok(_) => {}
+        Err(e) => {
+            return Err(format!(
+                "failed to check existing tasks for document {}: {}",
+                document_id, e
+            ));
+        }
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let task = DocumentTask {
+        id: uuid::Uuid::new_v4().to_string(),
+        document_id: document_id.to_string(),
+        original_document_name: document_name.to_string(),
+        segment_index: 0,
+        content_segment: String::new(),
+        status: crate::models::TaskStatus::Cancelled,
+        created_at: now.clone(),
+        updated_at: now,
+        error_message: Some(PIPELINE_CANCELLED_MARKER.to_string()),
+        anki_generation_options_json: "{}".to_string(),
+    };
+
+    db.insert_document_task(&task)
+        .map_err(|e| format!("failed to insert placeholder cancelled task: {}", e))?;
+    db.set_document_session_source(document_id, session_id)
+        .map_err(|e| {
+            format!(
+                "failed to set source_session_id for cancelled placeholder task: {}",
+                e
+            )
+        })?;
+    Ok(())
+}
+
+/// 管线在生成开始前（内容解析阶段/启动前）被取消时的统一收尾：
+/// 占位 Cancelled 任务 + 块落终态 + UI 事件，已生成内容不受影响。
+fn finish_pipeline_cancelled_before_generation(params: &BackgroundParams) {
+    let document_name = derive_document_name_from_goal(&params.goal);
+    if let Err(e) = ensure_cancelled_document_session(
+        &params.anki_db,
+        &params.pre_allocated_document_id,
+        &params.session_id,
+        &document_name,
+    ) {
+        log::warn!(
+            "[ChatAnkiToolExecutor] failed to persist cancelled placeholder for {}: {}",
+            params.pre_allocated_document_id,
+            e
+        );
+    }
+    let final_output = json!({
+        "cards": [],
+        "documentId": params.pre_allocated_document_id,
+        "status": "cancelled",
+        "finalStatus": "cancelled",
+        "workflowStatus": "cancelled",
+        "generationStatus": "cancelled",
+        "progress": {
+            "stage": "cancelled",
+            "messageKey": "blocks.ankiCards.progress.messages.cancelled",
+            "cardsGenerated": 0,
+            "completedRatio": 0.0,
+            "lastUpdatedAt": chrono::Utc::now().to_rfc3339(),
+        },
+    });
+    persist_anki_cards_terminal_block(
+        &params.chat_db,
+        &params.message_id,
+        &params.anki_block_id,
+        &params.tool_name,
+        block_status::SUCCESS,
+        Some(final_output.clone()),
+        None,
+    );
+    params.emitter.emit_end(
+        event_types::ANKI_CARDS,
+        &params.anki_block_id,
+        Some(final_output),
+        None,
+    );
+}
+
 /// C6：空闲超时阈值——连续无任何生成进度（新卡/任务计数/完成比例）超过该时长判定超时。
 const PIPELINE_IDLE_TIMEOUT: Duration = Duration::from_secs(60 * 10);
 /// C6：总时长防御性硬上限（由原 30 分钟提高）；只兜底防止无限轮询，正常大文档不应触达。
@@ -5481,6 +6227,15 @@ fn decide_pipeline_timeout(
 
 async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<(), String> {
     let document_name_for_errors = derive_document_name_from_goal(&params.goal);
+    // 0) 取消语义贯通：管线尚未做任何事时就已被取消（kill switch / 聊天取消）。
+    if params.cancel_token.is_cancelled() {
+        log::warn!(
+            "[ChatAnkiToolExecutor] pipeline for {} cancelled before start",
+            params.pre_allocated_document_id
+        );
+        finish_pipeline_cancelled_before_generation(&params);
+        return Ok(());
+    }
     // 1) Check AnkiConnect early (best-effort).
     let (anki_available, anki_error) =
         match crate::anki_connect_service::check_anki_connect_availability().await {
@@ -5836,11 +6591,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     let extract_result =
                         extract_text_from_refs(&vfs_conn, vfs_db.blobs_dir(), &merged_ref_data);
                     if extract_result.truncated {
-                        warnings.push(json!({
-                            "code": "text_truncated",
-                            "messageKey": "blocks.ankiCards.warnings.textTruncated",
-                            "messageParams": { "limitMB": MAX_REF_TEXT_BYTES / 1_000_000 }
-                        }));
+                        warnings.push(text_truncated_warning(&extract_result));
                     }
                     let merged_text = merge_with_extra(extract_result.text);
                     if merged_text.trim().is_empty() {
@@ -5891,11 +6642,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     let extract_result =
                         extract_text_from_refs(&vfs_conn, vfs_db.blobs_dir(), &merged_ref_data);
                     if extract_result.truncated {
-                        warnings.push(json!({
-                            "code": "text_truncated",
-                            "messageKey": "blocks.ankiCards.warnings.textTruncated",
-                            "messageParams": { "limitMB": MAX_REF_TEXT_BYTES / 1_000_000 }
-                        }));
+                        warnings.push(text_truncated_warning(&extract_result));
                     }
                     let text = merge_with_extra(extract_result.text);
                     let image_payloads = collect_image_payloads(
@@ -5960,11 +6707,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                         let extract_result =
                             extract_text_from_refs(&vfs_conn, vfs_db.blobs_dir(), &merged_ref_data);
                         if extract_result.truncated {
-                            warnings.push(json!({
-                                "code": "text_truncated",
-                                "messageKey": "blocks.ankiCards.warnings.textTruncated",
-                                "messageParams": { "limitMB": MAX_REF_TEXT_BYTES / 1_000_000 }
-                            }));
+                            warnings.push(text_truncated_warning(&extract_result));
                         }
                         let merged_text = merge_with_extra(extract_result.text);
                         let fallback_route = ChatAnkiRoute::SimpleText;
@@ -6195,6 +6938,15 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
             warnings_patch,
         );
     }
+    // 取消语义贯通：内容解析（可能含 VLM 调用）结束后、生成启动前再检查一次。
+    if params.cancel_token.is_cancelled() {
+        log::warn!(
+            "[ChatAnkiToolExecutor] pipeline for {} cancelled before generation start",
+            params.pre_allocated_document_id
+        );
+        finish_pipeline_cancelled_before_generation(&params);
+        return Ok(());
+    }
     let enhanced = EnhancedAnkiService::new(params.anki_db.clone(), params.llm_manager.clone());
     // 使用 goal 作为文档名称，而不是硬编码 "chatanki"
     let doc_name = derive_document_name_from_goal(&params.goal);
@@ -6295,8 +7047,32 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
         .max_cards
         .and_then(|v| if v > 0 { Some(v as usize) } else { None });
     let mut limit_cancel_triggered = false;
+    let mut pipeline_cancel_triggered = false;
 
     loop {
+        // 取消语义贯通：kill switch / 聊天取消触发时走既有的非破坏性取消路径
+        //（与 chatanki_control cancel 相同：停止调度协程 + 断流 + 未完成任务置
+        // Cancelled，已生成卡片全部保留），随后由正常 cancelled 终态分支收尾。
+        if !pipeline_cancel_triggered && params.cancel_token.is_cancelled() {
+            pipeline_cancel_triggered = true;
+            log::warn!(
+                "[ChatAnkiToolExecutor] pipeline cancel requested for {} (kill switch / chat cancel); performing non-destructive cancel",
+                document_id
+            );
+            let enhanced =
+                EnhancedAnkiService::new(params.anki_db.clone(), params.llm_manager.clone());
+            if let Err(e) = enhanced
+                .cancel_document_processing(document_id.clone(), params.window.clone())
+                .await
+            {
+                log::warn!(
+                    "[ChatAnkiToolExecutor] non-destructive cancel failed for {}: {}",
+                    document_id,
+                    e
+                );
+            }
+        }
+
         let tasks = params
             .anki_db
             .get_tasks_for_document(&document_id)
@@ -6592,6 +7368,8 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
             // Done: emit end with full cards list.
             // 超出 maxCards 的卡片仍按上限裁剪展示（保持限额语义），但不再物理删除：
             // 超额卡保留在库中，仅从本批 final_cards / UI 投影中隐藏（P8）。
+            // 「库里有、块里看不见」的数量显式透出为 hiddenOverLimitCount。
+            let hidden_over_limit_count = cards.len().saturating_sub(visible_card_count);
             if cards.len() > visible_card_count {
                 let retained_count = cards.len() - visible_card_count;
                 log::info!(
@@ -6623,8 +7401,9 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     .take(visible_card_count)
                     .map(|c| c.id.clone())
                     .collect();
+                // ACR 4.0：域事件 source 统一为 "agent"（前端 normalize 仍双认 "ai"）
                 let payload = json!({
-                    "source": "ai",
+                    "source": "agent",
                     "action": "cards_persisted",
                     "entityIds": entity_ids,
                     "runId": params.anki_block_id,
@@ -6661,13 +7440,12 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
             };
             // C6：超时导致的失败用更具体的 pipelineTimeout 错误键，
             // 便于用户/AI 与普通生成失败区分。
-            let final_error_key = if timeout_info.is_some()
-                && projection.block_status == block_status::ERROR
-            {
-                Some("blocks.ankiCards.errors.pipelineTimeout".to_string())
-            } else {
-                projection.block_error.clone()
-            };
+            let final_error_key =
+                if timeout_info.is_some() && projection.block_status == block_status::ERROR {
+                    Some("blocks.ankiCards.errors.pipelineTimeout".to_string())
+                } else {
+                    projection.block_error.clone()
+                };
             let mut final_output = json!({
                 "cards": final_cards,
                 "documentId": document_id,
@@ -6690,6 +7468,8 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                 "status": final_stage,
                 // 达到 maxCards 上限提前停止时为 true（C1 修复）
                 "limitReached": has_limit_cancelled,
+                // 超出本批 maxCards、保留在库中但不在预览块展示的卡片数（P8 透明化）
+                "hiddenOverLimitCount": hidden_over_limit_count,
                 "progress": {
                     "stage": final_stage,
                     "route": route.as_str(),
@@ -7003,6 +7783,22 @@ fn push_with_budget(out: &mut String, text: &str, remaining: &mut usize) -> bool
     false
 }
 
+/// 文本预算截断警告：明确列出被丢弃/已收录的文件名，让 agent 能告知用户
+/// 哪些材料没有进入本次制卡（修复静默丢弃）。
+fn text_truncated_warning(extract_result: &ExtractTextResult) -> Value {
+    json!({
+        "code": "text_truncated",
+        "messageKey": "blocks.ankiCards.warnings.textTruncated",
+        "messageParams": {
+            "limitMB": MAX_REF_TEXT_BYTES / 1_000_000,
+            "droppedCount": extract_result.dropped_files.len(),
+            "droppedFiles": extract_result.dropped_files,
+        },
+        "includedFiles": extract_result.included_files,
+        "droppedFiles": extract_result.dropped_files,
+    })
+}
+
 fn merge_optional_texts(base: String, extra: Option<String>) -> String {
     let base_trimmed = base.trim();
     let extra_trimmed = extra.as_deref().unwrap_or("").trim();
@@ -7065,10 +7861,15 @@ fn collect_image_payloads(
     }
 }
 
-/// 提取结果：文本 + 是否被截断
+/// 提取结果：文本 + 是否被截断 + 逐文件收录/丢弃清单
+///（修复：此前 10MB 预算耗尽后剩余文件被静默整体丢弃，agent 无从告知用户）。
 struct ExtractTextResult {
     text: String,
     truncated: bool,
+    /// 内容（全部或部分）被收录进文本的引用名。
+    included_files: Vec<String>,
+    /// 内容因预算耗尽被整体或部分丢弃的引用名（部分收录的文件同时出现在两个清单）。
+    dropped_files: Vec<String>,
 }
 
 fn extract_text_from_refs(
@@ -7082,10 +7883,14 @@ fn extract_text_from_refs(
     let mut out = String::new();
     let mut remaining = MAX_REF_TEXT_BYTES;
     let mut truncated = false;
+    let mut included_files: Vec<String> = Vec::new();
+    let mut dropped_files: Vec<String> = Vec::new();
 
-    for r in &ref_data.refs {
+    let mut refs_iter = ref_data.refs.iter();
+    for r in refs_iter.by_ref() {
         if remaining == 0 {
             truncated = true;
+            dropped_files.push(r.name.clone());
             break;
         }
         match r.resource_type {
@@ -7120,17 +7925,23 @@ fn extract_text_from_refs(
                     let header = format!("\n\n# {}\n\n", r.name);
                     if !push_with_budget(&mut out, &header, &mut remaining) {
                         truncated = true;
+                        dropped_files.push(r.name.clone());
                         break;
                     }
                     if !push_with_budget(&mut out, &text, &mut remaining) {
+                        // 文件正文被截断：部分内容已收录，剩余部分丢失。
                         truncated = true;
+                        included_files.push(r.name.clone());
+                        dropped_files.push(r.name.clone());
                         break;
                     }
+                    included_files.push(r.name.clone());
                 }
             }
             // For non-file refs, fall back to resolver text blocks.
             _ => {
                 let blocks = resolve_vfs_ref_to_blocks(conn, blobs_dir, r, false);
+                let mut pushed_any = false;
                 for b in blocks {
                     if let ContentBlock::Text { text } = b {
                         if !text.trim().is_empty() {
@@ -7140,10 +7951,18 @@ fn extract_text_from_refs(
                             }
                             if !push_with_budget(&mut out, &text, &mut remaining) {
                                 truncated = true;
+                                pushed_any = true;
                                 break;
                             }
+                            pushed_any = true;
                         }
                     }
+                }
+                if pushed_any {
+                    included_files.push(r.name.clone());
+                }
+                if truncated {
+                    dropped_files.push(r.name.clone());
                 }
             }
         }
@@ -7151,16 +7970,25 @@ fn extract_text_from_refs(
             break;
         }
     }
+    // 预算耗尽后剩余的引用全部记为被丢弃（此前是静默丢弃）。
+    if truncated {
+        for r in refs_iter {
+            dropped_files.push(r.name.clone());
+        }
+    }
 
     if truncated {
         log::warn!(
-            "[ChatAnki] Truncated context refs text at {} bytes",
-            MAX_REF_TEXT_BYTES
+            "[ChatAnki] Truncated context refs text at {} bytes; dropped file(s): {}",
+            MAX_REF_TEXT_BYTES,
+            dropped_files.join(", ")
         );
     }
     ExtractTextResult {
         text: out.trim().to_string(),
         truncated,
+        included_files,
+        dropped_files,
     }
 }
 
@@ -7754,18 +8582,48 @@ fn resolve_template_selection(
 
     match template_mode {
         ChatAnkiTemplateMode::Single => {
-            let tid = template_id
+            let explicit_tid = template_id
                 .map(|v| v.trim().to_string())
-                .filter(|v| !v.is_empty())
-                .ok_or_else(|| {
-                    "templateMode=single 时必须提供 templateId（指定单个模板）".to_string()
-                })?;
+                .filter(|v| !v.is_empty());
+            // 未显式指定模板时，优先读取用户设置的默认模板
+            //（settings 表 default_template_id，与 commands::set_default_template 同源）。
+            let (tid, from_default) = match explicit_tid {
+                Some(tid) => (tid, false),
+                None => {
+                    let default_tid = db
+                        .get_default_template()
+                        .map_err(|e| format!("读取默认模板设置失败: {}", e))?
+                        .map(|v| v.trim().to_string())
+                        .filter(|v| !v.is_empty());
+                    match default_tid {
+                        Some(tid) => (tid, true),
+                        None => {
+                            return Err(
+                                "templateMode=single 时必须提供 templateId（指定单个模板），或先在设置中配置默认模板"
+                                    .to_string(),
+                            );
+                        }
+                    }
+                }
+            };
             let exists = db
                 .get_custom_template_by_id(&tid)
                 .map_err(|e| format!("加载模板失败: {}", e))?
                 .is_some();
             if !exists {
+                if from_default {
+                    return Err(format!(
+                        "用户默认模板不存在或已删除: {}（请显式传 templateId 或更新默认模板设置）",
+                        tid
+                    ));
+                }
                 return Err(format!("指定模板不存在: {}", tid));
+            }
+            if from_default {
+                log::info!(
+                    "[ChatAnkiToolExecutor] templateMode=single without templateId; using user default template {}",
+                    tid
+                );
             }
             Ok(TemplateSelection {
                 template_id: Some(tid),
@@ -8847,6 +9705,82 @@ fn emit_agent_review_changed(
 
 const CHATANKI_CARD_FIELD_LIMIT: usize = 2_000;
 
+/// 截断防御：get_cards 的长字段按 `CHATANKI_CARD_FIELD_LIMIT` 截断输出。若 agent
+/// 把截断文本当作完整字段整体回写（update 是整字段替换），超限部分会被静默毁掉。
+/// 判定“新值疑似基于截断源”：现存字段超过截断限，且新值长度达到截断限、比现存
+/// 内容短、并与现存内容截断前缀高度重合（等于截断前缀，或在其后追加）。
+fn patch_value_suspected_truncated_source(existing: &str, new_value: &str) -> bool {
+    let existing_chars = existing.chars().count();
+    if existing_chars <= CHATANKI_CARD_FIELD_LIMIT {
+        return false;
+    }
+    let new_chars = new_value.chars().count();
+    if new_chars < CHATANKI_CARD_FIELD_LIMIT || new_chars >= existing_chars {
+        return false;
+    }
+    let truncated_existing = safe_truncate_chars(existing, CHATANKI_CARD_FIELD_LIMIT);
+    new_value.starts_with(truncated_existing.as_str())
+        || truncated_existing.starts_with(new_value)
+}
+
+/// 返回 patch 中疑似“以截断输出为源”的字段路径清单（空即安全）。
+fn detect_truncated_source_fields(
+    card: &crate::models::AnkiCard,
+    patch: &ChatAnkiCardPatch,
+) -> Vec<String> {
+    let mut fields = Vec::new();
+    if let Some(front) = patch.front.as_deref() {
+        if patch_value_suspected_truncated_source(&card.front, front) {
+            fields.push("front".to_string());
+        }
+    }
+    if let Some(back) = patch.back.as_deref() {
+        if patch_value_suspected_truncated_source(&card.back, back) {
+            fields.push("back".to_string());
+        }
+    }
+    if let Some(Some(text)) = patch.text.as_ref() {
+        if let Some(existing) = card.text.as_deref() {
+            if patch_value_suspected_truncated_source(existing, text) {
+                fields.push("text".to_string());
+            }
+        }
+    }
+    if let Some(extra_fields) = patch.extra_fields.as_ref() {
+        for (key, value) in extra_fields {
+            let normalized_key = key.trim().to_lowercase();
+            let existing = card
+                .extra_fields
+                .get(&normalized_key)
+                .or_else(|| card.extra_fields.get(key));
+            if let Some(existing) = existing {
+                if patch_value_suspected_truncated_source(existing, value) {
+                    fields.push(format!("extraFields.{}", key));
+                }
+            }
+        }
+    }
+    fields
+}
+
+/// 截断防御的结构化拒绝：要求调用方重读全文或显式传 `allowTruncatedSource=true`。
+fn chatanki_truncated_source_blocked_payload(
+    document_id: &str,
+    card_id: &str,
+    fields: &[String],
+) -> Value {
+    json!({
+        "status": "blocked",
+        "error": "truncated_source_overwrite",
+        "documentId": document_id,
+        "cardId": card_id,
+        "fields": fields,
+        "mutationApplied": false,
+        "retryable": false,
+        "guidance": "Target field exceeds the get_cards truncation limit and the new value looks like it was built from truncated output; overwriting would destroy the hidden tail. Re-read the complete field content before editing, or pass allowTruncatedSource=true to overwrite explicitly.",
+    })
+}
+
 fn truncate_card_field(value: &str, path: String, truncated_fields: &mut Vec<String>) -> String {
     if value.chars().count() <= CHATANKI_CARD_FIELD_LIMIT {
         return value.to_string();
@@ -9119,6 +10053,34 @@ fn find_owned_anki_cards_block_id(
         }
     }
     Ok(None)
+}
+
+/// P8 透明化：读取该文档预览块终态里记录的 hiddenOverLimitCount
+///（生成时超出 maxCards、保留在库中但未进入块投影的卡片数）。
+/// 块不存在（如 APKG 导入文档）或字段缺失时返回 0。
+fn lookup_hidden_over_limit_count(
+    chat_db: Option<&crate::chat_v2::database::ChatV2Database>,
+    session_id: &str,
+    document_id: &str,
+) -> u64 {
+    let Some(chat_db) = chat_db else {
+        return 0;
+    };
+    let Ok(Some(block_id)) = find_owned_anki_cards_block_id(chat_db, session_id, document_id)
+    else {
+        return 0;
+    };
+    ChatV2Repo::get_block_v2(chat_db, &block_id)
+        .ok()
+        .flatten()
+        .and_then(|block| {
+            block
+                .tool_output
+                .as_ref()
+                .and_then(|output| output.get("hiddenOverLimitCount"))
+                .and_then(Value::as_u64)
+        })
+        .unwrap_or(0)
 }
 
 fn preflight_card_mutation(
@@ -9617,6 +10579,10 @@ fn distribute_global_max_cards(total: i32, segments: usize) -> Vec<i32> {
 
 /// 全局卡片上限触发的取消标记（写入 document_task.error_message）。
 pub(crate) const GLOBAL_CARD_LIMIT_MARKER: &str = "GLOBAL_CARD_LIMIT_REACHED";
+
+/// kill switch / 聊天取消触发的管线取消标记（写入 document_task.error_message）。
+/// 注意：它**不能**等于 GLOBAL_CARD_LIMIT_MARKER，否则会被归类为“按上限完成”。
+pub(crate) const PIPELINE_CANCELLED_MARKER: &str = "PIPELINE_CANCELLED_BY_CONTROLLER";
 
 /// 达到 maxCards 上限导致的取消属于"按上限完成"，不是用户取消（C1 修复）。
 fn is_limit_cancelled_task(t: &crate::models::DocumentTask) -> bool {
@@ -10186,7 +11152,12 @@ fn sync_terminal_anki_block_with_db(
         .clone()
         .filter(Value::is_object)
         .unwrap_or_else(|| json!({ "cards": [], "documentId": document_id }));
-    output["cards"] = Value::Array(visible_db_cards.iter().map(|c| convert_backend_card(c)).collect());
+    output["cards"] = Value::Array(
+        visible_db_cards
+            .iter()
+            .map(|c| convert_backend_card(c))
+            .collect(),
+    );
     output["documentId"] = json!(document_id);
     deep_merge_value(&mut output, projection.output_patch.clone());
     // 新增可选字段：标记该快照已按 DB 权威数据刷新（前端/导出可据此判定新鲜度）。
@@ -11600,6 +12571,10 @@ mod tests {
             relearning: 3,
             suspended: 2,
             reviews_today: 1,
+            buried: 0,
+            leech: 0,
+            new_remaining_today: 0,
+            reviews_remaining_today: 0,
         };
         assert_eq!(
             chatanki_review_stats_output(&stats),
@@ -11652,6 +12627,8 @@ mod tests {
             desired_retention: Some(0.9),
             created_at: "created".to_string(),
             updated_at: "updated".to_string(),
+            leech: false,
+            buried_until_ms: None,
         };
         let mut skipped_state = state.clone();
         skipped_state.id = "state-skipped".to_string();
@@ -14145,6 +15122,8 @@ mod tests {
             imported_cards: 2,
             imported_templates: 0,
             media_skipped: 1,
+            media_imported: 0,
+            warnings: vec![],
             card_ids: vec!["card-a".to_string(), "card-b".to_string()],
         };
         let output = serde_json::to_value(&result).expect("serialize import result");
@@ -14155,6 +15134,7 @@ mod tests {
                 "importedCards": 2,
                 "importedTemplates": 0,
                 "mediaSkipped": 1,
+                "mediaImported": 0,
             })
         );
 
@@ -14270,10 +15250,7 @@ mod tests {
         assert!(now_ms - last_activity < 5_000);
 
         // 无 tool_output 时退回时间戳字段。
-        assert_eq!(
-            anki_block_last_activity_ms(Some(100), Some(200), None),
-            200
-        );
+        assert_eq!(anki_block_last_activity_ms(Some(100), Some(200), None), 200);
         assert_eq!(anki_block_last_activity_ms(None, None, None), 0);
 
         let old_activity = now_ms - STALE_RUNNING_ANKI_BLOCK_AFTER_MS - 1_000;
@@ -14298,17 +15275,15 @@ mod tests {
         // 另一个块模拟“真在跑”的管线：状态 running 且已注册。
         let mut live_message =
             crate::chat_v2::types::ChatMessage::new_assistant(session_id.to_string());
-        let mut live_block =
-            MessageBlock::new(live_message.id.clone(), block_types::ANKI_CARDS, 0);
+        let mut live_block = MessageBlock::new(live_message.id.clone(), block_types::ANKI_CARDS, 0);
         live_block.status = block_status::RUNNING.to_string();
         live_block.tool_output = Some(json!({ "documentId": "doc-live", "cards": [] }));
         live_message.block_ids = vec![live_block.id.clone()];
         ChatV2Repo::create_message_v2(&chat_db, &live_message).expect("create live message");
         ChatV2Repo::create_block_v2(&chat_db, &live_block).expect("create live block");
 
-        let stale_ms = chrono::Utc::now().timestamp_millis()
-            - STALE_RUNNING_ANKI_BLOCK_AFTER_MS
-            - 60_000;
+        let stale_ms =
+            chrono::Utc::now().timestamp_millis() - STALE_RUNNING_ANKI_BLOCK_AFTER_MS - 60_000;
         {
             let conn = chat_db.get_conn_safe().expect("conn");
             conn.execute(
@@ -14318,7 +15293,7 @@ mod tests {
             .expect("age blocks");
         }
 
-        let _live_guard = ChatAnkiPipelineGuard::register(&live_block.id);
+        let _live_guard = ChatAnkiPipelineGuard::register(&live_block.id, None);
         let reaped =
             reap_stale_running_anki_blocks(&chat_db, session_id).expect("reap should succeed");
         assert_eq!(reaped, vec![zombie_block_id.clone()]);
@@ -14383,9 +15358,15 @@ mod tests {
             make_chatanki_card("card-b", "task-1", "front-b", "back-b"),
         ];
 
-        let refreshed =
-            sync_terminal_anki_block_with_db(&chat_db, None, session_id, document_id, &tasks, &db_cards)
-                .expect("refresh should succeed");
+        let refreshed = sync_terminal_anki_block_with_db(
+            &chat_db,
+            None,
+            session_id,
+            document_id,
+            &tasks,
+            &db_cards,
+        )
+        .expect("refresh should succeed");
         assert!(refreshed);
 
         let block = ChatV2Repo::get_block_v2(&chat_db, &block_id)
@@ -14404,9 +15385,15 @@ mod tests {
         assert_eq!(output["workflowStatus"], json!("completed"));
 
         // 已收敛：二次调用是 no-op。
-        let refreshed_again =
-            sync_terminal_anki_block_with_db(&chat_db, None, session_id, document_id, &tasks, &db_cards)
-                .expect("second refresh should succeed");
+        let refreshed_again = sync_terminal_anki_block_with_db(
+            &chat_db,
+            None,
+            session_id,
+            document_id,
+            &tasks,
+            &db_cards,
+        )
+        .expect("second refresh should succeed");
         assert!(!refreshed_again);
 
         // deletedCardIds 被尊重：用户在块内删除的卡不因刷新复活。
@@ -14430,10 +15417,19 @@ mod tests {
             )
             .expect("apply block-side delete");
         }
-        let refreshed_after_delete =
-            sync_terminal_anki_block_with_db(&chat_db, None, session_id, document_id, &tasks, &db_cards)
-                .expect("refresh after block-side delete");
-        assert!(!refreshed_after_delete, "block-side deletion must not trigger resurrection");
+        let refreshed_after_delete = sync_terminal_anki_block_with_db(
+            &chat_db,
+            None,
+            session_id,
+            document_id,
+            &tasks,
+            &db_cards,
+        )
+        .expect("refresh after block-side delete");
+        assert!(
+            !refreshed_after_delete,
+            "block-side deletion must not trigger resurrection"
+        );
 
         // 仍在运行的文档不触发刷新。
         let running_tasks = vec![make_task(TaskStatus::Processing)];

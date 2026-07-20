@@ -16,16 +16,35 @@ use std::time::Instant;
 use super::database::ChatV2Database;
 use super::error::{ChatV2Error, ChatV2Result};
 use super::types::{
-    AttachmentMeta, AuthorityMode, ChatMessage, ChatParams, ChatSession, CompactionRecord,
-    DeleteVariantResult, LoadSessionResponse, MessageBlock, MessageMeta, MessageRole, PanelStates,
-    PersistStatus, PlanAuthorityState, SessionAuthorityState, SessionGroup, SessionSkillState,
-    SessionState, SharedContext, Variant,
+    block_types, AttachmentMeta, AuthorityMode, ChatMessage, ChatParams, ChatSession,
+    CompactionRecord, DeleteVariantResult, LoadSessionResponse, MessageBlock, MessageMeta,
+    MessageRole, PanelStates, PersistStatus, PlanAuthorityState, SessionAuthorityState,
+    SessionGroup, SessionSkillState, SessionState, SharedContext, Variant,
 };
 
 /// 变体 JSON 尺寸告警阈值（64KB）：超过即记录 warn 日志，但不截断。
 const VARIANTS_JSON_WARN_BYTES: usize = 64 * 1024;
 /// 变体 JSON 尺寸硬上限（256KB）：超过则从最旧的变体开始截断，避免单条 SQLite 行膨胀。
 const VARIANTS_JSON_LIMIT_BYTES: usize = 256 * 1024;
+
+/// `row_to_message` 中 JSON 字段解析失败的累计计数（跨会话，诊断用）。
+///
+/// 解析失败保持「降级为空、不 panic」的容错行为，但通过计数 + warn 日志
+/// （带 message_id 与字段名）暴露数据损坏规模，避免静默丢数据。
+static MESSAGE_JSON_PARSE_FAILURES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+/// 记录一次消息 JSON 字段解析失败（计数 + warn 日志）。
+fn note_message_json_parse_failure(field: &str, message_id: &str, err: &serde_json::Error) {
+    let total = MESSAGE_JSON_PARSE_FAILURES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    log::warn!(
+        "[ChatV2::Repo] {} 解析失败，降级为空 (msg_id={}, total_parse_failures={}): {}",
+        field,
+        message_id,
+        total,
+        err
+    );
+}
 
 /// Chat V2 数据存取层
 ///
@@ -1449,18 +1468,14 @@ impl ChatV2Repo {
         };
 
         let block_ids: Vec<String> = serde_json::from_str(&block_ids_json).unwrap_or_else(|e| {
-            log::warn!(
-                "[ChatV2::Repo] block_ids_json 解析失败 (msg_id={}): {}",
-                id,
-                e
-            );
+            note_message_json_parse_failure("block_ids_json", &id, &e);
             Vec::new()
         });
 
         let meta: Option<MessageMeta> = meta_json.as_ref().and_then(|s| {
             serde_json::from_str(s)
                 .map_err(|e| {
-                    log::warn!("[ChatV2::Repo] meta_json 解析失败 (msg_id={}): {}", id, e);
+                    note_message_json_parse_failure("meta_json", &id, &e);
                     e
                 })
                 .ok()
@@ -1470,11 +1485,7 @@ impl ChatV2Repo {
         let attachments: Option<Vec<AttachmentMeta>> = attachments_json.as_ref().and_then(|s| {
             serde_json::from_str(s)
                 .map_err(|e| {
-                    log::warn!(
-                        "[ChatV2::Repo] attachments_json 解析失败 (msg_id={}): {}",
-                        id,
-                        e
-                    );
+                    note_message_json_parse_failure("attachments_json", &id, &e);
                     e
                 })
                 .ok()
@@ -1483,11 +1494,7 @@ impl ChatV2Repo {
         let variants: Option<Vec<Variant>> = variants_json.as_ref().and_then(|s| {
             serde_json::from_str(s)
                 .map_err(|e| {
-                    log::warn!(
-                        "[ChatV2::Repo] variants_json 解析失败 (msg_id={}): {}",
-                        id,
-                        e
-                    );
+                    note_message_json_parse_failure("variants_json", &id, &e);
                     e
                 })
                 .ok()
@@ -1502,11 +1509,7 @@ impl ChatV2Repo {
         let shared_context: Option<SharedContext> = shared_context_json.as_ref().and_then(|s| {
             serde_json::from_str(s)
                 .map_err(|e| {
-                    log::warn!(
-                        "[ChatV2::Repo] shared_context_json 解析失败 (msg_id={}): {}",
-                        id,
-                        e
-                    );
+                    note_message_json_parse_failure("shared_context_json", &id, &e);
                     e
                 })
                 .ok()
@@ -2493,6 +2496,14 @@ impl ChatV2Repo {
     /// 一次性删除所有 persist_status = 'deleted' 的会话。
     /// 依赖数据库的 ON DELETE CASCADE 自动清理关联数据。
     ///
+    /// # ⚠️ 危险：裸批删，勿直接调用
+    ///
+    /// 本方法**不做**任何前置复查/补偿：不递减 VFS 资源引用计数、不清理
+    /// runtime roots、不清理事件序列计数器、不检查并发恢复。生产路径必须走
+    /// `handlers::manage_session::chat_v2_empty_deleted_sessions`（逐条复查 +
+    /// FS 清理 + VFS 引用递减 + 计数器清理）。当前代码库中本方法无其他调用方，
+    /// 仅保留为底层原语 / 测试辅助。
+    ///
     /// ## 返回
     /// - `Ok(u32)`: 被删除的会话数量
     pub fn purge_deleted_sessions(db: &ChatV2Database) -> ChatV2Result<u32> {
@@ -3335,16 +3346,23 @@ impl ChatV2Repo {
     // 内容全文搜索
     // ========================================================================
 
-    /// FTS5 查询转义（防注入，与 question_repo 一致）
+    /// FTS5 查询转义（防注入）
+    ///
+    /// P0 修复：旧实现只在出现特殊字符时整体加引号，纯词查询中的
+    /// `AND` / `OR` / `NOT` / `NEAR` 仍会被 FTS5 当作运算符解析（例如用户
+    /// 搜索 "cats AND dogs" 会变成布尔查询，搜索裸 "NEAR" 直接语法错误）。
+    /// 现改为 token 级安全转义：按空白切词，每个 token 包双引号（内部引号
+    /// 转义为 ""），token 之间为 FTS5 隐式 AND。多词查询语义（全部命中）
+    /// 与旧实现的常见路径一致，同时彻底屏蔽所有运算符/特殊字符注入。
+    ///
+    /// 注：旧实现并不支持 `*` 前缀通配（`*` 会触发整体加引号变成字面量），
+    /// 因此这里无需保留通配能力。
     fn escape_fts5_query(keyword: &str) -> String {
-        let needs_escape = keyword
-            .chars()
-            .any(|c| matches!(c, '"' | '*' | '(' | ')' | '-' | ':' | '^' | '+' | '~'));
-        if needs_escape {
-            format!("\"{}\"", keyword.replace('"', "\"\""))
-        } else {
-            keyword.to_string()
-        }
+        keyword
+            .split_whitespace()
+            .map(|token| format!("\"{}\"", token.replace('"', "\"\"")))
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     /// 重建消息内容 FTS5 索引：清空后从 chat_v2_blocks 全量回填，返回回填行数。
@@ -3389,6 +3407,24 @@ impl ChatV2Repo {
         date_from: Option<&str>,
         date_to: Option<&str>,
     ) -> ChatV2Result<Vec<super::types::ContentSearchResult>> {
+        Self::search_content_filtered(conn, query, limit, date_from, date_to, None, false)
+    }
+
+    /// Search message content with the full filter set.
+    ///
+    /// - `date_from` / `date_to`: inclusive session `updated_at` range（RFC3339）
+    /// - `session_id`: 仅搜索指定会话
+    /// - `include_archived`: 为 true 时同时命中 archived 会话（回收站 deleted 永不命中）
+    #[allow(clippy::too_many_arguments)]
+    pub fn search_content_filtered(
+        conn: &Connection,
+        query: &str,
+        limit: u32,
+        date_from: Option<&str>,
+        date_to: Option<&str>,
+        session_id: Option<&str>,
+        include_archived: bool,
+    ) -> ChatV2Result<Vec<super::types::ContentSearchResult>> {
         use super::types::ContentSearchResult;
 
         let trimmed = query.trim();
@@ -3398,7 +3434,12 @@ impl ChatV2Repo {
 
         let fts_query = Self::escape_fts5_query(trimmed);
 
-        let mut stmt = conn.prepare(
+        let status_filter = if include_archived {
+            "s.persist_status IN ('active', 'archived')"
+        } else {
+            "s.persist_status = 'active'"
+        };
+        let sql = format!(
             r#"
             SELECT
                 s.id,
@@ -3413,38 +3454,120 @@ impl ChatV2Repo {
             JOIN chat_v2_messages m ON b.message_id = m.id
             JOIN chat_v2_sessions s ON m.session_id = s.id
             WHERE chat_v2_content_fts MATCH ?1
-              AND s.persist_status = 'active'
+              AND {status_filter}
               AND (?2 IS NULL OR julianday(s.updated_at) >= julianday(?2))
               AND (?3 IS NULL OR julianday(s.updated_at) <= julianday(?3))
+              AND (?4 IS NULL OR s.id = ?4)
             ORDER BY bm25(chat_v2_content_fts)
-            LIMIT ?4
-            "#,
+            LIMIT ?5
+            "#
+        );
+        let mut stmt = conn.prepare(&sql)?;
+
+        let rows = stmt.query_map(
+            params![fts_query, date_from, date_to, session_id, limit],
+            |row| {
+                let raw_snippet: String = row.get(5)?;
+                Ok(ContentSearchResult {
+                    session_id: row.get(0)?,
+                    session_title: row.get(1)?,
+                    message_id: row.get(2)?,
+                    block_id: row.get(3)?,
+                    role: row.get(4)?,
+                    snippet: Self::sanitize_fts_snippet(&raw_snippet),
+                    updated_at: row.get(6)?,
+                })
+            },
         )?;
 
-        let rows = stmt.query_map(params![fts_query, date_from, date_to, limit], |row| {
-            let raw_snippet: String = row.get(5)?;
-            Ok(ContentSearchResult {
-                session_id: row.get(0)?,
-                session_title: row.get(1)?,
-                message_id: row.get(2)?,
-                block_id: row.get(3)?,
-                role: row.get(4)?,
-                snippet: Self::sanitize_fts_snippet(&raw_snippet),
-                updated_at: row.get(6)?,
-            })
-        })?;
-
+        // P1 修复：map 失败行不再只逐条 warn —— 额外计数并输出汇总，
+        // 避免大批量损坏行的静默丢失只留下淹没在日志里的零散记录。
+        let mut dropped_rows = 0usize;
         let results: Vec<ContentSearchResult> = rows
             .filter_map(|r| match r {
                 Ok(val) => Some(val),
                 Err(e) => {
+                    dropped_rows += 1;
                     log::warn!("[ChatV2Repo] Search row error: {}", e);
                     None
                 }
             })
             .collect();
+        if dropped_rows > 0 {
+            log::warn!(
+                "[ChatV2Repo] search_content_filtered dropped {} malformed row(s) (query_len={}, returned={})",
+                dropped_rows,
+                trimmed.len(),
+                results.len()
+            );
+        }
 
         Ok(results)
+    }
+
+    /// 按标题 / 描述 / 标签 LIKE 搜索会话（大小写不敏感，走现有表无需迁移）。
+    ///
+    /// - `%` / `_` / `\` 会被转义为字面量，防止用户输入干扰 LIKE 模式
+    /// - 默认只搜 active 会话；`include_archived` 为 true 时同时命中 archived
+    /// - 与列表页一致：过滤 `mode != 'agent'` 与隐藏草稿会话
+    pub fn search_sessions_with_conn(
+        conn: &Connection,
+        query: &str,
+        limit: u32,
+        include_archived: bool,
+    ) -> ChatV2Result<Vec<ChatSession>> {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let escaped = trimmed
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let like_pattern = format!("%{}%", escaped);
+
+        let status_filter = if include_archived {
+            "persist_status IN ('active', 'archived')"
+        } else {
+            "persist_status = 'active'"
+        };
+        let mut sql = format!(
+            r#"
+            SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash, title_locked
+            FROM chat_v2_sessions
+            WHERE mode != 'agent'
+              AND {status_filter}
+              AND (
+                title LIKE ?1 ESCAPE '\'
+                OR description LIKE ?1 ESCAPE '\'
+                OR EXISTS (
+                    SELECT 1 FROM chat_v2_session_tags t
+                    WHERE t.session_id = chat_v2_sessions.id
+                      AND t.tag LIKE ?1 ESCAPE '\'
+                )
+              )
+            "#
+        );
+        Self::append_visible_session_filter(&mut sql);
+        sql.push_str(" ORDER BY updated_at DESC LIMIT ?2");
+
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params![like_pattern, limit], Self::row_to_session_full)?;
+
+        let sessions: Vec<ChatSession> = rows
+            .filter_map(|r| match r {
+                Ok(val) => Some(val),
+                Err(e) => {
+                    log::warn!(
+                        "[ChatV2Repo] search_sessions: skipping malformed row: {}",
+                        e
+                    );
+                    None
+                }
+            })
+            .collect();
+        Ok(sessions)
     }
 
     /// 对 FTS5 snippet 进行 HTML 转义，防止 XSS
@@ -5577,6 +5700,31 @@ mod tests {
 // 🆕 P1: Compaction CRUD
 // ============================================================================
 impl ChatV2Repo {
+    fn set_compaction_summary_active_metadata_with_conn(
+        conn: &Connection,
+        compaction_id: &str,
+        is_active: bool,
+    ) -> ChatV2Result<()> {
+        let Some(record) = Self::get_compaction_by_id_with_conn(conn, compaction_id)? else {
+            return Ok(());
+        };
+        for mut block in Self::get_message_blocks_with_conn(conn, &record.summary_message_id)? {
+            if block.block_type != block_types::COMPACTION_SUMMARY {
+                continue;
+            }
+            let mut metadata = block
+                .tool_output
+                .take()
+                .unwrap_or_else(|| serde_json::json!({}));
+            if let Some(object) = metadata.as_object_mut() {
+                object.insert("isActive".to_string(), serde_json::json!(is_active));
+            }
+            block.tool_output = Some(metadata);
+            Self::update_block_with_conn(conn, &block)?;
+        }
+        Ok(())
+    }
+
     pub fn create_compaction_with_conn(
         conn: &Connection,
         rec: &CompactionRecord,
@@ -5588,9 +5736,14 @@ impl ChatV2Repo {
             INSERT INTO chat_v2_compactions (
                 id, session_id, summary_message_id, tail_start_message_id,
                 tail_start_time_created, reason, is_auto, is_overflow,
-                tokens_before, tokens_after, model_id, created_at
+                tokens_before, tokens_after, model_id, model_config_id,
+                previous_compaction_id, range_start_message_id, range_end_message_id,
+                compacted_message_count, created_at, updated_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                ?13, ?14, ?15, ?16, ?17, ?18
+            )
             "#,
             params![
                 rec.id,
@@ -5604,7 +5757,13 @@ impl ChatV2Repo {
                 rec.tokens_before,
                 rec.tokens_after,
                 rec.model_id,
+                rec.model_config_id,
+                rec.previous_compaction_id,
+                rec.range_start_message_id,
+                rec.range_end_message_id,
+                rec.compacted_message_count,
                 rec.created_at,
+                Utc::now().to_rfc3339(),
             ],
         )?;
         Ok(())
@@ -5616,11 +5775,82 @@ impl ChatV2Repo {
         session_id: &str,
         compaction_id: &str,
     ) -> ChatV2Result<()> {
+        let current: Option<String> = conn
+            .query_row(
+                "SELECT last_compaction_id FROM chat_v2_sessions WHERE id = ?1",
+                params![session_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        if let Some(current) = current
+            .as_deref()
+            .filter(|current| *current != compaction_id)
+        {
+            Self::set_compaction_summary_active_metadata_with_conn(conn, current, false)?;
+        }
+        Self::set_compaction_summary_active_metadata_with_conn(conn, compaction_id, true)?;
         conn.execute(
-            "UPDATE chat_v2_sessions SET last_compaction_id = ?1 WHERE id = ?2",
-            params![compaction_id, session_id],
+            "UPDATE chat_v2_sessions SET last_compaction_id = ?1, updated_at = ?2 WHERE id = ?3",
+            params![compaction_id, Utc::now().to_rfc3339(), session_id],
         )?;
         Ok(())
+    }
+
+    pub fn clear_session_last_compaction_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<()> {
+        let current: Option<String> = conn
+            .query_row(
+                "SELECT last_compaction_id FROM chat_v2_sessions WHERE id = ?1",
+                params![session_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        if let Some(current) = current.as_deref() {
+            Self::set_compaction_summary_active_metadata_with_conn(conn, current, false)?;
+        }
+        conn.execute(
+            "UPDATE chat_v2_sessions SET last_compaction_id = NULL, updated_at = ?1 WHERE id = ?2",
+            params![Utc::now().to_rfc3339(), session_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn invalidate_compaction_for_message_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        message_id: &str,
+    ) -> ChatV2Result<bool> {
+        let Some(record) = Self::get_active_compaction_with_conn(conn, session_id)? else {
+            return Ok(false);
+        };
+        if message_id == record.summary_message_id {
+            Self::clear_session_last_compaction_with_conn(conn, session_id)?;
+            return Ok(true);
+        }
+        let messages = Self::get_session_messages_with_conn(conn, session_id)?;
+        let target = messages.iter().position(|message| message.id == message_id);
+        let tail = messages
+            .iter()
+            .position(|message| message.id == record.tail_start_message_id);
+        let affected = match (target, tail) {
+            (Some(target), Some(tail)) => target <= tail,
+            (_, None) => true,
+            (None, Some(_)) => false,
+        };
+        if affected {
+            Self::clear_session_last_compaction_with_conn(conn, session_id)?;
+            log::info!(
+                "[chat_v2::repo] invalidated compaction {} after message {} changed in session {}",
+                record.id,
+                message_id,
+                session_id
+            );
+        }
+        Ok(affected)
     }
 
     pub fn create_compaction(db: &Database, rec: &CompactionRecord) -> ChatV2Result<()> {
@@ -5643,21 +5873,30 @@ impl ChatV2Repo {
             .optional()?
             .flatten();
 
-        // 2) 指针存在 → 查该记录；若记录不在（pointer stale，比如被同步/清理删掉），
-        //    回退到最新 compaction，保证视图不丢失
-        if let Some(id) = last_id {
-            if !id.is_empty() {
-                if let Some(rec) = Self::get_compaction_by_id_with_conn(conn, &id)? {
+        let Some(id) = last_id else {
+            return Ok(None);
+        };
+        if !id.is_empty() {
+            if let Some(rec) = Self::get_compaction_by_id_with_conn(conn, &id)? {
+                if rec.session_id == session_id {
                     return Ok(Some(rec));
                 }
-                log::warn!(
-                    "[chat_v2::repo] session {} last_compaction_id={} points to missing record; fallback to latest",
+                log::error!(
+                    "[chat_v2::repo] session {} points to compaction {} owned by {}; using raw history",
                     session_id,
-                    id
+                    id,
+                    rec.session_id
                 );
+                return Ok(None);
             }
+            log::warn!(
+                "[chat_v2::repo] session {} points to missing compaction {}; using raw history",
+                session_id,
+                id
+            );
+            return Ok(None);
         }
-        // 3) 指针为空或悬挂 → 按 created_at DESC 取最新
+        // Compatibility only for legacy empty-string pointers.
         Self::get_latest_compaction_with_conn(conn, session_id)
     }
 
@@ -5669,9 +5908,11 @@ impl ChatV2Repo {
             r#"
             SELECT id, session_id, summary_message_id, tail_start_message_id,
                    tail_start_time_created, reason, is_auto, is_overflow,
-                   tokens_before, tokens_after, model_id, created_at
+                   tokens_before, tokens_after, model_id, model_config_id,
+                   previous_compaction_id, range_start_message_id, range_end_message_id,
+                   compacted_message_count, created_at
             FROM chat_v2_compactions
-            WHERE session_id = ?1
+            WHERE session_id = ?1 AND deleted_at IS NULL
             ORDER BY created_at DESC
             LIMIT 1
             "#,
@@ -5690,9 +5931,11 @@ impl ChatV2Repo {
             r#"
             SELECT id, session_id, summary_message_id, tail_start_message_id,
                    tail_start_time_created, reason, is_auto, is_overflow,
-                   tokens_before, tokens_after, model_id, created_at
+                   tokens_before, tokens_after, model_id, model_config_id,
+                   previous_compaction_id, range_start_message_id, range_end_message_id,
+                   compacted_message_count, created_at
             FROM chat_v2_compactions
-            WHERE id = ?1
+            WHERE id = ?1 AND deleted_at IS NULL
             "#,
             params![id],
             Self::row_to_compaction,
@@ -5709,9 +5952,11 @@ impl ChatV2Repo {
             r#"
             SELECT id, session_id, summary_message_id, tail_start_message_id,
                    tail_start_time_created, reason, is_auto, is_overflow,
-                   tokens_before, tokens_after, model_id, created_at
+                   tokens_before, tokens_after, model_id, model_config_id,
+                   previous_compaction_id, range_start_message_id, range_end_message_id,
+                   compacted_message_count, created_at
             FROM chat_v2_compactions
-            WHERE session_id = ?1
+            WHERE session_id = ?1 AND deleted_at IS NULL
             ORDER BY created_at ASC
             "#,
         )?;
@@ -5736,7 +5981,12 @@ impl ChatV2Repo {
             tokens_before: row.get::<_, Option<i64>>(8)?.map(|v| v as u32),
             tokens_after: row.get::<_, Option<i64>>(9)?.map(|v| v as u32),
             model_id: row.get(10)?,
-            created_at: row.get(11)?,
+            model_config_id: row.get(11)?,
+            previous_compaction_id: row.get(12)?,
+            range_start_message_id: row.get(13)?,
+            range_end_message_id: row.get(14)?,
+            compacted_message_count: row.get::<_, Option<i64>>(15)?.map(|v| v as u32),
+            created_at: row.get(16)?,
         })
     }
 }

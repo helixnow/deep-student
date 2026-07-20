@@ -227,7 +227,10 @@ mod tests {
             ChatV2Error::SessionNotFound(String::new()).code(),
             "SESSION_NOT_FOUND"
         );
-        assert_eq!(ChatV2Error::Validation(String::new()).code(), "VALIDATION_ERROR");
+        assert_eq!(
+            ChatV2Error::Validation(String::new()).code(),
+            "VALIDATION_ERROR"
+        );
         assert_eq!(
             ChatV2Error::InvalidInput(String::new()).code(),
             "INVALID_INPUT"
@@ -237,7 +240,10 @@ mod tests {
         let payload = ChatV2Error::Timeout("approval_expired".to_string()).to_command_error();
         let parsed: serde_json::Value = serde_json::from_str(&payload).expect("JSON");
         assert_eq!(parsed["code"], "TIMEOUT");
-        assert!(parsed["message"].as_str().unwrap().contains("approval_expired"));
+        assert!(parsed["message"]
+            .as_str()
+            .unwrap()
+            .contains("approval_expired"));
     }
 
     #[test]

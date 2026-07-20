@@ -496,6 +496,48 @@ pub fn write_bytes(
     })
 }
 
+/// 判断 rename 失败是否因为跨卷/跨设备（此时需要降级为 copy + 删除源）。
+fn is_cross_device_error(error: &std::io::Error) -> bool {
+    #[cfg(unix)]
+    let cross = error.raw_os_error() == Some(libc::EXDEV);
+    #[cfg(windows)]
+    let cross = error.raw_os_error() == Some(17); // ERROR_NOT_SAME_DEVICE
+    #[cfg(not(any(unix, windows)))]
+    let cross = false;
+    cross
+}
+
+/// 移动一个常规文件：优先原子 rename；跨卷 rename（EXDEV）时降级为
+/// 「读源 → 原子写目标（noclobber）→ 删源」。降级路径中若删源失败，
+/// 会回收目标副本，避免留下两份内容一致的文件。
+fn move_regular_file(source: &Path, destination: &Path) -> Result<(), String> {
+    match fs::rename(source, destination) {
+        Ok(()) => Ok(()),
+        Err(error) if is_cross_device_error(&error) => {
+            let (bytes, _) = read_and_hash(source)?;
+            atomic_write(destination, &bytes, false)?;
+            fs::remove_file(source).map_err(|remove_error| {
+                let _ = fs::remove_file(destination);
+                format!(
+                    "Failed to remove move source after cross-volume copy: {}",
+                    remove_error
+                )
+            })
+        }
+        Err(error) => Err(format!("Failed to move workspace file: {}", error)),
+    }
+}
+
+/// 移动 workspace 文件。
+///
+/// ## 回滚元数据说明
+/// Move 不产生 checkpoint 备份（`backup_ref` 恒为 None），因为内容本身未变；
+/// 回滚所需的可恢复元数据完整记录在回执中：
+/// - `relative_path` / `destination_path`：源与目标路径
+/// - `before_hash` / `after_hash`：移动前后（相同的）内容 SHA-256
+///
+/// 回滚时会先校验目标文件哈希仍等于 `after_hash`，再 rename 回源路径；
+/// 若目标在此期间被修改，回滚会拒绝执行（不会覆盖用户编辑）。
 pub fn move_file(
     root: &Path,
     root_id: &str,
@@ -516,8 +558,7 @@ pub fn move_file(
     if fs::symlink_metadata(&destination).is_ok() {
         return Err("Move destination already exists".to_string());
     }
-    fs::rename(&source, &destination)
-        .map_err(|error| format!("Failed to move workspace file: {}", error))?;
+    move_regular_file(&source, &destination)?;
     Ok(MutationReceipt {
         change_id: next_change_id(),
         root_id: root_id.to_string(),
@@ -629,7 +670,7 @@ pub fn rollback(
                 .as_deref()
                 .ok_or_else(|| "Moved receipt lacks after_hash".to_string())?;
             verify_current_hash(&destination, expected)?;
-            fs::rename(destination, target)
+            move_regular_file(&destination, &target)
                 .map_err(|error| format!("Failed to rollback moved file: {}", error))
         }
     }

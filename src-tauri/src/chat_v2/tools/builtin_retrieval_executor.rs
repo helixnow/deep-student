@@ -222,6 +222,13 @@ impl BuiltinRetrievalExecutor {
         let folder_ids = vec_arg(&["folder_ids", "folderIds"]);
         let resource_ids = vec_arg(&["resource_ids", "resourceIds"]);
         let resource_types = vec_arg(&["resource_types", "resourceTypes"]);
+        // P2-8：top_k 上限与前端 schema 对齐（builtinMcpServer.ts）：
+        // rag_search/multimodal_search 声明 maximum=100，unified_search 声明 maximum=30。
+        let top_k_cap = if tool_name == "unified_search" {
+            30
+        } else {
+            100
+        };
         let top_k = call
             .arguments
             .get("top_k")
@@ -230,7 +237,7 @@ impl BuiltinRetrievalExecutor {
             .map(|value| value as usize)
             .or(ctx.rag_top_k.map(|value| value as usize))
             .unwrap_or(DEFAULT_RAG_TOP_K as usize)
-            .clamp(1, 100);
+            .clamp(1, top_k_cap);
         let max_per_resource = call
             .arguments
             .get("max_per_resource")
@@ -310,11 +317,24 @@ impl BuiltinRetrievalExecutor {
         .map_err(|error| error.to_string())?;
 
         let mut route_failures = response.result.failures.clone();
+        // 🆕 SOTA：统一层（unified_retriever）正在引入 rerank 注入点与
+        // normalized_score 字段。此处以序列化视图防御式消费：若 fused hit 携带
+        // normalizedScore/rerankScore（0..1 量纲）则优先作为展示分数，否则回退 RRF。
+        let total_hits = response.result.hits.len();
+        let mut normalized_hits = 0usize;
         let mut sources: Vec<SourceInfo> = response
             .result
             .hits
             .into_iter()
             .map(|fused| {
+                let fused_value = serde_json::to_value(&fused).unwrap_or(Value::Null);
+                let normalized_score = ["normalizedScore", "rerankScore"]
+                    .iter()
+                    .find_map(|key| fused_value.get(*key))
+                    .and_then(Value::as_f64);
+                if normalized_score.is_some() {
+                    normalized_hits += 1;
+                }
                 let hit = fused.hit;
                 let source_type = if hit.blob_hash.is_some()
                     || fused.provenance.iter().any(|provenance| {
@@ -339,7 +359,9 @@ impl BuiltinRetrievalExecutor {
                     title: hit.title,
                     url: hit.image_url.clone(),
                     snippet: Some(hit.text),
-                    score: Some(fused.rrf_score as f32),
+                    score: Some(normalized_score.unwrap_or(fused.rrf_score) as f32),
+                    // 视觉上下文接口约定：多模态命中必须保证 blobHash/pageIndex 完整，
+                    // 下游 context_compiler 依赖这两个字段决定是否把页图注入 LLM。
                     metadata: Some(json!({
                         "resourceType": hit.resource_type,
                         "resourceId": hit.identity.resource_id,
@@ -352,11 +374,14 @@ impl BuiltinRetrievalExecutor {
                         "imageUrl": hit.image_url,
                         "imageCitation": image_citation,
                         "rrfScore": fused.rrf_score,
+                        "normalizedScore": normalized_score,
                         "retrievalProvenance": fused.provenance,
                     })),
                 }
             })
             .collect();
+        // 统一层已给出归一化分数（0..1）时，绝对阈值也可安全应用
+        let upstream_scores_normalized = total_hits > 0 && normalized_hits == total_hits;
 
         // ========== 记忆路由准备（P0-1）：仅 unified_search 且 memory 开关开启 ==========
         let include_memory =
@@ -432,8 +457,9 @@ impl BuiltinRetrievalExecutor {
 
         // ========== 分数阈值过滤（P1-4）：绝对 + 相对，保底 top1 ==========
         // RRF 分数（~1/60 量级）与 reranker 相关度（0..1）量纲不同：
-        // 绝对阈值仅在 rerank 生效时应用，相对阈值对任意量纲均适用。
-        let absolute_min = if rerank_applied {
+        // 绝对阈值仅在 rerank 生效或统一层给出归一化分数时应用，
+        // 相对阈值对任意量纲均适用。
+        let absolute_min = if rerank_applied || upstream_scores_normalized {
             Some(RETRIEVAL_MIN_SCORE)
         } else {
             None
@@ -483,7 +509,19 @@ impl BuiltinRetrievalExecutor {
 
         // ========== 统一输出（P0-3）：emit_end 与 tool_output 共用同一份 sources ==========
         // citationTag/typeIndex 按类型独立计数（`[类型-N]` 契约，前端按此解析）。
-        let numbered_sources = Value::Array(build_numbered_sources(&sources));
+        // 🆕 P0：编号由回复级 Citation Ledger 分配——同一次助手回复内的多次工具调用
+        // 对同一来源恒定复用同一编号，前端可直接信任 citationTag/typeIndex 不再重排。
+        let ledger = crate::chat_v2::context::citation_ledger_for_reply(
+            &ctx.session_id,
+            &ctx.message_id,
+            ctx.variant_id.as_deref(),
+        );
+        let numbered_sources = {
+            let mut ledger = ledger
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            Value::Array(build_numbered_sources(&sources, &mut ledger))
+        };
         let duration = started.elapsed().as_millis() as u64;
         let route_failures_value = serde_json::to_value(&route_failures).unwrap_or(Value::Null);
         let plan_value = serde_json::to_value(&response.plan).unwrap_or(Value::Null);
@@ -494,6 +532,8 @@ impl BuiltinRetrievalExecutor {
             "applied": rerank_applied,
         });
 
+        // P0-2 决策：多模态检索不再使用独立的 multimodal_rag 事件（前端 handler 死路径），
+        // 统一发 `rag` 事件，payload 以 source（工具名）+ queryMode 区分检索形态。
         ctx.emitter.emit_end(
             event_types::RAG,
             &ctx.block_id,
@@ -502,6 +542,7 @@ impl BuiltinRetrievalExecutor {
                 "count": sources.len(),
                 "durationMs": duration,
                 "source": tool_name,
+                "queryMode": query_modality,
                 "routeFailures": route_failures_value.clone(),
                 "rerank": rerank_value.clone(),
                 "retrievalPlan": plan_value.clone(),
@@ -518,16 +559,18 @@ impl BuiltinRetrievalExecutor {
             rerank_applied
         );
 
+        // 🆕 citationGuide 精简：编号在本次回复内全局一致（跨多次检索复用），
+        // 引用紧跟被支撑的句子；禁止 URL/路径/Markdown 图片。
         let (guide_zh, guide_en, source_types) = if include_memory {
             (
-                "引用方式：[知识库-N]/[图片-N]/[记忆-N]（N 为同类来源编号）显示角标，[知识库-N:图片]/[图片-N:图片] 渲染对应页面图片。需要完整文档时使用 readResourceId 调用 builtin-resource_read，读取完整记忆时使用 noteId 调用 builtin-memory_read。禁止输出 URL 或 Markdown 图片语法。",
-                "Cite sources with [知识库-N], [图片-N], or [记忆-N] (N counts within each type). Use [知识库-N:图片] or [图片-N:图片] for page images. Use readResourceId with builtin-resource_read for full documents and noteId with builtin-memory_read for memories. Do not output URLs or Markdown image syntax.",
+                "在被支撑句子后紧跟 [知识库-N]/[图片-N]/[记忆-N]（编号本次回复内全局一致，重复检索到的同一来源编号不变）。页面图片用 [知识库-N:图片]/[图片-N:图片]。读全文用 readResourceId→builtin-resource_read，读完整记忆用 noteId→builtin-memory_read（压缩摘要条目 noteId 为 null，改用 sourceNoteIds 中的真实 ID）。禁止输出 URL、文件路径或 Markdown 图片。",
+                "Append [知识库-N], [图片-N], or [记忆-N] right after each supported claim; N is stable across searches within this reply. Use [知识库-N:图片]/[图片-N:图片] to render page images. Read full docs via readResourceId with builtin-resource_read; full memories via noteId with builtin-memory_read (compressed memory entries have a null noteId; use the real IDs in sourceNoteIds instead). Never output URLs, file paths, or Markdown images.",
                 json!(["knowledge", "image", "memory"]),
             )
         } else {
             (
-                "引用方式：[知识库-N]/[图片-N]（N 为同类来源编号）显示角标，[知识库-N:图片]/[图片-N:图片] 渲染对应页面图片。需要完整文档时使用 readResourceId 调用 builtin-resource_read。禁止输出 URL 或 Markdown 图片语法。",
-                "Cite sources with [知识库-N] or [图片-N] (N counts within each type). Use [知识库-N:图片] or [图片-N:图片] for page images. Use readResourceId with builtin-resource_read for full content. Do not output URLs or Markdown image syntax.",
+                "在被支撑句子后紧跟 [知识库-N]/[图片-N]（编号本次回复内全局一致，重复检索到的同一来源编号不变）。页面图片用 [知识库-N:图片]/[图片-N:图片]。读全文用 readResourceId→builtin-resource_read。禁止输出 URL、文件路径或 Markdown 图片。",
+                "Append [知识库-N] or [图片-N] right after each supported claim; N is stable across searches within this reply. Use [知识库-N:图片]/[图片-N:图片] to render page images. Read full docs via readResourceId with builtin-resource_read. Never output URLs, file paths, or Markdown images.",
                 json!(["knowledge", "image"]),
             )
         };
@@ -900,15 +943,70 @@ fn truncate_snippet_chars(text: &str, max_chars: usize) -> (String, usize) {
     (truncated, max_chars)
 }
 
+/// 来源身份键：Citation Ledger「同源同号」的判定依据。
+///
+/// 与 `CitationLedger::assign` 的契约一致（见 chat_v2/context.rs）：
+/// - 知识库（rag）：resource + chunk（`res:{id}|c:{chunk}`）
+/// - 多模态（multimodal）：resource + page，回退 blob_hash + page
+/// - 记忆（memory）：noteId（`note:{id}`）
+/// - 兜底：URL → 标题 → snippet，保证任意来源都有稳定身份
+fn citation_identity(source: &SourceInfo, group: &str) -> String {
+    let metadata = source.metadata.as_ref();
+    let meta_str = |key: &str| {
+        metadata
+            .and_then(|value| value.get(key))
+            .and_then(Value::as_str)
+    };
+    let meta_key = |key: &str| {
+        metadata
+            .and_then(|value| value.get(key))
+            .filter(|value| !value.is_null())
+            .map(|value| value.to_string())
+            .unwrap_or_default()
+    };
+    match group {
+        "memory" => {
+            if let Some(note_id) = meta_str("noteId") {
+                return format!("note:{}", note_id);
+            }
+        }
+        "multimodal" => {
+            let page = meta_key("pageIndex");
+            if let Some(resource_id) = meta_str("resourceId").filter(|id| !id.is_empty()) {
+                return format!("res:{}|p:{}", resource_id, page);
+            }
+            if let Some(blob_hash) = meta_str("blobHash").filter(|hash| !hash.is_empty()) {
+                return format!("blob:{}|p:{}", blob_hash, page);
+            }
+        }
+        _ => {
+            if let Some(resource_id) = meta_str("resourceId").filter(|id| !id.is_empty()) {
+                return format!("res:{}|c:{}", resource_id, meta_key("chunkIndex"));
+            }
+            if let Some(source_id) = meta_str("sourceId").filter(|id| !id.is_empty()) {
+                return format!("src:{}|c:{}", source_id, meta_key("chunkIndex"));
+            }
+        }
+    }
+    if let Some(url) = source.url.as_deref().filter(|url| !url.is_empty()) {
+        return format!("url:{}", url);
+    }
+    if let Some(title) = source.title.as_deref().filter(|title| !title.is_empty()) {
+        return format!("title:{}", title);
+    }
+    format!("snippet:{}", source.snippet.as_deref().unwrap_or_default())
+}
+
 /// 构建带引用标记的来源列表（emit_end payload 与 tool_output 共用的唯一 sources 形状）
 ///
-/// - citationTag/typeIndex 按来源类型独立计数（`[类型-N]` 契约，前端按此解析）
+/// - citationTag/typeIndex 由回复级 Citation Ledger 分配：同一次助手回复内的多次
+///   工具调用对同一来源恒定复用同一编号（`[类型-N]` 契约，前端直接信任不重排）
 /// - snippet 应用单条与总量字符预算（P1-5），避免低价值长文本挤占上下文
 /// - 平铺 blob_hash/note_id/folder_path 等字段，兼容前端 sourceAdapter
-fn build_numbered_sources(sources: &[SourceInfo]) -> Vec<Value> {
-    use std::collections::HashMap;
-
-    let mut citation_counters: HashMap<&'static str, usize> = HashMap::new();
+fn build_numbered_sources(
+    sources: &[SourceInfo],
+    ledger: &mut crate::chat_v2::context::CitationLedger,
+) -> Vec<Value> {
     let mut snippet_budget = MAX_SNIPPET_TOTAL_CHARS;
     let mut numbered = Vec::with_capacity(sources.len());
     for (index, source) in sources.iter().enumerate() {
@@ -919,11 +1017,8 @@ fn build_numbered_sources(sources: &[SourceInfo]) -> Vec<Value> {
             .unwrap_or("text_search");
         let citation_prefix = citation_prefix_for_source_type(source_type);
         let citation_group = citation_group_for_source_type(source_type);
-        let citation_index = {
-            let entry = citation_counters.entry(citation_group).or_default();
-            *entry += 1;
-            *entry
-        };
+        let identity = citation_identity(source, citation_group);
+        let citation_index = ledger.assign(citation_group, &identity).type_index;
         let snippet = source.snippet.as_deref().map(|snippet| {
             let allowance = MAX_SNIPPET_CHARS_PER_SOURCE.min(snippet_budget);
             let (text, used) = truncate_snippet_chars(snippet, allowance);
@@ -960,8 +1055,10 @@ fn build_numbered_sources(sources: &[SourceInfo]) -> Vec<Value> {
             "blob_hash": metadata.and_then(|value| value.get("blobHash")),
             "retrievalProvenance": metadata.and_then(|value| value.get("retrievalProvenance")),
             // 记忆来源字段（兼容前端 sourceAdapter 与 builtin-memory_read 的 noteId 入参）
+            // 压缩摘要条目 noteId 为 null，真实成员 ID 见 sourceNoteIds（可逐个 memory_read）
             "noteId": note_id.clone(),
             "note_id": note_id,
+            "sourceNoteIds": metadata.and_then(|value| value.get("sourceNoteIds")),
             "folder_path": metadata.and_then(|value| value.get("folderPath")),
         }));
     }
@@ -1014,6 +1111,13 @@ fn memory_note_resource_ids(
 /// - 结果经 MemoryCompressor 压缩（低于阈值时跳过压缩）
 /// - 失败被隔离为 RetrievalRouteFailure 汇入 routeFailures，绝不影响知识库结果
 /// - 取消时静默返回空结果（不作为失败上报）
+///
+/// 使用信号说明（调查结论，2026-07）：`[记忆-N]` 的编号由后端 CitationLedger
+/// 分配，但"模型最终回复里实际引用了哪几号"只在前端渲染层可见——后端不解析
+/// 最终回复文本，管线内没有廉价挂点。引用级 `_used` 强化需要前端回传 citation
+/// 使用情况，当前未实现（不为此新建前后端通信通道）。读取级强化已覆盖：
+/// LLM 按 noteId / 压缩摘要的 sourceNoteIds 调 builtin-memory_read 时，
+/// memory_executor 会异步记 `_used` 强使用信号。
 async fn retrieve_memory_sources(
     memory_service: &crate::memory::service::MemoryService,
     llm_manager: &std::sync::Arc<crate::llm_manager::LLMManager>,
@@ -1044,16 +1148,24 @@ async fn retrieve_memory_sources(
             let compressed = compressor.compress(query, &results).await;
             let sources = compressed
                 .into_iter()
-                .map(|result| SourceInfo {
-                    title: Some(result.note_title),
-                    url: None,
-                    snippet: Some(result.chunk_text),
-                    score: Some(result.score),
-                    metadata: Some(json!({
+                .map(|result| {
+                    // 压缩摘要没有单一真实 noteId（置 null），改经 sourceNoteIds
+                    // 暴露压缩前所有成员的真实 ID，供 memory_read 溯源
+                    let mut metadata = json!({
                         "sourceType": "memory",
                         "noteId": result.note_id,
                         "folderPath": result.folder_path,
-                    })),
+                    });
+                    if !result.source_note_ids.is_empty() {
+                        metadata["sourceNoteIds"] = json!(result.source_note_ids);
+                    }
+                    SourceInfo {
+                        title: Some(result.note_title),
+                        url: None,
+                        snippet: Some(result.chunk_text),
+                        score: Some(result.score),
+                        metadata: Some(metadata),
+                    }
                 })
                 .collect();
             log::debug!(
@@ -1087,7 +1199,7 @@ async fn retrieve_memory_sources(
 fn dedup_kb_against_memory(kb_sources: &mut Vec<SourceInfo>, memory_sources: &[SourceInfo]) {
     use std::collections::HashSet;
 
-    let memory_note_ids: HashSet<&str> = memory_sources
+    let mut memory_note_ids: HashSet<&str> = memory_sources
         .iter()
         .filter_map(|source| {
             source
@@ -1097,6 +1209,18 @@ fn dedup_kb_against_memory(kb_sources: &mut Vec<SourceInfo>, memory_sources: &[S
                 .and_then(Value::as_str)
         })
         .collect();
+    // 压缩摘要条目 noteId 为 null，其成员真实 ID 在 sourceNoteIds 中，一并纳入去重
+    for source in memory_sources {
+        let Some(ids) = source
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("sourceNoteIds"))
+            .and_then(Value::as_array)
+        else {
+            continue;
+        };
+        memory_note_ids.extend(ids.iter().filter_map(Value::as_str));
+    }
     let memory_titles: HashSet<&str> = memory_sources
         .iter()
         .filter_map(|source| source.title.as_deref())
@@ -1369,7 +1493,11 @@ async fn text_rerank_sources(
                 "[hybrid-rag] Text reranker failed, retaining RRF: {}",
                 error
             );
-            RerankOutcome::fallback(candidates, top_k, format!("text reranker failed: {}", error))
+            RerankOutcome::fallback(
+                candidates,
+                top_k,
+                format!("text reranker failed: {}", error),
+            )
         }
     }
 }
@@ -1497,11 +1625,7 @@ async fn vl_rerank_sources_with_query(
                 reranked.len()
             );
             if reranked.is_empty() {
-                RerankOutcome::fallback(
-                    candidates,
-                    top_k,
-                    "VL reranker returned no usable results",
-                )
+                RerankOutcome::fallback(candidates, top_k, "VL reranker returned no usable results")
             } else {
                 RerankOutcome::applied(reranked)
             }
@@ -1624,7 +1748,10 @@ mod tests {
 
     #[test]
     fn score_thresholds_keep_top1_when_all_below_absolute_min() {
-        let sources = vec![source_with_score("Doc1", 0.2), source_with_score("Doc2", 0.1)];
+        let sources = vec![
+            source_with_score("Doc1", 0.2),
+            source_with_score("Doc2", 0.1),
+        ];
         let filtered = apply_score_thresholds(sources, Some(0.3), 0.5);
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].title, Some("Doc1".to_string()));
@@ -1665,7 +1792,8 @@ mod tests {
             kb_source("DocB"),
             memory_source("用户偏好", "note_mem_1"),
         ];
-        let numbered = build_numbered_sources(&sources);
+        let mut ledger = crate::chat_v2::context::CitationLedger::new();
+        let numbered = build_numbered_sources(&sources, &mut ledger);
         assert_eq!(numbered[0]["citationTag"], "[知识库-1]");
         assert_eq!(numbered[0]["typeIndex"], 1);
         assert_eq!(numbered[1]["citationTag"], "[图片-1]");
@@ -1680,7 +1808,8 @@ mod tests {
 
     #[test]
     fn numbered_sources_expose_multimodal_fields_for_frontend_adapter() {
-        let numbered = build_numbered_sources(&[mm_source("Page 1")]);
+        let mut ledger = crate::chat_v2::context::CitationLedger::new();
+        let numbered = build_numbered_sources(&[mm_source("Page 1")], &mut ledger);
         assert_eq!(numbered[0]["source_type"], "multimodal_search");
         assert_eq!(numbered[0]["blob_hash"], "hash123");
         assert_eq!(numbered[0]["pageIndex"], 0);
@@ -1694,6 +1823,27 @@ mod tests {
         dedup_kb_against_memory(&mut kb, &memory);
         assert_eq!(kb.len(), 1);
         assert_eq!(kb[0].title, Some("DocB".to_string()));
+    }
+
+    #[test]
+    fn dedup_uses_source_note_ids_for_compressed_memory_entries() {
+        // 压缩摘要条目：noteId 为 null，成员真实 ID 在 sourceNoteIds 中
+        let memory = vec![SourceInfo {
+            title: Some("用户记忆摘要".to_string()),
+            url: None,
+            snippet: Some("compressed summary".to_string()),
+            score: Some(0.9),
+            metadata: Some(json!({
+                "sourceType": "memory",
+                "noteId": Value::Null,
+                "sourceNoteIds": ["note_DocA", "note_DocB"],
+                "folderPath": "",
+            })),
+        }];
+        let mut kb = vec![kb_source("DocA"), kb_source("DocC")];
+        dedup_kb_against_memory(&mut kb, &memory);
+        assert_eq!(kb.len(), 1);
+        assert_eq!(kb[0].title, Some("DocC".to_string()));
     }
 
     #[test]

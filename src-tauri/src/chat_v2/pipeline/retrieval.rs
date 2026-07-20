@@ -38,16 +38,13 @@ impl ChatV2Pipeline {
         Ok(())
     }
 
-    /// 🆕 执行 VFS RAG 统一知识管理检索
-    ///
-    /// 使用 VFS 统一存储的向量检索替代传统 RagManager，支持：
-    /// - 文件夹范围过滤
-    /// - 资源类型过滤
-    /// - 可选重排序
-    ///
-    /// ## 返回
-    /// (sources, block_id)
-    async fn execute_vfs_rag_retrieval(
+    // 🔧 P2-12（2026-07）死代码清理：删除了 execute_vfs_rag_retrieval /
+    // execute_multimodal_retrieval / execute_memory_retrieval / execute_web_search
+    // 四个私有函数 —— 自 2026-01-11 检索工具化重构后 execute_retrievals 变为
+    // 空实现，这些预调用检索路径已无任何调用点（等价能力在
+    // tools/builtin_retrieval_executor.rs）。
+    #[cfg(any())]
+    async fn execute_vfs_rag_retrieval_removed(
         &self,
         query: &str,
         folder_ids: Option<Vec<String>>,
