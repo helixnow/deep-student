@@ -9,7 +9,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -187,13 +187,13 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
     <div className={cn('space-y-4', className)}>
       {/* 每日一练卡片 */}
       <Card className="bg-transparent border-transparent shadow-none">
-        <CardHeader className="pb-4">
+        <CardHeader className="px-0 pb-4 sm:px-6">
           <CardTitle className="flex items-center gap-2 text-base">
             <CalendarBlank size={18} className="text-primary" />
             {t('daily.title')}
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-6 px-0 sm:px-6">
           {/* 连续打卡 */}
           {activeCheckInCalendar && activeCheckInCalendar.streak_days > 0 && (
             <div className="flex items-center justify-center gap-3 rounded-md border border-warning/20 bg-gradient-to-r from-warning/15 via-warning/5 to-transparent p-3">
@@ -271,26 +271,26 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
 />
               <div className="flex gap-2">
                 {[5, 10, 15, 20].map((n) => (
-                  <NotionButton
+                  <DsButton
                     key={n}
                     variant={dailyTarget === n ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => setDailyTarget(n)}
                   >
                     {n}
-                  </NotionButton>
+                  </DsButton>
                 ))}
               </div>
             </div>
           </div>
 
           {calendarError && (
-            <div className="flex items-center justify-between rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
-              <div className="flex items-center gap-2 text-destructive">
-                <WarningCircle size={16} />
-                <span>{calendarError}</span>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
+              <div className="flex min-w-0 items-center gap-2 text-destructive">
+                <WarningCircle size={16} className="shrink-0" />
+                <span className="min-w-0 break-words">{calendarError}</span>
               </div>
-              <NotionButton
+              <DsButton
                 size="sm"
                 variant="outline"
                 onClick={() => {
@@ -298,7 +298,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                 }}
               >
                 {t('common:retry')}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
           
@@ -372,7 +372,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
             </div>
           )}
           
-          <NotionButton
+          <DsButton
             onClick={handleStart}
             disabled={isLoadingPractice}
             className="w-full h-9 text-sm"
@@ -388,29 +388,29 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                 {activeDailyPractice ? t('daily.continue') : t('daily.start')}
               </>
             )}
-          </NotionButton>
+          </DsButton>
         </CardContent>
       </Card>
       
       {/* 打卡日历 */}
       <Card className="bg-transparent border-transparent shadow-none">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
+        <CardHeader className="px-0 pb-2 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-base">{t('daily.calendar')}</CardTitle>
             <div className="flex items-center gap-2">
-              <NotionButton variant="ghost" iconOnly size="sm" onClick={handlePrevMonth}>
+              <DsButton variant="ghost" iconOnly size="sm" onClick={handlePrevMonth}>
                 <CaretLeft size={16} />
-              </NotionButton>
+              </DsButton>
               <span className="text-sm font-medium w-24 text-center">
                 {t('daily.yearMonth', { year: calendarYear, month: calendarMonth })}
               </span>
-              <NotionButton variant="ghost" iconOnly size="sm" onClick={handleNextMonth}>
+              <DsButton variant="ghost" iconOnly size="sm" onClick={handleNextMonth}>
                 <CaretRight size={16} />
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-0 sm:px-6">
           {/* 星期标题 */}
           <div className="grid grid-cols-7 gap-1 mb-2">
             {[
@@ -434,7 +434,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
               <div
                 key={idx}
                 className={cn(
-                  'relative flex aspect-square flex-col items-center justify-center rounded-md text-sm',
+                  'relative flex min-w-0 aspect-square flex-col items-center justify-center overflow-hidden rounded-md text-sm',
                   'ui-rise-in transition-colors hover:bg-[var(--interactive-hover)]',
                   item.day === null && 'invisible',
                   item.day !== null && isToday(item.day) && 'ring-2 ring-primary',
@@ -452,7 +452,10 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                       {item.day}
                     </span>
                     {item.checkIn && (
-                      <span className="text-[10px] text-muted-foreground">
+                      <span
+                        className="max-w-full truncate px-0.5 text-[9px] leading-none text-muted-foreground sm:text-[10px]"
+                        title={t('daily.questionsCount', { count: item.checkIn.question_count })}
+                      >
                         {t('daily.questionsCount', { count: item.checkIn.question_count })}
                       </span>
                     )}

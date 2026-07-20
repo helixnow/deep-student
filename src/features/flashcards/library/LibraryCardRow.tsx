@@ -15,7 +15,7 @@ import {
   PlusCircle,
   Trash,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -346,7 +346,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
 
         <div className="fc-lib-row-actions" onClick={(event) => event.stopPropagation()}>
           {card.enqueued ? (
-            <NotionButton
+            <DsButton
               type="button"
               variant="default"
               size="sm"
@@ -356,9 +356,9 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
             >
               <Play size={14} weight="fill" />
               {t('library.startReview')}
-            </NotionButton>
+            </DsButton>
           ) : (
-            <NotionButton
+            <DsButton
               type="button"
               variant="default"
               size="sm"
@@ -368,11 +368,11 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
             >
               <PlusCircle size={14} />
               {t('library.enqueue')}
-            </NotionButton>
+            </DsButton>
           )}
 
           {card.enqueued ? (
-            <NotionButton
+            <DsButton
               type="button"
               variant="ghost"
               size="sm"
@@ -383,10 +383,10 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
               title={card.suspended ? t('library.resume') : t('library.suspend')}
             >
               {card.suspended ? <Play size={14} /> : <Pause size={14} />}
-            </NotionButton>
+            </DsButton>
           ) : null}
 
-          <NotionButton
+          <DsButton
             type="button"
             variant="ghost"
             size="sm"
@@ -397,9 +397,9 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
             title={t('library.delete')}
           >
             <Trash size={14} />
-          </NotionButton>
+          </DsButton>
 
-          <NotionButton
+          <DsButton
             type="button"
             variant="ghost"
             size="sm"
@@ -416,7 +416,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                 transition: 'transform 160ms ease-out',
               }}
             />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 
@@ -428,7 +428,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
           onClick={(event) => event.stopPropagation()}
         >
           <span className="fc-lib-confirm-text">{t('library.confirmDelete')}</span>
-          <NotionButton
+          <DsButton
             type="button"
             variant="ghost"
             size="sm"
@@ -437,8 +437,8 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
             className="text-xs"
           >
             {t('common:cancel')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             type="button"
             variant="danger"
             size="sm"
@@ -448,7 +448,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
           >
             <Trash size={13} />
             {t('library.delete')}
-          </NotionButton>
+          </DsButton>
         </div>
       ) : null}
 
@@ -500,7 +500,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                   <p role="alert" className="fc-lib-edit-error">{editError}</p>
                 ) : null}
                 <div className="fc-lib-expand-actions">
-                  <NotionButton
+                  <DsButton
                     type="button"
                     variant="primary"
                     size="sm"
@@ -509,8 +509,8 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                     className="text-xs"
                   >
                     {translate('library.save')}
-                  </NotionButton>
-                  <NotionButton
+                  </DsButton>
+                  <DsButton
                     type="button"
                     variant="ghost"
                     size="sm"
@@ -522,7 +522,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                     className="text-xs"
                   >
                     {translate('library.cancel')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               </div>
             ) : (
@@ -592,7 +592,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                   ) : null}
                 </dl>
                 <div className="fc-lib-expand-actions">
-                  <NotionButton
+                  <DsButton
                     type="button"
                     variant="default"
                     size="sm"
@@ -602,9 +602,9 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                   >
                     <PencilSimple size={13} />
                     {translate('library.edit')}
-                  </NotionButton>
+                  </DsButton>
                   {canUndo ? (
-                    <NotionButton
+                    <DsButton
                       type="button"
                       variant="ghost"
                       size="sm"
@@ -614,10 +614,10 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                     >
                       <ArrowCounterClockwise size={13} />
                       {translate('library.undoReview')}
-                    </NotionButton>
+                    </DsButton>
                   ) : null}
                   {card.enqueued && card.stateId ? (
-                    <NotionButton
+                    <DsButton
                       type="button"
                       variant={resetArmed ? 'danger' : 'ghost'}
                       size="sm"
@@ -636,7 +636,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                       {resetArmed
                         ? translate('library.resetProgressConfirm')
                         : translate('library.resetProgress')}
-                    </NotionButton>
+                    </DsButton>
                   ) : null}
                 </div>
               </>

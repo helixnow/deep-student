@@ -2,7 +2,7 @@
  * 学习趋势图表组件
  *
  * 2026-01 新增：时间维度统计与趋势可视化
- * 2026-07 重构：自绘 SVG 图表（对标 Duolingo 统计页观感）
+ * 2026-07 重构：自绘 SVG 图表（学习统计页观感）
  *
  * 功能特性：
  * - 柱状图显示做题数 + 折线/面积图显示正确率（自绘 SVG，无图表库）
@@ -17,7 +17,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { TrendUp, ArrowsClockwise } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import {
   useQuestionBankStore,
@@ -125,10 +125,10 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
         {t('trendChart.noRecord')}
       </p>
       {onRefresh && (
-        <NotionButton variant="ghost" size="sm" onClick={onRefresh}>
+        <DsButton variant="ghost" size="sm" onClick={onRefresh}>
           <ArrowsClockwise size={16} className="mr-2" />
           {t('trendChart.refreshData')}
-        </NotionButton>
+        </DsButton>
       )}
     </div>
   );
@@ -615,7 +615,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
           {showDateRangeSelector && (
             <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/50">
               {DATE_RANGE_OPTIONS.map((value) => (
-                <NotionButton
+                <DsButton
                   key={value}
                   variant="ghost" size="sm"
                   onClick={() => handleDateRangeChange(value)}
@@ -627,13 +627,13 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                   )}
                 >
                   {dateRangeLabels[value]}
-                </NotionButton>
+                </DsButton>
               ))}
             </div>
           )}
 
           {/* 刷新按钮 */}
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             className="w-8 h-8"
@@ -641,7 +641,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
             aria-label={t('trendChart.refreshData')}
           >
             <ArrowsClockwise size={16} className={cn(isLoading && 'animate-spin')} />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 

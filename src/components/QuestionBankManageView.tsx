@@ -9,7 +9,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import {
@@ -471,7 +471,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* 工具栏 - Notion 风格 */}
+      {/* 工具栏 - 简洁风格 */}
       <div className="flex-shrink-0 px-4 py-2 space-y-2">
         {/* 搜索和筛选 */}
         <div className="flex items-center gap-2">
@@ -489,7 +489,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               )}
 />
             {filters.search ? (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -499,7 +499,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 title={t('learningHub:exam.library.clearSearch')}
               >
                 <X size={12} />
-              </NotionButton>
+              </DsButton>
             ) : null}
           </div>
           
@@ -507,59 +507,59 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
           {showCsvActions && (
             <div className="flex items-center gap-1">
               {onCsvImport && (
-                <NotionButton variant="ghost" size="sm" onClick={onCsvImport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:csv.import_title')}>
+                <DsButton variant="ghost" size="sm" onClick={onCsvImport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:csv.import_title')}>
                   <Upload size={14} />
                   <span className="hidden sm:inline">{t('exam_sheet:csv.import_title')}</span>
-                </NotionButton>
+                </DsButton>
               )}
               {onCsvExport && (
-                <NotionButton variant="ghost" size="sm" onClick={onCsvExport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:questionBank.export.title')}>
+                <DsButton variant="ghost" size="sm" onClick={onCsvExport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:questionBank.export.title')}>
                   <Download size={14} />
                   <span className="hidden sm:inline">{t('exam_sheet:questionBank.export.title')}</span>
-                </NotionButton>
+                </DsButton>
               )}
             </div>
           )}
           
-          <NotionButton variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)} className={cn('!h-auto !px-2.5 !py-1.5 text-xs', showFilters ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
+          <DsButton variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)} className={cn('!h-auto !px-2.5 !py-1.5 text-xs', showFilters ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
             <Funnel size={14} />
             {t('common:actions.filter')}
-          </NotionButton>
+          </DsButton>
         </div>
 
-        {/* 筛选器 - Notion 风格按钮组（展开入场 + 选中态平滑过渡） */}
+        {/* 筛选器 - 简洁风格按钮组（展开入场 + 选中态平滑过渡） */}
         {showFilters && (
           <div className="ui-drop-in flex flex-wrap gap-1.5">
             {/* 状态筛选 */}
             <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-muted/30">
               {(['all', 'new', 'in_progress', 'mastered', 'review'] as const).map((status) => (
-                <NotionButton key={status} variant="ghost" size="sm" onClick={() => handleFilterChange('status', status === 'all' ? undefined : [status as QuestionStatus])} className={cn('ui-state-colors !h-auto !px-2 !py-1 text-xs', (status === 'all' && !filters.status) || filters.status?.[0] === status ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}>
+                <DsButton key={status} variant="ghost" size="sm" onClick={() => handleFilterChange('status', status === 'all' ? undefined : [status as QuestionStatus])} className={cn('ui-state-colors !h-auto !px-2 !py-1 text-xs', (status === 'all' && !filters.status) || filters.status?.[0] === status ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}>
                   {status === 'all' ? t('practice:questionBank.all') : t(statusLabelKeys[status])}
-                </NotionButton>
+                </DsButton>
               ))}
             </div>
             
             {/* 难度筛选 */}
             <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-muted/30">
               {(['all', 'easy', 'medium', 'hard', 'very_hard'] as const).map((diff) => (
-                <NotionButton key={diff} variant="ghost" size="sm" onClick={() => handleFilterChange('difficulty', diff === 'all' ? undefined : [diff as Difficulty])} className={cn('ui-state-colors !h-auto !px-2 !py-1 text-xs', (diff === 'all' && !filters.difficulty) || filters.difficulty?.[0] === diff ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}>
+                <DsButton key={diff} variant="ghost" size="sm" onClick={() => handleFilterChange('difficulty', diff === 'all' ? undefined : [diff as Difficulty])} className={cn('ui-state-colors !h-auto !px-2 !py-1 text-xs', (diff === 'all' && !filters.difficulty) || filters.difficulty?.[0] === diff ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}>
                   {diff === 'all' ? t('practice:questionBank.all') : t(difficultyLabelKeys[diff])}
-                </NotionButton>
+                </DsButton>
               ))}
             </div>
 
             {/* 题型筛选（覆盖全部题型，含判断/匹配/排序/数值） */}
             <div className="flex flex-wrap items-center gap-0.5 p-0.5 rounded-md bg-muted/30">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={() => handleFilterChange('questionType', undefined)}
                 className={cn('ui-state-colors !h-auto !px-2 !py-1 text-xs', !filters.questionType ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}
               >
                 {t('learningHub:exam.library.typeFilterLabel')}
-              </NotionButton>
+              </DsButton>
               {QUESTION_TYPE_ORDER.map((type) => (
-                <NotionButton
+                <DsButton
                   key={type}
                   variant="ghost"
                   size="sm"
@@ -571,7 +571,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   aria-pressed={filters.questionType?.[0] === type}
                 >
                   {t(getQuestionTypeMeta(type).labelKey)}
-                </NotionButton>
+                </DsButton>
               ))}
             </div>
           </div>
@@ -604,7 +604,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                     : t('practice:questionBank.noMatch')}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground/70">{t('learningHub:exam.library.noMatchHint')}</p>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   className="mt-3"
@@ -620,16 +620,16 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 >
                   <X size={14} />
                   {t('common:clear')}
-                </NotionButton>
+                </DsButton>
               </>
             ) : (
               <>
                 <p>{t('exam_sheet:questionBank.empty')}</p>
                 {showCsvActions && onCsvImport && (
-                  <NotionButton variant="ghost" size="sm" className="mt-3" onClick={onCsvImport}>
+                  <DsButton variant="ghost" size="sm" className="mt-3" onClick={onCsvImport}>
                     <Upload size={14} />
                     {t('exam_sheet:questionBank.import')}
-                  </NotionButton>
+                  </DsButton>
                 )}
               </>
             )}
@@ -665,6 +665,8 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   style={staggerStyle(index)}
                   className={cn(
                     'ui-rise-in rounded-lg border bg-card p-3 transition-colors motion-reduce:transition-none',
+                    // 长列表渲染优化：视口外卡片跳过渲染（与 QuestionBankListView 同一模式）
+                    '[content-visibility:auto] [contain-intrinsic-size:auto_96px]',
                     selectedIds.has(q.id)
                       ? 'border-primary/40 bg-muted/30'
                       : 'border-border/60',
@@ -725,7 +727,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                         ))}
                       </div>
                     </div>
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       iconOnly
                       size="sm"
@@ -738,7 +740,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                       }}
                     >
                       <DotsThree size={18} weight="bold" />
-                    </NotionButton>
+                    </DsButton>
                   </div>
 
                   {/* 行内展开的操作区 */}
@@ -747,7 +749,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                       className="mt-2 grid grid-cols-4 gap-1 border-t border-border/40 pt-2"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         className="!h-11 flex-col gap-0.5 px-1 text-[10px] text-muted-foreground"
@@ -755,8 +757,8 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                       >
                         <ClockCounterClockwise size={16} />
                         {t('exam_sheet:questionBank.history.title')}
-                      </NotionButton>
-                      <NotionButton
+                      </DsButton>
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         className={cn(
@@ -770,8 +772,8 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                         {q.isFavorite
                           ? t('exam_sheet:questionBank.unfavorite')
                           : t('exam_sheet:questionBank.favorite')}
-                      </NotionButton>
-                      <NotionButton
+                      </DsButton>
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         className="!h-11 flex-col gap-0.5 px-1 text-[10px] text-muted-foreground"
@@ -780,8 +782,8 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                       >
                         <ArrowCounterClockwise size={16} />
                         {t('exam_sheet:questionBank.resetProgress')}
-                      </NotionButton>
-                      <NotionButton
+                      </DsButton>
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         className="!h-11 flex-col gap-0.5 px-1 text-[10px] text-destructive hover:bg-destructive/10"
@@ -790,7 +792,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                       >
                         <Trash size={16} />
                         {t('common:delete')}
-                      </NotionButton>
+                      </DsButton>
                     </div>
                   )}
                 </div>
@@ -879,9 +881,9 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <AppMenu>
                       <AppMenuTrigger asChild>
-                        <NotionButton variant="ghost" iconOnly size="sm" className="w-8 h-8" >
+                        <DsButton variant="ghost" iconOnly size="sm" className="w-8 h-8" >
                           <DotsThree size={16} />
-                        </NotionButton>
+                        </DsButton>
                       </AppMenuTrigger>
                       <AppMenuContent align="end" width={160}>
                         <AppMenuItem
@@ -953,7 +955,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="!h-8 px-3 text-xs"
@@ -968,8 +970,8 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 }}
               >
                 {t('common:cancel')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant={deleteConfirmOpen ? 'danger' : 'warning'}
                 size="sm"
                 className="!h-8 px-3 text-xs"
@@ -993,7 +995,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 {deleteConfirmOpen && deleteCountdown > 0 && (
                   <span className="tabular-nums">({deleteCountdown})</span>
                 )}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         </div>
@@ -1008,7 +1010,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 {t('learningHub:exam.library.applyToSelected', { count: selectedIds.size })}
               </span>
               {(['easy', 'medium', 'hard', 'very_hard'] as const).map((diff) => (
-                <NotionButton
+                <DsButton
                   key={diff}
                   variant="ghost"
                   size="sm"
@@ -1021,17 +1023,17 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   )}
                 >
                   {t(difficultyLabelKeys[diff])}
-                </NotionButton>
+                </DsButton>
               ))}
               {actionLoading === 'difficulty' && <CircleNotch size={14} className="animate-spin text-muted-foreground" />}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={() => setBatchPanel(null)}
                 className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-muted-foreground hover:text-foreground ml-auto"
               >
                 {t('common:cancel')}
-              </NotionButton>
+              </DsButton>
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
@@ -1050,7 +1052,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 placeholder={t('learningHub:exam.library.batchAddTagPlaceholder')}
                 className="h-8 w-40 flex-1 min-w-[8rem] bg-background text-sm"
               />
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 disabled={!batchTagInput.trim() || actionLoading === 'tags'}
@@ -1059,8 +1061,8 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               >
                 {actionLoading === 'tags' ? <CircleNotch size={12} className="animate-spin" /> : null}
                 {t('learningHub:exam.library.batchTagAdd')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
                 size="sm"
                 disabled={!batchTagInput.trim() || actionLoading === 'tags'}
@@ -1068,15 +1070,15 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 className="!h-8 !px-2.5 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-warning hover:bg-warning/10"
               >
                 {t('learningHub:exam.library.batchTagRemove')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={() => { setBatchPanel(null); setBatchTagInput(''); }}
                 className="!h-8 !px-2 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-muted-foreground hover:text-foreground"
               >
                 {t('common:cancel')}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
         </div>
@@ -1089,16 +1091,16 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             <span className="text-xs text-muted-foreground whitespace-nowrap px-1">
               {t('practice:questionBank.selectedCount', { count: selectedIds.size })}
             </span>
-            <NotionButton variant="ghost" size="sm" onClick={handleInvertSelection} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
+            <DsButton variant="ghost" size="sm" onClick={handleInvertSelection} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
               {t('learningHub:exam.library.invertSelection')}
-            </NotionButton>
+            </DsButton>
             <span className="hidden lg:inline text-[11px] text-muted-foreground/60 whitespace-nowrap">
               {t('learningHub:exam.library.shiftRangeHint')}
             </span>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
             {onBatchUpdateDifficulty && (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={() => setBatchPanel(batchPanel === 'difficulty' ? null : 'difficulty')}
@@ -1110,10 +1112,10 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 aria-expanded={batchPanel === 'difficulty'}
               >
                 {t('learningHub:exam.library.batchSetDifficulty')}
-              </NotionButton>
+              </DsButton>
             )}
             {onBatchUpdateTags && (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={() => setBatchPanel(batchPanel === 'tags' ? null : 'tags')}
@@ -1125,19 +1127,19 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 aria-expanded={batchPanel === 'tags'}
               >
                 {t('learningHub:exam.library.batchEditTags')}
-              </NotionButton>
+              </DsButton>
             )}
             {(onBatchUpdateDifficulty || onBatchUpdateTags) && <div className="w-px h-3 bg-border/60 mx-1" />}
-            <NotionButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('reset')} disabled={!canReset || actionLoading === 'reset'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-primary hover:bg-primary/10">
+            <DsButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('reset')} disabled={!canReset || actionLoading === 'reset'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-primary hover:bg-primary/10">
               <ArrowCounterClockwise className={cn('w-3 h-3', actionLoading === 'reset' && 'animate-spin')} />
               {t('practice:questionBank.reset')}
-            </NotionButton>
-            <NotionButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('delete')} disabled={!canDelete || actionLoading === 'delete'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-destructive hover:bg-destructive/10">
+            </DsButton>
+            <DsButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('delete')} disabled={!canDelete || actionLoading === 'delete'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-destructive hover:bg-destructive/10">
               <Trash size={12} />
               {t('common:delete')}
-            </NotionButton>
+            </DsButton>
             <div className="w-px h-3 bg-border/60 mx-1" />
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => { setSelectedIds(new Set()); onSelect?.([]); lastSelectedIndexRef.current = null; setBatchPanel(null); }}
@@ -1145,7 +1147,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             >
               <X size={12} />
               {t('common:cancel')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -1157,7 +1159,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             {t('exam_sheet:questionBank.paginationInfo', { total: pagination.total })}
           </span>
           <div className="flex items-center gap-1">
-            <NotionButton
+            <DsButton
               variant="outline"
               iconOnly size="sm"
               className="w-8 h-8"
@@ -1166,11 +1168,11 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               aria-label={t('common:prev')}
             >
               <CaretLeft size={16} />
-            </NotionButton>
+            </DsButton>
             <span className="text-sm px-2 tabular-nums">
               {pagination.page} / {totalPages}
             </span>
-            <NotionButton
+            <DsButton
               variant="outline"
               iconOnly size="sm"
               className="w-8 h-8"
@@ -1179,7 +1181,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               aria-label={t('common:next')}
             >
               <CaretRight size={16} />
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}

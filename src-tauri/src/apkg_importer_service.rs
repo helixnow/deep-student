@@ -739,8 +739,8 @@ fn parse_media_entry_name(bytes: &[u8]) -> Result<String, String> {
         let (field, wire_type) = (tag >> 3, tag & 7);
         if field == 1 && wire_type == 2 {
             let raw = read_protobuf_length_delimited(bytes, &mut pos)?;
-            let value = std::str::from_utf8(raw)
-                .map_err(|_| "媒体条目文件名不是合法 UTF-8".to_string())?;
+            let value =
+                std::str::from_utf8(raw).map_err(|_| "媒体条目文件名不是合法 UTF-8".to_string())?;
             name = Some(value.to_string());
         } else {
             skip_protobuf_value(bytes, &mut pos, wire_type)?;
@@ -1073,7 +1073,8 @@ fn parse_collection_database(
             .as_mut()
             .expect("current note group initialized above");
         // 预算估算逐行进行（与旧行为一致，保守计费；去重跳过的行也已计入）。
-        let estimated_bytes = validate_and_estimate_card(model, &group.raw_tags, &group.raw_fields)?;
+        let estimated_bytes =
+            validate_and_estimate_card(model, &group.raw_tags, &group.raw_fields)?;
         materialized_bytes = materialized_bytes
             .checked_add(estimated_bytes)
             .ok_or_else(|| limit_error("APKG materialized card size overflow"))?;
@@ -2845,7 +2846,11 @@ mod tests {
         )
         .expect("modern deck");
         for (id, name, kind, fields) in notetypes {
-            let config: Vec<u8> = if *kind == 1 { vec![0x08, 0x01] } else { Vec::new() };
+            let config: Vec<u8> = if *kind == 1 {
+                vec![0x08, 0x01]
+            } else {
+                Vec::new()
+            };
             conn.execute(
                 "INSERT INTO notetypes (id, name, config) VALUES (?1, ?2, ?3)",
                 params![id, name, config],
@@ -2924,11 +2929,8 @@ mod tests {
         );
         let compressed =
             zstd::stream::encode_all(Cursor::new(collection), 1).expect("zstd collection");
-        let manifest = zstd::stream::encode_all(
-            Cursor::new(encode_media_entries(&["map.png"])),
-            1,
-        )
-        .expect("zstd manifest");
+        let manifest = zstd::stream::encode_all(Cursor::new(encode_media_entries(&["map.png"])), 1)
+            .expect("zstd manifest");
         let media_blob =
             zstd::stream::encode_all(Cursor::new(b"png-bytes".to_vec()), 1).expect("zstd media");
         let apkg = make_apkg(vec![
@@ -3029,13 +3031,11 @@ mod tests {
     #[test]
     fn modern_media_manifest_protobuf_parses_names_in_order() {
         let encoded = encode_media_entries(&["a.png", "b.mp3"]);
-        let manifest =
-            parse_modern_media_manifest(&encoded).expect("parse raw protobuf manifest");
+        let manifest = parse_modern_media_manifest(&encoded).expect("parse raw protobuf manifest");
         assert_eq!(manifest.get("0").map(String::as_str), Some("a.png"));
         assert_eq!(manifest.get("1").map(String::as_str), Some("b.mp3"));
 
-        let compressed =
-            zstd::stream::encode_all(Cursor::new(encoded), 1).expect("zstd manifest");
+        let compressed = zstd::stream::encode_all(Cursor::new(encoded), 1).expect("zstd manifest");
         let manifest = parse_modern_media_manifest(&compressed).expect("parse zstd manifest");
         assert_eq!(manifest.len(), 2);
 
@@ -3080,7 +3080,10 @@ mod tests {
         assert_eq!(imported[0].front, "front");
         assert_eq!(imported[0].back, "back");
         assert_eq!(
-            imported[0].extra_fields.get("AnkiCardOrd").map(String::as_str),
+            imported[0]
+                .extra_fields
+                .get("AnkiCardOrd")
+                .map(String::as_str),
             Some("0")
         );
     }

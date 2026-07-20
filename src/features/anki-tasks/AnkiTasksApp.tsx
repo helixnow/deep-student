@@ -10,7 +10,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -495,22 +495,22 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               <p className="wb-at-subtitle">{t('taskDashboard.subtitle')}</p>
             </div>
             <div className="wb-at-toolbar">
-              <NotionButton size="sm" variant="utility" onClick={cycleSort} className="h-7">
+              <DsButton size="sm" variant="utility" onClick={cycleSort} className="h-7">
                 <ArrowsDownUp size={14} />
                 <span className="text-[11px]">{sortLabel}</span>
-              </NotionButton>
+              </DsButton>
               <CommonTooltip content={t('taskDashboard.refresh')}>
-                <NotionButton size="sm" variant="utility" onClick={load} className="h-7 w-7 p-0" aria-label={t('taskDashboard.refresh')}>
+                <DsButton size="sm" variant="utility" onClick={load} className="h-7 w-7 p-0" aria-label={t('taskDashboard.refresh')}>
                   <ArrowsClockwise size={14} />
-                </NotionButton>
+                </DsButton>
               </CommonTooltip>
               <CommonTooltip content={t('taskDashboard.recoverStuckHint')}>
-                <NotionButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="h-7" aria-label={t('taskDashboard.recoverStuck')}>
+                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="h-7" aria-label={t('taskDashboard.recoverStuck')}>
                   {recovering
                     ? <CircleNotch size={14} className="animate-spin" />
                     : <ArrowCounterClockwise size={14} />}
                   <span className="hidden sm:inline">{t('taskDashboard.recoverStuck')}</span>
-                </NotionButton>
+                </DsButton>
               </CommonTooltip>
             </div>
           </header>
@@ -537,7 +537,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                   <CircleNotch size={12} className="text-[color:hsl(var(--info))] animate-spin" />
                   <span className="text-[color:hsl(var(--info))] font-medium">{groups.active.length}</span>
                   <CommonTooltip content={preventSleep ? t('taskDashboard.preventSleepOn') : t('taskDashboard.preventSleepOff')}>
-                    <NotionButton
+                    <DsButton
                       size="sm"
                       variant={preventSleep ? 'secondary' : 'ghost'}
                       onClick={togglePreventSleep}
@@ -545,7 +545,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                     >
                       <Coffee size={12} className={preventSleep ? 'text-[color:hsl(var(--warning))]' : ''} />
                       {t('taskDashboard.preventSleep')}
-                    </NotionButton>
+                    </DsButton>
                   </CommonTooltip>
                 </span>
               ) : (
@@ -575,9 +575,9 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               </CommonTooltip>
               {/* 移动端已有整行"打开模板库"入口，避免重复渲染小号链接 */}
               {!isSmallScreen && (
-                <NotionButton size="sm" variant="ghost" onClick={onOpenTemplateManagement} className="ml-2 h-6 text-[12px]">
+                <DsButton size="sm" variant="ghost" onClick={onOpenTemplateManagement} className="ml-2 h-6 text-[12px]">
                   {t('taskDashboard.openTemplateLib')}
-                </NotionButton>
+                </DsButton>
               )}
             </PropRow>
             <PropRow icon={<ChartBar size={14} />} label={t('taskDashboard.todayCards')}>
@@ -639,13 +639,13 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
 
         {/* ======== 移动端模板库入口 ======== */}
         {isSmallScreen && onOpenTemplateManagement && (
-          <NotionButton
+          <DsButton
             variant="outline"
             onClick={onOpenTemplateManagement}
             className="w-full justify-center h-9"
           >
             {t('taskDashboard.openTemplateLib')}
-          </NotionButton>
+          </DsButton>
         )}
 
         {/* ======== 任务列表 ======== */}
@@ -700,29 +700,29 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 className="h-7 border-transparent bg-transparent pl-7 pr-7 text-[12px]"
               />
               {search && (
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 text-muted-foreground/40 hover:text-muted-foreground" aria-label="clear">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 text-muted-foreground/40 hover:text-muted-foreground" aria-label="clear">
                   <X size={12} />
-                </NotionButton>
+                </DsButton>
               )}
             </div>
 
             {/* 移动端：排序 / 刷新 / 恢复卡住任务（桌面在页头工具条） */}
             {isSmallScreen && (
               <div className="flex items-center gap-1">
-                <NotionButton size="sm" variant="utility" onClick={cycleSort} aria-label={sortLabel} title={sortLabel}>
+                <DsButton size="sm" variant="utility" onClick={cycleSort} aria-label={sortLabel} title={sortLabel}>
                   <ArrowsDownUp size={14} />
                   <span className="text-[11px]">{sortLabel}</span>
-                </NotionButton>
-                <NotionButton size="sm" variant="utility" onClick={load} className="w-11 p-0" aria-label={t('taskDashboard.refresh')}>
+                </DsButton>
+                <DsButton size="sm" variant="utility" onClick={load} className="w-11 p-0" aria-label={t('taskDashboard.refresh')}>
                   <ArrowsClockwise size={14} />
-                </NotionButton>
+                </DsButton>
                 {/* 触屏无 hover tooltip，纯图标无从得知含义——补文案（工具条 flex-wrap 可换行不溢出） */}
-                <NotionButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} aria-label={t('taskDashboard.recoverStuck')} title={t('taskDashboard.recoverStuckHint')}>
+                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} aria-label={t('taskDashboard.recoverStuck')} title={t('taskDashboard.recoverStuckHint')}>
                   {recovering
                     ? <CircleNotch size={14} className="animate-spin" />
                     : <ArrowCounterClockwise size={14} />}
                   <span className="text-[11px]">{t('taskDashboard.recoverStuck')}</span>
-                </NotionButton>
+                </DsButton>
               </div>
             )}
           </div>
@@ -737,7 +737,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               <p className="text-xs text-muted-foreground/70">
                 {t('taskDashboard.emptyHint')}
               </p>
-              <NotionButton
+              <DsButton
                 size="sm"
                 variant="primary"
                 className="mt-2"
@@ -750,7 +750,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               >
                 <ChatCircleDots size={14} />
                 {t('taskDashboard.goToChat')}
-              </NotionButton>
+              </DsButton>
             </div>
           ) : sortedAndFiltered.length === 0 ? (
             <div className="wb-at-empty">

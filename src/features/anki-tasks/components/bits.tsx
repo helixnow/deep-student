@@ -5,7 +5,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SessionGroup } from '../types';
 
-/** Notion 式 property 行（grid 响应式宽度） */
+/**  property 行（grid 响应式宽度） */
 export const PropRow: React.FC<{
   icon: React.ReactNode;
   label: string;

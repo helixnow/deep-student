@@ -10,7 +10,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Label } from '@/components/ui/shad/Label';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -202,7 +202,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showOptional, setShowOptional] = useState(false);
-  // 内联放弃确认条（替代原 NotionAlertDialog 模态确认）
+  // 内联放弃确认条（替代原 DsAlertDialog 模态确认）
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [contentTouched, setContentTouched] = useState(false);
   // 仅对新增的选项行播放入场动效，避免整列表在编辑器展开时重复动画
@@ -673,7 +673,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
         tags: editData.tags,
         userNote: editData.userNote || undefined,
         images: editData.images,
-        structured_data: structuredPayload as QuestionStructuredData | null,
+        structured_data: structuredPayload as unknown as QuestionStructuredData | null,
       };
 
       await onSave?.(updatedQuestion);
@@ -821,10 +821,10 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                   </span>
                 )}
               </Label>
-              <NotionButton variant="ghost" size="sm" onClick={handleAddOption} disabled={editData.options.length >= MAX_OPTIONS} className="ui-press h-5 text-[10px] px-1.5">
+              <DsButton variant="ghost" size="sm" onClick={handleAddOption} disabled={editData.options.length >= MAX_OPTIONS} className="ui-press h-5 text-[10px] px-1.5">
                 <Plus size={10} className="mr-0.5" />
                 {t('common:actions.add')}
-              </NotionButton>
+              </DsButton>
             </div>
             {/* 窄屏单列，避免双列输入框在小屏过度拥挤 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
@@ -841,7 +841,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                         : 'border-border/40 bg-muted/10 hover:border-border/70'
                     )}
                   >
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="icon"
                       iconOnly
@@ -859,16 +859,16 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                       )}
                     >
                       {opt.key}
-                    </NotionButton>
+                    </DsButton>
                     <Input
                       value={opt.content}
                       onChange={(e) => handleOptionChange(index, 'content', e.target.value)}
                       className="flex-1 min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground/50"
                       placeholder={`${opt.key} ...`}
 />
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOption(index)} className="flex-shrink-0 !w-4 !h-4 !p-0 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10 text-muted-foreground hover:text-destructive" aria-label="remove">
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOption(index)} className="flex-shrink-0 !w-4 !h-4 !p-0 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10 text-muted-foreground hover:text-destructive" aria-label="remove">
                       <X size={10} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 );
               })}
@@ -1016,7 +1016,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               placeholder={t('exam_sheet:questionBank.edit.tagPlaceholder')}
               className="flex-1 text-sm h-8"
 />
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={handleAddTag}
@@ -1026,7 +1026,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               iconOnly
             >
               <Plus size={14} />
-            </NotionButton>
+            </DsButton>
           </div>
           {editData.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
@@ -1069,7 +1069,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             }}
 />
           {editData.images.length === 0 ? (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
@@ -1084,7 +1084,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               <span className="text-xs text-muted-foreground">
                 {t('exam_sheet:questionBank.edit.imagePlaceholder')}
               </span>
-            </NotionButton>
+            </DsButton>
           ) : (
             <div className="flex flex-wrap items-center gap-1.5">
               {editData.images.map((img) => (
@@ -1104,7 +1104,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                     </div>
                   )}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       iconOnly
@@ -1112,12 +1112,12 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
  className="w-6 h-6 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity text-white hover:text-white hover:bg-[var(--overlay-control-hover)]"
                     >
                       <Trash size={12} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
               ))}
               {editData.images.length < MAX_IMAGES && (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
@@ -1131,7 +1131,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                   ) : (
                     <Plus size={14} />
                   )}
-                </NotionButton>
+                </DsButton>
               )}
             </div>
           )}
@@ -1139,7 +1139,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
 
         {/* 解析 + 笔记（选填折叠区，默认收起保持表单紧凑） */}
         <div className="space-y-1.5">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => setShowOptional((v) => !v)}
@@ -1155,7 +1155,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             {!showOptional && (editData.explanation.trim() || editData.userNote.trim()) && (
               <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-primary" aria-hidden="true" />
             )}
-          </NotionButton>
+          </DsButton>
           {showOptional && (
             <div className="grid grid-cols-1 gap-3 pt-1">
               <div className="space-y-1.5">
@@ -1241,29 +1241,29 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             {t('common:confirmMessages.unsaved_changes')}
           </span>
           <div className="flex items-center gap-1.5">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => setShowDiscardConfirm(false)}
               className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
             >
               {t('learningHub:exam.library.keepEditing')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="danger"
               size="sm"
               onClick={onCancel}
               className="!h-auto !px-2 !py-1 text-xs"
             >
               {t('common:actions.discard')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
 
       {/* 底部操作栏：左侧预览切换，右侧取消/保存（钉底，不随内容滚动） */}
       <div className="flex-shrink-0 flex items-center justify-between gap-2 px-4 py-2.5 border-t border-border/40 bg-muted/20">
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => setShowPreview((v) => !v)}
@@ -1272,12 +1272,12 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
         >
           <Eye size={14} className="mr-1" />
           {t('common:actions.preview')}
-        </NotionButton>
+        </DsButton>
         <div className="flex items-center gap-2">
-          <NotionButton variant="ghost" size="sm" onClick={handleCancelRequest} disabled={isSaving}>
+          <DsButton variant="ghost" size="sm" onClick={handleCancelRequest} disabled={isSaving}>
             {t('common:actions.cancel')}
-          </NotionButton>
-          <NotionButton size="sm" onClick={handleSave} disabled={isSaving} className="ui-press">
+          </DsButton>
+          <DsButton size="sm" onClick={handleSave} disabled={isSaving} className="ui-press">
             {isSaving ? (
               <CircleNotch size={14} className="mr-1.5 animate-spin" />
             ) : (
@@ -1286,7 +1286,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             {mode === 'create'
               ? t('exam_sheet:questionBank.create.submit')
               : t('common:actions.save')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     </div>

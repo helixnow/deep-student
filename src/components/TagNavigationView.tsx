@@ -13,7 +13,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from './custom-scroll-area';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
@@ -237,7 +237,7 @@ const TagGroupCard: React.FC<{
               className="h-7 flex-1 min-w-0 bg-background text-sm"
               aria-label={t('learningHub:exam.library.renameTag')}
             />
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -248,8 +248,8 @@ const TagGroupCard: React.FC<{
               title={t('learningHub:exam.library.confirm')}
             >
               {renameBusy ? <CircleNotch size={14} className="animate-spin" /> : <Check size={14} />}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -260,7 +260,7 @@ const TagGroupCard: React.FC<{
               title={t('common:cancel')}
             >
               <X size={14} />
-            </NotionButton>
+            </DsButton>
           </div>
           {renameMergePending && (
             <div className="ui-drop-in mt-1.5 flex items-center gap-1.5 text-xs text-warning">
@@ -271,7 +271,7 @@ const TagGroupCard: React.FC<{
         </div>
       ) : (
       /* 标签头部 - 紧凑行 */
-      <NotionButton variant="ghost" size="sm" onClick={onToggle} aria-expanded={isExpanded} className="!h-auto !w-full !justify-start !rounded-md !px-2 !py-2 [@media(pointer:coarse)]:!py-3 !text-left hover:bg-accent">
+      <DsButton variant="ghost" size="sm" onClick={onToggle} aria-expanded={isExpanded} className="!h-auto !w-full !justify-start !rounded-md !px-2 !py-2 [@media(pointer:coarse)]:!py-3 !text-left hover:bg-accent">
         {/* 展开/收起图标（旋转过渡代替图标切换） */}
         <div className="flex-shrink-0 text-muted-foreground/60">
           <CaretRight
@@ -294,7 +294,7 @@ const TagGroupCard: React.FC<{
           <span className="text-xs text-muted-foreground ml-1">{group.totalCount}</span>
           {/* 重命名入口：hover 浮现（触屏常显弱化） */}
           {onRenameStart && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -304,7 +304,7 @@ const TagGroupCard: React.FC<{
               title={t('learningHub:exam.library.renameTag')}
             >
               <PencilSimple size={12} />
-            </NotionButton>
+            </DsButton>
           )}
         </div>
 
@@ -335,7 +335,7 @@ const TagGroupCard: React.FC<{
             {Math.round(group.progressPercent)}%
           </span>
         </div>
-      </NotionButton>
+      </DsButton>
       )}
 
       {/* 展开内容（挂载入场动画） */}
@@ -344,10 +344,10 @@ const TagGroupCard: React.FC<{
           {/* 操作按钮 - 内联式 */}
           <div className="flex items-center gap-2 py-1.5 mb-1">
             {onStartPractice && (
-              <NotionButton variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); onStartPractice(); }} className="!h-auto !px-2 !py-1 text-xs text-primary hover:bg-primary/10">
+              <DsButton variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); onStartPractice(); }} className="!h-auto !px-2 !py-1 text-xs text-primary hover:bg-primary/10">
                 <Play size={12} />
                 {t('tagNav.practice')}
-              </NotionButton>
+              </DsButton>
             )}
             <span className="text-[11px] text-muted-foreground">
               {t('tagNav.toMaster', { count: group.totalCount - group.masteredCount })}
@@ -362,12 +362,12 @@ const TagGroupCard: React.FC<{
               const originalIndex = originalIndexMap.get(q.id) || 0;
 
               return (
-                <NotionButton
+                <DsButton
                   key={q.id}
                   variant="ghost" size="sm"
                   onClick={() => onQuestionClick?.(q.id)}
                   disabled={!onQuestionClick}
-                  className="!h-auto !w-full !justify-start !rounded-sm !px-2 !py-1.5 [@media(pointer:coarse)]:!py-2.5 !text-left hover:bg-accent"
+                  className="!h-auto !w-full !justify-start !rounded-sm !px-2 !py-1.5 [@media(pointer:coarse)]:!py-2.5 !text-left hover:bg-accent [content-visibility:auto] [contain-intrinsic-size:auto_32px]"
                 >
                   {/* 状态指示器 */}
                   <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusConfig.bg)} />
@@ -388,7 +388,7 @@ const TagGroupCard: React.FC<{
                       {t(`tagNav.difficultyShort.${q.difficulty}`)}
                     </span>
                   )}
-                </NotionButton>
+                </DsButton>
               );
             })}
           </div>
@@ -661,7 +661,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
             )}
 />
           {searchQuery && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -671,13 +671,13 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
               title={t('learningHub:exam.library.clearSearch')}
             >
               <X size={12} />
-            </NotionButton>
+            </DsButton>
           )}
         </div>
 
         {/* 树形 / 标签云 切换 */}
         <div className="flex items-center p-0.5 rounded-md bg-muted/30 flex-shrink-0">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => handleViewModeChange('tree')}
@@ -686,8 +686,8 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
             title={t('learningHub:exam.library.treeView')}
           >
             <TreeStructure size={14} />
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => handleViewModeChange('cloud')}
@@ -696,12 +696,12 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
             title={t('learningHub:exam.library.cloudView')}
           >
             <CloudFog size={14} />
-          </NotionButton>
+          </DsButton>
         </div>
 
         {/* 全部展开/收起（仅树形模式） */}
         {viewMode === 'tree' && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -711,7 +711,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
             title={allExpanded ? t('learningHub:exam.library.collapseAll') : t('learningHub:exam.library.expandAll')}
           >
             {allExpanded ? <ArrowsInLineVertical size={14} /> : <ArrowsOutLineVertical size={14} />}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
 
@@ -725,9 +725,9 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
                 ? t('learningHub:exam.library.noMatchFor', { query: searchQuery.trim() })
                 : t('tagNav.noResults')}
             </p>
-            <NotionButton variant="ghost" size="sm" onClick={() => setSearchQuery('')} className="!h-auto !px-2 !py-1 text-xs">
+            <DsButton variant="ghost" size="sm" onClick={() => setSearchQuery('')} className="!h-auto !px-2 !py-1 text-xs">
               {t('common:clear')}
-            </NotionButton>
+            </DsButton>
           </div>
         ) : viewMode === 'cloud' ? (
           // 标签云：字号随题目数缩放，点击平滑过滤出该标签下的题目
@@ -737,7 +737,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
                 const ratio = maxGroupCount > 0 ? group.totalCount / maxGroupCount : 0;
                 const isActive = cloudSelectedTag === group.tag;
                 return (
-                  <NotionButton
+                  <DsButton
                     key={group.tag}
                     variant="ghost"
                     size="sm"
@@ -756,7 +756,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
                       ? t('tagPicker.untagged')
                       : <HighlightText text={group.tag} query={searchQuery} />}
                     <span className="ml-0.5 text-[0.7em] text-muted-foreground tabular-nums">{group.totalCount}</span>
-                  </NotionButton>
+                  </DsButton>
                 );
               })}
             </div>

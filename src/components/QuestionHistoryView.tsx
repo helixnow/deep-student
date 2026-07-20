@@ -15,7 +15,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
@@ -525,9 +525,9 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <XCircle size={32} className="text-destructive mb-2" />
           <p className="text-sm text-muted-foreground">{error}</p>
-          <NotionButton variant="ghost" size="sm" className="mt-4" onClick={handleRetry}>
+          <DsButton variant="ghost" size="sm" className="mt-4" onClick={handleRetry}>
             {t('common:retry')}
-          </NotionButton>
+          </DsButton>
         </div>
       );
     }
@@ -578,7 +578,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
           {/* 加载更多 */}
           {hasMore && (
             <div className="flex justify-center pb-4">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={handleLoadMore}
@@ -591,7 +591,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
                   <CaretDown size={14} />
                 )}
                 {t('stats:historyView.loadMore')}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
         </div>
@@ -610,7 +610,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
     >
       {/* 顶栏：返回 + 标题 */}
       <div className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b border-border/60 px-2">
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -619,7 +619,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
           className={cn('text-muted-foreground', inline ? '!h-11 !w-11' : '!h-9 !w-9')}
         >
           <ArrowLeft size={20} />
-        </NotionButton>
+        </DsButton>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <ClockCounterClockwise size={16} className="flex-shrink-0 text-muted-foreground" />
           <span className="truncate text-sm font-medium text-foreground">
@@ -628,7 +628,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
         </div>
         {/* 从历史直接跳回题目 */}
         {questionId && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handleJumpToQuestion}
@@ -636,7 +636,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
           >
             <ArrowSquareOut size={14} />
             {t('learningHub:exam.library.viewQuestion')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
 

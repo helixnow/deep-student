@@ -16,7 +16,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { Brain, ArrowsClockwise, BookOpen } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import {
   useKnowledgeStats,
@@ -420,10 +420,10 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
         {t('knowledgeRadar.noDataHint')}
       </p>
       {onRefresh && (
-        <NotionButton variant="ghost" size="sm" onClick={onRefresh}>
+        <DsButton variant="ghost" size="sm" onClick={onRefresh}>
           <ArrowsClockwise size={16} className="mr-2" />
           {t('knowledgeRadar.refreshData')}
-        </NotionButton>
+        </DsButton>
       )}
     </div>
   );
@@ -520,7 +520,7 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
           <h3 className="font-semibold">{t('knowledgeRadar.title')}</h3>
         </div>
 
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           className="w-8 h-8"
@@ -528,7 +528,7 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
           aria-label={t('knowledgeRadar.refreshData')}
         >
           <ArrowsClockwise size={16} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 总体统计 */}

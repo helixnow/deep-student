@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/shad/Card';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from './ui/shad/Input';
 import { Textarea } from './ui/shad/Textarea';
 import { Badge } from './ui/shad/Badge';
@@ -329,12 +329,12 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
             </div>
             {/* 操作按钮 */}
             <div className="flex flex-wrap gap-2 pt-2">
-              <NotionButton onClick={handleGenerate} disabled={isGenerating} size="sm">
+              <DsButton onClick={handleGenerate} disabled={isGenerating} size="sm">
                 {isGenerating ? t('knowledge_graph.tag_tree.generating') : t('knowledge_graph.tag_tree.generate_preview')}
-              </NotionButton>
-              <NotionButton onClick={handleImport} disabled={!canImport || importing} size="sm" title={!canImport ? t('knowledge_graph.tag_tree.import_blocked_tooltip') : ''}>
+              </DsButton>
+              <DsButton onClick={handleImport} disabled={!canImport || importing} size="sm" title={!canImport ? t('knowledge_graph.tag_tree.import_blocked_tooltip') : ''}>
                 {t('knowledge_graph.tag_tree.confirm_import')}
-              </NotionButton>
+              </DsButton>
             </div>
             {!!error && (
               <div className="text-sm text-red-600 whitespace-pre-wrap">{error}</div>

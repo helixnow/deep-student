@@ -442,7 +442,7 @@ export class CardAgent {
         cardCollector.setDocumentId(documentId);
 
         // 等待生成完成并收集卡片（使用已经在监听的收集器）
-        const { cards, paused } = await cardCollector.waitForComplete();
+        const { cards, paused, timedOut } = await cardCollector.waitForComplete();
 
         // 计算统计信息
         const stats: GenerationStats = {
@@ -453,6 +453,19 @@ export class CardAgent {
           successCount: cards.filter((c) => !c.isErrorCard).length,
           failedCount: cards.filter((c) => c.isErrorCard).length,
         };
+
+        // 🔧 P0：空闲超时必须可区分失败，不能再以 ok:true 伪装成功
+        if (timedOut) {
+          return {
+            ok: false,
+            documentId,
+            cards,
+            stats,
+            paused: false,
+            timedOut: true,
+            error: `生成空闲超时，已收集 ${cards.length} 张卡片`,
+          };
+        }
 
         return {
           ok: true,
@@ -1449,16 +1462,18 @@ export class CardAgent {
    * 返回的收集器会立即开始监听事件。
    */
   private createCardCollector(): {
-    waitForComplete: () => Promise<{ cards: AnkiCardResult[]; paused: boolean }>;
+    waitForComplete: () => Promise<{ cards: AnkiCardResult[]; paused: boolean; timedOut: boolean }>;
     cancel: () => void;
     setDocumentId: (documentId: string) => void;
   } {
+    type CollectorResult = { cards: AnkiCardResult[]; paused: boolean; timedOut: boolean };
     const cards: AnkiCardResult[] = [];
     let completed = false;
     let paused = false;
+    let timedOut = false;
     let expectedDocumentId: string | null = null;
     let idleTimerId: ReturnType<typeof setTimeout> | null = null;
-    let resolveWithState: ((value: { cards: AnkiCardResult[]; paused: boolean }) => void) | null = null;
+    let resolveWithState: ((value: CollectorResult) => void) | null = null;
 
     // 🔧 F21（round2）：空闲超时替代固定总超时。
     // 旧实现对整个文档用固定 5 分钟总超时，大文档多分段累计耗时极易误触发，
@@ -1504,7 +1519,7 @@ export class CardAgent {
       paused = state.paused;
       cleanup();
       if (resolveWithState) {
-        resolveWithState({ cards, paused });
+        resolveWithState({ cards, paused, timedOut: false });
       }
     };
 
@@ -1535,6 +1550,7 @@ export class CardAgent {
 
       if (completed) return;
       completed = true;
+      timedOut = true;
 
       // 轮询兜底 #2：超时收尾前从数据库恢复卡片，弥补事件丢失导致的
       // 前端计数与库内数量不一致（get_document_cards 返回 DB 权威数据）。
@@ -1570,7 +1586,7 @@ export class CardAgent {
       }, expectedDocumentId ?? undefined);
       cleanup();
       if (resolveWithState) {
-        resolveWithState({ cards: finalCards, paused: false });
+        resolveWithState({ cards: finalCards, paused: false, timedOut: true });
       }
     };
 
@@ -1659,10 +1675,10 @@ export class CardAgent {
     });
 
     return {
-      waitForComplete: (): Promise<{ cards: AnkiCardResult[]; paused: boolean }> => {
+      waitForComplete: (): Promise<{ cards: AnkiCardResult[]; paused: boolean; timedOut: boolean }> => {
         // 如果在调用 waitForComplete 之前就已完成，立即返回
         if (completed) {
-          return Promise.resolve({ cards, paused });
+          return Promise.resolve({ cards, paused, timedOut });
         }
 
         return new Promise((resolve) => {

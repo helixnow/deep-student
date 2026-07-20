@@ -31,7 +31,7 @@ import {
   ArrowClockwise,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Progress } from '@/components/ui/shad/Progress';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { useExamSheetProgress } from '@/hooks/useExamSheetProgress';
@@ -1346,7 +1346,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     </div>
 
                     {/* 移动端：拍照导入入口 */}
-                    <NotionButton
+                    <DsButton
                       variant="secondary"
                       size="sm"
                       className="sm:hidden gap-1.5"
@@ -1358,7 +1358,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     >
                       <Camera size={16} />
                       {t('exam_sheet:uploader.take_photo')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
               </UnifiedDragDropZone>
@@ -1377,9 +1377,9 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     <span className="text-sm font-medium">
                       {t('exam_sheet:uploader.selected_images', { count: selectedFiles.length })}
                     </span>
-                    <NotionButton variant="ghost" size="sm" onClick={handleReset} className="text-muted-foreground">
+                    <DsButton variant="ghost" size="sm" onClick={handleReset} className="text-muted-foreground">
                       {t('exam_sheet:uploader.clear')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                     {selectedFiles.map((fileInfo, index) => (
@@ -1392,9 +1392,9 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                           alt={fileInfo.file.name}
                           className="w-full h-full object-cover"
 />
-                        <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="absolute top-1 right-1 !w-6 !h-6 !rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100" aria-label="remove">
+                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="absolute top-1 right-1 !w-6 !h-6 !rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100" aria-label="remove">
                           <X size={12} />
-                        </NotionButton>
+                        </DsButton>
                       </div>
                     ))}
                   </div>
@@ -1413,7 +1413,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     {pendingPdfImport.inspection.preview_text || t('exam_sheet:uploader.pdf_quality_empty_preview')}
                   </div>
                   <div className="flex gap-2">
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       className="flex-1"
                       disabled={selectedFiles.length === 0 || isProcessing}
@@ -1426,8 +1426,8 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                       }}
                     >
                         {t('exam_sheet:uploader.pdf_use_extracted_text')}
-                    </NotionButton>
-                    <NotionButton
+                    </DsButton>
+                    <DsButton
                       className="flex-1"
                       disabled={selectedFiles.length === 0 || isProcessing}
                       onClick={() => {
@@ -1439,7 +1439,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                       }}
                     >
                         {t('exam_sheet:uploader.pdf_enable_ocr')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
               )}
@@ -1455,10 +1455,10 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         {(selectedFiles[0].file.size / 1024).toFixed(1)} KB
                       </div>
                     </div>
-                    <NotionButton variant="ghost" size="sm" onClick={handleReset}>
+                    <DsButton variant="ghost" size="sm" onClick={handleReset}>
                       <X size={16} className="mr-1" />
                       {t('exam_sheet:uploader.remove')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                   
                   <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30">
@@ -1556,7 +1556,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   {parsedQuestions.length || llmProgress.parsedCount || 0}
                 </div>
                 {isLLMProcessing && !isResumeRun && !showCancelConfirm && (
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={() => setShowCancelConfirm(true)}
@@ -1567,7 +1567,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     {isCancelling
                       ? t('exam_sheet:uploader.cancelling_import')
                       : t('exam_sheet:uploader.cancel_import')}
-                  </NotionButton>
+                  </DsButton>
                 )}
               </div>
 
@@ -1578,7 +1578,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   <span className="flex-1 min-w-[12rem] text-xs text-warning">
                     {t('exam_sheet:uploader.cancel_confirm_hint')}
                   </span>
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     className="!h-7 text-xs"
@@ -1586,8 +1586,8 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     disabled={isCancelling}
                   >
                     {t('exam_sheet:uploader.cancel_confirm_no')}
-                  </NotionButton>
-                  <NotionButton
+                  </DsButton>
+                  <DsButton
                     variant="danger"
                     size="sm"
                     className="!h-7 text-xs"
@@ -1598,7 +1598,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     {isCancelling
                       ? t('exam_sheet:uploader.cancelling_import')
                       : t('exam_sheet:uploader.cancel_confirm_yes')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               )}
 
@@ -1631,7 +1631,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     {parsedQuestions.map((q, idx) => (
                       <div
                         key={idx}
-                        className="p-3 rounded-lg bg-card border border-border/50 ui-rise-in"
+                        className="p-3 rounded-lg bg-card border border-border/50 ui-rise-in [content-visibility:auto] [contain-intrinsic-size:auto_84px]"
                       >
                         <div className="flex items-start gap-2">
                           <span className="w-6 h-6 flex-shrink-0 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">
@@ -1753,7 +1753,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     <div className="border-t border-border/30">
                       {/* 全选/取消全选 */}
                       <div className="flex items-center justify-between px-4 py-2 bg-muted/15 border-b border-border/20">
-                        <NotionButton
+                        <DsButton
                           variant="ghost"
                           size="sm"
                           className="!h-7 text-xs"
@@ -1761,8 +1761,8 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         >
                           <CheckSquare size={14} className="mr-1" />
                           {t('common:select_all')}
-                        </NotionButton>
-                        <NotionButton
+                        </DsButton>
+                        <DsButton
                           variant="ghost"
                           size="sm"
                           className="!h-7 text-xs"
@@ -1770,7 +1770,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         >
                           <Square size={14} className="mr-1" />
                           {t('common:deselect_all')}
-                        </NotionButton>
+                        </DsButton>
                       </div>
                       {/* 滚动列表 */}
                       <div className="max-h-[280px] overflow-y-auto divide-y divide-border/20">
@@ -1851,16 +1851,16 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               
               {/* 操作按钮 */}
               <div className="flex gap-3 pt-2">
-                <NotionButton variant="ghost" onClick={handleReset} className="flex-1">
+                <DsButton variant="ghost" onClick={handleReset} className="flex-1">
                   {t('exam_sheet:uploader.continue_import')}
-                </NotionButton>
-                <NotionButton onClick={() => void handleConfirmSummary()} className="flex-1" disabled={keptCount === 0 || isConfirming}>
+                </DsButton>
+                <DsButton onClick={() => void handleConfirmSummary()} className="flex-1" disabled={keptCount === 0 || isConfirming}>
                   {isConfirming && <CircleNotch size={16} className="mr-1 animate-spin" />}
                   {excludedCardIds.size > 0
                     ? t('exam_sheet:uploader.view_questions_filtered', { count: keptCount })
                     : t('exam_sheet:uploader.view_questions')
                   }
-                </NotionButton>
+                </DsButton>
               </div>
             </div>
             );
@@ -1873,7 +1873,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 <WarningCircle size={20} className="flex-shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0 text-sm">{error || ocrError}</div>
                 {step === 'select' && selectedFiles.length > 0 && !isProcessing && (
-                  <NotionButton
+                  <DsButton
                     variant="outline"
                     size="sm"
                     onClick={() => void handleStartProcess()}
@@ -1881,7 +1881,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   >
                     <ArrowClockwise size={16} className="mr-1" />
                     {t('common:retry')}
-                  </NotionButton>
+                  </DsButton>
                 )}
               </div>
               {/* 断点续导：失败前已解析部分题目时，可跳过已完成分块继续导入 */}
@@ -1891,7 +1891,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   <span className="flex-1 min-w-[12rem] text-xs text-warning">
                     {t('exam_sheet:uploader.import_interrupted', { count: resumableSession.parsedCount })}
                   </span>
-                  <NotionButton
+                  <DsButton
                     variant="warning"
                     size="sm"
                     className="!h-7 text-xs"
@@ -1899,7 +1899,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   >
                     <ArrowClockwise size={14} className="mr-1" />
                     {t('exam_sheet:uploader.resume_import')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               )}
             </div>
@@ -1909,11 +1909,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           {step === 'select' && (selectedFiles.length > 0 || isProcessing) && (
             <div className="flex gap-3">
               {onBack && (
-                <NotionButton variant="ghost" onClick={onBack} disabled={isProcessing} className="flex-1">
+                <DsButton variant="ghost" onClick={onBack} disabled={isProcessing} className="flex-1">
                   {t('common:actions.back')}
-                </NotionButton>
+                </DsButton>
               )}
-              <NotionButton
+              <DsButton
                 onClick={handleStartProcess}
                 disabled={selectedFiles.length === 0 || isProcessing}
                 className="flex-1 gap-2"
@@ -1934,7 +1934,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     {t('exam_sheet:uploader.parse_document')}
                   </>
                 )}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
 
@@ -1943,22 +1943,22 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           {/* 没有文件可导入？回启动台手动新建（优先走专用回调，直接打开创建编辑器） */}
           {step === 'select' && !isProcessing && (onManualCreate || onBack) && (
             <div className="text-center">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={onManualCreate ?? onBack}
                 className="!h-auto !px-2 !py-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
               >
                 {t('exam_sheet:uploader.manual_create_link')}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
 
           {step === 'processing' && !isLLMProcessing && (
             <div className="flex justify-center">
-              <NotionButton variant="ghost" onClick={onBack}>
+              <DsButton variant="ghost" onClick={onBack}>
                 {t('exam_sheet:uploader.done')}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { X, Plus, Funnel as FilterIcon } from '@phosphor-icons/react';
 import { generateId } from '../../utils/common';
@@ -89,9 +89,9 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
             <FilterIcon size={20} />
             {t('filter_builder_title')}
           </h3>
-          <NotionButton variant="ghost" size="icon" iconOnly className="close-btn" onClick={onClose} aria-label="close">
+          <DsButton variant="ghost" size="icon" iconOnly className="close-btn" onClick={onClose} aria-label="close">
             <X size={20} />
-          </NotionButton>
+          </DsButton>
         </div>
         
         <div className="filter-builder-body">
@@ -169,28 +169,28 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
                       </>
                     )}
                     
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => removeFilter(filter.id)} className="filter-remove-btn" title={t('remove_filter')} aria-label="remove">
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeFilter(filter.id)} className="filter-remove-btn" title={t('remove_filter')} aria-label="remove">
                       <X size={16} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
               ))}
             </div>
           )}
           
-          <NotionButton variant="ghost" size="sm" onClick={addFilter} className="add-filter-btn">
+          <DsButton variant="ghost" size="sm" onClick={addFilter} className="add-filter-btn">
             <Plus size={16} />
             {t('add_filter')}
-          </NotionButton>
+          </DsButton>
         </div>
         
         <div className="filter-builder-footer">
-          <NotionButton variant="default" size="sm" onClick={onClose}>
+          <DsButton variant="default" size="sm" onClick={onClose}>
             {t('cancel')}
-          </NotionButton>
-          <NotionButton variant="primary" size="sm" onClick={handleApply}>
+          </DsButton>
+          <DsButton variant="primary" size="sm" onClick={handleApply}>
             {t('apply_filters')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     </div>

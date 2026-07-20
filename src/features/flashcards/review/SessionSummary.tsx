@@ -10,7 +10,7 @@ import {
   Lightning,
   Play,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { FsrsRating, SessionRatingCounts } from '../store/fsrsReviewStore';
 import { formatDuration } from './useSessionClock';
 
@@ -130,30 +130,30 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
 
       <div className="flex flex-wrap items-center justify-center gap-2">
         {canUndo ? (
-          <NotionButton type="button" variant="default" disabled={busy} onClick={onUndo}>
+          <DsButton type="button" variant="default" disabled={busy} onClick={onUndo}>
             <ArrowCounterClockwise size={16} />
             {t('session.undo')}
-          </NotionButton>
+          </DsButton>
         ) : null}
         {canResume ? (
-          <NotionButton type="button" variant="default" disabled={busy} onClick={onResume}>
+          <DsButton type="button" variant="default" disabled={busy} onClick={onResume}>
             <Play size={16} />
             {t('session.resume')}
-          </NotionButton>
+          </DsButton>
         ) : null}
         {showContinue ? (
-          <NotionButton type="button" variant="primary" disabled={busy} onClick={onContinue}>
+          <DsButton type="button" variant="primary" disabled={busy} onClick={onContinue}>
             <Play size={16} />
             {t('session.continueReview', { count: remainingDue })}
-          </NotionButton>
+          </DsButton>
         ) : null}
-        <NotionButton
+        <DsButton
           type="button"
           variant={showContinue ? 'default' : 'primary'}
           onClick={onBack}
         >
           {t('session.backToday')}
-        </NotionButton>
+        </DsButton>
       </div>
       {errorBanner}
     </div>

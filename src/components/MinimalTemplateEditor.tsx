@@ -12,7 +12,7 @@ import {
 import { TemplateRenderService } from '../services/templateRenderService';
 import type { TemplateRenderIssue } from '../services/ankiTemplateEngine';
 import { templateService } from '../services/templateService';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from './ui/shad/Input';
 import { Textarea } from './ui/shad/Textarea';
 import { Label } from './ui/shad/Label';
@@ -638,15 +638,15 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
   const renderCodeSubTabs = () => (
     <>
       <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
-        <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'front' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('front')}>
+        <DsButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'front' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('front')}>
           {t('front_template_title')}
-        </NotionButton>
-        <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'back' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('back')}>
+        </DsButton>
+        <DsButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'back' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('back')}>
           {t('back_template_title')}
-        </NotionButton>
-        <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'css' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('css')}>
+        </DsButton>
+        <DsButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'css' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('css')}>
           {t('css_style_title')}
-        </NotionButton>
+        </DsButton>
       </div>
       {hasScriptTag && (
         <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-info/10 text-info text-xs" role="status">
@@ -679,26 +679,26 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
       {!hideSidebar && (
         <div className="editor-sidebar">
           <nav className="editor-nav">
-            <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'basic' ? 'active' : ''}`} onClick={() => setActiveTab('basic')}>
+            <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'basic' ? 'active' : ''}`} onClick={() => setActiveTab('basic')}>
               <FileText size={18} />
               {t('basic_info')}
-            </NotionButton>
-            <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'templates' || activeTab === 'styles' ? 'active' : ''}`} onClick={() => { setActiveTab('templates'); setCodeSubTab('front'); }}>
+            </DsButton>
+            <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'templates' || activeTab === 'styles' ? 'active' : ''}`} onClick={() => { setActiveTab('templates'); setCodeSubTab('front'); }}>
               <Code size={18} />
               {t('template_code')}
-            </NotionButton>
-            <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'data' ? 'active' : ''}`} onClick={() => setActiveTab('data')}>
+            </DsButton>
+            <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'data' ? 'active' : ''}`} onClick={() => setActiveTab('data')}>
               <Database size={18} />
               {t('preview_data')}
-            </NotionButton>
-            <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'rules' ? 'active' : ''}`} onClick={() => setActiveTab('rules')}>
+            </DsButton>
+            <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'rules' ? 'active' : ''}`} onClick={() => setActiveTab('rules')}>
               <Gear size={18} />
               {t('extraction_rules')}
-            </NotionButton>
-            <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'advanced' ? 'active' : ''}`} onClick={() => setActiveTab('advanced')}>
+            </DsButton>
+            <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'advanced' ? 'active' : ''}`} onClick={() => setActiveTab('advanced')}>
               <Gear size={18} />
               {t('advanced_settings')}
-            </NotionButton>
+            </DsButton>
           </nav>
         </div>
       )}
@@ -894,7 +894,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                   )}
                 </>
               ) : (
-              /* 桌面端：左侧编辑 / 右侧实时预览（对标 Anki Desktop 布局） */
+              /* 桌面端：左侧编辑 / 右侧实时预览 */
               <HorizontalResizable
                 initial={0.55}
                 minLeft={0.35}
@@ -968,14 +968,14 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                 <p className="text-xs text-muted-foreground mt-0.5">{t('preview_data_desc')}</p>
               </div>
                 <div className="mb-3">
-                  <NotionButton
+                  <DsButton
                     type="button"
                     variant="ghost"
                     onClick={copyJsonTemplate}
                   >
                     <Copy size={16} className="mr-2" />
                     {t('generate_template_json')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
                 <UnifiedCodeEditor
                   value={previewDataJson}
@@ -1097,7 +1097,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                   <div className="form-field">
                     <div className="flex items-center justify-between mb-2">
                       <Label className="field-label">{t('core_requirements')}</Label>
-                      <NotionButton
+                      <DsButton
                         type="button"
                         variant="ghost"
                         size="sm"
@@ -1105,7 +1105,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       >
                         {showPromptPreview ? <EyeSlash size={16} className="mr-2" /> : <Eye size={16} className="mr-2" />}
                         {showPromptPreview ? t('hide') : t('preview')}{t('full_prompt')}
-                      </NotionButton>
+                      </DsButton>
                     </div>
                     <Textarea
                       value={formData.generation_prompt}
@@ -1158,17 +1158,17 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
             )}
           </div>
           <div className="flex gap-3 shrink-0">
-            <NotionButton type="button" variant="ghost" onClick={onCancel}>
+            <DsButton type="button" variant="ghost" onClick={onCancel}>
               {t('cancel_button')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               type="button"
               onClick={handleSubmit}
               disabled={isSubmitting}
             >
               {isSubmitting && <div className="loading-spinner mr-2" />}
               {mode === 'create' ? t('submit_create') : t('submit_save')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       </div>

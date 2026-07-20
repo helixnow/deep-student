@@ -26,6 +26,12 @@ export interface AnswerSheetGridProps {
   answeredIds: ReadonlySet<string>;
   /** 标记待查的题目 ID 集合（如收藏标记），可选 */
   markedIds?: ReadonlySet<string>;
+  /**
+   * 当前题目 ID。做题导航走 useQuestionBankSession 的本地 state，与全局
+   * store.currentQuestionId 并不同步；宿主（如 ExamContentView）传入本地
+   * 会话的当前题 id 时以其为准，未传时回退全局 store（兼容存量调用）。
+   */
+  currentQuestionId?: string | null;
   className?: string;
 }
 
@@ -34,10 +40,13 @@ export const AnswerSheetGrid: React.FC<AnswerSheetGridProps> = ({
   examId,
   answeredIds,
   markedIds,
+  currentQuestionId: currentQuestionIdProp,
   className,
 }) => {
   const { t } = useTranslation('practice');
-  const currentQuestionId = useQuestionBankStore((state) => state.currentQuestionId);
+  const storeCurrentQuestionId = useQuestionBankStore((state) => state.currentQuestionId);
+  const currentQuestionId =
+    currentQuestionIdProp !== undefined ? currentQuestionIdProp : storeCurrentQuestionId;
 
   const answeredCount = useMemo(
     () => questionIds.reduce((acc, id) => acc + (answeredIds.has(id) ? 1 : 0), 0),

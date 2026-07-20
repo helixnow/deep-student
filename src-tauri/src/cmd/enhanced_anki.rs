@@ -564,6 +564,31 @@ pub async fn get_anki_stats(state: State<'_, AppState>) -> Result<serde_json::Va
         .map_err(|e| AppError::database(format!("获取统计失败: {}", e)))
 }
 
+/// 为 document_id 写入 source_session_id（任务台跳回聊天）
+///
+/// 仅在 source_session_id 为空时写入，避免覆盖已有来源。
+#[tauri::command]
+#[allow(non_snake_case)] // Tauri 前端传入 camelCase 参数名
+pub async fn set_document_session_source(
+    documentId: String,
+    sessionId: String,
+    state: State<'_, AppState>,
+) -> Result<()> {
+    let document_id = documentId.trim();
+    let session_id = sessionId.trim();
+    if document_id.is_empty() {
+        return Err(AppError::validation("documentId 不能为空".to_string()));
+    }
+    if session_id.is_empty() {
+        return Err(AppError::validation("sessionId 不能为空".to_string()));
+    }
+
+    state
+        .anki_database
+        .set_document_session_source(document_id, session_id)
+        .map_err(|e| AppError::database(format!("设置文档来源会话失败: {}", e)))
+}
+
 /// 导出/下载卡片库
 #[tauri::command]
 pub async fn export_anki_cards(

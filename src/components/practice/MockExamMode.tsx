@@ -10,7 +10,7 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -47,6 +47,7 @@ import {
 import { CountdownRing } from './CountdownRing';
 import { AnswerSheetGrid } from './AnswerSheetGrid';
 import { CountStepperRow } from './CountStepperRow';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 const formatTime = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
@@ -58,6 +59,10 @@ interface MockExamModeProps {
   examId: string;
   onStart?: (session: MockExamSession) => void;
   onSubmit?: (scoreCard: MockExamScoreCard) => void;
+  /** 本地会话的当前题 ID（宿主传入时答题卡高亮以其为准，未传回退全局 store） */
+  currentQuestionId?: string | null;
+  /** 收藏标记题目 ID 集（宿主传入时优先；未传回退全局 store.questions，该 map 在此流程通常未加载） */
+  markedQuestionIds?: ReadonlySet<string>;
   className?: string;
 }
 
@@ -82,6 +87,8 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   examId,
   onStart,
   onSubmit,
+  currentQuestionId,
+  markedQuestionIds,
   className,
 }) => {
   const { t } = useTranslation('practice');
@@ -119,6 +126,14 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   
   // UI 状态（交卷确认为内联面板，非模态弹窗）
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+
+  useEffect(() => {
+    if (!showSubmitConfirm) return;
+    return registerBackHandler(() => {
+      setShowSubmitConfirm(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [showSubmitConfirm]);
   const [showScoreCard, setShowScoreCard] = useState(false);
   
   // 考试计时器 — 基于绝对时间戳
@@ -262,7 +277,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
     
     return (
       <Card className={cn('ui-rise-in bg-transparent border-transparent shadow-none', className)}>
-        <CardHeader className="pb-3 text-center">
+        <CardHeader className="px-3 pb-3 text-center sm:px-6">
           <div className="mb-1 flex justify-center">
             <div className="rounded-md bg-warning/10 p-2">
               <Trophy size={24} className="text-warning" />
@@ -270,7 +285,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           </div>
           <CardTitle className="text-base">{t('mockExam.scoreCard')}</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 px-3 sm:px-6">
           {/* 得分环 */}
           <div className="relative mx-auto h-32 w-32">
             <svg className="h-full w-full -rotate-90" viewBox="0 0 120 120" aria-hidden="true">
@@ -301,7 +316,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           )}
           
           {/* 统计数据 */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-md bg-muted/50 p-2 text-center">
               <div className="text-lg font-semibold">{score.total_count}</div>
               <div className="text-xs text-muted-foreground">{t('mockExam.total')}</div>
@@ -354,8 +369,8 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           )}
           
           {/* 操作按钮 */}
-          <div className="flex gap-3">
-            <NotionButton
+          <div className="flex flex-col gap-2 min-[360px]:flex-row min-[360px]:gap-3">
+            <DsButton
               variant="outline"
               onClick={() => {
                 setShowScoreCard(false);
@@ -365,8 +380,8 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               className="flex-1"
             >
               {t('mockExam.back')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               onClick={() => {
                 setShowScoreCard(false);
                 setMockExamSession(null);
@@ -377,7 +392,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               className="flex-1"
             >
               {t('mockExam.newExam')}
-            </NotionButton>
+            </DsButton>
           </div>
         </CardContent>
       </Card>
@@ -388,13 +403,13 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   if (!activeSession) {
     return (
       <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
-        <CardHeader className="pb-4">
+        <CardHeader className="px-0 pb-4 sm:px-6">
           <CardTitle className="flex items-center gap-2 text-base">
             <FileText size={18} className="text-primary" />
             {t('mockExam.title')}
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-6 px-0 sm:px-6">
           {/* 基本配置 */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -491,7 +506,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
             {t('mockExam.questions')}
           </div>
           
-          <NotionButton
+          <DsButton
             onClick={handleStart}
             disabled={isLoadingPractice}
             className="w-full"
@@ -507,7 +522,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                 {t('mockExam.start')}
               </>
             )}
-          </NotionButton>
+          </DsButton>
         </CardContent>
       </Card>
     );
@@ -521,14 +536,14 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   const answeredCount = Object.keys(activeSession.answers).length;
   const unansweredCount = activeSession.question_ids.length - answeredCount;
   const answeredIds = new Set(Object.keys(activeSession.answers));
-  const markedIds = new Set(
-    activeSession.question_ids.filter((id) => questions.get(id)?.is_favorite),
-  );
+  // 收藏标记优先取宿主传入的集合；全局 store.questions 在此流程通常未加载，仅作兜底
+  const markedIds = markedQuestionIds
+    ?? new Set(activeSession.question_ids.filter((id) => questions.get(id)?.is_favorite));
   const firstUnansweredId = activeSession.question_ids.find((id) => !answeredIds.has(id)) ?? null;
 
   return (
     <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
-      <CardContent className="pt-6 space-y-4">
+      <CardContent className="space-y-4 px-3 pt-6 sm:px-6">
         {/* 倒计时进度环 */}
         <div className="flex flex-col items-center justify-center py-2">
           <CountdownRing
@@ -539,7 +554,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
 />
         </div>
 
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <Badge variant="secondary" className="shrink-0 gap-1">
               <FileText size={12} />
@@ -549,14 +564,14 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               {answeredCount} / {activeSession.question_ids.length} {t('mockExam.questions')}
             </span>
           </div>
-          <NotionButton
+          <DsButton
             variant="default"
             size="sm"
             onClick={() => setShowSubmitConfirm(true)}
             disabled={showSubmitConfirm}
           >
             {t('mockExam.submit')}
-          </NotionButton>
+          </DsButton>
         </div>
         <Progress value={progress} className="h-2" />
 
@@ -568,7 +583,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               <span className="truncate">{t('mockExam.unansweredBanner', { count: unansweredCount })}</span>
             </div>
             {firstUnansweredId && (
-              <NotionButton
+              <DsButton
                 variant="outline"
                 size="sm"
                 onClick={() => {
@@ -582,7 +597,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               >
                 {t('mockExam.jumpToUnanswered')}
                 <ArrowRight size={14} className="ml-1" />
-              </NotionButton>
+              </DsButton>
             )}
           </div>
         )}
@@ -593,6 +608,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           examId={examId}
           answeredIds={answeredIds}
           markedIds={markedIds}
+          currentQuestionId={currentQuestionId}
 />
 
         {/* 交卷内联确认（替代模态弹窗） */}
@@ -610,15 +626,15 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               </div>
             </div>
             <div className="flex gap-2">
-              <NotionButton
+              <DsButton
                 variant="outline"
                 size="sm"
                 className="flex-1"
                 onClick={() => setShowSubmitConfirm(false)}
               >
                 {t('mockExam.cancel')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="default"
                 size="sm"
                 className="flex-1"
@@ -626,7 +642,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               >
                 <CheckCircle size={14} className="mr-1" />
                 {t('mockExam.confirmSubmit')}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         )}

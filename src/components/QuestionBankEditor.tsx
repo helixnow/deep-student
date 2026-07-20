@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '../lib/utils';
 import { CustomScrollArea } from './custom-scroll-area';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader } from './ui/shad/Card';
 import { Badge } from './ui/shad/Badge';
 import { Progress } from './ui/shad/Progress';
@@ -19,6 +19,7 @@ import { formatTime } from '@/utils/formatUtils';
 import { MarkdownRenderer, StreamingMarkdownRenderer } from '@/features/chat/components/renderers';
 import { LatexText } from '@/components/LatexText';
 import { ImageCropDialog } from '@/components/ImageCropDialog';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import DsAnalysisIconMuted from '@/components/icons/DsAnalysisIconMuted';
 import {
   CaretLeft,
@@ -385,7 +386,7 @@ const OptionButton: React.FC<OptionButtonProps> = React.memo(({
   const handleClick = React.useCallback(() => onSelect(optionKey), [onSelect, optionKey]);
 
   return (
-    <NotionButton
+    <DsButton
       variant="ghost" size="sm"
       onClick={handleClick}
       disabled={isSubmitted}
@@ -404,7 +405,7 @@ const OptionButton: React.FC<OptionButtonProps> = React.memo(({
       )}
     >
       <div className="flex items-start gap-3 px-3 py-2.5">
-        {/* 选项标识 - Notion 风格 */}
+        {/* 选项标识 - 简洁风格 */}
         <div className={cn(
           'flex-shrink-0 w-6 h-6 flex items-center justify-center text-sm font-medium',
           type === 'single' ? 'rounded-full' : 'rounded',
@@ -415,7 +416,7 @@ const OptionButton: React.FC<OptionButtonProps> = React.memo(({
           // 正确 - 绿色填充 + 对勾弹入
           showCorrect && 'bg-success text-success-foreground qbank-anim-pop',
           // 错误 - 红色填充
-          isWrong && 'bg-destructive text-white',
+          isWrong && 'bg-destructive text-destructive-foreground',
           // 已提交非选中非正确
           isSubmitted && !isSelected && !isThisCorrect && 'border border-foreground/[0.08] text-foreground/35'
         )}>
@@ -449,7 +450,7 @@ const OptionButton: React.FC<OptionButtonProps> = React.memo(({
           </kbd>
         )}
 
-        {/* 状态文字 - Notion 风格：简洁文字标识 */}
+        {/* 状态文字 - 简洁风格：简洁文字标识 */}
         {showCorrect && (
           <span className="flex-shrink-0 text-xs text-success ui-rise-in">
             {t('editor.correct')}
@@ -461,7 +462,7 @@ const OptionButton: React.FC<OptionButtonProps> = React.memo(({
           </span>
         )}
       </div>
-    </NotionButton>
+    </DsButton>
   );
 });
 OptionButton.displayName = 'OptionButton';
@@ -650,6 +651,14 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
   // 响应式断点
   const { isSmallScreen } = useBreakpoint();
+
+  useEffect(() => {
+    if (!isSmallScreen || !showSettingsPanel) return;
+    return registerBackHandler(() => {
+      setShowSettingsPanel(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, showSettingsPanel, setShowSettingsPanel]);
 
   // ========== 移动端滑动面板状态 ==========
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1430,7 +1439,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           </div>
           <p className="text-sm text-muted-foreground max-w-sm">{error}</p>
           {onBack && (
-            <NotionButton variant="ghost" onClick={onBack}>{t('editor.back')}</NotionButton>
+            <DsButton variant="ghost" onClick={onBack}>{t('editor.back')}</DsButton>
           )}
         </div>
       </div>
@@ -1449,7 +1458,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             <p className="text-sm text-muted-foreground">{t('editor.noQuestionsDesc')}</p>
           </div>
           {onBack && (
-            <NotionButton variant="ghost" onClick={onBack}>{t('editor.back')}</NotionButton>
+            <DsButton variant="ghost" onClick={onBack}>{t('editor.back')}</DsButton>
           )}
         </div>
       </div>
@@ -1504,7 +1513,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     <div className="h-full flex flex-col bg-background">
       <div className="flex-shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50">
         <h3 className="font-medium">{t('editor.settings')}</h3>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           iconOnly
@@ -1512,7 +1521,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           aria-label={t('common:close')}
         >
           <X size={16} />
-        </NotionButton>
+        </DsButton>
       </div>
       <CustomScrollArea className="flex-1" viewportClassName="p-4 space-y-6">
         {/* 学习统计 */}
@@ -1578,9 +1587,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 </div>
               </div>
               {allowTimerControl && (
-                <NotionButton variant="ghost" size="sm" onClick={toggleTimer}>
+                <DsButton variant="ghost" size="sm" onClick={toggleTimer}>
                   {isTimerRunning ? t('editor.pause') : t('editor.resume')}
-                </NotionButton>
+                </DsButton>
               )}
             </div>
           </div>
@@ -1590,7 +1599,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         <div className="space-y-3">
           <h4 className="text-sm font-medium text-muted-foreground">{t('editor.currentQuestion')}</h4>
           <div className="space-y-2">
-            <NotionButton
+            <DsButton
               variant="outline"
               className="w-full justify-start gap-2"
               onClick={handleToggleFavorite}
@@ -1601,7 +1610,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 <Star size={16} />
               )}
               {isFavorite ? t('editor.unfavorite') : t('editor.favorite')}
-            </NotionButton>
+            </DsButton>
             {onDeleteQuestion && (
               deleteConfirmOpen ? (
                 /* 内联删除确认：替代模态对话框 */
@@ -1611,7 +1620,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     {t('exam_sheet:questionBank.confirmDeleteSingle')}
                   </p>
                   <div className="flex gap-2">
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       className="flex-1 !h-7"
@@ -1622,8 +1631,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       }}
                     >
                       {t('common:cancel')}
-                    </NotionButton>
-                    <NotionButton
+                    </DsButton>
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       className="flex-1 !h-7 bg-destructive/10 text-destructive hover:bg-destructive/[0.15]"
@@ -1636,18 +1645,18 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         <Trash size={14} />
                       )}
                       {t('common:delete')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
               ) : (
-                <NotionButton
+                <DsButton
                   variant="outline"
                   className="w-full justify-start gap-2 text-destructive hover:bg-destructive/10"
                   onClick={handleRequestDelete}
                 >
                   <Trash size={16} />
                   {t('common:delete')}
-                </NotionButton>
+                </DsButton>
               )
             )}
           </div>
@@ -1656,7 +1665,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         {/* 显示设置 */}
         <div className="space-y-3">
           <h4 className="text-sm font-medium text-muted-foreground">{t('editor.displaySettings')}</h4>
-          <NotionButton
+          <DsButton
             variant={focusMode ? 'default' : 'outline'}
             className="w-full justify-start gap-2"
             onClick={() => handleFocusModeChange(!focusMode)}
@@ -1664,11 +1673,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             <Crosshair size={16} />
             {t('editor.focusMode')}
             {focusMode && <span className="ml-auto text-xs opacity-70">{t('editor.enabled')}</span>}
-          </NotionButton>
+          </DsButton>
           <p className="text-xs text-muted-foreground">
             {t('editor.focusModeDesc')}
           </p>
-          <NotionButton
+          <DsButton
             variant={hideAnswerMode ? 'default' : 'outline'}
             className="w-full justify-start gap-2"
             onClick={() => handleHideAnswerModeChange(!hideAnswerMode)}
@@ -1676,7 +1685,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             {hideAnswerMode ? <EyeSlash size={16} /> : <Eye size={16} />}
             {t('editor.hideAnswerMode')}
             {hideAnswerMode && <span className="ml-auto text-xs opacity-70">{t('editor.enabled')}</span>}
-          </NotionButton>
+          </DsButton>
           <p className="text-xs text-muted-foreground">
             {t('editor.hideAnswerModeDesc')}
           </p>
@@ -1726,15 +1735,15 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         <span className="flex-1 min-w-0 truncate text-xs text-warning">
           {t('common:confirmMessages.unsaved_changes')}
         </span>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           className="!h-7 !px-2 text-xs"
           onClick={() => setPendingNavigationIndex(null)}
         >
           {t('common:cancel')}
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost"
           size="sm"
           className="!h-7 !px-2 text-xs bg-warning/10 text-warning hover:bg-warning/20"
@@ -1745,7 +1754,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           }}
         >
           {t('common:actions.discard')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   ) : null;
@@ -1886,7 +1895,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           </div>
         </div>
         <div className="flex gap-2">
-          <NotionButton
+          <DsButton
             variant="outline"
             className="flex-1"
             onClick={() => {
@@ -1896,13 +1905,13 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           >
             <ArrowClockwise size={16} className="mr-1" />
             {t('editor.restart')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             className="flex-1"
             onClick={() => setShowCompletionCelebration(false)}
           >
             {t('editor.viewQuestions')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     );
@@ -1936,9 +1945,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   <span className="text-sm font-medium text-info">
                     {t('editor.aiGrading')}
                   </span>
-                  <NotionButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 text-xs text-muted-foreground hover:text-foreground">
+                  <DsButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 text-xs text-muted-foreground hover:text-foreground">
                     {t('common:cancel')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
                 {aiGrading.state.feedback ? (
                   <div className="pl-7.5 text-sm text-muted-foreground leading-relaxed max-h-48 overflow-y-auto">
@@ -1961,12 +1970,12 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center gap-2.5">
                   <div className="w-5 h-5 rounded-full bg-warning flex items-center justify-center">
-                    <WarningCircle size={12} className="text-white" />
+                    <WarningCircle size={12} className="text-warning-foreground" />
                   </div>
                   <span className="text-sm text-warning">
                     {t('editor.aiGradingFailed')}
                   </span>
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={() => {
@@ -1978,7 +1987,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   >
                     <ArrowClockwise size={12} />
                     {t('editor.aiRetry')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
                 {/* #56: 评判失败时保留已流式输出的内容，不再整段消失 */}
                 {aiGrading.state.feedback && (
@@ -1996,14 +2005,14 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 )}
                 {onMarkCorrect && (
                   <div className="flex gap-2 pt-1">
-                    <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 bg-success/10 text-success hover:bg-success/[0.15]">
+                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 bg-success/10 text-success hover:bg-success/[0.15]">
                       <Check size={14} />
                       {t('editor.iGotItRight')}
-                    </NotionButton>
-                    <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
+                    </DsButton>
+                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
                       <X size={14} />
                       {t('editor.iGotItWrong')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 )}
               </div>
@@ -2012,7 +2021,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center gap-2.5">
                   <div className="w-5 h-5 rounded-full bg-warning flex items-center justify-center">
-                    <Lightbulb size={12} className="text-white" />
+                    <Lightbulb size={12} className="text-warning-foreground" />
                   </div>
                   <div>
                     <span className="text-sm font-medium text-warning">{t('editor.subjectiveSubmitted')}</span>
@@ -2026,14 +2035,14 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 )}
                 {onMarkCorrect && (
                   <div className="flex gap-2 pt-1">
-                    <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 bg-success/10 text-success hover:bg-success/[0.15]">
+                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 bg-success/10 text-success hover:bg-success/[0.15]">
                       <Check size={14} />
                       {t('editor.iGotItRight')}
-                    </NotionButton>
-                    <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
+                    </DsButton>
+                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
                       <X size={14} />
                       {t('editor.iGotItWrong')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 )}
               </div>
@@ -2077,9 +2086,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   submitResult.isCorrect ? 'bg-success qbank-anim-pop' : 'bg-destructive'
                 )}>
                   {submitResult.isCorrect ? (
-                    <Check size={12} weight="bold" className="text-white" />
+                    <Check size={12} weight="bold" className="text-success-foreground" />
                   ) : (
-                    <X size={12} className="text-white" />
+                    <X size={12} className="text-destructive-foreground" />
                   )}
                 </div>
                 <span className={cn(
@@ -2097,21 +2106,21 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               </div>
               {/* 重做按钮 */}
               {!submitResult.isCorrect && (
-                <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="!h-auto !px-2.5 !py-1 text-xs text-muted-foreground hover:bg-foreground/5" title={t('editor.retryTitle')}>
+                <DsButton variant="ghost" size="sm" onClick={handleRetry} className="!h-auto !px-2.5 !py-1 text-xs text-muted-foreground hover:bg-foreground/5" title={t('editor.retryTitle')}>
                   <ArrowClockwise size={14} />
                   {t('editor.retry')}
-                </NotionButton>
+                </DsButton>
               )}
             </div>
 
             {/* 解析折叠（回退到题目自身解析） */}
             {effectiveExplanation && (
               <div className="pt-2 border-t border-foreground/[0.06]">
-                <NotionButton variant="ghost" size="sm" onClick={() => setExplanationExpanded(!explanationExpanded)} className="!h-auto !p-0 text-warning hover:underline">
+                <DsButton variant="ghost" size="sm" onClick={() => setExplanationExpanded(!explanationExpanded)} className="!h-auto !p-0 text-warning hover:underline">
                   <Lightbulb size={16} />
                   {explanationExpanded ? t('editor.collapseExplanation') : t('editor.viewExplanation')}
                   {explanationExpanded ? <CaretUp size={14} /> : <CaretDown size={14} />}
-                </NotionButton>
+                </DsButton>
                 {explanationExpanded && (
                   <div className="ui-rise-in mt-2 text-sm text-muted-foreground leading-relaxed">
                     <MarkdownRenderer
@@ -2129,9 +2138,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   <div className="flex items-center gap-2">
                     <DsAnalysisIconMuted className="w-4 h-4 text-info animate-pulse" />
                     <span className="text-sm text-info">{t('editor.aiAnalyzing')}</span>
-                    <NotionButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 text-xs text-muted-foreground hover:text-foreground">
+                    <DsButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 text-xs text-muted-foreground hover:text-foreground">
                       {t('common:cancel')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                   {aiGrading.state.feedback ? (
                     <div className="text-sm text-muted-foreground leading-relaxed">
@@ -2159,7 +2168,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     <div className="flex items-center gap-1.5 text-xs text-warning">
                       <WarningCircle size={12} />
                       {aiGrading.state.error}
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         onClick={() => {
@@ -2171,7 +2180,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       >
                         <ArrowClockwise size={12} />
                         {t('editor.aiRetry')}
-                      </NotionButton>
+                      </DsButton>
                     </div>
                   )}
                   <div className="text-sm text-muted-foreground leading-relaxed">
@@ -2196,7 +2205,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   </div>
                 </div>
               ) : (
-                <NotionButton variant="ghost" size="sm" onClick={() => {
+                <DsButton variant="ghost" size="sm" onClick={() => {
                     if (!currentQuestion || !submitResult.submissionId) return;
                     const qId = currentQuestion.id;
                     resetAiGrading();
@@ -2212,7 +2221,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   }} className="!h-auto !p-0 text-info hover:underline">
                   <DsAnalysisIconMuted className="w-4 h-4" />
                   {t('editor.aiAnalysis')}
-                </NotionButton>
+                </DsButton>
               )}
             </div>
           </>
@@ -2286,6 +2295,17 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           {t(`questionBank.difficulty.${DIFFICULTY_I18N_KEY[currentQuestion.difficulty]}`)}
                         </Badge>
                       )}
+                      <DsButton
+                        variant="ghost"
+                        size="icon"
+                        iconOnly
+                        onClick={() => setShowSettingsPanel(true)}
+                        className="ml-auto"
+                        aria-label={t('questionBank.settings', 'Settings')}
+                        title={t('questionBank.settings', 'Settings')}
+                      >
+                        <GearSix size={18} />
+                      </DsButton>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -2336,7 +2356,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     })()}
 
                     {/* 原始图片裁剪入口 */}
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       className="text-muted-foreground hover:text-foreground"
@@ -2344,7 +2364,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     >
                       <Crop size={14} className="mr-1.5" />
                       {t('common:question_bank.source_images')}
-                    </NotionButton>
+                    </DsButton>
 
                     {/* 答题区域 */}
                     {editMode ? (
@@ -2403,17 +2423,17 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       <>
                         {/* 暗记模式遮罩 */}
                         {hideAnswerMode && !answerRevealed && !submitResult && (
-                          <NotionButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-8 !rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 flex-col items-center justify-center gap-2 hover:bg-[var(--interactive-hover)]">
+                          <DsButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-8 !rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 flex-col items-center justify-center gap-2 hover:bg-[var(--interactive-hover)]">
                             <Eye size={32} className="text-muted-foreground" />
                             <span className="text-sm text-muted-foreground">{t('editor.clickToReveal')}</span>
-                          </NotionButton>
+                          </DsButton>
                         )}
 
                         {/* 正常答题区域（与桌面端共用题型渲染） */}
                         {(!hideAnswerMode || answerRevealed || submitResult) && renderAnswerInput()}
 
                         {!submitResult && (
-                          <NotionButton
+                          <DsButton
                             variant="primary"
                             size="lg"
                             onClick={handleSubmit}
@@ -2425,7 +2445,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             ) : (
                               <><PaperPlaneRight size={16} />{t('editor.submitAnswer')}</>
                             )}
-                          </NotionButton>
+                          </DsButton>
                         )}
 
                         {/* 提交结果（含 AI 判分/解析，与桌面端共用） */}
@@ -2446,7 +2466,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               {draftNavigationBanner}
               <div className="flex items-center justify-between gap-2">
                 {/* 触控目标 ≥44px（h-11），拇指可达 */}
-                <NotionButton
+                <DsButton
                   variant="outline"
                   size="sm"
                   onClick={() => handleNavigate('prev')}
@@ -2455,8 +2475,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 >
                   <CaretLeft size={16} className="mr-1" />
                   {t('editor.prevQuestion')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   variant={submitResult ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => handleNavigate('next')}
@@ -2465,7 +2485,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 >
                   {t('editor.nextQuestion')}
                   <CaretRight size={16} className="ml-1" />
-                </NotionButton>
+                </DsButton>
               </div>
             </div>
           </div>
@@ -2614,7 +2634,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     {t(`questionBank.status.${STATUS_I18N_KEY[currentQuestion.status]}`)}
                   </span>
                 )}
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   iconOnly
@@ -2625,7 +2645,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   className="ml-auto"
                 >
                   <GearSix size={16} />
-                </NotionButton>
+                </DsButton>
               </div>
 
               {/* 标签 - 专注模式下隐藏 */}
@@ -2687,7 +2707,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               })()}
 
               {/* 原始图片裁剪入口 */}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="text-muted-foreground hover:text-foreground"
@@ -2695,7 +2715,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               >
                 <Crop size={14} className="mr-1.5" />
                 {t('common:question_bank.source_images')}
-              </NotionButton>
+              </DsButton>
 
               {/* 编辑模式：直接显示答案和解析 */}
               {editMode ? (
@@ -2770,10 +2790,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 <>
                   {/* 暗记模式遮罩 */}
                   {hideAnswerMode && !answerRevealed && !submitResult && (
-                    <NotionButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-12 !rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 flex-col items-center justify-center gap-3 hover:bg-[var(--interactive-hover)]">
+                    <DsButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-12 !rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 flex-col items-center justify-center gap-3 hover:bg-[var(--interactive-hover)]">
                       <Eye size={40} className="text-muted-foreground" />
                       <span className="text-muted-foreground">{t('editor.clickToRevealWithKey')}</span>
-                    </NotionButton>
+                    </DsButton>
                   )}
 
                   {/* 正常答题区域（与移动端共用题型渲染） */}
@@ -2784,7 +2804,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   )}
 
                   {!submitResult && (
-                    <NotionButton
+                    <DsButton
                       variant="primary"
                       size="lg"
                       onClick={handleSubmit}
@@ -2802,7 +2822,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           {t('editor.submitAnswer')}
                         </>
                       )}
-                    </NotionButton>
+                    </DsButton>
                   )}
 
                   {/* 内联快捷键提示（桌面端，按题型展示对应提示） */}
@@ -2852,14 +2872,14 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             </span>
                           )}
                         </span>
-                        <NotionButton
+                        <DsButton
                           variant="primary"
                           size="sm"
                           onClick={handleSaveNote}
                           disabled={!onUpdateUserNote || noteSaveState === 'saving'}
                         >
                           {t('editor.noteDone')}
-                        </NotionButton>
+                        </DsButton>
                       </div>
                       <Textarea
                         value={noteText}
@@ -2875,7 +2895,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       </p>
                     </div>
                   ) : (
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       onClick={() => setIsEditingNote(true)}
@@ -2894,7 +2914,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           {currentQuestion.userNote}
                         </p>
                       )}
-                    </NotionButton>
+                    </DsButton>
                   )}
                 </div>
               )}
@@ -2908,7 +2928,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           {/* 未保存草稿的内联确认条 */}
           {draftNavigationBanner}
           <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => handleNavigate('prev')}
@@ -2917,15 +2937,15 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             >
               <CaretLeft size={16} className="mr-1" />
               {t('editor.prevQuestion')}
-            </NotionButton>
+            </DsButton>
 
             <Popover>
               <PopoverTrigger asChild>
-                <NotionButton variant="ghost" size="sm" className="!px-3 !py-1.5 hover:bg-[var(--interactive-hover)]">
+                <DsButton variant="ghost" size="sm" className="!px-3 !py-1.5 hover:bg-[var(--interactive-hover)]">
                   <span className="font-medium">{currentIndex + 1}</span>
                   <span className="text-muted-foreground">/ {totalQuestions}</span>
                   <CaretDown size={14} className="text-muted-foreground" />
-                </NotionButton>
+                </DsButton>
               </PopoverTrigger>
               <PopoverContent className="w-80 p-3" align="center" side="top" sideOffset={8}>
                 {/* 搜索框 */}
@@ -2949,9 +2969,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     const q = questions[idx];
                     const status = q.status || 'new';
                     return (
-                      <NotionButton key={q.id} variant="ghost" size="icon" iconOnly onClick={() => { requestNavigate(idx); setSearchQuery(''); }} className={cn('!w-7 !h-7 text-xs font-medium', idx === currentIndex && 'bg-primary text-primary-foreground', idx !== currentIndex && status === 'mastered' && 'bg-success/10 text-success hover:bg-success/20', idx !== currentIndex && status === 'review' && 'bg-warning/10 text-warning hover:bg-warning/20', idx !== currentIndex && status === 'new' && 'bg-muted/50 text-muted-foreground hover:bg-[var(--interactive-hover)]', idx !== currentIndex && status === 'in_progress' && 'bg-primary/10 text-primary hover:bg-primary/20')}>
+                      <DsButton key={q.id} variant="ghost" size="icon" iconOnly onClick={() => { requestNavigate(idx); setSearchQuery(''); }} className={cn('!w-7 !h-7 text-xs font-medium [content-visibility:auto] [contain-intrinsic-size:auto_28px]', idx === currentIndex && 'bg-primary text-primary-foreground', idx !== currentIndex && status === 'mastered' && 'bg-success/10 text-success hover:bg-success/20', idx !== currentIndex && status === 'review' && 'bg-warning/10 text-warning hover:bg-warning/20', idx !== currentIndex && status === 'new' && 'bg-muted/50 text-muted-foreground hover:bg-[var(--interactive-hover)]', idx !== currentIndex && status === 'in_progress' && 'bg-primary/10 text-primary hover:bg-primary/20')}>
                         {idx + 1}
-                      </NotionButton>
+                      </DsButton>
                     );
                   })}
                 </div>
@@ -2963,7 +2983,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               </PopoverContent>
             </Popover>
 
-            <NotionButton
+            <DsButton
               variant={submitResult ? 'default' : 'ghost'}
               size="sm"
               onClick={() => handleNavigate('next')}
@@ -2972,7 +2992,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             >
               {t('editor.nextQuestion')}
               <CaretRight size={16} className="ml-1" />
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       </div>

@@ -318,6 +318,30 @@ pub async fn add_cards_to_anki_connect(
         .map(compute_anki_card_content_hash)
         .collect();
 
+    // 激活死设置：从 settings 读取 batch_size / retry_times / media_mode
+    let sync_options = {
+        let batch = state
+            .database
+            .get_setting("anki_connect_batch_size")
+            .ok()
+            .flatten();
+        let retry = state
+            .database
+            .get_setting("anki_connect_retry_times")
+            .ok()
+            .flatten();
+        let media = state
+            .database
+            .get_setting("anki_connect_media_mode")
+            .ok()
+            .flatten();
+        crate::anki_connect_service::AnkiConnectSyncOptions::from_setting_strings(
+            batch.as_deref(),
+            retry.as_deref(),
+            media.as_deref(),
+        )
+    };
+
     // D1 修复：detailed 版本会自动创建缺失模型、用 canAddNotes 把重复与失败分开
     match crate::anki_connect_service::add_notes_to_anki_detailed(
         selected_cards,
@@ -325,6 +349,7 @@ pub async fn add_cards_to_anki_connect(
         note_type,
         card_models,
         templates_by_model,
+        sync_options,
     )
     .await
     {
@@ -1353,12 +1378,37 @@ pub async fn batch_export_cards(
                 }
             }
 
+            // 激活死设置：从 settings 读取 batch_size / retry_times / media_mode
+            let sync_options = {
+                let batch = state
+                    .database
+                    .get_setting("anki_connect_batch_size")
+                    .ok()
+                    .flatten();
+                let retry = state
+                    .database
+                    .get_setting("anki_connect_retry_times")
+                    .ok()
+                    .flatten();
+                let media = state
+                    .database
+                    .get_setting("anki_connect_media_mode")
+                    .ok()
+                    .flatten();
+                crate::anki_connect_service::AnkiConnectSyncOptions::from_setting_strings(
+                    batch.as_deref(),
+                    retry.as_deref(),
+                    media.as_deref(),
+                )
+            };
+
             match crate::anki_connect_service::add_notes_to_anki_detailed(
                 anki_cards,
                 deck_name,
                 note_type,
                 card_models,
                 templates_by_model,
+                sync_options,
             )
             .await
             {

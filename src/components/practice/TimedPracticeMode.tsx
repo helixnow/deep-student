@@ -11,7 +11,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -35,12 +35,17 @@ import { useCountdown } from '@/hooks/useCountdown';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CountdownRing } from './CountdownRing';
 import { AnswerSheetGrid } from './AnswerSheetGrid';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 interface TimedPracticeModeProps {
   examId: string;
   onStart?: (session: TimedPracticeSession) => void;
   onTimeout?: () => void;
   onSubmit?: () => void;
+  /** 本地会话的当前题 ID（宿主传入时答题卡高亮以其为准，未传回退全局 store） */
+  currentQuestionId?: string | null;
+  /** 收藏标记题目 ID 集（宿主传入时优先；未传回退全局 store.questions，该 map 在此流程通常未加载） */
+  markedQuestionIds?: ReadonlySet<string>;
   className?: string;
 }
 
@@ -58,6 +63,8 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   onStart,
   onTimeout,
   onSubmit,
+  currentQuestionId,
+  markedQuestionIds,
   className,
 }) => {
   const { t } = useTranslation('practice');
@@ -92,6 +99,22 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   // UI 状态（交卷确认为内联面板；答题卡内联抽出）
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showAnswerSheet, setShowAnswerSheet] = useState(false);
+
+  useEffect(() => {
+    if (!showAnswerSheet) return;
+    return registerBackHandler(() => {
+      setShowAnswerSheet(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [showAnswerSheet]);
+
+  useEffect(() => {
+    if (!showSubmitConfirm) return;
+    return registerBackHandler(() => {
+      setShowSubmitConfirm(false);
+      return true;
+    }, BACK_PRIORITY.overlay + 1);
+  }, [showSubmitConfirm]);
   
   // 计时器状态 — 基于绝对时间戳的高精度倒计时
   const [targetEndTime, setTargetEndTime] = useState<number | null>(null);
@@ -133,13 +156,15 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
     () => new Set(activeSession?.answered_question_ids ?? []),
     [activeSession],
   );
+  // 收藏标记优先取宿主传入的集合；全局 store.questions 在此流程通常未加载，仅作兜底
   const markedIds = useMemo(() => {
+    if (markedQuestionIds) return markedQuestionIds;
     const marked = new Set<string>();
     activeSession?.question_ids.forEach((id) => {
       if (questions.get(id)?.is_favorite) marked.add(id);
     });
     return marked;
-  }, [activeSession, questions]);
+  }, [markedQuestionIds, activeSession, questions]);
   
   // 开始练习
   const handleStart = useCallback(async () => {
@@ -223,13 +248,13 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   if (!isStarted) {
     return (
       <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
-        <CardHeader className="pb-4">
+        <CardHeader className="px-0 pb-4 sm:px-6">
           <CardTitle className="flex items-center gap-2 text-base">
             <Timer size={18} className="text-primary" />
             {t('timed.title')}
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-6 px-0 sm:px-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="duration">{t('timed.duration')}</Label>
@@ -249,14 +274,14 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
 />
               <div className="flex flex-wrap gap-1.5">
                 {DURATION_PRESETS.map((preset) => (
-                  <NotionButton
+                  <DsButton
                     key={preset}
                     variant={durationMinutes === preset ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => setDurationMinutes(preset)}
                   >
                     {t('timed.minutesShort', { count: preset })}
-                  </NotionButton>
+                  </DsButton>
                 ))}
               </div>
             </div>
@@ -293,7 +318,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
             </div>
           </div>
           
-          <NotionButton
+          <DsButton
             onClick={handleStart}
             disabled={isLoadingPractice}
             className="w-full"
@@ -309,7 +334,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                 {t('timed.start')}
               </>
             )}
-          </NotionButton>
+          </DsButton>
         </CardContent>
       </Card>
     );
@@ -318,7 +343,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   // 练习中界面
   return (
     <Card className={cn('border-border/50 shadow-none', className)}>
-      <CardContent className="space-y-4 pt-4">
+      <CardContent className="space-y-4 px-3 pt-4 sm:px-6">
         {/* 倒计时进度环 */}
         <div className="flex flex-col items-center justify-center py-2">
           <CountdownRing
@@ -377,7 +402,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
         {/* 答题卡内联抽出 */}
         {activeSession && (
           <div className="space-y-2">
-            <NotionButton
+            <DsButton
               variant="outline"
               size="sm"
               onClick={() => setShowAnswerSheet((prev) => !prev)}
@@ -390,21 +415,22 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                 <SquaresFour size={14} className="mr-1.5" />
               )}
               {showAnswerSheet ? t('answerSheet.collapse') : t('answerSheet.expand')}
-            </NotionButton>
+            </DsButton>
             {showAnswerSheet && (
               <AnswerSheetGrid
                 questionIds={activeSession.question_ids}
                 examId={examId}
                 answeredIds={answeredIds}
                 markedIds={markedIds}
+                currentQuestionId={currentQuestionId}
 />
             )}
           </div>
         )}
         
         {/* 控制按钮 */}
-        <div className="flex gap-3">
-          <NotionButton
+        <div className="flex flex-col gap-2 min-[360px]:flex-row min-[360px]:gap-3">
+          <DsButton
             variant="outline"
             onClick={togglePause}
             className="flex-1"
@@ -420,8 +446,8 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                 {t('timed.pause')}
               </>
             )}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="default"
             onClick={() => setShowSubmitConfirm(true)}
             disabled={showSubmitConfirm}
@@ -429,7 +455,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
           >
             <StopCircle size={16} className="mr-2" />
             {t('timed.submit')}
-          </NotionButton>
+          </DsButton>
         </div>
 
         {/* 交卷内联确认（替代模态弹窗） */}
@@ -447,15 +473,15 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
               </div>
             </div>
             <div className="flex gap-2">
-              <NotionButton
+              <DsButton
                 variant="outline"
                 size="sm"
                 className="flex-1"
                 onClick={() => setShowSubmitConfirm(false)}
               >
                 {t('timed.cancel')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="default"
                 size="sm"
                 className="flex-1"
@@ -463,7 +489,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
               >
                 <CheckCircle size={14} className="mr-1" />
                 {t('timed.confirmSubmit')}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         )}

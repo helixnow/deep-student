@@ -239,9 +239,9 @@ async fn executor_imports_vfs_apkg_reads_cards_and_enforces_document_ownership()
     let next_steps = import.output["nextSteps"]
         .as_array()
         .expect("nextSteps suggestions");
-    assert!(next_steps
-        .iter()
-        .any(|step| step.as_str().is_some_and(|s| s.contains("chatanki_enqueue_review"))));
+    assert!(next_steps.iter().any(|step| step
+        .as_str()
+        .is_some_and(|s| s.contains("chatanki_enqueue_review"))));
     let document_id = import.output["documentId"]
         .as_str()
         .expect("import document ID")

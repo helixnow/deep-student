@@ -3,7 +3,7 @@
  * 
  * 提供表格形式的字段映射界面，用户可以将 CSV 列映射到题目字段
  * 
- * Notion 风格 UI：
+ * 简洁风格 UI：
  * - 简洁的表格设计
  * - 下拉选择框
  * - 实时预览映射后的数据
@@ -145,23 +145,23 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
   return (
     <div className="space-y-4">
       {/* 映射状态提示 */}
-      <div className="flex items-center gap-4 px-3 py-2 rounded-lg bg-muted/30">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-muted/30 px-3 py-2">
         {isMappingValid ? (
-          <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+          <div className="flex items-center gap-2 text-success">
             <CheckCircle size={16} />
             <span className="text-sm">
               {t('exam_sheet:csv.mapping_valid')}
             </span>
           </div>
         ) : hasDuplicateMappings ? (
-          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+          <div className="flex items-center gap-2 text-warning">
             <WarningCircle size={16} />
             <span className="text-sm">
               {t('exam_sheet:csv.mapping_duplicate')}
             </span>
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+          <div className="flex items-center gap-2 text-warning">
             <WarningCircle size={16} />
             <span className="text-sm">
               {t('exam_sheet:csv.mapping_required')}
@@ -170,9 +170,78 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
         )}
       </div>
 
-      {/* 字段映射表格 */}
-      <div className="rounded-lg border border-border overflow-hidden">
-        <Table>
+      {/* 手机端使用纵向卡片，避免三列表格被裁切并让字段选择保持完整宽度 */}
+      <div className="space-y-2 sm:hidden">
+        {headers.map((header, index) => {
+          const currentTarget = getColumnTarget(header);
+          const suggestedTarget = suggestMapping(header);
+          const previewValue = getPreviewValue(index);
+          const isMapped = !!currentTarget;
+
+          return (
+            <section
+              key={header}
+              className={cn(
+                'space-y-2 rounded-lg border border-border/70 p-3',
+                isMapped && 'border-primary/30 bg-primary/5',
+              )}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                {isMapped ? (
+                  <Link size={16} className="shrink-0 text-primary" />
+                ) : (
+                  <LinkBreak size={16} className="shrink-0 text-muted-foreground/50" />
+                )}
+                <span className="min-w-0 flex-1 break-all font-mono text-sm">{header}</span>
+              </div>
+              {readonly ? (
+                <span className="block text-sm">
+                  {currentTarget
+                    ? t(`exam_sheet:questionBank.export.fields.${currentTarget}`, currentTarget)
+                    : '-'}
+                </span>
+              ) : (
+                <AppSelect
+                  value={currentTarget}
+                  onValueChange={(value) => handleMappingChange(header, value as QuestionFieldKey | '')}
+                  placeholder={t('exam_sheet:csv.select_field')}
+                  options={[
+                    { value: '', label: t('exam_sheet:csv.no_mapping') },
+                    ...QUESTION_FIELDS.map((field) => {
+                      const isSelected = currentTarget === field.key;
+                      const isUsed = !isSelected && mappedFields.has(field.key);
+                      const isSuggested = !currentTarget && suggestedTarget === field.key;
+                      const fieldLabel = t(`exam_sheet:questionBank.export.fields.${field.key}`, field.key);
+                      const suffix = field.required
+                        ? ` (${t('exam_sheet:csv.required')})`
+                        : isSuggested && !isUsed
+                          ? ` (${t('exam_sheet:csv.suggested')})`
+                          : '';
+                      return {
+                        value: field.key,
+                        label: `${fieldLabel}${suffix}`,
+                        disabled: isUsed,
+                      };
+                    }),
+                  ]}
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                />
+              )}
+              {showPreview && previewValue && (
+                <p className="break-words text-xs leading-relaxed text-muted-foreground">
+                  {previewValue}
+                </p>
+              )}
+            </section>
+          );
+        })}
+      </div>
+
+      {/* 较宽视口保留表格；容器允许横向滚动，窄工作台窗口不再裁切列 */}
+      <div className="hidden overflow-x-auto rounded-lg border border-border sm:block">
+        <Table className={showPreview ? 'min-w-[560px]' : 'min-w-[380px]'}>
           <TableHeader>
             <TableRow className="bg-muted/30 hover:bg-[var(--interactive-hover)]">
               <TableHead className="w-[180px] font-medium">

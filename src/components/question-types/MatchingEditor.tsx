@@ -10,7 +10,7 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Plus, X, ArrowRight } from '@phosphor-icons/react';
@@ -79,7 +79,7 @@ export const MatchingEditor: React.FC<MatchingEditorProps> = ({ value, onChange,
           <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
             {side === 'left' ? t('editor.matching.leftColumn') : t('editor.matching.rightColumn')}
           </span>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => handleAdd(side)}
@@ -88,7 +88,7 @@ export const MatchingEditor: React.FC<MatchingEditorProps> = ({ value, onChange,
           >
             <Plus size={10} className="mr-0.5" />
             {t('editor.structEdit.addItem')}
-          </NotionButton>
+          </DsButton>
         </div>
         {items.map((item, index) => (
           <div
@@ -104,7 +104,7 @@ export const MatchingEditor: React.FC<MatchingEditorProps> = ({ value, onChange,
               placeholder={`${item.key} ...`}
               className="min-w-0 flex-1 bg-transparent text-xs"
             />
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -113,7 +113,7 @@ export const MatchingEditor: React.FC<MatchingEditorProps> = ({ value, onChange,
               className="!h-4 !w-4 !p-0 flex-shrink-0 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:opacity-70"
             >
               <X size={10} />
-            </NotionButton>
+            </DsButton>
           </div>
         ))}
         {items.length === 0 && (

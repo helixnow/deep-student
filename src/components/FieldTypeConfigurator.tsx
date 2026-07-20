@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Switch } from '@/components/ui/shad/Switch';
 import { useTranslation } from 'react-i18next';
 import {
@@ -141,9 +141,9 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                     <span className="required-badge">{t('required')}</span>
                   )}
                 </div>
-                <NotionButton variant="ghost" size="icon" iconOnly className="expand-button" aria-label="toggle">
+                <DsButton variant="ghost" size="icon" iconOnly className="expand-button" aria-label="toggle">
                   {isExpanded ? <CaretUp size={16} /> : <CaretDown size={16} />}
-                </NotionButton>
+                </DsButton>
               </div>
 
               {isExpanded && (

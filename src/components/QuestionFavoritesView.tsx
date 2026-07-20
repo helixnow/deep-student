@@ -8,7 +8,7 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -190,7 +190,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
     }
   }, [onToggleFavorite, favorites, totalCount, loadFavorites, t]);
 
-  // Notion 风格卡片：与题库列表视图统一（hover 浮起 + 微阴影 + stagger 入场）
+  // 简洁风格卡片：与题库列表视图统一（hover 浮起 + 微阴影 + stagger 入场）
   const renderQuestionCard = (question: ApiQuestion, index: number) => (
     <div
       key={question.id}
@@ -201,8 +201,10 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectQuestion?.(question); } }}
       className={cn(
         'ui-rise-in group relative cursor-pointer rounded-lg border border-border/60 bg-card p-3',
+        // 长列表渲染优化：视口外卡片跳过渲染（记忆上次尺寸避免滚动条跳动）
+        '[content-visibility:auto] [contain-intrinsic-size:auto_88px]',
         'transition-[background-color,border-color,color,box-shadow,transform] duration-200',
-        'hover:border-border hover:bg-[var(--interactive-hover)] hover:shadow-[var(--shadow-notion)] hover:-translate-y-0.5',
+        'hover:border-border hover:bg-[var(--interactive-hover)] hover:shadow-[var(--shadow-card)] hover:-translate-y-0.5',
         'motion-reduce:transition-none motion-reduce:hover:translate-y-0'
       )}
     >
@@ -220,7 +222,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
           </p>
         </div>
         <div className="flex flex-shrink-0 items-center opacity-60 transition-opacity group-hover:opacity-100">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -233,8 +235,8 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
             }}
           >
             <ClockCounterClockwise size={16} className="text-muted-foreground" />
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -252,7 +254,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
             ) : (
               <Star size={16} weight="fill" className="text-warning" />
             )}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
       <div className="mt-2 flex items-center justify-between">
@@ -316,9 +318,9 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
           <p className="text-sm text-muted-foreground">
             {t('exam_sheet:questionBank.favorites.loadFailed')}
           </p>
-          <NotionButton variant="ghost" size="sm" className="mt-3" onClick={() => void loadFavorites()}>
+          <DsButton variant="ghost" size="sm" className="mt-3" onClick={() => void loadFavorites()}>
             {t('common:actions.retry')}
-          </NotionButton>
+          </DsButton>
         </div>
       ) : favorites.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -330,9 +332,9 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
             {t('exam_sheet:questionBank.favorites.hint')}
           </p>
           {onBrowseQuestions && (
-            <NotionButton variant="ghost" size="sm" className="mt-3" onClick={onBrowseQuestions}>
+            <DsButton variant="ghost" size="sm" className="mt-3" onClick={onBrowseQuestions}>
               {t('exam_sheet:questionBank.favorites.browse')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       ) : (

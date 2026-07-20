@@ -10,6 +10,14 @@
   -webkit-backdrop-filter: blur(12px) !important;
 }
 
+/* 材质档位降级：全屏 backdrop-filter 换半透明 scrim */
+:root[data-wb-material='reduced'] .template-manager-backdrop,
+:root[data-wb-material='minimal'] .template-manager-backdrop {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: var(--overlay) !important;
+}
+
 .template-manager-container {
   position: relative;
   width: 95vw;

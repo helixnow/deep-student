@@ -2565,7 +2565,10 @@ mod tests {
             .expect("load decks");
         let decks: serde_json::Value = serde_json::from_str(&decks_json).expect("parse decks");
         let deck_key = APKG_EXPORT_DECK_ID.to_string();
-        assert!(decks.get(&deck_key).is_some(), "decks 必须以新 deck id 为键");
+        assert!(
+            decks.get(&deck_key).is_some(),
+            "decks 必须以新 deck id 为键"
+        );
         assert!(decks.get("1").is_none(), "不得再使用保留 deck id 1");
         let card_did: i64 = conn
             .query_row("SELECT did FROM cards LIMIT 1", [], |row| row.get(0))

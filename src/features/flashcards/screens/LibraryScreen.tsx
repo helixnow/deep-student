@@ -17,7 +17,7 @@ import {
   Trash,
   X,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Input } from '@/components/ui/shad/Input';
 import type { AnkiLibraryCard, AnkiLibraryCardPatch } from '@/types';
@@ -376,7 +376,7 @@ export const LibraryScreen: React.FC = () => {
               : translate('library.total', { count: total })}
           </p>
         </div>
-        <NotionButton
+        <DsButton
           type="button"
           variant="ghost"
           size="sm"
@@ -386,7 +386,7 @@ export const LibraryScreen: React.FC = () => {
         >
           <ArrowClockwise size={15} />
           {t('library.refresh')}
-        </NotionButton>
+        </DsButton>
       </header>
 
       <div className="wb-fc-toolbar">
@@ -407,9 +407,9 @@ export const LibraryScreen: React.FC = () => {
             className="h-9 pl-8 text-sm"
           />
         </div>
-        <NotionButton type="button" variant="default" onClick={handleSearchNow} className="text-sm">
+        <DsButton type="button" variant="default" onClick={handleSearchNow} className="text-sm">
           {t('library.search')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       <div className="fc-lib-filters">
@@ -490,7 +490,7 @@ export const LibraryScreen: React.FC = () => {
             {translate('library.selectedCount', { count: selectedCards.length })}
           </span>
           {reviewTargets.length > 0 ? (
-            <NotionButton
+            <DsButton
               type="button"
               variant="default"
               size="sm"
@@ -500,10 +500,10 @@ export const LibraryScreen: React.FC = () => {
             >
               <Play size={13} weight="fill" />
               {translate('library.bulkReview', { count: reviewTargets.length })}
-            </NotionButton>
+            </DsButton>
           ) : null}
           {enqueueTargets.length > 0 ? (
-            <NotionButton
+            <DsButton
               type="button"
               variant="default"
               size="sm"
@@ -513,10 +513,10 @@ export const LibraryScreen: React.FC = () => {
             >
               <PlusCircle size={13} />
               {translate('library.bulkEnqueue', { count: enqueueTargets.length })}
-            </NotionButton>
+            </DsButton>
           ) : null}
           {suspendTargets.length > 0 ? (
-            <NotionButton
+            <DsButton
               type="button"
               variant="ghost"
               size="sm"
@@ -526,10 +526,10 @@ export const LibraryScreen: React.FC = () => {
             >
               <Pause size={13} />
               {translate('library.bulkSuspend', { count: suspendTargets.length })}
-            </NotionButton>
+            </DsButton>
           ) : null}
           {resumeTargets.length > 0 ? (
-            <NotionButton
+            <DsButton
               type="button"
               variant="ghost"
               size="sm"
@@ -539,9 +539,9 @@ export const LibraryScreen: React.FC = () => {
             >
               <Play size={13} />
               {translate('library.bulkResume', { count: resumeTargets.length })}
-            </NotionButton>
+            </DsButton>
           ) : null}
-          <NotionButton
+          <DsButton
             type="button"
             variant="ghost"
             size="sm"
@@ -553,9 +553,9 @@ export const LibraryScreen: React.FC = () => {
             {bulkDeleteArmed
               ? translate('library.bulkDeleteConfirm', { count: selectedCards.length })
               : translate('library.bulkDelete', { count: selectedCards.length })}
-          </NotionButton>
+          </DsButton>
           <span className="fc-lib-bulkbar-spacer" />
-          <NotionButton
+          <DsButton
             type="button"
             variant="ghost"
             size="sm"
@@ -564,16 +564,16 @@ export const LibraryScreen: React.FC = () => {
           >
             <X size={13} />
             {translate('library.clearSelection')}
-          </NotionButton>
+          </DsButton>
         </div>
       ) : null}
 
       {actionError ? (
         <div role="alert" className="wb-fc-banner flex items-center justify-between gap-3 text-destructive">
           <span className="min-w-0 break-words">{actionError}</span>
-          <NotionButton type="button" variant="ghost" size="sm" onClick={clearActionError}>
+          <DsButton type="button" variant="ghost" size="sm" onClick={clearActionError}>
             {t('library.dismiss')}
-          </NotionButton>
+          </DsButton>
         </div>
       ) : null}
 
@@ -581,9 +581,9 @@ export const LibraryScreen: React.FC = () => {
         {loadError ? (
           <div role="alert" className="wb-fc-empty">
             <p className="break-words text-destructive">{loadError}</p>
-            <NotionButton type="button" variant="ghost" size="sm" onClick={() => void refresh()}>
+            <DsButton type="button" variant="ghost" size="sm" onClick={() => void refresh()}>
               {t('library.retry')}
-            </NotionButton>
+            </DsButton>
           </div>
         ) : initialLoading ? (
           <div aria-hidden="true">
@@ -599,18 +599,18 @@ export const LibraryScreen: React.FC = () => {
             <Stack size={28} className="text-muted-foreground/50" weight="duotone" />
             <p>{query ? translate('library.noMatches') : t('library.empty')}</p>
             {query ? (
-              <NotionButton type="button" variant="ghost" size="sm" onClick={handleClearFilters}>
+              <DsButton type="button" variant="ghost" size="sm" onClick={handleClearFilters}>
                 {translate('library.clearFilters')}
-              </NotionButton>
+              </DsButton>
             ) : null}
           </div>
         ) : visibleItems.length === 0 ? (
           <div className="wb-fc-empty">
             <Stack size={28} className="text-muted-foreground/50" weight="duotone" />
             <p>{translate('library.noMatches')}</p>
-            <NotionButton type="button" variant="ghost" size="sm" onClick={handleClearFilters}>
+            <DsButton type="button" variant="ghost" size="sm" onClick={handleClearFilters}>
               {translate('library.clearFilters')}
-            </NotionButton>
+            </DsButton>
           </div>
         ) : (
           <div className={loading ? 'fc-lib-list-dimmed' : undefined}>
@@ -657,7 +657,7 @@ export const LibraryScreen: React.FC = () => {
       <footer className="flex shrink-0 items-center justify-between gap-3 text-xs text-muted-foreground">
         <span>{translate('library.page', { page, pages: pageCount })}</span>
         <div className="flex items-center gap-1">
-          <NotionButton
+          <DsButton
             type="button"
             variant="ghost"
             size="sm"
@@ -667,8 +667,8 @@ export const LibraryScreen: React.FC = () => {
           >
             <CaretLeft size={14} />
             {t('library.previous')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             type="button"
             variant="ghost"
             size="sm"
@@ -678,7 +678,7 @@ export const LibraryScreen: React.FC = () => {
           >
             {t('library.next')}
             <CaretRight size={14} />
-          </NotionButton>
+          </DsButton>
         </div>
       </footer>
     </div>

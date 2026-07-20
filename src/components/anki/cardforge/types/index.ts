@@ -53,6 +53,8 @@ export interface GenerateCardsOutput {
   documentId?: string;
   /** 是否因暂停提前结束 */
   paused?: boolean;
+  /** 是否因空闲超时结束（ok 应为 false） */
+  timedOut?: boolean;
   /** 生成的卡片列表 */
   cards?: AnkiCardResult[];
   /** 统计信息 */

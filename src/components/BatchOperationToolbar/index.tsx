@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { AnkiCard } from '../../types';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { invoke } from '@tauri-apps/api/core';
@@ -318,32 +318,32 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
               className="search-input"
 />
             {searchQuery && (
-              <NotionButton variant="ghost" size="icon" iconOnly className="clear-search" onClick={() => setSearchQuery('')} aria-label="clear">
+              <DsButton variant="ghost" size="icon" iconOnly className="clear-search" onClick={() => setSearchQuery('')} aria-label="clear">
                 <X size={14} />
-              </NotionButton>
+              </DsButton>
             )}
           </div>
           
-          <NotionButton variant="ghost" size="sm" className="filter-button" onClick={() => setShowFilterBuilder(true)}>
+          <DsButton variant="ghost" size="sm" className="filter-button" onClick={() => setShowFilterBuilder(true)}>
             <Funnel size={18} />
             {t('filter')}
             {activeFilters.length > 0 && (
               <span className="filter-count">{activeFilters.length}</span>
             )}
-          </NotionButton>
+          </DsButton>
         </div>
         
         {/* 快速筛选 */}
         <div className="toolbar-section quick-filters">
-          <NotionButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('has_image')}>
+          <DsButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('has_image')}>
             {t('has_image')}
-          </NotionButton>
-          <NotionButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('no_tags')}>
+          </DsButton>
+          <DsButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('no_tags')}>
             {t('no_tags')}
-          </NotionButton>
-          <NotionButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('created_today')}>
+          </DsButton>
+          <DsButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('created_today')}>
             {t('created_today')}
-          </NotionButton>
+          </DsButton>
         </div>
         
         {/* 选择信息 */}
@@ -351,7 +351,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
           <span className="selection-count">
             {selectedIds.size} / {filteredCards.length} {t('selected')}
           </span>
-          <NotionButton variant="ghost" size="sm" className="select-all-btn" onClick={toggleSelectAll}>
+          <DsButton variant="ghost" size="sm" className="select-all-btn" onClick={toggleSelectAll}>
             {selectedIds.size === filteredCards.length && filteredCards.length > 0 ? (
               <>
                 <Square size={16} />
@@ -363,53 +363,53 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
                 {t('select_all')}
               </>
             )}
-          </NotionButton>
+          </DsButton>
         </div>
         
         {/* 批量操作按钮 */}
         <div className="toolbar-section batch-actions">
           {/* 文案包 span：窄屏 (<640) 由 .action-btn span 规则收缩为纯图标 */}
-          <NotionButton variant="ghost" size="sm" className="action-btn" onClick={() => setShowBatchEdit(true)} disabled={selectedIds.size === 0 || isProcessing}>
+          <DsButton variant="ghost" size="sm" className="action-btn" onClick={() => setShowBatchEdit(true)} disabled={selectedIds.size === 0 || isProcessing}>
             <PencilSimple size={18} />
             <span>{t('edit')}</span>
-          </NotionButton>
+          </DsButton>
           
-          <NotionButton variant="ghost" size="sm" className="action-btn" onClick={handleBatchAddTags} disabled={selectedIds.size === 0 || isProcessing}>
+          <DsButton variant="ghost" size="sm" className="action-btn" onClick={handleBatchAddTags} disabled={selectedIds.size === 0 || isProcessing}>
             <Tag size={18} />
             <span>{t('tags')}</span>
-          </NotionButton>
+          </DsButton>
           
-          <NotionButton variant="ghost" size="sm" className="action-btn" onClick={() => handleBatchExport()} disabled={selectedIds.size === 0 || isProcessing}>
+          <DsButton variant="ghost" size="sm" className="action-btn" onClick={() => handleBatchExport()} disabled={selectedIds.size === 0 || isProcessing}>
             <Download size={18} />
             <span>{t('export')}</span>
-          </NotionButton>
+          </DsButton>
           
-          <NotionButton variant="ghost" size="sm" className="action-btn" onClick={handleBatchDuplicate} disabled={selectedIds.size === 0 || isProcessing}>
+          <DsButton variant="ghost" size="sm" className="action-btn" onClick={handleBatchDuplicate} disabled={selectedIds.size === 0 || isProcessing}>
             <Copy size={18} />
             <span>{t('duplicate')}</span>
-          </NotionButton>
+          </DsButton>
           
-          <NotionButton variant="danger" size="sm" className="action-btn danger" onClick={handleBatchDelete} disabled={selectedIds.size === 0 || isProcessing}>
+          <DsButton variant="danger" size="sm" className="action-btn danger" onClick={handleBatchDelete} disabled={selectedIds.size === 0 || isProcessing}>
             <Trash size={18} />
             <span>{t('delete')}</span>
-          </NotionButton>
+          </DsButton>
           
           <div className="dropdown-container" ref={moreMenuRef}>
-            <NotionButton variant="ghost" size="icon" iconOnly className="action-btn more" onClick={() => setShowMoreMenu(!showMoreMenu)} aria-label="more" aria-expanded={showMoreMenu}>
+            <DsButton variant="ghost" size="icon" iconOnly className="action-btn more" onClick={() => setShowMoreMenu(!showMoreMenu)} aria-label="more" aria-expanded={showMoreMenu}>
               <DotsThreeVertical size={18} />
-            </NotionButton>
+            </DsButton>
             
             {showMoreMenu && (
               <div className="dropdown-menu">
-                <NotionButton variant="ghost" size="sm" onClick={() => { setShowMoreMenu(false); void handleBatchExport('csv'); }}>
+                <DsButton variant="ghost" size="sm" onClick={() => { setShowMoreMenu(false); void handleBatchExport('csv'); }}>
                   {t('export_as_csv')}
-                </NotionButton>
-                <NotionButton variant="ghost" size="sm" onClick={() => { setShowMoreMenu(false); void handleBatchExport('json'); }}>
+                </DsButton>
+                <DsButton variant="ghost" size="sm" onClick={() => { setShowMoreMenu(false); void handleBatchExport('json'); }}>
                   {t('export_as_json')}
-                </NotionButton>
-                <NotionButton variant="ghost" size="sm" onClick={() => { setShowMoreMenu(false); void handleBatchExport('markdown'); }}>
+                </DsButton>
+                <DsButton variant="ghost" size="sm" onClick={() => { setShowMoreMenu(false); void handleBatchExport('markdown'); }}>
                   {t('export_as_markdown')}
-                </NotionButton>
+                </DsButton>
               </div>
             )}
           </div>
@@ -508,7 +508,7 @@ const BatchCardItem: React.FC<BatchCardItemProps> = React.memo(({
       className={`batch-card-item ${isSelected ? 'selected' : ''}`}
       onClick={onSelect}
     >
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="icon"
         iconOnly
@@ -522,7 +522,7 @@ const BatchCardItem: React.FC<BatchCardItemProps> = React.memo(({
         }}
       >
         {isSelected ? <CheckSquare size={20} /> : <Square size={20} />}
-      </NotionButton>
+      </DsButton>
       
       <div className="card-content">
         <div className="card-front">{card.front}</div>

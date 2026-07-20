@@ -22,7 +22,7 @@ import {
 import { ArrowsClockwise } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl, type SegmentedControlOption } from '@/components/ui/SegmentedControl';
 import { LearningHeatmap } from '@/components/LearningHeatmap';
 import { useChatV2Stats, type DailyActivity } from '@/hooks/useChatV2Stats';
@@ -463,7 +463,7 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
             onValueChange={setRangeDays}
             options={rangeOptions}
           />
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             iconOnly
@@ -475,7 +475,7 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
             className="h-7 w-7 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
           >
             <ArrowsClockwise size={14} className={cn((loading || trendLoading) && 'animate-spin')} />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 
@@ -483,10 +483,10 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
         <div className={cn(GROUP_BOX_CLASS, 'flex flex-col items-center gap-2 py-12')}>
           <p className="text-sm text-muted-foreground">{t('llm_usage:no_data_or_load_failed')}</p>
           <p className="max-w-full truncate px-6 font-mono text-xs text-muted-foreground/50">{error}</p>
-          <NotionButton variant="ghost" size="sm" onClick={loadLlmData} className="mt-1">
+          <DsButton variant="ghost" size="sm" onClick={loadLlmData} className="mt-1">
             <ArrowsClockwise size={13} className="mr-1.5" />
             {t('llm_usage:actions.retry')}
-          </NotionButton>
+          </DsButton>
         </div>
       ) : initialLoading || chatStats.loading ? (
         <div className="flex flex-col gap-7">

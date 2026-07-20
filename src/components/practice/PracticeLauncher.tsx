@@ -12,7 +12,7 @@
 import React, { lazy, Suspense, useState, useCallback, useMemo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import {
   ListNumbers,
@@ -36,6 +36,7 @@ import { useQuestionBankStore } from '@/stores/questionBankStore';
 import type { QuestionBankStats } from '@/api/questionBankApi';
 import { ratioToPercent } from '@/components/stats';
 import type { PracticeMode } from '@/api/questionBankApi';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 // 懒加载高级模式组件
 const TimedPracticeMode = lazy(() => import('./TimedPracticeMode'));
@@ -51,6 +52,10 @@ export interface PracticeLauncherProps {
   /** Opens configuration for a mode selected from the in-practice toolbar. */
   requestedMode?: 'by_tag' | 'timed' | 'mock_exam' | 'daily' | 'paper' | null;
   onRequestedModeHandled?: () => void;
+  /** 本地会话当前题 ID：透传给限时/模拟考的答题卡高亮（未传回退全局 store） */
+  currentQuestionId?: string | null;
+  /** 收藏标记题目 ID 集：透传给限时/模拟考的答题卡角标（未传回退全局 store） */
+  markedQuestionIds?: ReadonlySet<string>;
   className?: string;
 }
 
@@ -76,11 +81,21 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
   onStartPractice,
   requestedMode,
   onRequestedModeHandled,
+  currentQuestionId,
+  markedQuestionIds,
   className,
 }) => {
   const { t } = useTranslation('practice');
   const [activeAdvanced, setActiveAdvanced] = useState<AdvancedMode>(null);
   const [isTagPickerOpen, setIsTagPickerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!activeAdvanced) return;
+    return registerBackHandler(() => {
+      setActiveAdvanced(null);
+      return true;
+    }, BACK_PRIORITY.view);
+  }, [activeAdvanced]);
   const timedSession = useQuestionBankStore(state => state.timedSession);
   const mockExamSession = useQuestionBankStore(state => state.mockExamSession);
   const mockExamScoreCard = useQuestionBankStore(state => state.mockExamScoreCard);
@@ -350,7 +365,10 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
   }
 
   return (
-    <CustomScrollArea className={cn('h-full', className)} viewportClassName="space-y-4 p-3">
+    <CustomScrollArea
+      className={cn('h-full', className)}
+      viewportClassName="space-y-4 p-3 pb-[calc(0.75rem+var(--mobile-safe-area-bottom,0px))]"
+    >
       {/* 快速统计 */}
       {stats && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1">
@@ -403,7 +421,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
           {modes.map(({ key, icon: Icon, label, desc, isAdvanced }) => {
             const isActive = activeAdvanced === key || (key === 'by_tag' && isTagPickerOpen);
             return (
-              <NotionButton
+              <DsButton
                 key={key}
                 variant="ghost" size="sm"
                 onClick={() => handleModeClick(key, isAdvanced)}
@@ -432,7 +450,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                     {stats.review}
                   </Badge>
                 )}
-              </NotionButton>
+              </DsButton>
             );
           })}
         </div>
@@ -447,7 +465,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 {t('practice:tagPicker.description')}
               </p>
             </div>
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -456,7 +474,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
               onClick={() => setIsTagPickerOpen(false)}
             >
               <CaretLeft size={16} />
-            </NotionButton>
+            </DsButton>
           </div>
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 md:grid-cols-3">
             {tagOptions.map(({ tag, count }) => {
@@ -464,7 +482,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 ? t('practice:tagPicker.untagged')
                 : tag;
               return (
-                <NotionButton
+                <DsButton
                   key={tag}
                   variant="ghost"
                   size="sm"
@@ -476,7 +494,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                   <span className="text-xs tabular-nums text-muted-foreground">
                     {t('practice:tagPicker.questionCount', { count })}
                   </span>
-                </NotionButton>
+                </DsButton>
               );
             })}
           </div>
@@ -486,11 +504,8 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       {/* 高级模式配置面板 */}
       {activeAdvanced && (
         <div key={activeAdvanced} className="ui-rise-in border-t border-border/40 pt-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium">
-              {modes.find(m => m.key === activeAdvanced)?.label}
-            </h3>
-            <NotionButton
+          <div className="mb-3 flex min-h-11 items-center gap-2">
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -499,7 +514,10 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
               onClick={() => setActiveAdvanced(null)}
             >
               <CaretLeft size={16} />
-            </NotionButton>
+            </DsButton>
+            <h3 className="min-w-0 truncate text-sm font-medium">
+              {modes.find(m => m.key === activeAdvanced)?.label}
+            </h3>
           </div>
           <Suspense
             fallback={
@@ -518,12 +536,16 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 onSubmit={() => {
                   setActiveAdvanced(null);
                 }}
+                currentQuestionId={currentQuestionId}
+                markedQuestionIds={markedQuestionIds}
 />
             )}
             {activeAdvanced === 'mock_exam' && (
               <MockExamMode
                 examId={examId}
                 onStart={() => onStartPractice('mock_exam')}
+                currentQuestionId={currentQuestionId}
+                markedQuestionIds={markedQuestionIds}
 />
             )}
             {activeAdvanced === 'daily' && (

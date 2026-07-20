@@ -10,6 +10,14 @@
   z-index: var(--z-modal) !important;
 }
 
+/* 材质档位降级：全屏 backdrop-filter 换半透明 scrim */
+:root[data-wb-material='reduced'] .tag-tree-modal-backdrop,
+:root[data-wb-material='minimal'] .tag-tree-modal-backdrop {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: var(--overlay) !important;
+}
+
 .tag-tree-modal {
   background: var(--surface-elevated);
   padding: 24px 32px;

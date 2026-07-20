@@ -33,7 +33,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { templateManager } from '@/data/ankiTemplates';
 import { TemplateRenderService } from '@/services/templateRenderService';
 import MinimalTemplateEditor, { EditorTabType } from '@/components/MinimalTemplateEditor';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input as ShadInput } from '@/components/ui/shad/Input';
 import { getErrorMessage, formatErrorMessage, logError } from '@/utils/errorUtils';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
@@ -51,6 +51,7 @@ import {
   mobileDrawerSectionLabelClassName,
 } from '@/components/layout/mobileDrawerStyles';
 import { useDesktopShellSidebarPortal } from '@/app/shell/DesktopShellSidebarPortal';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
@@ -147,7 +148,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     return (
       <div className="flex items-center justify-center gap-1 text-base font-semibold whitespace-nowrap min-w-0">
         {/* 触屏无 hover，用颜色差标记面包屑父级可点击（当前页保持前景色形成对比） */}
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => {
@@ -158,7 +159,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           className="hover:text-primary !p-0 !h-auto truncate max-w-[100px] text-muted-foreground [@media(pointer:coarse)]:text-primary"
         >
           {tAnki('page_title')}
-        </NotionButton>
+        </DsButton>
         <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
         <span className="truncate max-w-[120px]">
           {t('manager_title')}
@@ -166,13 +167,6 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       </div>
     );
   }, [isSelectingMode, t, tAnki, onBackToAnki]);
-
-  // 移动端统一顶栏配置 - 使用面包屑导航
-  useMobileHeader('template-management', {
-    titleNode: BreadcrumbNav,
-    showMenu: true,
-    onMenuClick: () => setScreenPosition(prev => prev === 'left' ? 'center' : 'left'),
-  }, [BreadcrumbNav]);
 
   usePageMount('template-management', 'TemplateManagementApp');
 
@@ -230,6 +224,14 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   const [batchExportSelection, setBatchExportSelection] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
   const [exportPanelError, setExportPanelError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isSmallScreen || !activePanel) return;
+    return registerBackHandler(() => {
+      setActivePanel(null);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, activePanel]);
 
   const agentTemplatesRef = useRef<CustomAnkiTemplate[]>([]);
   const agentSnapshotRef = useRef<TemplateAgentSnapshot>({
@@ -655,6 +657,44 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     backToBrowse();
   }, [confirmDiscardEditorChanges, backToBrowse]);
 
+  // 浏览态保留面包屑 + 菜单；编辑态切换为明确返回，并在右侧保留编辑器导航入口。
+  useMobileHeader('template-management', {
+    title: isEditingMode
+      ? (activeTab === 'create' ? t('tab_create') : editingTemplate?.name || t('tab_edit'))
+      : undefined,
+    titleNode: isEditingMode ? undefined : BreadcrumbNav,
+    showMenu: !isEditingMode,
+    showBackArrow: isEditingMode,
+    onMenuClick: isEditingMode
+      ? handleCancelEdit
+      : () => setScreenPosition(prev => prev === 'left' ? 'center' : 'left'),
+    rightActions: isEditingMode ? (
+      <DsButton
+        variant="ghost"
+        size="sm"
+        iconOnly
+        aria-label={t('manager_title')}
+        title={t('manager_title')}
+        onClick={() => setScreenPosition(prev => prev === 'left' ? 'center' : 'left')}
+      >
+        <Gear size={18} />
+      </DsButton>
+    ) : undefined,
+  }, [isEditingMode, activeTab, editingTemplate?.name, BreadcrumbNav, handleCancelEdit, t]);
+
+  // Android 返回优先收起编辑器抽屉，其次走与顶栏相同的脏检查返回路径。
+  useEffect(() => {
+    if (!isSmallScreen || !isEditingMode) return;
+    return registerBackHandler(() => {
+      if (screenPosition !== 'center') {
+        setScreenPosition('center');
+        return true;
+      }
+      handleCancelEdit();
+      return true;
+    }, BACK_PRIORITY.view);
+  }, [isSmallScreen, isEditingMode, screenPosition, handleCancelEdit]);
+
   // 面包屑「Anki 制卡」离开守卫与取消编辑共用同一脏检查
   leaveEditorGuardRef.current = confirmDiscardEditorChanges;
 
@@ -777,7 +817,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       {/* 选择模板模式保留取消入口 */}
       {isSelectingMode && onCancel && (
         <div className="mt-auto p-2 border-t border-border">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => {
@@ -787,7 +827,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           >
             <ArrowLeft size={16} />
             {t('back_button')}
-          </NotionButton>
+          </DsButton>
         </div>
       )}
     </UnifiedSidebar>
@@ -835,22 +875,22 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         {!isSelectingMode && activeTab === 'browse' && (
           <>
             <CommonTooltip content={t('tab_create')}>
-              <NotionButton variant="utility" size="icon" iconOnly onClick={startCreateTemplate} aria-label={t('tab_create')} className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10">
+              <DsButton variant="utility" size="icon" iconOnly onClick={startCreateTemplate} aria-label={t('tab_create')} className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10">
                 <Plus size={14} />
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
             <CommonTooltip content={t('refresh')}>
-              <NotionButton variant="utility" size="icon" iconOnly onClick={loadTemplates} disabled={isLoading} aria-label={t('refresh')} className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10">
+              <DsButton variant="utility" size="icon" iconOnly onClick={loadTemplates} disabled={isLoading} aria-label={t('refresh')} className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10">
                 <ArrowClockwise size={14} className={cn(isLoading && 'animate-spin')} />
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
             <CommonTooltip content={isImporting ? t('importing') : t('import_builtin_templates')}>
-              <NotionButton variant="utility" size="icon" iconOnly onClick={handleImportBuiltinTemplates} disabled={isImporting} aria-label={t('import_builtin_templates')} className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10">
+              <DsButton variant="utility" size="icon" iconOnly onClick={handleImportBuiltinTemplates} disabled={isImporting} aria-label={t('import_builtin_templates')} className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10">
                 <Download size={14} />
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
             <CommonTooltip content={t('import_external_templates')}>
-              <NotionButton
+              <DsButton
                 variant="utility"
                 size="icon"
                 iconOnly
@@ -861,10 +901,10 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                 className="h-7 w-7 wb-tm-nav-toggle [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
               >
                 <Upload size={14} />
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
             <CommonTooltip content={t('export_templates_sidebar')}>
-              <NotionButton
+              <DsButton
                 variant="utility"
                 size="icon"
                 iconOnly
@@ -875,15 +915,15 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                 className="h-7 w-7 wb-tm-nav-toggle [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
               >
                 <Download size={14} weight="bold" />
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
           </>
         )}
         {isSelectingMode && onCancel && (
-          <NotionButton variant="default" size="sm" onClick={onCancel} className="h-7">
+          <DsButton variant="default" size="sm" onClick={onCancel} className="h-7">
             <ArrowLeft size={14} />
             {t('back_button')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     </nav>
@@ -967,9 +1007,9 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             <Warning size={16} className="flex-shrink-0" />
             <span className="truncate">{error}</span>
           </span>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-current hover:text-current" aria-label={t('common:a11y.close')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-current hover:text-current" aria-label={t('common:a11y.close')}>
             <X size={14} />
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 
@@ -1066,7 +1106,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     <div className="min-h-0 space-y-0.5 pb-1 pt-1 text-foreground">
       {/* 工具行：刷新 / 搜索 / 新建 —— 与学习资源抽屉同构 */}
       <div className="mb-2 flex items-center gap-1.5 px-1">
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -1077,7 +1117,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           aria-label={t('refresh')}
         >
           <ArrowClockwise size={18} className={cn(isLoading && 'animate-spin')} />
-        </NotionButton>
+        </DsButton>
         <div className="group relative min-w-0 flex-1">
           <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" size={16} />
           <ShadInput
@@ -1089,7 +1129,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           />
         </div>
         {!isSelectingMode && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -1102,7 +1142,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             aria-label={t('tab_create')}
           >
             <Plus size={18} />
-          </NotionButton>
+          </DsButton>
         )}
       </div>
 

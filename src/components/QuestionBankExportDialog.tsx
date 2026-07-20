@@ -14,7 +14,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Label } from '@/components/ui/shad/Label';
 import {
   Download,
@@ -656,12 +656,12 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                 <span className="text-muted-foreground">
                   {t('exam_sheet:questionBank.export.selectedFields', { count: csvFields.size })}
                 </span>
-                <NotionButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(true)} className="!h-auto !p-0 text-primary hover:underline">
+                <DsButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(true)} className="!h-auto !p-0 text-primary hover:underline">
                   {t('common:contextMenu.selectAll')}
-                </NotionButton>
-                <NotionButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(false)} className="!h-auto !p-0 text-muted-foreground hover:text-foreground">
+                </DsButton>
+                <DsButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(false)} className="!h-auto !p-0 text-muted-foreground hover:text-foreground">
                   {t('common:deselect_all')}
-                </NotionButton>
+                </DsButton>
               </div>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -719,24 +719,24 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
         <div className="break-all font-mono text-xs text-foreground">{exportOutcome.path}</div>
       </div>
       <div className="flex justify-center">
-        <NotionButton variant="outline" size="sm" onClick={() => void handleRevealInFolder()}>
+        <DsButton variant="outline" size="sm" onClick={() => void handleRevealInFolder()}>
           <FolderOpen size={16} className="mr-1.5" />
           {t('exam_sheet:questionBank.export.openFolder')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );
 
   // 导出主按钮（两种形态共用）
   const exportButton = (
-    <NotionButton onClick={() => void handleExport()} disabled={isExporting || questions.length === 0}>
+    <DsButton onClick={() => void handleExport()} disabled={isExporting || questions.length === 0}>
       {isExporting ? (
         <CircleNotch size={16} className="mr-2 animate-spin" />
       ) : (
         <Download size={16} className="mr-2" />
       )}
       {t('exam_sheet:questionBank.export.button')}
-    </NotionButton>
+    </DsButton>
   );
 
   if (!open) return null;
@@ -757,7 +757,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
       >
         {/* 顶栏：返回 + 标题 + 步骤位置 */}
         <div className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b border-border/60 px-2">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -766,7 +766,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
             className="!h-11 !w-11 text-muted-foreground"
           >
             <ArrowLeft size={20} />
-          </NotionButton>
+          </DsButton>
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <Download size={16} className="flex-shrink-0 text-muted-foreground" />
             <span className="truncate text-sm font-medium text-foreground">
@@ -860,22 +860,22 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           }}
         >
           {exportOutcome ? (
-            <NotionButton onClick={() => onOpenChange(false)}>
+            <DsButton onClick={() => onOpenChange(false)}>
               {t('exam_sheet:questionBank.export.done')}
-            </NotionButton>
+            </DsButton>
           ) : (
             <>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 onClick={handleInlineBack}
                 disabled={isExporting}
               >
                 {inlineStep === 0 ? t('common:cancel') : t('common:actions.previous')}
-              </NotionButton>
+              </DsButton>
               {inlineStep < 2 ? (
-                <NotionButton onClick={() => setInlineStep((s) => Math.min(2, s + 1))}>
+                <DsButton onClick={() => setInlineStep((s) => Math.min(2, s + 1))}>
                   {t('common:actions.next')}
-                </NotionButton>
+                </DsButton>
               ) : (
                 exportButton
               )}
@@ -899,7 +899,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
           {t('exam_sheet:questionBank.export.title')}
         </span>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -909,7 +909,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           className="text-muted-foreground"
         >
           <X size={16} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 内容区 */}
@@ -933,14 +933,14 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
       {/* 底部操作栏 */}
       <div className="flex flex-shrink-0 items-center justify-end gap-2 border-t border-border/60 px-4 py-3">
         {exportOutcome ? (
-          <NotionButton onClick={() => onOpenChange(false)}>
+          <DsButton onClick={() => onOpenChange(false)}>
             {t('exam_sheet:questionBank.export.done')}
-          </NotionButton>
+          </DsButton>
         ) : (
           <>
-            <NotionButton variant="ghost" onClick={() => onOpenChange(false)} disabled={isExporting}>
+            <DsButton variant="ghost" onClick={() => onOpenChange(false)} disabled={isExporting}>
               {t('common:cancel')}
-            </NotionButton>
+            </DsButton>
             {exportButton}
           </>
         )}

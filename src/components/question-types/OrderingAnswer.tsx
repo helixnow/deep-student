@@ -10,7 +10,7 @@
 import React, { useMemo, useRef, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Check, X, CaretUp, CaretDown, DotsSixVertical } from '@phosphor-icons/react';
 import { LatexText } from '@/components/LatexText';
 import type { OrderingStructuredData } from './structured';
@@ -116,7 +116,7 @@ export const OrderingAnswer: React.FC<OrderingAnswerProps> = ({
                 className={cn(
                   'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-medium',
                   isCorrectPosition === true && 'bg-success text-success-foreground qbank-anim-pop',
-                  isCorrectPosition === false && 'bg-destructive text-white',
+                  isCorrectPosition === false && 'bg-destructive text-destructive-foreground',
                   isCorrectPosition === null && 'border border-foreground/[0.16] text-foreground/65'
                 )}
               >
@@ -136,7 +136,7 @@ export const OrderingAnswer: React.FC<OrderingAnswerProps> = ({
 
               {!submitted && (
                 <div className="flex flex-shrink-0 items-center gap-0.5">
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="icon"
                     iconOnly
@@ -146,8 +146,8 @@ export const OrderingAnswer: React.FC<OrderingAnswerProps> = ({
                     className="!h-8 !w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground"
                   >
                     <CaretUp size={14} />
-                  </NotionButton>
-                  <NotionButton
+                  </DsButton>
+                  <DsButton
                     variant="ghost"
                     size="icon"
                     iconOnly
@@ -157,7 +157,7 @@ export const OrderingAnswer: React.FC<OrderingAnswerProps> = ({
                     className="!h-8 !w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground"
                   >
                     <CaretDown size={14} />
-                  </NotionButton>
+                  </DsButton>
                   {/* 拖拽把手（仅视觉提示，整行可拖） */}
                   <DotsSixVertical
                     size={16}

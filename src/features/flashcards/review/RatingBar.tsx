@@ -5,7 +5,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Eye } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/utils/cn';
 import {
   formatInterval,
@@ -65,7 +65,7 @@ export const RatingBar: React.FC<RatingBarProps> = ({
   if (!flipped) {
     return (
       <div className="wb-fc-ratebar" data-mode="reveal">
-        <NotionButton
+        <DsButton
           type="button"
           variant="primary"
           disabled={disabled}
@@ -76,7 +76,7 @@ export const RatingBar: React.FC<RatingBarProps> = ({
           <Eye size={16} aria-hidden="true" />
           <span>{t('review.showAnswer')}</span>
           <kbd aria-hidden="true" className="wb-fc-keycap">Space</kbd>
-        </NotionButton>
+        </DsButton>
       </div>
     );
   }
@@ -87,7 +87,7 @@ export const RatingBar: React.FC<RatingBarProps> = ({
         const preview = previews?.[rating.value];
         const intervalLabel = preview ? formatInterval(preview.intervalMs) : null;
         return (
-          <NotionButton
+          <DsButton
             key={rating.value}
             type="button"
             variant="default"
@@ -110,7 +110,7 @@ export const RatingBar: React.FC<RatingBarProps> = ({
                 {t('session.intervalHint', { interval: intervalLabel })}
               </span>
             ) : null}
-          </NotionButton>
+          </DsButton>
         );
       })}
     </div>

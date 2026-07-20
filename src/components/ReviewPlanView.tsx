@@ -1,18 +1,18 @@
 /**
  * 复习计划主视图
  *
- * Notion 风格 UI，包含：
+ * 简洁风格 UI，包含：
  * - 今日复习卡片：醒目但不焦虑的到期数量呈现 + 开始复习引导
  * - 复习队列列表：显示待复习题目，按到期时间排序
  * - 复习进度条
  * - 空状态：今日无复习时的纯 CSS 完成态插画
  *
- * 🆕 2026-01 新增；2026-07 对标 Anki 体验改造
+ * 🆕 2026-01 新增；2026-07 复习体验改造
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Card } from '@/components/ui/shad/Card';
@@ -252,7 +252,7 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
 
       {/* 暂停计划（内联操作，暂停可随时恢复，无需二次确认） */}
       {onSuspend && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           iconOnly
           size="sm"
@@ -263,7 +263,7 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
           className="mr-1.5 h-9 w-9 shrink-0 text-muted-foreground opacity-60 hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
         >
           <Pause size={14} />
-        </NotionButton>
+        </DsButton>
       )}
     </div>
   );
@@ -320,10 +320,10 @@ const AllDoneState: React.FC<{
           </span>
         )}
         {onViewCalendar && (
-          <NotionButton variant="ghost" size="sm" onClick={onViewCalendar} className="gap-1.5 text-xs">
+          <DsButton variant="ghost" size="sm" onClick={onViewCalendar} className="gap-1.5 text-xs">
             <Calendar size={14} />
             {t('review:empty.viewCalendar')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     </div>
@@ -578,7 +578,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <NotionButton
+          <DsButton
             variant="outline"
             size="sm"
             onClick={onViewCalendar}
@@ -586,8 +586,8 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
           >
             <Calendar size={16} />
             {t('review:calendar.title')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={handleRefresh}
@@ -598,7 +598,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             <ArrowClockwise
               className={cn('w-4 h-4', isRefreshing && 'animate-spin')}
             />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 
@@ -699,7 +699,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
           </div>
 
           {hasDue && (
-            <NotionButton
+            <DsButton
               variant="primary"
               onClick={handleStartReview}
               className="gap-2 min-h-10 px-4 shadow-soft"
@@ -707,7 +707,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
               <Play size={16} weight="fill" />
               {t('review:startReview')}
               <CaretRight size={14} className="opacity-70" />
-            </NotionButton>
+            </DsButton>
           )}
         </div>
 
@@ -832,7 +832,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
                 {t('review:setup.description')}
               </p>
             </div>
-            <NotionButton
+            <DsButton
               variant="primary"
               size="sm"
               onClick={() => void handleCreatePlansForExam()}
@@ -845,7 +845,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
               />
               {!isCreatingPlans && <Play size={14} weight="fill" />}
               {t('review:setup.createAll')}
-            </NotionButton>
+            </DsButton>
           </Card>
         ) : (
           <AllDoneState

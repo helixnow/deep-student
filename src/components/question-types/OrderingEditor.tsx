@@ -10,7 +10,7 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Plus, X, CaretUp, CaretDown } from '@phosphor-icons/react';
 import type { StructuredItem } from './structured';
@@ -80,7 +80,7 @@ export const OrderingEditor: React.FC<OrderingEditorProps> = ({ value, onChange,
           <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
             {t('editor.structEdit.orderingItems')}
           </span>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handleAdd}
@@ -89,7 +89,7 @@ export const OrderingEditor: React.FC<OrderingEditorProps> = ({ value, onChange,
           >
             <Plus size={10} className="mr-0.5" />
             {t('editor.structEdit.addItem')}
-          </NotionButton>
+          </DsButton>
         </div>
         {value.items.map((item, index) => (
           <div
@@ -105,7 +105,7 @@ export const OrderingEditor: React.FC<OrderingEditorProps> = ({ value, onChange,
               placeholder={`${item.key} ...`}
               className="min-w-0 flex-1 bg-transparent text-xs"
             />
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -114,7 +114,7 @@ export const OrderingEditor: React.FC<OrderingEditorProps> = ({ value, onChange,
               className="!h-4 !w-4 !p-0 flex-shrink-0 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:opacity-70"
             >
               <X size={10} />
-            </NotionButton>
+            </DsButton>
           </div>
         ))}
         {value.items.length === 0 && (
@@ -142,7 +142,7 @@ export const OrderingEditor: React.FC<OrderingEditorProps> = ({ value, onChange,
                 <span className="font-semibold text-muted-foreground">{key}</span>
                 {contentByKey.get(key)?.trim() ? ` · ${contentByKey.get(key)}` : ''}
               </span>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -152,8 +152,8 @@ export const OrderingEditor: React.FC<OrderingEditorProps> = ({ value, onChange,
                 className="!h-6 !w-6 !p-0 flex-shrink-0 text-muted-foreground [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
               >
                 <CaretUp size={12} />
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -163,7 +163,7 @@ export const OrderingEditor: React.FC<OrderingEditorProps> = ({ value, onChange,
                 className="!h-6 !w-6 !p-0 flex-shrink-0 text-muted-foreground [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
               >
                 <CaretDown size={12} />
-              </NotionButton>
+              </DsButton>
             </div>
           ))}
         </div>

@@ -2901,10 +2901,7 @@ fn json_to_question_params(
 
     // 新题型契约：JSON 里携带的 structured_data 对象原样透传（matching/ordering/
     // numeric 缺少它无法自动判分）；非对象值丢弃，避免把 "null"/字符串写进列。
-    let structured_data = q
-        .get("structured_data")
-        .filter(|v| v.is_object())
-        .cloned();
+    let structured_data = q.get("structured_data").filter(|v| v.is_object()).cloned();
 
     CreateQuestionParams {
         exam_id: exam_id.to_string(),

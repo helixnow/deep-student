@@ -13,7 +13,7 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Input } from './ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { ArrowClockwise, CheckCircle, Eye, FolderOpen, PushPin, PushPinSlash, WarningCircle, X } from '@phosphor-icons/react';
 import { templateManager } from '../data/ankiTemplates';
 import { CustomAnkiTemplate } from '../types';
@@ -231,7 +231,7 @@ export const TemplateInlinePicker: React.FC<TemplatePickerDialogProps> = ({
               </p>
             </div>
             <div className="flex items-center gap-1.5">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={load}
@@ -240,14 +240,14 @@ export const TemplateInlinePicker: React.FC<TemplatePickerDialogProps> = ({
               >
                 <ArrowClockwise size={15} className={cn('mr-1', loading && 'animate-spin')} />
                 {t('templatePicker.refresh')}
-              </NotionButton>
+              </DsButton>
               {onOpenManager && (
-                <NotionButton variant="ghost" size="sm" onClick={onOpenManager}>
+                <DsButton variant="ghost" size="sm" onClick={onOpenManager}>
                   <FolderOpen size={15} className="mr-1" />
                   {t('templatePicker.openManager')}
-                </NotionButton>
+                </DsButton>
               )}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -255,7 +255,7 @@ export const TemplateInlinePicker: React.FC<TemplatePickerDialogProps> = ({
                 aria-label={t('templatePicker.close')}
               >
                 <X size={15} />
-              </NotionButton>
+              </DsButton>
             </div>
             <div className="w-full">
               <Input
@@ -289,9 +289,9 @@ export const TemplateInlinePicker: React.FC<TemplatePickerDialogProps> = ({
                 <div className="flex flex-col items-center gap-2 py-8 text-sm text-destructive">
                   <WarningCircle size={20} />
                   <span>{t('templatePicker.loadFailed')}</span>
-                  <NotionButton variant="ghost" size="sm" onClick={load}>
+                  <DsButton variant="ghost" size="sm" onClick={load}>
                     {t('templatePicker.retry')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               )}
 
@@ -378,7 +378,7 @@ export const TemplateInlinePicker: React.FC<TemplatePickerDialogProps> = ({
                             )}
                           </div>
                           <div className="mt-1.5 flex justify-end">
-                            <NotionButton
+                            <DsButton
                               variant="ghost"
                               size="sm"
                               className="!h-6 !px-1.5 text-xs"
@@ -398,7 +398,7 @@ export const TemplateInlinePicker: React.FC<TemplatePickerDialogProps> = ({
                               {pinnedTemplateId === template.id
                                 ? t('templatePicker.closePreview')
                                 : t('templatePicker.preview')}
-                            </NotionButton>
+                            </DsButton>
                           </div>
                         </div>
                       );
@@ -425,22 +425,22 @@ export const TemplateInlinePicker: React.FC<TemplatePickerDialogProps> = ({
                   )}
                 </div>
                 <div className="flex items-center gap-1 px-2.5 pt-1.5">
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     className={cn('!h-6 !px-2 text-xs', !previewBack && 'bg-primary/10 text-primary')}
                     onClick={() => setPreviewBack(false)}
                   >
                     {t('templatePicker.frontSide')}
-                  </NotionButton>
-                  <NotionButton
+                  </DsButton>
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     className={cn('!h-6 !px-2 text-xs', previewBack && 'bg-primary/10 text-primary')}
                     onClick={() => setPreviewBack(true)}
                   >
                     {t('templatePicker.backSide')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
                 <div className="p-2">
                   <IframePreview

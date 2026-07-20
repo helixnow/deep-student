@@ -9,7 +9,7 @@ import {
   Trash, DownloadSimple, ArrowSquareOut, XCircle,
   CircleNotch, FileText, Hash, TrendUp, ChartBar, Circle,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -309,49 +309,49 @@ export const SessionRow: React.FC<{
         >
           {group === 'active' && session.activeTasks > 0 && (
             <CommonTooltip content={t('pause')}>
-              <NotionButton size="sm" variant="ghost" onClick={() => act('pause')} disabled={!!busy} className="w-6 h-6 p-0">
+              <DsButton size="sm" variant="ghost" onClick={() => act('pause')} disabled={!!busy} className="w-6 h-6 p-0">
                 <Pause size={12} />
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
           )}
           {session.pausedTasks > 0 && (
             <CommonTooltip content={t('resume')}>
-              <NotionButton size="sm" variant="ghost" onClick={() => act('resume')} disabled={!!busy} className="w-6 h-6 p-0">
+              <DsButton size="sm" variant="ghost" onClick={() => act('resume')} disabled={!!busy} className="w-6 h-6 p-0">
                 <Play size={12} />
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
           )}
           {group === 'active' && (
             <CommonTooltip content={t('tasks.cancelTask')}>
-              <NotionButton size="sm" variant="ghost" onClick={() => act('cancel')} disabled={!!busy} className="w-6 h-6 p-0">
+              <DsButton size="sm" variant="ghost" onClick={() => act('cancel')} disabled={!!busy} className="w-6 h-6 p-0">
                 <XCircle size={12} />
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
           )}
           {group === 'attention' && session.pausedTasks === 0 && (
             <CommonTooltip content={t('taskDashboard.retryFailed')}>
-              <NotionButton size="sm" variant="ghost" onClick={() => act('retryFailed')} disabled={!!busy} className="w-6 h-6 p-0">
+              <DsButton size="sm" variant="ghost" onClick={() => act('retryFailed')} disabled={!!busy} className="w-6 h-6 p-0">
                 <ArrowCounterClockwise size={12} />
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
           )}
           {session.totalCards > 0 && (
             <CommonTooltip content={t('taskDashboard.quickExport')}>
-              <NotionButton size="sm" variant="ghost" onClick={handleQuickExport} disabled={!!busy || loadingCards} className="w-6 h-6 p-0">
+              <DsButton size="sm" variant="ghost" onClick={handleQuickExport} disabled={!!busy || loadingCards} className="w-6 h-6 p-0">
                 <DownloadSimple size={12} />
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
           )}
           {session.sourceSessionId && (
             <CommonTooltip content={t('taskDashboard.jumpToChat')}>
-              <NotionButton size="sm" variant="ghost" onClick={onJump} className="w-6 h-6 p-0">
+              <DsButton size="sm" variant="ghost" onClick={onJump} className="w-6 h-6 p-0">
                 <ArrowSquareOut size={12} />
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
           )}
           {/* 内联删除确认 */}
           <CommonTooltip content={deleteConfirm ? t('taskDashboard.confirmDeleteHint') : t('taskDashboard.deleteSession')}>
-            <NotionButton
+            <DsButton
               size="sm"
               variant={deleteConfirm ? 'danger' : 'ghost'}
               onClick={handleDelete}
@@ -362,7 +362,7 @@ export const SessionRow: React.FC<{
               {deleteConfirm && (
                 <span className="text-[10px]">{t('taskDashboard.confirmDeleteHint')}</span>
               )}
-            </NotionButton>
+            </DsButton>
           </CommonTooltip>
         </div>
         )}
@@ -398,36 +398,36 @@ export const SessionRow: React.FC<{
           {/* 操作按钮（移动端为唯一操作入口，补齐暂停/恢复/跳转聊天） */}
           <div className="flex flex-wrap gap-1.5 pt-1">
             {session.totalCards > 0 && (
-              <NotionButton size="sm" variant="default" onClick={handleQuickExport} disabled={!!busy || loadingCards}>
+              <DsButton size="sm" variant="default" onClick={handleQuickExport} disabled={!!busy || loadingCards}>
                 <DownloadSimple size={14} />{t('taskDashboard.exportApkg')}
-              </NotionButton>
+              </DsButton>
             )}
             {group === 'attention' && (
-              <NotionButton size="sm" variant="primary" onClick={() => act('retryFailed')} disabled={!!busy}>
+              <DsButton size="sm" variant="primary" onClick={() => act('retryFailed')} disabled={!!busy}>
                 <ArrowCounterClockwise size={14} />{t('taskDashboard.retryFailed')}
-              </NotionButton>
+              </DsButton>
             )}
             {isSmallScreen && group === 'active' && session.activeTasks > 0 && (
-              <NotionButton size="sm" variant="default" onClick={() => act('pause')} disabled={!!busy}>
+              <DsButton size="sm" variant="default" onClick={() => act('pause')} disabled={!!busy}>
                 <Pause size={14} />{t('pause')}
-              </NotionButton>
+              </DsButton>
             )}
             {isSmallScreen && session.pausedTasks > 0 && (
-              <NotionButton size="sm" variant="default" onClick={() => act('resume')} disabled={!!busy}>
+              <DsButton size="sm" variant="default" onClick={() => act('resume')} disabled={!!busy}>
                 <Play size={14} />{t('resume')}
-              </NotionButton>
+              </DsButton>
             )}
             {isSmallScreen && group === 'active' && (
-              <NotionButton size="sm" variant="default" onClick={() => act('cancel')} disabled={!!busy}>
+              <DsButton size="sm" variant="default" onClick={() => act('cancel')} disabled={!!busy}>
                 <XCircle size={14} />{t('tasks.cancelTask')}
-              </NotionButton>
+              </DsButton>
             )}
             {isSmallScreen && session.sourceSessionId && (
-              <NotionButton size="sm" variant="default" onClick={onJump}>
+              <DsButton size="sm" variant="default" onClick={onJump}>
                 <ArrowSquareOut size={14} />{t('taskDashboard.jumpToChat')}
-              </NotionButton>
+              </DsButton>
             )}
-            <NotionButton
+            <DsButton
               size="sm"
               variant={deleteConfirm ? 'danger' : 'default'}
               onClick={handleDelete}
@@ -435,7 +435,7 @@ export const SessionRow: React.FC<{
             >
               <Trash size={14} />
               {deleteConfirm ? t('taskDashboard.confirmDeleteHint') : t('taskDashboard.deleteSession')}
-            </NotionButton>
+            </DsButton>
           </div>
 
           {/* 失败分段面板 — 展示后端写入的 error_message + 逐段/整体重试入口 */}
@@ -536,11 +536,11 @@ export const SessionRow: React.FC<{
                 </div>
               </div>
               {hasMoreCards && (
-                <NotionButton variant="ghost" size="sm" onClick={() => setShowAllCards(v => !v)} className="w-full !py-1.5 text-[12px] text-muted-foreground/50 hover:text-muted-foreground">
+                <DsButton variant="ghost" size="sm" onClick={() => setShowAllCards(v => !v)} className="w-full !py-1.5 text-[12px] text-muted-foreground/50 hover:text-muted-foreground">
                   {showAllCards
                     ? t('taskDashboard.showLessCards')
                     : t('taskDashboard.showMoreCards', { remaining: normalCards.length - CARDS_PAGE_SIZE })}
-                </NotionButton>
+                </DsButton>
               )}
             </div>
           ) : session.totalCards === 0 ? (

@@ -11,7 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/shad/Badge';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   CheckCircle,
   XCircle,
@@ -46,11 +46,12 @@ const STATUS_KEYS: Record<QuestionStatus, string> = {
   review: 'review',
 };
 
+// 语义色 token：与 ReviewQuestionsView / QuestionBankEditor 的难度配色一致
 const difficultyColors: Record<Difficulty, string> = {
-  easy: 'text-emerald-500',
-  medium: 'text-amber-500',
-  hard: 'text-red-500',
-  very_hard: 'text-purple-500',
+  easy: 'text-success',
+  medium: 'text-warning',
+  hard: 'text-destructive/80',
+  very_hard: 'text-destructive',
 };
 
 export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
@@ -146,10 +147,10 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
                       {question.questionLabel || `${t('questionBank.content')} ${virtualItem.index + 1}`}
                     </span>
                     {question.isCorrect === true && (
-                      <CheckCircle size={14} className="text-green-500 flex-shrink-0" />
+                      <CheckCircle size={14} className="text-success flex-shrink-0" />
                     )}
                     {question.isCorrect === false && (
-                      <XCircle size={14} className="text-red-500 flex-shrink-0" />
+                      <XCircle size={14} className="text-destructive flex-shrink-0" />
                     )}
                     {question.difficulty && (
                       <span className={cn('text-xs', difficultyColors[question.difficulty])}>
@@ -171,7 +172,7 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
                 {/* 操作 */}
                 <div className="flex items-center gap-1 flex-shrink-0">
                   {/* 触屏：收藏钮命中区放大到 44px，负 margin 抵消占位保持行高稳定 */}
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="icon"
                     aria-label={t('questionBank.favorite', { defaultValue: 'favorite' })}
@@ -181,10 +182,10 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
                     <Star
                       className={cn(
                         'w-3.5 h-3.5',
-                        question.isFavorite ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'
+                        question.isFavorite ? 'fill-warning text-warning' : 'text-muted-foreground'
                       )}
 />
-                  </NotionButton>
+                  </DsButton>
                 </div>
 
                 <CaretRight size={16} className="text-muted-foreground flex-shrink-0" />

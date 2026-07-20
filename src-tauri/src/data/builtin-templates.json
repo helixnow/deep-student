@@ -2,7 +2,7 @@
   {
     "id": "design-lab",
     "name": "The Lab (学术选择题)",
-    "description": "Notion 风格学术选择题，简洁专注，可交互",
+    "description": "简洁风格学术选择题，简洁专注，可交互",
     "author": "Anki Design",
     "version": "3.0.3",
     "note_type": "Basic",
@@ -53,7 +53,7 @@
   {
     "id": "design-glass",
     "name": "The Glass (学术填空题)",
-    "description": "Notion 风格学术填空题，简洁专注",
+    "description": "简洁风格学术填空题，简洁专注",
     "author": "Anki Design",
     "version": "3.0.6",
     "note_type": "Cloze",

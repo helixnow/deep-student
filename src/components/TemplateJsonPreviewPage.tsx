@@ -8,7 +8,7 @@ import { getErrorMessage } from '../utils/errorUtils';
 import { IframePreview, renderCardPreview } from './SharedPreview';
 import { CustomScrollArea } from './custom-scroll-area';
 import { useMobileHeader } from './layout';
-import { NotionButton } from './ui/NotionButton';
+import { DsButton } from './ui/DsButton';
 import { Badge } from './ui/shad/Badge';
 import { Alert, AlertDescription, AlertTitle } from './ui/shad/Alert';
 import { UnifiedCodeEditor } from './shared/UnifiedCodeEditor';
@@ -68,17 +68,34 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
   useMobileHeader('template-json-preview', {
     title: t('json_preview.title'),
     subtitle: t('json_preview.subtitle'),
+    showBackArrow: true,
+    onMenuClick: onBack,
     rightActions: (
       <>
-        <NotionButton variant="ghost" size="sm" onClick={() => loadTemplatesRef.current()} disabled={isLoadingTemplates}>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          aria-label={t('json_preview.reload_templates')}
+          title={t('json_preview.reload_templates')}
+          onClick={() => loadTemplatesRef.current()}
+          disabled={isLoadingTemplates}
+        >
           {isLoadingTemplates ? <ArrowClockwise size={16} className="animate-spin" /> : <ArrowClockwise size={16} />}
-        </NotionButton>
-        <NotionButton variant="ghost" size="sm" onClick={() => handleParseRef.current()}>
+        </DsButton>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          aria-label={t('json_preview.parse_button')}
+          title={t('json_preview.parse_button')}
+          onClick={() => handleParseRef.current()}
+        >
           <Eye size={16} />
-        </NotionButton>
+        </DsButton>
       </>
     ),
-  }, [t, isLoadingTemplates]);
+  }, [t, isLoadingTemplates, onBack]);
 
   const loadTemplates = useCallback(async () => {
     setIsLoadingTemplates(true);
@@ -307,24 +324,24 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
       {!isSmallScreen && (
         <div className="template-json-preview-header">
           <div className="left">
-            <NotionButton variant="ghost" size="sm" onClick={onBack} className="gap-2">
+            <DsButton variant="ghost" size="sm" onClick={onBack} className="gap-2">
               <ArrowLeft size={16} />
               {t('json_preview.back')}
-            </NotionButton>
+            </DsButton>
             <div className="titles">
               <h2>{t('json_preview.title')}</h2>
               <p>{t('json_preview.subtitle')}</p>
             </div>
           </div>
           <div className="actions">
-            <NotionButton variant="default" size="sm" onClick={loadTemplates} disabled={isLoadingTemplates} className="gap-1.5">
+            <DsButton variant="default" size="sm" onClick={loadTemplates} disabled={isLoadingTemplates} className="gap-1.5">
               {isLoadingTemplates ? <ArrowClockwise size={16} className="animate-spin" /> : <ArrowClockwise size={16} />}
               <span>{t('json_preview.reload_templates')}</span>
-            </NotionButton>
-            <NotionButton variant="primary" size="sm" onClick={handleParse} className="gap-1.5">
+            </DsButton>
+            <DsButton variant="primary" size="sm" onClick={handleParse} className="gap-1.5">
               <Eye size={16} />
               <span>{t('json_preview.parse_button')}</span>
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -354,7 +371,7 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
                   <span>{t('json_preview.example_hint')}</span>
                 </div>
                 <div className="footer-actions">
-                  <NotionButton
+                  <DsButton
                     variant="default"
                     size="sm"
                     onClick={() => setInputValue(SAMPLE_JSON)}
@@ -362,11 +379,11 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
                   >
                     <ArrowClockwise size={16} />
                     <span>{t('json_preview.reset')}</span>
-                  </NotionButton>
-                  <NotionButton variant="primary" size="sm" onClick={handleParse} className="gap-1.5">
+                  </DsButton>
+                  <DsButton variant="primary" size="sm" onClick={handleParse} className="gap-1.5">
                     <Eye size={16} />
                     <span>{t('json_preview.parse_button')}</span>
-                  </NotionButton>
+                  </DsButton>
                 </div>
               </div>
               {parseError && (
@@ -478,16 +495,6 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
           </div>
         </div>
 
-        {/* 移动端底部占位，避免被底部导航栏遮挡 */}
-        {isSmallScreen && (
-          <div
-            style={{
-              // 使用 CSS 变量作为 Android fallback
-              height: 'calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 64px)',
-              flexShrink: 0,
-            }}
-/>
-        )}
       </CustomScrollArea>
     </div>
   );

@@ -10,7 +10,7 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Plus, X, Trash } from '@phosphor-icons/react';
@@ -97,7 +97,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
         <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
           {t('editor.structEdit.blanksTitle')}
         </span>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={addBlank}
@@ -106,7 +106,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
         >
           <Plus size={10} className="mr-0.5" />
           {t('editor.structEdit.addBlank')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       {blanks.map((blank, index) => {
@@ -127,7 +127,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
                 {renderToggle(index, 'case_sensitive', t('editor.structEdit.caseSensitive'), blank.case_sensitive === true)}
                 {renderToggle(index, 'trim', t('editor.structEdit.trimSpaces'), blank.trim !== false)}
                 {blanks.length > 1 && (
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="icon"
                     iconOnly
@@ -136,7 +136,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
                     className="!h-5 !w-5 !p-0 text-muted-foreground hover:text-destructive [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
                   >
                     <Trash size={11} />
-                  </NotionButton>
+                  </DsButton>
                 )}
               </div>
             </div>
@@ -171,7 +171,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
                 placeholder={t('editor.structEdit.answerDraftPlaceholder')}
                 className="h-7 flex-1 text-xs"
               />
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -181,7 +181,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
                 className="ui-press !h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
               >
                 <Plus size={12} />
-              </NotionButton>
+              </DsButton>
             </div>
 
             {missing && (

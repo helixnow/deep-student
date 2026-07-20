@@ -10,7 +10,7 @@
  * 项目已禁用模态框：CsvImportPanel 为页面内嵌形态；CsvImportDialog 保留
  * open/onOpenChange 接口，但渲染为占满宿主容器的内联覆盖面板。
  * 
- * Notion 风格 UI：
+ * 简洁风格 UI：
  * - 清晰的步骤指示
  * - 友好的拖拽区域
  * - 简洁的表格预览
@@ -21,7 +21,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Label } from '@/components/ui/shad/Label';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Alert, AlertDescription } from '@/components/ui/shad/Alert';
@@ -802,7 +802,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
           </div>
           {/* 取消按钮 */}
           <div className="flex justify-center pt-1">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => void handleCancelImport()}
@@ -817,7 +817,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
               {isCancelling
                 ? t('exam_sheet:csv.cancelling_import')
                 : t('exam_sheet:csv.cancel_import')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -950,7 +950,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
     const footerContent = (
       <>
         {/* 取消/关闭/返回按钮 */}
-        <NotionButton
+        <DsButton
           variant="outline"
           onClick={handleCancel}
           disabled={isCancelling}
@@ -964,45 +964,45 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
               : layout === 'inline'
                 ? t('common:actions.back')
                 : t('common:cancel')}
-        </NotionButton>
+        </DsButton>
 
 
         {/* 重试按钮（错误或已取消时显示） */}
         {canRetry && (
-          <NotionButton variant="ghost" onClick={handleRetry}>
+          <DsButton variant="ghost" onClick={handleRetry}>
             <ArrowClockwise size={16} className="mr-2" />
             {t('common:retry')}
-          </NotionButton>
+          </DsButton>
         )}
 
         {/* 上一步按钮 */}
         {!isFirstStep && !showResult && !isImporting && (
-          <NotionButton variant="ghost" onClick={handlePrev}>
+          <DsButton variant="ghost" onClick={handlePrev}>
             <CaretLeft size={16} className="mr-1" />
             {t('common:prev')}
-          </NotionButton>
+          </DsButton>
         )}
 
         {/* 下一步/开始导入按钮 */}
         {!showResult && (
           <>
             {currentStep === 'strategy' ? (
-              <NotionButton onClick={handleStartImport} disabled={isImporting}>
+              <DsButton onClick={handleStartImport} disabled={isImporting}>
                 {isImporting ? (
                   <CircleNotch size={16} className="mr-2 animate-spin" />
                 ) : (
                   <Upload size={16} className="mr-2" />
                 )}
                 {t('exam_sheet:csv.start_import')}
-              </NotionButton>
+              </DsButton>
             ) : currentStep !== 'progress' && currentStep !== 'select' && (
-              <NotionButton
+              <DsButton
                 onClick={handleNext}
                 disabled={currentStep === 'mapping' && !isMappingValid}
               >
                 {t('common:next')}
                 <CaretRight size={16} className="ml-1" />
-              </NotionButton>
+              </DsButton>
             )}
           </>
         )}

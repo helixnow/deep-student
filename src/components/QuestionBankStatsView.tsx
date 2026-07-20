@@ -9,7 +9,7 @@
  *   - 学习趋势折线图
  *   - 学习热力图
  *   - 知识点掌握度雷达图
- * 🆕 2026-07 增强：Duolingo/Anki 风格统计总览
+ * 🆕 2026-07 增强：学习统计/Anki 风格统计总览
  *   - 核心 KPI 卡置顶（总题数/掌握率/连续天数/今日完成），计数动画 + 入场错峰
  *   - 正确率圆环描画动画
  *   - 分区标题统一（SectionHeader）
@@ -19,7 +19,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   BookOpen,
   CheckCircle,
@@ -191,7 +191,7 @@ const SectionHeader: React.FC<{
 // ============================================================================
 
 const StatsSkeleton: React.FC<{ className?: string }> = ({ className }) => (
-  <div className={cn('h-full overflow-y-auto p-4 space-y-6', className)}>
+  <div className={cn('h-full min-h-0 overflow-y-auto p-4 space-y-6', className)}>
     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
       {[1, 2, 3, 4].map(i => (
         <Skeleton key={i} className="h-20 rounded-xl" />
@@ -310,9 +310,9 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
   }
 
   return (
-    // h-full + 内部滚动：父容器（ExamContentView 内容区）是 overflow-hidden，
-    // 矮窗口下统计卡片不再被整体裁掉
-    <div className={cn('h-full overflow-y-auto p-4 space-y-6', className)}>
+    // h-full + min-h-0 + 内部滚动：父容器（ExamContentView 内容区）是 overflow-hidden，
+    // 矮窗口下统计卡片不再被整体裁掉；min-h-0 防止 flex 子项按内容撑开后滚不动
+    <div className={cn('h-full min-h-0 overflow-y-auto p-4 space-y-6', className)}>
       {/* 核心 KPI 卡（总题数/掌握率/连续天数/今日完成） */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <StatCard
@@ -443,7 +443,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
       {showDetailCharts && !compact && (
         <>
           {/* 展开/收起按钮 */}
-          <NotionButton variant="ghost" size="sm" onClick={() => setExpandedCharts(!expandedCharts)} className="w-full justify-center !py-2 text-muted-foreground hover:text-foreground border-t border-border/50">
+          <DsButton variant="ghost" size="sm" onClick={() => setExpandedCharts(!expandedCharts)} className="w-full justify-center !py-2 text-muted-foreground hover:text-foreground border-t border-border/50">
             <ChartBar size={16} />
             <span>{expandedCharts ? t('exam_sheet:questionBank.stats.collapseCharts') : t('exam_sheet:questionBank.stats.expandCharts')}</span>
             {expandedCharts ? (
@@ -451,7 +451,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
             ) : (
               <CaretDown size={16} />
             )}
-          </NotionButton>
+          </DsButton>
 
           {/* 图表内容 */}
           {expandedCharts && (

@@ -14,7 +14,7 @@ import {
   PencilSimple, Copy, Trash, FileText, Lightbulb, Download,
   Star, Warning, Plus, FunnelSimple, Cards,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { IframePreview } from '@/components/SharedPreview';
 import { cn } from '@/lib/utils';
 import type { CustomAnkiTemplate } from '@/types';
@@ -26,6 +26,60 @@ export type RenderPreview = (
   templateData: CustomAnkiTemplate,
   isBack?: boolean,
 ) => string;
+
+/* ── 等比缩放预览 ──
+ * 模板 CSS 普遍按 ~500px 设计宽度编写（如 .mg-sheet { max-width: 500px }），
+ * 缩略卡实际只有 ~200px：直接塞进去会把内容压成竖排。
+ * 方案：iframe 按设计宽度渲染，再整体 transform: scale 缩小到容器宽度。 */
+
+const PREVIEW_DESIGN_WIDTH = 500;
+
+const ScaledTemplatePreview: React.FC<{ htmlContent: string; cssContent: string }> = ({
+  htmlContent,
+  cssContent,
+}) => {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  const [innerHeight, setInnerHeight] = useState(0);
+
+  useEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    const update = () => {
+      const width = outer.clientWidth;
+      setScale(width > 0 ? Math.min(1, width / PREVIEW_DESIGN_WIDTH) : 1);
+      setInnerHeight(inner.offsetHeight);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(outer);
+    observer.observe(inner);
+    return () => observer.disconnect();
+  }, []);
+
+  // 容器不窄于设计宽度时无需缩放，让 iframe 直接铺满容器
+  const needsScale = scale < 1;
+
+  return (
+    <div
+      ref={outerRef}
+      className="wb-tm-preview-scale"
+      style={{ height: needsScale && innerHeight > 0 ? Math.ceil(innerHeight * scale) : undefined }}
+    >
+      <div
+        ref={innerRef}
+        className="wb-tm-preview-scale-inner"
+        style={needsScale
+          ? { width: PREVIEW_DESIGN_WIDTH, transform: `scale(${scale})` }
+          : undefined}
+      >
+        <IframePreview htmlContent={htmlContent} cssContent={cssContent} />
+      </div>
+    </div>
+  );
+};
 
 /* ── 内联删除确认（无弹窗，自动超时还原） ── */
 
@@ -57,12 +111,12 @@ const InlineDeleteConfirm: React.FC<InlineDeleteConfirmProps> = ({ template, onC
         </span>
       </div>
       <div className="wb-tm-delete-confirm-actions">
-        <NotionButton variant="ghost" size="sm" onClick={onCancel} autoFocus>
+        <DsButton variant="ghost" size="sm" onClick={onCancel} autoFocus>
           {t('cancel_button')}
-        </NotionButton>
-        <NotionButton variant="danger" size="sm" onClick={onConfirm}>
+        </DsButton>
+        <DsButton variant="danger" size="sm" onClick={onConfirm}>
           {t('templateMgmt.delete_confirm_button')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );
@@ -117,16 +171,16 @@ const CardActions: React.FC<CardActionsProps> = ({
   if (isSelectingMode) {
     return (
       <div className="wb-tm-card-actions" onClick={(e) => e.stopPropagation()}>
-        <NotionButton variant="primary" size="sm" className="w-full" onClick={() => onTemplateSelected?.(template)}>
+        <DsButton variant="primary" size="sm" className="w-full" onClick={() => onTemplateSelected?.(template)}>
           {t('use_template')}
-        </NotionButton>
+        </DsButton>
       </div>
     );
   }
 
   return (
     <div className="wb-tm-card-actions" onClick={(e) => e.stopPropagation()}>
-      <NotionButton
+      <DsButton
         variant="utility"
         size="icon"
         iconOnly
@@ -137,19 +191,19 @@ const CardActions: React.FC<CardActionsProps> = ({
         className={cn(isDefault && 'wb-tm-star--active')}
       >
         <Star size={16} weight={isDefault ? 'fill' : 'regular'} />
-      </NotionButton>
-      <NotionButton variant="utility" size="icon" iconOnly onClick={onEdit} aria-label={t('edit_tooltip')} title={t('edit_tooltip')}>
+      </DsButton>
+      <DsButton variant="utility" size="icon" iconOnly onClick={onEdit} aria-label={t('edit_tooltip')} title={t('edit_tooltip')}>
         <PencilSimple size={16} />
-      </NotionButton>
-      <NotionButton variant="utility" size="icon" iconOnly onClick={onDuplicate} aria-label={t('duplicate_tooltip')} title={t('duplicate_tooltip')}>
+      </DsButton>
+      <DsButton variant="utility" size="icon" iconOnly onClick={onDuplicate} aria-label={t('duplicate_tooltip')} title={t('duplicate_tooltip')}>
         <Copy size={16} />
-      </NotionButton>
-      <NotionButton variant="utility" size="icon" iconOnly onClick={onExport} aria-label={t('export_tooltip')} title={t('export_tooltip')}>
+      </DsButton>
+      <DsButton variant="utility" size="icon" iconOnly onClick={onExport} aria-label={t('export_tooltip')} title={t('export_tooltip')}>
         <Download size={16} />
-      </NotionButton>
-      <NotionButton variant="danger" size="icon" iconOnly onClick={onRequestDelete} aria-label={t('delete_tooltip')} title={t('delete_tooltip')}>
+      </DsButton>
+      <DsButton variant="danger" size="icon" iconOnly onClick={onRequestDelete} aria-label={t('delete_tooltip')} title={t('delete_tooltip')}>
         <Trash size={16} />
-      </NotionButton>
+      </DsButton>
     </div>
   );
 };
@@ -248,7 +302,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
             <span className="wb-tm-preview-meta">v{template.version}</span>
           </div>
           <div className="wb-tm-preview-content">
-            <IframePreview
+            <ScaledTemplatePreview
               htmlContent={previewHtml}
               cssContent={template.css_style || ''}
             />
@@ -604,10 +658,10 @@ export const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
           <h3 className="wb-tm-empty-title">{t('empty_title')}</h3>
           <p>{t('empty_description')}</p>
           {!isSelectingMode && onCreateTemplate && (
-            <NotionButton variant="primary" size="sm" onClick={onCreateTemplate} className="mt-1">
+            <DsButton variant="primary" size="sm" onClick={onCreateTemplate} className="mt-1">
               <Plus size={14} />
               {t('tab_create')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       ) : isNoResults ? (
@@ -616,9 +670,9 @@ export const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
           <h3 className="wb-tm-empty-title">{t('templateMgmt.no_results_title')}</h3>
           <p>{t('templateMgmt.no_results_desc')}</p>
           {onResetFilters && hasFilters && (
-            <NotionButton variant="default" size="sm" onClick={onResetFilters} className="mt-1">
+            <DsButton variant="default" size="sm" onClick={onResetFilters} className="mt-1">
               {t('templateMgmt.clear_filters')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       ) : (

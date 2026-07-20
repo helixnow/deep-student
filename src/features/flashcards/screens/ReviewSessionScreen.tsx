@@ -22,7 +22,7 @@ import {
   Warning,
   X,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useAnkiTemplateLoader } from '@/hooks/useAnkiTemplateLoader';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/utils/cn';
@@ -379,7 +379,7 @@ export const ReviewSessionScreen: React.FC = () => {
         </div>
       </div>
       {errorKind === 'rate' && lastRated && flipped ? (
-        <NotionButton
+        <DsButton
           type="button"
           size="sm"
           variant="default"
@@ -389,7 +389,7 @@ export const ReviewSessionScreen: React.FC = () => {
         >
           <ArrowClockwise size={14} />
           {t('session.retry')}
-        </NotionButton>
+        </DsButton>
       ) : null}
     </div>
   ) : null;
@@ -417,14 +417,14 @@ export const ReviewSessionScreen: React.FC = () => {
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
           {retryBatchRequest ? (
-            <NotionButton type="button" variant="primary" onClick={() => void retryBatchSession()}>
+            <DsButton type="button" variant="primary" onClick={() => void retryBatchSession()}>
               <ArrowClockwise size={16} />
               {t('session.retry')}
-            </NotionButton>
+            </DsButton>
           ) : null}
-          <NotionButton type="button" variant="default" onClick={endSession}>
+          <DsButton type="button" variant="default" onClick={endSession}>
             {t('session.backToday')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     );
@@ -486,7 +486,7 @@ export const ReviewSessionScreen: React.FC = () => {
             <Info size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-info" />
             {t('session.batchNotice')}
           </span>
-          <NotionButton
+          <DsButton
             type="button"
             variant="ghost"
             size="sm"
@@ -497,15 +497,15 @@ export const ReviewSessionScreen: React.FC = () => {
             className="shrink-0"
           >
             <X size={13} />
-          </NotionButton>
+          </DsButton>
         </div>
       ) : null}
 
       <div className="flex items-center justify-between gap-2">
-        <NotionButton type="button" variant="ghost" size="sm" onClick={endSession} className="gap-1">
+        <DsButton type="button" variant="ghost" size="sm" onClick={endSession} className="gap-1">
           <ArrowLeft size={14} />
           {t('session.exit')}
-        </NotionButton>
+        </DsButton>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
           {sessionStreak >= STREAK_BADGE_THRESHOLD ? (
             <span key={sessionStreak} className="wb-fc-chip wb-fc-chip--streak" title={t('review.streakTitle')}>
@@ -544,7 +544,7 @@ export const ReviewSessionScreen: React.FC = () => {
       </div>
 
       <div className="flex items-center justify-end gap-1">
-        <NotionButton
+        <DsButton
           type="button"
           variant="ghost"
           size="sm"
@@ -556,9 +556,9 @@ export const ReviewSessionScreen: React.FC = () => {
           title={`${t('session.undo')} · Z`}
         >
           <ArrowCounterClockwise size={16} />
-        </NotionButton>
+        </DsButton>
         {lastSuspended ? (
-          <NotionButton
+          <DsButton
             type="button"
             variant="ghost"
             size="sm"
@@ -569,9 +569,9 @@ export const ReviewSessionScreen: React.FC = () => {
             title={t('session.resume')}
           >
             <Play size={16} />
-          </NotionButton>
+          </DsButton>
         ) : null}
-        <NotionButton
+        <DsButton
           type="button"
           variant="ghost"
           size="sm"
@@ -583,8 +583,8 @@ export const ReviewSessionScreen: React.FC = () => {
           title={`${t('session.edit')} · E`}
         >
           <PencilSimple size={16} />
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           type="button"
           variant="ghost"
           size="sm"
@@ -596,8 +596,8 @@ export const ReviewSessionScreen: React.FC = () => {
           title={`${t('review.skip')} · S`}
         >
           <SkipForward size={16} />
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           type="button"
           variant="ghost"
           size="sm"
@@ -608,7 +608,7 @@ export const ReviewSessionScreen: React.FC = () => {
           title={t('session.suspend')}
         >
           <Pause size={16} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {editing ? (
@@ -646,7 +646,7 @@ export const ReviewSessionScreen: React.FC = () => {
               <kbd className="wb-fc-keycap">⌘/Ctrl+Enter</kbd> {t('session.saveEdit')}
             </span>
             <div className="flex gap-2">
-              <NotionButton
+              <DsButton
                 type="button"
                 variant="ghost"
                 disabled={ratingBusy}
@@ -654,8 +654,8 @@ export const ReviewSessionScreen: React.FC = () => {
               >
                 <X size={16} />
                 {t('session.cancelEdit')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 type="button"
                 variant="primary"
                 disabled={ratingBusy || !draftIsValid}
@@ -663,7 +663,7 @@ export const ReviewSessionScreen: React.FC = () => {
               >
                 <FloppyDisk size={16} />
                 {t('session.saveEdit')}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         </div>

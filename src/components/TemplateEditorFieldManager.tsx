@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash, ArrowUp, ArrowDown, CheckCircle } from '@phosphor-icons/react';
 import { FieldExtractionRule } from '../types';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from './ui/shad/Input';
 import './TemplateEditorEnhancements.css';
 
@@ -119,23 +119,23 @@ const FieldRow: React.FC<FieldRowProps> = ({
         >
           {required ? t('templateEditor.fieldRequired') : t('templateEditor.fieldOptional')}
         </button>
-        <NotionButton
+        <DsButton
           type="button" variant="ghost" size="sm" iconOnly
           onClick={onMoveUp}
           disabled={index === 0}
           title={t('templateEditor.moveFieldUp') as string}
         >
           <ArrowUp size={14} />
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           type="button" variant="ghost" size="sm" iconOnly
           onClick={onMoveDown}
           disabled={index === total - 1}
           title={t('templateEditor.moveFieldDown') as string}
         >
           <ArrowDown size={14} />
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           type="button" variant="ghost" size="sm" iconOnly
           onClick={onRemove}
           disabled={total <= 1}
@@ -143,7 +143,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
           title={t('templateEditor.deleteField') as string}
         >
           <Trash size={14} />
-        </NotionButton>
+        </DsButton>
       </div>
       {error && (
         <div className="template-editor-lint-item basis-full mt-1" role="alert">{error}</div>
@@ -196,10 +196,10 @@ export const TemplateEditorFieldManager: React.FC<TemplateEditorFieldManagerProp
         ))}
       </div>
       <div className="flex items-center justify-between mt-3">
-        <NotionButton type="button" variant="ghost" size="sm" onClick={onAddField}>
+        <DsButton type="button" variant="ghost" size="sm" onClick={onAddField}>
           <Plus size={14} className="mr-1.5" />
           {tTemplate('add_field')}
-        </NotionButton>
+        </DsButton>
         <span className="text-[10px] text-muted-foreground/60">
           {t('templateEditor.renameSyncHint')}
         </span>

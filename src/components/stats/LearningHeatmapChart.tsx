@@ -8,7 +8,7 @@
  * - GitHub 风格的日历热力图（主题感知色阶，支持暗色模式）
  * - hover 单元格内联 tooltip 显示当日详情
  * - 点击日期回调
- * - Notion 风格 UI
+ * - 简洁风格 UI
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -17,7 +17,7 @@ import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { Fire, CalendarBlank, CaretLeft, CaretRight, ArrowsClockwise, Info } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 import { useQuestionBankStore } from '@/stores/questionBankStore';
@@ -343,7 +343,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
         <div className="flex items-center gap-2">
           {/* 年份选择器 */}
           <div className="flex items-center gap-1">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               className="h-7 w-7"
@@ -351,11 +351,11 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
               aria-label={String(selectedYear - 1)}
             >
               <CaretLeft size={16} />
-            </NotionButton>
+            </DsButton>
             <span className="text-sm font-medium min-w-[50px] text-center tabular-nums">
               {selectedYear}
             </span>
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               className="h-7 w-7"
@@ -364,11 +364,11 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
               aria-label={String(selectedYear + 1)}
             >
               <CaretRight size={16} />
-            </NotionButton>
+            </DsButton>
           </div>
 
           {/* 刷新按钮 */}
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             className="w-8 h-8"
@@ -376,7 +376,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
             aria-label={t('heatmapChart.title')}
           >
             <ArrowsClockwise size={16} />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 

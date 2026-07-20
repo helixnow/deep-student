@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { AnkiCard } from '../../types';
 import { useTranslation } from 'react-i18next';
 import { X, CaretLeft, CaretRight } from '@phosphor-icons/react';
@@ -170,9 +170,9 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
       <div className="batch-edit-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="dialog-header">
           <h3>{t('batch_edit_title', { count: cards.length })}</h3>
-          <NotionButton variant="ghost" size="icon" iconOnly className="close-btn" onClick={onClose} aria-label={t('common:a11y.close')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="close-btn" onClick={onClose} aria-label={t('common:a11y.close')}>
             <X size={20} />
-          </NotionButton>
+          </DsButton>
         </div>
         
         <div className="dialog-body">
@@ -349,9 +349,9 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                       {changes.tags!.value.map((tag, index) => (
                         <span key={index} className="tag">
                           {tag}
-                          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveTag(index)} className="tag-remove" aria-label="remove">
+                          <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveTag(index)} className="tag-remove" aria-label="remove">
                             <X size={14} />
-                          </NotionButton>
+                          </DsButton>
                         </span>
                       ))}
                     </div>
@@ -368,13 +368,13 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                 <h4>{t('preview_changes')}</h4>
                 {cards.length > 1 && (
                   <div className="preview-nav">
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.max(0, previewIndex - 1))} disabled={previewIndex === 0} className="nav-btn" aria-label={t('common:a11y.prev')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.max(0, previewIndex - 1))} disabled={previewIndex === 0} className="nav-btn" aria-label={t('common:a11y.prev')}>
                       <CaretLeft size={16} />
-                    </NotionButton>
+                    </DsButton>
                     <span className="nav-info">{previewIndex + 1} / {cards.length}</span>
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.min(cards.length - 1, previewIndex + 1))} disabled={previewIndex === cards.length - 1} className="nav-btn" aria-label={t('common:a11y.next')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.min(cards.length - 1, previewIndex + 1))} disabled={previewIndex === cards.length - 1} className="nav-btn" aria-label={t('common:a11y.next')}>
                       <CaretRight size={16} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 )}
               </div>
@@ -437,12 +437,12 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
         </div>
         
         <div className="dialog-footer">
-          <NotionButton variant="default" size="sm" onClick={onClose}>
+          <DsButton variant="default" size="sm" onClick={onClose}>
             {t('cancel')}
-          </NotionButton>
-          <NotionButton variant="primary" size="sm" onClick={() => onSave(changes)} disabled={!hasChanges}>
+          </DsButton>
+          <DsButton variant="primary" size="sm" onClick={() => onSave(changes)} disabled={!hasChanges}>
             {t('apply_to_cards', { count: cards.length })}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     </div>

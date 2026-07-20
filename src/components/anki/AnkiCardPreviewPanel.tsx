@@ -9,7 +9,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Eye } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
 import { TemplateRenderService } from '@/services/templateRenderService';
 import { IframePreview } from '@/components/SharedPreview';
@@ -52,7 +52,7 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
     <div className={cn('flex min-w-0 flex-col gap-3', className)}>
       {/* 正反面切换（触控 ≥44px） */}
       <div className="flex items-center gap-1.5" role="tablist" aria-label={t('anki:anki_card_preview')}>
-        <NotionButton
+        <DsButton
           type="button"
           variant={showFront ? 'default' : 'ghost'}
           size="sm"
@@ -63,8 +63,8 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
         >
           <Eye size={14} />
           {t('anki:card_front')}
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           type="button"
           variant={!showFront ? 'default' : 'ghost'}
           size="sm"
@@ -75,7 +75,7 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
         >
           <Eye size={14} />
           {t('anki:card_back')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 卡面渲染 */}

@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { CheckCircle, GearSix } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { requestFlashcardsDueRefresh } from '../events';
@@ -184,7 +184,7 @@ export const SchedulerSettingsSection: React.FC = () => {
                   className="h-8 w-28 text-sm"
                 />
               </label>
-              <NotionButton
+              <DsButton
                 type="button"
                 variant="primary"
                 size="sm"
@@ -193,7 +193,7 @@ export const SchedulerSettingsSection: React.FC = () => {
                 className="text-xs"
               >
                 {t('settings.scheduler.save')}
-              </NotionButton>
+              </DsButton>
               {notice === 'saved' ? (
                 <span role="status" className="flex items-center gap-1 text-xs text-muted-foreground">
                   <CheckCircle size={13} aria-hidden="true" />

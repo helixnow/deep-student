@@ -15,7 +15,7 @@ import {
 } from '@phosphor-icons/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/shad/Card';
 import { Badge } from './ui/shad/Badge';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { TodayCommandCenter } from './dashboard/TodayCommandCenter';
 import { useAllStatistics } from '../hooks/useStatisticsData';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
@@ -139,7 +139,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
   useMobileHeader('dashboard', {
     title: tCommon('navigation.dashboard', '总览'),
     rightActions: (
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         iconOnly
@@ -147,7 +147,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         onClick={() => exportDataRef.current()}
       >
         <DownloadSimple size={18} />
-      </NotionButton>
+      </DsButton>
     ),
   }, [tCommon, t]);
 
@@ -330,7 +330,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         <div className="sota-error">
           <WarningCircle size={48} color={DESIGN.colors.danger} />
           <p>{t('load_failed')}: {error.message}</p>
-          <NotionButton onClick={refresh} className="mt-2">{tCommon('actions.retry')}</NotionButton>
+          <DsButton onClick={refresh} className="mt-2">{tCommon('actions.retry')}</DsButton>
         </div>
       );
     }
@@ -341,9 +341,9 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         {!isSmallScreen && (
         <div className="mb-4 flex items-center gap-2">
           {typeof onBack === 'function' && (
-            <NotionButton variant="ghost" size="sm" onClick={onBack} className="flex items-center gap-1 text-muted-foreground">
+            <DsButton variant="ghost" size="sm" onClick={onBack} className="flex items-center gap-1 text-muted-foreground">
               <ArrowLeft size={16} /> {tCommon('actions.back')}
-            </NotionButton>
+            </DsButton>
           )}
           <div className="flex-1" />
           <div className="flex items-center gap-2">
@@ -366,9 +366,9 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
             >
               {t('auto_refresh_label')} {isRefreshing ? t('auto_refresh_in_progress') : t('auto_refresh_interval')}
             </Badge>
-            <NotionButton variant="ghost" size="sm" onClick={exportData} disabled={!data} className="flex items-center gap-1">
+            <DsButton variant="ghost" size="sm" onClick={exportData} disabled={!data} className="flex items-center gap-1">
               <DownloadSimple size={16} /> {t('export_stats_button')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
         )}
@@ -594,10 +594,16 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
 
       `}</style>
 
+      {/*
+        * 内容容器不能用 main 元素：app.css 的全局 `main { height:100dvh; overflow:hidden }`
+        * 会把内容钳死在一屏内，外层 ScrollArea 便无从滚动（移动端总览无法滚动的根因）。
+        * 页面级 main 地标已由 App 壳（#main-content）唯一提供，这里嵌套也不合法。
+        * 契约测试：tests/vitest/dashboardScrollContract.test.ts
+        */}
       <div className="sota-dashboard">
-        <main className="sota-content" style={embedded ? { padding: '0' } : undefined}>
+        <div className="sota-content" style={embedded ? { padding: '0' } : undefined}>
           {renderUnifiedContent()}
-        </main>
+        </div>
       </div>
     </>
   );

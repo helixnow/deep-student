@@ -2722,7 +2722,12 @@ impl FsrsReviewService {
             set_field(obj, "new_per_day", "newPerDay", serde_json::json!(v));
         }
         if let Some(v) = update.reviews_per_day {
-            set_field(obj, "reviews_per_day", "reviewsPerDay", serde_json::json!(v));
+            set_field(
+                obj,
+                "reviews_per_day",
+                "reviewsPerDay",
+                serde_json::json!(v),
+            );
         }
         if let Some(v) = update.desired_retention {
             set_field(
@@ -2821,8 +2826,9 @@ impl FsrsReviewService {
                     continue;
                 }
                 let date = local_date_key(review_ms);
-                let entry = daily.entry(date.clone()).or_insert_with(|| {
-                    FsrsDailyReviewStat {
+                let entry = daily
+                    .entry(date.clone())
+                    .or_insert_with(|| FsrsDailyReviewStat {
                         date,
                         total: 0,
                         again: 0,
@@ -2830,8 +2836,7 @@ impl FsrsReviewService {
                         good: 0,
                         easy: 0,
                         new_introduced: 0,
-                    }
-                });
+                    });
                 entry.total += 1;
                 rating_distribution.total += 1;
                 match rating {
@@ -4525,7 +4530,10 @@ mod tests {
         let result = service
             .reset_card_progress(&old_state_id)
             .expect("reset progress");
-        assert_ne!(result.state.id, old_state_id, "reset issues a fresh state id");
+        assert_ne!(
+            result.state.id, old_state_id,
+            "reset issues a fresh state id"
+        );
         assert_eq!(result.cleared_logs, 1);
         assert_eq!(result.state.anki_card_id, "card-reset");
         assert_eq!(result.state.state, 0);

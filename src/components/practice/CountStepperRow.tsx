@@ -3,7 +3,7 @@
  *
  * 模拟考试题型/难度配比、组卷器题型配置共用。
  * 步进器保证移动端可以精确 ±1 调整（滑杆在窄屏上很难精确拖动），
- * 触控目标 ≥44px（NotionButton 移动端已保证 44px 触控区域）。
+ * 触控目标 ≥44px（DsButton 移动端已保证 44px 触控区域）。
  */
 
 import React, { useCallback } from 'react';
@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import { Minus, Plus } from '@phosphor-icons/react';
 import { Slider } from '@/components/ui/shad/Slider';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 export interface CountStepperRowProps {
   /** 行标签（已翻译） */
@@ -55,7 +55,7 @@ export const CountStepperRow: React.FC<CountStepperRowProps> = ({
         className="min-w-0 flex-1"
       />
       <div className="flex shrink-0 items-center gap-0.5">
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -64,7 +64,7 @@ export const CountStepperRow: React.FC<CountStepperRowProps> = ({
           onClick={() => onChange(clamp(value - 1))}
         >
           <Minus size={14} />
-        </NotionButton>
+        </DsButton>
         <span
           className={cn(
             'w-7 text-center text-sm font-medium tabular-nums',
@@ -73,7 +73,7 @@ export const CountStepperRow: React.FC<CountStepperRowProps> = ({
         >
           {value}
         </span>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -82,7 +82,7 @@ export const CountStepperRow: React.FC<CountStepperRowProps> = ({
           onClick={() => onChange(clamp(value + 1))}
         >
           <Plus size={14} />
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );

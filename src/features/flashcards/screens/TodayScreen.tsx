@@ -14,7 +14,7 @@ import {
   Lightning,
   Play,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { PullToRefresh } from '@/components/mobile';
 import type { FsrsStats } from '@/types';
 import { useFsrsReviewStore } from '../store/fsrsReviewStore';
@@ -157,7 +157,7 @@ export const TodayScreen: React.FC = () => {
           </p>
         </div>
         <div className="wb-fc-toolbar shrink-0">
-          <NotionButton
+          <DsButton
             type="button"
             variant="ghost"
             size="sm"
@@ -168,7 +168,7 @@ export const TodayScreen: React.FC = () => {
             title={t('today.refresh')}
           >
             <ArrowClockwise size={15} />
-          </NotionButton>
+          </DsButton>
         </div>
       </header>
 
@@ -182,7 +182,7 @@ export const TodayScreen: React.FC = () => {
               </p>
               <p className="max-w-md break-words text-xs text-destructive/90">{error}</p>
             </div>
-            <NotionButton
+            <DsButton
               type="button"
               variant="default"
               onClick={() => void loadDue()}
@@ -190,7 +190,7 @@ export const TodayScreen: React.FC = () => {
             >
               <ArrowClockwise size={16} />
               {t('today.retry')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       ) : (
@@ -237,7 +237,7 @@ export const TodayScreen: React.FC = () => {
                 </div>
               </div>
               <div className="wb-fcx-hero-actions">
-                <NotionButton
+                <DsButton
                   type="button"
                   variant="primary"
                   disabled={loading || dueCards.length === 0}
@@ -246,7 +246,7 @@ export const TodayScreen: React.FC = () => {
                 >
                   <Play size={16} weight="fill" />
                   {t('today.startReview')}
-                </NotionButton>
+                </DsButton>
                 {streak > 0 ? (
                   <span className="wb-fcx-chip" title={t('today.streakHint')}>
                     <Fire size={13} weight="fill" />
@@ -291,7 +291,7 @@ export const TodayScreen: React.FC = () => {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-2">
-                  <NotionButton
+                  <DsButton
                     type="button"
                     variant="default"
                     onClick={() => setScreen('library')}
@@ -299,8 +299,8 @@ export const TodayScreen: React.FC = () => {
                   >
                     <Books size={15} weight="duotone" />
                     {t('today.goLibrary')}
-                  </NotionButton>
-                  <NotionButton
+                  </DsButton>
+                  <DsButton
                     type="button"
                     variant="ghost"
                     onClick={() => setScreen('settings')}
@@ -308,7 +308,7 @@ export const TodayScreen: React.FC = () => {
                   >
                     <ChartBar size={15} weight="duotone" />
                     {t('today.goStats')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               </div>
             </div>

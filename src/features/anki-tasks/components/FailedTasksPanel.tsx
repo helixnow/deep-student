@@ -8,7 +8,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowCounterClockwise, CircleNotch, WarningCircle } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -123,7 +123,7 @@ export const FailedTasksPanel: React.FC<{
         <span className="text-xs font-medium text-[color:hsl(var(--warning))] flex-1 min-w-0">
           {t('tasks.failedPanelTitle', { count: tasks.length })}
         </span>
-        <NotionButton
+        <DsButton
           size="sm"
           variant="ghost"
           onClick={retryAll}
@@ -134,7 +134,7 @@ export const FailedTasksPanel: React.FC<{
             ? <CircleNotch size={12} className="animate-spin" />
             : <ArrowCounterClockwise size={12} />}
           {t('tasks.retryAll')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       <div className="mt-1.5 space-y-1">
@@ -147,7 +147,7 @@ export const FailedTasksPanel: React.FC<{
             <span className="wb-at-failed-msg" title={task.error_message ?? undefined}>
               {task.error_message?.trim() || t('tasks.noErrorMessage')}
             </span>
-            <NotionButton
+            <DsButton
               size="sm"
               variant="ghost"
               onClick={() => retryOne(task.id)}
@@ -158,20 +158,20 @@ export const FailedTasksPanel: React.FC<{
               {retryingId === task.id
                 ? <CircleNotch size={11} className="animate-spin" />
                 : <ArrowCounterClockwise size={11} />}
-            </NotionButton>
+            </DsButton>
           </div>
         ))}
       </div>
 
       {hiddenCount > 0 && (
-        <NotionButton
+        <DsButton
           size="sm"
           variant="ghost"
           onClick={() => setShowAll(true)}
           className="mt-1 h-6 w-full justify-center text-[11px] text-muted-foreground/60 hover:text-muted-foreground"
         >
           {t('tasks.showMoreFailures', { count: hiddenCount })}
-        </NotionButton>
+        </DsButton>
       )}
     </div>
   );

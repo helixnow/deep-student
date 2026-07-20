@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Upload, Download, X, FileArrowUp, CheckCircle, WarningCircle,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { cn } from '@/lib/utils';
 import type { CustomAnkiTemplate } from '@/types';
@@ -56,7 +56,7 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
           <Upload size={15} aria-hidden />
           {t('templateMgmt.import_panel_title')}
         </h3>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -66,7 +66,7 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
           title={t('templateMgmt.panel_close')}
         >
           <X size={14} />
-        </NotionButton>
+        </DsButton>
       </header>
 
       <p className="wb-tm-panel-desc">{t('import_external_dialog_desc')}</p>
@@ -93,7 +93,7 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
           aria-hidden
         />
         <div className="wb-tm-file-row">
-          <NotionButton
+          <DsButton
             variant="default"
             size="sm"
             onClick={() => fileInputRef.current?.click()}
@@ -101,7 +101,7 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
           >
             <FileArrowUp size={14} />
             {selectedFile ? t('templateMgmt.import_change_file') : t('templateMgmt.import_choose_file')}
-          </NotionButton>
+          </DsButton>
           {selectedFile ? (
             <span className="wb-tm-file-name" title={selectedFile.name}>
               {selectedFile.name}
@@ -144,17 +144,17 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
       )}
 
       <footer className="wb-tm-panel-footer">
-        <NotionButton variant="ghost" size="sm" onClick={onClose} disabled={isImporting}>
+        <DsButton variant="ghost" size="sm" onClick={onClose} disabled={isImporting}>
           {t('cancel_button')}
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="primary"
           size="sm"
           onClick={onConfirm}
           disabled={!selectedFile || isImporting}
         >
           {isImporting ? t('importing') : t('start_import_button')}
-        </NotionButton>
+        </DsButton>
       </footer>
     </section>
   );
@@ -195,13 +195,13 @@ export const TemplateExportPanel: React.FC<TemplateExportPanelProps> = ({
           {t('templateMgmt.export_panel_title')}
         </h3>
         <div className="wb-tm-panel-header-actions">
-          <NotionButton variant="ghost" size="sm" onClick={onSelectAll} disabled={isExporting || templates.length === 0}>
+          <DsButton variant="ghost" size="sm" onClick={onSelectAll} disabled={isExporting || templates.length === 0}>
             {t('select_all_button')}
-          </NotionButton>
-          <NotionButton variant="ghost" size="sm" onClick={onClearSelection} disabled={isExporting || selection.size === 0}>
+          </DsButton>
+          <DsButton variant="ghost" size="sm" onClick={onClearSelection} disabled={isExporting || selection.size === 0}>
             {t('clear_selection_button')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -211,7 +211,7 @@ export const TemplateExportPanel: React.FC<TemplateExportPanelProps> = ({
             title={t('templateMgmt.panel_close')}
           >
             <X size={14} />
-          </NotionButton>
+          </DsButton>
         </div>
       </header>
 
@@ -254,17 +254,17 @@ export const TemplateExportPanel: React.FC<TemplateExportPanelProps> = ({
           {t('templateMgmt.export_selected_count', { count: selection.size })}
         </span>
         <div className="wb-tm-panel-footer-actions">
-          <NotionButton variant="ghost" size="sm" onClick={onClose} disabled={isExporting}>
+          <DsButton variant="ghost" size="sm" onClick={onClose} disabled={isExporting}>
             {t('cancel_button')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="primary"
             size="sm"
             onClick={onConfirm}
             disabled={isExporting || selection.size === 0}
           >
             {isExporting ? t('exporting') : t('export_count_button', { count: selection.size })}
-          </NotionButton>
+          </DsButton>
         </div>
       </footer>
     </section>

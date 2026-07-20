@@ -861,10 +861,11 @@ impl QuestionBankService {
             .trim()
             .to_lowercase();
         match normalized.as_str() {
-            "true" | "t" | "1" | "yes" | "y" | "对" | "正确" | "是" | "真" | "√" | "✓"
-            | "✔" => Some(true),
-            "false" | "f" | "0" | "no" | "n" | "错" | "错误" | "否" | "假" | "不对" | "×"
-            | "✗" | "✘" | "x" => Some(false),
+            "true" | "t" | "1" | "yes" | "y" | "对" | "正确" | "是" | "真" | "√" | "✓" | "✔" => {
+                Some(true)
+            }
+            "false" | "f" | "0" | "no" | "n" | "错" | "错误" | "否" | "假" | "不对" | "×" | "✗"
+            | "✘" | "x" => Some(false),
             _ => None,
         }
     }
@@ -972,8 +973,11 @@ impl QuestionBankService {
         correct_answer: Option<&str>,
         structured_data: Option<&serde_json::Value>,
     ) -> (bool, bool) {
-        let structured_answer = structured_data
-            .and_then(|sd| sd.get("answer_value").and_then(|v| v.as_f64()).map(|a| (sd, a)));
+        let structured_answer = structured_data.and_then(|sd| {
+            sd.get("answer_value")
+                .and_then(|v| v.as_f64())
+                .map(|a| (sd, a))
+        });
         if let Some((sd, answer_value)) = structured_answer {
             let Some(user_value) = Self::parse_numeric_input(user_answer) else {
                 return (false, false);
@@ -1031,10 +1035,17 @@ impl QuestionBankService {
                     _ => return None,
                 }
             }
-            return if result.is_empty() { None } else { Some(result) };
+            return if result.is_empty() {
+                None
+            } else {
+                Some(result)
+            };
         }
         // 分隔符回退："B,A,C"、"B、A、C"、"B → A → C"
-        let normalized: String = trimmed.chars().map(Self::normalize_fullwidth_char).collect();
+        let normalized: String = trimmed
+            .chars()
+            .map(Self::normalize_fullwidth_char)
+            .collect();
         let replaced = normalized
             .replace("->", ",")
             .replace('→', ",")
@@ -1175,18 +1186,17 @@ impl QuestionBankService {
 
         if let Some(blanks) = blanks {
             // 解析用户答案：JSON 数组，或（单空时）裸字符串兼容
-            let user_values: Vec<String> = match serde_json::from_str::<serde_json::Value>(
-                user_answer.trim(),
-            ) {
-                Ok(serde_json::Value::Array(items)) => items
-                    .into_iter()
-                    .map(|v| match v {
-                        serde_json::Value::String(s) => s,
-                        other => other.to_string(),
-                    })
-                    .collect(),
-                _ => vec![user_answer.to_string()],
-            };
+            let user_values: Vec<String> =
+                match serde_json::from_str::<serde_json::Value>(user_answer.trim()) {
+                    Ok(serde_json::Value::Array(items)) => items
+                        .into_iter()
+                        .map(|v| match v {
+                            serde_json::Value::String(s) => s,
+                            other => other.to_string(),
+                        })
+                        .collect(),
+                    _ => vec![user_answer.to_string()],
+                };
             if user_values.len() != blanks.len() {
                 return (false, false);
             }
@@ -3486,12 +3496,7 @@ mod tests {
             (true, false)
         );
         assert_eq!(
-            check_structured(
-                "３.１４",
-                None,
-                QuestionType::Numeric,
-                sd(0.0, "absolute")
-            ),
+            check_structured("３.１４", None, QuestionType::Numeric, sd(0.0, "absolute")),
             (true, false)
         );
         let big = serde_json::json!({"answer_value": 1234.5, "tolerance": 0.0});
@@ -3514,7 +3519,10 @@ mod tests {
             check("3.14", Some("约等于圆周率"), QuestionType::Numeric),
             (false, true)
         );
-        assert_eq!(check("abc", Some("3.14"), QuestionType::Numeric), (false, false));
+        assert_eq!(
+            check("abc", Some("3.14"), QuestionType::Numeric),
+            (false, false)
+        );
     }
 
     #[test]
@@ -3680,7 +3688,10 @@ mod tests {
 
     #[test]
     fn test_question_type_from_str_lenient() {
-        assert_eq!(QuestionType::from_str("true_false"), QuestionType::TrueFalse);
+        assert_eq!(
+            QuestionType::from_str("true_false"),
+            QuestionType::TrueFalse
+        );
         assert_eq!(QuestionType::from_str("TrueFalse"), QuestionType::TrueFalse);
         assert_eq!(QuestionType::from_str("matching"), QuestionType::Matching);
         assert_eq!(QuestionType::from_str("ordering"), QuestionType::Ordering);
@@ -3721,5 +3732,56 @@ mod tests {
         assert_eq!(streak(&["2026-08-02", "2026-08-01", "2026-07-30"]), 2);
         // 重复日期（防御）不应重复计数
         assert_eq!(streak(&["2026-08-02", "2026-08-02", "2026-08-01"]), 2);
+    }
+
+    /// M-5：题型切换后旧 structured_data 的清空规则
+    /// - 切到不使用 structured_data 的题型且未显式携带 → 清空
+    /// - 切到仍使用 structured_data 的题型（fill_blank/matching/ordering/numeric）→ 不清
+    /// - 不动题型的普通更新（question_type 为 None）→ 绝不清
+    /// - 显式携带 structured_data → 按显式值走，不额外清
+    #[test]
+    fn update_params_clear_stale_structured_data_only_on_type_switch() {
+        let switch_to_short_answer = UpdateQuestionParams {
+            question_type: Some(QuestionType::ShortAnswer),
+            ..Default::default()
+        };
+        assert!(switch_to_short_answer.should_clear_stale_structured_data());
+
+        for qtype in [
+            QuestionType::FillBlank,
+            QuestionType::Matching,
+            QuestionType::Ordering,
+            QuestionType::Numeric,
+        ] {
+            let params = UpdateQuestionParams {
+                question_type: Some(qtype),
+                ..Default::default()
+            };
+            assert!(
+                !params.should_clear_stale_structured_data(),
+                "结构化题型不应触发清空"
+            );
+        }
+
+        // 只改难度不动题型：绝不能清空
+        let difficulty_only = UpdateQuestionParams {
+            difficulty: Some(Difficulty::Hard),
+            ..Default::default()
+        };
+        assert!(!difficulty_only.should_clear_stale_structured_data());
+
+        // 显式携带 structured_data（含显式 Null 清空）时按显式值走
+        let explicit_payload = UpdateQuestionParams {
+            question_type: Some(QuestionType::ShortAnswer),
+            structured_data: Some(serde_json::json!({"legacy": true})),
+            ..Default::default()
+        };
+        assert!(!explicit_payload.should_clear_stale_structured_data());
+        let explicit_null = UpdateQuestionParams {
+            question_type: Some(QuestionType::ShortAnswer),
+            structured_data: Some(serde_json::Value::Null),
+            ..Default::default()
+        };
+        assert!(!explicit_null.should_clear_stale_structured_data());
     }
 }

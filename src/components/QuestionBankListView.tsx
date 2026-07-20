@@ -1,7 +1,7 @@
 /**
  * 题目集列表视图
  * 
- * Notion 风格设计：
+ * 简洁风格设计：
  * - 极简主义，内容优先
  * - 大量留白，清晰层级
  * - 微妙的 hover 效果
@@ -11,7 +11,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from './custom-scroll-area';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
@@ -153,7 +153,7 @@ const FilterChip: React.FC<{ label: string; onRemove: () => void }> = ({ label, 
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 py-0.5 pl-2 pr-1 text-xs text-primary">
       {label}
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="icon"
         iconOnly
@@ -163,7 +163,7 @@ const FilterChip: React.FC<{ label: string; onRemove: () => void }> = ({ label, 
         title={t('exam.library.removeFilter', { label })}
       >
         <X size={10} />
-      </NotionButton>
+      </DsButton>
     </span>
   );
 };
@@ -216,10 +216,10 @@ const StatsSummary: React.FC<{ stats: QuestionBankStats; onStartPractice?: () =>
       
       {/* 开始做题按钮 */}
       {onStartPractice && (
-        <NotionButton variant="ghost" size="sm" onClick={onStartPractice} className="text-primary hover:bg-primary/10">
+        <DsButton variant="ghost" size="sm" onClick={onStartPractice} className="text-primary hover:bg-primary/10">
           <Play size={14} />
           {t('questionBank.startPractice')}
-        </NotionButton>
+        </DsButton>
       )}
     </div>
   );
@@ -249,7 +249,7 @@ const RowHoverActions: React.FC<{
   return (
     <>
       {onToggleFavorite && (
-        <NotionButton
+        <DsButton
           variant="ghost" size="icon" iconOnly
           disabled={favoriteLoading}
           onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
@@ -260,10 +260,10 @@ const RowHoverActions: React.FC<{
           {favoriteLoading
             ? <CircleNotch size={iconSize} className="animate-spin" />
             : <Star size={iconSize} weight={question.isFavorite ? 'fill' : 'regular'} className={question.isFavorite ? 'text-warning' : undefined} />}
-        </NotionButton>
+        </DsButton>
       )}
       {onEdit && (
-        <NotionButton
+        <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={(e) => { e.stopPropagation(); onEdit(); }}
           className={buttonClass}
@@ -271,12 +271,12 @@ const RowHoverActions: React.FC<{
           aria-label={t('practice:questionBank.editQuestion')}
         >
           <PencilSimple size={iconSize} />
-        </NotionButton>
+        </DsButton>
       )}
       {onDeleteAction && (
         deleteArmed ? (
           // 二段式确认：按钮变红，再次点击才执行；3 秒无操作自动复位
-          <NotionButton
+          <DsButton
             variant="danger" size="sm"
             disabled={deleteLoading}
             onClick={(e) => { e.stopPropagation(); onDeleteAction(); }}
@@ -285,9 +285,9 @@ const RowHoverActions: React.FC<{
           >
             {deleteLoading ? <CircleNotch size={10} className="animate-spin" /> : <Trash size={10} />}
             {t('learningHub:exam.library.confirmDeleteShort')}
-          </NotionButton>
+          </DsButton>
         ) : (
-          <NotionButton
+          <DsButton
             variant="ghost" size="icon" iconOnly
             onClick={(e) => { e.stopPropagation(); onDeleteAction(); }}
             className={cn(buttonClass, 'hover:!text-destructive hover:!bg-destructive/10')}
@@ -295,7 +295,7 @@ const RowHoverActions: React.FC<{
             aria-label={t('learningHub:exam.library.deleteQuestion')}
           >
             <Trash size={iconSize} />
-          </NotionButton>
+          </DsButton>
         )
       )}
     </>
@@ -343,7 +343,7 @@ const QuestionGridCard: React.FC<{
         '[content-visibility:auto] [contain-intrinsic-size:auto_150px]',
         'transition-[background-color,border-color,color,box-shadow,transform] duration-200',
         'border border-transparent hover:border-border/60 hover:bg-[var(--interactive-hover)]',
-        'hover:shadow-[var(--shadow-notion)] hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0',
+        'hover:shadow-[var(--shadow-card)] hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0',
         status === 'mastered' && 'bg-success/5',
         status === 'review' && 'bg-warning/5',
         isSelected && 'ring-2 ring-primary/50 bg-primary/5'
@@ -434,7 +434,7 @@ const QuestionListRow: React.FC<{
   const typeMeta = getQuestionTypeMeta(question.questionType);
   
   return (
-    <NotionButton
+    <DsButton
       variant="ghost" size="sm"
       data-agent-entity={`exam:${question.id}`}
       onClick={(e) => { if (isEditMode) { onSelect?.(!isSelected, e.shiftKey); } else { onClick(); } }}
@@ -501,7 +501,7 @@ const QuestionListRow: React.FC<{
       </div>
       
       <CaretRight size={16} className="text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-[background-color,border-color,color,box-shadow] flex-shrink-0" />
-    </NotionButton>
+    </DsButton>
   );
 };
 
@@ -512,13 +512,13 @@ const LauncherCard: React.FC<{
   desc: string;
   onClick: () => void;
 }> = ({ icon, title, desc, onClick }) => (
-  <NotionButton
+  <DsButton
     variant="ghost"
     onClick={onClick}
     className={cn(
       'group !h-auto !flex-col !items-start !justify-start gap-2.5 !rounded-xl !p-4 border border-border/60 bg-card/40 text-left',
       'transition-[background-color,border-color,color,box-shadow] duration-200',
-      'hover:border-primary/40 hover:bg-primary/5 hover:shadow-[var(--shadow-notion)]'
+      'hover:border-primary/40 hover:bg-primary/5 hover:shadow-[var(--shadow-card)]'
     )}
   >
     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
@@ -526,7 +526,7 @@ const LauncherCard: React.FC<{
     </div>
     <div className="text-sm font-medium">{title}</div>
     <div className="text-xs leading-relaxed text-muted-foreground whitespace-normal">{desc}</div>
-  </NotionButton>
+  </DsButton>
 );
 
 export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
@@ -1180,14 +1180,14 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
           <span className="text-warning">
             {t('practice:questionBank.needsReview')} {stats.review}
           </span>
-          <NotionButton
+          <DsButton
             variant="primary"
             size="sm"
             onClick={() => handleQuestionClick(0)}
             className="!h-8 !px-2.5 !py-0 text-xs"
           >
             {t('practice:questionBank.startPractice')}
-          </NotionButton>
+          </DsButton>
         </div>
       )}
       
@@ -1214,7 +1214,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 aria-label={t('common:loading')}
               />
             ) : searchQuery ? (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -1224,12 +1224,12 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 title={t('learningHub:exam.library.clearSearch')}
               >
                 <X size={12} />
-              </NotionButton>
+              </DsButton>
             ) : null}
           </div>
           
           <div className="flex items-center p-0.5 rounded-md bg-muted/30 flex-shrink-0">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => handleViewTypeChange('grid')}
@@ -1238,8 +1238,8 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               title={t('learningHub:exam.library.gridView')}
             >
               <GridNine size={14} />
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => handleViewTypeChange('list')}
@@ -1248,24 +1248,24 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               title={t('learningHub:exam.library.listView')}
             >
               <List size={14} />
-            </NotionButton>
+            </DsButton>
           </div>
           
           {/* 收藏和书签按钮 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleFavoriteToggle} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9 flex-shrink-0', showFavoriteOnly ? 'bg-warning/20 text-warning' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="favorites">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleFavoriteToggle} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9 flex-shrink-0', showFavoriteOnly ? 'bg-warning/20 text-warning' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="favorites">
             <Star className={cn('w-4 h-4', showFavoriteOnly && 'fill-current')} />
-          </NotionButton>
+          </DsButton>
 
           {/* 手动添加题目按钮 */}
           {examId && onCreateQuestion && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => requestInlineEditorTarget(expandedEditId === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="add question">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={() => requestInlineEditorTarget(expandedEditId === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="add question">
               <Plus size={16} />
-            </NotionButton>
+            </DsButton>
           )}
 
           {/* 编辑模式按钮 */}
           {hasBatchOperations && !isEditMode && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => {
@@ -1278,7 +1278,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             >
               <ListChecks size={14} className="mr-1" />
               <span className="hidden sm:inline">{t('exam_sheet:questionBank.manage')}</span>
-            </NotionButton>
+            </DsButton>
           )}
         </div>
         
@@ -1293,22 +1293,22 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               {t('learningHub:exam.library.unsavedDraftInline')}
             </span>
             <div className="flex items-center gap-1.5">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={() => setPendingEditorAction(null)}
                 className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
               >
                 {t('learningHub:exam.library.keepEditing')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="danger"
                 size="sm"
                 onClick={confirmPendingEditorAction}
                 className="!h-auto !px-2 !py-1 text-xs"
               >
                 {t('learningHub:exam.library.discardAndContinue')}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         )}
@@ -1316,39 +1316,39 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         {/* 筛选 Tab — ui-state-colors 让选中态颜色平滑过渡；
             激活中的筛选即使计数归零也保留 chip，避免筛选项凭空消失无法取消 */}
         <div className="flex flex-wrap items-center gap-1.5 mt-3">
-          <NotionButton variant="ghost" size="sm" onClick={() => handleStatusToggle('all')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'all' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('all')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'all' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
             {t('practice:questionBank.all')} {questions.length}
-          </NotionButton>
+          </DsButton>
           {stats && (stats.newCount > 0 || statusFilter === 'new') && (
-            <NotionButton variant="ghost" size="sm" onClick={() => handleStatusToggle('new')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'new' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
+            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('new')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'new' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
               {t('practice:questionBank.newQuestions')} {stats.newCount}
-            </NotionButton>
+            </DsButton>
           )}
           {stats && (stats.review > 0 || statusFilter === 'review') && (
-            <NotionButton variant="ghost" size="sm" onClick={() => handleStatusToggle('review')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'review' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
+            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('review')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'review' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
               {t('practice:questionBank.needsReview')} {stats.review}
-            </NotionButton>
+            </DsButton>
           )}
           {stats && (stats.mastered > 0 || statusFilter === 'mastered') && (
-            <NotionButton variant="ghost" size="sm" onClick={() => handleStatusToggle('mastered')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'mastered' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
+            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('mastered')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'mastered' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
               {t('practice:questionBank.masteredFilter')} {stats.mastered}
-            </NotionButton>
+            </DsButton>
           )}
 
           <div className="w-px h-3 bg-border/60 mx-1" />
 
-          <NotionButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('easy')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'easy' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('easy')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'easy' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
             {t('practice:questionBank.difficultyShort.easy')}
-          </NotionButton>
-          <NotionButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('medium')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'medium' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
+          </DsButton>
+          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('medium')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'medium' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
             {t('practice:questionBank.difficultyShort.medium')}
-          </NotionButton>
-          <NotionButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('hard')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
+          </DsButton>
+          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('hard')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
             {t('practice:questionBank.difficultyShort.hard')}
-          </NotionButton>
-          <NotionButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('very_hard')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'very_hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-destructive hover:bg-destructive/10')}>
+          </DsButton>
+          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('very_hard')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'very_hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-destructive hover:bg-destructive/10')}>
             {t('practice:questionBank.difficultyShort.veryHard')}
-          </NotionButton>
+          </DsButton>
 
           {/* 题型筛选（数据驱动：仅展示当前数据集中出现过的题型，含新题型） */}
           {presentTypes.length >= 2 && (
@@ -1357,7 +1357,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               {presentTypes.map((type) => {
                 const meta = getQuestionTypeMeta(type);
                 return (
-                  <NotionButton
+                  <DsButton
                     key={type}
                     variant="ghost"
                     size="sm"
@@ -1371,7 +1371,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                     aria-pressed={typeFilter === type}
                   >
                     {t(meta.labelKey)}
-                  </NotionButton>
+                  </DsButton>
                 );
               })}
             </>
@@ -1411,14 +1411,14 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 onRemove={handleFavoriteToggle}
               />
             )}
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={clearFilters}
               className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
             >
               {t('learningHub:exam.library.clearAllFilters')}
-            </NotionButton>
+            </DsButton>
           </div>
         )}
       </div>
@@ -1452,10 +1452,10 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             </p>
             <p className="mt-1 text-xs text-muted-foreground/70">{t('learningHub:exam.library.noMatchHint')}</p>
             {hasActiveFilters && (
-              <NotionButton variant="ghost" size="sm" className="mt-3" onClick={clearFilters}>
+              <DsButton variant="ghost" size="sm" className="mt-3" onClick={clearFilters}>
                 <X size={14} />
                 {t('common:clear')}
-              </NotionButton>
+              </DsButton>
             )}
           </div>
         ) : viewType === 'grid' ? (
@@ -1546,15 +1546,15 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                   : t('learningHub:exam.library.confirmResetInline', { count: selectedIds.size })}
               </span>
               <div className="flex items-center gap-1.5">
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={() => setConfirmingBatch(null)}
                   className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
                 >
                   {t('common:cancel')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   variant={confirmingBatch === 'delete' ? 'danger' : 'warning'}
                   size="sm"
                   disabled={isOperating}
@@ -1569,21 +1569,21 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 >
                   {isOperating && <CircleNotch size={12} className="animate-spin" />}
                   {t('learningHub:exam.library.confirm')}
-                </NotionButton>
+                </DsButton>
               </div>
             </div>
           ) : (
             <div className="flex items-center justify-between gap-2">
               {/* 触屏（pointer:coarse）批量操作按钮放大到 44px 触控目标 */}
               <div className="flex items-center gap-1 min-w-0">
-                <NotionButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
+                <DsButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
                   <CheckSquare size={14} />
                   <span className="hidden sm:inline">{allFilteredSelected ? t('practice:questionBank.deselectAll') : t('practice:questionBank.selectAll')}</span>
-                </NotionButton>
-                <NotionButton variant="ghost" size="sm" onClick={invertSelection} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
+                </DsButton>
+                <DsButton variant="ghost" size="sm" onClick={invertSelection} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
                   <SelectionInverse size={14} />
                   <span className="hidden sm:inline">{t('learningHub:exam.library.invertSelection')}</span>
-                </NotionButton>
+                </DsButton>
                 <span className="text-xs text-muted-foreground whitespace-nowrap px-1">
                   {t('practice:questionBank.selectedCount', { count: selectedIds.size })}
                 </span>
@@ -1593,22 +1593,22 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
                 {onResetProgress && (
-                  <NotionButton variant="ghost" size="sm" onClick={handleBatchResetClick} disabled={isOperating || selectedIds.size === 0} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs text-primary hover:bg-primary/10">
+                  <DsButton variant="ghost" size="sm" onClick={handleBatchResetClick} disabled={isOperating || selectedIds.size === 0} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs text-primary hover:bg-primary/10">
                     <ArrowClockwise className={cn('w-3 h-3', isOperating && 'animate-spin')} />
                     <span className="hidden sm:inline">{t('practice:questionBank.reset')}</span>
-                  </NotionButton>
+                  </DsButton>
                 )}
                 {onDelete && (
-                  <NotionButton variant="ghost" size="sm" onClick={handleBatchDeleteClick} disabled={isOperating || selectedIds.size === 0} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs text-destructive hover:bg-destructive/10">
+                  <DsButton variant="ghost" size="sm" onClick={handleBatchDeleteClick} disabled={isOperating || selectedIds.size === 0} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs text-destructive hover:bg-destructive/10">
                     <Trash size={12} />
                     <span className="hidden sm:inline">{t('common:delete')}</span>
-                  </NotionButton>
+                  </DsButton>
                 )}
                 <div className="w-px h-3 bg-border/60 mx-1" />
-                <NotionButton variant="ghost" size="sm" onClick={exitEditMode} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] gap-1">
+                <DsButton variant="ghost" size="sm" onClick={exitEditMode} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] gap-1">
                   <X size={12} />
                   <span className="hidden sm:inline">{t('common:cancel')}</span>
-                </NotionButton>
+                </DsButton>
               </div>
             </div>
           )}

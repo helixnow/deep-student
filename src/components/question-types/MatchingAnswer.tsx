@@ -228,7 +228,7 @@ export const MatchingAnswer: React.FC<MatchingAnswerProps> = ({
       )}
 
       {/* 左右两列 */}
-      <div className="grid grid-cols-2 gap-2 sm:gap-3">
+      <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 min-[420px]:gap-2 sm:gap-3">
         <div className="min-w-0 space-y-1.5">
           <div className="px-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
             {t('editor.matching.leftColumn')}

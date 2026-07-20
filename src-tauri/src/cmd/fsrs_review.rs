@@ -468,9 +468,7 @@ pub async fn fsrs_get_review_statistics(
 
 /// 读取默认牌组的调度配置
 #[tauri::command]
-pub async fn fsrs_get_scheduler_config(
-    state: State<'_, AppState>,
-) -> Result<FsrsSchedulerConfig> {
+pub async fn fsrs_get_scheduler_config(state: State<'_, AppState>) -> Result<FsrsSchedulerConfig> {
     let service = FsrsReviewService::new(state.anki_database.clone());
     service.get_scheduler_config()
 }
@@ -495,10 +493,7 @@ pub async fn fsrs_reset_card_progress(
 ) -> Result<FsrsResetResult> {
     let service = FsrsReviewService::new(state.anki_database.clone());
     let result = service.reset_card_progress(&cardStateId)?;
-    let cards = [(
-        result.state.id.as_str(),
-        result.state.anki_card_id.as_str(),
-    )];
+    let cards = [(result.state.id.as_str(), result.state.anki_card_id.as_str())];
     emit_fsrs_changed(&app, true, "user", "reset", &cards, &[]);
     Ok(result)
 }

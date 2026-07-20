@@ -1,5 +1,5 @@
 /**
- * FSRS 学习统计 — 对标 Anki 统计页：
+ * FSRS 学习统计 — 
  * 关键数字（后端真实聚合）+ 热力图 / 每日柱状 / 评分分布 / 状态构成
  * （前端基于「每张卡最近一次复习」的诚实近似，均有标注）。
  */
@@ -14,7 +14,7 @@ import {
   Fire,
   WarningCircle,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { getFsrsStats } from '@/utils/chatApi';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { FsrsStats } from '@/types';
@@ -265,7 +265,7 @@ export const StatisticsScreen: React.FC = () => {
               : t('statistics.subtitle')}
           </p>
         </div>
-        <NotionButton
+        <DsButton
           type="button"
           variant="ghost"
           size="sm"
@@ -275,7 +275,7 @@ export const StatisticsScreen: React.FC = () => {
         >
           <ArrowClockwise size={15} />
           {t('statistics.refresh')}
-        </NotionButton>
+        </DsButton>
       </header>
 
       {error ? (
@@ -287,10 +287,10 @@ export const StatisticsScreen: React.FC = () => {
             </p>
             <p className="max-w-md break-words text-xs text-destructive/90">{error}</p>
           </div>
-          <NotionButton type="button" variant="default" size="sm" onClick={() => void load()}>
+          <DsButton type="button" variant="default" size="sm" onClick={() => void load()}>
             <ArrowClockwise size={15} />
             {t('statistics.retry')}
-          </NotionButton>
+          </DsButton>
         </div>
       ) : loading && !stats ? (
         <div className="wb-fc-loading">{t('statistics.loading')}</div>

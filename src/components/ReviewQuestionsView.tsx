@@ -1,11 +1,11 @@
 /**
- * 错题本视图 - Notion 风格
+ * 错题本视图 - 简洁风格
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from './custom-scroll-area';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   Check,
   X,
@@ -236,6 +236,8 @@ const ReviewQuestionCard: React.FC<{
     <div
       className={cn(
         'rounded-md transition-colors',
+        // 长列表渲染优化：视口外卡片跳过渲染（记忆上次尺寸避免滚动条跳动）
+        '[content-visibility:auto] [contain-intrinsic-size:auto_52px]',
         isSelected && 'bg-warning/10',
         !isSelected && isExpanded && 'bg-muted/30',
         !isSelected && !isExpanded && 'hover:bg-accent'
@@ -398,7 +400,7 @@ const ReviewQuestionCard: React.FC<{
               {/* 快速重做入口 */}
               {onRedo && (
                 <div className="mt-2 flex justify-end">
-                  <NotionButton
+                  <DsButton
                     variant="warning"
                     size="sm"
                     onClick={onRedo}
@@ -406,7 +408,7 @@ const ReviewQuestionCard: React.FC<{
                   >
                     <ArrowClockwise size={13} />
                     {t('review:questions.redo')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               )}
             </div>
@@ -597,22 +599,22 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
         <div className="flex items-center justify-between gap-3">
           {/* 左侧：开始复习按钮 */}
           {onStartReview && (
-            <NotionButton variant="warning" size="sm" onClick={onStartReview}>
+            <DsButton variant="warning" size="sm" onClick={onStartReview}>
               <Lightning size={14} />
               {t('review:questions.startReview', { count: reviewQuestions.length })}
-            </NotionButton>
+            </DsButton>
           )}
 
           {/* 右侧：批量操作 */}
           <div className="flex items-center gap-1.5">
-            <NotionButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!px-2 !py-1 !h-auto text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
+            <DsButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!px-2 !py-1 !h-auto text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
               {selectedIds.size === reviewQuestions.length ? t('review:questions.cancel') : t('review:questions.selectAll')}
-            </NotionButton>
+            </DsButton>
             
             {selectedIds.size > 0 && (
               <>
                 {/* 行内二次确认：首次点击进入待确认态（warning/danger 高亮），再次点击执行 */}
-                <NotionButton
+                <DsButton
                   variant={armedAction === 'reset' ? 'warning' : 'ghost'}
                   size="sm"
                   onClick={() => {
@@ -630,8 +632,8 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
                   {armedAction === 'reset'
                     ? t('review:questions.confirmReset', { count: selectedIds.size })
                     : t('review:questions.reset')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   variant={armedAction === 'delete' ? 'danger' : 'ghost'}
                   size="sm"
                   onClick={() => {
@@ -649,7 +651,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
                   {armedAction === 'delete'
                     ? t('review:questions.confirmDelete', { count: selectedIds.size })
                     : t('review:questions.delete')}
-                </NotionButton>
+                </DsButton>
               </>
             )}
           </div>

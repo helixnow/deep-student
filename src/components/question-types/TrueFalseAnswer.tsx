@@ -72,9 +72,9 @@ export const TrueFalseAnswer: React.FC<TrueFalseAnswerProps> = ({
               className={cn(
                 'flex h-9 w-9 items-center justify-center rounded-full transition-colors',
                 key === 'true' ? 'bg-success/15 text-success' : 'bg-destructive/10 text-destructive',
-                !submitted && isSelected && (key === 'true' ? 'bg-success text-success-foreground' : 'bg-destructive text-white'),
+                !submitted && isSelected && (key === 'true' ? 'bg-success text-success-foreground' : 'bg-destructive text-destructive-foreground'),
                 isThisCorrect && 'bg-success text-success-foreground',
-                isWrongPick && 'bg-destructive text-white'
+                isWrongPick && 'bg-destructive text-destructive-foreground'
               )}
             >
               <Icon size={20} weight="bold" />

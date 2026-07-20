@@ -1,6 +1,6 @@
 /**
  * 模板管理（wb-tm-*）— 对齐 SystemWindowShared / flashcards（wb-fc-*）表面体系。
- * 自 components/TemplateManagementPage.css（Notion 瀑布流风格）迁移：
+ * 自 components/TemplateManagementPage.css（瀑布流风格）迁移：
  * 收敛为窗口平铺背景 + 扁平薄边卡片，引用 workbench token（带兜底值）。
  *
  * SOTA 浏览重构新增：工具栏（搜索/筛选 chips/排序/视图切换）、
@@ -574,6 +574,17 @@
 .wb-tm-preview-content [data-shadow-host='true'] {
   display: block;
   width: 100%;
+}
+
+/* 等比缩放预览：iframe 按设计宽度（500px）渲染，整体 scale 到容器宽度，
+   保证卡片版式与真实渲染一致而不是被窄容器压成竖排 */
+.wb-tm-preview-scale {
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.wb-tm-preview-scale-inner {
+  transform-origin: top left;
 }
 
 /* ==== 卡片信息 ==== */
@@ -1202,31 +1213,32 @@
 }
 
 /* 触屏设备没有 hover 且指尖精度低：工具栏/卡片内的自绘小按钮统一加大触控目标
-   （NotionButton 已由 primitive contract 在 <lg 保证 44px，此处只补自绘 <button>） */
+   （DsButton 已由 primitive contract 在 <lg 保证 44px，此处只补自绘 <button>） */
 @media (pointer: coarse) {
   .wb-tm-chip {
-    height: 34px;
+    min-height: 44px;
     padding: 0 14px;
     font-size: 12.5px;
   }
 
   .wb-tm-sort-select {
-    height: 38px;
+    height: 44px;
     font-size: 13px;
   }
 
   .wb-tm-view-toggle-btn {
-    width: 38px;
-    height: 34px;
+    width: 44px;
+    height: 44px;
   }
 
   .wb-tm-side-toggle-btn {
+    min-height: 44px;
     padding: 7px 12px;
     font-size: 11px;
   }
 
   .wb-tm-toolbar-search {
-    height: 40px;
+    height: 44px;
   }
 
   .wb-tm-toolbar-search-input {
@@ -1234,13 +1246,13 @@
   }
 
   .wb-tm-toolbar-search-clear {
-    width: 26px;
-    height: 26px;
+    width: 44px;
+    height: 44px;
   }
 
   .wb-tm-file-clear {
-    width: 26px;
-    height: 26px;
+    width: 44px;
+    height: 44px;
   }
 }
 
@@ -1279,5 +1291,41 @@
 
   .wb-tm-export-list {
     grid-template-columns: 1fr;
+  }
+
+  .wb-tm-panel-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .wb-tm-panel-header-actions {
+    margin-left: auto;
+  }
+
+  .wb-tm-file-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .wb-tm-file-name {
+    max-width: calc(100% - 2.25rem);
+  }
+
+  .wb-tm-panel-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .wb-tm-panel-count {
+    align-self: flex-start;
+  }
+
+  .wb-tm-panel-footer-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .wb-tm-panel-footer-actions > * {
+    flex: 1 1 auto;
   }
 }

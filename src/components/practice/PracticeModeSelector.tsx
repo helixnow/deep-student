@@ -1,11 +1,11 @@
 /**
  * 练习模式选择器组件
  * 
- * Notion 风格的模式选择卡片网格
+ * 简洁风格的模式选择卡片网格
  */
 
 import React, { useCallback } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/shad/Card';
 import {
@@ -125,7 +125,7 @@ export const PracticeModeSelector: React.FC<PracticeModeSelectorProps> = ({
   return (
     <div className={cn('grid grid-cols-2 sm:grid-cols-4 gap-3', className)}>
       {modes.map(({ key, icon: Icon, label, desc, color, bgColor }) => (
-        <NotionButton
+        <DsButton
           key={key}
           variant="ghost" size="sm"
           onClick={() => handleSelect(key)}
@@ -166,7 +166,7 @@ export const PracticeModeSelector: React.FC<PracticeModeSelectorProps> = ({
           <div className="text-xs text-muted-foreground line-clamp-2">
             {desc}
           </div>
-        </NotionButton>
+        </DsButton>
       ))}
     </div>
   );

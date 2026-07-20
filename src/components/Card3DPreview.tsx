@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, CSSProperties } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { Pause, Play, ArrowsClockwise, CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { AnkiCard, AnkiCardTemplate, CustomAnkiTemplate } from '../types';
@@ -533,12 +533,12 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
       onTouchEnd={handleTouchEnd}
     >
       <div className="card-3d-controls">
-        <NotionButton variant="ghost" size="sm" className="control-btn" onClick={() => setIsAutoPlay(!isAutoPlay)} title={isAutoPlay ? "Pause" : "Play"}>
+        <DsButton variant="ghost" size="sm" className="control-btn" onClick={() => setIsAutoPlay(!isAutoPlay)} title={isAutoPlay ? "Pause" : "Play"}>
           {isAutoPlay ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}
-        </NotionButton>
-        <NotionButton variant="ghost" size="sm" className={`control-btn${flippedCards.has(currentIndex) ? ' control-btn-active' : ''}`} onClick={handleFlipCurrent} title={t('card3DPreview.flipCard')}>
+        </DsButton>
+        <DsButton variant="ghost" size="sm" className={`control-btn${flippedCards.has(currentIndex) ? ' control-btn-active' : ''}`} onClick={handleFlipCurrent} title={t('card3DPreview.flipCard')}>
           <ArrowsClockwise size={16} />
-        </NotionButton>
+        </DsButton>
         <div className="card-counter">
           {currentIndex + 1} / {cards.length}
         </div>
@@ -607,12 +607,12 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
       </div>
 
       <div className="card-3d-navigation">
-        <NotionButton variant="ghost" size="sm" className="nav-btn nav-prev" onClick={handlePrevious} disabled={cards.length <= 1}>
+        <DsButton variant="ghost" size="sm" className="nav-btn nav-prev" onClick={handlePrevious} disabled={cards.length <= 1}>
           <CaretLeft size={18} />
-        </NotionButton>
+        </DsButton>
         <div className="nav-dots">
           {cards.map((_, index) => (
-            <NotionButton
+            <DsButton
               key={index}
               variant="ghost" size="icon" iconOnly
               className={`nav-dot ${index === currentIndex ? 'active' : ''}`}
@@ -621,9 +621,9 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
             />
           ))}
         </div>
-        <NotionButton variant="ghost" size="sm" className="nav-btn nav-next" onClick={handleNext} disabled={cards.length <= 1}>
+        <DsButton variant="ghost" size="sm" className="nav-btn nav-next" onClick={handleNext} disabled={cards.length <= 1}>
           <CaretRight size={18} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       <div className="card-3d-instructions">

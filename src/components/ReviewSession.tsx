@@ -3,18 +3,18 @@
  *
  * 卡片式题目展示，支持：
  * - 显示/隐藏答案切换（展开动画）
- * - 评分按钮：Again(0)/Hard(2)/Good(3)/Easy(5)，对标 Anki 配色并展示预估间隔
+ * - 评分按钮：Again(0)/Hard(2)/Good(3)/Easy(5)，展示配色与预估间隔
  * - 复习进度指示器
  * - 复习完成统计（对勾描画动画 + 本次复习数、通过率）
  * - 键盘流：空格/回车翻面，1-4 评分，→ 跳过（高频操作免鼠标）
  *
- * 🆕 2026-01 新增；2026-07 对标 Anki 体验改造
+ * 🆕 2026-01 新增；2026-07 复习体验改造
  */
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { MarkdownRenderer } from '@/features/chat/components/renderers';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Card } from '@/components/ui/shad/Card';
@@ -231,7 +231,7 @@ const RatingButton: React.FC<RatingButtonProps> = ({
   disabled,
   shortcutKey,
 }) => (
-  <NotionButton
+  <DsButton
     variant="ghost" size="sm"
     onClick={onClick}
     disabled={disabled}
@@ -253,7 +253,7 @@ const RatingButton: React.FC<RatingButtonProps> = ({
     <div className="text-current">{icon}</div>
     <span className="text-sm font-semibold">{label}</span>
     <span className="text-[10px] font-medium tabular-nums opacity-70">{sublabel}</span>
-  </NotionButton>
+  </DsButton>
 );
 
 // ============================================================================
@@ -392,15 +392,15 @@ const CompletionStats: React.FC<CompletionStatsProps> = ({
       {/* 操作按钮 */}
       <div className="flex items-center gap-3">
         {onRestart && (
-          <NotionButton variant="ghost" onClick={onRestart} className="gap-2">
+          <DsButton variant="ghost" onClick={onRestart} className="gap-2">
             <ArrowCounterClockwise size={16} />
             {t('review:complete.reviewAgain')}
-          </NotionButton>
+          </DsButton>
         )}
-        <NotionButton onClick={onClose} className="gap-2">
+        <DsButton onClick={onClose} className="gap-2">
           {t('review:complete.finish')}
           <ArrowRight size={16} />
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );
@@ -641,9 +641,9 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
           {t('review:session.otherExamDescription')}
         </p>
         {onClose && (
-          <NotionButton variant="ghost" size="sm" onClick={onClose} className="mt-1">
+          <DsButton variant="ghost" size="sm" onClick={onClose} className="mt-1">
             {t('common:close')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     );
@@ -679,9 +679,9 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
         <p className="text-muted-foreground">
           {t('review:session.noItems')}
         </p>
-        <NotionButton variant="ghost" onClick={handleClose} className="mt-4">
+        <DsButton variant="ghost" onClick={handleClose} className="mt-4">
           {t('common:close')}
-        </NotionButton>
+        </DsButton>
       </div>
     );
   }
@@ -708,7 +708,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
       {/* 顶部导航栏（窄屏：进度条弹性宽度，计时可折叠） */}
       <div className="flex-shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50">
         {exitArmed ? (
-          <NotionButton
+          <DsButton
             variant="warning"
             size="sm"
             onClick={handleClose}
@@ -717,9 +717,9 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
           >
             <WarningCircle size={14} />
             {t('review:session.exitConfirm')}
-          </NotionButton>
+          </DsButton>
         ) : (
-          <NotionButton
+          <DsButton
             variant="ghost"
             iconOnly
             size="sm"
@@ -728,7 +728,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             className="h-11 w-11 shrink-0 sm:h-auto sm:w-auto"
           >
             <X size={20} />
-          </NotionButton>
+          </DsButton>
         )}
 
         {/* 进度指示器 */}
@@ -864,15 +864,15 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
         {!showAnswer ? (
           /* 显示答案按钮（窄屏主按钮弹性铺满，拇指可达） */
           <div className="mx-auto flex max-w-lg items-center justify-center gap-3">
-            <NotionButton
+            <DsButton
               variant="outline"
               onClick={handleSkip}
               className="min-h-11 shrink-0 gap-2 [@media(pointer:coarse)]:min-h-12"
             >
               <SkipForward size={16} />
               {t('review:action.skip')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="primary"
               size="sm"
               onClick={() => setShowAnswer(true)}
@@ -883,7 +883,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
               <kbd className="hidden sm:inline-flex items-center justify-center h-4 px-1.5 rounded border border-current/30 text-[10px] font-mono leading-none opacity-60">
                 {t('review:keyboard.space')}
               </kbd>
-            </NotionButton>
+            </DsButton>
           </div>
         ) : (
           /* 评分按钮：Anki 配色（红/橙/绿/蓝）+ 预估间隔标签 */
