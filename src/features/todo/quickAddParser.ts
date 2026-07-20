@@ -1,16 +1,19 @@
 /**
  * Todo 快速添加自然语言解析（轻量版）
  *
- * 从输入文本中识别日期、时间、优先级、重复规则与标签 token，返回剔除 token 后的标题。
+ * 从输入文本中识别日期、时间、优先级、重复规则、提醒与标签 token，返回剔除 token 后的标题。
  * 支持（中文优先 + 基础英文）：
- *   日期：今天 / 明天 / 后天 / 大后天 / 周一~周日 / 下周一~下周日 /
- *         N月N日(号) / N号 / today / tomorrow
+ *   日期：今天 / 明天 / 后天 / 大后天 / N天后 / N周后 / N个月后 / 周一~周日 /
+ *         下周一~下周日 / N月N日(号) / N号 / today / tomorrow
  *   时间：HH:MM / N点(半|N分) / 上午|下午|晚上N点 / 3pm / 3:30pm
- *   优先级：!紧急 / !高 / !中 / !低（半角或全角叹号）
+ *   优先级：!紧急 / !高 / !中 / !低（半角或全角叹号）/ p1~p4（Todoist 惯例：p1=urgent p4=low）
  *   重复：每天 / 每周 / 每周X / 每周一三五 / 每月 / 每年 / 每个工作日 / daily / weekly ...
+ *   提醒：提醒我 / !remind / remind me（结合解析出的日期时间，输出 YYYY-MM-DDTHH:MM，
+ *         无时间 token 时默认 09:00，无日期 token 时默认今天）
  *   标签：#标签名
  *
- * 设计原则：token 必须是独立词（避免误伤如「明天气温」中的「明天气」），
+ * 设计原则：token 必须是独立词（避免误伤如「明天气温」中的「明天气」——
+ * 「天」后紧跟「气/堂/才…」等强复合字时不视为日期 token），
  * 解析结果在 UI 中以 chip 预览，用户手动设置的字段优先于解析结果。
  */
 
@@ -28,6 +31,8 @@ export interface QuickAddParseResult {
   repeat?: TodoRepeatRule;
   /** 解析出的标签（#token，不含 # 前缀） */
   tags?: string[];
+  /** 提醒时间（YYYY-MM-DDTHH:MM，本地时区），由「提醒我 / !remind / remind me」触发 */
+  reminder?: string;
   /** 命中的日期 token 原文（用于 UI 回显） */
   dateToken?: string;
   /** 命中的时间 token 原文 */
@@ -36,6 +41,8 @@ export interface QuickAddParseResult {
   priorityToken?: string;
   /** 命中的重复 token 原文 */
   repeatToken?: string;
+  /** 命中的提醒 token 原文 */
+  reminderToken?: string;
 }
 
 const WEEKDAY_MAP: Record<string, number> = {
@@ -89,6 +96,39 @@ interface DateMatch {
   date: Date;
 }
 
+/**
+ * 「天」后紧跟这些字时大概率是「天气/天堂/天才…」等复合词而非日期结尾，
+ * 该处不视为日期 token（如「明天气温」「今天使用」），继续向后找下一处出现。
+ */
+const ZH_TIAN_COMPOUND_NEXT = '气堂才使赋空线真鹅桥籁';
+
+/** 中文相对日 token 的保守查找：跳过被复合词吞掉的出现位置，找不到返回 -1 */
+function findZhRelativeToken(text: string, token: string): number {
+  let from = 0;
+  while (from <= text.length - token.length) {
+    const idx = text.indexOf(token, from);
+    if (idx === -1) return -1;
+    const next = text[idx + token.length];
+    if (!token.endsWith('天') || !next || !ZH_TIAN_COMPOUND_NEXT.includes(next)) {
+      return idx;
+    }
+    from = idx + 1;
+  }
+  return -1;
+}
+
+const ZH_NUM_MAP: Record<string, number> = {
+  '一': 1, '两': 2, '二': 2, '三': 3, '四': 4, '五': 5,
+  '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+};
+
+/** 加 N 个月，日期超过目标月天数时收敛到月末 */
+function addMonthsClamped(d: Date, n: number): Date {
+  const targetMonth = d.getMonth() + n;
+  const lastDay = new Date(d.getFullYear(), targetMonth + 1, 0).getDate();
+  return new Date(d.getFullYear(), targetMonth, Math.min(d.getDate(), lastDay));
+}
+
 function matchDate(text: string, now: Date): DateMatch | null {
   // 相对日（按 token 长度降序尝试，避免「后天」匹配进「大后天」）
   const relative: Array<[string, number]> = [
@@ -100,17 +140,36 @@ function matchDate(text: string, now: Date): DateMatch | null {
     ['today', 0],
   ];
   for (const [token, offset] of relative) {
-    // ★ 英文 token 要求词边界：避免 "tomorrowland"/"uptoday" 等单词被误吞
+    // ★ 英文 token 要求词边界：避免 "tomorrowland"/"uptoday" 等单词被误吞；
+    //   中文 token 用复合词黑名单保守匹配：避免「明天气温」被剥成「气温」
     const isAsciiToken = /^[a-z]+$/.test(token);
     let idx = -1;
     if (isAsciiToken) {
       const wordRe = new RegExp(`\\b${token}\\b`, 'i');
       idx = wordRe.exec(text)?.index ?? -1;
     } else {
-      idx = text.indexOf(token);
+      idx = findZhRelativeToken(text, token);
     }
     if (idx !== -1) {
       return { token: text.slice(idx, idx + token.length), index: idx, date: addDays(now, offset) };
+    }
+  }
+
+  // N天后 / N周后 / N个月后（含「之后/以后」，支持阿拉伯数字与一~十/两）
+  // 「后」须紧跟单位（或经由「之/以」），避免「5日 后续处理」这类断句被误判
+  const relAfterRe = /(\d{1,3}|[一两二三四五六七八九十])\s*(天|日|个?\s*月|周|星期|礼拜)(?:之|以)?[后後]/;
+  const ra = relAfterRe.exec(text);
+  if (ra) {
+    const n = /^\d+$/.test(ra[1]) ? parseInt(ra[1], 10) : ZH_NUM_MAP[ra[1]];
+    const unit = ra[2].replace(/\s/g, '');
+    if (n !== undefined && n >= 1) {
+      let d: Date | null = null;
+      if (unit === '天' || unit === '日') d = addDays(now, n);
+      else if (unit === '周' || unit === '星期' || unit === '礼拜') d = addDays(now, n * 7);
+      else d = addMonthsClamped(now, n); // 月 / 个月
+      if (d) {
+        return { token: ra[0], index: ra.index, date: d };
+      }
     }
   }
 
@@ -166,11 +225,47 @@ interface PriorityMatch {
   priority: TodoPriority;
 }
 
+/** Todoist 惯例：p1 最高 → p4 最低 */
+const P_LEVEL_MAP: Record<string, TodoPriority> = {
+  '1': 'urgent',
+  '2': 'high',
+  '3': 'medium',
+  '4': 'low',
+};
+
 function matchPriority(text: string): PriorityMatch | null {
   const re = /[!！](紧急|高|中|低|urgent|high|medium|low)/i;
   const m = re.exec(text);
-  if (!m) return null;
-  return { token: m[0], priority: PRIORITY_MAP[m[1].toLowerCase()] };
+  if (m) {
+    return { token: m[0], priority: PRIORITY_MAP[m[1].toLowerCase()] };
+  }
+
+  // p1~p4（词边界：不吞 "mp3"/"p10" 等；CJK 紧邻天然有边界，「交作业p1」可识别）
+  const pRe = /\b[pP]([1-4])\b/;
+  const pMatch = pRe.exec(text);
+  if (pMatch) {
+    return { token: pMatch[0], priority: P_LEVEL_MAP[pMatch[1]] };
+  }
+
+  return null;
+}
+
+interface ReminderMatch {
+  token: string;
+}
+
+/**
+ * 提醒标记匹配（保守设计，避免误伤普通标题里的「提醒」二字）：
+ *   中文：提醒我（必须带「我」）
+ *   英文：!remind / ！remind 前缀，或独立的 "remind me"
+ * 具体提醒时刻由解析出的日期/时间组合而成（见 parseQuickAddInput 尾部）。
+ */
+function matchReminder(text: string): ReminderMatch | null {
+  const zh = /提醒我/.exec(text);
+  if (zh) return { token: zh[0] };
+  const en = /[!！]remind\b|\bremind\s+me\b/i.exec(text);
+  if (en) return { token: en[0] };
+  return null;
 }
 
 interface RepeatMatch {
@@ -396,10 +491,12 @@ export function parseQuickAddInput(input: string, now: Date = new Date()): Quick
   let priority: TodoPriority | undefined;
   let repeat: TodoRepeatRule | undefined;
   let tags: string[] | undefined;
+  let reminder: string | undefined;
   let dateToken: string | undefined;
   let timeToken: string | undefined;
   let priorityToken: string | undefined;
   let repeatToken: string | undefined;
+  let reminderToken: string | undefined;
 
   // 标签最先剔除（#token 与其他语法无交集，先剥离可简化后续匹配）
   const tmatch = matchTags(title);
@@ -408,6 +505,14 @@ export function parseQuickAddInput(input: string, now: Date = new Date()): Quick
     for (const token of tmatch.tokens) {
       title = removeToken(title, token);
     }
+  }
+
+  // 提醒标记先于日期/时间剥离（「明天3点提醒我交作业」——标记本身不携带时刻，
+  // 提醒时刻在日期/时间解析完成后组合）
+  const remMatch = matchReminder(title);
+  if (remMatch) {
+    reminderToken = remMatch.token;
+    title = removeToken(title, remMatch.token);
   }
 
   const pm = matchPriority(title);
@@ -453,6 +558,12 @@ export function parseQuickAddInput(input: string, now: Date = new Date()): Quick
     dueDate = formatLocalDate(now);
   }
 
+  // 提醒时刻 = 解析出的日期 + 时间；无日期默认今天，无时间默认 09:00。
+  // 只组合提醒字段，不反向影响 dueDate/dueTime（用户可能只想要提醒不设到期日）
+  if (reminderToken) {
+    reminder = `${dueDate ?? formatLocalDate(now)}T${dueTime ?? '09:00'}`;
+  }
+
   return {
     title: title.trim(),
     dueDate,
@@ -460,9 +571,11 @@ export function parseQuickAddInput(input: string, now: Date = new Date()): Quick
     priority,
     repeat,
     tags,
+    reminder,
     dateToken,
     timeToken,
     priorityToken,
     repeatToken,
+    reminderToken,
   };
 }

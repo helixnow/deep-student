@@ -45,6 +45,11 @@ export async function ensureInbox(title?: string): Promise<TodoList> {
   return invoke('todo_ensure_inbox', { title });
 }
 
+/** 拖拽重排清单顺序（与后端 todo_reorder_lists 约定 { listIds }） */
+export async function reorderTodoLists(listIds: string[]): Promise<void> {
+  return invoke('todo_reorder_lists', { listIds });
+}
+
 // ============================================================================
 // Recycle Bin API
 // ============================================================================
@@ -111,6 +116,11 @@ export async function deleteTodoItem(itemId: string): Promise<void> {
 
 export async function reorderTodoItems(listId: string, itemIds: string[]): Promise<void> {
   return invoke('todo_reorder_items', { input: { listId, itemIds } });
+}
+
+/** 移动待办到另一清单（与后端 todo_move_item 约定 { itemId, targetListId }，返回更新后的 item） */
+export async function moveTodoItem(itemId: string, targetListId: string): Promise<TodoItem> {
+  return invoke('todo_move_item', { itemId, targetListId });
 }
 
 // ============================================================================

@@ -25,6 +25,7 @@ describe('pomodoro record persistence boundary', () => {
       currentTaskId: 'todo-1',
       currentTaskTitle: '任务',
       sessionStartTime: new Date().toISOString(),
+      sessionCountUp: null,
       settings: { ...DEFAULT_POMODORO_SETTINGS },
     });
   });

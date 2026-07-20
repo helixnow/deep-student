@@ -184,17 +184,23 @@ export function sortTodoItems(items: TodoItem[], sortBy: TodoSortBy): TodoItem[]
 // 辅助函数
 // ============================================================================
 
+/** 仅保留字符串元素（脏数据/旧版本写入的非字符串条目静默丢弃） */
+function toStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+}
+
 export function parseTags(tagsJson: string): string[] {
   try {
-    return JSON.parse(tagsJson);
+    return toStringArray(JSON.parse(tagsJson));
   } catch {
     return [];
   }
 }
 
+/** 附件为文件路径/URL 字符串数组（与后端 attachments_json 契约一致） */
 export function parseAttachments(attachmentsJson: string): string[] {
   try {
-    return JSON.parse(attachmentsJson);
+    return toStringArray(JSON.parse(attachmentsJson));
   } catch {
     return [];
   }
@@ -419,6 +425,21 @@ export function localToday(): string {
 export function isOverdue(item: TodoItem): boolean {
   if (!item.dueDate || item.status !== 'pending') return false;
   return item.dueDate < localToday();
+}
+
+/**
+ * 精确到分钟的逾期判断（isOverdue 的 dueTime 感知版，不改变 isOverdue 语义）：
+ * 到期日早于今天 → 逾期；到期日为今天且设置了 dueTime 且已过该时刻 → 逾期。
+ */
+export function isOverdueAt(item: TodoItem, now: Date = new Date()): boolean {
+  if (!item.dueDate || item.status !== 'pending') return false;
+  const today = formatLocalDate(now);
+  if (item.dueDate < today) return true;
+  if (item.dueDate === today && item.dueTime) {
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    return item.dueTime < currentTime;
+  }
+  return false;
 }
 
 export function isDueToday(item: TodoItem): boolean {

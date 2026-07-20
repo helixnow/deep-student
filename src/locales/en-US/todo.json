@@ -1,7 +1,8 @@
 {
   "sections": {
     "smartViews": "Smart Views",
-    "lists": "Lists"
+    "lists": "Lists",
+    "favorites": "Favorites"
   },
   "views": {
     "inbox": "Inbox",
@@ -12,6 +13,53 @@
     "completed": "Completed"
   },
   "automation": {
+    "loading": "Loading automation overview",
+    "createPanel": {
+      "quickTitle": "Create with one sentence",
+      "nlApply": "Fill the form",
+      "nlFirstRun": "First run: {{time}}",
+      "templatesToggle": "Start from a template",
+      "agentPrompt": "Agent instructions (optional)",
+      "agentPromptHint": "Leave empty to reuse the task instructions above",
+      "promptCount": "{{count}} / {{max}}",
+      "scheduleInvalid": "This schedule never produces a next run; please review the settings",
+      "shortcutHint": "Esc to close · ⌘/Ctrl+Enter to create",
+      "success": "Scheduled task \"{{name}}\" created",
+      "scheduleSummary": {
+        "daily": "Daily at {{time}}",
+        "weekdays": "Weekdays at {{time}}",
+        "weekly": "Every {{weekday}} at {{time}}",
+        "monthly": "Monthly on day {{day}} at {{time}}",
+        "interval": "Every {{minutes}} minutes",
+        "once": "Once on {{date}} at {{time}}"
+      }
+    },
+    "nl": {
+      "placeholder": "Describe in one sentence, e.g. remind me to review words daily at 8am",
+      "matchedLabel": "Detected time expression",
+      "noSchedule": "No schedule detected; only the task content will be kept",
+      "defaultTimeHint": "No time specified, defaulting to 09:00",
+      "confidence": {
+        "high": "Parse confidence: high",
+        "medium": "Parse confidence: medium, please confirm the schedule",
+        "low": "Parse confidence: low, please set the schedule manually"
+      }
+    },
+    "entry": {
+      "badgeAria": "{{count}} enabled scheduled tasks",
+      "failedDotAria": "Some scheduled tasks failed recently",
+      "openCommand": "Open Scheduled Tasks",
+      "openCommandDesc": "Switch to the todo automations view",
+      "createCommand": "New Scheduled Task",
+      "createCommandDesc": "Open the automations view and start creating a task",
+      "pauseBackgroundCommand": "Pause Background Automations",
+      "pauseBackgroundCommandDesc": "Turn off the background switch: tasks stop running after the window closes; per-task enabled states are untouched",
+      "pauseBackgroundDone": "Background automations paused",
+      "resumeBackgroundCommand": "Resume Background Automations",
+      "resumeBackgroundCommandDesc": "Allow scheduled tasks to keep running in the background after the window closes",
+      "resumeBackgroundDone": "Background automations resumed",
+      "backgroundToggleFailed": "Failed to toggle background automations"
+    },
     "title": "Scheduled Tasks",
     "subtitle": "Reminders and unattended Agent runs",
     "summary": "Automation summary",
@@ -22,7 +70,35 @@
     "never": "None",
     "background": "Keep running after closing the window",
     "backgroundHint": "Quitting the app or shutting down stops tasks; missed runs recover according to their policy",
-    "history": "Run history",
+    "history": {
+      "title": "Run history",
+      "filterByTask": "Filter by task",
+      "filterByStatus": "Filter by status",
+      "allTasks": "All tasks",
+      "filterAll": "All",
+      "filterSuccess": "Succeeded",
+      "filterFailed": "Failed",
+      "filterActive": "In progress",
+      "attempt": "Attempt {{attempt}}/{{max}}",
+      "summary": "Summary",
+      "error": "Error",
+      "copyError": "Copy error",
+      "copied": "Copied",
+      "scheduledFor": "Scheduled for",
+      "startedAt": "Started at",
+      "finishedAt": "Finished at",
+      "delivered": "Delivered",
+      "retry": "Retry",
+      "cancel": "Cancel",
+      "viewSession": "View conversation",
+      "empty": "No runs yet",
+      "emptyHint": "Runs will show up here once tasks execute"
+    },
+    "format": {
+      "justNow": "Just now",
+      "durationMinutesSeconds": "{{minutes}}m {{seconds}}s",
+      "durationSeconds": "{{seconds}}s"
+    },
     "noHistory": "No runs yet",
     "new": "New task",
     "createTitle": "New scheduled task",
@@ -53,11 +129,25 @@
     "retryBackoff": "Retry delay seconds",
     "timeout": "Timeout seconds",
     "prompt": "Task instructions",
-    "required": "Enter a name and task instructions",
-    "lengthInvalid": "Names are limited to 100 characters and instructions to 4,000",
+    "advanced": "Retries & timeout",
+    "nameRequired": "Enter a name",
+    "nameTooLong": "Names are limited to 100 characters",
+    "promptRequired": "Enter task instructions",
+    "promptTooLong": "Instructions are limited to 4,000 characters",
     "timeInvalid": "Enter a valid 24-hour time",
     "timezoneInvalid": "Enter a valid IANA time zone",
-    "valuesInvalid": "Check the schedule, retry, and timeout values",
+    "intervalInvalid": "Interval must be between 5 and 1,440 minutes",
+    "dayOfMonthInvalid": "Day of month must be between 1 and 31",
+    "retriesInvalid": "Retries must be between 0 and 10",
+    "backoffInvalid": "Retry delay must be between 5 and 86,400 seconds",
+    "timeoutInvalid": "Timeout must be between 30 and 3,600 seconds",
+    "showAll": "All history ({{total}})",
+    "showLess": "Show less",
+    "emptyTitle": "No scheduled tasks yet",
+    "emptyHint": "Create a scheduled task to run reminders and Agent turns for you in the background",
+    "emptyTemplate": "Start from a template",
+    "templateName": "Daily study review",
+    "templatePrompt": "Review today's due flashcards and todos, then produce a prioritized list",
     "retry": "Retry",
     "openSession": "Open run conversation",
     "viewSession": "View conversation",
@@ -84,6 +174,111 @@
       "manual": "Manual",
       "retry": "Retry",
       "recovery": "Recovery"
+    },
+    "scheduleEditor": {
+      "kindLabel": "Repeats",
+      "kinds": {
+        "daily": "Daily",
+        "weekdays": "Weekdays",
+        "weekly": "Weekly",
+        "monthly": "Monthly",
+        "interval": "Interval",
+        "once": "Once"
+      },
+      "timeLabel": "Time",
+      "weekdayLabel": "Day of week",
+      "weekdaysShort": {
+        "0": "Su",
+        "1": "Mo",
+        "2": "Tu",
+        "3": "We",
+        "4": "Th",
+        "5": "Fr",
+        "6": "Sa"
+      },
+      "weekdaysLong": {
+        "0": "Sunday",
+        "1": "Monday",
+        "2": "Tuesday",
+        "3": "Wednesday",
+        "4": "Thursday",
+        "5": "Friday",
+        "6": "Saturday"
+      },
+      "dayOfMonthLabel": "Day of month",
+      "dayOfMonthHint": "Day 31 rolls back to the last day in shorter months",
+      "intervalLabel": "Interval minutes",
+      "intervalUnit": "minutes",
+      "intervalPresetsLabel": "Common intervals",
+      "presetMinutes": "{{n}} min",
+      "presetHours": "{{n}} h",
+      "dateLabel": "Date",
+      "timezoneLabel": "Time zone",
+      "timezoneSystemBadge": "(system)",
+      "timezoneSearch": "Search time zones...",
+      "timezoneClear": "Clear and use system time zone",
+      "timezoneNoResults": "No matching time zones",
+      "previewTitle": "Next {{n}} runs",
+      "previewEmpty": "Nothing to preview yet — complete the settings above",
+      "preview": {
+        "today": "Today {{time}}",
+        "tomorrow": "Tomorrow {{time}}"
+      },
+      "errors": {
+        "time": "Enter a valid 24-hour time (HH:MM)",
+        "dayOfMonth": "Day of month must be between 1 and 31",
+        "interval": "Interval must be between 5 and 1,440 minutes",
+        "onceDate": "Date cannot be earlier than today",
+        "timezone": "Choose a valid IANA time zone"
+      },
+      "describe": {
+        "daily": "Every day at {{time}}",
+        "weekdays": "Weekdays at {{time}}",
+        "weekly": "Every {{weekday}} at {{time}}",
+        "monthly": "Monthly on day {{day}} at {{time}}",
+        "interval": "Every {{minutes}} minutes",
+        "once": "{{date}} at {{time}} (once)",
+        "withTimezone": "{{description}} ({{timezone}})",
+        "invalid": "Schedule is incomplete"
+      }
+    },
+    "templates": {
+      "title": "Start from a template",
+      "dailyMistakes": {
+        "name": "Daily mistake digest",
+        "description": "Summarize today's new mistakes at 21:00",
+        "prompt": "Summarize the mistakes I added today: group them by topic, count how many fall under each topic, highlight my 3 weakest areas by error frequency, and give one concrete, actionable review tip for each weak area (e.g. redo a question type or revisit a concept). Finish with a one-paragraph recap of how today went overall."
+      },
+      "weeklyReport": {
+        "name": "Weekly study report",
+        "description": "Weekly recap every Sunday at 20:00",
+        "prompt": "Write my weekly study report: 1) total study time this week and how it splits across subjects; 2) flashcards reviewed and how retention changed; 3) mistake trends, calling out topics that improved or got worse versus last week; 4) based on this data, give 3 focused recommendations for next week. Use a concise, sectioned format."
+      },
+      "morningReview": {
+        "name": "Morning review reminder",
+        "description": "Weekday 07:30 nudge for due reviews",
+        "prompt": "Good morning! You have flashcards due and material waiting for review today. Spend 15 minutes clearing today's review queue while your mind is fresh, then move on to new material."
+      },
+      "examSprint": {
+        "name": "Exam sprint plan",
+        "description": "Sprint checklist on exam day (pick the date)",
+        "prompt": "Today is a critical review day. Using my mistake log and weak areas, build today's sprint checklist: 1) pick the 10 mistakes most worth redoing and explain why; 2) list 3 core concepts I must lock in, each with a quick self-test; 3) lay out a morning/afternoon/evening schedule with breaks. Make it checkable and actionable."
+      },
+      "monthlyMap": {
+        "name": "Monthly knowledge audit",
+        "description": "Full knowledge check-in on the 1st at 09:00",
+        "prompt": "Run a knowledge-map audit of my past month: 1) map which topics are mastered, partially mastered, or untouched; 2) flag material I haven't reviewed in a long time and may have forgotten; 3) point out connection gaps between topics (learned A but never linked it to B); 4) propose a prioritized roadmap to fill the gaps this month."
+      },
+      "pomodoroBreak": {
+        "name": "Break reminder",
+        "description": "Stand up and rest every 2 hours",
+        "prompt": "You've been studying for 2 hours straight! Take 5 minutes: stretch, grab some water, look away from the screen. A short break now keeps your next session sharp."
+      },
+      "midweekDrill": {
+        "name": "Midweek weak-spot drill",
+        "description": "Targeted practice every Wednesday at 18:00",
+        "prompt": "From my mistakes and flashcard reviews over the past two weeks, identify my 2 shakiest topics. For each, write 3 targeted practice questions (easy to hard) with full solutions and common-pitfall notes. Finish by telling me exactly what to revisit if I get them wrong again."
+      }
     }
   },
   "matrix": {
@@ -113,13 +308,17 @@
     "markCompleted": "Mark as completed",
     "markPending": "Mark as pending",
     "deleteItem": "Delete todo",
-    "dragToReorder": "Drag to reorder"
+    "dragToReorder": "Drag to reorder",
+    "editTitleHint": "Double-click to edit title"
   },
   "reschedule": {
     "title": "Reschedule",
     "today": "Today",
     "tomorrow": "Tomorrow",
+    "weekend": "This weekend",
     "nextMonday": "Next Monday",
+    "inTwoWeeks": "In two weeks",
+    "pickDate": "Pick a date",
     "clear": "Remove date",
     "allToToday": "Move all to today",
     "allToTodayHint": "Reschedule every overdue task to today"
@@ -138,7 +337,8 @@
   "dialogs": {
     "deleteList": {
       "title": "Delete list",
-      "description": "Delete list \"{{title}}\"? Its todos will be moved to the recycle bin. You can undo this action."
+      "description": "Delete list \"{{title}}\"? Its todos will be moved to the recycle bin. You can undo this action.",
+      "inlineConfirm": "Delete \"{{title}}\"? Undo available"
     }
   },
   "subtasks": {
@@ -147,10 +347,13 @@
     "addPlaceholder": "Add a subtask...",
     "aiBreakdown": "AI Breakdown",
     "aiBreaking": "Breaking down...",
-    "aiBreakdownHint": "Let AI break this task into actionable subtasks"
+    "aiBreakdownHint": "Let AI break this task into actionable subtasks",
+    "openDetail": "Open subtask details"
   },
   "filters": {
-    "showCompleted": "Show Completed"
+    "showCompleted": "Show Completed",
+    "priority": "Priority",
+    "allPriorities": "All priorities"
   },
   "sort": {
     "label": "Sort",
@@ -201,6 +404,7 @@
     "description": "Description",
     "pomodoros": "Pomodoros",
     "repeat": "Repeat",
+    "repeatInterval": "Interval",
     "reminder": "Reminder",
     "tags": "Tags"
   },
@@ -208,7 +412,12 @@
     "clear": "Clear reminder",
     "notificationTitle": "Reminder: {{title}}",
     "notificationBody": "Time to work on this task",
-    "notificationBodyWithDue": "Due {{due}} — don't forget"
+    "notificationBodyWithDue": "Due {{due}} — don't forget",
+    "missedTitle_one": "You missed {{count}} reminder",
+    "missedTitle_other": "You missed {{count}} reminders",
+    "missedTitle": "You missed {{count}} reminders",
+    "missedBodyMore": "{{titles}} and {{rest}} more",
+    "titleJoin": ", "
   },
   "dailyDigest": {
     "title": "{{count}} tasks due today",
@@ -266,7 +475,11 @@
     "emptyAllConfirmTitle": "Empty Recycle Bin",
     "emptyAllConfirmDescription": "Empty the recycle bin? All deleted lists and todos will be permanently removed. This cannot be undone.",
     "emptied": "Recycle bin emptied",
-    "loadMore": "Load older entries"
+    "loadMore": "Load older entries",
+    "back": "Back to todos",
+    "purgeInlineHint": "Cannot be undone",
+    "emptyAllInlineHint": "Permanently removes everything. Cannot be undone",
+    "confirmEmptyAll": "Confirm empty"
   },
   "overdue": {
     "badgeAria_one": "{{count}} overdue todo",
@@ -339,6 +552,7 @@
       "dailyAvg": "Daily avg",
       "pomodoroCount": "{{count}} pomodoros",
       "empty": "No focus sessions in this range",
+      "loading": "Loading stats",
       "thisWeek": "This week",
       "weekUp": "+{{value}}% vs same time last week",
       "weekDown": "-{{value}}% vs same time last week",
@@ -354,7 +568,8 @@
       "hours": "{{value}} h",
       "interrupted": "Interrupted {{value}} times",
       "goalProgress": "Daily goal {{done}}/{{goal}}",
-      "goalReached": "Goal reached"
+      "goalReached": "Goal reached",
+      "streak": "{{count}}-day streak"
     },
     "notifications": {
       "workCompleteTitle": "Pomodoro Complete",
@@ -382,6 +597,7 @@
       "endReminder": "End reminder (0 = off)",
       "noiseType": "Ambient sound",
       "noiseVolume": "Volume",
+      "noiseAutoWithFocus": "Auto-play ambient sound while focusing",
       "dailyGoal": "Daily goal (0 = off)",
       "endReminderShort": "End reminder",
       "dailyGoalShort": "Daily goal",
@@ -390,7 +606,9 @@
       "sections": {
         "duration": "Duration",
         "automation": "Automation",
-        "focus": "Focus"
+        "focus": "Focus",
+        "goal": "Goal",
+        "sound": "Sound"
       }
     },
     "progressTitle": "{{done}}/{{total}} pomodoros completed",
@@ -404,6 +622,8 @@
     }
   },
   "sidebar": {
-    "title": "Todo navigation"
+    "title": "Todo navigation",
+    "moreActions": "More actions",
+    "listColor": "Color"
   }
 }

@@ -23,7 +23,7 @@ import { registerDomainListener } from '@/features/workbench/agent/domainEvents'
 import { useTodoStore } from '../stores/useTodoStore';
 import { TodoSidebar } from './TodoSidebar';
 import { TodoMainPanel, MobileDetailOverlay, type PomodoroSubView } from './TodoMainPanel';
-import { TodoTrashScreen } from './TodoTrashDialog';
+import { TodoTrashScreen, TodoTrashWorkspace, useTodoTrashView } from './TodoTrashDialog';
 import { TodoAutomationWorkspace } from './TodoAutomationWorkspace';
 
 interface TodoContentViewProps {
@@ -84,6 +84,9 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   // 移动端 inline 子屏（全屏替换中屏内容，返回走顶栏箭头 / Android 返回键）
   const [trashOpen, setTrashOpen] = useState(false);
   const [pomodoroSubView, setPomodoroSubView] = useState<PomodoroSubView | null>(null);
+  // 桌面端内联回收站视图（侧栏点击后主内容区切换，经共享 store 协调）
+  const desktopTrashOpen = useTodoTrashView((s) => s.isOpen);
+  const closeDesktopTrash = useTodoTrashView((s) => s.close);
   const reloadGuardRef = useRef<{ cancelled: boolean }>({ cancelled: false });
 
   useEffect(() => {
@@ -110,6 +113,8 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
 
   useEffect(() => {
     if (todoListId && todoListId !== activeListId) {
+      // workbench payload 指定清单时确保内容区不停留在回收站视图
+      closeDesktopTrash();
       if (filter.view !== 'all') {
         setActiveList(todoListId);
         setViewFilter('all');
@@ -117,7 +122,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
       }
       setActiveList(todoListId);
     }
-  }, [todoListId, activeListId, filter.view, setActiveList, setViewFilter]);
+  }, [todoListId, activeListId, filter.view, setActiveList, setViewFilter, closeDesktopTrash]);
 
   // 计算当前视图标题（移动端顶栏用）
   const activeList = lists.find((l) => l.id === activeListId);
@@ -126,6 +131,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
     switch (filter.view) {
       case 'today': return t('todo:views.today');
       case 'upcoming': return t('todo:views.upcoming');
+      case 'matrix': return t('todo:views.matrix');
       case 'overdue': return t('todo:views.overdue');
       case 'completed': return t('todo:views.completed');
       default: return activeList?.title || t('todo:views.inbox');
@@ -242,6 +248,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   }
 
   // ===== 桌面端：仅主面板（侧边栏已移至 Shell 导航位置） =====
+  // 回收站为内联视图优先级最高（侧栏点击切换，带返回）
   return (
     <div
       className={cn(
@@ -249,7 +256,13 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
         className,
       )}
     >
-      {workspaceView === 'automations' ? <TodoAutomationWorkspace /> : <TodoMainPanel />}
+      {desktopTrashOpen ? (
+        <TodoTrashWorkspace />
+      ) : workspaceView === 'automations' ? (
+        <TodoAutomationWorkspace />
+      ) : (
+        <TodoMainPanel />
+      )}
     </div>
   );
 };

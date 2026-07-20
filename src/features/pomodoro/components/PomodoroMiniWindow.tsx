@@ -4,14 +4,18 @@
  * 由 main.tsx 在 ?window=pomodoro-mini 时挂载。
  * 不运行计时逻辑——状态完全来自主窗口广播（pomodoro-mini:state），
  * 操作通过 pomodoro-mini:command 事件回传主窗口执行。
+ *
+ * 协议兼容：progress / countUp 为可选扩展字段，旧版主窗口不发送时
+ * 进度条隐藏、完成按钮不显示，其余功能不受影响。
  */
 import '@/styles/tailwind.css';
 import '@/styles/shadcn-variables.css';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pause, Play, Square, Coffee, Brain, X } from '@phosphor-icons/react';
+import { Pause, Play, Square, Coffee, Brain, X, CheckCircle } from '@phosphor-icons/react';
 import { listen, emit } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { cn } from '@/lib/utils';
 import useTheme from '@/hooks/useTheme';
 import {
   EVT_MINI_STATE,
@@ -71,16 +75,33 @@ export const PomodoroMiniWindow: React.FC = () => {
     void getCurrentWindow().close();
   };
 
+  // 阶段语义色（与主窗口一致：work = primary，short_break = success，long_break = info）
+  const modeColorClass =
+    state?.mode === 'work' ? 'text-primary'
+      : state?.mode === 'long_break' ? 'text-info'
+        : 'text-success';
+  const modeBarClass =
+    state?.mode === 'work' ? 'bg-primary'
+      : state?.mode === 'long_break' ? 'bg-info'
+        : 'bg-success';
+
   const modeIcon = state?.mode === 'work'
-    ? <Brain size={15} className="text-orange-500" weight="fill" />
-    : <Coffee size={15} className={state?.mode === 'long_break' ? 'text-blue-500' : 'text-green-500'} weight="fill" />;
+    ? <Brain size={15} className={modeColorClass} weight="fill" />
+    : <Coffee size={15} className={modeColorClass} weight="fill" />;
+
+  const modeLabel =
+    state?.mode === 'work' ? t('pomodoro.modes.focusing')
+      : state?.mode === 'long_break' ? t('pomodoro.modes.longBreak')
+        : t('pomodoro.modes.shortBreak');
 
   const hidePause = Boolean(state?.strictMode && state.mode === 'work' && state.status === 'running');
+  const showFinish = Boolean(state?.countUp && state.mode === 'work' && state.status === 'running');
+  const progress = state?.progress != null ? Math.min(1, Math.max(0, state.progress)) : null;
 
   return (
     <div
       data-tauri-drag-region
-      className="flex h-screen w-screen select-none items-center gap-2 overflow-hidden rounded-full border border-border bg-background px-3.5 pr-1.5 shadow-lg"
+      className="relative flex h-screen w-screen select-none items-center gap-2 overflow-hidden rounded-full border border-border bg-background px-3.5 pr-1.5 shadow-lg"
     >
       {state ? (
         <>
@@ -102,30 +123,60 @@ export const PomodoroMiniWindow: React.FC = () => {
           )}
           {!state.taskTitle && <span data-tauri-drag-region className="flex-1" />}
           <div className="flex shrink-0 items-center">
+            {showFinish && (
+              <button
+                onClick={() => sendCommand('finish')}
+                className="rounded-full p-1.5 text-success transition-colors hover:bg-success/10 motion-reduce:transition-none"
+                title={t('pomodoro.controls.finish')}
+                aria-label={t('pomodoro.controls.finish')}
+              >
+                <CheckCircle size={13} weight="fill" />
+              </button>
+            )}
             {!hidePause && (
               <button
                 onClick={() => sendCommand(state.status === 'running' ? 'pause' : 'resume')}
-                className="rounded-full p-1.5 text-foreground/80 transition-colors hover:bg-muted"
+                className="rounded-full p-1.5 text-foreground/80 transition-colors hover:bg-muted motion-reduce:transition-none"
                 title={state.status === 'running' ? t('pomodoro.controls.pause') : t('pomodoro.controls.resume')}
+                aria-label={state.status === 'running' ? t('pomodoro.controls.pause') : t('pomodoro.controls.resume')}
               >
                 {state.status === 'running' ? <Pause size={13} weight="fill" /> : <Play size={13} weight="fill" />}
               </button>
             )}
             <button
               onClick={() => sendCommand('stop')}
-              className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+              className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive motion-reduce:transition-none"
               title={t('pomodoro.controls.stop')}
+              aria-label={t('pomodoro.controls.stop')}
             >
               <Square size={13} weight="fill" />
             </button>
             <button
               onClick={handleClose}
-              className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground motion-reduce:transition-none"
               title={t('pomodoro.miniWindow.close')}
+              aria-label={t('pomodoro.miniWindow.close')}
             >
               <X size={13} weight="bold" />
             </button>
           </div>
+
+          {/* 细进度条（旧版主窗口不发送 progress 时隐藏） */}
+          {progress != null && (
+            <div
+              className="pointer-events-none absolute inset-x-4 bottom-[3px] h-[2px] overflow-hidden rounded-full bg-border/60"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress * 100)}
+              aria-label={modeLabel}
+            >
+              <div
+                className={cn('h-full rounded-full transition-[width] duration-1000 ease-linear motion-reduce:transition-none', modeBarClass)}
+                style={{ width: `${progress * 100}%` }}
+              />
+            </div>
+          )}
         </>
       ) : (
         <span data-tauri-drag-region className="flex-1 text-center text-[12px] text-muted-foreground">

@@ -1,0 +1,74 @@
+/**
+ * PriorityFilterMenu — 工具栏优先级过滤器（AppMenu 锚定下拉）
+ * 直接消费 store 现有的 filter.priorityFilter / setPriorityFilter。
+ */
+
+import React from 'react';
+import { useTranslation } from 'react-i18next';
+import { FunnelSimple } from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
+import {
+  AppMenu,
+  AppMenuContent,
+  AppMenuItem,
+  AppMenuSeparator,
+  AppMenuTrigger,
+} from '@/components/ui/app-menu/AppMenu';
+import { useTodoStore } from '../../stores/useTodoStore';
+import type { TodoPriority } from '../../types';
+import { PRIORITY_CONFIG } from '../../types';
+import { PriorityIcon } from './TodoItemRow';
+
+const PRIORITY_ORDER: TodoPriority[] = ['urgent', 'high', 'medium', 'low', 'none'];
+
+export const PriorityFilterMenu: React.FC = () => {
+  const { t } = useTranslation(['todo']);
+  const priorityFilter = useTodoStore((s) => s.filter.priorityFilter);
+  const setPriorityFilter = useTodoStore((s) => s.setPriorityFilter);
+
+  return (
+    <AppMenu>
+      <AppMenuTrigger asChild>
+        <NotionButton
+          variant="utility"
+          size="sm"
+          data-selected={Boolean(priorityFilter)}
+          className={cn(
+            'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
+            priorityFilter &&
+              '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
+          )}
+          title={t('todo:filters.priority')}
+          aria-label={t('todo:filters.priority')}
+        >
+          <FunnelSimple size={14} />
+          <span className="hidden sm:inline">
+            {priorityFilter
+              ? t(PRIORITY_CONFIG[priorityFilter].labelKey)
+              : t('todo:filters.priority')}
+          </span>
+        </NotionButton>
+      </AppMenuTrigger>
+      <AppMenuContent align="end" width={180}>
+        <AppMenuItem
+          checked={!priorityFilter}
+          onClick={() => setPriorityFilter(null)}
+        >
+          {t('todo:filters.allPriorities')}
+        </AppMenuItem>
+        <AppMenuSeparator />
+        {PRIORITY_ORDER.map((p) => (
+          <AppMenuItem
+            key={p}
+            checked={priorityFilter === p}
+            onClick={() => setPriorityFilter(p)}
+            icon={<PriorityIcon priority={p} className="h-3.5 w-3.5" />}
+          >
+            {t(PRIORITY_CONFIG[p].labelKey)}
+          </AppMenuItem>
+        ))}
+      </AppMenuContent>
+    </AppMenu>
+  );
+};

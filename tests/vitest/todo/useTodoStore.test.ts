@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { waitFor } from '@testing-library/react';
 
-import type { TodoItem } from '@/features/todo/types';
+import type { TodoItem, TodoList } from '@/features/todo/types';
 import { useTodoStore } from '@/features/todo/stores/useTodoStore';
 import * as api from '@/features/todo/api';
 
@@ -12,6 +12,7 @@ vi.mock('@/features/todo/api', () => ({
   updateTodoList: vi.fn(),
   deleteTodoList: vi.fn(),
   toggleTodoListFavorite: vi.fn(),
+  reorderTodoLists: vi.fn(),
   createTodoItem: vi.fn(),
   getTodoItem: vi.fn(),
   listTodoItems: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock('@/features/todo/api', () => ({
   toggleTodoItem: vi.fn(),
   deleteTodoItem: vi.fn(),
   reorderTodoItems: vi.fn(),
+  moveTodoItem: vi.fn(),
   listTodayItems: vi.fn(),
   listOverdueItems: vi.fn(),
   listUpcomingItems: vi.fn(),
@@ -46,6 +48,22 @@ function makeItem(overrides: Partial<TodoItem> = {}): TodoItem {
     attachmentsJson: overrides.attachmentsJson ?? '[]',
     estimatedPomodoros: overrides.estimatedPomodoros,
     completedPomodoros: overrides.completedPomodoros,
+    createdAt: overrides.createdAt ?? '2026-03-10T00:00:00.000Z',
+    updatedAt: overrides.updatedAt ?? '2026-03-10T00:00:00.000Z',
+    deletedAt: overrides.deletedAt,
+  };
+}
+
+function makeList(overrides: Partial<TodoList> = {}): TodoList {
+  return {
+    id: overrides.id ?? 'list-a',
+    title: overrides.title ?? 'List',
+    description: overrides.description,
+    icon: overrides.icon,
+    color: overrides.color,
+    sortOrder: overrides.sortOrder ?? 0,
+    isDefault: overrides.isDefault ?? false,
+    isFavorite: overrides.isFavorite ?? false,
     createdAt: overrides.createdAt ?? '2026-03-10T00:00:00.000Z',
     updatedAt: overrides.updatedAt ?? '2026-03-10T00:00:00.000Z',
     deletedAt: overrides.deletedAt,
@@ -158,5 +176,34 @@ describe('useTodoStore', () => {
       expect(api.listCompletedItems).toHaveBeenCalledWith(undefined);
       expect(useTodoStore.getState().items.map((item) => item.id)).toEqual(['done_1']);
     });
+  });
+
+  it('optimistically removes the item when moving it out of the active list', async () => {
+    const item = makeItem({ id: 'ti_move', todoListId: 'list-a' });
+    useTodoStore.setState({ activeListId: 'list-a', items: [item], selectedItemId: 'ti_move' });
+    vi.mocked(api.moveTodoItem).mockResolvedValue({ ...item, todoListId: 'list-b' });
+
+    await useTodoStore.getState().moveItemToList('ti_move', 'list-b');
+
+    expect(api.moveTodoItem).toHaveBeenCalledWith('ti_move', 'list-b');
+    expect(useTodoStore.getState().items).toEqual([]);
+    expect(useTodoStore.getState().selectedItemId).toBeNull();
+  });
+
+  it('optimistically reorders lists', async () => {
+    useTodoStore.setState({
+      lists: [makeList({ id: 'l1' }), makeList({ id: 'l2' }), makeList({ id: 'l3' })],
+    });
+    vi.mocked(api.reorderTodoLists).mockResolvedValue(undefined);
+
+    const promise = useTodoStore.getState().reorderLists(['l3', 'l1', 'l2']);
+
+    // 乐观重排：await 之前本地顺序已更新
+    expect(useTodoStore.getState().lists.map((l) => l.id)).toEqual(['l3', 'l1', 'l2']);
+
+    await promise;
+
+    expect(api.reorderTodoLists).toHaveBeenCalledWith(['l3', 'l1', 'l2']);
+    expect(useTodoStore.getState().lists.map((l) => l.id)).toEqual(['l3', 'l1', 'l2']);
   });
 });

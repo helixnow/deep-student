@@ -5,16 +5,24 @@
  * 两种模式：
  * - 趋势：近 7/14/30 天的每日专注柱状图 + 汇总（番茄数/专注时长/日均）
  * - 热力图：近 12 周 GitHub 风格活跃格子
+ *
+ * 设计系统：范围切换走 SegmentedControl、加载态走 Skeleton、
+ * 柱状/热力颜色走 --primary 透明度梯度、hover 数值走 Tooltip。
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { TrendDown, TrendUp } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { Skeleton } from '@/components/ui/shad/Skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { getPomodoroDailyStats, type PomodoroDailyStat } from '../api';
 
 const RANGES = [7, 14, 30] as const;
 type RangeDays = (typeof RANGES)[number];
 type ViewMode = RangeDays | 'heatmap';
+type ViewModeValue = '7' | '14' | '30' | 'heatmap';
 
 /** 热力图覆盖天数（12 周） */
 const HEATMAP_DAYS = 84;
@@ -31,8 +39,11 @@ const shiftDays = (d: Date, n: number): Date => {
   return next;
 };
 
+/** 加载骨架的柱高（确定性伪随机，避免每次渲染跳动） */
+const SKELETON_BAR_HEIGHTS = [42, 68, 30, 84, 55, 24, 73, 48, 62, 36, 90, 52, 28, 66];
+
 /**
- * 统计内容主体：桌面端由 PomodoroStatsPopover 承载，
+ * 统计内容主体：桌面端由 PomodoroPanel 内的 Popover 承载，
  * 移动端由 Todo 页 inline 子屏承载（showTitle=false 时标题走统一顶栏）。
  */
 export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTitle = true }) => {
@@ -60,6 +71,8 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
   const [weekCompare, setWeekCompare] = useState<{
     thisWeekSeconds: number;
     lastWeekSeconds: number;
+    /** 本周已过天数（含今天），用于日均 */
+    elapsedDays: number;
   } | null>(null);
 
   useEffect(() => {
@@ -77,7 +90,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
           thisWeekSeconds += byDate.get(fmtLocalDate(shiftDays(monday, i))) ?? 0;
           lastWeekSeconds += byDate.get(fmtLocalDate(shiftDays(monday, i - 7))) ?? 0;
         }
-        setWeekCompare({ thisWeekSeconds, lastWeekSeconds });
+        setWeekCompare({ thisWeekSeconds, lastWeekSeconds, elapsedDays: dayIdx + 1 });
       })
       .catch(() => {});
     return () => {
@@ -121,6 +134,13 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
     }
   };
 
+  /** Tooltip 正文：日期 · 专注时长 · N 个番茄 */
+  const dayDetail = (d: PomodoroDailyStat) =>
+    `${dayLabel(d.date)} · ${formatFocus(Math.round(d.focusSeconds / 60))} · ${t(
+      'pomodoro.statsPopover.pomodoroCount',
+      { count: d.completedCount },
+    )}`;
+
   // ===== 热力图：按周分列（列=周，行=周一..周日），强度按当日专注分钟分档 =====
   const heatmapWeeks = useMemo(() => {
     if (mode !== 'heatmap' || !stats || stats.length === 0) return null;
@@ -154,17 +174,26 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
     return 4;
   };
 
+  /** primary 透明度梯度（0 档保持中性底色） */
   const HEAT_CLASSES = [
     'bg-[color:var(--shell-workspace-border)]/60',
-    'bg-[color:hsl(var(--warning))]/25',
-    'bg-[color:hsl(var(--warning))]/45',
-    'bg-[color:hsl(var(--warning))]/70',
-    'bg-[color:hsl(var(--warning))]',
+    'bg-primary/25',
+    'bg-primary/45',
+    'bg-primary/70',
+    'bg-primary',
+  ];
+
+  const rangeOptions: Array<{ value: ViewModeValue; label: React.ReactNode }> = [
+    ...RANGES.map((r) => ({
+      value: String(r) as ViewModeValue,
+      label: t('pomodoro.statsPopover.rangeDays', { count: r }),
+    })),
+    { value: 'heatmap' as ViewModeValue, label: t('pomodoro.statsPopover.heatmap') },
   ];
 
   return (
     <>
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between gap-2">
         {showTitle ? (
           <span className="text-xs font-semibold text-foreground">
             {t('pomodoro.statsPopover.title')}
@@ -172,64 +201,62 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
         ) : (
           <span />
         )}
-        <div className="flex items-center gap-0.5">
-          {RANGES.map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => setMode(r)}
-              className={cn(
-                'rounded px-1.5 py-0.5 text-[11px] transition-colors [@media(pointer:coarse)]:min-h-[2.25rem] [@media(pointer:coarse)]:px-2.5',
-                mode === r
-                  ? 'bg-[color:hsl(var(--primary))] text-[color:hsl(var(--primary-foreground))]'
-                  : 'text-muted-foreground hover:bg-[color:var(--interactive-hover)]',
-              )}
-            >
-              {t('pomodoro.statsPopover.rangeDays', { count: r })}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setMode('heatmap')}
-            className={cn(
-              'rounded px-1.5 py-0.5 text-[11px] transition-colors [@media(pointer:coarse)]:min-h-[2.25rem] [@media(pointer:coarse)]:px-2.5',
-              mode === 'heatmap'
-                ? 'bg-[color:hsl(var(--primary))] text-[color:hsl(var(--primary-foreground))]'
-                : 'text-muted-foreground hover:bg-[color:var(--interactive-hover)]',
-            )}
-          >
-            {t('pomodoro.statsPopover.heatmap')}
-          </button>
-        </div>
+        <SegmentedControl<ViewModeValue>
+          ariaLabel={t('pomodoro.statsPopover.title')}
+          size="compact"
+          value={mode === 'heatmap' ? 'heatmap' : (String(mode) as ViewModeValue)}
+          onValueChange={(v) => setMode(v === 'heatmap' ? 'heatmap' : (Number(v) as RangeDays))}
+          options={rangeOptions}
+          itemClassName="!h-6 !px-2 text-[11px] [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-2.5"
+        />
       </div>
 
-      {/* 汇总 */}
-      <div className="mb-2 flex items-center gap-3 text-[11px] text-muted-foreground">
-        <span>
-          {t('pomodoro.statsPopover.totalPomodoros')}{' '}
-          <strong className="font-semibold text-foreground">{summary.pomodoros}</strong>
-        </span>
-        <span>
-          {t('pomodoro.stats.focusLabel')}{' '}
-          <strong className="font-semibold text-foreground">
-            {formatFocus(summary.focusMinutes)}
-          </strong>
-        </span>
-        {summary.activeDays > 0 && (
+      {/* 汇总（本范围）：番茄数 / 专注总时长 / 日均 */}
+      {stats === null ? (
+        <div className="mb-2 flex items-center gap-3" role="status" aria-label={t('pomodoro.statsPopover.loading')}>
+          <Skeleton className="h-3.5 w-16" />
+          <Skeleton className="h-3.5 w-20" />
+          <Skeleton className="h-3.5 w-16" />
+        </div>
+      ) : (
+        <div className="mb-2 flex items-center gap-3 text-[11px] text-muted-foreground">
           <span>
-            {t('pomodoro.statsPopover.dailyAvg')}{' '}
-            <strong className="font-semibold text-foreground">
-              {formatFocus(summary.avgMinutes)}
+            {t('pomodoro.statsPopover.totalPomodoros')}{' '}
+            <strong className="font-semibold tabular-nums text-foreground">{summary.pomodoros}</strong>
+          </span>
+          <span>
+            {t('pomodoro.stats.focusLabel')}{' '}
+            <strong className="font-semibold tabular-nums text-foreground">
+              {formatFocus(summary.focusMinutes)}
             </strong>
           </span>
-        )}
-      </div>
+          {summary.activeDays > 0 && (
+            <span>
+              {t('pomodoro.statsPopover.dailyAvg')}{' '}
+              <strong className="font-semibold tabular-nums text-foreground">
+                {formatFocus(summary.avgMinutes)}
+              </strong>
+            </span>
+          )}
+        </div>
+      )}
 
       {/* 图表区 */}
       {stats === null ? (
-        <div className="flex h-24 items-center justify-center text-xs text-muted-foreground/50">
-          …
-        </div>
+        mode === 'heatmap' ? (
+          <Skeleton className="h-24 w-full rounded-md" />
+        ) : (
+          <div className="flex h-24 items-end gap-[2px]" aria-hidden="true">
+            {Array.from({ length: Math.min(days, SKELETON_BAR_HEIGHTS.length * 3) }, (_, i) => (
+              <Skeleton
+                key={i}
+                variant="pulse"
+                className="min-w-0 flex-1 rounded-sm"
+                style={{ height: `${SKELETON_BAR_HEIGHTS[i % SKELETON_BAR_HEIGHTS.length]}%` }}
+              />
+            ))}
+          </div>
+        )
       ) : summary.focusMinutes === 0 ? (
         <div className="flex h-24 items-center justify-center text-xs text-muted-foreground/50">
           {t('pomodoro.statsPopover.empty')}
@@ -240,14 +267,19 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
             <div key={wi} className="flex flex-col gap-[3px]">
               {week.map((d, di) =>
                 d ? (
-                  <div
-                    key={d.date}
-                    className={cn('h-2.5 w-2.5 rounded-[2px]', HEAT_CLASSES[heatLevel(d.focusSeconds)])}
-                    title={`${dayLabel(d.date)} · ${formatFocus(Math.round(d.focusSeconds / 60))} · ${t(
-                      'pomodoro.statsPopover.pomodoroCount',
-                      { count: d.completedCount },
-                    )}`}
-                  />
+                  <Tooltip key={d.date}>
+                    <TooltipTrigger asChild>
+                      <div
+                        className={cn(
+                          'h-2.5 w-2.5 rounded-[2px] transition-colors duration-150 ease-standard',
+                          HEAT_CLASSES[heatLevel(d.focusSeconds)],
+                        )}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="tabular-nums">
+                      {dayDetail(d)}
+                    </TooltipContent>
+                  </Tooltip>
                 ) : (
                   <div key={`pad-${wi}-${di}`} className="h-2.5 w-2.5" />
                 ),
@@ -258,24 +290,32 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
       ) : (
         <div className="flex h-24 items-end gap-[2px]">
           {stats.map((d) => {
-            const h = d.focusSeconds > 0 ? Math.max(6, (d.focusSeconds / maxFocus) * 100) : 0;
+            const ratio = d.focusSeconds / maxFocus;
+            const h = d.focusSeconds > 0 ? Math.max(6, ratio * 100) : 0;
+            // primary 透明度梯度：强度越高越实
+            const alpha = 0.35 + 0.65 * ratio;
             return (
               <div
                 key={d.date}
-                className="group relative flex h-full flex-1 flex-col items-center justify-end"
-                title={`${dayLabel(d.date)} · ${formatFocus(Math.round(d.focusSeconds / 60))} · ${t(
-                  'pomodoro.statsPopover.pomodoroCount',
-                  { count: d.completedCount },
-                )}`}
+                className="h-full min-w-0 flex-1 [&>span]:h-full [&>span]:w-full"
               >
-                {d.focusSeconds > 0 ? (
-                  <div
-                    className="w-full rounded-sm bg-[color:hsl(var(--warning))]/80 transition-colors group-hover:bg-[color:hsl(var(--warning))]"
-                    style={{ height: `${h}%` }}
-                  />
-                ) : (
-                  <div className="h-[3px] w-full rounded-sm bg-[color:var(--shell-workspace-border)]" />
-                )}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="group flex h-full w-full cursor-default flex-col items-center justify-end">
+                      {d.focusSeconds > 0 ? (
+                        <div
+                          className="w-full rounded-sm bg-primary transition-[filter] duration-150 ease-standard group-hover:brightness-110"
+                          style={{ height: `${h}%`, opacity: alpha }}
+                        />
+                      ) : (
+                        <div className="h-[3px] w-full rounded-sm bg-[color:var(--shell-workspace-border)]" />
+                      )}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="tabular-nums">
+                    {dayDetail(d)}
+                  </TooltipContent>
+                </Tooltip>
               </div>
             );
           })}
@@ -290,13 +330,19 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
         </div>
       )}
 
-      {/* 周对比：本周至今 vs 上周同期 */}
+      {/* 周对比：本周总时长 / 日均 / 较上周同期趋势 */}
       {weekCompare && (weekCompare.thisWeekSeconds > 0 || weekCompare.lastWeekSeconds > 0) && (
-        <div className="mt-2 flex items-center gap-1.5 border-t border-[color:var(--shell-workspace-border)] pt-2 text-[11px] text-muted-foreground">
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[color:var(--shell-workspace-border)] pt-2 text-[11px] text-muted-foreground">
           <span>
             {t('pomodoro.statsPopover.thisWeek')}{' '}
-            <strong className="font-semibold text-foreground">
+            <strong className="font-semibold tabular-nums text-foreground">
               {formatFocus(Math.round(weekCompare.thisWeekSeconds / 60))}
+            </strong>
+          </span>
+          <span>
+            {t('pomodoro.statsPopover.dailyAvg')}{' '}
+            <strong className="font-semibold tabular-nums text-foreground">
+              {formatFocus(Math.round(weekCompare.thisWeekSeconds / 60 / weekCompare.elapsedDays))}
             </strong>
           </span>
           {weekCompare.lastWeekSeconds > 0 ? (
@@ -315,12 +361,17 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
               return (
                 <span
                   className={cn(
-                    'font-medium',
+                    'inline-flex items-center gap-1 font-medium tabular-nums',
                     delta > 0
                       ? 'text-[color:hsl(var(--success))]'
                       : 'text-[color:hsl(var(--destructive))]',
                   )}
                 >
+                  {delta > 0 ? (
+                    <TrendUp size={12} weight="bold" aria-hidden="true" />
+                  ) : (
+                    <TrendDown size={12} weight="bold" aria-hidden="true" />
+                  )}
                   {t(delta > 0 ? 'pomodoro.statsPopover.weekUp' : 'pomodoro.statsPopover.weekDown', {
                     value: pct,
                   })}
@@ -338,6 +389,11 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
   );
 };
 
+/**
+ * 锚定弹层兜底外壳（保留导出兼容）。
+ * PomodoroPanel 桌面端已改用 shad Popover（portal + 碰撞处理）直接承载
+ * PomodoroStatsContent；此组件供仍以锚定方式挂载的调用方使用。
+ */
 export const PomodoroStatsPopover: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const { t } = useTranslation('todo');
   const ref = useRef<HTMLDivElement>(null);
@@ -360,7 +416,14 @@ export const PomodoroStatsPopover: React.FC<{ onClose: () => void }> = ({ onClos
   return (
     <div
       ref={ref}
-      className="absolute bottom-full right-0 z-50 mb-2 w-80 rounded-[var(--radius-shell-control)] border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root,var(--background))] p-3 shadow-xl"
+      className="absolute bottom-full right-0 z-50 mb-2 w-80 border p-3 ui-zoom-fade-in"
+      style={{
+        borderRadius: 'var(--radius-shell-panel)',
+        borderColor: 'var(--composer-panel-border)',
+        background: 'var(--composer-panel-surface)',
+        boxShadow: 'var(--composer-panel-shadow)',
+        color: 'var(--composer-panel-foreground)',
+      }}
       role="dialog"
       aria-label={t('pomodoro.statsPopover.title')}
     >

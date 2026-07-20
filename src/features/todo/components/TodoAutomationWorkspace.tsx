@@ -1,41 +1,55 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowsClockwise,
   CalendarBlank,
-  ChatCircleDots,
+  CalendarCheck,
+  CaretDown,
+  CheckCircle,
   CircleNotch,
   ClockCountdown,
+  MagicWand,
   Plus,
+  Pulse,
   Robot,
+  Sparkle,
   WarningCircle,
-  XCircle,
+  X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { NotionDialog, NotionDialogBody, NotionDialogFooter, NotionDialogHeader, NotionDialogTitle } from '@/components/ui/NotionDialog';
+import { Input } from '@/components/ui/shad/Input';
+import { Textarea } from '@/components/ui/shad/Textarea';
 import { Switch } from '@/components/ui/shad/Switch';
+import { Skeleton } from '@/components/ui/shad/Skeleton';
+import { PulseDot } from '@/components/ui/PulseDot';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { AppSelect } from '@/components/ui/app-menu';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { AutomationSettingsSection } from '@/features/settings/components/AutomationSettingsSection';
-import {
-  cancelAutomationRun,
-  createAutomation,
-  getAutomationSummary,
-  listAutomations,
-  listAutomationRuns,
-  retryAutomationRun,
-  setAutomationBackgroundEnabled,
-  type AutomationActionType,
-  type AutomationCatchUpPolicy,
-  type AutomationInvoke,
-  type AutomationRun,
-  type AutomationScheduleKind,
-  type AutomationSessionMode,
-  type AutomationSummary,
+import type {
+  AutomationActionType,
+  AutomationCatchUpPolicy,
+  AutomationCreateInput,
+  AutomationInvoke,
+  AutomationSchedule,
+  AutomationSessionMode,
 } from '@/features/settings/components/automationSettingsApi';
+import { startAutomationSync, useAutomationStore } from '../stores/useAutomationStore';
+import {
+  AUTOMATION_REQUEST_CREATE_EVENT,
+  consumePendingAutomationCreate,
+} from '../automationCreateRequest';
+import { parseAutomationNaturalLanguage } from '../automationNlParser';
+import { AutomationRunHistory } from './automation/AutomationRunHistory';
+import { AutomationScheduleEditor } from './automation/AutomationScheduleEditor';
+import { AutomationTemplatePicker } from './automation/AutomationTemplates';
+import { formatAbsoluteTime, formatRelativeTime } from './automation/automationFormat';
+import { computeNextRuns } from './automation/scheduleMath';
+import '../styles/automation.css';
 
 const tauriInvoke: AutomationInvoke = (command, args) => invoke(command, args);
 const tauriListen = async (eventName: string, handler: (event: unknown) => void) => {
@@ -43,23 +57,20 @@ const tauriListen = async (eventName: string, handler: (event: unknown) => void)
   return unlisten;
 };
 
-const inputClass = cn(
-  'h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground',
-  'outline-none focus:border-ring focus:ring-2 focus:ring-ring/20',
-);
-
-const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+const CREATE_PANEL_ID = 'automation-create-panel';
+const HISTORY_PANEL_ID = 'automation-history-panel';
+const ADVANCED_PANEL_ID = 'automation-create-advanced';
+const TEMPLATES_PANEL_ID = 'automation-create-templates';
+const PROMPT_MAX = 4000;
+const NAME_MAX = 100;
+const SUCCESS_HIDE_MS = 4000;
 
 type CreateDraft = {
   name: string;
   actionType: AutomationActionType;
-  kind: AutomationScheduleKind;
-  time: string;
-  weekday: number;
-  dayOfMonth: number;
-  intervalMinutes: number;
-  timezone: string;
+  schedule: AutomationSchedule;
   prompt: string;
+  agentPrompt: string;
   sessionMode: AutomationSessionMode;
   modelId: string;
   catchUpPolicy: AutomationCatchUpPolicy;
@@ -68,16 +79,22 @@ type CreateDraft = {
   timeoutSeconds: number;
 };
 
+type CreateFieldKey =
+  | 'name'
+  | 'prompt'
+  | 'schedule'
+  | 'maxRetries'
+  | 'retryBackoffSeconds'
+  | 'timeoutSeconds';
+
+type FieldErrors = Partial<Record<CreateFieldKey, string>>;
+
 const newDraft = (): CreateDraft => ({
   name: '',
   actionType: 'agent_turn',
-  kind: 'daily',
-  time: '20:00',
-  weekday: 1,
-  dayOfMonth: 1,
-  intervalMinutes: 30,
-  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai',
+  schedule: { kind: 'daily', time: '20:00' },
   prompt: '',
+  agentPrompt: '',
   sessionMode: 'isolated',
   modelId: '',
   catchUpPolicy: 'run_once',
@@ -85,13 +102,6 @@ const newDraft = (): CreateDraft => ({
   retryBackoffSeconds: 60,
   timeoutSeconds: 600,
 });
-
-function statusTone(status: string): string {
-  if (status === 'success' || status === 'heartbeat_ok') return 'text-success';
-  if (status === 'queued' || status === 'running' || status === 'retrying') return 'text-primary';
-  if (status === 'cancelled' || status === 'skipped') return 'text-muted-foreground';
-  return 'text-destructive';
-}
 
 function openAutomationSession(sessionId: string): void {
   workbenchBus.launch({
@@ -101,154 +111,302 @@ function openAutomationSession(sessionId: string): void {
   });
 }
 
+const FieldError: React.FC<{ id?: string; message?: string }> = ({ id, message }) => {
+  if (!message) return null;
+  return (
+    <p id={id} role="alert" className="automation-rise-in flex items-start gap-1 text-xs text-destructive">
+      <WarningCircle size={13} className="mt-px shrink-0" />
+      <span className="min-w-0 break-words">{message}</span>
+    </p>
+  );
+};
+
+interface StatCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+  valueTitle?: string;
+  valueClassName?: string;
+  highlight?: boolean;
+  iconClassName?: string;
+}
+
+const StatCard: React.FC<StatCardProps> = ({ icon, label, value, valueTitle, valueClassName, highlight, iconClassName }) => (
+  <div
+    className={cn(
+      'automation-card flex min-w-[150px] flex-1 items-center gap-3 rounded-lg px-4 py-3',
+      highlight && 'automation-card--highlight',
+    )}
+  >
+    <span
+      className={cn(
+        'flex h-9 w-9 shrink-0 items-center justify-center rounded-md',
+        highlight ? 'bg-[color:hsl(var(--primary)/0.12)] text-primary' : 'bg-muted text-muted-foreground',
+        iconClassName,
+      )}
+    >
+      {icon}
+    </span>
+    <span className="min-w-0 flex-1">
+      <span className="block text-[13px] text-muted-foreground">{label}</span>
+      <span
+        className={cn('block truncate text-[20px] font-semibold leading-tight tabular-nums text-foreground', valueClassName)}
+        title={valueTitle}
+      >
+        {value}
+      </span>
+    </span>
+  </div>
+);
+
+const StatCardSkeleton: React.FC = () => (
+  <div className="automation-card flex min-w-[150px] flex-1 items-center gap-3 rounded-lg px-4 py-3">
+    <Skeleton className="h-9 w-9 shrink-0" />
+    <span className="min-w-0 flex-1 space-y-1.5">
+      <Skeleton className="h-3 w-16" />
+      <Skeleton className="h-5 w-10" />
+    </span>
+  </div>
+);
+
 export const TodoAutomationWorkspace: React.FC = () => {
   const { t, i18n } = useTranslation(['todo', 'settings', 'common']);
-  const [summary, setSummary] = useState<AutomationSummary | null>(null);
-  const [runs, setRuns] = useState<AutomationRun[]>([]);
-  const [automationNames, setAutomationNames] = useState<Record<string, string>>({});
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const locale = i18n.resolvedLanguage || i18n.language || 'zh-CN';
+
+  const automations = useAutomationStore((state) => state.automations);
+  const count = useAutomationStore((state) => state.count);
+  const summary = useAutomationStore((state) => state.summary);
+  const runs = useAutomationStore((state) => state.runs);
+  const loading = useAutomationStore((state) => state.loading);
+  const error = useAutomationStore((state) => state.error);
+  const busyKey = useAutomationStore((state) => state.busyKey);
+  const refresh = useAutomationStore((state) => state.refresh);
+  const create = useAutomationStore((state) => state.create);
+  const retryRun = useAutomationStore((state) => state.retryRun);
+  const cancelRun = useAutomationStore((state) => state.cancelRun);
+  const setBackgroundEnabled = useAutomationStore((state) => state.setBackgroundEnabled);
+
   const [createOpen, setCreateOpen] = useState(false);
   const [draft, setDraft] = useState<CreateDraft>(newDraft);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [createError, setCreateError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(true);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [nlText, setNlText] = useState('');
 
-  const refresh = useCallback(async () => {
-    try {
-      const [nextSummary, nextRuns, nextAutomations] = await Promise.all([
-        getAutomationSummary(tauriInvoke),
-        listAutomationRuns(tauriInvoke, undefined, 50),
-        listAutomations(tauriInvoke),
-      ]);
-      setSummary(nextSummary);
-      setRuns(nextRuns);
-      setAutomationNames(Object.fromEntries(
-        nextAutomations.automations.map((automation) => [automation.id, automation.name]),
-      ));
-      setError(null);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
+  const createPanelRef = useRef<HTMLElement | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const successTimerRef = useRef<number | null>(null);
+
+  const creating = busyKey === 'create';
+  const busyRunId = busyKey && (busyKey.startsWith('retry:') || busyKey.startsWith('cancel:'))
+    ? busyKey.slice(busyKey.indexOf(':') + 1)
+    : null;
+
+  useEffect(() => startAutomationSync(), []);
+
+  useEffect(() => () => {
+    if (successTimerRef.current !== null) window.clearTimeout(successTimerRef.current);
+  }, []);
+
+  const openCreate = useCallback(() => {
+    setFieldErrors({});
+    setCreateError(null);
+    setCreateOpen(true);
+    window.requestAnimationFrame(() => {
+      createPanelRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+      nameInputRef.current?.focus();
+    });
+  }, []);
+
+  const closeCreate = useCallback(() => {
+    if (useAutomationStore.getState().busyKey === 'create') return;
+    setCreateOpen(false);
+    setFieldErrors({});
+    setCreateError(null);
   }, []);
 
   useEffect(() => {
-    void refresh();
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-    let fallbackTimer: number | undefined;
-    void listen('chat_v2://automations_changed', () => void refresh()).then((value) => {
-      if (disposed) value(); else unlisten = value;
-    }).catch(() => {
-      if (!disposed) {
-        fallbackTimer = window.setInterval(() => void refresh(), 30_000);
-      }
-    });
-    return () => {
-      disposed = true;
-      unlisten?.();
-      if (fallbackTimer !== undefined) window.clearInterval(fallbackTimer);
+    const handleRequestCreate = () => {
+      // 事件与 pending 标记同源；到达即消费，避免残留到下次挂载
+      consumePendingAutomationCreate();
+      openCreate();
     };
-  }, [refresh]);
+    // 命令面板可能在工作区挂载前就发出了创建请求（先切视图后 dispatch），
+    // 挂载时补消费 pending 标记，保证「新建定时任务」命令在冷启动路径也能打开面板。
+    if (consumePendingAutomationCreate()) openCreate();
+    window.addEventListener(AUTOMATION_REQUEST_CREATE_EVENT, handleRequestCreate);
+    return () => window.removeEventListener(AUTOMATION_REQUEST_CREATE_EVENT, handleRequestCreate);
+  }, [openCreate]);
 
-  const dateFormatter = useMemo(() => new Intl.DateTimeFormat(
-    i18n.resolvedLanguage || 'zh-CN',
-    { dateStyle: 'medium', timeStyle: 'short' },
-  ), [i18n.resolvedLanguage]);
-  const formatDate = (value?: string) => {
-    if (!value) return t('todo:automation.never');
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
-  };
+  const automationNames = useMemo(
+    () => Object.fromEntries(automations.map((automation) => [automation.id, automation.name])),
+    [automations],
+  );
 
-  const submitCreate = async () => {
-    if (!draft.name.trim() || !draft.prompt.trim()) {
-      setCreateError(t('todo:automation.required'));
-      return;
+  const setField = useCallback(<K extends keyof CreateDraft>(key: K, value: CreateDraft[K]) => {
+    setDraft((current) => ({ ...current, [key]: value }));
+    setFieldErrors((current) => {
+      const errorKey = key === 'schedule' ? 'schedule' : key;
+      if (!(errorKey in current)) return current;
+      const next = { ...current };
+      delete next[errorKey as CreateFieldKey];
+      return next;
+    });
+  }, []);
+
+  const applyPartialDraft = useCallback((partial: Partial<AutomationCreateInput>) => {
+    setDraft((current) => ({
+      ...current,
+      ...(partial.name !== undefined ? { name: partial.name } : {}),
+      ...(partial.prompt !== undefined ? { prompt: partial.prompt } : {}),
+      ...(partial.schedule ? { schedule: partial.schedule } : {}),
+      ...(partial.actionType ? { actionType: partial.actionType } : {}),
+      ...(partial.sessionMode ? { sessionMode: partial.sessionMode } : {}),
+      ...(partial.catchUpPolicy ? { catchUpPolicy: partial.catchUpPolicy } : {}),
+      ...(partial.modelId ? { modelId: partial.modelId } : {}),
+    }));
+    setFieldErrors({});
+  }, []);
+
+  // ---- 自然语言快速输入 ----
+  const nlResult = useMemo(
+    () => (nlText.trim() ? parseAutomationNaturalLanguage(nlText) : null),
+    [nlText],
+  );
+  const nlFirstRun = useMemo(() => {
+    if (!nlResult?.schedule) return '';
+    const [next] = computeNextRuns(nlResult.schedule, 1);
+    return next ? formatAbsoluteTime(next.toISOString(), locale) : '';
+  }, [nlResult, locale]);
+
+  const describeParsedSchedule = useCallback((schedule: AutomationSchedule): string => {
+    switch (schedule.kind) {
+      case 'daily':
+        return t('todo:automation.createPanel.scheduleSummary.daily', { time: schedule.time });
+      case 'weekdays':
+        return t('todo:automation.createPanel.scheduleSummary.weekdays', { time: schedule.time });
+      case 'weekly':
+        return t('todo:automation.createPanel.scheduleSummary.weekly', {
+          weekday: t(`settings:automation.weekdays.${schedule.weekday ?? 0}`),
+          time: schedule.time,
+        });
+      case 'monthly':
+        return t('todo:automation.createPanel.scheduleSummary.monthly', {
+          day: schedule.dayOfMonth ?? 1,
+          time: schedule.time,
+        });
+      case 'interval':
+        return t('todo:automation.createPanel.scheduleSummary.interval', {
+          minutes: schedule.intervalMinutes ?? 0,
+        });
+      case 'once':
+        return t('todo:automation.createPanel.scheduleSummary.once', {
+          date: schedule.date ?? '',
+          time: schedule.time,
+        });
+      default:
+        return '';
     }
-    if (draft.name.trim().length > 100 || draft.prompt.length > 4000) {
-      setCreateError(t('todo:automation.lengthInvalid'));
-      return;
+  }, [t]);
+
+  const applyNlResult = useCallback(() => {
+    if (!nlResult) return;
+    applyPartialDraft({
+      ...(nlResult.name ? { name: nlResult.name } : {}),
+      ...(nlResult.prompt ? { prompt: nlResult.prompt } : {}),
+      ...(nlResult.schedule ? { schedule: nlResult.schedule } : {}),
+    } as Partial<AutomationCreateInput>);
+    nameInputRef.current?.focus();
+  }, [nlResult, applyPartialDraft]);
+
+  // ---- 校验与提交 ----
+  const validateDraft = useCallback((): FieldErrors => {
+    const errors: FieldErrors = {};
+    if (!draft.name.trim()) errors.name = t('todo:automation.nameRequired');
+    else if (draft.name.trim().length > NAME_MAX) errors.name = t('todo:automation.nameTooLong');
+    if (!draft.prompt.trim()) errors.prompt = t('todo:automation.promptRequired');
+    else if (draft.prompt.length > PROMPT_MAX) errors.prompt = t('todo:automation.promptTooLong');
+    // 调度校验统一交给 scheduleMath：算不出下一次运行即视为不可用
+    if (computeNextRuns(draft.schedule, 1).length === 0) {
+      errors.schedule = t('todo:automation.createPanel.scheduleInvalid');
     }
-    if (draft.kind !== 'interval') {
-      if (!TIME_PATTERN.test(draft.time)) {
-        setCreateError(t('todo:automation.timeInvalid'));
-        return;
+    if (!Number.isInteger(draft.maxRetries) || draft.maxRetries < 0 || draft.maxRetries > 10) {
+      errors.maxRetries = t('todo:automation.retriesInvalid');
+    }
+    if (!Number.isInteger(draft.retryBackoffSeconds) || draft.retryBackoffSeconds < 5 || draft.retryBackoffSeconds > 86400) {
+      errors.retryBackoffSeconds = t('todo:automation.backoffInvalid');
+    }
+    if (!Number.isInteger(draft.timeoutSeconds) || draft.timeoutSeconds < 30 || draft.timeoutSeconds > 3600) {
+      errors.timeoutSeconds = t('todo:automation.timeoutInvalid');
+    }
+    return errors;
+  }, [draft, t]);
+
+  const submitCreate = useCallback(async () => {
+    if (useAutomationStore.getState().busyKey === 'create') return;
+    const errors = validateDraft();
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      if (errors.maxRetries || errors.retryBackoffSeconds || errors.timeoutSeconds) {
+        setAdvancedOpen(true);
       }
-      try {
-        new Intl.DateTimeFormat('en-US', { timeZone: draft.timezone.trim() }).format();
-      } catch {
-        setCreateError(t('todo:automation.timezoneInvalid'));
-        return;
-      }
-    }
-    if (
-      (draft.kind === 'interval'
-        && (!Number.isInteger(draft.intervalMinutes)
-          || draft.intervalMinutes < 5
-          || draft.intervalMinutes > 1440))
-      || (draft.kind === 'monthly'
-        && (!Number.isInteger(draft.dayOfMonth)
-          || draft.dayOfMonth < 1
-          || draft.dayOfMonth > 31))
-      || !Number.isInteger(draft.maxRetries)
-      || draft.maxRetries < 0
-      || draft.maxRetries > 10
-      || !Number.isInteger(draft.retryBackoffSeconds)
-      || draft.retryBackoffSeconds < 5
-      || draft.retryBackoffSeconds > 86400
-      || !Number.isInteger(draft.timeoutSeconds)
-      || draft.timeoutSeconds < 30
-      || draft.timeoutSeconds > 3600
-    ) {
-      setCreateError(t('todo:automation.valuesInvalid'));
       return;
     }
+    setFieldErrors({});
     setCreateError(null);
-    setBusy('create');
+    const name = draft.name.trim();
+    const input: AutomationCreateInput = {
+      name,
+      actionType: draft.actionType,
+      prompt: draft.prompt.trim(),
+      schedule: draft.schedule,
+      ...(draft.actionType === 'agent_turn'
+        ? {
+          agentPrompt: draft.agentPrompt.trim() || undefined,
+          sessionMode: draft.sessionMode,
+          modelId: draft.modelId.trim() || undefined,
+        }
+        : {}),
+      catchUpPolicy: draft.catchUpPolicy,
+      maxRetries: draft.maxRetries,
+      retryBackoffSeconds: draft.retryBackoffSeconds,
+      timeoutSeconds: draft.timeoutSeconds,
+    };
     try {
-      await createAutomation(tauriInvoke, {
-        name: draft.name.trim(),
-        actionType: draft.actionType,
-        prompt: draft.prompt.trim(),
-        schedule: {
-          kind: draft.kind,
-          time: draft.kind === 'interval' ? '' : draft.time,
-          weekday: draft.kind === 'weekly' ? draft.weekday : undefined,
-          dayOfMonth: draft.kind === 'monthly' ? draft.dayOfMonth : undefined,
-          intervalMinutes: draft.kind === 'interval' ? draft.intervalMinutes : undefined,
-          timezone: draft.kind === 'interval' ? undefined : draft.timezone,
-        },
-        agentPrompt: draft.actionType === 'agent_turn' ? draft.prompt.trim() : undefined,
-        sessionMode: draft.actionType === 'agent_turn' ? draft.sessionMode : undefined,
-        modelId: draft.actionType === 'agent_turn' ? draft.modelId || undefined : undefined,
-        catchUpPolicy: draft.catchUpPolicy,
-        maxRetries: draft.maxRetries,
-        retryBackoffSeconds: draft.retryBackoffSeconds,
-        timeoutSeconds: draft.timeoutSeconds,
-      });
+      await create(input);
       setCreateOpen(false);
       setDraft(newDraft());
-      setCreateError(null);
-      await refresh();
+      setNlText('');
+      setSuccessMessage(t('todo:automation.createPanel.success', { name }));
+      if (successTimerRef.current !== null) window.clearTimeout(successTimerRef.current);
+      successTimerRef.current = window.setTimeout(() => setSuccessMessage(null), SUCCESS_HIDE_MS);
     } catch (cause) {
       setCreateError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setBusy(null);
     }
-  };
+  }, [create, draft, t, validateDraft]);
 
-  const mutateRun = async (run: AutomationRun, action: 'retry' | 'cancel') => {
-    setBusy(`${action}:${run.id}`);
-    try {
-      if (action === 'retry') await retryAutomationRun(tauriInvoke, run.id);
-      else await cancelAutomationRun(tauriInvoke, run.id);
-      await refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setBusy(null);
+  const handlePanelKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      closeCreate();
+      return;
     }
-  };
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      void submitCreate();
+    }
+  }, [closeCreate, submitCreate]);
+
+  const runningCount = summary?.runningCount ?? 0;
+  const failedCount = summary?.failedCount ?? 0;
+  const nextRunRelative = formatRelativeTime(summary?.nextRunAt, locale);
+  const nextRunAbsolute = formatAbsoluteTime(summary?.nextRunAt, locale);
+  const summaryLoading = loading && summary === null;
+  /** 创建面板已行内展示同一条错误时，顶部错误条不再重复 */
+  const globalError = error && error !== createError ? error : null;
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-[color:var(--surface-root,var(--background))]">
@@ -275,7 +433,13 @@ export const TodoAutomationWorkspace: React.FC = () => {
           >
             <ArrowsClockwise size={16} />
           </NotionButton>
-          <NotionButton variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
+          <NotionButton
+            variant="primary"
+            size="sm"
+            aria-expanded={createOpen}
+            aria-controls={CREATE_PANEL_ID}
+            onClick={() => (createOpen ? closeCreate() : openCreate())}
+          >
             <Plus size={15} />
             {t('todo:automation.new')}
           </NotionButton>
@@ -284,162 +448,526 @@ export const TodoAutomationWorkspace: React.FC = () => {
 
       <CustomScrollArea className="min-h-0 flex-1">
         <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6">
-          {error ? (
-            <div className="mb-4 flex items-start gap-2 border-y border-destructive/30 bg-destructive/5 py-2.5 text-sm text-destructive">
+          {globalError ? (
+            <div
+              role="alert"
+              className="mb-4 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive"
+            >
               <WarningCircle size={16} className="mt-0.5 shrink-0" />
-              <span className="min-w-0 break-words">{error}</span>
+              <span className="min-w-0 flex-1 break-words">{globalError}</span>
               <NotionButton
                 variant="ghost"
-                size="icon"
-                iconOnly
-                className="ml-auto shrink-0 text-destructive"
-                onClick={() => setError(null)}
-                aria-label={t('common:actions.close')}
+                size="sm"
+                className="shrink-0 text-destructive"
+                onClick={() => void refresh()}
               >
-                <XCircle size={16} />
+                <ArrowsClockwise size={14} />
+                {t('todo:automation.retry')}
               </NotionButton>
             </div>
           ) : null}
 
-          <section className="overflow-hidden rounded-[var(--radius-shell-control)] border border-[color:var(--border-default)]/60 bg-[color:var(--surface-raised,transparent)]" aria-label={t('todo:automation.summary')}>
-            <div className="grid grid-cols-2 sm:grid-cols-4">
-              {[
-                [t('todo:automation.enabled'), summary?.enabledCount ?? 0],
-                [t('todo:automation.running'), summary?.runningCount ?? 0],
-                [t('todo:automation.failed24h'), summary?.failedCount ?? 0],
-                [t('todo:automation.next'), formatDate(summary?.nextRunAt)],
-              ].map(([label, value], index) => (
-                <div key={String(label)} className={cn('min-w-0 px-4 py-3.5', index > 0 && 'border-l border-border/50', index === 2 && 'max-sm:border-l-0', index >= 2 && 'max-sm:border-t max-sm:border-border/50')}>
-                  <div className="text-[11px] text-muted-foreground">{label}</div>
-                  <div className="mt-1 truncate text-sm font-semibold tabular-nums text-foreground" title={String(value)}>{value}</div>
-                </div>
-              ))}
+          {successMessage ? (
+            <div
+              role="status"
+              className="automation-rise-in mb-4 flex items-center gap-2 rounded-lg border border-[color:hsl(var(--success,142_71%_45%)/0.35)] bg-[color:hsl(var(--success,142_71%_45%)/0.08)] px-3 py-2.5 text-sm text-success"
+            >
+              <CheckCircle size={16} weight="fill" className="shrink-0" />
+              <span className="min-w-0 break-words">{successMessage}</span>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/50 px-4 py-3.5">
-              <div className="flex min-w-0 items-center gap-2">
-                <ClockCountdown size={16} className="text-muted-foreground" />
+          ) : null}
+
+          {/* 概览区 */}
+          <section aria-label={t('todo:automation.summary')}>
+            {summaryLoading ? (
+              <div
+                data-testid="automation-summary-skeleton"
+                aria-label={t('todo:automation.loading')}
+                className="flex flex-wrap gap-3"
+              >
+                <StatCardSkeleton />
+                <StatCardSkeleton />
+                <StatCardSkeleton />
+                <StatCardSkeleton />
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-3">
+                <StatCard
+                  icon={<CalendarCheck size={18} />}
+                  label={t('todo:automation.enabled')}
+                  value={summary?.enabledCount ?? 0}
+                />
+                <StatCard
+                  icon={<Pulse size={18} />}
+                  label={t('todo:automation.running')}
+                  highlight={runningCount > 0}
+                  value={runningCount > 0 ? (
+                    <span className="inline-flex items-center gap-2">
+                      {runningCount}
+                      <PulseDot className="h-1.5 w-1.5 text-primary" />
+                    </span>
+                  ) : runningCount}
+                />
+                <StatCard
+                  icon={<WarningCircle size={18} />}
+                  label={t('todo:automation.failed24h')}
+                  iconClassName={failedCount > 0 ? 'bg-destructive/10 text-destructive' : undefined}
+                  valueClassName={failedCount > 0 ? 'text-destructive' : undefined}
+                  value={failedCount > 0 ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      {failedCount}
+                      <WarningCircle size={15} weight="fill" className="shrink-0 text-destructive" />
+                    </span>
+                  ) : failedCount}
+                />
+                <StatCard
+                  icon={<ClockCountdown size={18} />}
+                  label={t('todo:automation.next')}
+                  value={nextRunRelative || t('todo:automation.never')}
+                  valueTitle={nextRunAbsolute || undefined}
+                  valueClassName="text-[15px] leading-snug"
+                />
+              </div>
+            )}
+            <div className="automation-card mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg px-4 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                  <ClockCountdown size={18} />
+                </span>
                 <div className="min-w-0">
                   <div className="text-sm font-medium text-foreground">{t('todo:automation.background')}</div>
                   <div className="text-xs text-muted-foreground">{t('todo:automation.backgroundHint')}</div>
                 </div>
               </div>
-              <Switch
-                size="sm"
-                checked={summary?.backgroundEnabled ?? true}
-                disabled={busy === 'background'}
-                aria-label={t('todo:automation.background')}
-                onCheckedChange={(enabled) => {
-                  setBusy('background');
-                  void setAutomationBackgroundEnabled(tauriInvoke, enabled)
-                    .then(refresh)
-                    .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))
-                    .finally(() => setBusy(null));
-                }}
-              />
+              {summaryLoading ? (
+                <Skeleton className="h-5 w-9 rounded-full" />
+              ) : (
+                <Switch
+                  size="sm"
+                  checked={summary?.backgroundEnabled ?? true}
+                  disabled={busyKey === 'background'}
+                  aria-label={t('todo:automation.background')}
+                  onCheckedChange={(enabled) => {
+                    void setBackgroundEnabled(enabled).catch(() => {
+                      // 失败信息由 store.error 顶部错误条呈现
+                    });
+                  }}
+                />
+              )}
             </div>
           </section>
+
+          {/* 内联创建面板（禁模态：概览下方 grid 0fr→1fr 展开） */}
+          <div
+            className="automation-collapse mt-5"
+            data-open={createOpen}
+            aria-hidden={!createOpen}
+          >
+            <div className="automation-collapse__inner">
+              <section
+                id={CREATE_PANEL_ID}
+                ref={createPanelRef}
+                aria-label={t('todo:automation.createTitle')}
+                className="automation-card rounded-[var(--radius-shell-panel,12px)]"
+                onKeyDown={handlePanelKeyDown}
+              >
+                <div className="flex items-center justify-between border-b border-[color:var(--border-soft)] px-4 py-3 sm:px-5">
+                  <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <CalendarBlank size={16} className="text-primary" />
+                    {t('todo:automation.createTitle')}
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <span className="hidden text-[11px] text-muted-foreground sm:inline">
+                      {t('todo:automation.createPanel.shortcutHint')}
+                    </span>
+                    <NotionButton
+                      variant="ghost"
+                      size="icon"
+                      iconOnly
+                      disabled={creating}
+                      aria-label={t('common:actions.close')}
+                      title={t('common:actions.close')}
+                      onClick={closeCreate}
+                    >
+                      <X size={16} />
+                    </NotionButton>
+                  </div>
+                </div>
+
+                <div className="space-y-4 px-4 py-4 sm:px-5">
+                  {createError ? (
+                    <div role="alert" className="automation-rise-in flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+                      <WarningCircle size={16} className="mt-0.5 shrink-0" />
+                      <span className="min-w-0 break-words">{createError}</span>
+                    </div>
+                  ) : null}
+
+                  {/* a) 自然语言快速输入 */}
+                  <div className="rounded-xl border border-[color:var(--border-soft)] bg-[color:var(--surface-muted,hsl(var(--muted)))]/40 p-3">
+                    <label
+                      htmlFor="automation-create-nl"
+                      className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-foreground"
+                    >
+                      <MagicWand size={14} className="text-primary" />
+                      {t('todo:automation.createPanel.quickTitle')}
+                    </label>
+                    <div className="flex items-start gap-2">
+                      <Input
+                        id="automation-create-nl"
+                        value={nlText}
+                        disabled={creating}
+                        placeholder={t('todo:automation.nl.placeholder')}
+                        onChange={(event) => setNlText(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && nlResult) {
+                            event.preventDefault();
+                            applyNlResult();
+                          }
+                        }}
+                      />
+                      <NotionButton
+                        variant="secondary"
+                        size="sm"
+                        className="shrink-0"
+                        disabled={!nlResult || creating}
+                        onClick={applyNlResult}
+                      >
+                        {t('todo:automation.createPanel.nlApply')}
+                      </NotionButton>
+                    </div>
+                    {nlResult ? (
+                      <div aria-live="polite" className="automation-rise-in mt-2 space-y-1 text-xs">
+                        {nlResult.schedule ? (
+                          <p className="text-foreground/85">
+                            <span className="font-medium">{describeParsedSchedule(nlResult.schedule)}</span>
+                            {nlFirstRun ? (
+                              <span className="text-muted-foreground">
+                                {' · '}
+                                {t('todo:automation.createPanel.nlFirstRun', { time: nlFirstRun })}
+                              </span>
+                            ) : null}
+                          </p>
+                        ) : (
+                          <p className="text-muted-foreground">{t('todo:automation.nl.noSchedule')}</p>
+                        )}
+                        {nlResult.matchedText ? (
+                          <p className="text-muted-foreground">
+                            {t('todo:automation.nl.matchedLabel')}
+                            {': '}
+                            <span className="text-foreground/75">{nlResult.matchedText}</span>
+                          </p>
+                        ) : null}
+                        {nlResult.confidence !== 'high' ? (
+                          <p className={nlResult.confidence === 'low' ? 'text-destructive' : 'text-muted-foreground'}>
+                            {t(`todo:automation.nl.confidence.${nlResult.confidence}`)}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {/* b) 模板起步（内联折叠） */}
+                  <div>
+                    <button
+                      type="button"
+                      aria-expanded={templatesOpen}
+                      aria-controls={TEMPLATES_PANEL_ID}
+                      disabled={creating}
+                      onClick={() => setTemplatesOpen((value) => !value)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none"
+                    >
+                      <Sparkle size={13} />
+                      {t('todo:automation.createPanel.templatesToggle')}
+                      <CaretDown
+                        size={12}
+                        className={cn('transition-transform duration-150 motion-reduce:transition-none', templatesOpen && 'rotate-180')}
+                      />
+                    </button>
+                    <div className="automation-collapse mt-2" data-open={templatesOpen} aria-hidden={!templatesOpen}>
+                      <div className="automation-collapse__inner">
+                        <div id={TEMPLATES_PANEL_ID}>
+                          <AutomationTemplatePicker
+                            disabled={creating}
+                            onSelect={(templateDraft) => {
+                              applyPartialDraft(templateDraft);
+                              nameInputRef.current?.focus();
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* c) 表单（字段与编辑侧对齐） */}
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5 text-sm">
+                      <label htmlFor="automation-create-name" className="font-medium text-foreground">{t('todo:automation.name')}</label>
+                      <Input
+                        id="automation-create-name"
+                        ref={nameInputRef}
+                        maxLength={NAME_MAX}
+                        value={draft.name}
+                        disabled={creating}
+                        aria-invalid={fieldErrors.name ? true : undefined}
+                        aria-describedby={fieldErrors.name ? 'automation-create-name-error' : undefined}
+                        className={cn(fieldErrors.name && 'border-destructive')}
+                        onChange={(event) => setField('name', event.target.value)}
+                      />
+                      <FieldError id="automation-create-name-error" message={fieldErrors.name} />
+                    </div>
+                    <div className="space-y-1.5 text-sm">
+                      <span className="block font-medium text-foreground">{t('todo:automation.action')}</span>
+                      <SegmentedControl
+                        ariaLabel={t('todo:automation.action')}
+                        size="compact"
+                        value={draft.actionType}
+                        onValueChange={(value) => setField('actionType', value)}
+                        options={[
+                          { value: 'agent_turn', label: t('settings:automation.action_type.agent_turn') },
+                          { value: 'notify', label: t('todo:automation.notify') },
+                        ]}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 text-sm">
+                    <span className="block font-medium text-foreground">{t('todo:automation.schedule')}</span>
+                    <AutomationScheduleEditor
+                      value={draft.schedule}
+                      onChange={(schedule) => setField('schedule', schedule)}
+                      disabled={creating}
+                      idPrefix="create"
+                    />
+                    <FieldError id="automation-create-schedule-error" message={fieldErrors.schedule} />
+                  </div>
+
+                  <div className="space-y-1.5 text-sm">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <label htmlFor="automation-create-prompt" className="font-medium text-foreground">{t('todo:automation.prompt')}</label>
+                      <span id="automation-create-prompt-count" className="text-xs tabular-nums text-muted-foreground">
+                        {t('todo:automation.createPanel.promptCount', { count: draft.prompt.length, max: PROMPT_MAX })}
+                      </span>
+                    </div>
+                    <Textarea
+                      id="automation-create-prompt"
+                      className={cn('min-h-28', fieldErrors.prompt && 'border-destructive')}
+                      maxLength={PROMPT_MAX}
+                      value={draft.prompt}
+                      disabled={creating}
+                      aria-invalid={fieldErrors.prompt ? true : undefined}
+                      aria-describedby={cn(
+                        'automation-create-prompt-count',
+                        fieldErrors.prompt && 'automation-create-prompt-error',
+                      )}
+                      onChange={(event) => setField('prompt', event.target.value)}
+                    />
+                    <FieldError id="automation-create-prompt-error" message={fieldErrors.prompt} />
+                  </div>
+
+                  {/* agent_turn 专属字段 */}
+                  <div className="automation-collapse" data-open={draft.actionType === 'agent_turn'} aria-hidden={draft.actionType !== 'agent_turn'}>
+                    <div className="automation-collapse__inner">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-1.5 text-sm sm:col-span-2">
+                          <label htmlFor="automation-create-agent-prompt" className="font-medium text-foreground">
+                            {t('todo:automation.createPanel.agentPrompt')}
+                          </label>
+                          <Textarea
+                            id="automation-create-agent-prompt"
+                            className="min-h-20"
+                            maxLength={PROMPT_MAX}
+                            value={draft.agentPrompt}
+                            disabled={creating}
+                            placeholder={t('todo:automation.createPanel.agentPromptHint')}
+                            onChange={(event) => setField('agentPrompt', event.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1.5 text-sm">
+                          <span className="block font-medium text-foreground">{t('todo:automation.sessionMode')}</span>
+                          <SegmentedControl
+                            ariaLabel={t('todo:automation.sessionMode')}
+                            size="compact"
+                            value={draft.sessionMode}
+                            onValueChange={(value) => setField('sessionMode', value)}
+                            options={[
+                              { value: 'isolated', label: t('todo:automation.isolated') },
+                              { value: 'named', label: t('todo:automation.named') },
+                            ]}
+                          />
+                        </div>
+                        <div className="space-y-1.5 text-sm">
+                          <label htmlFor="automation-create-model" className="font-medium text-foreground">{t('todo:automation.model')}</label>
+                          <Input
+                            id="automation-create-model"
+                            value={draft.modelId}
+                            disabled={creating}
+                            placeholder={t('todo:automation.defaultModel')}
+                            onChange={(event) => setField('modelId', event.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 text-sm sm:max-w-xs">
+                    <span className="block font-medium text-foreground">{t('todo:automation.catchUp')}</span>
+                    <AppSelect
+                      value={draft.catchUpPolicy}
+                      onValueChange={(value) => setField('catchUpPolicy', value as AutomationCatchUpPolicy)}
+                      disabled={creating}
+                      className="w-full"
+                      options={[
+                        { value: 'run_once', label: t('todo:automation.runOnce') },
+                        { value: 'catch_up_all', label: t('todo:automation.catchAll') },
+                        { value: 'skip', label: t('todo:automation.skip') },
+                      ]}
+                    />
+                  </div>
+
+                  {/* 高级折叠区 */}
+                  <div className="rounded-xl border border-[color:var(--border-soft)] p-3">
+                    <button
+                      type="button"
+                      aria-expanded={advancedOpen}
+                      aria-controls={ADVANCED_PANEL_ID}
+                      onClick={() => setAdvancedOpen((value) => !value)}
+                      className="flex w-full items-center justify-between text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none"
+                    >
+                      {t('todo:automation.advanced')}
+                      <CaretDown
+                        size={12}
+                        className={cn('transition-transform duration-150 motion-reduce:transition-none', advancedOpen && 'rotate-180')}
+                      />
+                    </button>
+                    <div className="automation-collapse" data-open={advancedOpen} aria-hidden={!advancedOpen}>
+                      <div className="automation-collapse__inner">
+                        <div id={ADVANCED_PANEL_ID} className="grid gap-3 pt-3 sm:grid-cols-3">
+                          <div className="space-y-1.5 text-sm">
+                            <label htmlFor="automation-create-retries" className="text-xs font-medium text-foreground">{t('todo:automation.retries')}</label>
+                            <Input
+                              id="automation-create-retries"
+                              type="number"
+                              min={0}
+                              max={10}
+                              value={draft.maxRetries}
+                              disabled={creating}
+                              aria-invalid={fieldErrors.maxRetries ? true : undefined}
+                              className={cn(fieldErrors.maxRetries && 'border-destructive')}
+                              onChange={(event) => setField('maxRetries', Number(event.target.value))}
+                            />
+                            <FieldError message={fieldErrors.maxRetries} />
+                          </div>
+                          <div className="space-y-1.5 text-sm">
+                            <label htmlFor="automation-create-backoff" className="text-xs font-medium text-foreground">{t('todo:automation.retryBackoff')}</label>
+                            <Input
+                              id="automation-create-backoff"
+                              type="number"
+                              min={5}
+                              max={86400}
+                              value={draft.retryBackoffSeconds}
+                              disabled={creating}
+                              aria-invalid={fieldErrors.retryBackoffSeconds ? true : undefined}
+                              className={cn(fieldErrors.retryBackoffSeconds && 'border-destructive')}
+                              onChange={(event) => setField('retryBackoffSeconds', Number(event.target.value))}
+                            />
+                            <FieldError message={fieldErrors.retryBackoffSeconds} />
+                          </div>
+                          <div className="space-y-1.5 text-sm">
+                            <label htmlFor="automation-create-timeout" className="text-xs font-medium text-foreground">{t('todo:automation.timeout')}</label>
+                            <Input
+                              id="automation-create-timeout"
+                              type="number"
+                              min={30}
+                              max={3600}
+                              value={draft.timeoutSeconds}
+                              disabled={creating}
+                              aria-invalid={fieldErrors.timeoutSeconds ? true : undefined}
+                              className={cn(fieldErrors.timeoutSeconds && 'border-destructive')}
+                              onChange={(event) => setField('timeoutSeconds', Number(event.target.value))}
+                            />
+                            <FieldError message={fieldErrors.timeoutSeconds} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 border-t border-[color:var(--border-soft)] pt-3">
+                    <NotionButton variant="ghost" disabled={creating} onClick={closeCreate}>{t('common:actions.cancel')}</NotionButton>
+                    <NotionButton variant="primary" disabled={creating} onClick={() => void submitCreate()}>
+                      {creating ? <CircleNotch size={15} className="animate-spin" /> : <CalendarBlank size={15} />}
+                      {t('todo:automation.create')}
+                    </NotionButton>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          {count === 0 && !loading && !createOpen ? (
+            <div className="study-shell-empty-state automation-rise-in mt-5">
+              <div className="study-shell-empty-state__icon">
+                <Robot size={24} />
+              </div>
+              <h3 className="study-shell-empty-state__title">{t('todo:automation.emptyTitle')}</h3>
+              <p className="study-shell-empty-state__description">{t('todo:automation.emptyHint')}</p>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                <NotionButton
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    setTemplatesOpen(true);
+                    openCreate();
+                  }}
+                >
+                  <Sparkle size={15} />
+                  {t('todo:automation.emptyTemplate')}
+                </NotionButton>
+                <NotionButton variant="ghost" size="sm" onClick={openCreate}>
+                  <Plus size={15} />
+                  {t('todo:automation.new')}
+                </NotionButton>
+              </div>
+            </div>
+          ) : null}
 
           <AutomationSettingsSection invoke={tauriInvoke} listen={tauriListen} embedded />
 
-          <section className="mt-5 rounded-[var(--radius-shell-control)] border border-[color:var(--border-default)]/60 bg-[color:var(--surface-raised,transparent)] px-4 py-4 sm:px-5">
-            <NotionButton
-              variant="ghost"
-              className="h-auto w-full justify-between px-0 py-0 text-left hover:bg-transparent"
-              aria-expanded={historyOpen}
-              onClick={() => setHistoryOpen((value) => !value)}
-            >
-              <span className="text-sm font-semibold text-foreground">{t('todo:automation.history')}</span>
-              <span className="text-xs tabular-nums text-muted-foreground">{runs.length}</span>
-            </NotionButton>
-            {historyOpen ? (
-              <div className="mt-3 divide-y divide-border/50 border-t border-border/50">
-                {runs.length === 0 ? <div className="py-8 text-center text-sm text-muted-foreground">{t('todo:automation.noHistory')}</div> : runs.map((run) => {
-                  const cancellable = run.status === 'running' || run.status === 'retrying' || run.status === 'queued';
-                  const retryable = ['error', 'timeout', 'spawn_error', 'cancelled'].includes(run.status);
-                  const automationName = automationNames[run.automationId] ?? run.automationId;
-                  const sessionId = run.sessionId;
-                  return (
-                    <div key={run.id} className="grid gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                      <div className="min-w-0">
-                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                          <span className="max-w-full truncate font-medium text-foreground" title={automationName}>
-                            {automationName}
-                          </span>
-                          <span className={cn('text-xs font-medium', statusTone(run.status))}>
-                            {t(`todo:automation.status.${run.status}`, { defaultValue: run.status })}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {t(`todo:automation.trigger.${run.triggerType}`, { defaultValue: run.triggerType })}
-                          </span>
-                          <span className="text-xs tabular-nums text-muted-foreground">{run.attempt}/{run.maxAttempts}</span>
-                        </div>
-                        <div className="mt-1 truncate text-xs text-muted-foreground">{formatDate(run.startedAt || run.scheduledFor)}</div>
-                        {(run.error || run.summary) ? <p className="mt-1 line-clamp-2 text-xs text-foreground/75">{run.error || run.summary}</p> : null}
-                      </div>
-                      <div className="flex gap-1">
-                        {sessionId ? (
-                          <NotionButton
-                            variant="ghost"
-                            size="icon"
-                            iconOnly
-                            aria-label={t('todo:automation.openSession')}
-                            title={t('todo:automation.openSession')}
-                            onClick={() => openAutomationSession(sessionId)}
-                          >
-                            <ChatCircleDots size={16} />
-                          </NotionButton>
-                        ) : null}
-                        {retryable ? <NotionButton variant="ghost" size="sm" disabled={busy !== null} onClick={() => void mutateRun(run, 'retry')}>{t('todo:automation.retry')}</NotionButton> : null}
-                        {cancellable ? <NotionButton variant="ghost" size="sm" disabled={busy !== null} onClick={() => void mutateRun(run, 'cancel')}>{t('common:actions.cancel')}</NotionButton> : null}
-                      </div>
-                    </div>
-                  );
-                })}
+          {/* 运行历史（默认展开） */}
+          <section className="automation-card mt-5 rounded-[var(--radius-shell-control,8px)] px-1 py-4 sm:px-2">
+            <div className="flex items-center justify-between px-3">
+              <h2 className="text-sm font-semibold text-foreground">{t('todo:automation.history.title')}</h2>
+              <button
+                type="button"
+                aria-expanded={historyOpen}
+                aria-controls={HISTORY_PANEL_ID}
+                onClick={() => setHistoryOpen((value) => !value)}
+                className="flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none"
+              >
+                {runs.length}
+                <CaretDown
+                  size={13}
+                  className={cn('transition-transform duration-150 motion-reduce:transition-none', historyOpen && 'rotate-180')}
+                />
+              </button>
+            </div>
+            <div className="automation-collapse mt-3" data-open={historyOpen} aria-hidden={!historyOpen}>
+              <div className="automation-collapse__inner">
+                <div id={HISTORY_PANEL_ID}>
+                  <AutomationRunHistory
+                    runs={runs}
+                    automationNames={automationNames}
+                    busyRunId={busyRunId}
+                    onRetry={(runId) => void retryRun(runId).catch(() => { /* store.error 呈现 */ })}
+                    onCancel={(runId) => void cancelRun(runId).catch(() => { /* store.error 呈现 */ })}
+                    onOpenSession={openAutomationSession}
+                  />
+                </div>
               </div>
-            ) : null}
+            </div>
           </section>
         </div>
       </CustomScrollArea>
-
-      <NotionDialog
-        open={createOpen}
-        onOpenChange={(open) => {
-          if (busy !== 'create') {
-            setCreateOpen(open);
-            if (!open) setCreateError(null);
-          }
-        }}
-        maxWidth="max-w-2xl"
-      >
-        <NotionDialogHeader><NotionDialogTitle>{t('todo:automation.createTitle')}</NotionDialogTitle></NotionDialogHeader>
-        <NotionDialogBody className="max-h-[70vh] space-y-4 overflow-y-auto py-4">
-          {createError ? (
-            <div role="alert" className="flex items-start gap-2 border-y border-destructive/30 bg-destructive/5 px-2 py-2.5 text-sm text-destructive">
-              <WarningCircle size={16} className="mt-0.5 shrink-0" />
-              <span className="min-w-0 break-words">{createError}</span>
-            </div>
-          ) : null}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.name')}</span><input className={inputClass} maxLength={100} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
-            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.action')}</span><select className={inputClass} value={draft.actionType} onChange={(event) => setDraft({ ...draft, actionType: event.target.value as AutomationActionType })}><option value="agent_turn">{t('settings:automation.action_type.agent_turn')}</option><option value="notify">{t('todo:automation.notify')}</option></select></label>
-            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.schedule')}</span><select className={inputClass} value={draft.kind} onChange={(event) => setDraft({ ...draft, kind: event.target.value as AutomationScheduleKind })}><option value="daily">{t('todo:automation.daily')}</option><option value="weekdays">{t('todo:automation.weekdays')}</option><option value="weekly">{t('todo:automation.weekly')}</option><option value="monthly">{t('todo:automation.monthly')}</option><option value="interval">{t('todo:automation.interval')}</option></select></label>
-            {draft.kind === 'interval' ? <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.intervalMinutes')}</span><input className={inputClass} type="number" min={5} max={1440} value={draft.intervalMinutes} onChange={(event) => setDraft({ ...draft, intervalMinutes: Number(event.target.value) })} /></label> : <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.time')}</span><input className={inputClass} type="time" value={draft.time} onChange={(event) => setDraft({ ...draft, time: event.target.value })} /></label>}
-            {draft.kind === 'weekly' ? <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.weekday')}</span><select className={inputClass} value={draft.weekday} onChange={(event) => setDraft({ ...draft, weekday: Number(event.target.value) })}>{[0,1,2,3,4,5,6].map((day) => <option key={day} value={day}>{t(`settings:automation.weekdays.${day}`)}</option>)}</select></label> : null}
-            {draft.kind === 'monthly' ? <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.dayOfMonth')}</span><input className={inputClass} type="number" min={1} max={31} value={draft.dayOfMonth} onChange={(event) => setDraft({ ...draft, dayOfMonth: Number(event.target.value) })} /></label> : null}
-            {draft.kind !== 'interval' ? <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.timezone')}</span><input className={inputClass} value={draft.timezone} onChange={(event) => setDraft({ ...draft, timezone: event.target.value })} /></label> : null}
-            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.catchUp')}</span><select className={inputClass} value={draft.catchUpPolicy} onChange={(event) => setDraft({ ...draft, catchUpPolicy: event.target.value as AutomationCatchUpPolicy })}><option value="run_once">{t('todo:automation.runOnce')}</option><option value="catch_up_all">{t('todo:automation.catchAll')}</option><option value="skip">{t('todo:automation.skip')}</option></select></label>
-            {draft.actionType === 'agent_turn' ? <><label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.sessionMode')}</span><select className={inputClass} value={draft.sessionMode} onChange={(event) => setDraft({ ...draft, sessionMode: event.target.value as AutomationSessionMode })}><option value="isolated">{t('todo:automation.isolated')}</option><option value="named">{t('todo:automation.named')}</option></select></label><label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.model')}</span><input className={inputClass} value={draft.modelId} placeholder={t('todo:automation.defaultModel')} onChange={(event) => setDraft({ ...draft, modelId: event.target.value })} /></label></> : null}
-            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.retries')}</span><input className={inputClass} type="number" min={0} max={10} value={draft.maxRetries} onChange={(event) => setDraft({ ...draft, maxRetries: Number(event.target.value) })} /></label>
-            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.retryBackoff')}</span><input className={inputClass} type="number" min={5} max={86400} value={draft.retryBackoffSeconds} onChange={(event) => setDraft({ ...draft, retryBackoffSeconds: Number(event.target.value) })} /></label>
-            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.timeout')}</span><input className={inputClass} type="number" min={30} max={3600} value={draft.timeoutSeconds} onChange={(event) => setDraft({ ...draft, timeoutSeconds: Number(event.target.value) })} /></label>
-          </div>
-          <label className="block space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.prompt')}</span><textarea className="min-h-28 w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20" maxLength={4000} value={draft.prompt} onChange={(event) => setDraft({ ...draft, prompt: event.target.value })} /></label>
-        </NotionDialogBody>
-        <NotionDialogFooter>
-          <NotionButton variant="ghost" disabled={busy === 'create'} onClick={() => setCreateOpen(false)}>{t('common:actions.cancel')}</NotionButton>
-          <NotionButton variant="primary" disabled={busy !== null} onClick={() => void submitCreate()}>{busy === 'create' ? <CircleNotch size={15} className="animate-spin" /> : <CalendarBlank size={15} />}{t('todo:automation.create')}</NotionButton>
-        </NotionDialogFooter>
-      </NotionDialog>
     </div>
   );
 };

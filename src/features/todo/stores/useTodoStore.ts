@@ -15,6 +15,7 @@ import type {
   TodoViewFilter,
   TodoSortBy,
 } from '../types';
+import { localToday } from '../types';
 import * as api from '../api';
 
 // ★ I6 修复：搜索防抖定时器（模块级，store 为单例）
@@ -42,6 +43,68 @@ function notifyError(e: unknown): string {
 
 const SORT_BY_STORAGE_KEY = 'todo-sort-by';
 const VALID_SORT_BY: TodoSortBy[] = ['manual', 'dueDate', 'priority', 'title'];
+
+/** 把 UpdateTodoItemInput 的字段乐观合并到本地 item（tags/attachments 序列化为 *Json） */
+function mergeItemInput(item: TodoItem, input: UpdateTodoItemInput): TodoItem {
+  const merged: TodoItem = { ...item };
+  if (input.title !== undefined) merged.title = input.title;
+  if (input.description !== undefined) merged.description = input.description;
+  if (input.status !== undefined) merged.status = input.status;
+  if (input.priority !== undefined) merged.priority = input.priority;
+  if (input.dueDate !== undefined) merged.dueDate = input.dueDate;
+  if (input.dueTime !== undefined) merged.dueTime = input.dueTime;
+  if (input.reminder !== undefined) merged.reminder = input.reminder;
+  if (input.tags !== undefined) merged.tagsJson = JSON.stringify(input.tags);
+  if (input.parentId !== undefined) merged.parentId = input.parentId;
+  if (input.attachments !== undefined) merged.attachmentsJson = JSON.stringify(input.attachments);
+  if (input.repeatJson !== undefined) merged.repeatJson = input.repeatJson;
+  if (input.estimatedPomodoros !== undefined) merged.estimatedPomodoros = input.estimatedPomodoros;
+  if (input.completedPomodoros !== undefined) merged.completedPomodoros = input.completedPomodoros;
+  return merged;
+}
+
+/** 新建/移动的 item 是否（大致）属于当前视图；拿不准的场景返回 false，交给后台静默校准 */
+function itemBelongsToCurrentView(
+  item: TodoItem,
+  state: Pick<TodoState, 'filter' | 'activeListId'>,
+): boolean {
+  const { view, showCompleted, search } = state.filter;
+  if (search.trim()) return false;
+  if (item.status === 'completed' && view !== 'completed' && !showCompleted) return false;
+  const today = localToday();
+  switch (view) {
+    case 'all':
+      return state.activeListId !== null && item.todoListId === state.activeListId;
+    case 'today':
+      return item.dueDate === today;
+    case 'upcoming':
+      return Boolean(item.dueDate) && (item.dueDate as string) > today;
+    case 'overdue':
+      return item.status === 'pending' && Boolean(item.dueDate) && (item.dueDate as string) < today;
+    case 'matrix':
+      return item.status === 'pending';
+    case 'completed':
+      return item.status === 'completed';
+    default:
+      return false;
+  }
+}
+
+/** rootId 及其（多级）子任务的 id 集合，用于级联乐观移除 */
+function collectDescendantIds(items: TodoItem[], rootId: string): Set<string> {
+  const ids = new Set<string>([rootId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const item of items) {
+      if (item.parentId && ids.has(item.parentId) && !ids.has(item.id)) {
+        ids.add(item.id);
+        changed = true;
+      }
+    }
+  }
+  return ids;
+}
 
 function loadPersistedSortBy(): TodoSortBy {
   try {
@@ -96,6 +159,8 @@ interface TodoState {
   toggleItem: (itemId: string) => Promise<void>;
   deleteItem: (itemId: string) => Promise<void>;
   reorderItems: (orderedIds: string[]) => Promise<void>;
+  moveItemToList: (itemId: string, targetListId: string) => Promise<void>;
+  reorderLists: (listIds: string[]) => Promise<void>;
   selectItem: (itemId: string | null) => void;
   requestQuickAdd: (dueDate?: string) => void;
   clearQuickAddPreset: (requestId: number) => void;
@@ -132,7 +197,63 @@ interface TodoState {
   initialize: () => Promise<void>;
 }
 
-export const useTodoStore = create<TodoState>((set, get) => ({
+export const useTodoStore = create<TodoState>((set, get) => {
+  /**
+   * 静默校准当前视图：后台重新拉取当前视图数据，成功后整体替换 items，
+   * 但不清空旧列表、不置 isLoadingItems（写路径乐观更新后的最终一致性兜底）。
+   * 只快照而不 bump itemsRequestVersion——不打断在途的显式加载；
+   * 若期间有显式加载启动（版本变化），丢弃本次静默结果。
+   */
+  const silentReloadCurrentView = async (): Promise<void> => {
+    const state = get();
+    void state.refreshOverdueCount();
+
+    const requestVersion = state.itemsRequestVersion;
+
+    try {
+      let items: TodoItem[] | null = null;
+      if (state.filter.search.trim()) {
+        items = await api.searchTodoItems(state.filter.search);
+      } else {
+        switch (state.filter.view) {
+          case 'today':
+            items = await api.listTodayItems(state.filter.showCompleted);
+            break;
+          case 'overdue':
+            items = await api.listOverdueItems(state.filter.showCompleted);
+            break;
+          case 'upcoming':
+            items = await api.listUpcomingItems(7, state.filter.showCompleted);
+            break;
+          case 'matrix':
+            items = await api.listAllPendingItems();
+            break;
+          case 'completed':
+            items = await api.listCompletedItems(state.activeListId ?? undefined);
+            break;
+          case 'all':
+          default:
+            if (state.activeListId) {
+              items = await api.listTodoItems(state.activeListId, state.filter.showCompleted);
+            }
+            break;
+        }
+      }
+      if (items === null) return;
+      if (get().itemsRequestVersion !== requestVersion) return;
+      const selectedItemId = get().selectedItemId;
+      set({
+        items,
+        selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
+          ? selectedItemId
+          : null,
+      });
+    } catch {
+      // 静默校准失败不打扰用户（乐观状态已经可用，下次显式刷新会纠正）
+    }
+  };
+
+  return {
   workspaceView: 'todos',
   lists: [],
   activeListId: null,
@@ -294,10 +415,15 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
   },
 
+  // ★ 乐观写路径：用后端返回值就地追加，不再 await 整表 reload（消除新建闪烁）；
+  // 视图归属拿不准/排序需要校准时由后台静默 reload 兜底
   createItem: async (input) => {
     try {
       const item = await api.createTodoItem(input);
-      await get().reloadCurrentView();
+      if (itemBelongsToCurrentView(item, get())) {
+        set((s) => (s.items.some((i) => i.id === item.id) ? s : { items: [...s.items, item] }));
+      }
+      void silentReloadCurrentView();
       return item;
     } catch (e) {
       set({ error: notifyError(e) });
@@ -305,12 +431,39 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
   },
 
+  // ★ 乐观更新：先本地合并输入字段，成功后用后端完整 item 就地替换，失败回滚；
+  // 不再整表 reload（修复详情 blur 保存时列表闪烁）。若更新后不再属于当前视图
+  // （如改到期日移出「今天」），由后台静默 reload 校准，不清空列表
   updateItem: async (input) => {
+    const prevItems = get().items;
+    const exists = prevItems.some((i) => i.id === input.id);
+    if (exists) {
+      set((s) => ({
+        items: s.items.map((i) => (i.id === input.id ? mergeItemInput(i, input) : i)),
+        error: null,
+      }));
+    }
     try {
-      await api.updateTodoItem(input);
-      await get().reloadCurrentView();
+      const updated = await api.updateTodoItem(input);
+      if (exists) {
+        set((s) => {
+          const { view, showCompleted } = s.filter;
+          const stillVisible =
+            view === 'completed'
+              ? updated.status === 'completed'
+              : updated.status !== 'completed' || showCompleted;
+          return {
+            items: stillVisible
+              ? s.items.map((i) => (i.id === updated.id ? updated : i))
+              : s.items.filter((i) => i.id !== updated.id),
+            selectedItemId:
+              !stillVisible && s.selectedItemId === updated.id ? null : s.selectedItemId,
+          };
+        });
+      }
+      void silentReloadCurrentView();
     } catch (e) {
-      set({ error: notifyError(e) });
+      set({ items: prevItems, error: notifyError(e) });
     }
   },
 
@@ -352,13 +505,16 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
   },
 
-  // 删除待办：乐观移除 + 撤销 toast（软删除，可恢复）
+  // 删除待办：乐观移除（含本地可见的子任务级联）+ 撤销 toast（软删除，可恢复）。
+  // 不再删除后整表 reload——后台静默校准即可，避免列表二次闪烁
   deleteItem: async (itemId) => {
     const prevItems = get().items;
     const target = prevItems.find((i) => i.id === itemId);
+    const removedIds = collectDescendantIds(prevItems, itemId);
     set((s) => ({
-      items: s.items.filter((i) => i.id !== itemId),
-      selectedItemId: s.selectedItemId === itemId ? null : s.selectedItemId,
+      items: s.items.filter((i) => !removedIds.has(i.id)),
+      selectedItemId:
+        s.selectedItemId && removedIds.has(s.selectedItemId) ? null : s.selectedItemId,
     }));
     try {
       await api.deleteTodoItem(itemId);
@@ -373,7 +529,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
               void (async () => {
                 try {
                   await api.restoreTodoItem(itemId);
-                  await get().reloadCurrentView();
+                  await silentReloadCurrentView();
                 } catch (e) {
                   notifyError(e);
                 }
@@ -382,8 +538,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
           },
         },
       );
-      // 子任务级联删除等需要整体刷新
-      await get().reloadCurrentView();
+      void silentReloadCurrentView();
     } catch (e) {
       set({ items: prevItems, error: notifyError(e) });
     }
@@ -404,6 +559,58 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       await api.reorderTodoItems(listId, orderedIds);
     } catch (e) {
       set({ items: prevItems, error: notifyError(e) });
+    }
+  },
+
+  // 移动到其他清单：乐观更新本地 todoListId（'all' 视图移出当前清单则本地移除），
+  // 成功后用后端返回 item 替换，失败回滚
+  moveItemToList: async (itemId, targetListId) => {
+    const prevItems = get().items;
+    const prevSelectedItemId = get().selectedItemId;
+    const target = prevItems.find((i) => i.id === itemId);
+    const state = get();
+    const leavesCurrentView =
+      state.filter.view === 'all' &&
+      state.activeListId !== null &&
+      targetListId !== state.activeListId;
+
+    if (target) {
+      set((s) => ({
+        items: leavesCurrentView
+          ? s.items.filter((i) => i.id !== itemId)
+          : s.items.map((i) => (i.id === itemId ? { ...i, todoListId: targetListId } : i)),
+        selectedItemId:
+          leavesCurrentView && s.selectedItemId === itemId ? null : s.selectedItemId,
+        error: null,
+      }));
+    }
+
+    try {
+      const updated = await api.moveTodoItem(itemId, targetListId);
+      if (target && !leavesCurrentView) {
+        set((s) => ({
+          items: s.items.map((i) => (i.id === itemId ? updated : i)),
+        }));
+      }
+      void silentReloadCurrentView();
+    } catch (e) {
+      set({ items: prevItems, selectedItemId: prevSelectedItemId, error: notifyError(e) });
+    }
+  },
+
+  // 清单拖拽排序：乐观重排本地 lists，失败回滚
+  reorderLists: async (listIds) => {
+    const prevLists = get().lists;
+    const byId = new Map(prevLists.map((l) => [l.id, l]));
+    const reordered = listIds
+      .map((id) => byId.get(id))
+      .filter((l): l is TodoList => Boolean(l));
+    const rest = prevLists.filter((l) => !listIds.includes(l.id));
+    set({ lists: [...reordered, ...rest], error: null });
+    try {
+      await api.reorderTodoLists(listIds);
+    } catch (e) {
+      set({ lists: prevLists, error: notifyError(e) });
     }
   },
 
@@ -584,12 +791,12 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   // 过滤操作
   // ========================================================================
 
+  // ★ 修复闪白：切视图不再瞬间清空 items——保留旧列表，
+  // reloadCurrentView 会置 isLoadingItems 并 bump version，加载完成后整体替换
   setViewFilter: (view) => {
     set((s) => ({
       filter: { ...s.filter, view },
       selectedItemId: null,
-      items: [],
-      isLoadingItems: false,
       itemsRequestVersion: s.itemsRequestVersion + 1,
     }));
     void get().reloadCurrentView();
@@ -634,12 +841,11 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
   },
 
+  // 同 setViewFilter：保留旧列表直至新数据到达，避免闪白
   setShowCompleted: (show) => {
     set((s) => ({
       filter: { ...s.filter, showCompleted: show },
       selectedItemId: null,
-      items: [],
-      isLoadingItems: false,
       itemsRequestVersion: s.itemsRequestVersion + 1,
     }));
     void get().reloadCurrentView();
@@ -795,4 +1001,5 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       set({ error: notifyError(e) });
     }
   },
-}));
+  };
+});
