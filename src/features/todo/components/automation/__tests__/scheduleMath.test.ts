@@ -187,17 +187,21 @@ describe('computeNextRuns — explicit timezone semantics', () => {
     expect(wallClock(utc, UTC)).toBe('2026-07-19 20:00');
   });
 
-  it('crosses the date line correctly (today in one zone, tomorrow in another)', () => {
-    // At NOW (08:00 UTC) it is already 2026-07-20 in Pacific/Kiritimati (UTC+14).
+  it('crosses the date line correctly (tomorrow local is still today in UTC)', () => {
+    // At NOW (08:00 UTC) it is 22:00 on 2026-07-19 in Pacific/Kiritimati (UTC+14),
+    // so today's 08:00 has passed → next run is tomorrow local…
     const runs = computeNextRuns({ kind: 'daily', time: '08:00', timezone: 'Pacific/Kiritimati' }, 1, NOW);
-    expect(wallClock(runs[0], 'Pacific/Kiritimati')).toBe('2026-07-21 08:00');
+    expect(wallClock(runs[0], 'Pacific/Kiritimati')).toBe('2026-07-20 08:00');
+    // …which, across the date line, is still 2026-07-19 in UTC (08:00 − 14h = 18:00Z).
+    expect(runs[0].toISOString()).toBe('2026-07-19T18:00:00.000Z');
   });
 
   it('resolves DST wall times per Intl (America/New_York, EDT in July)', () => {
+    // At NOW (08:00 UTC) it is 04:00 EDT — today's 08:00 has not passed yet.
     const runs = computeNextRuns({ kind: 'daily', time: '08:00', timezone: 'America/New_York' }, 1, NOW);
-    expect(wallClock(runs[0], 'America/New_York')).toBe('2026-07-20 08:00');
-    // 08:00 EDT = 12:00 UTC.
-    expect(runs[0].toISOString()).toBe('2026-07-20T12:00:00.000Z');
+    expect(wallClock(runs[0], 'America/New_York')).toBe('2026-07-19 08:00');
+    // 08:00 EDT = 12:00 UTC (UTC−4 under DST, not the EST −5).
+    expect(runs[0].toISOString()).toBe('2026-07-19T12:00:00.000Z');
   });
 
   it('returns [] for an invalid explicit timezone', () => {

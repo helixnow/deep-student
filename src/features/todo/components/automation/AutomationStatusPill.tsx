@@ -43,7 +43,7 @@ function StatusIcon({ status, iconSize }: { status: string; iconSize: number }) 
       return <WarningCircle size={iconSize} weight="fill" aria-hidden />;
     case 'running':
     case 'retrying':
-      return <CircleNotch size={iconSize} className="animate-spin" aria-hidden />;
+      return <CircleNotch size={iconSize} className="animate-spin motion-reduce:animate-none" aria-hidden />;
     case 'queued':
       return <Clock size={iconSize} aria-hidden />;
     case 'cancelled':
@@ -78,7 +78,7 @@ export function AutomationStatusPill({ status, size = 'md' }: AutomationStatusPi
       className={cn(
         'inline-flex shrink-0 items-center gap-1 rounded-full font-medium tabular-nums',
         'transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]',
-        size === 'sm' ? 'px-1.5 py-px text-[11px] leading-4' : 'px-2 py-0.5 text-xs leading-5',
+        size === 'sm' ? 'px-1.5 py-px text-xs leading-4' : 'px-2 py-0.5 text-xs leading-5',
         TONE_CLASS[tone],
       )}
     >

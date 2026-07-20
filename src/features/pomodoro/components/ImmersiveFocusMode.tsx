@@ -1,20 +1,25 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { motion } from 'framer-motion';
 import { Play, Pause, Square, X, Coffee, Brain, SpeakerHigh, SpeakerSlash, SkipForward, CheckCircle, Flame, LockSimple } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { motionSafe } from '@/styles/motion-springs';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
 import { noiseEngine, NOISE_TYPES } from '../noiseEngine';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { RollingTime } from './RollingTime';
 
 /**
  * 沉浸式专注模式 —— 全屏覆盖视图
  *
  * 设计理念（对标 Forest / Tide / Flow）：
  * - 背景随主题（语义 token），不再硬编码暗色
+ * - 双层"极光"呼吸光晕随阶段氛围色漂移（work = primary，short_break = success，
+ *   long_break = info），阶段切换时颜色 800ms 平滑过渡；暂停时动画凝固
  * - 大号圆形进度 + 数字倒计时居中，进度环颜色随阶段语义色
- *   （work = primary，short_break = success，long_break = info）
- * - 含蓄呼吸光晕暗示"活跃计时"（prefers-reduced-motion 下停用）
+ * - 进入/退出由父级 AnimatePresence 驱动（根节点 motion.div 淡入淡出，
+ *   中央内容微缩放上浮入场）；prefers-reduced-motion 下全部退化
  * - 影院模式：鼠标静止 3s 后控制栏淡出，移动唤醒
  * - ESC / 右上角关闭回到正常界面；严格模式下 Space no-op + 轻微 shake 反馈
  * - 完成一个番茄时的一次性全屏庆祝微动效
@@ -24,9 +29,13 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 // 局部动效 keyframes：只动 opacity / translate / scale，与 ui-motion 约定一致；
 // reduced-motion 下全部退化（JS 侧同时用 useMediaQuery 二重保险）
 const IMMERSIVE_MOTION_CSS = `
-@keyframes pomodoro-kf-breathe {
-  0%, 100% { opacity: 0.06; scale: 0.94; }
-  50% { opacity: 0.14; scale: 1.05; }
+@keyframes pomodoro-kf-aurora-a {
+  0%, 100% { translate: -4% -3%; scale: 0.92; opacity: 0.09; }
+  50% { translate: 4% 5%; scale: 1.08; opacity: 0.16; }
+}
+@keyframes pomodoro-kf-aurora-b {
+  0%, 100% { translate: 4% 6%; scale: 1.06; opacity: 0.07; }
+  50% { translate: -4% -5%; scale: 0.9; opacity: 0.13; }
 }
 @keyframes pomodoro-kf-strict-shake {
   0%, 100% { translate: 0 0; }
@@ -49,13 +58,28 @@ const IMMERSIVE_MOTION_CSS = `
   from { opacity: 0; }
   to { opacity: 1; }
 }
-.pomodoro-breathe { animation: pomodoro-kf-breathe 6s ease-in-out infinite; }
-.pomodoro-strict-shake { animation: pomodoro-kf-strict-shake 400ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-.pomodoro-celebrate-ring { animation: pomodoro-kf-celebrate-ring 1200ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-.pomodoro-celebrate-pop { animation: pomodoro-kf-celebrate-pop 1600ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes pomodoro-kf-center-enter {
+  from { opacity: 0; translate: 0 12px; scale: 0.97; }
+  to { opacity: 1; translate: 0 0; scale: 1; }
+}
+/* 极光光斑：错相位呼吸漂移；氛围色切换时 background-color 平滑过渡。
+   缓动统一消费 --ease-standard token（transitions-dev.css），字面量仅兜底 */
+.pomodoro-aurora-a {
+  animation: pomodoro-kf-aurora-a 9s ease-in-out infinite;
+  transition: background-color 800ms var(--ease-standard, cubic-bezier(0.22, 1, 0.36, 1));
+}
+.pomodoro-aurora-b {
+  animation: pomodoro-kf-aurora-b 12s ease-in-out infinite;
+  transition: background-color 800ms var(--ease-standard, cubic-bezier(0.22, 1, 0.36, 1));
+}
+.pomodoro-center-enter { animation: pomodoro-kf-center-enter 450ms var(--ease-standard, cubic-bezier(0.22, 1, 0.36, 1)) both; }
+.pomodoro-strict-shake { animation: pomodoro-kf-strict-shake 400ms var(--ease-standard, cubic-bezier(0.22, 1, 0.36, 1)) both; }
+.pomodoro-celebrate-ring { animation: pomodoro-kf-celebrate-ring 1200ms var(--ease-standard, cubic-bezier(0.22, 1, 0.36, 1)) both; }
+.pomodoro-celebrate-pop { animation: pomodoro-kf-celebrate-pop 1600ms var(--ease-standard, cubic-bezier(0.22, 1, 0.36, 1)) both; }
 @media (prefers-reduced-motion: reduce) {
-  .pomodoro-breathe, .pomodoro-strict-shake, .pomodoro-celebrate-ring { animation: none; }
-  .pomodoro-celebrate-pop { animation: pomodoro-kf-fade-in 250ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .pomodoro-aurora-a, .pomodoro-aurora-b { animation: none; transition: none; }
+  .pomodoro-center-enter, .pomodoro-strict-shake, .pomodoro-celebrate-ring { animation: none; }
+  .pomodoro-celebrate-pop { animation: pomodoro-kf-fade-in 250ms var(--ease-standard, cubic-bezier(0.22, 1, 0.36, 1)) both; }
 }
 `;
 
@@ -92,7 +116,7 @@ const CircularProgress: React.FC<{
         strokeWidth={strokeWidth}
         className="text-border"
       />
-      {/* 进度弧 */}
+      {/* 进度弧（阶段切换时描边色 500ms 平滑过渡） */}
       <circle
         cx={size / 2}
         cy={size / 2}
@@ -103,7 +127,7 @@ const CircularProgress: React.FC<{
         strokeLinecap="round"
         strokeDasharray={circumference}
         strokeDashoffset={offset}
-        className="transition-[stroke-dashoffset] duration-1000 ease-linear motion-reduce:transition-none"
+        className="[transition:stroke-dashoffset_1000ms_linear,stroke_500ms_cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
       />
     </svg>
   );
@@ -126,6 +150,7 @@ export const ImmersiveFocusMode: React.FC<{
     completedPomodorosToday,
     streakDays,
     sessionCountUp,
+    phaseExtraSeconds,
     noiseEnabled,
     setNoiseEnabled,
     pause,
@@ -133,6 +158,7 @@ export const ImmersiveFocusMode: React.FC<{
     stop,
     start,
     skipBreak,
+    extendPhase,
     completeCurrentSession,
     updateSettings,
   } = usePomodoroStore();
@@ -143,7 +169,10 @@ export const ImmersiveFocusMode: React.FC<{
 
   // ⚠️ tick interval 由父组件 GlobalPomodoroWidget 统一驱动，此处不再重复注册
 
-  const isCountUpWork = mode === 'work' && sessionCountUp;
+  // 会话锁定的计时模式优先；旧持久化会话无该字段时回退设置
+  //（与 PomodoroPanel / PomodoroAppWindow 同口径，否则旧数据下
+  //  正计时会话会被当成倒计时：进度环反向、误显 +5 加时按钮）
+  const isCountUpWork = mode === 'work' && (sessionCountUp ?? settings.countUp);
   const pauseLocked = settings.strictMode && mode === 'work' && status === 'running';
 
   // Android 系统返回键 = 退出沉浸模式（与 ESC 同语义；桌面端无 Android 桥接，零影响）
@@ -289,8 +318,8 @@ export const ImmersiveFocusMode: React.FC<{
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // 计算进度（正计时：相对设定工作时长封顶）
-  const totalDuration = (() => {
+  // 计算进度（正计时：相对设定工作时长封顶；倒计时分母含 extendPhase 累计加时）
+  const baseDuration = (() => {
     switch (mode) {
       case 'work': return settings.workDuration;
       case 'short_break': return settings.shortBreak;
@@ -298,8 +327,9 @@ export const ImmersiveFocusMode: React.FC<{
       default: return settings.workDuration;
     }
   })();
+  const totalDuration = isCountUpWork ? baseDuration : baseDuration + Math.max(0, phaseExtraSeconds);
   const progress =
-    mode === 'idle'
+    mode === 'idle' || totalDuration <= 0
       ? 0
       : isCountUpWork
         ? Math.min(1, timeLeft / totalDuration)
@@ -341,10 +371,14 @@ export const ImmersiveFocusMode: React.FC<{
     'flex items-center justify-center w-12 h-12 rounded-full border border-border bg-card text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[var(--interactive-hover)] motion-reduce:transition-none';
 
   return (
-    <div
+    <motion.div
       ref={containerRef}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={motionSafe({ type: 'tween', duration: 0.3, ease: [0.22, 1, 0.36, 1] })}
       className={cn(
-        'fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-background select-none',
+        'fixed inset-0 z-modal flex flex-col items-center justify-center bg-background select-none',
         !chromeVisible && 'cursor-none'
       )}
       style={{ '--focus-accent': focusAccent } as React.CSSProperties}
@@ -352,15 +386,26 @@ export const ImmersiveFocusMode: React.FC<{
     >
       <style>{IMMERSIVE_MOTION_CSS}</style>
 
-      {/* 含蓄呼吸光晕背景（reduced-motion 下不渲染） */}
-      {status === 'running' && !prefersReducedMotion && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden="true">
-          <div
-            className="pomodoro-breathe w-[420px] h-[420px] rounded-full blur-[120px]"
-            style={{ backgroundColor: 'var(--focus-accent)' }}
-          />
-        </div>
-      )}
+      {/* 双层极光呼吸光晕：错相位漂移营造纵深；暂停时动画凝固（氛围保留但不再"呼吸"）；
+          reduced-motion 下退化为静态低透明度光斑（无动画/无过渡） */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+        <div
+          className="pomodoro-aurora-a absolute left-[8%] top-[12%] h-[52vmin] w-[52vmin] rounded-full blur-[110px]"
+          style={{
+            backgroundColor: 'var(--focus-accent)',
+            opacity: prefersReducedMotion ? 0.08 : undefined,
+            animationPlayState: status === 'running' ? 'running' : 'paused',
+          }}
+        />
+        <div
+          className="pomodoro-aurora-b absolute bottom-[8%] right-[6%] h-[44vmin] w-[44vmin] rounded-full blur-[100px]"
+          style={{
+            backgroundColor: 'var(--focus-accent)',
+            opacity: prefersReducedMotion ? 0.06 : undefined,
+            animationPlayState: status === 'running' ? 'running' : 'paused',
+          }}
+        />
+      </div>
 
       {/* 一次性完成庆祝（reduced-motion 退化为纯淡入淡出徽章） */}
       {celebrating && (
@@ -410,7 +455,8 @@ export const ImmersiveFocusMode: React.FC<{
           {noiseEnabled && (
             <button
               onClick={cycleNoiseType}
-              className="px-2 py-1 rounded-lg text-[11px] text-muted-foreground bg-muted hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150 motion-reduce:transition-none"
+              // 触屏放大到 ≥44px 触控目标
+              className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 rounded-lg text-xs text-muted-foreground bg-muted hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150 motion-reduce:transition-none"
               title={t('pomodoro.controls.noiseCycle')}
               aria-label={t('pomodoro.controls.noiseCycle')}
             >
@@ -421,7 +467,8 @@ export const ImmersiveFocusMode: React.FC<{
           <button
             onClick={toggleNoise}
             className={cn(
-              'p-2 rounded-lg transition-colors duration-150 motion-reduce:transition-none',
+              // 触屏放大到 ≥44px 触控目标（16px 图标 + 14px×2 内边距）
+              'p-2 [@media(pointer:coarse)]:p-3.5 rounded-lg transition-colors duration-150 motion-reduce:transition-none',
               noiseEnabled
                 ? 'bg-muted text-foreground hover:bg-[var(--interactive-hover)]'
                 : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
@@ -444,7 +491,8 @@ export const ImmersiveFocusMode: React.FC<{
                 updateSettings({ noiseVolume: volume });
                 noiseEngine.setVolume(volume);
               }}
-              className="h-1 w-20 cursor-pointer accent-primary"
+              // 触屏加高命中区（视觉轨道由原生渲染居中，盒高不影响观感）并加宽便于精调
+              className="h-1 w-20 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-28 cursor-pointer accent-primary"
               aria-label={t('pomodoro.settings.noiseVolume')}
             />
           )}
@@ -460,8 +508,8 @@ export const ImmersiveFocusMode: React.FC<{
         </div>
       </div>
 
-      {/* 中央计时器区域 */}
-      <div className="relative flex flex-col items-center gap-8">
+      {/* 中央计时器区域（入场微缩放上浮） */}
+      <div className="pomodoro-center-enter relative flex flex-col items-center gap-8">
         {/* 圆形进度 + 时间 */}
         <div
           className="relative"
@@ -471,17 +519,21 @@ export const ImmersiveFocusMode: React.FC<{
           aria-valuenow={Math.round(Math.min(1, Math.max(0, progress)) * 100)}
           aria-label={modeInfo.label}
         >
-          {/* 窄屏（如竖屏手机）圆环收缩到 70vw，避免溢出 */}
-          <CircularProgress progress={progress} size={280} strokeWidth={4} cssSize="min(280px, 70vw)" />
+          {/* 窄屏（如竖屏手机）圆环收缩到 70vw；横屏矮视口再受 55vh 约束，避免垂直溢出 */}
+          <CircularProgress progress={progress} size={280} strokeWidth={4} cssSize="min(280px, 70vw, 55vh)" />
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span
+            {/* 逐位滚动：与 PomodoroPanel 同款 RollingTime，秒位变化不再生硬跳变 */}
+            <RollingTime
+              text={formatTime(timeLeft)}
               className={cn(
-                'font-mono font-light tabular-nums transition-colors duration-150 motion-reduce:transition-none',
-                mode === 'idle' ? 'text-5xl text-muted-foreground' : 'text-6xl text-foreground'
+                'font-mono font-light tabular-nums tracking-tight transition-colors duration-500 motion-reduce:transition-none',
+                mode === 'idle'
+                  ? 'text-5xl text-muted-foreground'
+                  : status === 'running'
+                    ? 'text-6xl text-foreground'
+                    : 'text-6xl text-foreground/60'
               )}
-            >
-              {formatTime(timeLeft)}
-            </span>
+            />
           </div>
         </div>
 
@@ -556,6 +608,18 @@ export const ImmersiveFocusMode: React.FC<{
               </span>
             )}
 
+            {/* 加时 +5 分钟（倒计时阶段可用；正计时无目标时长，不显示） */}
+            {mode !== 'idle' && !isCountUpWork && (
+              <button
+                onClick={() => extendPhase(5 * 60)}
+                className={cn(secondaryControlClass, 'font-mono text-sm font-medium tabular-nums')}
+                title={t('pomodoro.controls.extendTitle', { count: 5 })}
+                aria-label={t('pomodoro.controls.extendTitle', { count: 5 })}
+              >
+                +5
+              </button>
+            )}
+
             {/* 跳过（休息阶段可用） */}
             {(mode === 'short_break' || mode === 'long_break') && (
               <button
@@ -593,19 +657,19 @@ export const ImmersiveFocusMode: React.FC<{
         ) : (
           <p className="text-muted-foreground/60 text-xs">
             {t('pomodoro.immersive.hintEscPrefix')}
-            <kbd className="px-1.5 py-0.5 bg-muted rounded text-muted-foreground text-[10px] font-mono">ESC</kbd>
+            <kbd className="px-1.5 py-0.5 bg-muted rounded text-muted-foreground text-2xs font-mono">ESC</kbd>
             {t('pomodoro.immersive.hintEscSuffix')}
             {!pauseLocked && (
               <>
                 {' '}·{' '}
                 {t('pomodoro.immersive.hintSpacePrefix')}
-                <kbd className="px-1.5 py-0.5 bg-muted rounded text-muted-foreground text-[10px] font-mono">Space</kbd>
+                <kbd className="px-1.5 py-0.5 bg-muted rounded text-muted-foreground text-2xs font-mono">Space</kbd>
                 {t('pomodoro.immersive.hintSpaceSuffix')}
               </>
             )}
           </p>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 };

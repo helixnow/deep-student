@@ -1,0 +1,107 @@
+/**
+ * pomodoro-panel.css — 番茄钟面板/统计共享微动效
+ * ---------------------------------------------------------------------------
+ * pomodoro- 前缀隔离。keyframes 只碰 opacity / translate / scale，
+ * prefers-reduced-motion 下全部静态化。
+ *
+ * - .pomodoro-num-roll   数字变化时的一次性上滚进场（key 重挂载触发）
+ * - .pomodoro-noise-dot  环境音播放态的呼吸圆点（挂在扬声器按钮角上）
+ * - .pomodoro-noise-eq   环境音播放态的迷你声波柱（设置区音量行）
+ */
+
+@keyframes pomodoro-kf-num-roll {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pomodoro-num-roll {
+  display: inline-block;
+  animation: pomodoro-kf-num-roll 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ---- 环境音播放态：呼吸圆点（宿主按钮需 position:relative） ---- */
+
+@keyframes pomodoro-kf-noise-dot {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+.pomodoro-noise-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  pointer-events: none;
+  animation: pomodoro-kf-noise-dot 2.4s ease-in-out infinite;
+}
+
+/* ---- 环境音播放态：迷你声波柱（3 根，错峰 scaleY 呼吸） ---- */
+
+@keyframes pomodoro-kf-noise-eq {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.pomodoro-noise-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
+.pomodoro-noise-eq i {
+  width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background: hsl(var(--primary));
+  transform-origin: bottom;
+  animation: pomodoro-kf-noise-eq 1.1s ease-in-out infinite;
+}
+
+.pomodoro-noise-eq i:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.pomodoro-noise-eq i:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+/* ---- 动效降级 ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .pomodoro-num-roll {
+    animation: none;
+  }
+
+  .pomodoro-noise-dot {
+    animation: none;
+    opacity: 0.9;
+  }
+
+  .pomodoro-noise-eq i {
+    animation: none;
+    transform: scaleY(0.6);
+  }
+}

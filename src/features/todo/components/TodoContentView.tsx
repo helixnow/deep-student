@@ -12,9 +12,11 @@
  * R1-14：todo://changed 经 registerDomainListener；详情面板编辑中延迟 reload。
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { motionSafe, tweenFast } from '@/styles/motion-springs';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { MobileSlidingLayout, useMobileHeader } from '@/components/layout';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -56,6 +58,8 @@ function scheduleTodoReload(signal: { cancelled: boolean }): void {
     const store = useTodoStore.getState();
     void store.loadLists();
     void store.reloadCurrentView();
+    // 软删除/恢复也走同一事件；顺带校准侧栏回收站徽标（失败静默）
+    void store.refreshTrashCounts();
   };
   tryReload();
 }
@@ -81,13 +85,30 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
     setWorkspaceView,
   } = useTodoStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  // 移动端 inline 子屏（全屏替换中屏内容，返回走顶栏箭头 / Android 返回键）
+  // 移动端 inline 子屏（全屏替换中屏内容，返回走顶栏箭头 / Android 返回键）。
+  // 注意：移动端回收站入口走本地 trashOpen（TodoSidebar 的 onOpenTrash 回调），
+  // 与桌面端的 useTodoTrashView 共享 store 是两条独立路径——移动端需要接入
+  // 统一顶栏返回箭头与 Android 返回键的 MobileDetailOverlay 承载，无法直接
+  // 复用桌面 store。代价是 todoActivation 的 closeTrashView 只覆盖桌面路径；
+  // 移动端 ACR 导航不受影响（子屏覆盖层在导航后由用户返回键收起）。
   const [trashOpen, setTrashOpen] = useState(false);
   const [pomodoroSubView, setPomodoroSubView] = useState<PomodoroSubView | null>(null);
   // 桌面端内联回收站视图（侧栏点击后主内容区切换，经共享 store 协调）
   const desktopTrashOpen = useTodoTrashView((s) => s.isOpen);
   const closeDesktopTrash = useTodoTrashView((s) => s.close);
   const reloadGuardRef = useRef<{ cancelled: boolean }>({ cancelled: false });
+
+  // Workbench 窄窗双导航防御：窗口化承载（TodoAppWindow）已自带
+  // WorkbenchSidebarLayout 的 compact 抽屉导航；此时若视口恰好 <768px，
+  // 页内再启用 MobileSlidingLayout 会出现「窗口抽屉 + 页内滑动侧栏」双导航。
+  // 通过 data-wb-sys-app 祖先判定（挂载后布局前完成，无闪烁），
+  // 在 Workbench 窗内强制走桌面分支。
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [inWorkbenchWindow, setInWorkbenchWindow] = useState(false);
+  useLayoutEffect(() => {
+    setInWorkbenchWindow(Boolean(rootRef.current?.closest('[data-wb-sys-app]')));
+  }, []);
+  const useMobileLayout = isSmallScreen && !inWorkbenchWindow;
 
   useEffect(() => {
     initialize();
@@ -139,11 +160,11 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   })();
 
   // 移动端详情子屏是否打开（与 TodoMainPanel 内的覆盖层同一判定）
-  const mobileDetailOpen = workspaceView === 'todos' && isSmallScreen && items.some((i) => i.id === selectedItemId);
+  const mobileDetailOpen = workspaceView === 'todos' && useMobileLayout && items.some((i) => i.id === selectedItemId);
 
   // 子层级打开时统一顶栏切返回箭头（契约 1）；层级优先级与视觉堆叠一致
   const headerConfig = (() => {
-    if (isSmallScreen) {
+    if (useMobileLayout) {
       if (trashOpen) {
         return {
           title: t('todo:trash.title'),
@@ -183,13 +204,14 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   useMobileHeader(
     'todo',
     headerConfig,
-    [headerTitle, isSmallScreen, trashOpen, pomodoroSubView, mobileDetailOpen],
+    [headerTitle, useMobileLayout, trashOpen, pomodoroSubView, mobileDetailOpen],
   );
 
   // ===== 移动端：MobileSlidingLayout =====
-  if (isSmallScreen) {
+  if (useMobileLayout) {
     return (
       <div
+        ref={rootRef}
         className={cn(
           'study-shell-page relative flex h-full w-full flex-col overflow-hidden',
           className,
@@ -248,21 +270,40 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   }
 
   // ===== 桌面端：仅主面板（侧边栏已移至 Shell 导航位置） =====
-  // 回收站为内联视图优先级最高（侧栏点击切换，带返回）
+  // 回收站为内联视图优先级最高（侧栏点击切换，带返回）。
+  // 三态切换（trash > automations > todos）经 AnimatePresence 转场：
+  // 旧视图 100ms 淡出，新视图 150ms 淡入 + 8px 上移（tweenFast 与
+  // CSS --ease-standard 同曲线；motionSafe 在 reduced-motion 下瞬时完成）。
+  const desktopMode = desktopTrashOpen
+    ? 'trash'
+    : workspaceView === 'automations'
+      ? 'automations'
+      : 'todos';
   return (
     <div
+      ref={rootRef}
       className={cn(
         'study-shell-page flex h-full w-full overflow-hidden',
         className,
       )}
     >
-      {desktopTrashOpen ? (
-        <TodoTrashWorkspace />
-      ) : workspaceView === 'automations' ? (
-        <TodoAutomationWorkspace />
-      ) : (
-        <TodoMainPanel />
-      )}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={desktopMode}
+          className="flex h-full w-full min-w-0"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0, transition: motionSafe(tweenFast) }}
+          exit={{ opacity: 0, y: -4, transition: motionSafe({ ...tweenFast, duration: 0.1 }) }}
+        >
+          {desktopMode === 'trash' ? (
+            <TodoTrashWorkspace />
+          ) : desktopMode === 'automations' ? (
+            <TodoAutomationWorkspace />
+          ) : (
+            <TodoMainPanel />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 };

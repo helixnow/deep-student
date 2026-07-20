@@ -25,13 +25,29 @@
       "scheduleInvalid": "This schedule never produces a next run; please review the settings",
       "shortcutHint": "Esc to close · ⌘/Ctrl+Enter to create",
       "success": "Scheduled task \"{{name}}\" created",
+      "steps": {
+        "describe": "Describe the task",
+        "describeHint": "Start from one sentence or a template",
+        "configure": "Configure details",
+        "configureHint": "Name, action, and schedule",
+        "confirm": "Confirm & create"
+      },
+      "confirm": {
+        "name": "Name",
+        "nameEmpty": "Not set yet",
+        "action": "Action",
+        "schedule": "Schedule",
+        "firstRun": "First run",
+        "noRun": "No upcoming run"
+      },
       "scheduleSummary": {
         "daily": "Daily at {{time}}",
         "weekdays": "Weekdays at {{time}}",
         "weekly": "Every {{weekday}} at {{time}}",
         "monthly": "Monthly on day {{day}} at {{time}}",
         "interval": "Every {{minutes}} minutes",
-        "once": "Once on {{date}} at {{time}}"
+        "once": "Once on {{date}} at {{time}}",
+        "weeklyMulti": "Every {{weekdays}} at {{time}}"
       }
     },
     "nl": {
@@ -43,6 +59,18 @@
         "high": "Parse confidence: high",
         "medium": "Parse confidence: medium, please confirm the schedule",
         "low": "Parse confidence: low, please set the schedule manually"
+      },
+      "hints": {
+        "defaultTime": "No time specified; defaulted to 09:00",
+        "impliedTime": "Inferred a default time from the time-of-day word; adjust below if needed",
+        "weekendSaturday": "\"Weekend\" was interpreted as Saturday",
+        "weekAnchored": "\"Weekly\" had no weekday; anchored to today's weekday",
+        "monthlyFirstDay": "\"Monthly\" had no day; defaulted to the 1st",
+        "intervalClamped": "Interval was clamped to the 5–1,440 minute range",
+        "bareHourAmbiguous": "No AM/PM given; interpreted as 24-hour time",
+        "timeOnlyToday": "Only a time was detected; scheduled for today",
+        "timeRolledTomorrow": "That time has passed today; rolled over to tomorrow",
+        "monthLastDay": "\"Last day of month\" runs as day 31, rolling back to month end in shorter months"
       }
     },
     "entry": {
@@ -60,6 +88,28 @@
       "resumeBackgroundDone": "Background automations resumed",
       "backgroundToggleFailed": "Failed to toggle background automations"
     },
+    "card": {
+      "listTitle": "Tasks",
+      "capacityHint": "{{count}} of {{max}} tasks created",
+      "paused": "Paused",
+      "nextRun": "Next: {{time}}",
+      "lastRun": "Last: {{time}}",
+      "recentRuns": "Last {{count}} runs",
+      "saving": "Saving",
+      "toggleAria": "Enable or disable {{name}}",
+      "runNow": "Run now",
+      "runNowAria": "Run {{name}} now",
+      "edit": "Edit",
+      "editAria": "Edit {{name}}",
+      "delete": "Delete",
+      "deleteAria": "Delete {{name}}",
+      "deleteConfirm": "Delete \"{{name}}\"? Its run history will be deleted too.",
+      "deleteAction": "Delete permanently",
+      "save": "Save",
+      "updated": "Updated \"{{name}}\"",
+      "updatedElsewhere": "This task was updated elsewhere; the list has been refreshed.",
+      "runStarted": "\"{{name}}\" started"
+    },
     "title": "Scheduled Tasks",
     "subtitle": "Reminders and unattended Agent runs",
     "summary": "Automation summary",
@@ -68,10 +118,17 @@
     "failed24h": "Failed in 24h",
     "next": "Next run",
     "never": "None",
+    "startingSoon": "Starting soon",
     "background": "Keep running after closing the window",
     "backgroundHint": "Quitting the app or shutting down stops tasks; missed runs recover according to their policy",
+    "agentTurnHint": "Agent tasks call the AI model unattended in the background (consuming tokens); results are available in the run history",
+    "sessionModeHint": "A continuous session keeps context from previous runs, useful for tasks that need memory; a new session each run uses fewer tokens",
+    "modelHint": "Leave empty to use the default chat model; see Settings → Models for available model IDs",
+    "catchUpHint": "\"Run each missed occurrence\" replays every missed run; for agent tasks this means several AI calls in a row, so choose carefully",
+    "advancedHint": "Failed runs are retried automatically after the backoff delay; runs exceeding the timeout are terminated and counted as failed",
     "history": {
       "title": "Run history",
+      "toggleAria": "Run history ({{count}})",
       "filterByTask": "Filter by task",
       "filterByStatus": "Filter by status",
       "allTasks": "All tasks",
@@ -84,15 +141,33 @@
       "error": "Error",
       "copyError": "Copy error",
       "copied": "Copied",
+      "copyFailed": "Copy failed",
+      "duration": "Duration",
+      "detailRegion": "Run details for \"{{name}}\"",
+      "reason": {
+        "timeout": "Timed out: the run did not finish within the time limit. Increase the timeout under \"Retries & timeout\" and retry.",
+        "spawn": "Failed to start: the task process could not be spawned. This is usually an internal error — retrying is safe.",
+        "network": "Network error: the request could not reach the service. Check your connection and retry.",
+        "auth": "Authentication failed: the API key is invalid or lacks permission. Review the model provider settings.",
+        "rateLimit": "Rate limited: the service throttled the request or the quota was exceeded. Try again later.",
+        "model": "Model error: the selected model is currently unavailable. Switch models or retry later.",
+        "generic": "Run failed: expand the error details below for specifics, or retry."
+      },
       "scheduledFor": "Scheduled for",
       "startedAt": "Started at",
       "finishedAt": "Finished at",
+      "nextAttemptAt": "Next retry",
       "delivered": "Delivered",
       "retry": "Retry",
       "cancel": "Cancel",
       "viewSession": "View conversation",
       "empty": "No runs yet",
-      "emptyHint": "Runs will show up here once tasks execute"
+      "emptyHint": "Runs will show up here once tasks execute",
+      "filteredEmpty": "No runs match the current filters",
+      "clearFilters": "Clear filters",
+      "actionFailed": "Action failed: {{message}}",
+      "loading": "Loading run history",
+      "showMore": "Show more ({{count}} remaining)"
     },
     "format": {
       "justNow": "Just now",
@@ -155,6 +230,7 @@
     "runFailedTitle": "{{name}} failed",
     "runCompletedFallback": "The scheduled task completed.",
     "runFailedFallback": "The scheduled task failed.",
+    "runFailedReason": "Reason: {{reason}}",
     "create": "Create",
     "status": {
       "queued": "Queued",
@@ -206,9 +282,12 @@
         "6": "Saturday"
       },
       "dayOfMonthLabel": "Day of month",
+      "dayOfMonthOption": "Day {{day}} of the month",
       "dayOfMonthHint": "Day 31 rolls back to the last day in shorter months",
       "intervalLabel": "Interval minutes",
       "intervalUnit": "minutes",
+      "intervalDecrease": "Decrease interval",
+      "intervalIncrease": "Increase interval",
       "intervalPresetsLabel": "Common intervals",
       "presetMinutes": "{{n}} min",
       "presetHours": "{{n}} h",
@@ -229,7 +308,9 @@
         "dayOfMonth": "Day of month must be between 1 and 31",
         "interval": "Interval must be between 5 and 1,440 minutes",
         "onceDate": "Date cannot be earlier than today",
-        "timezone": "Choose a valid IANA time zone"
+        "onceTimePassed": "That time has already passed today — pick a later time or date",
+        "timezone": "Choose a valid IANA time zone",
+        "weekday": "Select at least one weekday"
       },
       "describe": {
         "daily": "Every day at {{time}}",
@@ -239,11 +320,23 @@
         "interval": "Every {{minutes}} minutes",
         "once": "{{date}} at {{time}} (once)",
         "withTimezone": "{{description}} ({{timezone}})",
-        "invalid": "Schedule is incomplete"
+        "invalid": "Schedule is incomplete",
+        "weeklyMulti": "Every {{weekdays}} at {{time}}"
+      },
+      "weekdayListJoin": ", ",
+      "weekdaysListItem": {
+        "0": "Sunday",
+        "1": "Monday",
+        "2": "Tuesday",
+        "3": "Wednesday",
+        "4": "Thursday",
+        "5": "Friday",
+        "6": "Saturday"
       }
     },
     "templates": {
       "title": "Start from a template",
+      "onceBadge": "{{time}} · pick a date",
       "dailyMistakes": {
         "name": "Daily mistake digest",
         "description": "Summarize today's new mistakes at 21:00",
@@ -286,7 +379,8 @@
     "importantNotUrgent": "Important, Not Urgent",
     "urgentNotImportant": "Urgent, Not Important",
     "neither": "Neither",
-    "empty": "No tasks"
+    "empty": "No tasks",
+    "dropHere": "Drop here"
   },
   "reviewLink": {
     "title": "{{count}} questions due for review today",
@@ -309,7 +403,8 @@
     "markPending": "Mark as pending",
     "deleteItem": "Delete todo",
     "dragToReorder": "Drag to reorder",
-    "editTitleHint": "Double-click to edit title"
+    "editTitleHint": "Double-click to edit title",
+    "setPriority": "Set priority"
   },
   "reschedule": {
     "title": "Reschedule",
@@ -321,7 +416,8 @@
     "pickDate": "Pick a date",
     "clear": "Remove date",
     "allToToday": "Move all to today",
-    "allToTodayHint": "Reschedule every overdue task to today"
+    "allToTodayHint": "Reschedule every overdue task to today",
+    "movedToToday": "Moved {{count}} items to today"
   },
   "dates": {
     "today": "Today",
@@ -333,6 +429,14 @@
     "listDeleted": "Deleted list \"{{title}}\"",
     "itemDeleted": "Deleted \"{{title}}\"",
     "undo": "Undo"
+  },
+  "apiErrors": {
+    "conflict": "This todo changed elsewhere. Refresh to load the latest version, then try again.",
+    "notFound": "This todo or list no longer exists. Refresh to update the view.",
+    "invalidArgument": "Some todo details are invalid. Review the highlighted values and try again.",
+    "invalidOperation": "That action is not available for the current todo state.",
+    "maintenance": "Todo editing is temporarily paused while data maintenance is running. Try again after maintenance finishes.",
+    "storage": "Todo data is temporarily unavailable. If maintenance just finished, restart the app and try again."
   },
   "dialogs": {
     "deleteList": {
@@ -348,7 +452,8 @@
     "aiBreakdown": "AI Breakdown",
     "aiBreaking": "Breaking down...",
     "aiBreakdownHint": "Let AI break this task into actionable subtasks",
-    "openDetail": "Open subtask details"
+    "openDetail": "Open subtask details",
+    "promote": "Convert to standalone task"
   },
   "filters": {
     "showCompleted": "Show Completed",
@@ -394,7 +499,18 @@
   },
   "detail": {
     "title": "Details",
-    "updatedAt": "Updated {{date}}"
+    "updatedAt": "Updated {{date}}",
+    "reminderAtTime": "At due time",
+    "reminderBefore15": "15 min before",
+    "reminderBefore60": "1 hour before",
+    "repeatNeedsDueDate": "Repeating tasks need an anchor date — reset to today",
+    "daysAgo": "{{count}} days ago",
+    "durationHours": "{{count}} h",
+    "durationHoursMinutes": "{{hours}} h {{minutes}} min",
+    "subtaskProgress": "{{done}}/{{total}} subtasks done",
+    "pomodoroProgress": "{{done}}/{{total}} pomodoros done",
+    "saved": "Saved",
+    "deleteConfirm": "Delete? Undo available"
   },
   "fields": {
     "status": "Status",
@@ -425,13 +541,17 @@
   },
   "tags": {
     "addPlaceholder": "Add tag...",
-    "remove": "Remove tag {{tag}}"
+    "remove": "Remove tag {{tag}}",
+    "suggestionsLabel": "Tag suggestions",
+    "createNew": "Create \"{{tag}}\""
   },
   "focusHistory": {
     "title": "Focus History",
     "summary": "{{count}} pomodoros · {{minutes}} min",
     "minutes": "{{count}} min",
-    "more": "{{count}} more sessions"
+    "more": "{{count}} more sessions",
+    "todayTotal": "Today {{minutes}} min",
+    "showLess": "Show less"
   },
   "repeat": {
     "none": "None",
@@ -479,7 +599,9 @@
     "back": "Back to todos",
     "purgeInlineHint": "Cannot be undone",
     "emptyAllInlineHint": "Permanently removes everything. Cannot be undone",
-    "confirmEmptyAll": "Confirm empty"
+    "confirmEmptyAll": "Confirm empty",
+    "loading": "Loading recycle bin",
+    "emptyHint": "Anything you delete stays here for a while before it's gone"
   },
   "overdue": {
     "badgeAria_one": "{{count}} overdue todo",
@@ -530,10 +652,24 @@
       "noiseOn": "Enable ambient sound",
       "noiseOff": "Disable ambient sound",
       "noiseCycle": "Cycle sound",
-      "popOut": "Pop out floating window"
+      "popOut": "Pop out floating window",
+      "extendMinutes": "+{{count}} min",
+      "extendTitle": "Extend current phase by {{count}} min",
+      "more": "More actions",
+      "resumeSpace": "Resume (Space)",
+      "abandonConfirm": "Abandon this focus session?",
+      "abandon": "Abandon",
+      "keepGoing": "Keep going",
+      "abandonConfirmShort": "Abandon?",
+      "skipBreakKey": "Skip Break (B)",
+      "noiseOnKey": "Enable ambient sound (M)",
+      "noiseOffKey": "Disable ambient sound (M)"
     },
     "miniWindow": {
-      "close": "Return to main window"
+      "close": "Return to main window",
+      "openFailed": "Failed to open the floating window, please try again",
+      "pin": "Keep on top",
+      "unpin": "Unpin from top"
     },
     "countUpLabel": "Stopwatch",
     "strictBadge": "Strict",
@@ -557,7 +693,17 @@
       "weekUp": "+{{value}}% vs same time last week",
       "weekDown": "-{{value}}% vs same time last week",
       "weekFlat": "Same as last week",
-      "weekNoBase": "No record same time last week"
+      "weekNoBase": "No record same time last week",
+      "emptyHint": "Your focus trend will show up here after your first pomodoro",
+      "weekCompareTitle": "This week vs last week",
+      "weekNarrativeUp": "You focused {{value}}% more than this time last week — keep it up!",
+      "weekNarrativeDown": "{{value}}% less than this time last week — squeeze in one more pomodoro today",
+      "weekNarrativeFlat": "Right on par with last week — consistency wins",
+      "weekNarrativeNoBase": "No record this time last week — this week sets the baseline",
+      "today": "Today",
+      "hourDist": "By hour",
+      "peakHour": "Peak {{hour}}:00",
+      "hourDetail": "{{hour}}:00 · {{minutes}} min"
     },
     "stats": {
       "todayLabel": "Today",
@@ -569,7 +715,8 @@
       "interrupted": "Interrupted {{value}} times",
       "goalProgress": "Daily goal {{done}}/{{goal}}",
       "goalReached": "Goal reached",
-      "streak": "{{count}}-day streak"
+      "streak": "{{count}}-day streak",
+      "streakDays": "{{value}}-day focus streak"
     },
     "notifications": {
       "workCompleteTitle": "Pomodoro Complete",
@@ -580,7 +727,15 @@
       "endReminderBodyWork": "About {{minutes}} min of focus left — start wrapping up",
       "endReminderBodyBreak": "About {{minutes}} min of break left",
       "dailyGoalTitle": "Daily goal reached!",
-      "dailyGoalBody": "{{value}} pomodoros done — you hit today's goal. Treat yourself!"
+      "dailyGoalBody": "{{value}} pomodoros done — you hit today's goal. Treat yourself!",
+      "endReminderBodyWorkSeconds": "About {{seconds}}s of focus left — start wrapping up",
+      "endReminderBodyBreakSeconds": "About {{seconds}}s of break left",
+      "awayPausedTitle": "Focus auto-paused",
+      "awayPausedBody": "Looks like you were away for a while. The stopwatch was paused when you left — resume manually when ready",
+      "awayWorkCompleteTitle": "Pomodoro complete",
+      "awayWorkCompleteBody": "This pomodoro finished while you were away ({{value}} today). The break timer was not started automatically",
+      "awayBreakCompleteTitle": "Break over",
+      "awayBreakCompleteBody": "Your break ended while you were away — start the next pomodoro when ready"
     },
     "settings": {
       "title": "Pomodoro Settings",
@@ -603,6 +758,7 @@
       "dailyGoalShort": "Daily goal",
       "valueOff": "Off",
       "valueUnset": "Not set",
+      "secondsUnit": "s",
       "sections": {
         "duration": "Duration",
         "automation": "Automation",
@@ -618,12 +774,49 @@
       "hintEscPrefix": "Press ",
       "hintEscSuffix": " to exit",
       "hintSpacePrefix": "",
-      "hintSpaceSuffix": " to pause/resume"
+      "hintSpaceSuffix": " to pause/resume",
+      "tapToPause": "Tap anywhere to pause / resume"
+    },
+    "presets": {
+      "label": "Duration presets",
+      "setTitle": "Set focus duration to {{count}} min"
     }
   },
   "sidebar": {
     "title": "Todo navigation",
     "moreActions": "More actions",
-    "listColor": "Color"
+    "listColor": "Color",
+    "clearColor": "Clear color",
+    "dragHandle": "Drag to reorder",
+    "pendingBadgeAria_one": "{{count}} pending todo",
+    "pendingBadgeAria_other": "{{count}} pending todos",
+    "pendingBadgeAria": "{{count}} pending todos",
+    "listIcon": "Icon",
+    "clearIcon": "Clear icon",
+    "resizeHandle": "Drag to resize sidebar",
+    "trashBadgeAria": "{{count}} items in trash"
+  },
+  "calendar": {
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "backToToday": "Today"
+  },
+  "swipe": {
+    "confirmDelete": "Confirm delete"
+  },
+  "bulk": {
+    "title": "Bulk actions",
+    "selectedCount": "{{count}} selected",
+    "complete": "Complete",
+    "confirmDelete": "Confirm delete",
+    "clear": "Clear selection",
+    "deleted": "Deleted {{count}} items",
+    "completed": "Completed {{count}} items",
+    "rescheduled": "Rescheduled {{count}} items",
+    "prioritySet": "Updated priority for {{count}} items",
+    "skippedCount": "{{count}} skipped"
+  },
+  "quickAdd": {
+    "removeToken": "Remove"
   }
 }

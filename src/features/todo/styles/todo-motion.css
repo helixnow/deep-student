@@ -2,7 +2,14 @@
  * todo-motion.css — 待办列表克制动效
  *
  * - .todo-check-pop：勾选完成时 checkbox 弹性放大回落（260ms 弹性曲线）
+ * - .todo-check-burst：勾选圈外圈扩散光环（配合 todo-check-pop，Things 式满足感）
+ * - .todo-row-completing：完成提交期间行内容轻微右移淡出
  * - .todo-celebrate-pop：清零空态图标一次性 scale 亮色反馈（无 confetti）
+ * - .todo-empty-decor：空态图标外的纯 CSS 同心圆装饰（缓慢呼吸）
+ * - .todo-quickadd-pop：快速添加成功时加号图标弹跳转绿
+ * - .todo-matrix-drag-ghost：四象限拖拽拖影（轻微倾斜 + 阴影）
+ * - .todo-swipe-hint-content：触屏首次使用提示——首行内容左移露出「完成」
+ *   色块再回弹（一次性引导，token 见 transitions-dev --m-swipe-hint-*）
  * 均在 prefers-reduced-motion: reduce 下禁用。
  */
 
@@ -44,9 +51,159 @@
   animation: todo-celebrate-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
+/* 勾选圈外圈扩散光环：以 box-shadow 从 0 扩散到 8px 后淡出 */
+@keyframes todo-check-burst {
+  0% {
+    box-shadow: 0 0 0 0 hsl(var(--success) / 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 9px hsl(var(--success) / 0);
+  }
+}
+
+.todo-check-burst {
+  border-radius: 9999px;
+  animation: todo-check-burst 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 完成提交期间行内容轻微右移 + 淡出（Things 式「送走」手感） */
+@keyframes todo-row-completing {
+  0% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(10px);
+    opacity: 0.35;
+  }
+}
+
+.todo-row-completing {
+  animation: todo-row-completing 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 快速添加成功：加号图标弹跳并短暂转为成功色 */
+@keyframes todo-quickadd-pop {
+  0% {
+    transform: scale(1);
+    color: hsl(var(--success));
+  }
+  40% {
+    transform: scale(1.35);
+    color: hsl(var(--success));
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.todo-quickadd-pop {
+  animation: todo-quickadd-pop 360ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* 空态图标外的同心圆装饰：两圈细边框缓慢呼吸（纯 CSS，无图片资源） */
+.todo-empty-decor {
+  position: relative;
+}
+
+.todo-empty-decor::before,
+.todo-empty-decor::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  border-radius: 9999px;
+  border: 1px solid currentColor;
+  opacity: 0.12;
+  pointer-events: none;
+}
+
+.todo-empty-decor::before {
+  width: 200%;
+  height: 200%;
+  animation: todo-empty-breathe 4s ease-in-out infinite;
+}
+
+.todo-empty-decor::after {
+  width: 290%;
+  height: 290%;
+  opacity: 0.06;
+  animation: todo-empty-breathe 4s ease-in-out 0.6s infinite;
+}
+
+@keyframes todo-empty-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+/* 四象限拖拽拖影：轻微放大 + 倾斜 + 浮起阴影（DragOverlay 内容用） */
+.todo-matrix-drag-ghost {
+  transform: scale(1.02) rotate(0.8deg);
+  border-radius: var(--radius-shell-control, 8px);
+  background: var(--surface-raised, hsl(var(--background)));
+  border: 1px solid var(--border-default, hsl(var(--border)));
+  box-shadow:
+    0 8px 24px hsl(var(--foreground) / 0.14),
+    0 2px 6px hsl(var(--foreground) / 0.08);
+  overflow: hidden;
+  cursor: grabbing;
+}
+
+/* 触屏滑动手势首次提示：行内容左移露出动作色块，停留片刻后回弹。
+   只动 transform；距离/时长/缓动消费 --m-swipe-hint-* 语义 token。 */
+@keyframes todo-swipe-hint {
+  0% {
+    transform: translateX(0);
+  }
+  32% {
+    transform: translateX(calc(-1 * var(--m-swipe-hint-distance, 64px)));
+  }
+  58% {
+    transform: translateX(calc(-1 * var(--m-swipe-hint-distance, 64px)));
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.todo-swipe-hint-content {
+  animation: todo-swipe-hint var(--m-swipe-hint-dur, 1200ms)
+    var(--m-swipe-hint-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+/* 分组折叠 caret 旋转（color 一并纳入过渡，避免与 Tailwind transition-* 类互抢） */
+.todo-group-caret {
+  transition:
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 150ms ease;
+}
+
+.todo-group-caret[data-collapsed='true'] {
+  transform: rotate(-90deg);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .todo-check-pop,
-  .todo-celebrate-pop {
+  .todo-check-burst,
+  .todo-row-completing,
+  .todo-celebrate-pop,
+  .todo-quickadd-pop,
+  .todo-swipe-hint-content,
+  .todo-empty-decor::before,
+  .todo-empty-decor::after {
     animation: none;
+  }
+
+  .todo-matrix-drag-ghost {
+    transform: none;
+  }
+
+  .todo-group-caret {
+    transition: none;
   }
 }

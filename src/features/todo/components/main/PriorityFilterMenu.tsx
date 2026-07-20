@@ -3,7 +3,7 @@
  * 直接消费 store 现有的 filter.priorityFilter / setPriorityFilter。
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FunnelSimple } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -26,6 +26,22 @@ export const PriorityFilterMenu: React.FC = () => {
   const { t } = useTranslation(['todo']);
   const priorityFilter = useTodoStore((s) => s.filter.priorityFilter);
   const setPriorityFilter = useTodoStore((s) => s.setPriorityFilter);
+  const items = useTodoStore((s) => s.items);
+
+  // 每档优先级的当前数据集条数（选择前预知筛选结果规模）
+  const countByPriority = useMemo(() => {
+    const counts: Record<TodoPriority, number> = {
+      none: 0,
+      low: 0,
+      medium: 0,
+      high: 0,
+      urgent: 0,
+    };
+    for (const item of items) {
+      counts[item.priority as TodoPriority] = (counts[item.priority as TodoPriority] ?? 0) + 1;
+    }
+    return counts;
+  }, [items]);
 
   return (
     <AppMenu>
@@ -64,6 +80,13 @@ export const PriorityFilterMenu: React.FC = () => {
             checked={priorityFilter === p}
             onClick={() => setPriorityFilter(p)}
             icon={<PriorityIcon priority={p} className="h-3.5 w-3.5" />}
+            suffix={
+              countByPriority[p] > 0 ? (
+                <span className="text-xs tabular-nums text-muted-foreground/60">
+                  {countByPriority[p]}
+                </span>
+              ) : undefined
+            }
           >
             {t(PRIORITY_CONFIG[p].labelKey)}
           </AppMenuItem>

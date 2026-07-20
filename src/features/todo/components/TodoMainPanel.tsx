@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Calendar,
   CalendarPlus,
+  CaretDown,
   CheckCircle,
   CircleNotch,
   ListChecks,
@@ -46,7 +47,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useTodoStore } from '../stores/useTodoStore';
 import { PomodoroPanel } from '@/features/pomodoro';
 import '../styles/todo-motion.css';
-import type { EisenhowerQuadrant, TodoItem, TodoSortBy } from '../types';
+import type { EisenhowerQuadrant, TodoDueBucket, TodoItem, TodoSortBy } from '../types';
 import {
   addDays,
   classifyEisenhower,
@@ -55,9 +56,9 @@ import {
   localToday,
   sortTodoItems,
 } from '../types';
-import { updateTodoItem as updateTodoItemApi } from '../api';
 import { useReviewPlanStore } from '@/stores/reviewPlanStore';
 import { useViewStore } from '@/stores/viewStore';
+import { useKeyboardInset } from '@/hooks/useKeyboardHeight';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { TodoItemRow, SortableTodoItemRow } from './main/TodoItemRow';
 import { TodoRowsList, type TodoRowSpec } from './main/TodoRowsList';
@@ -65,6 +66,11 @@ import { TodoItemDetail } from './main/TodoItemDetail';
 import { MatrixBoard } from './main/MatrixBoard';
 import { TodoQuickAdd } from './main/TodoQuickAdd';
 import { PriorityFilterMenu } from './main/PriorityFilterMenu';
+import { BulkActionBar } from './main/BulkActionBar';
+import { mergeBatchItemsResults, runChunkedBulk } from './main/bulkChunks';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { InlineReveal } from './main/detail/InlineReveal';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 // formatDueDateLabel 的实现移到 main/dueDateLabel.ts（行/chip/quick add 共用）；
 // 这里保持导出位置不变（tests/vitest/todo/formatDueDateLabel.test.ts 从本模块导入）
@@ -90,6 +96,11 @@ export const MobileDetailOverlay: React.FC<{
 }> = ({ open, onClose, children }) => {
   const [visible, setVisible] = useState(open);
   const [entered, setEntered] = useState(false);
+  // 键盘避让（G3/残留#4）：iOS overlay 键盘下布局视口不变，聚焦低位输入框
+  // （备注/提醒等）会被键盘遮住——用实时 inset 收缩内容区，让内部滚动容器
+  // 能把焦点滚到可视区。Android adjustResize 下 inset≈0，无双重抬升。
+  // （订阅该 hook 同时保证 useKeyboardHeight 单例开始向 root 写 --keyboard-inset）
+  const keyboardInset = useKeyboardInset();
   // 退场动画期间 children 已变 null，缓存最后一帧内容避免闪空
   const lastChildrenRef = useRef<React.ReactNode>(children);
   if (open) {
@@ -207,11 +218,14 @@ export const MobileDetailOverlay: React.FC<{
         'transition-transform duration-200 ease-out motion-reduce:transition-none',
         entered && open ? 'translate-x-0' : 'translate-x-full',
       )}
-      style={
-        edgeDragX > 0
-          ? { transform: `translateX(${edgeDragX}px)`, transition: 'none', touchAction: 'pan-y' }
-          : { touchAction: 'pan-y' }
-      }
+      style={{
+        touchAction: 'pan-y',
+        // 键盘弹出时收缩内容区（padding 变化无需过渡：键盘弹出本身就是瞬时事件）
+        paddingBottom: keyboardInset > 0 ? keyboardInset : undefined,
+        ...(edgeDragX > 0
+          ? { transform: `translateX(${edgeDragX}px)`, transition: 'none' as const }
+          : null),
+      }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
@@ -243,9 +257,7 @@ const ReviewLinkCard: React.FC = () => {
   return (
     <button
       onClick={() => {
-        window.dispatchEvent(
-          new CustomEvent('navigate-to-tab', { detail: { tabName: 'learning-hub' } }),
-        );
+        dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'learning-hub' });
       }}
       className={cn(
         'group mx-4 mt-3 flex items-center gap-3 rounded-[var(--radius-shell-control)] border border-border/40 px-3 py-2.5 text-left transition-colors duration-150 sm:mx-6',
@@ -256,7 +268,7 @@ const ReviewLinkCard: React.FC = () => {
         <Brain size={16} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[13px] font-medium text-foreground">
+        <span className="block text-ui font-medium text-foreground">
           {t('todo:reviewLink.title', { count: total })}
         </span>
         <span className="block text-xs text-muted-foreground">
@@ -318,6 +330,28 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
 
   // 窄屏：搜索折叠为图标，点击后在工具栏下方展开内联输入行
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+
+  // 批量多选（Cmd/Ctrl 点选 + Shift 范围选）；非空时工具栏下方出现内联批量操作条
+  const [checkedIds, setCheckedIds] = useState<ReadonlySet<string>>(new Set());
+  const lastCheckedIdRef = useRef<string | null>(null);
+  const checkedIdsRef = useRef(checkedIds);
+  checkedIdsRef.current = checkedIds;
+
+  const clearChecked = useCallback(() => {
+    lastCheckedIdRef.current = null;
+    setCheckedIds((prev) => (prev.size > 0 ? new Set() : prev));
+  }, []);
+
+  // 分组折叠（upcoming/today 视图的时间段分组）
+  const [collapsedBuckets, setCollapsedBuckets] = useState<ReadonlySet<TodoDueBucket>>(new Set());
+  const toggleBucketCollapsed = useCallback((bucket: TodoDueBucket) => {
+    setCollapsedBuckets((prev) => {
+      const next = new Set(prev);
+      if (next.has(bucket)) next.delete(bucket);
+      else next.add(bucket);
+      return next;
+    });
+  }, []);
 
   const { filteredItems, pendingCount, completedCount } = useMemo(() => {
     // 计数与列表同口径：搜索/优先级筛选后的当前数据集
@@ -387,17 +421,27 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     return map;
   }, [filter.view, filteredItems]);
 
-  // 计算子任务进度（含被 showCompleted 过滤掉的已完成子任务，进度才真实）
+  // 计算子任务进度（含被 showCompleted 过滤掉的已完成子任务，进度才真实）。
+  // 一次 O(n) 预聚合成 Map，替代此前每个父行 O(n) 过滤（大列表 O(n²) 热点）
+  const subtaskProgressById = useMemo(() => {
+    const map = new Map<string, { done: number; total: number }>();
+    for (const item of items) {
+      if (!item.parentId) continue;
+      let entry = map.get(item.parentId);
+      if (!entry) {
+        entry = { done: 0, total: 0 };
+        map.set(item.parentId, entry);
+      }
+      entry.total += 1;
+      if (item.status === 'completed') entry.done += 1;
+    }
+    return map;
+  }, [items]);
+
   const subtaskProgressOf = useCallback(
-    (parentId: string): { done: number; total: number } | undefined => {
-      const all = items.filter((i) => i.parentId === parentId);
-      if (all.length === 0) return undefined;
-      return {
-        done: all.filter((i) => i.status === 'completed').length,
-        total: all.length,
-      };
-    },
-    [items],
+    (parentId: string): { done: number; total: number } | undefined =>
+      subtaskProgressById.get(parentId),
+    [subtaskProgressById],
   );
 
   // 树形/平铺分支交给 TodoRowsList（>100 行自动虚拟化）
@@ -411,7 +455,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     return filteredItems.map((item) => ({ item }));
   }, [isTreeView, topLevelItems, childrenByParent, filteredItems, subtaskProgressOf]);
 
-  // 键盘导航的可见行顺序（跨所有视图分支统一口径）
+  // 键盘导航的可见行顺序（跨所有视图分支统一口径；折叠分组内的行不参与 j/k）
   const visibleRowIds = useMemo(() => {
     if (matrixQuadrants) {
       return (Object.keys(matrixQuadrants) as EisenhowerQuadrant[]).flatMap((q) =>
@@ -419,10 +463,12 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
       );
     }
     if (upcomingGroups) {
-      return upcomingGroups.flatMap((g) => g.items.map((i) => i.id));
+      return upcomingGroups
+        .filter((g) => !collapsedBuckets.has(g.bucket))
+        .flatMap((g) => g.items.map((i) => i.id));
     }
     return listRows.map((r) => r.item.id);
-  }, [matrixQuadrants, upcomingGroups, listRows]);
+  }, [matrixQuadrants, upcomingGroups, listRows, collapsedBuckets]);
 
   const visibleRowIdsRef = useRef<string[]>(visibleRowIds);
   visibleRowIdsRef.current = visibleRowIds;
@@ -435,6 +481,40 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
       setFocusedItemId(null);
     }
   }, [visibleRowIds, focusedItemId]);
+
+  // 多选集合同步收敛：已不可见的行（删除/过滤/切视图）移出选择集
+  useEffect(() => {
+    setCheckedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(visibleRowIds);
+      const next = new Set([...prev].filter((id) => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [visibleRowIds]);
+
+  // Cmd/Ctrl 点选切换；Shift 从上一次点选位置做范围并选（对标 Finder/Todoist）
+  const handleCheckToggle = useCallback((id: string, opts: { shift: boolean }) => {
+    const ids = visibleRowIdsRef.current;
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      const anchor = lastCheckedIdRef.current;
+      if (opts.shift && anchor && ids.includes(anchor) && ids.includes(id)) {
+        const from = ids.indexOf(anchor);
+        const to = ids.indexOf(id);
+        for (let i = Math.min(from, to); i <= Math.max(from, to); i++) {
+          next.add(ids[i]);
+        }
+      } else if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+    lastCheckedIdRef.current = id;
+    // 多选期间同步键盘焦点，j/k 从最近点选位置继续
+    setFocusedItemId(id);
+  }, []);
 
   // 焦点行滚动到可见区域（虚拟化分支由 TodoRowsList 内部 scrollToIndex 兜底）
   useEffect(() => {
@@ -512,9 +592,12 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
         setFocusedItemId(ids[index + 1] ?? ids[index - 1] ?? null);
         void useTodoStore.getState().deleteItem(id);
       } else if (e.key === 'Escape') {
-        // 桌面端：Esc 先关详情面板，再清除键盘焦点行
+        // 桌面端：Esc 依次退出 多选 → 详情面板 → 键盘焦点行
         const { selectedItemId: selected, selectItem: select } = useTodoStore.getState();
-        if (selected) {
+        if (checkedIdsRef.current.size > 0) {
+          e.preventDefault();
+          clearChecked();
+        } else if (selected) {
           e.preventDefault();
           select(null);
         } else if (focusedItemIdRef.current) {
@@ -525,7 +608,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [clearChecked]);
 
   // 触屏友好：TouchSensor 长按 250ms 激活 + 8px 容差，避免竖向滚动被拖拽排序劫持（R2-07）；
   // 与 NotesTabsBar/DndFileTree/FinderFileList 等共用同一传感器范式。桌面 MouseSensor 距离激活，键盘可达。
@@ -554,32 +637,82 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     [updateItem],
   );
 
-  // 点击选中行时同步键盘焦点，j/k 从当前位置继续
+  // 点击选中行时同步键盘焦点，j/k 从当前位置继续；普通点击同时退出多选
   const handleSelect = useCallback(
     (id: string) => {
+      clearChecked();
       setFocusedItemId(id);
       selectItem(id);
     },
-    [selectItem],
+    [clearChecked, selectItem],
   );
 
-  // 逾期分组头「全部改到今天」：批量顺延后一次性刷新（对标 Todoist 的 Reschedule all）
+  // 逾期分组头「全部改到今天」：store 批量改期（每片单事务 + 乐观更新 + 失败回滚 + 静默校准）。
+  // 后端单命令上限 500：超限时经 runChunkedBulk 按片顺序调用，聚合各片结果统一 toast/撤销
   const [reschedulingOverdue, setReschedulingOverdue] = useState(false);
-  const handleRescheduleOverdueToToday = useCallback(async (overdueItems: TodoItem[]) => {
-    if (overdueItems.length === 0) return;
-    setReschedulingOverdue(true);
-    const today = localToday();
-    try {
-      await Promise.all(
-        overdueItems.map((i) => updateTodoItemApi({ id: i.id, dueDate: today })),
-      );
-    } catch {
-      // 部分失败：刷新后残留项仍显示在逾期组，可重试
-    } finally {
-      await useTodoStore.getState().reloadCurrentView();
-      setReschedulingOverdue(false);
-    }
-  }, []);
+  const handleRescheduleOverdueToToday = useCallback(
+    async (overdueItems: TodoItem[]) => {
+      if (overdueItems.length === 0) return;
+      setReschedulingOverdue(true);
+      try {
+        // 固定「今天」于操作起点：分片顺序执行跨午夜时各片仍改到同一天
+        const today = localToday();
+        const { results, failed } = await runChunkedBulk(
+          overdueItems.map((i) => i.id),
+          (chunk) => useTodoStore.getState().bulkRescheduleItems(chunk, today),
+        );
+        const merged = mergeBatchItemsResults(results);
+        if (merged.items.length === 0) {
+          // 全部被跳过（如并发删除）也给出反馈；分片失败时 store 已弹错，这里不再叠加
+          if (!failed && merged.skippedIds.length > 0) {
+            showGlobalNotification(
+              'info',
+              t('todo:bulk.skippedCount', {
+                count: merged.skippedIds.length,
+                defaultValue: '跳过 {{count}} 项',
+              }),
+            );
+          }
+          return;
+        }
+        // 撤销覆盖聚合后的全部生效项：按原到期日分组批量改回。
+        // 正向操作未传 dueTime（= 保留原时间），撤销只需还原日期
+        const affectedIds = new Set(merged.items.map((i) => i.id));
+        const idsByOriginalDate = new Map<string, string[]>();
+        for (const item of overdueItems) {
+          if (!affectedIds.has(item.id) || !item.dueDate) continue;
+          const group = idsByOriginalDate.get(item.dueDate);
+          if (group) group.push(item.id);
+          else idsByOriginalDate.set(item.dueDate, [item.id]);
+        }
+        showGlobalNotification(
+          'success',
+          t('todo:reschedule.movedToToday', {
+            count: merged.items.length,
+            defaultValue: '已把 {{count}} 项改到今天',
+          }),
+          undefined,
+          {
+            action: {
+              label: t('todo:notifications.undo'),
+              onClick: () => {
+                void (async () => {
+                  for (const [date, ids] of idsByOriginalDate) {
+                    await runChunkedBulk(ids, (chunk) =>
+                      useTodoStore.getState().bulkRescheduleItems(chunk, date),
+                    );
+                  }
+                })();
+              },
+            },
+          },
+        );
+      } finally {
+        setReschedulingOverdue(false);
+      }
+    },
+    [t],
+  );
 
   const viewTitle = (() => {
     switch (filter.view) {
@@ -832,11 +965,18 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
           )}
         </div>
 
+        {/* 批量多选操作条（内联，非弹窗）：Cmd/Ctrl/Shift 点选行后出现 */}
+        {checkedIds.size > 0 && (
+          <BulkActionBar checkedIds={checkedIds} onClear={clearChecked} />
+        )}
+
         {/* 内容区 */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <CustomScrollArea
             className="flex-1 min-h-0"
-            viewportClassName="pb-6"
+            // --keyboard-inset：键盘弹出时垫高列表底部，QuickAdd/行内编辑/
+            // 内联改期条等低位输入框可滚出键盘遮挡区（桌面端恒为 0px）
+            viewportClassName="pb-[calc(1.5rem+var(--keyboard-inset,0px))]"
             viewportRef={setScrollViewport}
           >
             {showQuickAdd && (
@@ -858,6 +998,8 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 <div
                   className={cn(
                     'study-shell-empty-state__icon',
+                    // 纯 CSS 同心圆装饰（缓慢呼吸），替代插画资源
+                    'todo-empty-decor',
                     // 清零类空态：一次性亮色 scale 弹跳（无 confetti，reduced-motion 下退化）
                     emptyState.celebratory &&
                       '!text-[color:hsl(var(--success))] todo-celebrate-pop',
@@ -891,6 +1033,8 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                           onRename={handleRename}
                           isSelected={selectedItemId === item.id}
                           isFocused={focusedItemId === item.id}
+                          isChecked={checkedIds.has(item.id)}
+                          onCheckToggle={handleCheckToggle}
                           subtaskProgress={subtaskProgressOf(item.id)}
                         />
                         {(childrenByParent.get(item.id) || []).map((child) => (
@@ -903,6 +1047,8 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                             onRename={handleRename}
                             isSelected={selectedItemId === child.id}
                             isFocused={focusedItemId === child.id}
+                            isChecked={checkedIds.has(child.id)}
+                            onCheckToggle={handleCheckToggle}
                             depth={1}
                           />
                         ))}
@@ -916,6 +1062,8 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 quadrants={matrixQuadrants}
                 selectedItemId={selectedItemId}
                 focusedItemId={focusedItemId}
+                checkedIds={checkedIds}
+                onCheckToggle={handleCheckToggle}
                 onToggle={toggleItem}
                 onSelect={handleSelect}
                 onDelete={deleteItem}
@@ -923,52 +1071,73 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               />
             ) : upcomingGroups ? (
               <div className="flex flex-col">
-                {upcomingGroups.map((group) => (
-                  <div key={group.bucket}>
-                    <div data-wb-blur-surface className="sticky top-0 z-[1] flex items-center gap-2 bg-[color:var(--surface-root)]/95 px-4 pb-1 pt-3 backdrop-blur-sm sm:px-6">
-                      <span
-                        className={cn(
-                          'text-[11px] font-semibold uppercase tracking-wide',
-                          group.bucket === 'overdue'
-                            ? 'text-[color:hsl(var(--destructive))]'
-                            : 'text-muted-foreground',
-                        )}
-                      >
-                        {t(`todo:groups.${group.bucket}`)}
-                      </span>
-                      <span className="text-[11px] tabular-nums text-muted-foreground/50">
-                        {group.items.length}
-                      </span>
-                      {group.bucket === 'overdue' && (
-                        <NotionButton
-                          variant="utility"
-                          size="sm"
-                          disabled={reschedulingOverdue}
-                          onClick={() => void handleRescheduleOverdueToToday(group.items)}
-                          title={t('todo:reschedule.allToTodayHint')}
-                          className="ml-auto h-6 gap-1 !px-2 text-[11px]"
+                {upcomingGroups.map((group) => {
+                  const collapsed = collapsedBuckets.has(group.bucket);
+                  return (
+                    <div key={group.bucket}>
+                      <div data-wb-blur-surface className="sticky top-0 z-[1] flex items-center gap-2 bg-[color:var(--surface-root)]/95 px-4 pb-1 pt-3 backdrop-blur-sm sm:px-6">
+                        {/* 组头可点击折叠/展开（caret 旋转 + InlineReveal 收合动画） */}
+                        <button
+                          type="button"
+                          onClick={() => toggleBucketCollapsed(group.bucket)}
+                          aria-expanded={!collapsed}
+                          className="group/header -mx-1 flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50"
                         >
-                          <CalendarPlus size={12} />
-                          {t('todo:reschedule.allToToday')}
-                        </NotionButton>
-                      )}
+                          <CaretDown
+                            size={11}
+                            weight="bold"
+                            data-collapsed={collapsed}
+                            className="todo-group-caret flex-shrink-0 text-muted-foreground/40 group-hover/header:text-muted-foreground"
+                          />
+                          <span
+                            className={cn(
+                              'text-xs font-semibold uppercase tracking-wide',
+                              group.bucket === 'overdue'
+                                ? 'text-[color:hsl(var(--destructive))]'
+                                : 'text-muted-foreground',
+                            )}
+                          >
+                            {t(`todo:groups.${group.bucket}`)}
+                          </span>
+                          <span className="text-xs tabular-nums text-muted-foreground/50">
+                            {group.items.length}
+                          </span>
+                        </button>
+                        {group.bucket === 'overdue' && (
+                          <NotionButton
+                            variant="utility"
+                            size="sm"
+                            disabled={reschedulingOverdue}
+                            onClick={() => void handleRescheduleOverdueToToday(group.items)}
+                            title={t('todo:reschedule.allToTodayHint')}
+                            className="ml-auto h-6 gap-1 !px-2 text-xs"
+                          >
+                            <CalendarPlus size={12} />
+                            {t('todo:reschedule.allToToday')}
+                          </NotionButton>
+                        )}
+                      </div>
+                      <InlineReveal open={!collapsed}>
+                        <div className="flex flex-col divide-y divide-border/[0.08]">
+                          {group.items.map((item) => (
+                            <TodoItemRow
+                              key={item.id}
+                              item={item}
+                              onToggle={toggleItem}
+                              onSelect={handleSelect}
+                              onDelete={deleteItem}
+                              onRename={handleRename}
+                              isSelected={selectedItemId === item.id}
+                              isFocused={focusedItemId === item.id}
+                              isChecked={checkedIds.has(item.id)}
+                              onCheckToggle={handleCheckToggle}
+                            />
+                          ))}
+                        </div>
+                      </InlineReveal>
                     </div>
-                    <div className="flex flex-col divide-y divide-border/[0.08]">
-                      {group.items.map((item) => (
-                        <TodoItemRow
-                          key={item.id}
-                          item={item}
-                          onToggle={toggleItem}
-                          onSelect={handleSelect}
-                          onDelete={deleteItem}
-                          onRename={handleRename}
-                          isSelected={selectedItemId === item.id}
-                          isFocused={focusedItemId === item.id}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <TodoRowsList
@@ -976,6 +1145,8 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 scrollElement={scrollViewport}
                 selectedItemId={selectedItemId}
                 focusedItemId={focusedItemId}
+                checkedIds={checkedIds}
+                onCheckToggle={handleCheckToggle}
                 onToggle={toggleItem}
                 onSelect={handleSelect}
                 onDelete={deleteItem}

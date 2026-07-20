@@ -12,15 +12,19 @@ import type { AutomationSchedule } from '../../../settings/components/automation
  *   time, read back what wall time that instant produces in the zone, and
  *   shift by the difference. Two passes converge for every fixed offset and
  *   for DST transitions.
- * - Precision trade-off around DST boundaries: for non-existent wall times
- *   (spring-forward gap) the result lands shifted by the DST delta, and for
- *   ambiguous wall times (fall-back overlap) Intl deterministically picks one
- *   of the two candidate offsets. Both cases follow the host Intl behavior
- *   and are within ±1h, which is acceptable for a "next runs" preview.
+ * - DST boundaries mirror the backend slot builder (`scheduled_slot_on_date`
+ *   in src-tauri/src/chat_v2/automations.rs): non-existent wall times
+ *   (spring-forward gap) roll forward to the first existing minute (backend
+ *   scans 0..=180 minutes), and ambiguous wall times (fall-back overlap)
+ *   resolve to the EARLIER of the two instants (chrono `.earliest()`).
  */
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** Interval bounds, mirroring backend MIN_/MAX_INTERVAL_MINUTES. */
+export const MIN_INTERVAL_MINUTES = 5;
+export const MAX_INTERVAL_MINUTES = 1440;
 
 export interface ZonedParts {
   year: number;
@@ -90,21 +94,24 @@ export function getZonedParts(date: Date, timeZone: string): ZonedParts {
 }
 
 /**
- * Inverse mapping: the UTC instant at which `timeZone` shows the given wall
- * time. See the module docstring for DST-boundary precision notes.
+ * All UTC instants (sorted ascending) at which `timeZone` shows exactly the
+ * given wall time: one for normal times, two for fall-back overlaps, zero
+ * for spring-forward gaps. Offsets are probed a day before/after the target
+ * so both sides of any transition are covered.
  */
-function zonedWallTimeToUtc(
+function utcInstantsForWallTime(
   year: number,
   month: number,
   day: number,
   hour: number,
   minute: number,
   timeZone: string,
-): Date {
+): number[] {
   const target = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
-  let utc = target;
-  for (let pass = 0; pass < 2; pass += 1) {
-    const observed = getZonedParts(new Date(utc), timeZone);
+  const offsets = new Set<number>();
+  for (const probeShift of [-86_400_000, 0, 86_400_000]) {
+    const probe = target + probeShift;
+    const observed = getZonedParts(new Date(probe), timeZone);
     const observedAsUtc = Date.UTC(
       observed.year,
       observed.month - 1,
@@ -114,9 +121,58 @@ function zonedWallTimeToUtc(
       0,
       0,
     );
-    utc += target - observedAsUtc;
+    offsets.add(observedAsUtc - probe);
   }
-  return new Date(utc);
+  const instants: number[] = [];
+  for (const offset of offsets) {
+    const candidate = target - offset;
+    const observed = getZonedParts(new Date(candidate), timeZone);
+    const observedAsUtc = Date.UTC(
+      observed.year,
+      observed.month - 1,
+      observed.day,
+      observed.hour,
+      observed.minute,
+      0,
+      0,
+    );
+    if (observedAsUtc === target) instants.push(candidate);
+  }
+  return instants.sort((a, b) => a - b);
+}
+
+/**
+ * Inverse mapping: the UTC instant at which `timeZone` shows the given wall
+ * time, matching the backend slot builder (`scheduled_slot_on_date`):
+ * - Fall-back overlap (two instants): the EARLIER one wins (chrono
+ *   `.earliest()` semantics).
+ * - Spring-forward gap (no instant): roll forward minute by minute, up to
+ *   180 minutes, to the first wall time that exists (backend scans 0..=180).
+ */
+function zonedWallTimeToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  timeZone: string,
+): Date {
+  for (let shiftMinutes = 0; shiftMinutes <= 180; shiftMinutes += 1) {
+    // Date.UTC normalizes minute overflow, so day/month rollovers are safe.
+    const shifted = new Date(Date.UTC(year, month - 1, day, hour, minute + shiftMinutes, 0, 0));
+    const instants = utcInstantsForWallTime(
+      shifted.getUTCFullYear(),
+      shifted.getUTCMonth() + 1,
+      shifted.getUTCDate(),
+      shifted.getUTCHours(),
+      shifted.getUTCMinutes(),
+      timeZone,
+    );
+    if (instants.length > 0) return new Date(instants[0]);
+  }
+  // Unreachable for real IANA zones (no gap exceeds 3h); mirror the naive
+  // UTC interpretation as a defensive fallback.
+  return new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0));
 }
 
 function daysInMonth(year: number, month: number): number {
@@ -160,7 +216,12 @@ function parseDate(date: string | undefined): { year: number; month: number; day
 }
 
 function isValidIntervalMinutes(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 5 && value <= 1440;
+  return (
+    typeof value === 'number'
+    && Number.isFinite(value)
+    && value >= MIN_INTERVAL_MINUTES
+    && value <= MAX_INTERVAL_MINUTES
+  );
 }
 
 function isValidDayOfMonth(value: unknown): value is number {
@@ -169,6 +230,28 @@ function isValidDayOfMonth(value: unknown): value is number {
 
 function isValidWeekday(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 6;
+}
+
+/**
+ * weekly 实际生效的星期集合（升序去重）：非空且全部合法的 `weekdays` 优先，
+ * 否则回退单数 `weekday`；两者皆不可用返回 null（调度不可运行）。
+ * 与后端 `weekly_effective_weekdays` / validate_schedule 的口径一致：
+ * weekdays 显式提供但含非法值时整体视为无效（不静默截断）。
+ */
+function effectiveWeeklyWeekdays(
+  schedule: Pick<AutomationSchedule, 'weekday' | 'weekdays'>,
+): number[] | null {
+  if (schedule.weekdays !== undefined) {
+    if (
+      !Array.isArray(schedule.weekdays)
+      || schedule.weekdays.length === 0
+      || !schedule.weekdays.every(isValidWeekday)
+    ) {
+      return null;
+    }
+    return Array.from(new Set(schedule.weekdays)).sort((a, b) => a - b);
+  }
+  return isValidWeekday(schedule.weekday) ? [schedule.weekday] : null;
 }
 
 /**
@@ -218,7 +301,8 @@ export function computeNextRuns(schedule: AutomationSchedule, count: number, now
   }
 
   if (schedule.kind === 'daily' || schedule.kind === 'weekdays' || schedule.kind === 'weekly') {
-    if (schedule.kind === 'weekly' && !isValidWeekday(schedule.weekday)) return [];
+    const weeklyDays = schedule.kind === 'weekly' ? effectiveWeeklyWeekdays(schedule) : null;
+    if (schedule.kind === 'weekly' && weeklyDays === null) return [];
     const start = getZonedParts(reference, timeZone);
     const runs: Date[] = [];
     // Weekly needs up to 7 days per hit; +8 days of slack is always enough.
@@ -227,7 +311,7 @@ export function computeNextRuns(schedule: AutomationSchedule, count: number, now
       const calendar = addDaysToCalendarDate(start.year, start.month, start.day, offset);
       const weekday = weekdayOfCalendarDate(calendar.year, calendar.month, calendar.day);
       if (schedule.kind === 'weekdays' && (weekday === 0 || weekday === 6)) continue;
-      if (schedule.kind === 'weekly' && weekday !== schedule.weekday) continue;
+      if (schedule.kind === 'weekly' && !(weeklyDays as number[]).includes(weekday)) continue;
       const run = zonedWallTimeToUtc(
         calendar.year,
         calendar.month,
@@ -244,8 +328,27 @@ export function computeNextRuns(schedule: AutomationSchedule, count: number, now
   return [];
 }
 
+/** 多天列表项的 i18n 兜底文案（`weekdaysListItem.*` 碎片未合并时使用） */
+const WEEKDAY_LIST_ITEM_FALLBACK = ['日', '一', '二', '三', '四', '五', '六'] as const;
+
 /**
- * Human-readable one-liner, e.g. "每周一 08:00（Asia/Shanghai）".
+ * 多天星期集合的人类可读列表，如 "一、三、五"。
+ * 键：`automation.scheduleEditor.weekdaysListItem.{0..6}` + `.weekdayListJoin`。
+ */
+export function formatWeekdayList(
+  days: number[],
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const P = 'automation.scheduleEditor';
+  const names = days.map((day) =>
+    t(`${P}.weekdaysListItem.${day}`, { defaultValue: WEEKDAY_LIST_ITEM_FALLBACK[day] ?? '?' }),
+  );
+  return names.join(t(`${P}.weekdayListJoin`, { defaultValue: '、' }));
+}
+
+/**
+ * Human-readable one-liner, e.g. "每周一 08:00（Asia/Shanghai）" /
+ * "每周一、三、五 09:00"（weekly 多天）.
  * `t` must be bound to the `todo` namespace; keys live under
  * `automation.scheduleEditor.describe.*` / `.weekdaysLong.*`.
  * Incomplete schedules yield the `describe.invalid` string.
@@ -268,8 +371,19 @@ export function describeSchedule(
       base = t(`${P}.describe.weekdays`, { time: schedule.time });
       break;
     case 'weekly': {
-      if (!isValidTime(schedule.time) || !isValidWeekday(schedule.weekday)) return invalid();
-      const weekday = t(`${P}.weekdaysLong.${schedule.weekday}`);
+      if (!isValidTime(schedule.time)) return invalid();
+      const days = effectiveWeeklyWeekdays(schedule);
+      if (days === null) return invalid();
+      if (days.length > 1) {
+        const weekdays = formatWeekdayList(days, t);
+        base = t(`${P}.describe.weeklyMulti`, {
+          weekdays,
+          time: schedule.time,
+          defaultValue: `每周${weekdays} ${schedule.time}`,
+        });
+        break;
+      }
+      const weekday = t(`${P}.weekdaysLong.${days[0]}`);
       base = t(`${P}.describe.weekly`, { weekday, time: schedule.time });
       break;
     }

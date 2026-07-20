@@ -3,7 +3,9 @@
  *
  * 对标 Things 3 / Todoist 的 quick reschedule：不进详情面板即可挪动到期日。
  * 使用项目 Popover（portal + 碰撞检测定位），不再被滚动容器裁切。
- * 智能选项：今天 / 明天 / 周末 / 下周一 / 两周后 + 内嵌迷你日期选择 + 移除日期。
+ * 智能选项：今天 / 明天 / 周末 / 下周一 / 两周后 + 内嵌迷你月历 + 移除日期。
+ * 月历复用 detail/MiniCalendar（点选即提交，替代原 <input type="date">——
+ * 后者每次 change 都保存，键盘逐位输入年份会中途提交）。
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
@@ -18,12 +20,13 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Input } from '@/components/ui/shad/Input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { useTodoStore } from '../../stores/useTodoStore';
 import type { TodoItem } from '../../types';
 import { addDays, formatLocalDate, mondayWeekStart } from '../../types';
 import { formatDueDateLabel } from './dueDateLabel';
+// 只读复用详情面板的内联月历（detail/ 目录归 detail 代理所有，只 import 不改动）
+import { MiniCalendar } from './detail/MiniCalendar';
 
 interface RescheduleOption {
   key: string;
@@ -116,7 +119,7 @@ export const RescheduleMenu: React.FC<{ item: TodoItem }> = ({ item }) => {
         </PopoverTrigger>
         <PopoverContent
           align="end"
-          className="w-56 rounded-[var(--radius-shell-control)] p-1.5"
+          className="w-64 rounded-[var(--radius-shell-control)] p-1.5"
           role="menu"
           aria-label={t('todo:reschedule.title')}
         >
@@ -134,7 +137,7 @@ export const RescheduleMenu: React.FC<{ item: TodoItem }> = ({ item }) => {
             >
               <span className="text-muted-foreground">{opt.icon}</span>
               <span className="flex-1">{opt.label}</span>
-              <span className="text-[10px] tabular-nums text-muted-foreground">
+              <span className="text-2xs tabular-nums text-muted-foreground">
                 {formatDueDateLabel(opt.date, t, i18n.language)}
               </span>
             </button>
@@ -142,19 +145,9 @@ export const RescheduleMenu: React.FC<{ item: TodoItem }> = ({ item }) => {
 
           <div className="mx-1 my-1 h-px bg-border/40" role="separator" />
 
-          {/* 内嵌迷你日期选择 */}
-          <label className="flex w-full cursor-pointer items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-xs transition-colors duration-150 hover:bg-[color:var(--interactive-hover)]">
-            <Calendar size={14} className="text-muted-foreground" />
-            <Input
-              type="date"
-              value={item.dueDate || ''}
-              aria-label={t('todo:reschedule.pickDate')}
-              onChange={(e) => {
-                if (e.target.value) handlePick(e.target.value);
-              }}
-              className="h-auto min-h-0 flex-1 cursor-pointer border-0 bg-transparent p-0 text-xs focus-visible:ring-0"
-            />
-          </label>
+          {/* 内嵌迷你月历：点选即提交并收起（Esc 由 Popover 原生关闭、不产生中间保存）。
+              MiniCalendar 自带 role="grid" 与月份 aria-label */}
+          <MiniCalendar value={item.dueDate || ''} onSelect={handlePick} className="px-1.5 py-1" />
 
           {item.dueDate && (
             <button

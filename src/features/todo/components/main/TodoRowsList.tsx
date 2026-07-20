@@ -29,6 +29,9 @@ interface TodoRowsListProps {
   scrollElement: HTMLElement | null;
   selectedItemId: string | null;
   focusedItemId: string | null;
+  /** 批量多选集合（可选；未启用多选的调用方不传） */
+  checkedIds?: ReadonlySet<string>;
+  onCheckToggle?: (id: string, opts: { shift: boolean }) => void;
   onToggle: (id: string) => void;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
@@ -40,13 +43,17 @@ const VirtualRows: React.FC<TodoRowsListProps & { scrollElement: HTMLElement }> 
   scrollElement,
   selectedItemId,
   focusedItemId,
+  checkedIds,
+  onCheckToggle,
   onToggle,
   onSelect,
   onDelete,
   onRename,
 }) => {
   // 列表上方还有快速添加栏等内容：把列表容器相对滚动容器的偏移
-  // 告知虚拟化器，可见范围计算才准确
+  // 告知虚拟化器，可见范围计算才准确。
+  // 无依赖数组：上方内容高度会变（快速添加展开、复习联动卡出现），
+  // 每次提交后重测；值未变时 setState 会被 React 视为无变化跳过重渲染
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
   useLayoutEffect(() => {
@@ -57,7 +64,7 @@ const VirtualRows: React.FC<TodoRowsListProps & { scrollElement: HTMLElement }> 
         scrollElement.getBoundingClientRect().top +
         scrollElement.scrollTop,
     );
-  }, [scrollElement]);
+  });
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -107,6 +114,8 @@ const VirtualRows: React.FC<TodoRowsListProps & { scrollElement: HTMLElement }> 
               onRename={onRename}
               isSelected={selectedItemId === row.item.id}
               isFocused={focusedItemId === row.item.id}
+              isChecked={checkedIds?.has(row.item.id) ?? false}
+              onCheckToggle={onCheckToggle}
             />
           </div>
         );
@@ -136,13 +145,25 @@ export const TodoRowsList: React.FC<TodoRowsListProps> = (props) => {
                 onRename={props.onRename}
                 isSelected={props.selectedItemId === row.item.id}
                 isFocused={props.focusedItemId === row.item.id}
+                isChecked={props.checkedIds?.has(row.item.id) ?? false}
+                onCheckToggle={props.onCheckToggle}
               />
             </AnimatedListRow>
           ))}
         </AnimatePresence>
       </div>
     ),
-    [rows, props.onToggle, props.onSelect, props.onDelete, props.onRename, props.selectedItemId, props.focusedItemId],
+    [
+      rows,
+      props.onToggle,
+      props.onSelect,
+      props.onDelete,
+      props.onRename,
+      props.selectedItemId,
+      props.focusedItemId,
+      props.checkedIds,
+      props.onCheckToggle,
+    ],
   );
 
   if (shouldVirtualize && scrollElement) {

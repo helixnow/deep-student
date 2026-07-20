@@ -53,7 +53,8 @@ export async function openPomodoroMiniWindow(): Promise<boolean> {
     }
     const win = new WebviewWindow(POMODORO_MINI_LABEL, {
       url: 'index.html?window=pomodoro-mini',
-      width: 248,
+      // 264：容纳 hover 滑出的完整控制簇（完成/暂停/停止/置顶/关闭）仍留出任务名空间
+      width: 264,
       height: 56,
       resizable: false,
       decorations: false,

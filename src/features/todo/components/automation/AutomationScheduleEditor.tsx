@@ -7,6 +7,8 @@ import {
   Clock,
   GlobeHemisphereEast,
   MagnifyingGlass,
+  Minus,
+  Plus,
   Sparkle,
   X,
 } from '@phosphor-icons/react';
@@ -18,6 +20,8 @@ import type {
   AutomationScheduleKind,
 } from '../../../settings/components/automationSettingsApi';
 import {
+  MAX_INTERVAL_MINUTES,
+  MIN_INTERVAL_MINUTES,
   computeNextRuns,
   describeSchedule,
   getEffectiveTimeZone,
@@ -35,9 +39,10 @@ export interface AutomationScheduleEditorProps {
 
 const KIND_ORDER: AutomationScheduleKind[] = ['daily', 'weekdays', 'weekly', 'monthly', 'interval', 'once'];
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const;
+const MONTH_DAYS = Array.from({ length: 31 }, (_, index) => index + 1);
 const INTERVAL_PRESETS = [15, 30, 60, 120, 360, 720, 1440] as const;
+const INTERVAL_STEP = 5;
 const PINNED_TIMEZONES = ['Asia/Shanghai', 'UTC'];
-const PREVIEW_SEPARATOR = ' · ';
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
@@ -69,19 +74,37 @@ function defaultsForKind(kind: AutomationScheduleKind, previous: AutomationSched
     ...(previous.timezone ? { timezone: previous.timezone } : {}),
   };
   switch (kind) {
-    case 'weekly':
-      return { ...base, weekday: previous.weekday ?? now.getDay() };
+    case 'weekly': {
+      // 保留旧草稿的多天选择；否则回退单数 weekday / 当天
+      const kept = previous.weekdays && previous.weekdays.length > 0
+        ? [...previous.weekdays].sort((a, b) => a - b)
+        : [previous.weekday ?? now.getDay()];
+      return { ...base, weekday: kept[0], ...(kept.length > 1 ? { weekdays: kept } : {}) };
+    }
     case 'monthly':
       return { ...base, dayOfMonth: previous.dayOfMonth ?? now.getDate() };
-    case 'interval':
-      return { ...base, time: '', intervalMinutes: previous.intervalMinutes ?? 60 };
+    case 'interval': {
+      // 后端 validate_schedule 拒绝 interval + timezone/time：间隔调度按绝对
+      // 时间推进，与时区无关，这里主动剥离。
+      const interval: AutomationSchedule = {
+        kind,
+        time: '',
+        intervalMinutes: previous.intervalMinutes ?? 60,
+      };
+      return interval;
+    }
     case 'once': {
       const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
       const nextHour = (now.getHours() + 1) % 24;
+      // 旧草稿里的过期日期不再复用（编辑历史任务来回切换 kind 时会出现），
+      // 直接回落到明天，避免「日期不能早于今天」的即时报错。
+      const keptDate = previous.date && previous.date >= todayLocalIso(now)
+        ? previous.date
+        : todayLocalIso(tomorrow);
       return {
         ...base,
         time: previous.kind === 'interval' ? `${pad2(nextHour)}:00` : keptTime,
-        date: previous.date ?? todayLocalIso(tomorrow),
+        date: keptDate,
       };
     }
     default:
@@ -100,6 +123,7 @@ const chipClassName = (active: boolean, disabled?: boolean) =>
   cn(
     'inline-flex items-center justify-center rounded-full border text-xs font-medium',
     'transition-colors duration-150 motion-reduce:transition-none',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
     active
       ? 'border-transparent bg-[color:hsl(var(--primary))] text-[color:hsl(var(--primary-foreground))]'
       : 'border-[color:var(--border-soft)] text-foreground hover:bg-[color:var(--surface-muted)]',
@@ -173,6 +197,15 @@ export function AutomationScheduleEditor({
   const timeInvalid = needsTime && !isValidTime(value.time);
   if (timeInvalid) errors.push(t(`${P}.errors.time`));
 
+  // weekly 多选允许全部取消（输入不阻断），但至少需要一天才可运行
+  const weekdayEmpty =
+    value.kind === 'weekly'
+    && !(value.weekdays && value.weekdays.length > 0)
+    && typeof value.weekday !== 'number';
+  if (weekdayEmpty) {
+    errors.push(t(`${P}.errors.weekday`, { defaultValue: '请至少选择一个星期' }));
+  }
+
   const dayOfMonthInvalid =
     value.kind === 'monthly'
     && !(Number.isInteger(value.dayOfMonth) && (value.dayOfMonth as number) >= 1 && (value.dayOfMonth as number) <= 31);
@@ -186,7 +219,11 @@ export function AutomationScheduleEditor({
       && value.intervalMinutes <= 1440);
   if (intervalInvalid) errors.push(t(`${P}.errors.interval`));
 
-  const todayIso = todayLocalIso();
+  // 「今天」按任务生效时区计算而非本地时区：本地已过午夜但任务时区还是昨天
+  // （或反之）时，不误伤合法日期。是否真正可运行仍以 computeNextRuns（精确到
+  // 时刻的瞬时比较）为准，这里只是宽松的行内提示。
+  const zonedToday = getZonedParts(new Date(), effectiveTimeZone);
+  const todayIso = `${zonedToday.year}-${pad2(zonedToday.month)}-${pad2(zonedToday.day)}`;
   const onceDateInvalid =
     value.kind === 'once' && (!/^\d{4}-\d{2}-\d{2}$/.test(value.date ?? '') || (value.date as string) < todayIso);
   if (onceDateInvalid) errors.push(t(`${P}.errors.onceDate`));
@@ -199,8 +236,19 @@ export function AutomationScheduleEditor({
   const nextRuns = React.useMemo(
     () => computeNextRuns(value, previewCount),
     // Re-derive from the fields the math actually reads.
-    [value.kind, value.time, value.weekday, value.dayOfMonth, value.intervalMinutes, value.date, value.timezone, previewCount],
+    [value.kind, value.time, value.weekday, value.weekdays, value.dayOfMonth, value.intervalMinutes, value.date, value.timezone, previewCount],
   );
+
+  // once 的日期+时间联动校验：日期是「今天」但时刻已过（后端 validate_schedule
+  // 对过期 once 直接拒绝，这里提前在行内提示）。日期本身非法时已有 onceDate
+  // 报错，不重复叠加。
+  const onceTimePassed =
+    value.kind === 'once'
+    && !onceDateInvalid
+    && !timeInvalid
+    && !timezoneInvalid
+    && nextRuns.length === 0;
+  if (onceTimePassed) errors.push(t(`${P}.errors.onceTimePassed`));
   const description = describeSchedule(value, t as (key: string, options?: Record<string, unknown>) => string);
 
   const formatRun = React.useCallback(
@@ -216,10 +264,12 @@ export function AutomationScheduleEditor({
       );
       if (dayDiff === 0) return t(`${P}.preview.today`, { time: timeText });
       if (dayDiff === 1) return t(`${P}.preview.tomorrow`, { time: timeText });
+      // 远期日期附带星期几，帮助确认「每周三」「工作日」等设置是否符合预期
       const dateText = new Intl.DateTimeFormat(locale, {
         timeZone: effectiveTimeZone,
         month: 'long',
         day: 'numeric',
+        weekday: 'short',
         ...(runParts.year !== nowParts.year ? { year: 'numeric' } : {}),
       }).format(run);
       return `${dateText} ${timeText}`;
@@ -233,24 +283,39 @@ export function AutomationScheduleEditor({
 
   const conditionalField = (() => {
     switch (value.kind) {
-      case 'weekly':
+      case 'weekly': {
+        // 真实多选：weekdays（多天）优先；旧数据仅有单数 weekday 时按单元素集合展示
+        const selectedDays = value.weekdays && value.weekdays.length > 0
+          ? value.weekdays
+          : (typeof value.weekday === 'number' ? [value.weekday] : []);
+        const toggleDay = (day: number) => {
+          const next = selectedDays.includes(day)
+            ? selectedDays.filter((item) => item !== day)
+            : [...selectedDays, day];
+          const sorted = Array.from(new Set(next)).sort((a, b) => a - b);
+          // 单数 weekday 与集合保持同步（取最小值），旧消费方可无损降级展示；
+          // 单天选择回落为纯 weekday 形态，与既有存量数据形状一致
+          patch({
+            weekday: sorted.length > 0 ? sorted[0] : undefined,
+            weekdays: sorted.length > 1 ? sorted : undefined,
+          });
+        };
         return (
           <div>
             <span id={`${idPrefix}-weekday-label`} className={labelClassName}>
               {t(`${P}.weekdayLabel`)}
             </span>
-            <div role="radiogroup" aria-labelledby={`${idPrefix}-weekday-label`} className="flex flex-wrap gap-1.5">
+            <div role="group" aria-labelledby={`${idPrefix}-weekday-label`} className="flex flex-wrap gap-1.5">
               {WEEKDAYS.map((day) => {
-                const active = value.weekday === day;
+                const active = selectedDays.includes(day);
                 return (
                   <button
                     key={day}
                     type="button"
-                    role="radio"
-                    aria-checked={active}
+                    aria-pressed={active}
                     aria-label={t(`${P}.weekdaysLong.${day}`)}
                     disabled={disabled}
-                    onClick={() => patch({ weekday: day })}
+                    onClick={() => toggleDay(day)}
                     className={cn('h-8 w-8', chipClassName(active, disabled))}
                   >
                     {t(`${P}.weekdaysShort.${day}`)}
@@ -260,42 +325,93 @@ export function AutomationScheduleEditor({
             </div>
           </div>
         );
+      }
       case 'monthly':
         return (
           <div>
-            <label htmlFor={`${idPrefix}-day-of-month`} className={labelClassName}>
+            <span id={`${idPrefix}-day-of-month-label`} className={labelClassName}>
               {t(`${P}.dayOfMonthLabel`)}
-            </label>
-            <input
-              id={`${idPrefix}-day-of-month`}
-              type="number"
-              min={1}
-              max={31}
-              inputMode="numeric"
-              disabled={disabled}
-              value={value.dayOfMonth ?? ''}
-              aria-invalid={dayOfMonthInvalid || undefined}
-              onChange={(event) => {
-                const raw = event.target.value;
-                patch({ dayOfMonth: raw === '' ? undefined : Number(raw) });
-              }}
-              className={cn(fieldClassName, 'max-w-[8rem]')}
-            />
-            <p className="mt-1.5 text-xs text-muted-foreground">{t(`${P}.dayOfMonthHint`)}</p>
+            </span>
+            <div
+              role="radiogroup"
+              aria-labelledby={`${idPrefix}-day-of-month-label`}
+              className="grid w-max grid-cols-7 gap-1"
+            >
+              {MONTH_DAYS.map((day) => {
+                const active = value.dayOfMonth === day;
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    aria-label={t(`${P}.dayOfMonthOption`, { day })}
+                    disabled={disabled}
+                    onClick={() => patch({ dayOfMonth: day })}
+                    className={cn(
+                      'h-8 w-8 rounded-[calc(var(--radius-shell-control)-2px)] tabular-nums',
+                      'inline-flex items-center justify-center border text-xs font-medium',
+                      'transition-colors duration-150 motion-reduce:transition-none',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
+                      active
+                        ? 'border-transparent bg-[color:hsl(var(--primary))] text-[color:hsl(var(--primary-foreground))]'
+                        : 'border-[color:var(--border-soft)] text-foreground hover:bg-[color:var(--surface-muted)]',
+                      disabled && 'cursor-not-allowed opacity-50',
+                    )}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+            {(value.dayOfMonth ?? 0) >= 29 && (
+              <p className="mt-1.5 text-xs text-muted-foreground">{t(`${P}.dayOfMonthHint`)}</p>
+            )}
           </div>
         );
-      case 'interval':
+      case 'interval': {
+        const stepInterval = (direction: 1 | -1) => {
+          const current = typeof value.intervalMinutes === 'number' && Number.isFinite(value.intervalMinutes)
+            ? value.intervalMinutes
+            : 60;
+          // Snap to the next multiple of the step in the pressed direction so
+          // odd values (e.g. 47) normalize instead of drifting (47 → 50 → 55).
+          const snapped = direction === 1
+            ? Math.floor(current / INTERVAL_STEP) * INTERVAL_STEP + INTERVAL_STEP
+            : Math.ceil(current / INTERVAL_STEP) * INTERVAL_STEP - INTERVAL_STEP;
+          patch({
+            intervalMinutes: Math.min(MAX_INTERVAL_MINUTES, Math.max(MIN_INTERVAL_MINUTES, snapped)),
+          });
+        };
+        const stepperButtonClassName = cn(
+          'inline-flex h-9 w-9 shrink-0 items-center justify-center',
+          'rounded-[var(--radius-shell-control)] border border-[color:var(--border-soft)]',
+          'text-foreground transition-colors duration-150 hover:bg-[color:var(--surface-muted)]',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
+          'motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50',
+        );
         return (
           <div>
             <label htmlFor={`${idPrefix}-interval`} className={labelClassName}>
               {t(`${P}.intervalLabel`)}
             </label>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                aria-label={t(`${P}.intervalDecrease`)}
+                title={t(`${P}.intervalDecrease`)}
+                disabled={disabled || (value.intervalMinutes ?? 60) <= MIN_INTERVAL_MINUTES}
+                onClick={() => stepInterval(-1)}
+                className={stepperButtonClassName}
+              >
+                <Minus size={14} aria-hidden="true" />
+              </button>
               <input
                 id={`${idPrefix}-interval`}
                 type="number"
-                min={5}
-                max={1440}
+                min={MIN_INTERVAL_MINUTES}
+                max={MAX_INTERVAL_MINUTES}
+                step={INTERVAL_STEP}
                 inputMode="numeric"
                 disabled={disabled}
                 value={value.intervalMinutes ?? ''}
@@ -304,8 +420,18 @@ export function AutomationScheduleEditor({
                   const raw = event.target.value;
                   patch({ intervalMinutes: raw === '' ? undefined : Number(raw) });
                 }}
-                className={cn(fieldClassName, 'max-w-[8rem]')}
+                className={cn(fieldClassName, 'max-w-[6.5rem] text-center tabular-nums')}
               />
+              <button
+                type="button"
+                aria-label={t(`${P}.intervalIncrease`)}
+                title={t(`${P}.intervalIncrease`)}
+                disabled={disabled || (value.intervalMinutes ?? 60) >= MAX_INTERVAL_MINUTES}
+                onClick={() => stepInterval(1)}
+                className={stepperButtonClassName}
+              >
+                <Plus size={14} aria-hidden="true" />
+              </button>
               <span className="text-xs text-muted-foreground">{t(`${P}.intervalUnit`)}</span>
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5" aria-label={t(`${P}.intervalPresetsLabel`)}>
@@ -326,6 +452,7 @@ export function AutomationScheduleEditor({
             </div>
           </div>
         );
+      }
       case 'once':
         return (
           <div>
@@ -338,7 +465,7 @@ export function AutomationScheduleEditor({
               min={todayIso}
               disabled={disabled}
               value={value.date ?? ''}
-              aria-invalid={onceDateInvalid || undefined}
+              aria-invalid={onceDateInvalid || onceTimePassed || undefined}
               onChange={(event) => patch({ date: event.target.value })}
               className={cn(fieldClassName, 'max-w-[12rem]')}
             />
@@ -354,11 +481,13 @@ export function AutomationScheduleEditor({
       {/* Kind selector */}
       <div>
         <span className={labelClassName}>{t(`${P}.kindLabel`)}</span>
+        {/* 窄屏下六段过挤：允许换行成两行（thumb 按 x/y 实测定位，换行安全） */}
         <SegmentedControl<AutomationScheduleKind>
           ariaLabel={t(`${P}.kindLabel`)}
           value={value.kind}
           onValueChange={handleKindChange}
           size="compact"
+          className="max-w-full flex-wrap gap-y-[3px]"
           options={KIND_ORDER.map((kind) => ({
             value: kind,
             label: t(`${P}.kinds.${kind}`),
@@ -395,14 +524,16 @@ export function AutomationScheduleEditor({
             type="time"
             disabled={disabled}
             value={value.time}
-            aria-invalid={timeInvalid || undefined}
+            aria-invalid={timeInvalid || onceTimePassed || undefined}
             onChange={(event) => patch({ time: event.target.value })}
             className={cn(fieldClassName, 'max-w-[9rem]')}
           />
         </div>
       )}
 
-      {/* Timezone: collapsed summary → searchable inline list */}
+      {/* Timezone: collapsed summary → searchable inline list.
+          interval 调度按绝对时间推进、后端拒绝 timezone 字段，故不展示。 */}
+      {value.kind !== 'interval' && (
       <div>
         <span id={`${idPrefix}-timezone-label`} className={labelClassName}>
           <GlobeHemisphereEast size={12} className="mr-1 inline-block align-[-1px]" aria-hidden="true" />
@@ -512,7 +643,7 @@ export function AutomationScheduleEditor({
                           {pinned && <Sparkle size={11} aria-hidden="true" className="shrink-0 text-muted-foreground" />}
                           <span className="truncate">{tz}</span>
                           {tz === systemTimeZone && (
-                            <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                            <span className="ml-auto shrink-0 text-2xs text-muted-foreground">
                               {t(`${P}.timezoneSystemBadge`)}
                             </span>
                           )}
@@ -526,6 +657,7 @@ export function AutomationScheduleEditor({
           )}
         </AnimatePresence>
       </div>
+      )}
 
       {/* Inline validation errors — never block typing */}
       <div aria-live="polite" className={cn(errors.length === 0 && 'sr-only')}>
@@ -547,13 +679,34 @@ export function AutomationScheduleEditor({
           <CalendarBlank size={13} aria-hidden="true" />
           {t(`${P}.previewTitle`, { n: previewCount })}
         </p>
-        <p className="mt-1.5 text-sm text-foreground">
-          {nextRuns.length > 0
-            ? nextRuns.map(formatRun).join(PREVIEW_SEPARATOR)
-            : <span className="text-muted-foreground">{t(`${P}.previewEmpty`)}</span>}
-        </p>
+        {nextRuns.length > 0 ? (
+          <ul className="mt-1.5 space-y-1">
+            {nextRuns.map((run, index) => (
+              <li
+                key={run.getTime()}
+                className={cn(
+                  'flex items-center gap-2 text-sm tabular-nums',
+                  index === 0 ? 'font-medium text-foreground' : 'text-foreground/75',
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'h-1.5 w-1.5 shrink-0 rounded-full',
+                    index === 0
+                      ? 'bg-[color:hsl(var(--primary))]'
+                      : 'bg-[color:hsl(var(--primary)/0.35)]',
+                  )}
+                />
+                {formatRun(run)}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1.5 text-sm text-muted-foreground">{t(`${P}.previewEmpty`)}</p>
+        )}
         {nextRuns.length > 0 && (
-          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">{description}</p>
         )}
       </div>
     </div>

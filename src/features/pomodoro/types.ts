@@ -74,6 +74,12 @@ export interface PomodoroState {
    * 展示应以此字段为准（null = 无进行中的工作会话，回退 settings.countUp）。
    */
   sessionCountUp: boolean | null;
+  /**
+   * 本阶段通过 extendPhase 累计加时的秒数（持久化，阶段切换时归零）。
+   * 倒计时阶段的「计划总时长」= 设置时长 + phaseExtraSeconds，
+   * 进度环分母与落库的 duration/actualDuration 均以此为准。
+   */
+  phaseExtraSeconds: number;
   settings: PomodoroSettings;
   completedPomodorosToday: number;
   lastActiveDate: string | null;
@@ -97,6 +103,11 @@ export interface PomodoroState {
    * 否则回 idle 待命。不写任何记录（跳过休息不是「中断」）。
    */
   skipBreak: () => void;
+  /**
+   * 延长当前阶段 N 秒（专注/休息的倒计时阶段均可；正计时无目标时长，no-op）。
+   * 运行中顺延 phaseEndsAt 并允许结束前提醒重新触发；暂停中只加 timeLeft。
+   */
+  extendPhase: (seconds: number) => void;
   /** 等待由 stop/switch/complete 触发的后端记录落盘；普通 UI 无需调用。 */
   flushPendingRecords: () => Promise<void>;
   tick: () => void;

@@ -96,6 +96,57 @@ describe('parseAutomationNaturalLanguage', () => {
     expect(r!.confidence).toBe('medium');
   });
 
+  it('每周一三五晚八点 → weekly 多天集合（无损，无 multiWeekday 提示）', () => {
+    const r = parseAutomationNaturalLanguage('每周一三五晚八点背单词', NOW);
+    expect(r!.schedule).toEqual({
+      kind: 'weekly', weekday: 1, weekdays: [1, 3, 5], time: '20:00',
+    });
+    expect(r!.confidence).toBe('high');
+    expect(r!.hints ?? []).not.toContain('multiWeekday');
+    expect(r!.name).toBe('背单词');
+  });
+
+  it('每周二和周四 → weekly weekdays=[2,4]（无损）', () => {
+    const r = parseAutomationNaturalLanguage('每周二和周四19:00练听力', NOW);
+    expect(r!.schedule).toEqual({
+      kind: 'weekly', weekday: 2, weekdays: [2, 4], time: '19:00',
+    });
+    expect(r!.hints ?? []).not.toContain('multiWeekday');
+  });
+
+  it('每周一、三、五（顿号分隔）→ weekly weekdays=[1,3,5]', () => {
+    const r = parseAutomationNaturalLanguage('每周一、三、五早上7点晨跑', NOW);
+    expect(r!.schedule).toEqual({
+      kind: 'weekly', weekday: 1, weekdays: [1, 3, 5], time: '07:00',
+    });
+    expect(r!.hints ?? []).not.toContain('multiWeekday');
+  });
+
+  it('恰为周一到周五的多星期 → 归并为 weekdays', () => {
+    const r = parseAutomationNaturalLanguage('每周一二三四五9:00打卡', NOW);
+    expect(r!.schedule).toEqual({ kind: 'weekdays', time: '09:00' });
+  });
+
+  it('英文 every monday and friday → weekly weekdays=[1,5]（无损）', () => {
+    const r = parseAutomationNaturalLanguage('every monday and friday 9am review goals', NOW);
+    expect(r!.schedule).toEqual({
+      kind: 'weekly', weekday: 1, weekdays: [1, 5], time: '09:00',
+    });
+    expect(r!.hints ?? []).not.toContain('multiWeekday');
+  });
+
+  it('每周一次 ≠ 周一 → 落到「每周」锚定路径', () => {
+    const r = parseAutomationNaturalLanguage('每周一次18:00大扫除', NOW);
+    // NOW 是周日（0）
+    expect(r!.schedule).toEqual({ kind: 'weekly', weekday: 0, time: '18:00' });
+    expect(r!.hints).toContain('weekAnchored');
+  });
+
+  it('每周一三点 → 末位「三」回吐给时刻（周一 03:00）', () => {
+    const r = parseAutomationNaturalLanguage('每周一三点开会', NOW);
+    expect(r!.schedule).toEqual({ kind: 'weekly', weekday: 1, time: '03:00' });
+  });
+
   // -------------------------------------------------------------------------
   // 周期：monthly
   // -------------------------------------------------------------------------
@@ -110,6 +161,26 @@ describe('parseAutomationNaturalLanguage', () => {
     const r = parseAutomationNaturalLanguage('每月31号20:00交房租', NOW);
     expect(r!.schedule).toEqual({ kind: 'monthly', dayOfMonth: 31, time: '20:00' });
     expect(r!.confidence).toBe('high');
+  });
+
+  it('每月最后一天 → monthly 31 + monthLastDay 提示（短月由推算收敛到月末）', () => {
+    const r = parseAutomationNaturalLanguage('每月最后一天22:00月度总结', NOW);
+    expect(r!.schedule).toEqual({ kind: 'monthly', dayOfMonth: 31, time: '22:00' });
+    expect(r!.hints).toContain('monthLastDay');
+    expect(r!.confidence).toBe('high');
+    expect(r!.name).toBe('月度总结');
+  });
+
+  it('每月月底 → monthly 31', () => {
+    const r = parseAutomationNaturalLanguage('每月月底21:00对账', NOW);
+    expect(r!.schedule).toEqual({ kind: 'monthly', dayOfMonth: 31, time: '21:00' });
+    expect(r!.hints).toContain('monthLastDay');
+  });
+
+  it('英文 last day of every month → monthly 31', () => {
+    const r = parseAutomationNaturalLanguage('archive notes on the last day of every month at 6pm', NOW);
+    expect(r!.schedule).toEqual({ kind: 'monthly', dayOfMonth: 31, time: '18:00' });
+    expect(r!.hints).toContain('monthLastDay');
   });
 
   // -------------------------------------------------------------------------
@@ -147,6 +218,18 @@ describe('parseAutomationNaturalLanguage', () => {
     const r = parseAutomationNaturalLanguage('check inbox every 30 minutes', NOW);
     expect(r!.schedule?.kind).toBe('interval');
     expect(r!.schedule?.intervalMinutes).toBe(30);
+  });
+
+  it('每隔2小时 → interval 120', () => {
+    const r = parseAutomationNaturalLanguage('每隔2小时喝一次水', NOW);
+    expect(r!.schedule?.kind).toBe('interval');
+    expect(r!.schedule?.intervalMinutes).toBe(120);
+    expect(r!.confidence).toBe('high');
+  });
+
+  it('每隔30分钟 / 每隔半小时 → interval 30', () => {
+    expect(parseAutomationNaturalLanguage('每隔30分钟看一眼进度', NOW)!.schedule?.intervalMinutes).toBe(30);
+    expect(parseAutomationNaturalLanguage('每隔半小时活动一下', NOW)!.schedule?.intervalMinutes).toBe(30);
   });
 
   // -------------------------------------------------------------------------
@@ -249,6 +332,34 @@ describe('parseAutomationNaturalLanguage', () => {
   it('上午9点半 = 09:30', () => {
     const r = parseAutomationNaturalLanguage('每天上午9点半站会', NOW);
     expect(r!.schedule).toEqual({ kind: 'daily', time: '09:30' });
+  });
+
+  it('中文数字小时：晚上十点半 = 22:30', () => {
+    const r = parseAutomationNaturalLanguage('每天晚上十点半写日记', NOW);
+    expect(r!.schedule).toEqual({ kind: 'daily', time: '22:30' });
+    expect(r!.confidence).toBe('high');
+  });
+
+  it('短前缀 晚八点 = 20:00（今天未过 → once 今天）', () => {
+    const r = parseAutomationNaturalLanguage('晚八点提醒我打卡', NOW);
+    expect(r!.schedule).toEqual({ kind: 'once', date: '2026-07-19', time: '20:00' });
+  });
+
+  it('短前缀 早七点半 = 07:30', () => {
+    const r = parseAutomationNaturalLanguage('每天早七点半晨读', NOW);
+    expect(r!.schedule).toEqual({ kind: 'daily', time: '07:30' });
+  });
+
+  it('「一点点」是程度副词，不解析为 01:00', () => {
+    const r = parseAutomationNaturalLanguage('每天进步 一点点', NOW);
+    expect(r!.schedule).toEqual({ kind: 'daily', time: '09:00' });
+    expect(r!.hints).toContain('defaultTime');
+  });
+
+  it('工作日 9 点（数字与「点」之间有空格）→ weekdays 09:00', () => {
+    const r = parseAutomationNaturalLanguage('工作日 9 点打卡', NOW);
+    expect(r!.schedule).toEqual({ kind: 'weekdays', time: '09:00' });
+    expect(r!.confidence).toBe('high');
   });
 
   // -------------------------------------------------------------------------

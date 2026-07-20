@@ -8,7 +8,7 @@
  *
  * 承载形态：
  * - TodoTrashWorkspace：桌面端主内容区内联视图（侧栏点击回收站后
- *   由 TodoContentView 切换渲染，带返回按钮）
+ *   由 TodoContentView 切换渲染，带返回按钮，Esc 可直接返回待办）
  * - TodoTrashScreen：移动端 inline 子屏（由 TodoContentView 全屏承载，
  *   标题/返回走统一顶栏，符合移动端「禁弹层承载列表」契约）
  * - TodoTrashDialog：兼容旧调用方的适配器——open 时转为打开内联视图，
@@ -18,13 +18,14 @@
  * 视图开关状态。仅 UI 视图态，数据操作仍全部走 useTodoStore。
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { create } from 'zustand';
 import { AnimatePresence } from 'framer-motion';
 import {
   ArrowCounterClockwise,
   ArrowLeft,
+  CircleNotch,
   ListChecks,
   Trash,
   CheckSquare,
@@ -99,7 +100,7 @@ const TrashRow: React.FC<TrashRowProps> = ({
   return (
     <div
       className={cn(
-        'group flex items-center gap-2.5 rounded-xl px-2.5 py-1.5',
+        'group flex items-center gap-2.5 rounded-[var(--radius-shell-control)] px-2.5 py-1.5',
         'transition-colors duration-150 hover:bg-[color:var(--interactive-hover)]',
         '[@media(pointer:coarse)]:min-h-[2.75rem]',
         confirming && 'bg-[color:var(--interactive-hover)]',
@@ -107,21 +108,21 @@ const TrashRow: React.FC<TrashRowProps> = ({
     >
       <span className="flex-shrink-0 text-muted-foreground">{icon}</span>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] text-foreground">{title}</div>
+        <div className="truncate text-ui text-foreground">{title}</div>
         {deletedLabel && (
-          <div className="text-[11px] tabular-nums text-muted-foreground/70">{deletedLabel}</div>
+          <div className="text-xs tabular-nums text-muted-foreground/70">{deletedLabel}</div>
         )}
       </div>
       {confirming ? (
         <div className="ui-zoom-fade-in flex flex-shrink-0 items-center gap-1">
-          <span className="hidden text-[11px] text-[color:hsl(var(--destructive))] sm:inline">
+          <span className="hidden text-xs text-[color:hsl(var(--destructive))] sm:inline">
             {t('todo:trash.purgeInlineHint')}
           </span>
           <NotionButton
             variant="danger"
             size="sm"
             onClick={onConfirmPurge}
-            className="!px-2 !py-1 text-[12px] [@media(pointer:coarse)]:min-h-[2.5rem]"
+            className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:min-h-[2.5rem]"
           >
             {purgeLabel}
           </NotionButton>
@@ -129,7 +130,7 @@ const TrashRow: React.FC<TrashRowProps> = ({
             variant="ghost"
             size="sm"
             onClick={onCancelPurge}
-            className="!px-2 !py-1 text-[12px] [@media(pointer:coarse)]:min-h-[2.5rem]"
+            className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:min-h-[2.5rem]"
           >
             {t('common:actions.cancel')}
           </NotionButton>
@@ -142,7 +143,7 @@ const TrashRow: React.FC<TrashRowProps> = ({
             onClick={onRestore}
             title={restoreLabel}
             aria-label={restoreLabel}
-            className="!px-2 !py-1 text-[12px] [@media(pointer:coarse)]:min-h-[2.5rem] [@media(pointer:coarse)]:!px-3"
+            className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:min-h-[2.5rem] [@media(pointer:coarse)]:!px-3"
           >
             <ArrowCounterClockwise size={13} />
             <span>{restoreLabel}</span>
@@ -189,21 +190,41 @@ const TrashSections: React.FC = () => {
   const locale = i18n.language || 'zh-CN';
 
   if (isLoadingTrash && isEmpty) {
+    // 首屏加载骨架：与 TrashRow 同构（图标 + 双行文本），避免加载完成跳变
     return (
-      <div className="py-8 text-center text-[13px] text-muted-foreground">
-        {t('common:status.loading', { defaultValue: '加载中...' })}
+      <div
+        role="status"
+        aria-label={t('todo:trash.loading')}
+        className="space-y-1 px-1 py-3"
+      >
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="flex items-center gap-2.5 rounded-[var(--radius-shell-control)] px-2.5 py-2 motion-safe:animate-pulse motion-reduce:opacity-70"
+          >
+            <div className="h-4 w-4 shrink-0 rounded bg-[color:var(--interactive-hover)]" />
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div
+                className="h-3 rounded bg-[color:var(--interactive-hover)]"
+                style={{ width: `${72 - i * 14}%` }}
+              />
+              <div className="h-2 w-24 rounded bg-[color:var(--interactive-hover)] opacity-60" />
+            </div>
+          </div>
+        ))}
+        <span className="sr-only">{t('common:status.loading', { defaultValue: '加载中...' })}</span>
       </div>
     );
   }
 
   if (isEmpty) {
     return (
-      <div className="study-shell-empty-state mx-2 my-4 sm:mx-4">
+      <div className="study-shell-empty-state ui-rise-in mx-2 my-4 sm:mx-4">
         <span className="study-shell-empty-state__icon">
           <Trash size={22} weight="duotone" />
         </span>
         <div className="study-shell-empty-state__title">{t('todo:trash.empty')}</div>
-        <div className="study-shell-empty-state__description">{t('todo:trash.description')}</div>
+        <div className="study-shell-empty-state__description">{t('todo:trash.emptyHint')}</div>
       </div>
     );
   }
@@ -211,7 +232,7 @@ const TrashSections: React.FC = () => {
   const sectionHeaderClass = cn(
     'sticky top-0 z-[1] px-2.5 pb-1 pt-2',
     'bg-[color:var(--surface-root)]/95 backdrop-blur-sm',
-    'text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70',
+    'text-xs font-medium uppercase tracking-wide text-muted-foreground/70',
   );
 
   return (
@@ -281,11 +302,17 @@ const TrashSections: React.FC = () => {
             size="sm"
             disabled={isLoadingTrash}
             onClick={() => void loadMoreTrash()}
-            className="text-[12px] text-muted-foreground [@media(pointer:coarse)]:min-h-[2.5rem]"
+            aria-busy={isLoadingTrash || undefined}
+            className="text-sm text-muted-foreground [@media(pointer:coarse)]:min-h-[2.5rem]"
           >
-            {isLoadingTrash
-              ? t('common:status.loading', { defaultValue: '加载中...' })
-              : t('todo:trash.loadMore')}
+            {isLoadingTrash ? (
+              <>
+                <CircleNotch size={13} className="motion-safe:animate-spin" aria-hidden />
+                <span>{t('common:status.loading', { defaultValue: '加载中...' })}</span>
+              </>
+            ) : (
+              t('todo:trash.loadMore')
+            )}
           </NotionButton>
         </div>
       )}
@@ -311,7 +338,7 @@ const TrashEmptyAllButton: React.FC<{ className?: string }> = ({ className }) =>
   if (confirming) {
     return (
       <div className={cn('ui-zoom-fade-in flex items-center gap-1.5', className)}>
-        <span className="hidden text-[12px] text-muted-foreground sm:inline">
+        <span className="hidden text-sm text-muted-foreground sm:inline">
           {t('todo:trash.emptyAllInlineHint')}
         </span>
         <NotionButton
@@ -366,8 +393,28 @@ export const TodoTrashWorkspace: React.FC<{ className?: string }> = ({ className
     void loadTrash();
   }, [loadTrash]);
 
+  // Esc 返回待办（焦点在输入框 / 打开的菜单浮层中时不劫持——
+  // AppMenu 自己消费 Escape 并 stopPropagation，走不到 window 层）。
+  // 本视图在被隐藏的 ViewLayerRenderer 离场层里仍保持挂载，
+  // 用可见性判定避免在其他页面误吞 Escape。
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const el = workspaceRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return;
+      if (window.getComputedStyle(el).visibility === 'hidden') return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="menu"]')) return;
+      close();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [close]);
+
   return (
     <div
+      ref={workspaceRef}
       className={cn(
         'flex h-full min-w-0 flex-1 flex-col bg-[color:var(--surface-root,var(--background))]',
         className,
@@ -390,7 +437,7 @@ export const TodoTrashWorkspace: React.FC<{ className?: string }> = ({ className
             <h2 className="truncate text-[15px] font-semibold leading-tight text-foreground">
               {t('todo:trash.title')}
             </h2>
-            <p className="hidden truncate text-[12px] text-muted-foreground md:block">
+            <p className="hidden truncate text-sm text-muted-foreground md:block">
               {t('todo:trash.description')}
             </p>
           </div>

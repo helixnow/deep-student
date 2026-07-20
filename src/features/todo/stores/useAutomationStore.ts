@@ -2,9 +2,11 @@
  * 定时任务（自动化）全局 Zustand Store
  *
  * 统一 TodoAutomationWorkspace 与 AutomationSettingsSection 的数据源：
- * - refresh 并发去重 + requestVersion 防竞态
+ * - refresh 并发去重 + requestVersion 防竞态；in-flight 期间再次请求会排队一次
+ *   trailing refresh，避免 mutation 后复用到旧快照导致 UI 短暂回退
  * - mutation 走 busyKey + 后端快照局部 patch（拿不到快照才全量 refresh）
- * - setEnabled / setBackgroundEnabled 乐观更新，失败回滚
+ * - setEnabled / setBackgroundEnabled 乐观更新，失败只回滚被改字段
+ *   （不整体恢复快照，避免覆盖并发 refresh 带回的新数据）
  * - startAutomationSync 幂等单例订阅 chat_v2://automations_changed（listen 不可用则 30s 轮询兜底）
  */
 
@@ -20,11 +22,11 @@ import type {
   AutomationUpdateInput,
 } from '../../settings/components/automationSettingsApi';
 import {
-  AUTOMATION_VERSION_CONFLICT_CODE,
   cancelAutomationRun,
   createAutomation,
   deleteAutomation,
   getAutomationSummary,
+  isAutomationVersionConflictError,
   listAutomationRuns,
   listAutomations,
   retryAutomationRun,
@@ -58,6 +60,11 @@ interface AutomationStoreState {
   runs: AutomationRun[];
   /** 首次加载中（已有数据后的刷新不置 true） */
   loading: boolean;
+  /**
+   * 最近一次失败的原始错误串（可能是后端 `{"code","message"}` JSON）。
+   * 展示层必须经 `parseAutomationCommandError` 提取 message 兜底，
+   * 不得把该字段直接渲染到 UI（否则会出现裸 JSON）。
+   */
   error: string | null;
   /** 形如 `enable:{id}` / `run:{id}` / `delete:{id}` / `create` / `update:{id}` / `retry:{runId}` / `cancel:{runId}` / `background` */
   busyKey: string | null;
@@ -75,23 +82,57 @@ interface AutomationStoreState {
 
 // 模块级单例状态（store 本身为单例）
 let refreshInFlight: Promise<void> | null = null;
+/**
+ * 刷新进行中又收到新的 refresh 请求（如 automations_changed 事件在拉取途中到达）时置位：
+ * 直接复用 in-flight promise 会拿到「变更前」的旧快照，这里在其完成后自动补一轮，
+ * 保证最终状态收敛到最新数据。
+ */
+let refreshQueued = false;
 let requestVersion = 0;
 let hasLoadedOnce = false;
 
 export const useAutomationStore = create<AutomationStoreState>((set, get) => {
-  /** 用后端返回的最新快照局部 patch 列表；条目不存在时追加 */
+  /**
+   * 从 automations 列表推导 summary 中可同步派生的字段（enabledCount / nextRunAt），
+   * 避免 create/setEnabled/remove 局部 patch 后概览统计卡短暂失真。
+   * runningCount / failedCount 依赖 runs 统计，保持原值，等 automations_changed
+   * 触发的下一次 refresh 校准。
+   */
+  const deriveSummaryPatch = (
+    automations: AutomationListItem[],
+    summary: AutomationSummary | null,
+  ): { summary: AutomationSummary } | Record<string, never> => {
+    if (!summary) return {};
+    let enabledCount = 0;
+    let nextRunAt: string | undefined;
+    let nextRunTs = Number.POSITIVE_INFINITY;
+    for (const item of automations) {
+      if (!item.enabled) continue;
+      enabledCount += 1;
+      if (!item.nextTriggerAt) continue;
+      const ts = Date.parse(item.nextTriggerAt);
+      if (!Number.isNaN(ts) && ts < nextRunTs) {
+        nextRunTs = ts;
+        nextRunAt = item.nextTriggerAt;
+      }
+    }
+    return { summary: { ...summary, enabledCount, nextRunAt } };
+  };
+
+  /** 用后端返回的最新快照局部 patch 列表；条目不存在时追加。同步派生 summary。 */
   const patchAutomation = (snapshot: AutomationListItem) => {
     set((state) => {
       const index = state.automations.findIndex((item) => item.id === snapshot.id);
+      let automations: AutomationListItem[];
+      let count = state.count;
       if (index === -1) {
-        return {
-          automations: [...state.automations, snapshot],
-          count: state.count + 1,
-        };
+        automations = [...state.automations, snapshot];
+        count = state.count + 1;
+      } else {
+        automations = state.automations.slice();
+        automations[index] = snapshot;
       }
-      const next = state.automations.slice();
-      next[index] = snapshot;
-      return { automations: next };
+      return { automations, count, ...deriveSummaryPatch(automations, state.summary) };
     });
   };
 
@@ -109,9 +150,9 @@ export const useAutomationStore = create<AutomationStoreState>((set, get) => {
     try {
       await action();
     } catch (error) {
-      const message = toErrorMessage(error);
-      set({ error: message });
-      if (message.includes(AUTOMATION_VERSION_CONFLICT_CODE)) {
+      set({ error: toErrorMessage(error) });
+      // 版本冲突（乐观并发失败）：本地快照已过期，自动拉回真实状态
+      if (isAutomationVersionConflictError(error)) {
         void get().refresh();
       }
       throw error;
@@ -137,8 +178,11 @@ export const useAutomationStore = create<AutomationStoreState>((set, get) => {
         set({ loading: false, error: 'desktop_only' });
         return;
       }
-      // 并发去重：进行中的 refresh 直接复用
-      if (refreshInFlight) return refreshInFlight;
+      // 并发去重：进行中的 refresh 直接复用，并在其完成后补拉一轮避免旧快照
+      if (refreshInFlight) {
+        refreshQueued = true;
+        return refreshInFlight;
+      }
 
       const version = ++requestVersion;
       if (!hasLoadedOnce) {
@@ -168,6 +212,10 @@ export const useAutomationStore = create<AutomationStoreState>((set, get) => {
           set({ loading: false, error: toErrorMessage(error) });
         } finally {
           refreshInFlight = null;
+          if (refreshQueued) {
+            refreshQueued = false;
+            void get().refresh();
+          }
         }
       })();
 
@@ -175,14 +223,15 @@ export const useAutomationStore = create<AutomationStoreState>((set, get) => {
     },
 
     setEnabled: async (id, version, enabled) => {
-      const previous = get().automations;
+      const originalEnabled = get().automations.find((item) => item.id === id)?.enabled;
       await runMutation(`enable:${id}`, async () => {
-        // 乐观更新
-        set((state) => ({
-          automations: state.automations.map((item) =>
+        // 乐观更新（含 summary 派生字段）
+        set((state) => {
+          const automations = state.automations.map((item) =>
             item.id === id ? { ...item, enabled } : item,
-          ),
-        }));
+          );
+          return { automations, ...deriveSummaryPatch(automations, state.summary) };
+        });
         try {
           const snapshot = await setAutomationEnabled(invoke, id, version, enabled);
           if (snapshot) {
@@ -191,8 +240,16 @@ export const useAutomationStore = create<AutomationStoreState>((set, get) => {
             await get().refresh();
           }
         } catch (error) {
-          // 失败回滚
-          set({ automations: previous });
+          // 失败只回滚该条目的 enabled 字段：整体恢复旧快照会覆盖
+          // 期间并发 refresh / patch 带回的其他新数据
+          set((state) => {
+            const automations = state.automations.map((item) =>
+              item.id === id && originalEnabled !== undefined
+                ? { ...item, enabled: originalEnabled }
+                : item,
+            );
+            return { automations, ...deriveSummaryPatch(automations, state.summary) };
+          });
           throw error;
         }
       });
@@ -223,11 +280,15 @@ export const useAutomationStore = create<AutomationStoreState>((set, get) => {
     remove: async (id, version) => {
       await runMutation(`delete:${id}`, async () => {
         await deleteAutomation(invoke, id, version);
-        set((state) => ({
-          automations: state.automations.filter((item) => item.id !== id),
-          count: Math.max(0, state.count - 1),
-          runs: state.runs.filter((run) => run.automationId !== id),
-        }));
+        set((state) => {
+          const automations = state.automations.filter((item) => item.id !== id);
+          return {
+            automations,
+            count: Math.max(0, state.count - 1),
+            runs: state.runs.filter((run) => run.automationId !== id),
+            ...deriveSummaryPatch(automations, state.summary),
+          };
+        });
       });
     },
 
@@ -254,7 +315,7 @@ export const useAutomationStore = create<AutomationStoreState>((set, get) => {
     },
 
     setBackgroundEnabled: async (enabled) => {
-      const previousSummary = get().summary;
+      const previousEnabled = get().summary?.backgroundEnabled ?? true;
       await runMutation('background', async () => {
         // 乐观更新 summary.backgroundEnabled
         set((state) => ({
@@ -263,7 +324,12 @@ export const useAutomationStore = create<AutomationStoreState>((set, get) => {
         try {
           await setAutomationBackgroundEnabled(invoke, enabled);
         } catch (error) {
-          set({ summary: previousSummary });
+          // 只回滚 backgroundEnabled 字段，保留期间刷新带回的其余 summary 数据
+          set((state) => ({
+            summary: state.summary
+              ? { ...state.summary, backgroundEnabled: previousEnabled }
+              : state.summary,
+          }));
           throw error;
         }
       });

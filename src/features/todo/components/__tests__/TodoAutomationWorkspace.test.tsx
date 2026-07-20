@@ -104,6 +104,7 @@ vi.mock('../automation/automationFormat', () => ({
 
 vi.mock('../automation/scheduleMath', () => ({
   computeNextRuns: computeNextRunsMock,
+  formatWeekdayList: (weekdays: number[]) => weekdays.join('、'),
 }));
 
 vi.mock('../../automationNlParser', () => ({
@@ -121,9 +122,11 @@ vi.mock('react-i18next', () => {
     'todo:automation.failed24h': 'Failed in 24h',
     'todo:automation.next': 'Next run',
     'todo:automation.never': 'None',
+    'todo:automation.startingSoon': 'Starting soon',
     'todo:automation.background': 'Keep running after closing the window',
     'todo:automation.backgroundHint': 'Background hint',
     'todo:automation.history.title': 'Run history',
+    'todo:automation.history.toggleAria': 'Run history ({{count}})',
     'todo:automation.new': 'New task',
     'todo:automation.createTitle': 'New scheduled task',
     'todo:automation.name': 'Name',
@@ -168,6 +171,7 @@ vi.mock('react-i18next', () => {
     'todo:automation.nl.confidence.medium': 'Parse confidence: medium, please confirm the schedule',
     'todo:automation.nl.confidence.low': 'Parse confidence: low, please set the schedule manually',
     'settings:automation.action_type.agent_turn': 'Agent task',
+    'settings:automation.errors.invalid_response': 'The automation list returned invalid data.',
     'common:actions.refresh': 'Refresh',
     'common:actions.close': 'Close',
     'common:actions.cancel': 'Cancel',
@@ -233,7 +237,8 @@ function resetStore(overrides: Record<string, unknown> = {}) {
       enabledCount: 1,
       runningCount: 0,
       failedCount: 0,
-      nextRunAt: '2026-07-15T12:00:00Z',
+      // 远未来时刻：保证「已过期 → 即将开始」分支不随真实时间推进而误触发
+      nextRunAt: '2099-07-15T12:00:00Z',
       backgroundEnabled: true,
     },
     runs: [run],
@@ -291,8 +296,8 @@ describe('TodoAutomationWorkspace', () => {
     expect(collapse.dataset.open).toBe('true');
     expect(screen.getByTestId('run-run_1')).toHaveTextContent('Morning review');
 
-    // 折叠按钮具备 aria-controls
-    const toggle = screen.getByRole('button', { name: /^1/ });
+    // 折叠按钮具备可读的 aria-label 与 aria-controls
+    const toggle = screen.getByRole('button', { name: 'Run history (1)' });
     expect(toggle).toHaveAttribute('aria-controls', 'automation-history-panel');
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
   });
@@ -318,10 +323,51 @@ describe('TodoAutomationWorkspace', () => {
     resetStore({ error: 'AUTOMATION_LIST_INVALID_RESPONSE' });
     render(<TodoAutomationWorkspace />);
 
+    // 原始错误码经过本地化映射后展示
     const alert = screen.getByRole('alert');
-    expect(alert).toHaveTextContent('AUTOMATION_LIST_INVALID_RESPONSE');
+    expect(alert).toHaveTextContent('The automation list returned invalid data.');
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(storeState.refresh).toHaveBeenCalled();
+  });
+
+  it('suppresses version-conflict payloads from the global error bar', () => {
+    // 版本冲突由列表的行内提示呈现，顶部错误条不重复透出（判定走 code 解析而非子串匹配）
+    resetStore({
+      error: JSON.stringify({
+        code: 'AUTOMATION_VERSION_CONFLICT',
+        message: 'Automation changed after it was read.',
+        errorType: 'conflict',
+      }),
+    });
+    render(<TodoAutomationWorkspace />);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('renders the human-readable message instead of the raw JSON error payload', () => {
+    resetStore({
+      error: JSON.stringify({ code: 'DATABASE_ERROR', message: 'Database is locked' }),
+    });
+    render(<TodoAutomationWorkspace />);
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Database is locked');
+    expect(alert).not.toHaveTextContent('DATABASE_ERROR');
+  });
+
+  it('shows a "starting soon" label instead of past-tense relative time for an overdue next run', () => {
+    resetStore({
+      summary: {
+        enabledCount: 1,
+        runningCount: 0,
+        failedCount: 0,
+        nextRunAt: '2020-01-01T00:00:00Z',
+        backgroundEnabled: true,
+      },
+    });
+    render(<TodoAutomationWorkspace />);
+
+    expect(screen.getByText('Starting soon')).toBeInTheDocument();
   });
 
   it('expands the inline create panel and blocks submit with inline field errors', async () => {

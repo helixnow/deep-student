@@ -36,12 +36,22 @@ const WAKE_GAP_MS = CHECK_INTERVAL_MS * 2;
 /** 汇总类通知正文最多列出的任务标题数 */
 const DIGEST_TITLES_MAX = 3;
 
+/** 单条通知发送失败的重试上限：达到后视为已处理（防风暴） */
+const SEND_MAX_ATTEMPTS = 3;
+/** 数据变更触发的即时校准合并窗口 */
+const DATA_CHANGED_DEBOUNCE_MS = 300;
+
 let timer: ReturnType<typeof setInterval> | null = null;
 let exactTimer: ReturnType<typeof setTimeout> | null = null;
+let dataChangedTimer: ReturnType<typeof setTimeout> | null = null;
 let checking = false;
+/** 检查进行中又有触发请求（精确定时器到点/数据变更）：结束后立即补跑一次 */
+let recheckRequested = false;
 let lastTickAt = 0;
 /** 非法 reminder 值只 warn 一次，避免每 30s 刷日志 */
 const warnedInvalidReminders = new Set<string>();
+/** 发送失败重试计数（内存级；成功或达上限后写入 fired 并清除） */
+const sendAttempts = new Map<string, number>();
 
 // ============================================================================
 // 已触发记录（localStorage，键结构向后兼容）
@@ -101,10 +111,11 @@ function saveFired(fired: Map<string, number>): void {
 // 通知发送
 // ============================================================================
 
-// ★ 8.1 统一通知策略：到点提醒是用户主动设置的，force 绕过 background 前台拦截
-async function sendSystemNotification(title: string, body: string): Promise<void> {
+// ★ 8.1 统一通知策略：到点提醒是用户主动设置的，force 绕过 background 前台拦截。
+// 返回是否实际发出（策略拦截/权限缺失/非 Tauri 环境返回 false）
+async function sendSystemNotification(title: string, body: string): Promise<boolean> {
   const { sendSystemNotification: send } = await import('@/utils/systemNotification');
-  await send(title, body, { force: true });
+  return await send(title, body, { force: true });
 }
 
 function reminderBody(item: TodoItem): string {
@@ -127,11 +138,62 @@ function digestBody(items: TodoItem[], moreKey: string): string {
 }
 
 /** 错过提醒聚合补发：启动/唤醒后一次性通知，避免逐条轰炸 */
-async function sendMissedDigest(missed: TodoItem[]): Promise<void> {
-  await sendSystemNotification(
+async function sendMissedDigest(missed: TodoItem[]): Promise<boolean> {
+  return await sendSystemNotification(
     i18n.t('todo:reminder.missedTitle', { count: missed.length }),
     digestBody(missed, 'todo:reminder.missedBodyMore'),
   );
+}
+
+/**
+ * reminder（YYYY-MM-DDTHH:MM[:SS]）→ 本地时间戳。
+ * 不用 `new Date(string)`——无时区后缀的 ISO 字符串在不同引擎/格式下
+ * 可能按 UTC 解析，手动拆字段构造本地 Date；溢出值（13 月、40 日等）判为非法。
+ */
+function parseLocalReminder(value: string): number {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  if (!m) return NaN;
+  const month = parseInt(m[2], 10);
+  const day = parseInt(m[3], 10);
+  const hour = parseInt(m[4], 10);
+  const minute = parseInt(m[5], 10);
+  const d = new Date(
+    parseInt(m[1], 10),
+    month - 1,
+    day,
+    hour,
+    minute,
+    m[6] ? parseInt(m[6], 10) : 0,
+  );
+  if (
+    d.getMonth() !== month - 1 ||
+    d.getDate() !== day ||
+    d.getHours() !== hour ||
+    d.getMinutes() !== minute
+  ) {
+    return NaN;
+  }
+  return d.getTime();
+}
+
+/**
+ * 发送结果结算：成功→写入 fired；失败→累计重试，达上限后也写入 fired 防风暴。
+ * 返回 fired 是否发生变化。
+ */
+function settleSendResult(fired: Map<string, number>, key: string, sentOk: boolean, now: number): boolean {
+  if (sentOk) {
+    sendAttempts.delete(key);
+    fired.set(key, now);
+    return true;
+  }
+  const attempts = (sendAttempts.get(key) ?? 0) + 1;
+  if (attempts >= SEND_MAX_ATTEMPTS) {
+    sendAttempts.delete(key);
+    fired.set(key, now);
+    return true;
+  }
+  sendAttempts.set(key, attempts);
+  return false;
 }
 
 function localDateString(date: Date): string {
@@ -157,7 +219,10 @@ async function checkDailyDueDigest(now: Date): Promise<void> {
   }
 
   try {
-    const dueToday = await listTodayItems(false);
+    // ★ 口径修复：todo_list_today 的 pending 含逾期（due_date <= today）。
+    // 「今日到期汇总」只统计真正今天到期的任务——逾期任务有独立的
+    // 启动时逾期汇总通知（useTodoStore.initialize），混入会重复且数目虚高
+    const dueToday = (await listTodayItems(false)).filter((item) => item.dueDate === today);
     if (dueToday.length === 0) {
       // 无到期项也记录日期，当天不再查询
       localStorage.setItem(DAILY_DIGEST_STORAGE_KEY, today);
@@ -202,7 +267,12 @@ function scheduleExactTimer(nextAt: number | null): void {
 }
 
 async function checkReminders(): Promise<void> {
-  if (checking) return;
+  if (checking) {
+    // 检查进行中到点的触发不能丢——本轮可能基于旧数据（如刚改完提醒时间），
+    // 记录请求，当前轮结束后立即补跑，避免精确定时器的到点提醒被吞到下个 30s 周期
+    recheckRequested = true;
+    return;
+  }
   checking = true;
   try {
     // ★ 3.1 每日到期早间汇总（独立于到点提醒，有自己的每日去重）
@@ -211,7 +281,8 @@ async function checkReminders(): Promise<void> {
     const items = await listReminderItems();
     const now = Date.now();
     const fired = loadFired();
-    const missed: TodoItem[] = [];
+    const dueNow: Array<{ item: TodoItem; key: string }> = [];
+    const missed: Array<{ item: TodoItem; key: string }> = [];
     let nextAt: number | null = null;
     let changed = false;
 
@@ -219,7 +290,7 @@ async function checkReminders(): Promise<void> {
       if (!item.reminder) continue;
       const key = `${item.id}@${item.reminder}`;
 
-      const at = new Date(item.reminder).getTime();
+      const at = parseLocalReminder(item.reminder);
       if (Number.isNaN(at)) {
         // 非法 reminder 值：跳过并 warn 一次（不写入 fired，修复后可正常触发）
         if (!warnedInvalidReminders.has(key)) {
@@ -237,29 +308,51 @@ async function checkReminders(): Promise<void> {
         continue;
       }
 
-      fired.set(key, now);
-      changed = true;
-
       if (now - at <= GRACE_MS) {
-        void sendSystemNotification(
-          i18n.t('todo:reminder.notificationTitle', { title: item.title }),
-          reminderBody(item),
-        );
+        dueNow.push({ item, key });
       } else {
         // 超出宽限期的错过提醒：聚合补发，不再静默吞掉
-        missed.push(item);
+        missed.push({ item, key });
       }
     }
 
-    if (missed.length > 0) {
-      void sendMissedDigest(missed);
+    // 发送成功才写入 fired（失败下轮重试，同 key 最多 SEND_MAX_ATTEMPTS 次防风暴）
+    for (const { item, key } of dueNow) {
+      let sentOk = false;
+      try {
+        sentOk = await sendSystemNotification(
+          i18n.t('todo:reminder.notificationTitle', { title: item.title }),
+          reminderBody(item),
+        );
+      } catch {
+        sentOk = false;
+      }
+      if (settleSendResult(fired, key, sentOk, now)) changed = true;
     }
+
+    if (missed.length > 0) {
+      let sentOk = false;
+      try {
+        sentOk = await sendMissedDigest(missed.map((m) => m.item));
+      } catch {
+        sentOk = false;
+      }
+      for (const { key } of missed) {
+        if (settleSendResult(fired, key, sentOk, now)) changed = true;
+      }
+    }
+
     if (changed) saveFired(fired);
     scheduleExactTimer(nextAt);
   } catch (e) {
     console.warn('[TodoReminder] Check failed:', e);
   } finally {
     checking = false;
+    if (recheckRequested) {
+      recheckRequested = false;
+      // 调度器已停止则不补跑
+      if (timer !== null) void checkReminders();
+    }
   }
 }
 
@@ -306,5 +399,22 @@ export function stopReminderScheduler(): void {
     clearTimeout(exactTimer);
     exactTimer = null;
   }
+  if (dataChangedTimer !== null) {
+    clearTimeout(dataChangedTimer);
+    dataChangedTimer = null;
+  }
   document.removeEventListener('visibilitychange', onVisibilityChange);
+}
+
+/**
+ * 待办数据变更通知：立即触发一次提醒校准（短窗口合并连续变更）。
+ * 供 store 在 create/update/toggle/delete 成功后调用；调度器未启动时为 no-op。
+ */
+export function notifyReminderDataChanged(): void {
+  if (timer === null) return;
+  if (dataChangedTimer !== null) clearTimeout(dataChangedTimer);
+  dataChangedTimer = setTimeout(() => {
+    dataChangedTimer = null;
+    void checkReminders();
+  }, DATA_CHANGED_DEBOUNCE_MS);
 }
