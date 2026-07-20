@@ -432,6 +432,29 @@ body {
 }
 
 /*
+ * P2-12: 移动壳（<768，与 useIsMobile / MOBILE_SHELL.breakpointMax 同界）视图切换
+ * 改用轻量横向位移：12px 右侧滑入 + fade，消费 --page-slide-* token，不做 blur
+ * （移动 WebView 上 filter 逐帧代价高）。离场侧仍为 visibility:hidden 同帧生效。
+ */
+@media (max-width: 767px) {
+  @keyframes mobile-shell-content-enter {
+    from {
+      opacity: 0;
+      transform: translateX(var(--page-slide-distance, 12px));
+    }
+
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .desktop-shell-view-layer.desktop-shell-content-enter {
+    animation: mobile-shell-content-enter var(--page-slide-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  }
+}
+
+/*
  * 主题亮暗切换过渡：切换瞬间由 useTheme.ts 在 <html> 上挂临时 class，
  * 期间全局颜色属性平滑过渡，过渡结束后移除，避免常驻 transition 拖慢其他交互。
  * 特异性 (0,2,0) 高于绝大多数单类/工具类的 transition 声明，可临时接管；
@@ -931,6 +954,17 @@ main {
   flex-shrink: 0;
 }
 
+/* N-6: 溢出时保证最左侧控件可滚动到达 ——
+   justify-content: center 在内容溢出时会把起始端裁到滚动区外，
+   改用首尾 auto margin：空间充足时等分居中，溢出时退化为可完整滚动的左对齐 */
+.modern-viewer-toolbar > *:first-child {
+  margin-left: auto;
+}
+
+.modern-viewer-toolbar > *:last-child {
+  margin-right: auto;
+}
+
 /* N-5: 触屏上放大预览工具栏触控目标 */
 @media (pointer: coarse) {
   .modern-viewer-toolbar {
@@ -947,22 +981,6 @@ main {
   flex-shrink: 0;
 }
 
-.modern-viewer-footer {
-  background: hsl(var(--popover) / 0.85);
-  border-top: 1px solid hsl(var(--border) / 0.5);
-  color: hsl(var(--muted-foreground));
-}
-
-.modern-viewer-content {
-  background: hsl(var(--card) / 0.55);
-}
-
-.modern-viewer-muted-card {
-  background: hsl(var(--muted) / 0.65);
-  border: 1px solid hsl(var(--border) / 0.45);
-  color: hsl(var(--muted-foreground));
-}
-
 .modern-viewer-icon-button {
   display: inline-flex;
   align-items: center;
@@ -975,12 +993,23 @@ main {
   background: transparent;
   color: hsl(var(--muted-foreground));
   cursor: pointer;
-  transition: color .15s ease, background .15s ease;
+  transition: color .15s ease, background .15s ease, transform .15s ease;
 }
 
 .modern-viewer-icon-button:hover:not([disabled]) {
   color: hsl(var(--foreground));
-  background: hsl(var(--accent));
+  background: var(--interactive-hover, hsl(var(--accent)));
+}
+
+.modern-viewer-icon-button:active:not([disabled]) {
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted));
+  transform: scale(0.94);
+}
+
+.modern-viewer-icon-button:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 0.65);
+  outline-offset: 1px;
 }
 
 /* N-5: 触屏上预览工具栏按钮放大到 ≥36px */
@@ -997,6 +1026,16 @@ main {
   cursor: not-allowed;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .modern-viewer-icon-button {
+    transition: none;
+  }
+
+  .modern-viewer-icon-button:active:not([disabled]) {
+    transform: none;
+  }
+}
+
 .modern-viewer-icon-button--primary {
   color: hsl(var(--primary));
 }
@@ -1004,10 +1043,6 @@ main {
 .modern-viewer-icon-button--primary:hover:not([disabled]) {
   background: hsl(var(--primary) / 0.15);
   color: hsl(var(--primary));
-}
-
-.modern-viewer-icon-button--success {
-  color: hsl(142 71% 45%);
 }
 
 .modern-viewer-icon-button--danger {
@@ -1028,30 +1063,84 @@ main {
   line-height: 1;
 }
 
-.modern-viewer-hint {
-  background: hsl(var(--foreground) / 0.85);
-  color: hsl(var(--background));
-  box-shadow: 0 12px 28px -18px hsl(var(--foreground) / 0.4);
+/* ---- 统一预览工具栏（UnifiedPreviewToolbar）玻璃质感升级 ---- */
+
+/* 玻璃底栏修饰类：半透明 + 背景模糊 + 顶部内亮线，参考 wb-browser 玻璃做法 */
+.modern-viewer-toolbar--glass {
+  gap: 4px;
+  background: hsl(var(--card) / 0.82);
+  backdrop-filter: blur(12px) saturate(1.35);
+  -webkit-backdrop-filter: blur(12px) saturate(1.35);
+  border-top: 1px solid hsl(var(--border) / 0.45);
+  box-shadow: inset 0 1px 0 hsl(var(--background) / 0.35);
 }
 
-.modern-viewer-loading-backdrop {
-  background: hsl(var(--background) / 0.78);
+.dark .modern-viewer-toolbar--glass {
+  background: hsl(var(--card) / 0.72);
+  box-shadow: inset 0 1px 0 hsl(var(--foreground) / 0.06);
 }
 
-.modern-viewer-warning-card {
-  background: hsl(var(--warning) / 0.18);
-  border: 1px solid hsl(var(--warning) / 0.45);
-  color: hsl(var(--warning-foreground));
+/* 工具栏分组容器：缩放组｜页码组｜字号组 */
+.modern-viewer-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
 }
 
-.modern-viewer-warning-card .modern-viewer-warning-icon {
-  color: hsl(var(--warning));
+/* 缩放百分比触发按钮（点击弹出档位菜单） */
+.modern-viewer-zoom-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: hsl(var(--foreground));
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  cursor: pointer;
+  transition: color .15s ease, background .15s ease;
 }
 
-.modern-viewer-safe-hint {
-  background: hsl(var(--success) / 0.18);
-  border: 1px solid hsl(var(--success) / 0.35);
-  color: hsl(var(--success));
+.modern-viewer-zoom-trigger:hover,
+.modern-viewer-zoom-trigger[aria-expanded="true"] {
+  background: var(--interactive-hover, hsl(var(--accent)));
+}
+
+.modern-viewer-zoom-trigger:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 0.65);
+  outline-offset: 1px;
+}
+
+.modern-viewer-zoom-trigger-caret {
+  margin-left: 2px;
+  color: hsl(var(--muted-foreground));
+  opacity: 0.7;
+  flex-shrink: 0;
+  transition: opacity .15s ease;
+}
+
+.modern-viewer-zoom-trigger:hover .modern-viewer-zoom-trigger-caret,
+.modern-viewer-zoom-trigger[aria-expanded="true"] .modern-viewer-zoom-trigger-caret {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .modern-viewer-zoom-trigger {
+    height: 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modern-viewer-zoom-trigger,
+  .modern-viewer-zoom-trigger-caret {
+    transition: none;
+  }
 }
 
 @keyframes fade-in {
@@ -1291,7 +1380,8 @@ main {
     transition: none;
   }
 
-  .desktop-shell-content-enter {
+  .desktop-shell-content-enter,
+  .desktop-shell-view-layer.desktop-shell-content-enter {
     animation: none;
   }
 }

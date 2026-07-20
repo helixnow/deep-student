@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import {
   MagnifyingGlass,
   X,
+  ArrowLeft,
   ArrowElbowDownLeft,
   Star,
   Clock,
@@ -122,6 +123,7 @@ export function CommandPalette() {
   const [favoritesVersion, setFavoritesVersion] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   // 标记是否为键盘导航（区分鼠标悬停），只有键盘导航才触发滚动
   const isKeyboardNavRef = useRef(false);
   
@@ -251,6 +253,27 @@ export function CommandPalette() {
       return true;
     }, BACK_PRIORITY.overlay);
   }, [isOpen]);
+
+  // 移动端全屏内联形态：软键盘弹出时结果区随 visualViewport 收缩，避免底部结果被键盘裁切。
+  // 通过 CSS 变量 --cp-viewport-height 驱动容器高度（见 command-palette.css 移动断点）。
+  useEffect(() => {
+    if (!isOpen || !isSmallScreen) return;
+    const vv = window.visualViewport;
+    const el = containerRef.current;
+    if (!vv || !el) return;
+
+    const sync = () => {
+      el.style.setProperty('--cp-viewport-height', `${Math.round(vv.height)}px`);
+    };
+    sync();
+    vv.addEventListener('resize', sync);
+    vv.addEventListener('scroll', sync);
+    return () => {
+      vv.removeEventListener('resize', sync);
+      vv.removeEventListener('scroll', sync);
+      el.style.removeProperty('--cp-viewport-height');
+    };
+  }, [isOpen, isSmallScreen]);
   
   // 执行命令并记录历史
   // 资源直达命令（files/sessions）不在注册表中：直接调用其 execute 并关闭面板
@@ -361,11 +384,21 @@ export function CommandPalette() {
       aria-label={t('command_palette:title')}
     >
       <div 
-        className="command-palette-container"
+        ref={containerRef}
+        className={cn('command-palette-container', isSmallScreen && 'command-palette-container-mobile')}
         onKeyDown={handleKeyDown}
       >
-        {/* 搜索栏 */}
+        {/* 搜索栏（移动端 = 全屏页顶栏：返回 + 搜索输入） */}
         <div className="command-palette-search">
+          {isSmallScreen && (
+            <button
+              className="command-palette-back-btn"
+              onClick={close}
+              aria-label={t('common:back')}
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
           <div className="command-palette-input-wrapper">
             <MagnifyingGlass className="command-palette-search-icon" size={16} />
             <input
@@ -413,13 +446,15 @@ export function CommandPalette() {
               <Star size={16} />
             </button>
           </div>
-          <button
-            className="command-palette-close-btn"
-            onClick={close}
-            aria-label={t('common:close')}
-          >
-            <X size={18} />
-          </button>
+          {!isSmallScreen && (
+            <button
+              className="command-palette-close-btn"
+              onClick={close}
+              aria-label={t('common:close')}
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
         
         {/* 命令列表 */}

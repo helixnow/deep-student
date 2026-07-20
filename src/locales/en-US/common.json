@@ -2207,7 +2207,7 @@
       "indexError": "Index failed, please retry",
       "rebuildError": "Rebuild failed, please retry",
       "indexTooltip": "Index this resource to multimodal knowledge base for mixed image-text retrieval",
-      "indexResultTooltip": "Indexed {{pages}} pages, skipped {{skipped}}, took {{duration}}s"
+      "indexResultTooltip": "Indexed {{pages}} pages, {{failed}} failed · dimension {{dimension}}"
     },
     "edit_save_failed": "Message edit save failed, please retry",
     "thinking": {

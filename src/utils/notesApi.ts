@@ -9,11 +9,16 @@
  * - Tags, Trash, and other utilities
  * 
  * ★ 2026-01 清理：notes_rag_* 操作已移除，VFS RAG 完全替代
+ * ★ 2026-07 契约修复：所有需要 subject 的命令统一补传 '_global'（后端同步改为
+ *   Option 默认 '_global'，双保险）；invoke<any> 全部替换为具体返回类型。
  *
  * @see src/dstu/adapters/notesDstuAdapter.ts for CRUD operations
  * @see src/features/notes/NotesContext.tsx for DSTU integration
  */
 import { invoke } from '@tauri-apps/api/core';
+
+/** 默认学科分区：笔记资产/命令统一使用的占位 subject */
+const GLOBAL_SUBJECT = '_global';
 
 export type NoteItem = {
   id: string;
@@ -24,6 +29,55 @@ export type NoteItem = {
   updated_at: string;
   is_favorite: boolean;
 };
+
+/** 笔记资产条目（绝对路径 + 相对路径） */
+export interface NoteAssetInfo {
+  absolute_path: string;
+  relative_path: string;
+}
+
+/** notes_db_stats 返回结构 */
+export interface NotesDbStats {
+  db_path: string;
+  file_size_bytes: number;
+  total_notes: number;
+  /** 版本历史已移除（V20260214），恒为 0，仅为兼容保留 */
+  total_versions: number;
+  /** notes_assets 目录下文件总数 */
+  total_assets: number;
+  /** notes_assets 目录下文件总字节数 */
+  total_asset_bytes: number;
+}
+
+/** notes_search 命中项 */
+export interface NotesSearchHit {
+  id: string;
+  title: string;
+  snippet?: string | null;
+}
+
+/** notes_list_deleted 返回结构（NotesListAdvancedResponse） */
+export interface NotesTrashPage {
+  items: NoteItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/** notes_export / notes_export_single 返回结构 */
+export interface NotesExportSummary {
+  output_path: string;
+  note_count: number;
+  attachment_count: number;
+}
+
+/** notes_import 返回结构 */
+export interface NotesImportSummary {
+  note_count: number;
+  attachment_count: number;
+  skipped_count: number;
+  overwritten_count: number;
+}
 
 // ★ 2026-01 清理：NotesRagSubjectStatus 和 NotesRagQueryOptions 已移除，VFS RAG 完全替代
 
@@ -48,9 +102,9 @@ export const NotesAPI = {
   // ragDeleteDocument, ragReembedDocument, ragReembedAll, ragMigrateFilenames,
   // ragGetStatus, ragListSubjectStatuses 均已废弃
 
-  async saveAsset(noteId: string, base64Data: string, defaultExt?: string): Promise<{ absolute_path: string; relative_path: string }>{
-    return await invoke<any>('notes_save_asset', { 
-      subject: '_global',
+  async saveAsset(noteId: string, base64Data: string, defaultExt?: string): Promise<NoteAssetInfo> {
+    return await invoke<NoteAssetInfo>('notes_save_asset', {
+      subject: GLOBAL_SUBJECT,
       noteId,
       base64Data,
       defaultExt,
@@ -59,8 +113,8 @@ export const NotesAPI = {
 
   // ★ 2026-01 清理：getMappedDocId, getNoteIdByDocumentId, getNoteIdsByDocumentIds, getRagChunkText 已移除
 
-  async listAssets(noteId: string): Promise<Array<{ absolute_path: string; relative_path: string }>> {
-    return await invoke<any[]>('notes_list_assets', { subject: '_global', noteId }) as any;
+  async listAssets(noteId: string): Promise<NoteAssetInfo[]> {
+    return await invoke<NoteAssetInfo[]>('notes_list_assets', { subject: GLOBAL_SUBJECT, noteId });
   },
 
   // ★ 2026-02 清理：getLinks (notes_get_links) 已移除，后端命令不存在
@@ -82,7 +136,7 @@ export const NotesAPI = {
     return await invoke<boolean>('notes_set_pref', { key, value });
   },
   async getPref(key: string): Promise<string | null> {
-    return await invoke<any>('notes_get_pref', { key }) as any;
+    return await invoke<string | null>('notes_get_pref', { key });
   },
   async saveNoteAnnotations(noteId: string, annotations: Array<{ id: string; text: string; author?: string; ts?: string }>): Promise<boolean> {
     const key = `note_annotations:${noteId}`;
@@ -95,46 +149,48 @@ export const NotesAPI = {
     try { return JSON.parse(val); } catch { return []; }
   },
 
-  async dbStats(): Promise<{ db_path: string; file_size_bytes: number; total_notes: number; total_versions: number; total_assets: number }>{
-    return await invoke<any>('notes_db_stats', {});
+  async dbStats(): Promise<NotesDbStats> {
+    return await invoke<NotesDbStats>('notes_db_stats', {});
   },
   async dbVacuum(): Promise<boolean> {
     return await invoke<boolean>('notes_db_vacuum', {});
   },
 
   async listTags(): Promise<string[]> {
-    return await invoke<string[]>('notes_list_tags', {});
+    return await invoke<string[]>('notes_list_tags', { subject: GLOBAL_SUBJECT });
   },
 
   /**
-   * @deprecated Tag renaming should be done via DSTU API
-   * This method is kept for backward compatibility but may not work correctly
+   * @deprecated Tag renaming should be done via NotesContext.renameTagAcrossNotes
+   * (DSTU-based)。本方法无真实调用方，仅为兼容旧引用保留；调用将直接抛错。
    */
   async renameTag(oldName: string, newName: string): Promise<void> {
-    console.warn('[NotesAPI] renameTag is deprecated - use DSTU API for note operations');
-    // This function requires CRUD operations which have been removed
-    // Keeping stub for compatibility but it won't work
-    throw new Error('renameTag is no longer supported - please use DSTU API');
+    console.warn('[NotesAPI] renameTag is deprecated - use NotesContext.renameTagAcrossNotes (DSTU) instead');
+    throw new Error(
+      `renameTag('${oldName}' -> '${newName}') is no longer supported here: ` +
+      'note CRUD has moved to the DSTU API. Use NotesContext.renameTagAcrossNotes instead.'
+    );
   },
 
-  async searchNotesByTag(tag: string, limit: number = 50): Promise<Array<{ id: string; title: string; snippet?: string }>> {
-    return await invoke<any>('notes_search', {
+  async searchNotesByTag(tag: string, limit: number = 50): Promise<NotesSearchHit[]> {
+    return await invoke<NotesSearchHit[]>('notes_search', {
+      subject: GLOBAL_SUBJECT,
       keyword: `tag:${tag}`,
-      limit
-    }) as any;
+      limit,
+    });
   },
 
-  async listDeleted(page: number = 0, page_size: number = 20): Promise<{ items: NoteItem[]; total: number; page: number; page_size: number }> {
-    return await invoke<any>('notes_list_deleted', { page, page_size }) as any;
+  async listDeleted(page: number = 0, page_size: number = 20): Promise<NotesTrashPage> {
+    return await invoke<NotesTrashPage>('notes_list_deleted', { subject: GLOBAL_SUBJECT, page, page_size });
   },
   async emptyTrash(): Promise<number> {
-    return await invoke<number>('notes_empty_trash', {});
+    return await invoke<number>('notes_empty_trash', { subject: GLOBAL_SUBJECT });
   },
   async hardDelete(id: string): Promise<boolean> {
-    return await invoke<boolean>('notes_hard_delete', { id });
+    return await invoke<boolean>('notes_hard_delete', { subject: GLOBAL_SUBJECT, id });
   },
   async restore(id: string): Promise<boolean> {
-    return await invoke<boolean>('notes_restore', { subject: '_global', id });
+    return await invoke<boolean>('notes_restore', { subject: GLOBAL_SUBJECT, id });
   },
   async mentionsSearch(keyword: string, options?: { limit?: number }): Promise<NotesMentionSearchResult> {
     const payload: Record<string, unknown> = {
@@ -149,10 +205,10 @@ export const NotesAPI = {
     };
   },
   async indexAssets(noteId: string): Promise<number> {
-    return await invoke<number>('notes_assets_index_scan', { noteId });
+    return await invoke<number>('notes_assets_index_scan', { subject: GLOBAL_SUBJECT, noteId });
   },
   async scanOrphanAssets(): Promise<string[]> {
-    return await invoke<string[]>('notes_assets_scan_orphans', {});
+    return await invoke<string[]>('notes_assets_scan_orphans', { subject: GLOBAL_SUBJECT });
   },
   async bulkDeleteAssets(paths: string[]): Promise<number> {
     return await invoke<number>('notes_assets_bulk_delete', { paths });
@@ -160,22 +216,18 @@ export const NotesAPI = {
   /**
    * 导出笔记库为统一 ZIP 格式（Markdown + 元数据）
    * 该格式兼容常见 Markdown 编辑器
+   *
+   * 注意：includeVersions 已废弃 —— 版本历史表已删除（V20260214），
+   * 该开关不再产生任何版本数据，仅为兼容旧调用保留。
    */
-  async exportNotes(options: { outputPath?: string; includeVersions?: boolean } = {}): Promise<{
-    output_path: string;
-    note_count: number;
-    attachment_count: number;
-  }> {
+  async exportNotes(options: { outputPath?: string; includeVersions?: boolean } = {}): Promise<NotesExportSummary> {
     const payload = {
       output_path: options.outputPath,
+      // @deprecated 版本历史已移除，此参数不再生效
       include_versions: options.includeVersions ?? true,
     };
     try {
-      const result = await invoke<{
-        output_path: string;
-        note_count: number;
-        attachment_count: number;
-      }>('notes_export', { request: payload });
+      const result = await invoke<NotesExportSummary>('notes_export', { request: payload });
       return result;
     } catch (error: unknown) {
       console.error('[NotesAPI] exportNotes failed:', error);
@@ -184,23 +236,20 @@ export const NotesAPI = {
   },
   /**
    * 导出单条笔记为统一 ZIP 格式
+   *
+   * 注意：includeVersions 已废弃（同 exportNotes）。
    */
-  async exportSingleNote(options: { noteId: string; outputPath?: string; includeVersions?: boolean }): Promise<{
-    output_path: string;
-    note_count: number;
-    attachment_count: number;
-  }> {
+  async exportSingleNote(options: { noteId: string; outputPath?: string; includeVersions?: boolean }): Promise<NotesExportSummary> {
     const payload = {
+      // ★ P0-1 契约修复：后端 request.subject 原为必填，补传 '_global'
+      subject: GLOBAL_SUBJECT,
       note_id: options.noteId,
       output_path: options.outputPath,
+      // @deprecated 版本历史已移除，此参数不再生效
       include_versions: options.includeVersions ?? true,
     };
     try {
-      const result = await invoke<{
-        output_path: string;
-        note_count: number;
-        attachment_count: number;
-      }>('notes_export_single', { request: payload });
+      const result = await invoke<NotesExportSummary>('notes_export_single', { request: payload });
       return result;
     } catch (error: unknown) {
       console.error('[NotesAPI] exportSingleNote failed:', error);
@@ -210,23 +259,13 @@ export const NotesAPI = {
   async importNotes(options: { 
     filePath: string;
     conflictStrategy?: 'skip' | 'overwrite' | 'merge_keep_newer';
-  }): Promise<{
-    note_count: number;
-    attachment_count: number;
-    skipped_count: number;
-    overwritten_count: number;
-  }> {
+  }): Promise<NotesImportSummary> {
     const payload = {
       file_path: options.filePath,
       conflict_strategy: options.conflictStrategy,
     };
     try {
-      const result = await invoke<{
-        note_count: number;
-        attachment_count: number;
-        skipped_count: number;
-        overwritten_count: number;
-      }>('notes_import', { request: payload });
+      const result = await invoke<NotesImportSummary>('notes_import', { request: payload });
       return result;
     } catch (error: unknown) {
       console.error('[NotesAPI] importNotes failed:', error);
@@ -246,7 +285,7 @@ export const NotesAPI = {
     noteId: string,
     section?: string
   ): Promise<string> {
-    return await invoke<string>('canvas_note_read', { noteId, section });
+    return await invoke<string>('canvas_note_read', { subject: GLOBAL_SUBJECT, noteId, section });
   },
 
   /**
@@ -260,7 +299,7 @@ export const NotesAPI = {
     content: string,
     section?: string
   ): Promise<void> {
-    await invoke<void>('canvas_note_append', { noteId, content, section });
+    await invoke<void>('canvas_note_append', { subject: GLOBAL_SUBJECT, noteId, content, section });
   },
 
   /**
@@ -277,7 +316,7 @@ export const NotesAPI = {
     replace: string,
     isRegex?: boolean
   ): Promise<number> {
-    return await invoke<number>('canvas_note_replace', { noteId, search, replace, isRegex });
+    return await invoke<number>('canvas_note_replace', { subject: GLOBAL_SUBJECT, noteId, search, replace, isRegex });
   },
 
   /**
@@ -289,6 +328,6 @@ export const NotesAPI = {
     noteId: string,
     content: string
   ): Promise<void> {
-    await invoke<void>('canvas_note_set', { noteId, content });
+    await invoke<void>('canvas_note_set', { subject: GLOBAL_SUBJECT, noteId, content });
   },
 };

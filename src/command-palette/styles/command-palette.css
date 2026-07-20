@@ -367,28 +367,98 @@
 
 /* ==================== 响应式适配 ==================== */
 
-/* ★ 2026-07-08 移动端审计：断点从 640 对齐到 App shell 的移动端定义（<768），
-   避免 640–767px 区间面板仍按桌面窄卡片渲染 */
+/* ★ 2026-07 移动端内联化：<768 从「居中浮层」切换为「全屏内联子屏」形态——
+   背景实色占满 viewport、顶栏（返回 + 搜索）、结果列表全高滚动、safe-area 兼容。
+   软键盘弹出时由 JS 写入 --cp-viewport-height（visualViewport.height）驱动容器收缩，
+   替代旧 max-height:55vh 方案（vh 不随软键盘收缩，底部结果易被裁切）。 */
 @media (max-width: 767.98px) {
   .command-palette-backdrop {
-    padding-top: 8vh;
+    padding-top: 0;
+    align-items: stretch;
+    justify-content: stretch;
+    /* 全屏形态没有「点空白关闭」语义，遮罩退化为实色画布 */
+    background: hsl(var(--background));
   }
 
   .command-palette-container {
+    display: flex;
+    flex-direction: column;
     max-width: none;
-    margin: 0 8px;
-    border-radius: 16px;
+    margin: 0;
+    height: var(--cp-viewport-height, 100dvh);
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    background-color: hsl(var(--background));
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    animation: command-palette-page-in 180ms ease-out;
   }
 
-  /* 软键盘弹出（adjustResize）时视口收缩，50vh 随之缩小仍可用 */
+  .command-palette-search {
+    flex-shrink: 0;
+    padding: 10px 12px;
+  }
+
+  .command-palette-input {
+    height: 40px;
+    line-height: 40px;
+    font-size: 15px;
+  }
+
+  /* 结果列表占满剩余高度并独立滚动 */
+  .command-palette-scroll-area {
+    flex: 1;
+    min-height: 0;
+  }
+
   .command-palette-scroll-area .command-palette-list {
-    max-height: 55vh;
+    height: 100%;
+    max-height: none;
   }
 
   .command-palette-footer {
     flex-wrap: wrap;
     gap: 8px;
   }
+}
+
+@keyframes command-palette-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .command-palette-container {
+    animation: none;
+  }
+}
+
+/* 移动端顶栏返回按钮（全屏内联子屏的返回入口，触控 ≥44px） */
+.command-palette-back-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-left: -4px;
+  color: hsl(var(--foreground));
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.command-palette-back-btn:active {
+  background-color: hsl(var(--muted));
 }
 
 /* ==================== 触屏适配 ==================== */
@@ -398,14 +468,16 @@
   /* 收藏按钮默认依赖 hover 显现,触屏上永远不可见 → 常显 */
   .command-palette-item-favorite {
     opacity: 1;
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
   }
 
+  /* 顶栏操作触控目标 ≥44px */
   .command-palette-mode-btn,
-  .command-palette-close-btn {
-    width: 36px;
-    height: 36px;
+  .command-palette-close-btn,
+  .command-palette-back-btn {
+    width: 44px;
+    height: 44px;
   }
 
   /* ★ 2026-07-08 移动端审计：结果项触控行高 ≥44px */

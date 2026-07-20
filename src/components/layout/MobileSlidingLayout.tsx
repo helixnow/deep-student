@@ -8,7 +8,7 @@
  * 三屏布局：左侧栏 ← 中间主视图 → 右侧面板
  */
 
-import React, { useRef, useState, useCallback, useEffect, useId, type ReactNode } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useId, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useMobileLayoutSafe } from './MobileLayoutContext';
@@ -16,12 +16,20 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MobileUnifiedDrawerProvider } from './MobileDrawerContext';
 import { MobileSidebarNavigation } from './MobileSidebarNavigation';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { Z_INDEX } from '@/config/zIndex';
 
 /** 三屏位置枚举 */
 export type ScreenPosition = 'left' | 'center' | 'right';
 
-/** 需要放行手势的交互元素选择器，避免阻断点击 */
-const INTERACTIVE_SELECTOR = 'button, [role="button"], a, input, select, textarea, option, label, [data-gesture-ignore]';
+/**
+ * P1-5: 手势完全豁免的目标。文本输入/可编辑区域内的横向拖动是光标拖选，
+ * 必须放行；[data-gesture-ignore] 为显式退出口。按钮/链接等普通交互元素
+ * 不再整体豁免——轴锁定判定为水平拖后布局手势才真正接管，且拖动一旦发生
+ * 会抑制随后的 click（见容器捕获阶段 click 监听），点按行为不受影响，
+ * 同时会话列表行等交互元素上也能横向拖拽切屏。
+ */
+const GESTURE_OPT_OUT_SELECTOR =
+  'input, select, textarea, option, [contenteditable="true"], [data-gesture-ignore]';
 
 /**
  * F1/C-9: 自带手势的内容默认豁免布局手势（非边缘起手时）。
@@ -32,10 +40,43 @@ const INTERACTIVE_SELECTOR = 'button, [role="button"], a, input, select, textare
 export const DEFAULT_GESTURE_IGNORE_SELECTOR =
   '[data-no-screen-swipe], .ds-pdf-viewer, .react-pdf__Page, .mindmap-container, .react-flow, .ProseMirror';
 
-const isInteractiveTarget = (target: EventTarget | null): boolean => {
+const isGestureOptOutTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof Element)) return false;
-  return Boolean(target.closest(INTERACTIVE_SELECTOR));
+  return Boolean(target.closest(GESTURE_OPT_OUT_SELECTOR));
 };
+
+/** P0-1: settle 动画时长（ms），与 --panel-open-dur/--panel-close-dur 同一档位 */
+const SETTLE_MIN_DURATION = 250;
+const SETTLE_MAX_DURATION = 350;
+
+/**
+ * P0-1: 与 CSS `--panel-ease: cubic-bezier(0.22, 1, 0.36, 1)` 同曲线的 JS 求值器。
+ * settle 动画走 rAF 手动插值（WebView 的 transform CSS 过渡会卡在起点），
+ * 需要在 JS 侧复现同一条缓动曲线。曲线在 x 上单调，二分反解参数即可。
+ */
+const panelEase = (t: number): number => {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  const bezierAxis = (c1: number, c2: number, u: number): number => {
+    const inv = 1 - u;
+    return 3 * c1 * inv * inv * u + 3 * c2 * inv * u * u + u * u * u;
+  };
+  let lo = 0;
+  let hi = 1;
+  let u = t;
+  for (let i = 0; i < 24; i++) {
+    const x = bezierAxis(0.22, 0.36, u);
+    if (Math.abs(x - t) < 1e-4) break;
+    if (x < t) lo = u; else hi = u;
+    u = (lo + hi) / 2;
+  }
+  return bezierAxis(1, 1, u);
+};
+
+const prefersReducedMotion = (): boolean =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
  * C-9: 触点落在可横向滚动的内容（代码块/宽表格/横滑卡片区）内时，
@@ -151,12 +192,23 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     lastMoveX: 0,
     lastMoveTime: 0,
     velocityX: 0,
+    /** P1-5: 水平拖拽已发生，松手后需要吞掉紧随其后的 click */
+    suppressClick: false,
   });
 
   const [isDragging, setIsDragging] = useState(false);
   const [currentTranslate, setCurrentTranslate] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
   const [isActiveViewLayer, setIsActiveViewLayer] = useState(true);
+  // P0-1: settle 动画（rAF 手动插值）状态
+  const [isSettling, setIsSettling] = useState(false);
+  /** 拖拽收尾时 +1，强制 settle 效应重估（screenPosition/baseTranslate 可能都没变） */
+  const [settleTick, setSettleTick] = useState(0);
+  const settleFrameRef = useRef<number | null>(null);
+  /** 最近一次真实渲染到 DOM 的 translate（拖拽/动画/静止三种来源统一记录） */
+  const renderedTranslateRef = useRef<number | null>(null);
+  const prevScreenPositionRef = useRef<ScreenPosition>(screenPosition);
+  const lastContainerWidthRef = useRef<number>(0);
   const mobileLayout = useMobileLayoutSafe();
   const isMobileLayout = mobileLayout?.isMobile ?? false;
   const enterFullscreen = mobileLayout?.enterFullscreen;
@@ -257,23 +309,109 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     stateRef.current.baseTranslate = baseTranslate;
   }
 
+  // P0-1: 侧栏 settle 动画。
+  // WebView 下对 track 的 transform 做 CSS transition 会卡在起点（详见 track 的
+  // transition:'none' 注释），因此松手/汉堡按钮触发的开合改用 rAF 手动插值
+  // translate3d：每帧 setCurrentTranslate 驱动（与拖拽同一条渲染路径），动画结束
+  // 清理插值状态回到 baseTranslate 静态渲染。拖拽进行中保持完全跟手（无过渡）。
+  // prefers-reduced-motion 或容器 resize / 初始化引起的位移直接就位。
+  useLayoutEffect(() => {
+    // 指针仍按住（跟踪/拖拽中）时不做任何归位，松手后由 settleTick 触发重估
+    if (isDragging || stateRef.current.isDragging) return;
+
+    const from = renderedTranslateRef.current ?? baseTranslate;
+    const to = baseTranslate;
+    const widthChanged = lastContainerWidthRef.current !== containerWidth;
+    lastContainerWidthRef.current = containerWidth;
+    const positionChanged = prevScreenPositionRef.current !== screenPosition;
+    prevScreenPositionRef.current = screenPosition;
+
+    const finishAt = (value: number) => {
+      if (settleFrameRef.current !== null) {
+        cancelAnimationFrame(settleFrameRef.current);
+        settleFrameRef.current = null;
+      }
+      renderedTranslateRef.current = value;
+      setCurrentTranslate(value);
+      setIsSettling(false);
+    };
+
+    // 无位移：确保插值状态清理干净
+    if (from === to) {
+      finishAt(to);
+      return;
+    }
+
+    // 容器尺寸变化（初始化/旋转/分屏）引起的基准位移：直接就位，不做动画
+    if (widthChanged && !positionChanged) {
+      finishAt(to);
+      return;
+    }
+
+    if (prefersReducedMotion()) {
+      finishAt(to);
+      return;
+    }
+
+    // 距离越短时长越短（250–350ms），拖到一半松手不会拖泥带水
+    const distanceRatio = Math.abs(to - from) / Math.max(sidebarWidth, 1);
+    const duration = SETTLE_MIN_DURATION +
+      Math.min(1, distanceRatio) * (SETTLE_MAX_DURATION - SETTLE_MIN_DURATION);
+    const startTime = performance.now();
+
+    setCurrentTranslate(from);
+    setIsSettling(true);
+
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - startTime) / duration);
+      const value = from + (to - from) * panelEase(progress);
+      renderedTranslateRef.current = value;
+      setCurrentTranslate(value);
+      if (progress < 1) {
+        settleFrameRef.current = requestAnimationFrame(step);
+      } else {
+        settleFrameRef.current = null;
+        setIsSettling(false);
+      }
+    };
+    settleFrameRef.current = requestAnimationFrame(step);
+
+    return () => {
+      if (settleFrameRef.current !== null) {
+        cancelAnimationFrame(settleFrameRef.current);
+        settleFrameRef.current = null;
+      }
+    };
+  }, [baseTranslate, screenPosition, containerWidth, sidebarWidth, isDragging, settleTick]);
+
   // 处理开始拖拽（触摸/鼠标）
   const handleDragStart = useCallback((clientX: number, clientY: number) => {
     if (!enableGesture) return;
 
+    // settle 动画进行中被再次抓住：从当前插值位置接管（可"抓回"滑动中的抽屉）
+    if (settleFrameRef.current !== null) {
+      cancelAnimationFrame(settleFrameRef.current);
+      settleFrameRef.current = null;
+    }
+    const startTranslate = renderedTranslateRef.current ?? baseTranslate;
+
     stateRef.current.isDragging = true;
     stateRef.current.startX = clientX;
     stateRef.current.startY = clientY;
-    stateRef.current.currentTranslate = baseTranslate;
+    stateRef.current.currentTranslate = startTranslate;
     stateRef.current.axisLocked = null;
-    stateRef.current.dragStartBase = baseTranslate;
+    stateRef.current.dragStartBase = startTranslate;
     stateRef.current.baseTranslate = baseTranslate;
     stateRef.current.lastMoveX = clientX;
     stateRef.current.lastMoveTime = performance.now();
     stateRef.current.velocityX = 0;
+    stateRef.current.suppressClick = false;
+    renderedTranslateRef.current = startTranslate;
 
-    setIsDragging(true);
-    setCurrentTranslate(baseTranslate);
+    setCurrentTranslate(startTranslate);
+    // 注意：此处不 setIsDragging(true)。React 侧的 isDragging 推迟到轴锁定为
+    // 水平拖时才置位（见 handleDragMove），避免每次点按都触发全屏 claim /
+    // 底部 inset 抖动；stateRef.isDragging 仅表示"指针按下并在跟踪"。
   }, [enableGesture, baseTranslate]);
 
   // 处理拖拽移动
@@ -288,6 +426,9 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       // 水平滑动幅度大于垂直滑动的 1.2 倍，认为是水平滑动
       if (Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
         stateRef.current.axisLocked = 'horizontal';
+        // P1-5: 拖拽真正接管后，抑制松手时落在交互元素上的 click
+        stateRef.current.suppressClick = true;
+        setIsDragging(true);
       } else {
         // 垂直滑动，取消拖拽，让原生滚动接管
         stateRef.current.axisLocked = 'vertical';
@@ -333,6 +474,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     newTranslate = Math.max(minTranslate, Math.min(maxTranslate, newTranslate));
 
     stateRef.current.currentTranslate = newTranslate;
+    renderedTranslateRef.current = newTranslate;
     setCurrentTranslate(newTranslate);
   }, [enableGesture, sidebarWidth, containerWidth, isThreeScreenMode, rightPanelEnabled]);
 
@@ -348,7 +490,8 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
 
     // fling：快速轻扫时即使位移不足距离阈值也按方向切换（与原生抽屉手感一致）。
     // 松手前停顿超过 100ms 视为无惯性，避免"拖出去停住再松手"误判为 fling。
-    const FLING_VELOCITY_THRESHOLD = 0.35; // px/ms
+    // P2-11: 0.35 → 0.30 px/ms，轻扫更容易触发切换
+    const FLING_VELOCITY_THRESHOLD = 0.3; // px/ms
     const flingExpired = performance.now() - stateRef.current.lastMoveTime > 100;
     const velocityX = flingExpired ? 0 : stateRef.current.velocityX;
     const isFling =
@@ -382,9 +525,12 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       }
     }
 
+    // P0-1: 用 settleTick 强制 settle 效应重估——即使 screenPosition/baseTranslate
+    // 没变（未过阈值弹回、或 settle 中被点按打断），也要把面板动画送回目标位。
     stateRef.current.isDragging = false;
     stateRef.current.axisLocked = null;
     setIsDragging(false);
+    setSettleTick((tick) => tick + 1);
   }, [sidebarWidth, sidebarOpen, threshold, onSidebarOpenChange, isThreeScreenMode, onScreenPositionChange, screenPosition, rightPanelEnabled]);
 
   const closeSidebarAfterAppNavigation = useCallback(() => {
@@ -440,7 +586,10 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
 
     // 触摸事件
     const onTouchStart = (e: TouchEvent) => {
-      if (isInteractiveTarget(e.target)) return;
+      // 新一轮指针交互开始：清掉可能残留的 click 抑制标记（如上一轮 touchcancel
+      // 收尾后没有 click 消费它），避免误吞本轮的正常点击
+      stateRef.current.suppressClick = false;
+      if (isGestureOptOutTarget(e.target)) return;
       const touch = e.touches[0];
       if (shouldYieldToContent(e.target, touch.clientX)) return;
       handleDragStart(touch.clientX, touch.clientY);
@@ -459,7 +608,8 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     const onMouseDown = (e: MouseEvent) => {
       // 只响应左键
       if (e.button !== 0) return;
-      if (isInteractiveTarget(e.target)) return;
+      stateRef.current.suppressClick = false;
+      if (isGestureOptOutTarget(e.target)) return;
       if (shouldYieldToContent(e.target, e.clientX)) return;
       handleDragStart(e.clientX, e.clientY);
     };
@@ -480,6 +630,15 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       }
     };
 
+    // P1-5: 水平拖拽发生后，吞掉松手时触发的 click（捕获阶段拦截一次），
+    // 保证"从按钮/列表行上起手横向拖拽"不会在松手时误触点击
+    const onClickCapture = (e: MouseEvent) => {
+      if (!stateRef.current.suppressClick) return;
+      stateRef.current.suppressClick = false;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
     // 绑定触摸事件
     container.addEventListener('touchstart', onTouchStart, { passive: true });
     container.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -496,6 +655,9 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     document.addEventListener('visibilitychange', onDragAbort);
     document.addEventListener('contextmenu', onDragAbort);
 
+    // 捕获阶段拦截拖拽后的 click
+    container.addEventListener('click', onClickCapture, true);
+
     return () => {
       container.removeEventListener('touchstart', onTouchStart);
       container.removeEventListener('touchmove', onTouchMove);
@@ -506,11 +668,12 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       document.removeEventListener('mouseup', onMouseUp);
       document.removeEventListener('visibilitychange', onDragAbort);
       document.removeEventListener('contextmenu', onDragAbort);
+      container.removeEventListener('click', onClickCapture, true);
     };
   }, [handleDragStart, handleDragMove, handleDragEnd, edgeWidth, gestureIgnoreSelector]);
 
-  // 计算最终的 transform 值
-  const translateX = isDragging ? currentTranslate : baseTranslate;
+  // 计算最终的 transform 值：拖拽 / settle 动画期间用插值，静止时用基准位
+  const translateX = isDragging || isSettling ? currentTranslate : baseTranslate;
   const sidebarRevealProgress = showContentOverlay && hasSidebar
     ? Math.max(0, Math.min(1, (translateX + sidebarWidth) / Math.max(sidebarWidth, 1)))
     : 0;
@@ -531,11 +694,13 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       }}
     >
       <div
-        className="flex h-full motion-reduce:transition-none"
+        className="flex h-full"
         style={{
           width: totalWidth || `calc(100% + ${sidebarWidth}px)`,
           transform: `translate3d(${translateX}px, 0, 0)`,
-          // WebView 下 transform 过渡会卡在起点，导致汉堡菜单点了抽屉不动；手势拖拽期间本就不过渡
+          // WebView 下 transform 的 CSS 过渡会卡在起点，导致汉堡菜单点了抽屉不动。
+          // 因此这里永远不做 CSS transition：拖拽期间完全跟手，松手/按钮开合的
+          // 滑入滑出由上方 settle 效应用 rAF 手动插值驱动（见 P0-1 注释）。
           transition: 'none',
         }}
       >
@@ -587,8 +752,15 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
               tabIndex={isSidebarOverlayInteractive ? 0 : -1}
               onClick={closeSidebarAfterAppNavigation}
               data-mobile-sidebar-mask
-              className="absolute inset-0 z-[60] appearance-none border-0 bg-[color:var(--overlay)] p-0 transition-opacity duration-300 ease-out motion-reduce:transition-none"
+              className={cn(
+                'absolute inset-0 appearance-none border-0 bg-[color:var(--overlay)] p-0',
+                // 拖拽/settle 期间 opacity 已按帧驱动，叠加 CSS 过渡会让遮罩滞后脱节
+                !isDragging && !isSettling &&
+                  'transition-opacity duration-300 ease-out motion-reduce:transition-none',
+              )}
               style={{
+                // P1-4: 层级消费统一 token（同一 stacking context 内盖过内容即可）
+                zIndex: Z_INDEX.overlay,
                 opacity: sidebarRevealProgress,
                 pointerEvents: isSidebarOverlayInteractive ? 'auto' : 'none',
               }}

@@ -19,6 +19,7 @@ import {
   vfsMultimodalStats,
   vfsMultimodalDelete,
   vfsMultimodalIndexResource,
+  parseRetrievalProvenance,
   type VfsMultimodalIndexInput,
   type VfsMultimodalIndexOutput,
   type VfsMultimodalSearchInput,
@@ -27,9 +28,12 @@ import {
   type VfsMultimodalQueryMode,
   type VfsMultimodalStats,
   type VfsCapabilityState,
-  type VfsMultimodalIndexResourceInput,
+  type VfsRetrievalHitProvenance,
   type VfsMultimodalIndexResourceOutput,
 } from '@/api/vfsRagApi';
+
+// 供调用方直接复用后端 DTO 类型，避免在服务层重复声明形状。
+export type { VfsMultimodalIndexResourceOutput, VfsCapabilityState } from '@/api/vfsRagApi';
 
 // ============================================================================
 // 类型定义
@@ -38,107 +42,76 @@ import {
 /** 来源类型 */
 export type SourceType = 'attachment' | 'exam' | 'textbook' | 'image' | 'file';
 
-/** 索引结果 */
-export interface IndexResult {
-  /** 索引的页面数 */
-  pages_indexed: number;
-  /** 跳过的页面数（已存在） */
-  pages_skipped: number;
-  /** 向量维度 */
-  embedding_dim: number;
-  /** 耗时（毫秒） */
-  duration_ms: number;
-}
-
-/** 批量索引结果 */
-export interface BatchIndexResult {
-  success_count: number;
-  failure_count: number;
-  errors: string[];
-}
-
 /** 检索结果来源 */
 export type RetrievalSource = 'multimodal_page' | 'text_chunk';
 
-/** 多模态检索结果 */
+/**
+ * 多模态检索结果
+ *
+ * 与后端 `VfsMultimodalSearchOutput`（扁平命中 DTO）一一对应的 snake_case 视图。
+ */
 export interface MultimodalRetrievalResult {
   /** 来源类型 */
   source_type: SourceType;
-  /** 来源资源 ID */
+  /**
+   * 来源资源 ID。
+   *
+   * 注意：后端扁平 DTO 只提供 resourceId（VFS 资源 ID），不携带业务 sourceId
+   * （如 textbook_xxx）；需要业务 ID 时请改用 vfsSearchDetailed。
+   */
   source_id: string;
-  /** 页码（页面级结果） */
+  /** Lance 嵌入记录 ID */
+  embedding_id: string;
+  /** 页码（0-indexed） */
   page_index?: number;
-  /** 块索引（段落级结果） */
-  chunk_index?: number;
   /** 文本内容 */
   text_content?: string;
-  /** 图片 Base64（可选，精排后加载） */
-  image_base64?: string;
-  /** Blob 哈希（用于加载原图） */
+  /** Blob 哈希（用于加载原图/缩略图） */
   blob_hash?: string;
-  /** 相关性分数 */
+  /** 所属文件夹 ID */
+  folder_id?: string;
+  /** 相关性分数（RRF 融合分） */
   score: number;
-  /** 结果来源 */
+  /** 结果来源（依据检索路由推导：全部为文本路由时为 text_chunk） */
   source: RetrievalSource;
+  /** 参与融合的检索路由及各自贡献（运行时守卫后的结果） */
+  retrieval_provenance: VfsRetrievalHitProvenance[];
 }
 
-/** 检索配置 */
+/**
+ * 检索配置
+ *
+ * 仅保留后端 `vfs_multimodal_search`（VfsMultimodalSearchInput）真实支持的字段。
+ * 旧的 mm_top_k/text_top_k/enable_reranking 后端从未消费，已删除。
+ */
 export interface RetrievalConfig {
-  /** 多模态召回数量 */
-  mm_top_k?: number;
-  /** 文本召回数量 */
-  text_top_k?: number;
-  /** 最终返回数量 */
-  final_top_k?: number;
-  /** 是否启用精排 */
-  enable_reranking?: boolean;
-  /** 知识库过滤 */
-  sub_library_ids?: string[];
+  /** 返回的最大结果数（映射到后端 topK） */
+  topK?: number;
+  /** 文件夹 ID 过滤（映射到后端 folderIds） */
+  folderIds?: string[];
+  /** 资源 ID 过滤 */
+  resourceIds?: string[];
+  /** 资源类型过滤 */
+  resourceTypes?: string[];
 }
 
-export type MultimodalCapabilityReason = 'ready' | 'not_configured' | 'unavailable';
+export type MultimodalCapabilityReason =
+  | 'ready'
+  | 'not_configured'
+  | 'unavailable'
+  /** 能力探测（IPC）本身失败，配置状态未知，不代表"已配置但不可用"。 */
+  | 'probe_failed';
 
 /** 一次性运行时能力快照；不缓存临时错误。 */
 export interface MultimodalCapabilityStatus {
+  /** 能力探测是否成功返回。false 时 configured/available 均为保守值，状态未知。 */
+  probed: boolean;
   configured: boolean;
   available: boolean;
   reason: MultimodalCapabilityReason;
-  dimension?: number;
-  modelConfigId?: string;
   error?: string;
-  /** 后端同一时刻冻结的 ME 路由状态。 */
+  /** 后端同一时刻冻结的 ME 路由状态（probe_failed 时缺省）。 */
   capability?: VfsCapabilityState;
-}
-
-/** 维度状态（与后端 DimensionStatus 枚举对应） */
-export type DimensionStatus = 'active' | 'empty' | 'model_missing' | 'unregistered';
-
-/** 维度摘要（与后端 DimensionSummary 结构对应） */
-export interface DimensionSummary {
-  /** 向量维度 */
-  dimension: number;
-  /** 关联的模型配置 ID */
-  model_config_id: string;
-  /** 模型名称 */
-  model_name: string;
-  /** 表前缀 */
-  table_prefix: string;
-  /** 是否为多模态模型 */
-  is_multimodal: boolean;
-  /** 记录数量 */
-  record_count: number;
-  /** 估算存储大小（字节） */
-  estimated_bytes: number;
-  /** 状态 */
-  status: DimensionStatus;
-}
-
-/** 索引任务 */
-export interface PageIndexTask {
-  source_type: SourceType;
-  source_id: string;
-  sub_library_id?: string;
-  force_rebuild?: boolean;
 }
 
 // ============================================================================
@@ -169,19 +142,38 @@ export async function retrieve(
     queryImageBase64,
     queryImageMediaType,
     queryMode,
-    topK: config?.final_top_k ?? config?.mm_top_k ?? config?.text_top_k,
-    folderIds: config?.sub_library_ids,
+    topK: config?.topK,
+    folderIds: config?.folderIds,
+    resourceIds: config?.resourceIds,
+    resourceTypes: config?.resourceTypes,
   });
 
-  return results.map((result) => ({
+  return results.map(toRetrievalResult);
+}
+
+function toRetrievalResult(result: VfsMultimodalSearchOutput): MultimodalRetrievalResult {
+  const provenance = parseRetrievalProvenance(result.retrievalProvenance);
+  return {
     source_type: normalizeSourceType(result.resourceType),
     source_id: result.resourceId,
+    embedding_id: result.embeddingId,
     page_index: result.pageIndex,
     text_content: result.textContent,
     blob_hash: result.blobHash,
+    folder_id: result.folderId,
     score: result.score,
-    source: 'multimodal_page',
-  }));
+    source: deriveRetrievalSource(provenance),
+    retrieval_provenance: provenance,
+  };
+}
+
+/** 命中全部来自文本路由时视为 text_chunk；含多模态路由或无来源信息时保守视为页面级命中。 */
+function deriveRetrievalSource(provenance: VfsRetrievalHitProvenance[]): RetrievalSource {
+  if (provenance.length === 0) return 'multimodal_page';
+  const textOnly = provenance.every(
+    (entry) => entry.routeKind === 'text_embedding' || entry.routeKind === 'full_text'
+  );
+  return textOnly ? 'text_chunk' : 'multimodal_page';
 }
 
 function normalizeSourceType(resourceType: string): SourceType {
@@ -203,7 +195,7 @@ export async function getCapabilityStatus(): Promise<MultimodalCapabilityStatus>
     const snapshot = await vfsInspectRetrievalCapabilities();
     const capability = snapshot.multimodalEmbedding;
     if (!capability.configured) {
-      return { configured: false, available: false, reason: 'not_configured' };
+      return { probed: true, configured: false, available: false, reason: 'not_configured', capability };
     }
 
     const available = capability.healthy
@@ -211,6 +203,7 @@ export async function getCapabilityStatus(): Promise<MultimodalCapabilityStatus>
       && capability.protocolCompatible
       && capability.indexCompatible;
     return {
+      probed: true,
       configured: true,
       available,
       reason: available ? 'ready' : 'unavailable',
@@ -218,10 +211,12 @@ export async function getCapabilityStatus(): Promise<MultimodalCapabilityStatus>
       ...(available || !capability.reason ? {} : { error: capability.reason }),
     };
   } catch (error: unknown) {
+    // IPC/探测失败 ≠ "已配置但不可用"：configured 状态未知，用 probe_failed 区分。
     return {
-      configured: true,
+      probed: false,
+      configured: false,
       available: false,
-      reason: 'unavailable',
+      reason: 'probe_failed',
       error: error instanceof Error ? error.message : String(error),
     };
   }
@@ -274,10 +269,10 @@ export async function searchByTextAndImage(
  */
 export async function indexExamSheet(
   examId: string,
-  subLibraryId?: string,
+  folderId?: string,
   forceRebuild?: boolean
-): Promise<IndexResult> {
-  return vfsIndexResourceBySource('exam', examId, subLibraryId, forceRebuild) as any;
+): Promise<VfsMultimodalIndexResourceOutput> {
+  return vfsIndexResourceBySource('exam', examId, folderId, forceRebuild);
 }
 
 /**
@@ -285,10 +280,10 @@ export async function indexExamSheet(
  */
 export async function indexTextbook(
   textbookId: string,
-  subLibraryId?: string,
+  folderId?: string,
   forceRebuild?: boolean
-): Promise<IndexResult> {
-  return vfsIndexResourceBySource('textbook', textbookId, subLibraryId, forceRebuild) as any;
+): Promise<VfsMultimodalIndexResourceOutput> {
+  return vfsIndexResourceBySource('textbook', textbookId, folderId, forceRebuild);
 }
 
 /**
@@ -296,10 +291,10 @@ export async function indexTextbook(
  */
 export async function indexAttachment(
   attachmentId: string,
-  subLibraryId?: string,
+  folderId?: string,
   forceRebuild?: boolean
-): Promise<IndexResult> {
-  return vfsIndexResourceBySource('attachment', attachmentId, subLibraryId, forceRebuild) as any;
+): Promise<VfsMultimodalIndexResourceOutput> {
+  return vfsIndexResourceBySource('attachment', attachmentId, folderId, forceRebuild);
 }
 
 // ============================================================================

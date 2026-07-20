@@ -1,5 +1,32 @@
 import { CustomAnkiTemplate, AnkiCard } from '../types';
-import { renderCardPreview } from '../components/SharedPreview';
+import {
+  renderAnkiTemplate,
+  type AnkiRenderOptions,
+  type AnkiSpecialFields,
+  type TemplateRenderResult,
+} from './ankiTemplateEngine';
+
+/** renderCard 可接受的宽松卡片形态（历史上大量调用方传入非标准卡片对象） */
+export type RenderableCard = (AnkiCard | Record<string, unknown>) & {
+  fields?: Record<string, unknown>;
+  extra_fields?: Record<string, unknown>;
+};
+
+/** 单卡渲染的可选项（新增 API，均为可选、不影响既有行为） */
+export interface RenderCardOptions {
+  /** cloze 多卡序号（c1/c2...）；缺省时正面隐藏全部 cloze */
+  clozeOrdinal?: number | null;
+  /** {{Deck}} / {{Subdeck}} / {{Card}} / {{Type}} 等特殊字段的来源 */
+  special?: Partial<AnkiSpecialFields>;
+  /** [sound:...] 处理策略，默认 badge */
+  soundStrategy?: AnkiRenderOptions['soundStrategy'];
+}
+
+/** 结构化的单卡渲染结果（供 UI 内联展示渲染错误） */
+export interface DetailedCardRenderResult {
+  front: TemplateRenderResult;
+  back: TemplateRenderResult;
+}
 
 /**
  * 统一的模板渲染服务
@@ -10,20 +37,68 @@ export class TemplateRenderService {
    * 渲染单张卡片
    */
   static renderCard(
-    card: AnkiCard | any,
+    card: RenderableCard,
     template: CustomAnkiTemplate
   ): { front: string; back: string } {
+    const detailed = this.renderCardDetailed(card, template);
+    return { front: detailed.front.html, back: detailed.back.html };
+  }
+
+  /**
+   * 渲染单张卡片并返回结构化结果（含渲染问题列表，永不抛出）。
+   * 新增 API：正面结果会自动注入到背面模板的 {{FrontSide}}。
+   */
+  static renderCardDetailed(
+    card: RenderableCard,
+    template: CustomAnkiTemplate,
+    options: RenderCardOptions = {}
+  ): DetailedCardRenderResult {
+    try {
+      return this.renderCardDetailedUnsafe(card, template, options);
+    } catch (error: unknown) {
+      // 兜底：数据准备阶段的异常也结构化返回，绝不让白屏异常穿透到 UI
+      const message = error instanceof Error ? error.message : String(error);
+      const failure: TemplateRenderResult = {
+        html: '',
+        issues: [{ code: 'render-exception', message: `卡片渲染失败：${message}` }],
+        ok: false,
+      };
+      return { front: failure, back: { ...failure, issues: [...failure.issues] } };
+    }
+  }
+
+  private static renderCardDetailedUnsafe(
+    card: RenderableCard,
+    template: CustomAnkiTemplate,
+    options: RenderCardOptions = {}
+  ): DetailedCardRenderResult {
     // 构建渲染数据
     const renderData = this.prepareRenderData(card);
     const normalizedData = this.applyTemplateFieldAliases(renderData, template);
     this.emitTemplateMismatchDebug(card, template, normalizedData);
-    
-    // P0修复：禁用高频调试日志
-    
-    // 使用 SharedPreview 的渲染逻辑
-    const front = renderCardPreview(template.front_template, template, normalizedData, false);
-    const back = renderCardPreview(template.back_template, template, normalizedData, true);
-    
+
+    const special: AnkiSpecialFields = {
+      tags: this.resolveTags(normalizedData),
+      noteTypeName: template.note_type,
+      cardName: template.name,
+      ...options.special,
+    };
+
+    const front = renderAnkiTemplate(template.front_template, normalizedData, {
+      side: 'front',
+      clozeOrdinal: options.clozeOrdinal ?? null,
+      special,
+      soundStrategy: options.soundStrategy,
+    });
+
+    const back = renderAnkiTemplate(template.back_template, normalizedData, {
+      side: 'back',
+      frontSide: front.html,
+      clozeOrdinal: options.clozeOrdinal ?? null,
+      special,
+      soundStrategy: options.soundStrategy,
+    });
+
     return { front, back };
   }
 
@@ -46,21 +121,29 @@ export class TemplateRenderService {
     });
   }
 
+  private static resolveTags(renderData: Record<string, unknown>): string[] | string | undefined {
+    const raw = renderData.Tags ?? renderData.tags;
+    if (raw === undefined || raw === null) return undefined;
+    if (Array.isArray(raw)) return raw.map(item => String(item));
+    return String(raw);
+  }
+
   /**
    * 准备渲染数据
    * 将 extra_fields 中的 JSON 字符串解析为对象
    */
-  private static prepareRenderData(card: AnkiCard | any): any {
-    const renderData: any = {
-      ...card,
+  private static prepareRenderData(card: RenderableCard): Record<string, any> {
+    const source = card as Record<string, any>;
+    const renderData: Record<string, any> = {
+      ...source,
       // 保留基础字段
-      Front: card.front || '',
-      Back: card.back || '',
-      Tags: card.tags || [],
-      Text: card.text || ''
+      Front: source.front || '',
+      Back: source.back || '',
+      Tags: source.tags || [],
+      Text: source.text || ''
     };
 
-    // SOTA：重构字段名转换逻辑，确保所有蛇形命名(snake_case)都能正确转换为大驼...
+    // 字段名转换逻辑：确保所有蛇形命名(snake_case)都能正确转换为大驼峰(PascalCase)
     const toPascalCase = (str: string) => {
         const normalized = str.trim();
         const optionMatch = normalized.match(/^option([a-z])$/i);
@@ -69,10 +152,10 @@ export class TemplateRenderService {
         }
         return normalized.replace(/(^|_|\s)([a-z])/g, (_match, _separator, char) => char.toUpperCase());
     };
-    
+
     // 处理 extra_fields（独立 Anki 模块使用）
-    if (card.extra_fields) {
-        Object.entries(card.extra_fields).forEach(([key, value]) => {
+    if (source.extra_fields) {
+        Object.entries(source.extra_fields).forEach(([key, value]) => {
             const pascalKey = toPascalCase(key);
             try {
                 // 尝试解析 JSON
@@ -86,7 +169,7 @@ export class TemplateRenderService {
                     renderData[key] = value;
                     renderData[pascalKey] = value;
                 }
-            } catch (e: unknown) {
+            } catch {
                 // 解析失败，保持原值
                 renderData[key] = value;
                 renderData[pascalKey] = value;
@@ -95,8 +178,8 @@ export class TemplateRenderService {
     }
 
     // 🔧 处理 fields（chat-anki 管线使用）
-    if (card.fields && typeof card.fields === 'object') {
-        Object.entries(card.fields).forEach(([key, value]) => {
+    if (source.fields && typeof source.fields === 'object') {
+        Object.entries(source.fields).forEach(([key, value]) => {
             const pascalKey = toPascalCase(key);
             // 先写入原始键名，保证模板 {{optiona}} / {{question}} 能命中
             if (!(key in renderData) || !renderData[key]) {
@@ -112,7 +195,7 @@ export class TemplateRenderService {
                     } else {
                         renderData[pascalKey] = value;
                     }
-                } catch (e: unknown) {
+                } catch {
                     // 解析失败，保持原值
                     renderData[pascalKey] = value;
                 }
@@ -121,16 +204,16 @@ export class TemplateRenderService {
     }
 
     // 处理其他可能的字段格式
-    Object.keys(card).forEach(key => {
+    Object.keys(source).forEach(key => {
         if (!['id', 'created_at', 'updated_at', 'extra_fields'].includes(key)) {
             const pascalKey = toPascalCase(key);
             // 如果字段还没有被处理，添加到渲染数据中
             if (!(pascalKey in renderData)) {
-                renderData[pascalKey] = card[key];
+                renderData[pascalKey] = source[key];
             }
         }
     });
-    
+
     // 确保大写字段名存在（模板中使用的是大写）
     if (!renderData.Tips && renderData.tips) {
       renderData.Tips = renderData.tips;
@@ -202,7 +285,7 @@ export class TemplateRenderService {
   }
 
   private static emitTemplateMismatchDebug(
-    card: AnkiCard | any,
+    card: RenderableCard,
     template: CustomAnkiTemplate,
     renderData: Record<string, any>,
   ): void {
@@ -224,13 +307,16 @@ export class TemplateRenderService {
     if (missing.length === 0) return;
 
     try {
+      const cardId = typeof (card as Record<string, unknown>).id === 'string'
+        ? (card as Record<string, string>).id
+        : '?';
       window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', {
         detail: {
           level: 'warn',
           phase: 'render:stack',
-          summary: `template data missing required=${missing.join(',')} card=${(card?.id ?? '?').slice(0, 8)} template=${template.id}`,
+          summary: `template data missing required=${missing.join(',')} card=${cardId.slice(0, 8)} template=${template.id}`,
           detail: {
-            cardId: card?.id ?? null,
+            cardId: cardId === '?' ? null : cardId,
             templateId: template.id,
             templateName: template.name,
             missingRequiredFields: missing,
@@ -249,7 +335,7 @@ export class TemplateRenderService {
    */
   static prerenderForExport(
     card: AnkiCard,
-    template: CustomAnkiTemplate
+    _template: CustomAnkiTemplate
   ): AnkiCard {
     // 统一策略：导出阶段不做整卡HTML预渲染，避免与后端模板二次套壳
     // 保持 card.fields / extra_fields 以供后端按模板字段渲染

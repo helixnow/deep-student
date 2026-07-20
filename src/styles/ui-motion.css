@@ -389,3 +389,56 @@
     transition: none;
   }
 }
+
+/* ============ Mobile primitives（2026-07 mobile 基建，追加区） ============ */
+
+/*
+ * - .ui-press
+ *   触控按压反馈：active 时整体缩至 --m-press-scale（默认 0.97）。
+ *   使用独立 `scale` 属性，不会覆盖 inline transform / translate 定位。
+ *   JS 侧对应 usePressable（src/hooks/mobile/usePressable.ts）。
+ * - .ui-slide-up-panel
+ *   底部内联面板（非全屏 sheet）挂载入场：fade + 自 --m-sheet-distance
+ *   （默认 16px）上滑。全屏 Sheet 请继续使用 .ui-slide-in-bottom。
+ * 两者的 reduced-motion 降级见文件末尾追加块（同特异性靠源顺序覆盖）。
+ */
+
+@keyframes ui-kf-slide-up-panel {
+  from {
+    opacity: 0;
+    translate: 0 var(--m-sheet-distance, 16px);
+  }
+
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+.ui-press {
+  transition: scale var(--m-press-dur, 120ms) var(--m-press-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.ui-press:active {
+  scale: var(--m-press-scale, 0.97);
+}
+
+.ui-slide-up-panel {
+  animation: ui-kf-slide-up-panel var(--m-sheet-dur, 260ms) var(--m-sheet-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+/* ============ Mobile primitives: reduced motion ============ */
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-press {
+    transition: none;
+  }
+
+  .ui-press:active {
+    scale: 1;
+  }
+
+  .ui-slide-up-panel {
+    animation: none;
+  }
+}

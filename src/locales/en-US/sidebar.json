@@ -61,11 +61,20 @@
     "create_conversation": "New conversation",
     "expand_group_sessions": "Show more",
     "collapse_group_sessions": "Show less",
-    "rename_session": "Rename session"
+    "rename_session": "Rename session",
+    "delete_session": "Delete session"
   },
   "rename": {
     "title": "Rename conversation",
     "label": "Conversation name"
+  },
+  "delete": {
+    "confirm_hint": "Delete permanently? This cannot be undone"
+  },
+  "search": {
+    "placeholder": "Search sessions...",
+    "clear": "Clear search",
+    "no_results": "No matching sessions"
   },
   "update": {
     "short": "Update",

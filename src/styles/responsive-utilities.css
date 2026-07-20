@@ -118,6 +118,27 @@
   }
 }
 
+/* =================== 触控列表行（2026-07 mobile 基建，追加区） =================== */
+
+/*
+ * .touch-row —— 列表行/菜单项/设置行的触控高度基线。
+ * 桌面精确指针保持 44px（与 --control-height-touch 一致的紧凑档），
+ * coarse pointer（触屏）下抬到 48px 并加大纵向内边距，保证拇指可点。
+ * 与 .touch-target（44×44 双向最小值）的区别：本类只约束高度，
+ * 适合占满整行宽度的行元素。
+ */
+.touch-row {
+  min-height: var(--control-height-touch, 44px);
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .touch-row {
+    min-height: 48px;
+    padding-top: var(--touch-row-pad-y, 0.5rem);
+    padding-bottom: var(--touch-row-pad-y, 0.5rem);
+  }
+}
+
 .safe-area-right {
   padding-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px));
 }

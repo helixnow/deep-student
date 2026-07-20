@@ -61,11 +61,20 @@
     "create_conversation": "新建对话",
     "expand_group_sessions": "展开显示",
     "collapse_group_sessions": "折叠显示",
-    "rename_session": "重命名会话"
+    "rename_session": "重命名会话",
+    "delete_session": "删除会话"
   },
   "rename": {
     "title": "重命名对话",
     "label": "对话名称"
+  },
+  "delete": {
+    "confirm_hint": "永久删除？不可恢复"
+  },
+  "search": {
+    "placeholder": "搜索会话...",
+    "clear": "清除搜索",
+    "no_results": "未找到匹配的会话"
   },
   "update": {
     "short": "更新",

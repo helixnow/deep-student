@@ -17,6 +17,7 @@
   "loading": "正在加载 PDF...",
   "loading_reading": "正在读取文件（{{mb}} MB）…",
   "loading_reading_simple": "正在读取文件…",
+  "loading_progress": "正在加载 PDF… {{percent}}%",
   "empty": {
     "title": "未选择文件",
     "description": "选择一个 PDF 文件开始阅读",
@@ -33,7 +34,15 @@
     "invalid_pdf": "PDF 文件无效或已损坏",
     "invalid_pdf_hint": "文件可能不是有效的 PDF，或传输/存储过程中已损坏。",
     "stream_failed": "PDF 流式加载失败",
-    "stream_failed_hint": "文件路径可能已失效或不在允许访问的目录内，可尝试重新关联文件。"
+    "stream_failed_hint": "文件路径可能已失效或不在允许访问的目录内，可尝试重新关联文件。",
+    "too_large": "PDF 文件过大（{{size}}），已停止预览",
+    "too_large_simple": "PDF 文件过大，暂不支持预览",
+    "too_large_hint": "超过 100MB 的文件建议在系统 PDF 阅读器中打开。",
+    "large_file_hint": "文件较大（{{size}}），首次加载可能较慢"
+  },
+  "load_source": {
+    "stream": "流式加载",
+    "memory": "内存加载"
   },
   "toolbar": {
     "select_this_page": "选择此页",
@@ -74,7 +83,14 @@
     "highlights": "批注列表",
     "page": "第 {{page}} 页",
     "delete_highlight": "删除批注",
-    "more": "更多"
+    "more": "更多",
+    "fit_width": "适应宽度",
+    "fit_page": "适应页面",
+    "actual_size": "实际大小",
+    "zoom_level": "缩放级别",
+    "rotate_ccw": "逆时针旋转 90°",
+    "outline_nav_failed": "无法跳转到该章节",
+    "highlight_rotation_disabled": "旋转视图下暂不支持划词高亮，请恢复原始方向后再试"
   },
   "bookmark": {
     "addBookmark": "添加书签",
@@ -161,5 +177,13 @@
     "edit": "编辑",
     "delete": "删除",
     "search": "搜索"
+  },
+  "password": {
+    "title": "此 PDF 受密码保护",
+    "description": "输入密码以打开文档",
+    "placeholder": "密码",
+    "submit": "打开",
+    "cancel": "取消",
+    "incorrect": "密码错误，请重试"
   }
 }

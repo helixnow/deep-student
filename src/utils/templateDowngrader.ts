@@ -1,9 +1,7 @@
 import { CustomAnkiTemplate } from '../types';
 import {
   EnhancedFieldType,
-  EnhancedFieldExtractionRule,
-  DowngradedResult,
-  isComplexFieldType
+  DowngradedResult
 } from '../types/enhanced-field-types';
 import { t } from './i18n';
 
@@ -42,7 +40,6 @@ export class TemplateDowngrader {
     aiOutput: any
   ): string[] {
     const features: string[] = [];
-    const rules = template.field_extraction_rules || {};
 
     // 1. 检查深度嵌套
     if (this.hasDeepNesting(aiOutput, 3)) {
@@ -52,14 +49,8 @@ export class TemplateDowngrader {
     // 2. 检查复杂数组 - Anki 不支持 ArrayObject 类型
     // 此部分已不再需要，因为我们不再支持 ArrayObject
 
-    // 3. 检查富文本
-    Object.entries(rules).forEach(([field, rule]) => {
-      if (rule.field_type === EnhancedFieldType.RichText && aiOutput[field]) {
-        if (this.containsRichTextElements(aiOutput[field])) {
-          features.push('rich_text');
-        }
-      }
-    });
+    // 3. 富文本检查已移除：渲染引擎（ankiTemplateEngine）原生支持
+    //    HTML/富文本字段（Anki 语义直出，下游 DOMPurify 清洗），不再降级简化。
 
     // 4. 检查过长内容
     if (this.hasOversizedContent(aiOutput)) {
@@ -100,12 +91,7 @@ export class TemplateDowngrader {
       transformations.push('convert_array_objects');
     }
 
-    // 策略3：简化富文本
-    if (unsupportedFeatures.includes('rich_text')) {
-      processedData = this.simplifyRichText(processedData, template);
-      warnings.push(t('utils.warnings.rich_text_simplified'));
-      transformations.push('simplify_rich_text');
-    }
+    // 策略3（已移除）：富文本不再简化，渲染引擎原生支持富文本字段
 
     // 策略4：截断过长内容
     if (unsupportedFeatures.includes('oversized_content')) {
@@ -155,24 +141,6 @@ export class TemplateDowngrader {
   }
 
   /**
-   * 检查是否包含富文本元素
-   */
-  private static containsRichTextElements(text: any): boolean {
-    if (typeof text !== 'string') return false;
-    
-    // 检查常见的富文本标记
-    const richTextPatterns = [
-      /<[^>]+>/,          // HTML标签
-      /\*\*[^*]+\*\*/,    // Markdown粗体
-      /_[^_]+_/,          // Markdown斜体
-      /\[[^\]]+\]\([^)]+\)/, // Markdown链接
-      /```[^`]+```/       // 代码块
-    ];
-
-    return richTextPatterns.some(pattern => pattern.test(text));
-  }
-
-  /**
    * 检查是否有过大的内容
    */
   private static hasOversizedContent(obj: any): boolean {
@@ -202,7 +170,8 @@ export class TemplateDowngrader {
     const problematicPatterns = [
       // eslint-disable-next-line no-control-regex
       /[\x00-\x08\x0B\x0C\x0E-\x1F]/, // 控制字符
-      /{{[^}]*}}/,                     // Mustache模板语法
+      // Mustache模板语法；{{cN::...}} 是合法的 cloze 标记，渲染引擎原生支持，不视为问题
+      /{{(?!\s*c\d+::)[^}]*}}/,
       // eslint-disable-next-line no-control-regex
       /\x1F/                           // Anki字段分隔符
     ];
@@ -289,34 +258,6 @@ export class TemplateDowngrader {
   }
 
   /**
-   * 简化富文本
-   */
-  private static simplifyRichText(data: any, template: CustomAnkiTemplate): any {
-    const processed = { ...data };
-    const rules = template.field_extraction_rules || {};
-
-    Object.entries(rules).forEach(([field, rule]) => {
-      if (rule.field_type === EnhancedFieldType.RichText && processed[field]) {
-        if (typeof processed[field] === 'string') {
-          // 移除HTML标签
-          processed[field] = processed[field].replace(/<[^>]+>/g, '');
-          
-          // 简化Markdown
-          processed[field] = processed[field]
-            .replace(/\*\*([^*]+)\*\*/g, '$1') // 移除粗体
-            .replace(/_([^_]+)_/g, '$1')        // 移除斜体
-            .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // 简化链接
-            .replace(/```[^`]*```/g, match => {  // 保留代码块内容
-              return match.replace(/```[^`]*\n?/g, '').replace(/\n?```/g, '');
-            });
-        }
-      }
-    });
-
-    return processed;
-  }
-
-  /**
    * 截断过长内容
    */
   private static truncateOversizedContent(data: any, template: CustomAnkiTemplate): any {
@@ -353,7 +294,8 @@ export class TemplateDowngrader {
         .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // 移除控制字符
         // eslint-disable-next-line no-control-regex
         .replace(/\x1F/g, ' ')                         // 替换Anki分隔符
-        .replace(/{{([^}]*)}}/g, '[$1]');             // 替换Mustache语法
+        // 替换Mustache语法；保留合法的 {{cN::...}} cloze 标记不被破坏
+        .replace(/{{(?!\s*c\d+::)([^}]*)}}/g, '[$1]');
     };
 
     const process = (obj: any): any => {

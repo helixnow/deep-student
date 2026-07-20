@@ -9,7 +9,7 @@
  * 设计文档: docs/multimodal-user-memory-design.md
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Database, CircleNotch, CheckCircle, WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -69,6 +69,19 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
   const [status, setStatus] = useState<IndexStatus>('idle');
   const [lastResult, setLastResult] = useState<VfsMultimodalIndexResourceOutput | null>(null);
 
+  // 状态回落定时器：卸载时清理，避免 unmount 后 setState
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleIdleReset = useCallback(() => {
+    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    resetTimerRef.current = setTimeout(() => {
+      resetTimerRef.current = null;
+      setStatus('idle');
+    }, 3000);
+  }, []);
+  useEffect(() => () => {
+    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+  }, []);
+
   // 执行索引
   const handleIndex = useCallback(async () => {
     if (status === 'indexing') return;
@@ -96,7 +109,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
       onIndexComplete?.(result);
 
       // 3秒后恢复 idle 状态
-      setTimeout(() => setStatus('idle'), 3000);
+      scheduleIdleReset();
     } catch (error: unknown) {
       console.error('多模态索引失败:', error);
       setStatus('error');
@@ -107,9 +120,9 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
       );
 
       // 3秒后恢复 idle 状态
-      setTimeout(() => setStatus('idle'), 3000);
+      scheduleIdleReset();
     }
-  }, [sourceType, sourceId, subLibraryId, status, onIndexComplete, t]);
+  }, [sourceType, sourceId, subLibraryId, status, onIndexComplete, scheduleIdleReset, t]);
 
   // 强制重建索引
   const handleRebuild = useCallback(async () => {
@@ -137,7 +150,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
 
       onIndexComplete?.(result);
 
-      setTimeout(() => setStatus('idle'), 3000);
+      scheduleIdleReset();
     } catch (error: unknown) {
       console.error('多模态索引重建失败:', error);
       setStatus('error');
@@ -147,9 +160,9 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
         t('common:chat.multimodal.rebuildError')
       );
 
-      setTimeout(() => setStatus('idle'), 3000);
+      scheduleIdleReset();
     }
-  }, [sourceType, sourceId, subLibraryId, status, onIndexComplete, t]);
+  }, [sourceType, sourceId, subLibraryId, status, onIndexComplete, scheduleIdleReset, t]);
 
   // 获取按钮图标
   const getIcon = () => {
@@ -185,6 +198,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
       return t('common:chat.multimodal.indexResultTooltip', {
         pages: lastResult.indexedPages,
         failed: lastResult.failedPages.length,
+        dimension: lastResult.dimension,
       });
     }
     return t('common:chat.multimodal.indexTooltip');
@@ -220,7 +234,9 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
             variant="ghost"
             size="icon"
             onClick={handleRebuild}
- className="w-8 h-8"           >
+            aria-label={t('common:chat.multimodal.rebuild')}
+            className="w-8 h-8"
+          >
             <ArrowClockwise size={14} />
           </NotionButton>
         </CommonTooltip>

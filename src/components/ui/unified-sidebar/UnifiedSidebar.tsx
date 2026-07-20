@@ -125,7 +125,7 @@ export const UnifiedSidebar: React.FC<UnifiedSidebarProps> = ({
   enableSwipeClose = true,
   sheetDefaultHeight = 0.6,
   drawerSide = 'left',
-  autoResponsive = true,
+  // autoResponsive 已废弃（小屏一律强制 panel 内联，见 effectiveMode），不再读取
   onClose,
 }) => {
   // 判断是否为全宽模式（移动端侧边栏填满容器）- 增加类型守卫和大小写处理
@@ -156,13 +156,17 @@ export const UnifiedSidebar: React.FC<UnifiedSidebarProps> = ({
     [onSearchQueryChange]
   );
 
-  // 计算有效的显示模式
+  // 计算有效的显示模式。
+  // 移动端 UI 规范（2026-07）：小屏禁止模态浮层（Sheet/Drawer 均为 Radix 模态），
+  // 一律走 panel 内联模式——移动端页面由 MobileSlidingLayout 统一抽屉承载侧栏，
+  // UnifiedSidebar 在其中以 width='full' + onClose 的移动滑动模式内联渲染。
+  // 旧的 autoResponsive「小屏自动降级 sheet」路径已废弃。
   const effectiveMode: SidebarDisplayMode = useMemo(() => {
-    if (autoResponsive && isSmallScreen && displayMode === 'panel') {
-      return 'sheet';
+    if (isSmallScreen) {
+      return 'panel';
     }
     return displayMode;
-  }, [autoResponsive, isSmallScreen, displayMode]);
+  }, [isSmallScreen, displayMode]);
 
   // 🔧 P1-007 性能优化：使用 ref 模式稳定 closeMobile 函数引用
   // 避免因依赖变化导致不必要的重渲染

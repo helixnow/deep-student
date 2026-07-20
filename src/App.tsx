@@ -31,14 +31,14 @@ import { ModernSidebar } from './components/ModernSidebar';
 import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
 import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
-import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MOBILE_APP_NAVIGATE_EVENT } from '@/components/layout';
+import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MobileAppNavigationProvider, MOBILE_APP_NAVIGATE_EVENT } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
 import { initReminderScheduler } from '@/features/todo/reminderScheduler';
 import { useAutomationRunNotifications } from '@/features/todo/hooks/useAutomationRunNotifications';
 // 🚀 性能优化：IrecServiceSwitcher, IrecGraphFlow, IrecGraphFlowDemo, CrepeDemoPage, ChatV2IntegrationTest, BridgeToIrec 改为懒加载
 import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
-import { isWindows, isMacOS } from './utils/platform';
+import { isWindows, isMacOS, isMobilePlatform } from './utils/platform';
 // 🚀 性能优化：ChatV2Page 改为懒加载，见 lazyComponents.tsx
 // NT-1: NoteEditorPortal（白板远程桌面模式遗留，恒 return null）已随死渲染路径移除
 // 🚀 性能优化：TreeDragTest, PdfReader, LearningHubPage 改为懒加载
@@ -138,7 +138,26 @@ import {
 import { installLegacyNavigationFallback } from '@/features/workbench/core/legacyNavigationMap';
 import { AgentBridge } from '@/features/workbench/agent/AgentBridge';
 import { useWindowStore } from '@/features/workbench/core/windowStore';
-const LazyWorkbenchDesktop = React.lazy(() => import('@/features/workbench/components/WorkbenchDesktop'));
+// 工厂提成共享常量：React.lazy 与下方预热 import() 指向同一模块说明符，命中同一 chunk
+const importWorkbenchDesktop = () => import('@/features/workbench/components/WorkbenchDesktop');
+const LazyWorkbenchDesktop = React.lazy(importWorkbenchDesktop);
+/** workbench 模式的 localStorage 同步预读键（组件内 workbenchMode 初始态同源） */
+const WORKBENCH_MODE_CACHE_KEY = 'desktop.workbenchMode';
+
+// ★ Workbench chunk 预热：OS 模式是产品默认（缺失键 → true），冷启动大概率要挂
+//   WorkbenchDesktop——在模块求值期用与 workbenchMode 初始态同源的 localStorage
+//   同步预读判定后立即发起 import()，与首屏渲染并行拉取 chunk，消除瀑布式加载。
+//   不 await、错误吞掉（真正挂载时 Suspense 会正常重试/报错）。
+//   注意与 workbenchActive 的平台护栏保持一致：移动端不预热。
+try {
+  if (
+    typeof localStorage !== 'undefined' &&
+    localStorage.getItem(WORKBENCH_MODE_CACHE_KEY) !== 'false' &&
+    !isMobilePlatform()
+  ) {
+    void importWorkbenchDesktop().catch(() => { /* 预热失败无所谓，挂载时再拉 */ });
+  }
+} catch { /* localStorage 不可用（隐私模式等）则跳过预热 */ }
 
 // ★ debugLog 别名：将本文件中的 console 调用路由到调试面板，受 debugMasterSwitch 控制
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -785,8 +804,7 @@ function App() {
 
   // ★ Workbench 产品默认身份：localStorage 同步预读避免冷启动闪回 legacy 壳，
   //   再以 resolveWorkbenchModeEnabled 为准（缺失键 → true + 迁移哨兵）；
-  //   监听设置页 workbench:mode-changed 即时切换
-  const WORKBENCH_MODE_CACHE_KEY = 'desktop.workbenchMode';
+  //   监听设置页 workbench:mode-changed 即时切换（缓存键提升至模块级供预热复用）
   const [workbenchMode, setWorkbenchMode] = useState(() => {
     try {
       if (typeof localStorage === 'undefined') return true;
@@ -831,8 +849,9 @@ function App() {
     };
   }, []);
 
-  // Workbench 仅桌面端生效（设计文档：移动端不适用，继续现有滑动布局）
-  const workbenchActive = workbenchMode && !isSmallScreen;
+  // Workbench 仅桌面端生效（设计文档：移动端不适用，继续现有滑动布局）；
+  // 屏宽之外再按平台护栏：宽屏 Android 平板 / iPad 也不进 OS 模式
+  const workbenchActive = workbenchMode && !isSmallScreen && !isMobilePlatform();
 
   const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');
   // ★ previousView 用于模板选择返回
@@ -1647,19 +1666,25 @@ function App() {
     setCurrentView(newView);
   }, [setCurrentView]);
 
+  // P1-7: 移动抽屉导航回调。Android 键盘弹出/输入框聚焦期间屏蔽导航，防止
+  // 键盘引发的 resize/blur 连锁误触发"输入中被跳转"（社区 issue 113 bug 1/3）。
+  // 经 MobileAppNavigationProvider 直连注入 MobileSidebarNavigation；下方的
+  // 全局事件监听仅作为无 Provider 场景的兼容回退，两条路径共用同一守卫。
+  const handleMobileAppNavigate = useCallback((view: CurrentView) => {
+    if (shouldBlockMobileNavigation()) return;
+    handleViewChange(view);
+  }, [handleViewChange]);
+
   useEffect(() => {
     const handleMobileSidebarNavigate = (event: Event) => {
       const view = (event as CustomEvent<{ view?: CurrentView }>).detail?.view;
       if (!view) return;
-      // Android 键盘弹出/输入框聚焦期间屏蔽侧边栏导航事件，防止键盘引发的
-      // resize/blur 连锁误触发"输入中被跳转"（社区 issue 113 bug 1/3）。
-      if (shouldBlockMobileNavigation()) return;
-      handleViewChange(view);
+      handleMobileAppNavigate(view);
     };
 
     window.addEventListener(MOBILE_APP_NAVIGATE_EVENT, handleMobileSidebarNavigate);
     return () => window.removeEventListener(MOBILE_APP_NAVIGATE_EVENT, handleMobileSidebarNavigate);
-  }, [handleViewChange]);
+  }, [handleMobileAppNavigate]);
 
   // 历史管理已迁移到 useNavigationHistory Hook
 
@@ -2372,6 +2397,7 @@ function App() {
       <AgentBridge workbenchActive={workbenchActive} />
       <TextContextMenuProvider>
       <MobileLayoutProvider>
+      <MobileAppNavigationProvider navigate={handleMobileAppNavigate}>
       <MobileHeaderProvider>
       {/* ★ 移动端顶栏活跃视图同步 - 必须在 MobileHeaderProvider 内部 */}
       <MobileHeaderActiveViewSync activeView={currentView} />
@@ -2741,6 +2767,7 @@ function App() {
       </DesktopShellSidebarPortalProvider>
       </LearningHubNavigationProvider>
       </MobileHeaderProvider>
+      </MobileAppNavigationProvider>
       </MobileLayoutProvider>
       </TextContextMenuProvider>
       </CommandPaletteProvider>

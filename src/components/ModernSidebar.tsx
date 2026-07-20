@@ -26,6 +26,7 @@ import {
   Lightbulb,
   CircleNotch,
   Chat,
+  MagnifyingGlass,
   MusicNote,
   Palette,
   PencilSimple,
@@ -34,7 +35,9 @@ import {
   Sparkle,
   Star,
   Target,
+  Trash,
   Trophy,
+  X,
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { createNavItems } from '../config/navigation';
@@ -42,13 +45,6 @@ import { useIsUILabEnabled } from '../utils/uiLabToggle';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
-import {
-  NotionDialog,
-  NotionDialogBody,
-  NotionDialogFooter,
-  NotionDialogHeader,
-  NotionDialogTitle,
-} from '@/components/ui/NotionDialog';
 import { Input } from '@/components/ui/shad/Input';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { beginSessionHoverPrefetch, cancelSessionHoverPrefetch } from '@/features/chat/core/session/sessionPrefetch';
@@ -56,6 +52,7 @@ import type { ChatSession } from '@/features/chat/types/session';
 import type { SessionGroup } from '@/features/chat/types/group';
 import { buildPinnedSessionMetadata, isSessionPinned } from '@/features/chat/utils/sessionPin';
 import { getSessionTitleText } from '@/features/chat/utils/sessionTitle';
+import { useSidebarSessionData } from '@/features/chat/hooks/useSessionManagement';
 import { SessionGroupActions } from '@/features/chat/pages/SessionGroupActions';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { AppUpdaterController } from '@/hooks/useAppUpdater';
@@ -70,6 +67,7 @@ import {
   AppMenuContent,
   AppMenuGroup,
   AppMenuItem,
+  AppMenuSeparator,
   AppMenuTrigger,
 } from '@/components/ui/app-menu/AppMenu';
 import { showArchiveSessionToast } from '@/features/chat/utils/archiveSessionToast';
@@ -333,21 +331,45 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   updater,
 }) => {
   const { t } = useTranslation(['sidebar', 'common', 'chatV2']);
-  const [recentSessions, setRecentSessions] = useState<ChatSession[]>([]);
-  const [recentGroups, setRecentGroups] = useState<SessionGroup[]>([]);
+  // 统一数据源：与 ChatV2 移动侧栏相同的「分组全量 + 未分组分页」策略（替代旧 limit:8 孤立拉取）
+  const {
+    sessions: rawRecentSessions,
+    groups: rawRecentGroups,
+    hasMoreUngrouped: hasMoreUngroupedSessions,
+    isLoadingMore: isLoadingMoreSessions,
+    loadMoreUngrouped: loadMoreUngroupedSessions,
+    refresh: refreshSidebarData,
+    setSessions: setRecentSessions,
+    setGroups: setRecentGroups,
+  } = useSidebarSessionData();
+  const recentSessions = useMemo(
+    () => sortSessionsByUpdatedAt(rawRecentSessions),
+    [rawRecentSessions]
+  );
+  const recentGroups = useMemo(
+    () => sortGroups(rawRecentGroups.filter(isSessionGroup)),
+    [rawRecentGroups]
+  );
   const [collapsedRecentGroupIds, setCollapsedRecentGroupIds] = useState<Set<string>>(() => new Set());
   const [expandedRecentGroupSessionIds, setExpandedRecentGroupSessionIds] = useState<Set<string>>(() => new Set());
   const [conversationSessionsExpanded, setConversationSessionsExpanded] = useState(false);
   const [collapsedSidebarSectionIds, setCollapsedSidebarSectionIds] = useState<Set<SidebarSectionId>>(() => new Set());
   const [draggedRecentGroupId, setDraggedRecentGroupId] = useState<string | null>(null);
   const [dragOverRecentGroupId, setDragOverRecentGroupId] = useState<string | null>(null);
+  const [draggedSessionId, setDraggedSessionId] = useState<string | null>(null);
+  const [dragOverUngroupedZone, setDragOverUngroupedZone] = useState(false);
   const [openRecentSessionMenuId, setOpenRecentSessionMenuId] = useState<string | null>(null);
   const [confirmingArchiveSessionId, setConfirmingArchiveSessionId] = useState<string | null>(null);
+  const [confirmingDeleteSessionId, setConfirmingDeleteSessionId] = useState<string | null>(null);
   const [editingRecentSessionId, setEditingRecentSessionId] = useState<string | null>(null);
   const [editingRecentSessionTitle, setEditingRecentSessionTitle] = useState('');
   const [renamingRecentSessionId, setRenamingRecentSessionId] = useState<string | null>(null);
   const [recentRenameError, setRecentRenameError] = useState<string | null>(null);
+  // 侧栏内联搜索（标题即时过滤；全文搜索走会话浏览页）
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
   const draggedRecentGroupIdRef = useRef<string | null>(null);
+  const draggedSessionIdRef = useRef<string | null>(null);
+  const deleteConfirmResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
     try {
       return sessionManager.getCurrentSessionId() || localStorage.getItem('chat-v2-last-session-id');
@@ -396,37 +418,6 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     onViewChange(view);
   }, [currentView, onViewChange]);
 
-  const loadSidebarData = useCallback(async () => {
-    const [sessionsResult, groupsResult] = await Promise.allSettled([
-      invoke<ChatSession[]>('chat_v2_list_sessions', {
-        status: 'active',
-        limit: 8,
-        offset: 0,
-      }),
-      invoke<SessionGroup[]>('chat_v2_list_groups', {
-        status: 'active',
-      }),
-    ]);
-
-    if (sessionsResult.status === 'fulfilled' && Array.isArray(sessionsResult.value)) {
-      setRecentSessions(sortSessionsByUpdatedAt(sessionsResult.value));
-    } else {
-      console.warn('[ModernSidebar] Failed to load recent sessions:', sessionsResult.status === 'rejected' ? sessionsResult.reason : 'Invalid session payload');
-      setRecentSessions([]);
-    }
-
-    if (groupsResult.status === 'fulfilled' && Array.isArray(groupsResult.value)) {
-      setRecentGroups(sortGroups(groupsResult.value.filter(isSessionGroup)));
-    } else {
-      console.warn('[ModernSidebar] Failed to load recent groups:', groupsResult.status === 'rejected' ? groupsResult.reason : 'Invalid group payload');
-      setRecentGroups([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadSidebarData();
-  }, [loadSidebarData]);
-
   useEffect(() => {
     if (currentView === 'chat-v2') {
       setActiveSessionId(sessionManager.getCurrentSessionId());
@@ -438,11 +429,8 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     setActiveSessionId(detail?.sessionId ?? sessionManager.getCurrentSessionId());
   }, []);
 
-  const refreshSessions = useCallback(() => {
-    void loadSidebarData();
-    syncActiveSession();
-  }, [loadSidebarData, syncActiveSession]);
-
+  // 数据刷新由 useSidebarSessionData 内部订阅 sessions/groups 更新事件完成，
+  // 这里只需要同步高亮的当前会话。
   useEventRegistry([
     {
       target: 'window',
@@ -452,19 +440,9 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     {
       target: 'window',
       type: 'chat-v2:sessions-updated',
-      listener: refreshSessions,
+      listener: syncActiveSession as EventListener,
     },
-    {
-      target: 'window',
-      type: 'chat-v2:groups-updated',
-      listener: refreshSessions,
-    },
-    {
-      target: 'window',
-      type: 'focus',
-      listener: refreshSessions,
-    },
-  ], [refreshSessions, syncActiveSession]);
+  ], [syncActiveSession]);
 
   useEffect(() => {
     if (draggedRecentGroupId === null) {
@@ -513,13 +491,40 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     }
   }, []);
 
+  const clearDeleteConfirmResetTimer = useCallback(() => {
+    if (deleteConfirmResetTimerRef.current) {
+      clearTimeout(deleteConfirmResetTimerRef.current);
+      deleteConfirmResetTimerRef.current = null;
+    }
+  }, []);
+
+  const resetDeleteConfirmation = useCallback(() => {
+    clearDeleteConfirmResetTimer();
+    setConfirmingDeleteSessionId(null);
+  }, [clearDeleteConfirmResetTimer]);
+
+  // 删除是危险操作：菜单点击后进入行内二次确认，5s 无操作自动收回
+  const beginDeleteConfirmation = useCallback((sessionId: string) => {
+    setOpenRecentSessionMenuId(null);
+    setConfirmingArchiveSessionId(null);
+    clearDeleteConfirmResetTimer();
+    setConfirmingDeleteSessionId(sessionId);
+    deleteConfirmResetTimerRef.current = setTimeout(() => {
+      deleteConfirmResetTimerRef.current = null;
+      setConfirmingDeleteSessionId(null);
+    }, 5000);
+  }, [clearDeleteConfirmResetTimer]);
+
+  useEffect(() => clearDeleteConfirmResetTimer, [clearDeleteConfirmResetTimer]);
+
   const startRecentSessionRename = useCallback((session: ChatSession) => {
     setOpenRecentSessionMenuId(null);
     setConfirmingArchiveSessionId(null);
+    resetDeleteConfirmation();
     setRecentRenameError(null);
     setEditingRecentSessionId(session.id);
     setEditingRecentSessionTitle(getSessionTitleText(session.title, ''));
-  }, []);
+  }, [resetDeleteConfirmation]);
 
   const cancelRecentSessionRename = useCallback(() => {
     setRenamingRecentSessionId(null);
@@ -527,12 +532,6 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     setEditingRecentSessionId(null);
     setEditingRecentSessionTitle('');
   }, []);
-
-  const handleRecentRenameDialogOpenChange = useCallback((open: boolean) => {
-    if (!open && !renamingRecentSessionId) {
-      cancelRecentSessionRename();
-    }
-  }, [cancelRecentSessionRename, renamingRecentSessionId]);
 
   const saveRecentSessionRename = useCallback(async (sessionId: string) => {
     const trimmedTitle = editingRecentSessionTitle.trim();
@@ -601,9 +600,65 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       showArchiveSessionToast(t, 'chatV2');
     } catch (error) {
       console.warn('[ModernSidebar] Failed to archive recent session:', error);
-      void loadSidebarData();
+      void refreshSidebarData();
     }
-  }, [activeSessionId, handleRecentSessionOpen, loadSidebarData, recentSessions, t]);
+  }, [activeSessionId, handleRecentSessionOpen, refreshSidebarData, recentSessions, t]);
+
+  // 永久删除（区别于归档；行内二次确认后才会走到这里）
+  const handleRecentSessionDelete = useCallback(async (sessionId: string) => {
+    resetDeleteConfirmation();
+    try {
+      await invoke('chat_v2_delete_session', { sessionId });
+      const remainingSessions = recentSessions.filter((item) => item.id !== sessionId);
+      setRecentSessions((previous) => previous.filter((item) => item.id !== sessionId));
+
+      if (activeSessionId === sessionId) {
+        const nextSession = remainingSessions[0] ?? null;
+        if (nextSession) {
+          handleRecentSessionOpen(nextSession.id);
+        } else {
+          setActiveSessionId(null);
+          window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
+            detail: { action: 'create-session', groupId: null },
+          }));
+        }
+      }
+
+      // 通知 ChatV2Page 同步其本地 sessions 状态（Browser/移动列表即时移除）
+      window.dispatchEvent(new CustomEvent('modern-sidebar:session-action', {
+        detail: { action: 'session-deleted', sessionId },
+      }));
+      window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+    } catch (error) {
+      console.warn('[ModernSidebar] Failed to delete recent session:', error);
+      void refreshSidebarData();
+    }
+  }, [activeSessionId, handleRecentSessionOpen, recentSessions, refreshSidebarData, resetDeleteConfirmation, setRecentSessions]);
+
+  // 拖拽会话到分组行 / 「对话」区（未分组）
+  const moveRecentSessionToGroup = useCallback(async (sessionId: string, groupId: string | null) => {
+    const session = recentSessions.find((item) => item.id === sessionId);
+    if (!session || (session.groupId ?? null) === groupId) return;
+
+    setRecentSessions((previous) =>
+      previous.map((item) =>
+        item.id === sessionId ? { ...item, groupId: groupId ?? undefined } : item
+      )
+    );
+
+    try {
+      await invoke('chat_v2_move_session_to_group', { sessionId, groupId });
+      sessionManager.get(sessionId)?.setState({ groupId });
+      // 通知 ChatV2Page 走 applySessionGroupUpdate（含分组 snapshot 元数据同步）
+      window.dispatchEvent(new CustomEvent('modern-sidebar:session-action', {
+        detail: { action: 'session-moved', sessionId, groupId },
+      }));
+      window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+    } catch (error) {
+      console.warn('[ModernSidebar] Failed to move session to group:', error);
+      void refreshSidebarData();
+    }
+  }, [recentSessions, refreshSidebarData, setRecentSessions]);
 
   const toggleRecentGroup = useCallback((groupId: string) => {
     setCollapsedRecentGroupIds((previous) => {
@@ -671,14 +726,17 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       window.dispatchEvent(new CustomEvent('chat-v2:groups-updated'));
     } catch (error) {
       console.warn('[ModernSidebar] Failed to toggle recent group pin:', error);
-      void loadSidebarData();
+      void refreshSidebarData();
     }
-  }, [loadSidebarData, recentGroups]);
+  }, [refreshSidebarData, recentGroups]);
 
   const clearRecentGroupDragState = useCallback(() => {
     draggedRecentGroupIdRef.current = null;
+    draggedSessionIdRef.current = null;
     setDraggedRecentGroupId(null);
+    setDraggedSessionId(null);
     setDragOverRecentGroupId(null);
+    setDragOverUngroupedZone(false);
   }, []);
 
   const handleRecentGroupDragStart = useCallback((event: React.DragEvent<HTMLButtonElement>, groupId: string) => {
@@ -692,8 +750,30 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     setDragOverRecentGroupId(groupId);
   }, []);
 
+  const handleRecentSessionDragStart = useCallback((event: React.DragEvent<HTMLButtonElement>, sessionId: string) => {
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('application/x-modern-sidebar-session-id', sessionId);
+      event.dataTransfer.setData('text/plain', sessionId);
+    }
+    draggedSessionIdRef.current = sessionId;
+    setDraggedSessionId(sessionId);
+  }, []);
+
+  // 分组行同时承接两种拖拽：分组重排 + 会话移入分组
   const handleRecentGroupDragOver = useCallback((event: React.DragEvent<HTMLButtonElement>, groupId: string) => {
     const draggingGroupId = draggedRecentGroupIdRef.current;
+    const draggingSessionId = draggedSessionIdRef.current;
+    if (draggingSessionId !== null) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move';
+      }
+      setDragOverRecentGroupId((current) => (current === groupId ? current : groupId));
+      return;
+    }
+
     if (draggingGroupId === null || draggingGroupId === groupId) {
       return;
     }
@@ -709,6 +789,16 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const handleRecentGroupDrop = useCallback(async (event: React.DragEvent<HTMLButtonElement>, targetGroupId: string) => {
     event.preventDefault();
     event.stopPropagation();
+
+    const draggingSessionId =
+      draggedSessionIdRef.current
+      ?? event.dataTransfer?.getData('application/x-modern-sidebar-session-id')
+      ?? null;
+    if (draggingSessionId) {
+      clearRecentGroupDragState();
+      await moveRecentSessionToGroup(draggingSessionId, targetGroupId);
+      return;
+    }
 
     const draggingGroupId =
       draggedRecentGroupIdRef.current
@@ -739,9 +829,35 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       window.dispatchEvent(new CustomEvent('chat-v2:groups-updated'));
     } catch (error) {
       console.warn('[ModernSidebar] Failed to reorder recent groups:', error);
-      void loadSidebarData();
+      void refreshSidebarData();
     }
-  }, [clearRecentGroupDragState, loadSidebarData]);
+  }, [clearRecentGroupDragState, moveRecentSessionToGroup, refreshSidebarData, setRecentGroups]);
+
+  // 「对话」区作为未分组落点：把分组内会话拖回未分组
+  const handleUngroupedZoneDragOver = useCallback((event: React.DragEvent<HTMLElement>) => {
+    if (draggedSessionIdRef.current === null) return;
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+    setDragOverUngroupedZone(true);
+  }, []);
+
+  const handleUngroupedZoneDragLeave = useCallback((event: React.DragEvent<HTMLElement>) => {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    setDragOverUngroupedZone(false);
+  }, []);
+
+  const handleUngroupedZoneDrop = useCallback(async (event: React.DragEvent<HTMLElement>) => {
+    const draggingSessionId =
+      draggedSessionIdRef.current
+      ?? event.dataTransfer?.getData('application/x-modern-sidebar-session-id')
+      ?? null;
+    if (!draggingSessionId) return;
+    event.preventDefault();
+    clearRecentGroupDragState();
+    await moveRecentSessionToGroup(draggingSessionId, null);
+  }, [clearRecentGroupDragState, moveRecentSessionToGroup]);
 
   const renderNavRow = useCallback((view: CurrentView, label: string, Icon: React.ComponentType<any>) => {
     const isNewSessionAction = view === 'chat-v2';
@@ -789,10 +905,11 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     const isActive = currentView === 'chat-v2' && activeSessionId === session.id;
     const sessionTitle = getSessionTitleText(session.title, t('chatV2:page.untitled'));
     const pinned = isSessionPinned(session);
-            const isSessionStreaming = streamingSessionIdSet.has(session.id);
-            const hasBlockingInteraction = blockingSessionIdSet.has(session.id);
-            const hasUnreadAssistantReply = unreadSessionIdSet.has(session.id);
+    const isSessionStreaming = streamingSessionIdSet.has(session.id);
+    const hasBlockingInteraction = blockingSessionIdSet.has(session.id);
+    const hasUnreadAssistantReply = unreadSessionIdSet.has(session.id);
     const isConfirmingArchive = confirmingArchiveSessionId === session.id;
+    const isConfirmingDelete = confirmingDeleteSessionId === session.id;
 
     const relativeTime = (() => {
       const ts = new Date(session.updatedAt ?? session.createdAt).getTime();
@@ -809,6 +926,54 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       return new Date(ts).toLocaleDateString();
     })();
 
+    // 行内重命名（替代原 NotionDialog 模态）：Enter 保存 / Esc 取消 / 失焦保存
+    if (!collapsed && editingRecentSessionId === session.id) {
+      const isRenaming = renamingRecentSessionId === session.id;
+      return (
+        <motion.div
+          key={session.id}
+          layout={prefersReducedMotion ? false : 'position'}
+          initial={false}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative px-0.5 py-0.5"
+        >
+          <Input
+            type="text"
+            value={editingRecentSessionTitle}
+            placeholder={t('chatV2:page.untitled')}
+            aria-label={t('sidebar:rename.label')}
+            autoFocus
+            disabled={isRenaming}
+            onFocus={(event) => event.currentTarget.select()}
+            onChange={(event) => {
+              setEditingRecentSessionTitle(event.target.value);
+              if (recentRenameError) setRecentRenameError(null);
+            }}
+            onKeyDown={(event) => {
+              // IME 安全：中文输入法组合期间的 Enter/Escape 只作用于候选词
+              if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                if (!isRenaming) void saveRecentSessionRename(session.id);
+              } else if (event.key === 'Escape') {
+                event.preventDefault();
+                cancelRecentSessionRename();
+              }
+            }}
+            onBlur={() => {
+              if (!isRenaming) void saveRecentSessionRename(session.id);
+            }}
+            className="h-7 w-full rounded-[10px] border-[color:var(--ring)]/45 bg-[color:var(--surface-elevated)] px-2 text-[13px] leading-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+          {recentRenameError ? (
+            <p className="mt-1 px-1 text-[11px] leading-tight text-destructive" role="alert">
+              {recentRenameError}
+            </p>
+          ) : null}
+        </motion.div>
+      );
+    }
+
     return (
       // 进出场（transitions-dev 观感）：新建 fade+4px 上升，归档/删除 fade+轻缩放；
       // 兄弟行经 layout 平滑补位；hover 后 20ms 触发会话预取（见 sessionPrefetch.ts）
@@ -819,7 +984,10 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         animate={{ opacity: 1, y: 0 }}
         exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.98 }}
         transition={{ duration: prefersReducedMotion ? 0 : 0.15, ease: [0.22, 1, 0.36, 1] }}
-        className="group/thread-row relative"
+        className={cn(
+          'group/thread-row relative',
+          draggedSessionId === session.id && 'opacity-55'
+        )}
         onMouseEnter={() => {
           beginSessionHoverPrefetch(session.id);
         }}
@@ -847,6 +1015,9 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 event.preventDefault();
                 event.stopPropagation();
               }}
+              draggable={!collapsed}
+              onDragStart={(event) => handleRecentSessionDragStart(event, session.id)}
+              onDragEnd={clearRecentGroupDragState}
               aria-label={sessionTitle}
               aria-current={isActive ? 'page' : undefined}
               tabIndex={collapsed ? -1 : undefined}
@@ -901,9 +1072,44 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               >
                 {t('chatV2:page.archiveSession')}
               </AppMenuItem>
+              <AppMenuSeparator />
+              <AppMenuItem
+                icon={<Trash size={16} />}
+                destructive
+                onClick={() => beginDeleteConfirmation(session.id)}
+              >
+                {t('sidebar:actions.delete_session')}
+              </AppMenuItem>
             </AppMenuGroup>
           </AppMenuContent>
         </AppMenu>
+
+        {/* 永久删除的行内二次确认（无模态；5s 未操作自动收回） */}
+        {!collapsed && isConfirmingDelete && (
+          <div className="mt-0.5 flex items-center justify-between gap-2 rounded-[10px] border border-destructive/25 bg-destructive/10 py-1.5 pl-2 pr-1">
+            <span className="min-w-0 truncate text-[11px] leading-none text-destructive">
+              {t('sidebar:delete.confirm_hint')}
+            </span>
+            <span className="flex shrink-0 items-center gap-0.5">
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                className="!h-6 !px-2 text-[11px]"
+                onClick={resetDeleteConfirmation}
+              >
+                {t('common:cancel')}
+              </NotionButton>
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                className="!h-6 !px-2 text-[11px] text-destructive hover:bg-destructive/15 hover:text-destructive"
+                onClick={() => void handleRecentSessionDelete(session.id)}
+              >
+                {t('common:delete')}
+              </NotionButton>
+            </span>
+          </div>
+        )}
 
         {/* 行内快捷操作：真实 button、键盘可聚焦（hover 或 focus 时可见）；以兄弟节点绝对定位渲染，避免 button 内嵌套交互控件的非法结构 */}
         {!collapsed && (
@@ -936,8 +1142,8 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 'absolute right-2.5 top-1/2 flex h-5 min-w-[20px] -translate-y-1/2 appearance-none items-center justify-center rounded-md border-0 px-1 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 'opacity-0 group-hover/thread-row:opacity-100 group-focus-within/thread-row:opacity-100',
                 isConfirmingArchive
-                  ? 'bg-red-500/14 text-red-600 hover:bg-red-500/20'
-                  : 'bg-transparent text-[color:var(--shell-navigation-muted)] hover:text-red-600'
+                  ? 'bg-destructive/15 text-destructive hover:bg-destructive/20'
+                  : 'bg-transparent text-[color:var(--shell-navigation-muted)] hover:text-destructive'
               )}
               onClick={(event) => {
                 event.preventDefault();
@@ -967,11 +1173,21 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         )}
       </motion.div>
     );
-  }, [activeSessionId, blockingContinueLabel, blockingSessionIdSet, confirmingArchiveSessionId, currentView, handleRecentSessionArchive, handleRecentSessionOpen, handleRecentSessionPinToggle, openRecentSessionMenuId, prefersReducedMotion, startRecentSessionRename, streamingSessionIdSet, t, unreadSessionIdSet]);
+  }, [activeSessionId, beginDeleteConfirmation, blockingContinueLabel, blockingSessionIdSet, cancelRecentSessionRename, clearRecentGroupDragState, confirmingArchiveSessionId, confirmingDeleteSessionId, currentView, draggedSessionId, editingRecentSessionId, editingRecentSessionTitle, handleRecentSessionArchive, handleRecentSessionDelete, handleRecentSessionDragStart, handleRecentSessionOpen, handleRecentSessionPinToggle, openRecentSessionMenuId, prefersReducedMotion, recentRenameError, renamingRecentSessionId, resetDeleteConfirmation, saveRecentSessionRename, startRecentSessionRename, streamingSessionIdSet, t, unreadSessionIdSet]);
+
+  // 侧栏内联搜索：标题即时过滤；分组按「名称命中或含命中会话」保留
+  const normalizedSidebarSearch = sidebarSearchQuery.trim().toLowerCase();
+  const isSidebarSearchActive = normalizedSidebarSearch.length > 0;
+  const searchedSessions = useMemo(() => {
+    if (!normalizedSidebarSearch) return recentSessions;
+    return recentSessions.filter((session) =>
+      getSessionTitleText(session.title, '').toLowerCase().includes(normalizedSidebarSearch)
+    );
+  }, [normalizedSidebarSearch, recentSessions]);
 
   const pinnedRecentSessions = useMemo(
-    () => sortSessionsByUpdatedAt(recentSessions.filter((session) => isSessionPinned(session))),
-    [recentSessions]
+    () => sortSessionsByUpdatedAt(searchedSessions.filter((session) => isSessionPinned(session))),
+    [searchedSessions]
   );
 
   const {
@@ -983,7 +1199,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     const groupLookup = new Map(recentGroups.map((group) => [group.id, group]));
     const looseSessions: ChatSession[] = [];
 
-    recentSessions.forEach((session) => {
+    searchedSessions.forEach((session) => {
       if (isSessionPinned(session)) {
         return;
       }
@@ -1004,20 +1220,33 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       sessions: sortSessionsByUpdatedAt(sessionsByGroup.get(group.id) ?? []),
     });
 
+    const matchesSearch = (section: RecentSessionGroup) =>
+      !normalizedSidebarSearch
+      || section.label.toLowerCase().includes(normalizedSidebarSearch)
+      || section.sessions.length > 0;
+
     const pinnedGroups = recentGroups
       .filter(isSessionGroupPinned)
-      .map(toRecentGroupSection);
+      .map(toRecentGroupSection)
+      .filter(matchesSearch);
 
     const topicGroups: RecentSessionGroup[] = recentGroups
       .filter((group) => !isSessionGroupPinned(group))
-      .map(toRecentGroupSection);
+      .map(toRecentGroupSection)
+      .filter(matchesSearch);
 
     return {
       pinnedRecentGroups: pinnedGroups,
       topicSessionGroups: topicGroups,
       conversationSessions: sortSessionsByUpdatedAt(looseSessions),
     };
-  }, [recentGroups, recentSessions]);
+  }, [normalizedSidebarSearch, recentGroups, searchedSessions]);
+
+  const hasSidebarSearchResults =
+    pinnedRecentSessions.length > 0
+    || pinnedRecentGroups.length > 0
+    || topicSessionGroups.length > 0
+    || conversationSessions.length > 0;
 
   const areAllTopicGroupsExpanded = useMemo(
     () => topicSessionGroups.length > 0 && topicSessionGroups.every((group) => !collapsedRecentGroupIds.has(group.id)),
@@ -1055,7 +1284,10 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   }, []);
 
   const renderRecentGroup = useCallback((group: RecentSessionGroup) => {
-    const isExpanded = !collapsedRecentGroupIds.has(group.id);
+    // 搜索时自动展开有命中的分组，便于直接看到结果
+    const isExpanded = isSidebarSearchActive
+      ? group.sessions.length > 0
+      : !collapsedRecentGroupIds.has(group.id);
     const isActive = false;
     const sessionGroup = recentGroups.find(g => g.id === group.id);
     if (!sessionGroup) {
@@ -1191,7 +1423,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         {sessionList}
       </section>
     );
-  }, [clearRecentGroupDragState, collapsedRecentGroupIds, dragOverRecentGroupId, draggedRecentGroupId, expandedRecentGroupSessionIds, handleRecentGroupDragOver, handleRecentGroupDragStart, handleRecentGroupDrop, handleRecentGroupPinToggle, handleViewChange, recentGroups, renderRecentGroupIcon, renderRecentSessionRow, t, toggleRecentGroup, toggleRecentGroupSessions]);
+  }, [clearRecentGroupDragState, collapsedRecentGroupIds, dragOverRecentGroupId, draggedRecentGroupId, expandedRecentGroupSessionIds, handleRecentGroupDragOver, handleRecentGroupDragStart, handleRecentGroupDrop, handleRecentGroupPinToggle, handleViewChange, isSidebarSearchActive, recentGroups, renderRecentGroupIcon, renderRecentSessionRow, t, toggleRecentGroup, toggleRecentGroupSessions]);
 
   const hasPinnedContent = pinnedRecentGroups.length > 0 || pinnedRecentSessions.length > 0;
   const isPinnedSectionCollapsed = collapsedSidebarSectionIds.has('pinned');
@@ -1250,7 +1482,6 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   );
 
   return (
-    <>
     <WorkbenchSidebarSurface
       ariaLabel={t('sidebar:aria.sidebar_navigation')}
       className="z-20"
@@ -1278,6 +1509,50 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             className="flex flex-col gap-3 px-2 pb-6 pt-4"
             data-no-drag
           >
+            {/* 内联搜索：标题即时过滤（吸顶，滚动时保持可用） */}
+            <div className="sticky top-0 z-10 -mx-2 -mt-4 bg-[color:var(--shell-navigation-surface)] px-2 pb-1 pt-3">
+              <div className="relative">
+                <MagnifyingGlass
+                  size={14}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--shell-navigation-muted)]"
+                />
+                <Input
+                  type="text"
+                  value={sidebarSearchQuery}
+                  onChange={(event) => setSidebarSearchQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape' && sidebarSearchQuery) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setSidebarSearchQuery('');
+                    }
+                  }}
+                  placeholder={t('sidebar:search.placeholder')}
+                  aria-label={t('sidebar:search.placeholder')}
+                  className="h-8 w-full rounded-[10px] border-transparent bg-[color:var(--interactive-hover)] pl-8 pr-7 text-[13px] shadow-none placeholder:text-[color:var(--shell-navigation-muted)] focus-visible:border-[color:var(--ring)]/40 focus-visible:ring-1 focus-visible:ring-ring"
+                />
+                {sidebarSearchQuery ? (
+                  <NotionButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    aria-label={t('sidebar:search.clear')}
+                    className="absolute right-1 top-1/2 !h-6 !w-6 -translate-y-1/2 text-[color:var(--shell-navigation-muted)]"
+                    onClick={() => setSidebarSearchQuery('')}
+                  >
+                    <X size={12} />
+                  </NotionButton>
+                ) : null}
+              </div>
+            </div>
+
+            {isSidebarSearchActive && !hasSidebarSearchResults ? (
+              <p className="px-2 py-1 text-[12px] text-[color:var(--shell-navigation-muted)]">
+                {t('sidebar:search.no_results')}
+              </p>
+            ) : null}
+
             {hasPinnedContent ? (
               <section className="space-y-0.5 pt-1">
                 {renderSidebarSectionHeader({ id: 'pinned', label: pinnedSectionLabel })}
@@ -1340,7 +1615,17 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               ) : null}
             </section>
 
-            <section className="space-y-0.5 pt-1">
+            {/* 「对话」区同时是未分组落点：从分组把会话拖回这里即可取消分组 */}
+            <section
+              className={cn(
+                'space-y-0.5 rounded-[10px] pt-1 transition-colors',
+                dragOverUngroupedZone && draggedSessionId !== null
+                  && 'bg-[color:var(--sidebar-quiet-hover)] ring-1 ring-black/8'
+              )}
+              onDragOver={handleUngroupedZoneDragOver}
+              onDragLeave={handleUngroupedZoneDragLeave}
+              onDrop={(event) => void handleUngroupedZoneDrop(event)}
+            >
               {renderSidebarSectionHeader({
                 id: 'conversations',
                 label: conversationsSectionLabel,
@@ -1360,7 +1645,18 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         event.stopPropagation();
                         setConversationSessionsExpanded((expanded) => !expanded);
                       }}
-/>
+                    />
+                  ) : null}
+                  {/* 展开后如未分组会话仍有分页余量，可继续加载（与移动侧栏同一策略） */}
+                  {conversationSessionsExpanded && hasMoreUngroupedSessions && !isSidebarSearchActive ? (
+                    <SidebarSessionOverflowToggle
+                      label={isLoadingMoreSessions ? t('chatV2:page.loading') : t('chatV2:page.loadMore')}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        void loadMoreUngroupedSessions();
+                      }}
+                    />
                   ) : null}
                 </div>
               </nav>
@@ -1407,70 +1703,5 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       </div>
       ) : null}
     </WorkbenchSidebarSurface>
-
-    <NotionDialog
-      open={editingRecentSessionId !== null}
-      onOpenChange={handleRecentRenameDialogOpenChange}
-      closeOnOverlay={false}
-      showClose={false}
-      maxWidth="max-w-sm"
-    >
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (editingRecentSessionId && renamingRecentSessionId !== editingRecentSessionId) {
-            void saveRecentSessionRename(editingRecentSessionId);
-          }
-        }}
-      >
-        <NotionDialogHeader>
-          <NotionDialogTitle>{t('sidebar:rename.title')}</NotionDialogTitle>
-        </NotionDialogHeader>
-        <NotionDialogBody className="py-4">
-          <label className="block text-sm font-medium text-foreground" htmlFor="modern-sidebar-rename-session-input">
-            {t('sidebar:rename.label')}
-          </label>
-          <Input
-            id="modern-sidebar-rename-session-input"
-            type="text"
-            placeholder={t('chatV2:page.untitled')}
-            value={editingRecentSessionTitle}
-            onChange={(event) => {
-              setEditingRecentSessionTitle(event.target.value);
-              if (recentRenameError) setRecentRenameError(null);
-            }}
-            autoFocus
-            disabled={renamingRecentSessionId !== null}
-            className="mt-2 h-9 w-full"
-/>
-          {recentRenameError ? (
-            <p className="mt-2 text-xs text-destructive" role="alert">
-              {recentRenameError}
-            </p>
-          ) : null}
-        </NotionDialogBody>
-        <NotionDialogFooter>
-          <NotionButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={cancelRecentSessionRename}
-            disabled={renamingRecentSessionId !== null}
-          >
-            {t('common:cancel')}
-          </NotionButton>
-          <NotionButton
-            type="submit"
-            variant="primary"
-            size="sm"
-            disabled={renamingRecentSessionId !== null || !editingRecentSessionTitle.trim()}
-          >
-            {renamingRecentSessionId !== null ? <CircleNotch size={16} className="animate-spin" /> : null}
-            {t('common:confirm')}
-          </NotionButton>
-        </NotionDialogFooter>
-      </form>
-    </NotionDialog>
-    </>
   );
 };

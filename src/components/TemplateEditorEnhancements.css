@@ -1,0 +1,321 @@
+/* ============================================================
+ * TemplateEditorEnhancements
+ * MinimalTemplateEditor 及其子组件（InsertBar / PreviewPanel / FieldManager）
+ * 的增强样式。全部使用项目设计 token（hsl(var(--*)) 变量）。
+ * ============================================================ */
+
+/* ---------- 占位符插入按钮条 ---------- */
+.template-editor-insert-bar {
+  padding: 8px 10px;
+  border: 1px solid hsl(var(--border) / 0.5);
+  border-radius: calc(var(--radius) - 2px);
+  background: hsl(var(--muted) / 0.3);
+}
+
+.template-editor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid hsl(var(--border) / 0.6);
+  border-radius: 999px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground) / 0.85);
+  font-family: var(--font-mono, 'SF Mono', Menlo, monospace);
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.template-editor-chip:hover {
+  border-color: hsl(var(--primary) / 0.5);
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
+}
+
+.template-editor-chip:active {
+  background: hsl(var(--primary) / 0.15);
+}
+
+.template-editor-chip-snippet {
+  font-family: var(--font-family, inherit);
+}
+
+/* ---------- 内联 lint 警告 ---------- */
+.template-editor-lint-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.template-editor-lint-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: hsl(var(--warning) / 0.12);
+  border: 1px solid hsl(var(--warning) / 0.35);
+  color: hsl(var(--warning-foreground, var(--foreground)));
+  font-size: 11px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+/* ---------- 预览面板 ---------- */
+.template-editor-preview-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.template-editor-segmented {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: hsl(var(--muted) / 0.5);
+  border-radius: 8px;
+}
+
+.template-editor-segmented-item {
+  border: none;
+  background: transparent;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.template-editor-segmented-item:hover {
+  color: hsl(var(--foreground));
+}
+
+.template-editor-segmented-item.active {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 2px hsl(var(--shadow-base, 0 0% 0%) / 0.1);
+}
+
+.template-editor-icon-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid hsl(var(--border) / 0.6);
+  border-radius: 8px;
+  background: hsl(var(--background));
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.template-editor-icon-toggle:hover {
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--primary) / 0.4);
+}
+
+.template-editor-icon-toggle[aria-pressed='true'] {
+  background: hsl(var(--primary) / 0.1);
+  border-color: hsl(var(--primary) / 0.4);
+  color: hsl(var(--primary));
+}
+
+.template-editor-preview-canvas {
+  border: 1px solid hsl(var(--border) / 0.4);
+  border-radius: calc(var(--radius) - 2px);
+  overflow: hidden;
+  background: hsl(var(--background));
+  transition: background 0.2s ease;
+}
+
+.template-editor-preview-canvas.dark-canvas {
+  background: #1c1c1f;
+  border-color: hsl(var(--border) / 0.6);
+}
+
+.template-editor-render-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  color: hsl(var(--danger));
+  background: hsl(var(--danger-bg, var(--destructive) / 0.08));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ---------- 示例数据快速编辑 ---------- */
+.template-editor-sample-section {
+  border-top: 1px dashed hsl(var(--border) / 0.5);
+  padding-top: 8px;
+}
+
+.template-editor-sample-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  padding: 2px 0;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: hsl(var(--muted-foreground) / 0.8);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.template-editor-sample-toggle:hover {
+  color: hsl(var(--foreground));
+}
+
+.template-editor-sample-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.template-editor-sample-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.template-editor-sample-label {
+  flex: 0 0 auto;
+  width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-family: var(--font-mono, 'SF Mono', Menlo, monospace);
+  color: hsl(var(--muted-foreground));
+}
+
+/* ---------- 字段管理器 ---------- */
+.template-editor-field-manager {
+  display: flex;
+  flex-direction: column;
+}
+
+.template-editor-field-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid hsl(var(--border) / 0.5);
+  border-radius: calc(var(--radius) - 2px);
+  background: hsl(var(--card));
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.template-editor-field-row:hover {
+  border-color: hsl(var(--border));
+}
+
+.template-editor-field-row:focus-within {
+  border-color: hsl(var(--ring) / 0.6);
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.08);
+}
+
+.template-editor-field-index {
+  flex: 0 0 auto;
+  width: 18px;
+  text-align: center;
+  font-size: 10px;
+  color: hsl(var(--muted-foreground) / 0.6);
+  font-variant-numeric: tabular-nums;
+}
+
+.template-editor-field-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: hsl(var(--success, var(--primary)) / 0.12);
+  color: hsl(var(--success, var(--primary)));
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.template-editor-required-toggle {
+  border: 1px solid hsl(var(--border) / 0.6);
+  border-radius: 999px;
+  background: transparent;
+  padding: 1px 8px;
+  font-size: 10px;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.template-editor-required-toggle:hover {
+  border-color: hsl(var(--primary) / 0.4);
+  color: hsl(var(--foreground));
+}
+
+.template-editor-required-toggle.active {
+  background: hsl(var(--danger) / 0.1);
+  border-color: hsl(var(--danger) / 0.4);
+  color: hsl(var(--danger));
+}
+
+.template-editor-sync-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: hsl(var(--success, var(--primary)) / 0.1);
+  border: 1px solid hsl(var(--success, var(--primary)) / 0.3);
+  color: hsl(var(--success, var(--primary)));
+  font-size: 12px;
+}
+
+/* ---------- 未保存更改内联条 ---------- */
+.template-editor-dirty-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: hsl(var(--warning-foreground, var(--foreground)));
+}
+
+.template-editor-dirty-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: hsl(var(--warning));
+  flex: 0 0 auto;
+}
+
+.template-editor-dirty-discard {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.template-editor-dirty-discard:hover {
+  color: hsl(var(--danger));
+}

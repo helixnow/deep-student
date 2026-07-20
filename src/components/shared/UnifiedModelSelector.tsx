@@ -426,6 +426,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                  >
                    <div
                      data-testid="model-selector-vendor-group-header"
+                     data-wb-blur-surface
                      className="sticky top-0 z-[1] mx-0.5 mb-1 flex items-center justify-between rounded-md bg-popover/95 px-2 py-1 text-[10px] font-semibold text-muted-foreground shadow-[0_1px_0_hsl(var(--border)/0.35)] backdrop-blur-sm"
                    >
                      <span className="min-w-0 truncate">{group.name}</span>

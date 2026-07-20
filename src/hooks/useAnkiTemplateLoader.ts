@@ -6,6 +6,7 @@ import type { CustomAnkiTemplate } from '@/types';
 export function useAnkiTemplateLoader(templateId?: string | null) {
   const [template, setTemplate] = useState<CustomAnkiTemplate | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const cacheRef = useRef<Map<string, CustomAnkiTemplate>>(new Map());
 
@@ -18,6 +19,7 @@ export function useAnkiTemplateLoader(templateId?: string | null) {
     if (!templateId) {
       setTemplate(null);
       setLoading(false);
+      setError(null);
       return;
     }
 
@@ -25,11 +27,13 @@ export function useAnkiTemplateLoader(templateId?: string | null) {
     if (cached) {
       setTemplate(cached);
       setLoading(false);
+      setError(null);
       return;
     }
 
     let cancelled = false;
     setLoading(true);
+    setError(null);
     TemplateService.getInstance()
       .getTemplateById(templateId)
       .then((nextTemplate) => {
@@ -38,11 +42,12 @@ export function useAnkiTemplateLoader(templateId?: string | null) {
         setTemplate(nextTemplate);
         setLoading(false);
       })
-      .catch((error: unknown) => {
-        console.error('[useAnkiTemplateLoader] Failed to load template:', templateId, error);
+      .catch((loadError: unknown) => {
+        console.error('[useAnkiTemplateLoader] Failed to load template:', templateId, loadError);
         if (cancelled) return;
         setTemplate(null);
         setLoading(false);
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
       });
 
     return () => {
@@ -50,5 +55,5 @@ export function useAnkiTemplateLoader(templateId?: string | null) {
     };
   }, [templateId, refreshToken]);
 
-  return { template, loading };
+  return { template, loading, error };
 }

@@ -40,6 +40,14 @@ export interface VfsSearchResult {
   pageIndex?: number;
   /** 来源 ID（如 textbook_xxx, att_xxx） */
   sourceId?: string;
+  /**
+   * 页面图片 Blob 哈希（用于缩略图定位）。
+   *
+   * ⚠️ 后端 `vfs_rag_search`（文本路线）当前不返回该字段，仅多模态检索链路携带；
+   * 消费方必须按可选字段处理。若文本路线也需要缩略图，需要后端在
+   * `VfsSearchResult`（src-tauri/src/vfs/indexing.rs）中补充 blob_hash。
+   */
+  blobHash?: string;
 }
 
 /** RAG 搜索输入参数 */
@@ -133,7 +141,10 @@ export async function vfsRagSearch(input: VfsRagSearchInput): Promise<VfsRagSear
 /**
  * 简化的 RAG 搜索
  *
- * 使用默认参数进行 RAG 搜索。
+ * 使用默认参数（启用重排序）进行 RAG 搜索，只返回结果列表。
+ *
+ * @remarks 公共便捷 API：当前仓库内暂无调用方，保留供技能/插件层直接使用。
+ * 需要 elapsedMs/count 等元信息时请改用 {@link vfsRagSearch}。
  *
  * @param query 查询文本
  * @param topK 返回结果数量（默认 10）
@@ -149,6 +160,8 @@ export async function vfsRagSearchSimple(
 
 /**
  * 在指定文件夹范围内进行 RAG 搜索
+ *
+ * @remarks 公共便捷 API：当前仓库内暂无调用方，保留供技能/插件层直接使用。
  *
  * @param query 查询文本
  * @param folderIds 文件夹 ID 列表
@@ -166,6 +179,8 @@ export async function vfsRagSearchInFolders(
 
 /**
  * 按资源类型进行 RAG 搜索
+ *
+ * @remarks 公共便捷 API：当前仓库内暂无调用方，保留供技能/插件层直接使用。
  *
  * @param query 查询文本
  * @param resourceTypes 资源类型列表（如 ["note", "textbook", "exam"]）
@@ -253,6 +268,11 @@ export function toSourceInfo(result: VfsSearchResult): {
       resourceType: result.resourceType,
       chunkIndex: result.chunkIndex,
       embeddingId: result.embeddingId,
+      // 缩略图定位：pageIndex 配合 getPdfPageImage 渲染页面预览；
+      // blobHash 可直接命中图片 Blob（文本路线可能为 undefined，见 VfsSearchResult.blobHash）。
+      pageIndex: result.pageIndex,
+      blobHash: result.blobHash,
+      sourceId: result.sourceId,
       sourceType: 'vfs_rag',
     },
   };
@@ -648,8 +668,35 @@ export interface VfsMultimodalSearchOutput {
   score: number;
   /** 文件夹 ID */
   folderId?: string;
-  /** 参与融合的检索路由及各自贡献 */
-  retrievalProvenance: VfsRetrievalHitProvenance[];
+  /**
+   * 参与融合的检索路由及各自贡献。
+   *
+   * 后端序列化为 `serde_json::Value`（形状不受编译期约束），因此前端声明为
+   * `unknown`；请通过 {@link parseRetrievalProvenance} 做运行时校验后再使用。
+   */
+  retrievalProvenance: unknown;
+}
+
+/** {@link VfsRetrievalHitProvenance} 的轻量运行时守卫。 */
+export function isVfsRetrievalHitProvenance(value: unknown): value is VfsRetrievalHitProvenance {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.routeId === 'string'
+    && typeof candidate.routeKind === 'string'
+    && typeof candidate.modality === 'string'
+    && typeof candidate.rawRank === 'number'
+    && typeof candidate.routeWeight === 'number'
+    && typeof candidate.rrfContribution === 'number';
+}
+
+/**
+ * 将后端的 `retrievalProvenance`（serde_json::Value）安全解析为路由来源列表。
+ *
+ * 非数组、或数组内不合法的元素会被丢弃，不抛异常。
+ */
+export function parseRetrievalProvenance(value: unknown): VfsRetrievalHitProvenance[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isVfsRetrievalHitProvenance);
 }
 
 /** 多模态索引统计 */

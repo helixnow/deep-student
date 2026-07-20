@@ -12,15 +12,19 @@ const {
   vfsMultimodalStats: vi.fn(),
 }));
 
-vi.mock('@/api/vfsRagApi', () => ({
-  vfsMultimodalIndex: vi.fn(),
-  vfsInspectRetrievalCapabilities,
-  vfsMultimodalSearch,
-  vfsMultimodalSearchDetailed,
-  vfsMultimodalStats,
-  vfsMultimodalDelete: vi.fn(),
-  vfsMultimodalIndexResource: vi.fn(),
-}));
+vi.mock('@/api/vfsRagApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/vfsRagApi')>();
+  return {
+    ...actual,
+    vfsMultimodalIndex: vi.fn(),
+    vfsInspectRetrievalCapabilities,
+    vfsMultimodalSearch,
+    vfsMultimodalSearchDetailed,
+    vfsMultimodalStats,
+    vfsMultimodalDelete: vi.fn(),
+    vfsMultimodalIndexResource: vi.fn(),
+  };
+});
 
 import {
   getCapabilityStatus,
@@ -54,7 +58,8 @@ describe('multimodalRagService', () => {
   it('reports an unconfigured route without probing storage', async () => {
     vfsInspectRetrievalCapabilities.mockResolvedValue(capabilitySnapshot({}));
 
-    await expect(getCapabilityStatus()).resolves.toEqual({
+    await expect(getCapabilityStatus()).resolves.toMatchObject({
+      probed: true,
       configured: false,
       available: false,
       reason: 'not_configured',
@@ -62,7 +67,7 @@ describe('multimodalRagService', () => {
     expect(vfsMultimodalStats).not.toHaveBeenCalled();
   });
 
-  it('does not cache a transient unavailable result', async () => {
+  it('distinguishes a failed probe from an unavailable route and does not cache it', async () => {
     vfsInspectRetrievalCapabilities
       .mockRejectedValueOnce(new Error('temporary capability error'))
       .mockResolvedValueOnce(capabilitySnapshot({
@@ -70,13 +75,16 @@ describe('multimodalRagService', () => {
         healthy: true,
       }));
 
+    // IPC 失败时不得伪装成"已配置但不可用"
     await expect(getCapabilityStatus()).resolves.toMatchObject({
-      configured: true,
+      probed: false,
+      configured: false,
       available: false,
-      reason: 'unavailable',
+      reason: 'probe_failed',
       error: 'temporary capability error',
     });
     await expect(getCapabilityStatus()).resolves.toMatchObject({
+      probed: true,
       configured: true,
       available: true,
       reason: 'ready',
@@ -110,19 +118,23 @@ describe('multimodalRagService', () => {
       pageIndex: 2,
       textContent: 'diagram',
       blobHash: 'blob-1',
+      folderId: 'folder-1',
       score: 0.9,
       retrievalProvenance: [],
     }]);
 
-    await expect(retrieve('vector query', undefined, undefined, { final_top_k: 4 }))
+    await expect(retrieve('vector query', undefined, undefined, { topK: 4 }))
       .resolves.toEqual([{
         source_type: 'image',
         source_id: 'res-1',
+        embedding_id: 'emb-1',
         page_index: 2,
         text_content: 'diagram',
         blob_hash: 'blob-1',
+        folder_id: 'folder-1',
         score: 0.9,
         source: 'multimodal_page',
+        retrieval_provenance: [],
       }]);
     expect(vfsMultimodalSearch).toHaveBeenCalledWith(expect.objectContaining({
       query: 'vector query',
@@ -130,6 +142,45 @@ describe('multimodalRagService', () => {
       queryMode: 'text',
       topK: 4,
     }));
+  });
+
+  it('derives text_chunk source from provenance and drops malformed entries', async () => {
+    const textRoute = {
+      routeId: 'route-te',
+      routeKind: 'text_embedding',
+      modality: 'text',
+      rawRank: 1,
+      routeWeight: 1,
+      rrfContribution: 0.5,
+    };
+    vfsMultimodalSearch.mockResolvedValue([{
+      embeddingId: 'emb-2',
+      resourceId: 'res-2',
+      resourceType: 'textbook',
+      pageIndex: 0,
+      score: 0.5,
+      // 后端为 serde_json::Value：混入非法元素时应被运行时守卫丢弃
+      retrievalProvenance: [textRoute, { bogus: true }, 'garbage'],
+    }]);
+
+    const [mapped] = await retrieve('query');
+    expect(mapped.source).toBe('text_chunk');
+    expect(mapped.retrieval_provenance).toEqual([textRoute]);
+  });
+
+  it('treats non-array provenance as an empty list', async () => {
+    vfsMultimodalSearch.mockResolvedValue([{
+      embeddingId: 'emb-3',
+      resourceId: 'res-3',
+      resourceType: 'exam',
+      pageIndex: 1,
+      score: 0.4,
+      retrievalProvenance: { unexpected: 'shape' },
+    }]);
+
+    const [mapped] = await retrieve('query');
+    expect(mapped.retrieval_provenance).toEqual([]);
+    expect(mapped.source).toBe('multimodal_page');
   });
 
   it('preserves image-only and mixed query payloads', async () => {

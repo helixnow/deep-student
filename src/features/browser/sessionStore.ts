@@ -154,6 +154,8 @@ async function runNav(
     throw new BrowserApiError('browser_navigate', '浏览器正在处理上一项操作', 'BROWSER_BUSY');
   }
   const generation = ++snapshotGeneration;
+  // 导航期间用户可能继续编辑地址：记录起飞时草稿，回执时若草稿已变则保留输入
+  const draftAtStart = get().addressDraft;
   set({ loading: true, lastError: null, error: null });
   try {
     // ACR R1-05：用户导航硬打断 agent — 同步权威侧 take_over（打 user_takeover_at）
@@ -171,9 +173,12 @@ async function runNav(
       set({ ...INITIAL_BROWSER_SESSION_STATE });
       return false;
     }
+    const draftNow = get().addressDraft;
+    const userEditedInFlight = draftNow !== draftAtStart;
     set(
       applySnapshot(snapshot, {
         loading: false,
+        ...(userEditedInFlight ? { addressDraft: draftNow } : {}),
         ...(opts?.forceUserControl ? { controlMode: 'user' as const } : {}),
       }),
     );
@@ -282,10 +287,13 @@ export const useBrowserSessionStore = create<BrowserSessionStore>((set, get) => 
     try {
       await browserApi.closeSession(get().sessionId);
     } catch (err) {
-      // 仍尝试直接关闭 native content window，但保留失败供 canClose 决策。
       const message = errorMessage(err);
-      set({ lastError: message, error: message });
-      closeError = err;
+      // NOT_FOUND = 后端早已无此 session（幂等关闭），不算失败也不留横幅
+      if (!message.startsWith('NOT_FOUND')) {
+        // 仍尝试直接关闭 native content window，但保留失败供 canClose 决策。
+        set({ lastError: message, error: message });
+        closeError = err;
+      }
     }
     try {
       await closeBrowserContentWindow();

@@ -197,3 +197,33 @@
     transition: none !important;
   }
 }
+
+/* ============ 移动端语义 motion token（2026-07 mobile 基建，追加区） ============ */
+
+/*
+ * 消费方：
+ * - .ui-press / usePressable（src/hooks/mobile/usePressable.ts）→ --m-press-*
+ * - 移动端页面推入过渡（后续接线）→ --m-page-push-*
+ * - .ui-slide-up-panel / 底部内联面板 → --m-sheet-*
+ * - framer-motion 侧对应预设见 src/styles/motion-springs.ts（tweenFast 与
+ *   --ease-standard 同曲线）。
+ *
+ * 键盘避让：`--keyboard-inset`（px）不在此声明——由
+ * src/hooks/useKeyboardHeight.ts 运行时写到 document root（键盘收起时为 0px）。
+ * CSS 侧直接 var(--keyboard-inset, 0px) 消费即可，勿在任何样式文件里重复声明。
+ */
+:root {
+  /* 触控按压反馈 */
+  --m-press-dur: 120ms;
+  --m-press-scale: 0.97;
+  --m-press-ease: var(--ease-standard);
+
+  /* 移动端页面推入/推出（导航层级切换） */
+  --m-page-push-dur: 220ms;
+  --m-page-push-ease: var(--ease-standard);
+
+  /* 底部内联面板（非全屏 sheet）上滑入场 */
+  --m-sheet-dur: 260ms;
+  --m-sheet-distance: 16px;
+  --m-sheet-ease: var(--ease-standard);
+}

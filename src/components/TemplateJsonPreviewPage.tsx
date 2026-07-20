@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
-import { ArrowLeft, CheckCircle, CodeBlock, Eye, ArrowClockwise, XCircle } from '@phosphor-icons/react';
+import { ArrowLeft, CheckCircle, CodeBlock, Eye, ArrowClockwise } from '@phosphor-icons/react';
 import { CustomAnkiTemplate } from '../types';
 import { templateManager } from '../data/ankiTemplates';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -395,8 +395,8 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
                 </div>
               )}
               <div className="preview-list" data-refresh-key={parseTick}>
-                {entries.map((entry, index) => (
-                  <div className="preview-card" key={`${entry.key}-${index}`}>
+                {entries.map((entry) => (
+                  <div className="preview-card" key={entry.key}>
                     <div className="preview-card-head">
                       <div>
                         <div className="preview-card-title">

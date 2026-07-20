@@ -31,6 +31,11 @@ export const getMediaQuery = (breakpoint: BreakpointKey, type: 'min' | 'max' = '
 
 /**
  * 语义化的屏幕尺寸别名
+ *
+ * ⚠️ 注意语义分裂：这里的 `mobile`（0–639，以 sm 为界）只是「屏幕尺寸档位」
+ * 的描述性别名，与「是否切换移动端布局壳」不是一回事——切壳判断统一以
+ * md=768 为界（useIsMobile / useBreakpoint().isSmallScreen / MOBILE_SHELL.breakpointMax）。
+ * 勿用 SCREEN_SIZES.mobile 做切壳判断，否则 640–767 区间会与 App shell 分叉。
  */
 export const SCREEN_SIZES = {
   mobile: { min: 0, max: BREAKPOINTS.sm - 1 },      // 0-639px

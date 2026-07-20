@@ -2274,7 +2274,7 @@
       "indexError": "索引失败，请重试",
       "rebuildError": "重建索引失败，请重试",
       "indexTooltip": "将此资源的内容索引到多模态知识库，支持图文混合检索",
-      "indexResultTooltip": "索引 {{pages}} 页，跳过 {{skipped}} 页，耗时 {{duration}}s"
+      "indexResultTooltip": "已索引 {{pages}} 页，失败 {{failed}} 页 · 向量维度 {{dimension}}"
     },
     "edit_save_failed": "消息编辑保存失败，请重试",
     "thinking": {

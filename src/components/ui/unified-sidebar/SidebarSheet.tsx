@@ -1,8 +1,12 @@
 /**
  * SidebarSheet - 底部弹出式侧边栏
- * 
- * 用于移动端场景，从底部弹出显示侧边栏内容
- * 支持滑动关闭、自定义高度等功能
+ *
+ * @deprecated 已废弃（2026-07 移动端 UI 规范）：移动端禁止模态浮层，
+ * UnifiedSidebar 小屏已强制 panel 内联模式，不再触达本组件（Radix Sheet 模态）。
+ * 移动端侧栏统一由 MobileSlidingLayout 页内推拉抽屉承载。
+ * 文件保留仅为兼容仍显式使用 displayMode='sheet' 的桌面路径，勿在新代码中使用。
+ *
+ * 用于从底部弹出显示侧边栏内容，支持滑动关闭、自定义高度等功能
  *
  * ★ 手势隔离策略：
  *   - 只在拖拽手柄区域监听触摸事件（passive: false + preventDefault）

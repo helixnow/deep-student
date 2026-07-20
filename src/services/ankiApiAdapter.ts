@@ -38,6 +38,14 @@ export type SaveAnkiCardsResponse = {
   failed?: SaveAnkiCardFailure[];
 };
 
+/** 批量导出选项（允许调用方附加后端可识别的扩展键，如 includeTags） */
+export type BatchExportOptions = {
+  deckName?: string;
+  noteType?: string;
+  templateId?: string | null;
+  [key: string]: unknown;
+};
+
 // 批量操作API适配器
 export const ankiApiAdapter = {
   /**
@@ -46,7 +54,7 @@ export const ankiApiAdapter = {
   async batchExportCards(params: {
     cards: AnkiCard[];
     format: string;
-    options: any;
+    options: BatchExportOptions;
   }): Promise<string> {
     // [AnkiApiAdapter] 直接使用原始卡片数据，后端已支持 serde(default) 处理缺失字段
     // 参考 AnkiCardGeneration.tsx 的 handleExportByLevel 实现
@@ -166,128 +174,9 @@ export const ankiApiAdapter = {
     }
   },
 
-  /**
-   * 为分段生成Anki卡片（断点续传）
-   *
-   * @deprecated 当前未使用。如果启用，调用方必须确保 params.options 包含 field_extraction_rules，
-   * 否则后端会报错："字段提取规则缺失"
-   */
-  async generateAnkiCardsForSegment(params: {
-    content: string;
-    options: any; // 必须包含 field_extraction_rules
-    segmentIndex: number;
-    totalSegments: number;
-  }): Promise<AnkiCard[]> {
-    // [AnkiApiAdapter] 警告：options 必须包含 field_extraction_rules 字段
-    if (!params.options?.field_extraction_rules || Object.keys(params.options.field_extraction_rules).length === 0) {
-      console.error('[ankiApiAdapter] generateAnkiCardsForSegment: options.field_extraction_rules is missing or empty');
-      throw new Error(i18next.t('anki:api_adapter.missing_field_extraction_rules'));
-    }
-
-    try {
-      // 尝试使用分段生成API
-      return await invoke('generate_anki_cards_for_segment', params);
-    } catch (error: unknown) {
-      notificationAdapter.show(i18next.t('anki:api_adapter.segment_fallback_warning'), 'warning');
-      // 降级方案：使用现有的流式生成API，但只处理单个片段
-      const cards: AnkiCard[] = [];
-
-      // 创建临时的事件监听器来收集卡片
-      const { guardedListen } = await import('../utils/guardedListen');
-      let resolveListener: (() => void) | null = null;
-      const donePromise = new Promise<void>((resolve) => {
-        resolveListener = resolve;
-      });
-
-      let timeoutId: ReturnType<typeof setTimeout> | null = null;
-      let documentIdRef: string | null = null;
-      let unlisten: (() => void | Promise<void>) | null = null;
-
-      try {
-        unlisten = await new Promise<() => void | Promise<void>>((resolve) => {
-          guardedListen('anki_generation_event', (event: any) => {
-            const payload = event?.payload?.payload ?? event?.payload ?? event;
-            if (!payload) return;
-            const normalized = payload.type
-              ? { type: payload.type, data: payload.data }
-              : (() => {
-                  const keys = Object.keys(payload);
-                  if (keys.length === 0) return null;
-                  const eventType = keys[0];
-                  return { type: eventType, data: payload[eventType] };
-                })();
-            if (!normalized) return;
-
-            const eventDocumentId =
-              normalized?.data?.document_id ||
-              payload?.document_id ||
-              normalized?.data?.documentId;
-            if (documentIdRef && eventDocumentId && eventDocumentId !== documentIdRef) {
-              return;
-            }
-
-            if (normalized.type === 'NewCard' && normalized.data) {
-              const cardData = normalized.data?.card ?? normalized.data;
-              cards.push(cardData);
-            }
-
-            if (
-              normalized.type === 'TaskCompleted' ||
-              normalized.type === 'DocumentProcessingCompleted' ||
-              normalized.type === 'TaskFailed' ||
-              normalized.type === 'DocumentProcessingFailed' ||
-              normalized.type === 'DocumentProcessingCancelled'
-            ) {
-              resolveListener?.();
-            }
-          }).then(resolve);
-        });
-
-        timeoutId = setTimeout(() => {
-          notificationAdapter.show(i18next.t('anki:api_adapter.segment_timeout_warning'), 'warning');
-          resolveListener?.();
-        }, 12000);
-
-        // 启动生成
-        documentIdRef = await invoke('start_enhanced_document_processing', {
-          // 双写兼容：后端为 snake_case
-          document_content: params.content,
-          documentContent: params.content,
-          original_document_name: `segment_${params.segmentIndex}`,
-          originalDocumentName: `segment_${params.segmentIndex}`,
-          options: {
-            ...params.options,
-            max_cards_per_mistake: 10, // 限制每个分段的卡片数量
-          }
-        });
-
-        await donePromise;
-      } finally {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-        if (unlisten) {
-          try {
-            await Promise.resolve(unlisten());
-          } catch (unlistenErr: unknown) {
-            console.warn('[ankiApiAdapter] Failed to cleanup anki_generation_event listener', unlistenErr);
-          }
-        }
-        if (documentIdRef) {
-          try {
-            await invoke('delete_document_session', {
-              documentId: documentIdRef,
-              document_id: documentIdRef,
-            });
-          } catch (cleanupErr: unknown) {
-            console.warn('[ankiApiAdapter] Failed to delete temporary document session', cleanupErr);
-          }
-        }
-      }
-
-      return cards;
-    }
-  }
+  // ★ 2026-07 死代码清理：generateAnkiCardsForSegment（@deprecated，断点续传
+  //   分段生成 + 流式降级）已删除。Grep 确认仓库内无任何调用方；其降级路径
+  //   依赖的临时会话清理逻辑由 ankiCompletionNotifier 的注释引用，仅为历史说明。
 };
 
 // 通知系统适配器
