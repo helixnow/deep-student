@@ -166,6 +166,16 @@ export function buildHtmlSandboxDocument({
     overflow-x: auto;
     word-wrap: break-word;
   }
+  /* KaTeX 豁免：内部绝对定位子元素对强制 max-width 敏感，强压会破坏公式布局；
+     超宽的展示公式改为容器内横向滚动（与 table/pre 同策略），窄屏不再被裁剪。 */
+  .katex, .katex * {
+    max-width: none;
+  }
+  .katex-display {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
   ${css}
 </style>
 ${resizeScript}

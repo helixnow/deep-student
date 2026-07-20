@@ -33,7 +33,7 @@ export interface NavigationHistoryEntry {
   /** 视图标识 */
   view: CurrentView;
   /** 可选参数：如 cardId 等 */
-  params?: Record<string, any>;
+  params?: Record<string, unknown>;
   /** 状态恢复函数（滚动位置、筛选条件等） */
   restore?: () => void | Promise<void>;
   /** 创建时间戳（用于去重和调试） */

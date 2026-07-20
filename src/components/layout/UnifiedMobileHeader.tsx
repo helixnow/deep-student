@@ -12,7 +12,7 @@ import { CaretLeft, CaretRight, List } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { useMobileHeaderContextSafe } from './MobileHeaderContext';
-import { isAndroid } from '@/utils/platform';
+import { isMobilePlatform } from '@/utils/platform';
 
 export interface UnifiedMobileHeaderProps {
   /** 是否可以返回（有历史记录） */
@@ -25,6 +25,8 @@ export interface UnifiedMobileHeaderProps {
   onForward?: () => void;
   /** 额外的 className */
   className?: string;
+  /** 额外的内联样式（App.tsx 用于传入 Z_INDEX token 等，避免类名魔法数） */
+  style?: React.CSSProperties;
   /** D-1: 当前视图未注册 useMobileHeader 时的兜底标题（取导航标签），避免顶栏空白 */
   fallbackTitle?: string;
 }
@@ -35,6 +37,7 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
   canGoForward = false,
   onForward,
   className,
+  style,
   fallbackTitle,
 }) => {
   const { t } = useTranslation(['common']);
@@ -58,8 +61,9 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
 
   return (
     <header
-      // Android WebView 上 data-tauri-drag-region 会干扰触摸点击事件，因此不设置
-      {...(!isAndroid() ? { 'data-tauri-drag-region': true } : {})}
+      // 移动平台（Android/iOS）上 data-tauri-drag-region 会干扰触摸点击事件，
+      // 且移动端本无窗口拖拽需求；仅桌面窄窗口场景保留拖拽区
+      {...(!isMobilePlatform() ? { 'data-tauri-drag-region': true } : {})}
       data-mobile-shell="header"
       className={cn(
         // 基础布局
@@ -70,8 +74,12 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
       )}
       style={{
         paddingTop: 'var(--mobile-safe-area-top, 0px)',
+        // 横屏刘海/挖孔机型：左右叠加安全区（px-3 = 12px 基础内边距）
+        paddingLeft: 'calc(0.75rem + var(--mobile-safe-area-left, 0px))',
+        paddingRight: 'calc(0.75rem + var(--mobile-safe-area-right, 0px))',
         height: 'var(--mobile-header-total-height, 56px)',
         minHeight: 'var(--mobile-header-total-height, 56px)',
+        ...style,
       }}
     >
       {/* 左侧：返回箭头、菜单按钮或全局返回按钮 */}

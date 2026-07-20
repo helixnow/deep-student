@@ -202,9 +202,15 @@
 
 /*
  * 消费方：
- * - .ui-press / usePressable（src/hooks/mobile/usePressable.ts）→ --m-press-*
- * - 移动端页面推入过渡（后续接线）→ --m-page-push-*
+ * - .ui-press（纯 CSS 按压反馈；原 usePressable hook 已移除）→ --m-press-*
+ * - .ui-press-coarse（仅 coarse 指针生效的按压反馈；共享按钮 primitive
+ *   经 buttonPrimitiveContract 统一接入）→ --m-press-*
+ * - 移动端页面推入过渡 → --m-page-push-*（保留备用：现行移动视图切换
+ *   已由 app.css 的 mobile-shell-content-enter / --page-slide-* 承担，
+ *   新增独立推入场景时优先消费本组 token，勿再新造字面量）
  * - .ui-slide-up-panel / 底部内联面板 → --m-sheet-*
+ * - .todo-swipe-hint-content（触屏行滑动手势首次提示）→ --m-swipe-hint-*，
+ *   其他有行级滑动手势的域（如 chat/notes 列表）可复用同组 token
  * - framer-motion 侧对应预设见 src/styles/motion-springs.ts（tweenFast 与
  *   --ease-standard 同曲线）。
  *
@@ -226,4 +232,9 @@
   --m-sheet-dur: 260ms;
   --m-sheet-distance: 16px;
   --m-sheet-ease: var(--ease-standard);
+
+  /* 触屏滑动手势首次提示（列表行部分露出动作色块再回弹，一次性引导） */
+  --m-swipe-hint-dur: 1200ms;
+  --m-swipe-hint-distance: 64px;
+  --m-swipe-hint-ease: var(--ease-standard);
 }

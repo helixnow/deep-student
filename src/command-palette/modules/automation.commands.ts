@@ -7,9 +7,9 @@
 
 import { Pause, Play, Plus, Robot } from '@phosphor-icons/react';
 import i18next from 'i18next';
-import { invoke } from '@tauri-apps/api/core';
 import type { Command } from '../registry/types';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+import { useAutomationStore } from '@/features/todo/stores/useAutomationStore';
 import {
   AUTOMATION_REQUEST_CREATE_EVENT,
   requestAutomationCreate,
@@ -49,9 +49,12 @@ function openAutomationsWorkspace(): Promise<boolean> {
  * 不修改任何单个任务的 enabled 状态，应用在前台时调度器照常运行。
  * 因此选它作为"暂停/恢复"命令：可无损往返，不破坏每个任务的启用配置；
  * 命令描述里明确说明这是"后台运行"开关。
+ *
+ * 统一走 useAutomationStore.setBackgroundEnabled（乐观更新 + 失败回滚），
+ * 保证自动化工作区 / 设置区的开关 UI 即时同步，而不是等 automations_changed 事件。
  */
-function setBackgroundEnabled(enabled: boolean): Promise<unknown> {
-  return invoke('chat_v2_automation_set_background_enabled', { enabled });
+function setBackgroundEnabled(enabled: boolean): Promise<void> {
+  return useAutomationStore.getState().setBackgroundEnabled(enabled);
 }
 
 const KEYWORDS = ['自动化', '定时任务', '定时', 'automation', 'automations', 'schedule', 'scheduled', 'cron'];

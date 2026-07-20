@@ -20,7 +20,9 @@ import { useEventRegistry } from './useEventRegistry';
 
 /** 永不滚动的壳层容器选择器（page-container.scrollable 是刻意可滚动的，排除） */
 const SHELL_GUARD_SELECTOR = [
+  '#root',
   '[data-shell-role="app-shell"]',
+  '[data-shell-layer="workspace"]',
   '#main-content',
   '.content-body',
   '.page-container:not(.scrollable)',

@@ -182,6 +182,9 @@ describe('useTodoStore', () => {
     const item = makeItem({ id: 'ti_move', todoListId: 'list-a' });
     useTodoStore.setState({ activeListId: 'list-a', items: [item], selectedItemId: 'ti_move' });
     vi.mocked(api.moveTodoItem).mockResolvedValue({ ...item, todoListId: 'list-b' });
+    // move 后的静默校准会重拉当前清单；覆盖第一个用例遗留的 mockImplementation
+    // （vi.clearAllMocks 不清实现），避免旧的 list-a 数据回灌
+    vi.mocked(api.listTodoItems).mockResolvedValue([]);
 
     await useTodoStore.getState().moveItemToList('ti_move', 'list-b');
 

@@ -124,7 +124,7 @@ const ToggleBlock: React.FC<ToggleBlockProps> = ({
   return (
     <div className="select-none">
       {/* Toggle 触发行 —— Notion 风格：无边框，hover 浅色背景 */}
-      <NotionButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className={cn('!w-full !justify-start !px-2 !py-1.5 !h-auto -mx-2 !rounded-[4px] !text-left', 'text-[14px] font-medium text-foreground/90', 'hover:bg-foreground/[0.04] active:bg-foreground/[0.06]')}>
+      <NotionButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className={cn('!w-full !justify-start !px-2 !py-1.5 !h-auto -mx-2 !rounded-[4px] !text-left', '[@media(pointer:coarse)]:min-h-11', 'text-[14px] font-medium text-foreground/90', 'hover:bg-foreground/[0.04] active:bg-foreground/[0.06]')}>
         {/* 展开箭头 —— Notion 三角形风格 */}
         <CaretRight
           className={cn(

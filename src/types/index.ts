@@ -312,8 +312,12 @@ export interface ApiConfig {
   headers?: Record<string, string>;
   /** 是否收藏（收藏的模型在列表中优先显示） */
   isFavorite?: boolean;
-  /** 供应商级别的 max_tokens 限制（API 最大允许值） */
+  /** 运行期有效 max_tokens 上限（模型与供应商限制的较小值）。 */
   maxTokensLimit?: number;
+  /** 编辑器内部：模型条目自身的上限，区别于合并后的有效上限。 */
+  modelMaxTokensLimit?: number;
+  /** 编辑器内部：打开表单时的有效上限，用于判断用户是否显式修改。 */
+  initialEffectiveMaxTokensLimit?: number;
   /** 上下文窗口大小（tokens），推断引擎提供默认值，用户可在设置页覆盖 */
   contextWindow?: number;
   repetitionPenalty?: number;
@@ -333,6 +337,8 @@ export interface VendorConfig {
   apiProtocol?: ApiProtocol;
   supportsOpenAIResponses?: boolean;
   baseUrl: string;
+  /** 仅保存时可提交明文；读取配置时后端只返回与数量相同的 "***" 占位符。 */
+  apiKeys?: string[];
   apiKey: string;
   headers?: Record<string, string>;
   rateLimitPerMinute?: number;
@@ -345,7 +351,7 @@ export interface VendorConfig {
   maxTokensLimit?: number;
   /** 供应商官网链接 */
   websiteUrl?: string;
-  /** 无需 API Key（适用于自搭建后端，如 Ollama、vLLM 等） */
+  /** @deprecated 兼容旧前端状态；持久化请使用 authMode='none'。 */
   noApiKey?: boolean;
 }
 
@@ -366,6 +372,8 @@ export interface ModelProfile {
   isImageGeneration?: boolean;
   supportsTools?: boolean;
   supportsReasoning?: boolean;
+  /** 模型级 max_tokens 上限；与供应商上限同时存在时取较小值。 */
+  maxTokensLimit?: number;
   maxOutputTokens?: number;
   temperature?: number;
   reasoningEffort?: string;
@@ -442,7 +450,6 @@ export interface SystemSettings {
   enableNotifications: boolean;
   maxChatHistory: number;
   debugMode: boolean;
-  enableAnkiConnect: boolean;
   markdownRendererMode: 'legacy' | 'enhanced';
 }
 

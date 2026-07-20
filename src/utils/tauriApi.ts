@@ -16,9 +16,13 @@ import * as _configApi from './configApi';
 import * as _systemApi from './systemApi';
 import * as _testApi from './testApi';
 
-// ★ 2026-07-08（审计 30-P1-4）：graphApi（1455 行，模块自述已废弃）从 barrel 静态导出中摘除，
-// 避免被 App.tsx 等静态导入 TauriAPI 的调用方拖进首屏 chunk。
-// 全仓仅 NoTagTreeShadPanel 仍引用下面两个函数，以动态 import 包装保持 TauriAPI.xxx 调用契约。
+// ## Deprecation inventory (graphApi barrel)
+// - owner: knowledge-graph
+// - status: 禁止 `export * from './graphApi'` 静态 barrel（2026-07-08 已摘除）
+// - keep (live callers, 2026-07-20 rg):
+//   - TauriAPI 动态包装 → NoTagTreeShadPanel（下面两个 stream API）
+//   - `@/utils/graphApi` 直接 import → quick-assistant/service.ts（bulkImportProblemCards）
+// - remove target: 待上述调用方迁出后可删 graphApi.ts 本体（不可在仍有动态/静态引用时删）
 const unifiedImportTagHierarchyStream = async (
   ...args: Parameters<typeof import('./graphApi')['unifiedImportTagHierarchyStream']>
 ): Promise<string> => (await import('./graphApi')).unifiedImportTagHierarchyStream(...args);

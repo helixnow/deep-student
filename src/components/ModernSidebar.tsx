@@ -1407,7 +1407,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               className={cn(
                 'group/sidebar-section select-none',
                 draggedRecentGroupId === group.id && 'cursor-grabbing opacity-60',
-                dragOverRecentGroupId === group.id && draggedRecentGroupId !== group.id && 'bg-[color:var(--sidebar-quiet-hover)] ring-1 ring-black/8'
+                dragOverRecentGroupId === group.id && draggedRecentGroupId !== group.id && 'bg-[color:var(--sidebar-quiet-hover)] ring-1 ring-black/8 dark:ring-white/10'
               )}
               leftSlot={renderRecentGroupIcon(group)}
               rightSlot={
@@ -1504,49 +1504,54 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         </nav>
       </WorkbenchSidebarFixed>
 
+      {/* 内联搜索：标题即时过滤。放在固定区而非滚动区内吸顶，
+          避免滚动 viewport 顶部 28px 渐隐 mask 把输入框上缘和 focus ring 淡化掉 */}
+      <WorkbenchSidebarFixed
+        data-no-drag
+        data-sidebar-fixed-region="session-search"
+      >
+        <div className="relative mt-2">
+          <MagnifyingGlass
+            size={14}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--shell-navigation-muted)]"
+          />
+          <Input
+            type="text"
+            value={sidebarSearchQuery}
+            onChange={(event) => setSidebarSearchQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && sidebarSearchQuery) {
+                event.preventDefault();
+                event.stopPropagation();
+                setSidebarSearchQuery('');
+              }
+            }}
+            placeholder={t('sidebar:search.placeholder')}
+            aria-label={t('sidebar:search.placeholder')}
+            className="h-8 w-full rounded-[10px] border-transparent bg-[color:var(--interactive-hover)] pl-8 pr-7 text-[13px] shadow-none placeholder:text-[color:var(--shell-navigation-muted)] focus-visible:border-[color:var(--ring)]/40 focus-visible:ring-1 focus-visible:ring-ring"
+          />
+          {sidebarSearchQuery ? (
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              aria-label={t('sidebar:search.clear')}
+              className="absolute right-1 top-1/2 !h-6 !w-6 -translate-y-1/2 text-[color:var(--shell-navigation-muted)]"
+              onClick={() => setSidebarSearchQuery('')}
+            >
+              <X size={12} />
+            </NotionButton>
+          ) : null}
+        </div>
+      </WorkbenchSidebarFixed>
+
       <WorkbenchSidebarScroll>
+          {/* pt-5：让静止时首个分区标题避开 viewport 顶部 28px 渐隐 mask */}
           <div
-            className="flex flex-col gap-3 px-2 pb-6 pt-4"
+            className="flex flex-col gap-3 px-2 pb-6 pt-5"
             data-no-drag
           >
-            {/* 内联搜索：标题即时过滤（吸顶，滚动时保持可用） */}
-            <div className="sticky top-0 z-10 -mx-2 -mt-4 bg-[color:var(--shell-navigation-surface)] px-2 pb-1 pt-3">
-              <div className="relative">
-                <MagnifyingGlass
-                  size={14}
-                  aria-hidden="true"
-                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--shell-navigation-muted)]"
-                />
-                <Input
-                  type="text"
-                  value={sidebarSearchQuery}
-                  onChange={(event) => setSidebarSearchQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Escape' && sidebarSearchQuery) {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setSidebarSearchQuery('');
-                    }
-                  }}
-                  placeholder={t('sidebar:search.placeholder')}
-                  aria-label={t('sidebar:search.placeholder')}
-                  className="h-8 w-full rounded-[10px] border-transparent bg-[color:var(--interactive-hover)] pl-8 pr-7 text-[13px] shadow-none placeholder:text-[color:var(--shell-navigation-muted)] focus-visible:border-[color:var(--ring)]/40 focus-visible:ring-1 focus-visible:ring-ring"
-                />
-                {sidebarSearchQuery ? (
-                  <NotionButton
-                    variant="ghost"
-                    size="icon"
-                    iconOnly
-                    aria-label={t('sidebar:search.clear')}
-                    className="absolute right-1 top-1/2 !h-6 !w-6 -translate-y-1/2 text-[color:var(--shell-navigation-muted)]"
-                    onClick={() => setSidebarSearchQuery('')}
-                  >
-                    <X size={12} />
-                  </NotionButton>
-                ) : null}
-              </div>
-            </div>
-
             {isSidebarSearchActive && !hasSidebarSearchResults ? (
               <p className="px-2 py-1 text-[12px] text-[color:var(--shell-navigation-muted)]">
                 {t('sidebar:search.no_results')}
@@ -1620,7 +1625,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               className={cn(
                 'space-y-0.5 rounded-[10px] pt-1 transition-colors',
                 dragOverUngroupedZone && draggedSessionId !== null
-                  && 'bg-[color:var(--sidebar-quiet-hover)] ring-1 ring-black/8'
+                  && 'bg-[color:var(--sidebar-quiet-hover)] ring-1 ring-black/8 dark:ring-white/10'
               )}
               onDragOver={handleUngroupedZoneDragOver}
               onDragLeave={handleUngroupedZoneDragLeave}

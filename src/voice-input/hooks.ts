@@ -5,6 +5,7 @@ import type { TFunction } from 'i18next';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 import {
   VOICE_INPUT_CONFIG_CHANGED_EVENT,
@@ -24,8 +25,8 @@ let globalVoiceInputListenerCleanup: (() => void) | null = null;
 
 function openSettingsTab(tab: 'general' | 'apis' | 'models'): void {
   setPendingSettingsRoute({ tab });
-  window.dispatchEvent(new CustomEvent('navigate-to-tab', { detail: { tabName: 'settings' } }));
-  window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: { tab } }));
+  dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
+  dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab });
 }
 
 function attachGlobalVoiceInputListeners(): () => void {

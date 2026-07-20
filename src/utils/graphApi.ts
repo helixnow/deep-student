@@ -1,3 +1,16 @@
+/**
+ * Knowledge-graph / legacy mistake helpers.
+ *
+ * ## Deprecation inventory
+ * - **owner**: knowledge-graph
+ * - **barrel**: 禁止经 `tauriApi.ts` 静态 `export *`（已摘除）；仅保留 TauriAPI 动态包装的 2 个 stream API
+ * - **live callers (do NOT delete file yet)**:
+ *   - `src/quick-assistant/service.ts` → `bulkImportProblemCards`
+ *   - `src/utils/tauriApi.ts` dynamic import → `unifiedImportTagHierarchyStream` /
+ *     `unifiedGenerateTagHierarchyPreviewStream` → `NoTagTreeShadPanel`
+ * - **remove target**: vNext after migrating those call sites off this module
+ */
+
 import { invoke } from '@tauri-apps/api/core';
 import { getErrorMessage } from './errorUtils';
 import { normalizeHistoryForBackend } from './normalizeHistory';

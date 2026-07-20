@@ -250,7 +250,12 @@ export function CommandPaletteProvider({
       );
 
       // ── Cmd/Ctrl+K：打开命令面板（富文本编辑器内让编辑器自行处理）──
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k' && !e.shiftKey && !e.altKey) {
+      // 仅当用户未自定义/禁用 global.command-palette 绑定时走硬编码快捷路径；
+      // 有自定义时交给下方注册表统一解析，避免改绑/禁用后旧键仍生效。
+      if (
+        (e.metaKey || e.ctrlKey) && e.key === 'k' && !e.shiftKey && !e.altKey &&
+        !shortcutManager.hasCustomShortcut('global.command-palette')
+      ) {
         if (isInRichEditor) return;
         e.preventDefault();
         toggle();

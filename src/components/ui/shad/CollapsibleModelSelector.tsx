@@ -114,7 +114,8 @@ export function CollapsibleModelSelector({
 
       <div 
         className={cn(
-          "grid transition-all duration-300 ease-in-out",
+          // 显式列出参与过渡的属性（transition-all 会连带 layout 属性触发重排）
+          "grid transition-[grid-template-rows,opacity,margin-top] duration-300 ease-in-out motion-reduce:transition-none",
           expanded ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
         )}
       >

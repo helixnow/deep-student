@@ -128,7 +128,7 @@ export function VoiceInputControl({
         // P1-3: 32px 视觉高度保留，触屏用伪元素把命中区扩到 ≥44px
         "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']",
         isRecording
-          ? 'border-red-500/40 bg-red-500/10 text-red-600 shadow-[0_0_0_3px_rgba(239,68,68,0.08)]'
+          ? 'border-destructive/40 bg-destructive/10 text-destructive shadow-[0_0_0_3px_hsl(var(--destructive)/0.08)]'
           : 'border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-[color:var(--button-utility-foreground)] hover:bg-[var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]',
         (disabled || isTranscribing) && 'opacity-60'
       )}
@@ -144,7 +144,7 @@ export function VoiceInputControl({
           {isRecording && (
             <span
               aria-hidden="true"
-              className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500 animate-pulse motion-reduce:animate-none"
+              className="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive animate-pulse motion-reduce:animate-none"
             />
           )}
           <span className="tabular-nums">{formatElapsedMs(state.elapsedMs)}</span>

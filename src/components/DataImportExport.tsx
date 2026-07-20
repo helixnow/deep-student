@@ -4,7 +4,6 @@ import { getErrorMessage } from '../utils/errorUtils';
 import { TauriAPI, BackupTier } from '../utils/tauriApi';
 import { DataGovernanceApi } from '../api/dataGovernance';
 import { fileManager, extractFileName } from '../utils/fileManager';
-import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from './custom-scroll-area';
 import { useMobileHeader } from '@/components/layout';
@@ -13,13 +12,13 @@ import {
   Upload, DownloadSimple, Warning, Trash, HardDrive, Clock, ArrowsClockwise,
   FileZip, X, FloppyDisk, FileText, ChartBar, BookOpen, Brain, Database,
   Crosshair, TrendUp, Tag, Pulse, Lightning, WarningCircle, ArrowUpRight,
-  ArrowDownRight, SpinnerGap, Play, ArrowCounterClockwise, Image, Info, Cloud, Flask,
-  CheckCircle, XCircle, Square
+  ArrowDownRight, SpinnerGap, Image, Info, Cloud
 } from '@phosphor-icons/react';
 import { cn } from '../lib/utils';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/shad/Card';
 import { Alert, AlertDescription } from './ui/shad/Alert';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { Checkbox } from './ui/shad/Checkbox';
 import {
   NotionDialog,
@@ -40,8 +39,8 @@ import { useAllStatistics } from '../hooks/useStatisticsData';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
 import { ChatV2StatsSection } from './ChatV2StatsSection';
 import { LlmUsageStatsSection } from './llm-usage/LlmUsageStatsSection';
+import { DataChartsPanel } from './stats/DataChartsPanel';
 import { useChatV2Stats } from '../hooks/useChatV2Stats';
-import { LearningHeatmap } from './LearningHeatmap';
 import { Progress as ShadProgress } from './ui/shad/Progress';
 import { useShallow } from 'zustand/react/shallow';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
@@ -126,13 +125,14 @@ const BackupListItem: React.FC<{
   return (
     <div
       className={cn(
-        'group flex items-center justify-between rounded-lg border border-transparent bg-transparent p-4 transition-colors',
+        // flex-wrap：400px 窄屏下长备份名 + 两个操作按钮挤不进一行时换行，避免按钮被推出可视区
+        'group flex flex-wrap items-center justify-between gap-2 rounded-lg border border-transparent bg-transparent p-4 transition-colors',
         'hover:bg-[var(--interactive-hover)]'
       )}
     >
-      <div className="flex-1">
+      <div className="min-w-0 flex-1 basis-52">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-sm text-foreground">{backup.display_name}</span>
+          <span className="break-all font-mono text-sm text-foreground">{backup.display_name}</span>
           {backup.is_auto_backup && (
             <Badge variant="secondary" className="text-xs">
               {t('data:backup_list.auto_badge')}
@@ -351,19 +351,6 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
   const [isClearing, setIsClearing] = useState(false);
   const [slotInfo, setSlotInfo] = useState<{ active_slot: string; inactive_slot: string; pending_slot?: string; active_dir: string; inactive_dir: string; } | null>(null);
   const countdownTimerRef = React.useRef<number | null>(null);
-
-  // 备份系统测试状态
-  const [backupTestRunning, setBackupTestRunning] = useState(false);
-  const [backupTestResult, setBackupTestResult] = useState<{
-    status: 'idle' | 'running' | 'success' | 'failed';
-    currentStep: string;
-    progress: number;
-    logs: string[];
-    error?: string;
-    integrityScore?: number;
-    duration?: number;
-  }>({ status: 'idle', currentStep: '', progress: 0, logs: [] });
-  const backupTestAbortRef = useRef(false);
 
   const clearCountdownTimer = useCallback(() => {
     if (countdownTimerRef.current !== null) {
@@ -1145,66 +1132,45 @@ ${resolvedPath}`);
       
       const mobile = isMobileRuntime();
 
-      // 显示详细的删除结果
-      if (result.includes('成功删除')) {
-        showGlobalNotification(
-          'success',
-          mobile
-            ? t('data:clear_data.success_mobile')
-            : t('data:clear_data.success_desktop')
-        );
-      } else if (result.includes('没有找到')) {
-        showGlobalNotification('warning', t('data:clear_data.no_files'));
-        return;
-      } else {
-        showGlobalNotification(
-          'success',
-          mobile
-            ? t('data:clear_data.complete_mobile')
-            : t('data:clear_data.complete_desktop')
-        );
-      }
+      // 后端这里只持久化 purge marker；物理删除在完整进程重启的最早启动阶段执行。
+      showGlobalNotification(
+        'success',
+        mobile
+          ? t('data:clear_data.scheduled_mobile')
+          : t('data:clear_data.scheduled_desktop'),
+      );
 
       if (mobile) {
-        try {
-          const report = await TauriAPI.purgeActiveDataDirNow();
-          debugLog.log('🧹 移动端即时清理报告:', report);
-          if (report && report.trim().length > 0) {
-            showGlobalNotification('info', report.trim());
-          }
-        } catch (error) {
-          const purgeError = getErrorMessage(error);
-          debugLog.warn('移动端即时清理失败:', purgeError);
-          showGlobalNotification('warning', t('data:clear_data.mobile_purge_failed', { error: purgeError }));
-        }
-
-        setTimeout(() => {
-          window.location.reload();
-        }, 3000);
-        return;
-      }
-
-      // 重启应用以确保所有缓存和状态都被重置
-      try {
+        // WebView reload 不会重建 Rust 侧 SQLite 连接池。必须完整重启进程，
+        // 让启动阶段在任何数据库打开前消费 purge marker。
         setTimeout(async () => {
           try {
             await TauriAPI.restartApp();
-            // 如果是开发模式，restartApp 不会真正重启，需要手动刷新页面
-            if (import.meta.env.DEV) {
-              debugLog.log('🔧 开发模式：执行页面刷新');
-              window.location.reload();
-            }
           } catch (error) {
-            debugLog.error('重启应用失败，回退到页面刷新:', error);
-            window.location.reload();
+            const restartError = getErrorMessage(error);
+            debugLog.warn('移动端自动重启失败，请用户手动完全退出:', restartError);
+            showGlobalNotification(
+              'warning',
+              t('data:clear_data.restart_failed', { error: restartError }),
+            );
           }
         }, 3000);
-      } catch (error) {
-        debugLog.error('延时执行失败:', error);
-        setTimeout(() => {
-          window.location.reload();
-        }, 3000);
+        return;
       }
+
+      // WebView reload 无法消费 purge marker；自动重启失败时必须要求用户完整退出。
+      setTimeout(async () => {
+        try {
+          await TauriAPI.restartApp();
+        } catch (error) {
+          const restartError = getErrorMessage(error);
+          debugLog.error('重启应用失败，请用户完整退出后重开:', restartError);
+          showGlobalNotification(
+            'warning',
+            t('data:clear_data.restart_failed', { error: restartError }),
+          );
+        }
+      }, 3000);
     } catch (error) {
       debugLog.error('清空数据失败:', error);
       showGlobalNotification('error', t('data:clear_data.error'));
@@ -1233,325 +1199,6 @@ ${resolvedPath}`);
       showGlobalNotification('error', t('data:integrity.failed', { error: errorMessage }));
     }
   };
-
-  // 运行备份系统全自动测试
-  const runBackupSystemTest = useCallback(async () => {
-    if (backupTestRunning) return;
-
-    backupTestAbortRef.current = false;
-    setBackupTestRunning(true);
-    const startTime = Date.now();
-    const logs: string[] = [];
-
-    const addLog = (msg: string) => {
-      const time = new Date().toLocaleTimeString(undefined, { hour12: false });
-      logs.push(`[${time}] ${msg}`);
-      setBackupTestResult(prev => ({ ...prev, logs: [...logs] }));
-      debugLog.log(`[BackupTest] ${msg}`);
-    };
-
-    const updateProgress = (step: string, progress: number) => {
-      setBackupTestResult(prev => ({ ...prev, currentStep: step, progress }));
-    };
-
-    // 等待备份任务完成的辅助函数
-    const waitForBackupJob = async (jobId: string, kind: 'export' | 'import'): Promise<{ success: boolean; outputPath?: string; error?: string }> => {
-      const { listen } = await import('@tauri-apps/api/event');
-
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          unlisten();
-          reject(new Error(t('data:errors.task_timeout', { kind, seconds: 60 })));
-        }, 60000);
-
-        type BackupJobEvent = {
-          jobId?: string;
-          job_id?: string;
-          kind: 'export' | 'import';
-          status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
-          phase: string;
-          progress: number;
-          message?: string;
-          result?: { success: boolean; outputPath?: string; resolvedPath?: string; output_path?: string; resolved_path?: string; error?: string; stats?: Record<string, unknown> };
-        };
-
-        let unlisten: () => void;
-        listen<BackupJobEvent>('backup-job-progress', (event) => {
-          const p = event?.payload;
-          const eventJobId = p?.jobId || p?.job_id;
-          if (!p || eventJobId !== jobId) return;
-
-          addLog(`  → [${kind}] ${p.phase}: ${p.progress.toFixed(0)}% ${p.message || ''}`);
-
-          if (p.status === 'completed') {
-            clearTimeout(timeout);
-            unlisten();
-            if (p.result?.success === false) {
-              resolve({ success: false, error: p.result?.error || t('data:errors.task_failed', { kind }) });
-              return;
-            }
-            const outputPath = p.result?.resolvedPath || p.result?.resolved_path || p.result?.outputPath || p.result?.output_path;
-            resolve({ success: true, outputPath });
-          } else if (p.status === 'failed' || p.status === 'cancelled') {
-            clearTimeout(timeout);
-            unlisten();
-            resolve({ success: false, error: p.result?.error || p.message || t('data:errors.task_failed', { kind }) });
-          }
-        }).then(fn => { unlisten = fn; });
-      });
-    };
-
-    try {
-      setBackupTestResult({ status: 'running', currentStep: t('data:backup_test.steps.preparing'), progress: 0, logs: [] });
-      addLog('🚀 开始全自动备份系统测试（完整版）');
-      addLog('═══════════════════════════════════════════════════════');
-      addLog('核心原则: 测试流程与生产流程 100% 一致');
-      addLog('  → 使用 data_governance_backup_tiered 创建备份');
-      addLog('  → 使用 data_governance_export_zip / import_zip / restore_backup 进行恢复验证');
-      addLog('  → 测试插槽 C/D 用于构造边界样本，不影响主数据');
-      addLog('═══════════════════════════════════════════════════════');
-
-      // ============================================================
-      // Phase 1: 准备测试环境
-      // ============================================================
-      updateProgress(t('data:backup_test.steps.prepare_env'), 5);
-      addLog('');
-      addLog('📦 Phase 1: 准备测试环境');
-      addLog('清空测试插槽 C 和 D...');
-      await TauriAPI.clearTestSlots();
-      const slotInfo = await TauriAPI.getTestSlotInfo();
-      addLog(`✅ 测试插槽已准备: C=${slotInfo.slot_c_dir.split('/').pop()}, D=${slotInfo.slot_d_dir.split('/').pop()}`);
-
-      if (backupTestAbortRef.current) throw new Error(t('data:backup_test.cancelled'));
-
-      // ============================================================
-      // Phase 2: 创建核心测试数据
-      // ============================================================
-      updateProgress(t('data:backup_test.steps.create_core_data'), 10);
-      addLog('');
-      addLog('📦 Phase 2: 创建核心测试数据');
-
-      // 2.1 创建 SQLite WAL 模式数据库
-      addLog('2.1 创建 SQLite WAL 模式数据库...');
-      const dbResult = await invoke<{ path: string; row_count: number; wal_mode: boolean }>('create_test_database_in_slot', {
-        slotDir: slotInfo.slot_c_dir,
-        rowCount: 100,
-        enableWal: true
-      });
-      addLog(`  ✅ 数据库: ${dbResult.row_count} 行, WAL=${dbResult.wal_mode}`);
-
-      // 2.2 创建基本测试文件
-      addLog('2.2 创建基本测试文件 (图片 + JSON)...');
-      const filesResult = await invoke<{ directory: string; file_count: number; total_size: number }>('create_test_files_in_slot', {
-        slotDir: slotInfo.slot_c_dir,
-        fileCount: 20,
-        includeImages: true,
-        includeJson: true
-      });
-      addLog(`  ✅ 基本文件: ${filesResult.file_count} 个, ${(filesResult.total_size / 1024).toFixed(1)} KB`);
-
-      if (backupTestAbortRef.current) throw new Error(t('data:backup_test.cancelled'));
-
-      // ============================================================
-      // Phase 3: 创建边缘场景测试数据
-      // ============================================================
-      updateProgress(t('data:backup_test.steps.create_edge_data'), 20);
-      addLog('');
-      addLog('📦 Phase 3: 创建边缘场景测试数据');
-
-      const edgeCaseResult = await invoke<{
-        directory: string;
-        file_count: number;
-        total_size: number;
-        scenarios: string[];
-      }>('create_edge_case_test_files', { slotDir: slotInfo.slot_c_dir });
-
-      addLog(`  ✅ 边缘场景: ${edgeCaseResult.file_count} 个文件, ${(edgeCaseResult.total_size / 1024 / 1024).toFixed(2)} MB`);
-      for (const scenario of edgeCaseResult.scenarios) {
-        addLog(`    → ${scenario}`);
-      }
-
-      if (backupTestAbortRef.current) throw new Error(t('data:backup_test.cancelled'));
-
-      // ============================================================
-      // Phase 4: 符号链接测试（仅 Unix）
-      // ============================================================
-      updateProgress(t('data:backup_test.steps.create_symlink'), 25);
-      addLog('');
-      addLog('📦 Phase 4: 符号链接安全测试');
-
-      try {
-        const symlinkResult = await invoke<string>('create_symlink_test', { slotDir: slotInfo.slot_c_dir });
-        addLog(`  ✅ ${symlinkResult}`);
-        addLog('  → 备份时应跳过符号链接，验证安全防护');
-      } catch (e) {
-        addLog(`  ⚠️ 符号链接测试跳过: ${e}`);
-      }
-
-      if (backupTestAbortRef.current) throw new Error(t('data:backup_test.cancelled'));
-
-      // ============================================================
-      // Phase 5: 执行备份（数据治理命令链路）
-      // ============================================================
-      updateProgress(t('data:backup_test.steps.run_backup'), 35);
-      addLog('');
-      addLog('📦 Phase 5: 执行备份 (data_governance_backup_tiered)');
-      addLog('  → 创建治理备份并等待任务完成');
-
-      const backupJob = await DataGovernanceApi.backupTiered(mapUiTiersToGovernance(exportBackupTiers));
-      addLog(`  → 备份任务启动: job_id=${backupJob.job_id.slice(0, 8)}...`);
-
-      const backupResult = await waitForBackupJob(backupJob.job_id, 'export');
-      if (!backupResult.success) {
-        throw new Error(t('data:backup_test.backup_failed', { error: backupResult.error }));
-      }
-
-      const backupStats = (backupResult as { result?: { stats?: Record<string, unknown> } }).result?.stats;
-      const backupId =
-        backupStats && typeof backupStats.backup_id === 'string'
-          ? backupStats.backup_id
-          : null;
-      if (!backupId) {
-        throw new Error(t('data:backup_test.backup_id_missing'));
-      }
-      addLog(`  ✅ 备份完成: ${backupId}`);
-
-      const exportZipJob = await DataGovernanceApi.exportZip(backupId);
-      addLog(`  → ZIP 导出任务启动: job_id=${exportZipJob.job_id.slice(0, 8)}...`);
-
-      const exportZipResult = await waitForBackupJob(exportZipJob.job_id, 'export');
-      if (!exportZipResult.success) {
-        throw new Error(t('data:backup_test.zip_export_failed', { error: exportZipResult.error }));
-      }
-
-      const backupPath = exportZipResult.outputPath;
-      if (!backupPath) {
-        throw new Error(t('data:backup_test.zip_path_missing'));
-      }
-      addLog(`  ✅ ZIP 导出完成: ${backupPath.split('/').slice(-2).join('/')}`);
-
-      if (backupTestAbortRef.current) throw new Error(t('data:backup_test.cancelled'));
-
-      // ============================================================
-      // Phase 6: 执行导入与恢复（数据治理命令链路）
-      // ============================================================
-      updateProgress(t('data:backup_test.steps.run_import_restore'), 55);
-      addLog('');
-      addLog('📦 Phase 6: 执行导入与恢复 (data_governance_import_zip + restore_backup)');
-
-      const importJob = await DataGovernanceApi.importZip(backupPath);
-      addLog(`  → 导入任务启动: job_id=${importJob.job_id.slice(0, 8)}...`);
-
-      const importResultJob = await waitForBackupJob(importJob.job_id, 'import');
-      if (!importResultJob.success) {
-        throw new Error(t('data:backup_test.import_failed', { error: importResultJob.error }));
-      }
-
-      const importedStats = (importResultJob as { result?: { stats?: Record<string, unknown> } }).result?.stats;
-      const importedBackupId =
-        importedStats && typeof importedStats.backup_id === 'string'
-          ? importedStats.backup_id
-          : null;
-      if (!importedBackupId) {
-        throw new Error(t('data:backup_test.import_id_missing'));
-      }
-
-      const restoreJob = await DataGovernanceApi.restoreBackup(importedBackupId);
-      addLog(`  → 恢复任务启动: job_id=${restoreJob.job_id.slice(0, 8)}...`);
-
-      const restoreResult = await waitForBackupJob(restoreJob.job_id, 'import');
-      if (!restoreResult.success) {
-        throw new Error(t('data:backup_test.restore_failed', { error: restoreResult.error }));
-      }
-      addLog('  ✅ 恢复完成');
-
-      if (backupTestAbortRef.current) throw new Error(t('data:backup_test.cancelled'));
-
-      // ============================================================
-      // Phase 7: 验证导入备份可校验
-      // ============================================================
-      updateProgress(t('data:backup_test.steps.verify_import'), 75);
-      addLog('');
-      addLog('📦 Phase 7: 验证导入备份完整性');
-
-      const verifyResult = await DataGovernanceApi.verifyBackup(importedBackupId);
-      const integrityScore = verifyResult.is_valid ? 100 : 0;
-      addLog(`  校验结果: ${verifyResult.is_valid ? '通过' : '失败'}`);
-      addLog(`  数据库校验项: ${verifyResult.databases_verified.length}`);
-
-      if (!verifyResult.is_valid) {
-        const reason = verifyResult.errors.join('; ') || t('data:backup_test.unknown_error');
-        throw new Error(t('data:backup_test.verify_failed', { reason }));
-      }
-
-      if (backupTestAbortRef.current) throw new Error(t('data:backup_test.cancelled'));
-
-      // ============================================================
-      // Phase 8: 清理测试环境
-      // ============================================================
-      updateProgress(t('data:backup_test.steps.cleanup'), 95);
-      addLog('');
-      addLog('📦 Phase 8: 清理测试环境');
-      await invoke('clear_test_slot', { slotName: 'slotC' });
-      await invoke('clear_test_slot', { slotName: 'slotD' });
-      addLog('  ✅ 测试环境清理完成');
-
-      // ============================================================
-      // 测试完成
-      // ============================================================
-      const duration = Date.now() - startTime;
-      updateProgress(t('data:backup_test.steps.done'), 100);
-      addLog('');
-      addLog('═══════════════════════════════════════════════════════');
-      addLog('🎉 全部测试通过！');
-      addLog(`  总耗时: ${(duration / 1000).toFixed(2)} 秒`);
-      addLog(`  数据完整性: ${integrityScore.toFixed(1)}%`);
-      addLog(`  测试场景: ${edgeCaseResult.scenarios.length + 2} 个`);
-      addLog('═══════════════════════════════════════════════════════');
-
-      setBackupTestResult(prev => ({
-        ...prev,
-        status: 'success',
-        integrityScore,
-        duration
-      }));
-
-      showGlobalNotification('success', t('data:backup_test.success', { score: integrityScore.toFixed(1) }));
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      addLog('');
-      addLog(`❌ 测试失败: ${errorMessage}`);
-
-      // 尝试清理
-      try {
-        await TauriAPI.clearTestSlots();
-        addLog('已清理测试环境');
-      } catch (cleanupError) {
-        addLog(`⚠️ 清理失败: ${cleanupError}`);
-      }
-
-      setBackupTestResult(prev => ({
-        ...prev,
-        status: 'failed',
-        error: errorMessage,
-        duration: Date.now() - startTime
-      }));
-
-      showGlobalNotification('error', t('data:backup_test.failed', { error: errorMessage }));
-    } finally {
-      setBackupTestRunning(false);
-    }
-  }, [backupTestRunning]);
-
-  const stopBackupTest = useCallback(() => {
-    backupTestAbortRef.current = true;
-    showGlobalNotification('warning', t('data:backup_test.stopping'));
-  }, []);
-
-  const resetBackupTest = useCallback(() => {
-    setBackupTestResult({ status: 'idle', currentStep: '', progress: 0, logs: [] });
-  }, []);
 
   // 处理确认文本输入
   const handleConfirmTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1669,26 +1316,14 @@ ${resolvedPath}`);
         {/* 数据统计部分 - 放在最上方 */}
         {(mode === 'all' || mode === 'stats') && (
           mode === 'stats' ? (
-            // stats 模式：使用 SettingSection 包裹，与其他设置标签页保持一致
+            // stats 模式：macOS System Settings 风格分组面板
             <SettingSection 
               title={t('data:statistics_section_title')} 
               description={t('data:statistics_section_subtitle')}
               className="overflow-visible"
               hideHeader
             >
-              {/* 左右两栏：会话统计 | LLM 统计 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
-                <ChatV2StatsSection statsOnly />
-                <LlmUsageStatsSection statsOnly days={30} />
-              </div>
-
-              {/* 学习热力图 */}
-              <div className="mb-5 rounded-xl bg-card ring-1 ring-border/40 shadow-sm p-5">
-                <LearningHeatmap months={12} showStats={false} showLegend={true} />
-              </div>
-
-              {/* LLM 图表 */}
-              <LlmUsageStatsSection chartsOnly days={30} sessionTrends={chatStats.dailyActivity} />
+              <DataChartsPanel />
             </SettingSection>
           ) : (
             // all 模式：使用原有的标题样式
@@ -1880,8 +1515,7 @@ ${resolvedPath}`);
                 size="sm" 
                 onClick={() => {
                   // 触发父组件的导入对话对话框
-                  const event = new CustomEvent('DSTU_OPEN_IMPORT_CONVERSATION');
-                  window.dispatchEvent(event);
+                  dispatchAppEvent(APP_EVENTS.OPEN_IMPORT_CONVERSATION);
                 }}
               >
                 <Upload size={16} className="mr-1.5" />
@@ -1907,8 +1541,7 @@ ${resolvedPath}`);
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  const event = new CustomEvent('DSTU_OPEN_CLOUD_STORAGE_SETTINGS');
-                  window.dispatchEvent(event);
+                  dispatchAppEvent(APP_EVENTS.OPEN_CLOUD_STORAGE_SETTINGS);
                 }}
               >
                 <Cloud size={16} className="mr-1.5" />
@@ -1917,106 +1550,14 @@ ${resolvedPath}`);
             </CardFooter>
           </Card>
 
-          {/* 备份系统测试 */}
-          <Card className="overflow-hidden md:col-span-2">
-            <CardHeader>
-              <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
-                {backupTestRunning ? (
-                  <SpinnerGap className={cn(DATA_CENTER_ICON_CLASS, 'animate-spin')} />
-                ) : backupTestResult.status === 'success' ? (
-                          <CheckCircle className={cn(DATA_CENTER_ICON_CLASS, 'text-success')} />
-                        ) : backupTestResult.status === 'failed' ? (
-                          <XCircle className={cn(DATA_CENTER_ICON_CLASS, 'text-destructive')} />
-                ) : (
-                  <Flask className={DATA_CENTER_ICON_CLASS} />
-                )}
-              </div>
-              <CardTitle className="text-base">{t('data:backup_test.title')}</CardTitle>
-              <CardDescription>
-                {t('data:backup_test.description')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {/* 测试进度 */}
-              {backupTestResult.status === 'running' && (
-                <div className="space-y-3 mb-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{backupTestResult.currentStep}</span>
-                    <span className="font-medium">{backupTestResult.progress}%</span>
-                  </div>
-                  <ShadProgress value={backupTestResult.progress} />
-                </div>
-              )}
-
-              {/* 测试结果 */}
-              {backupTestResult.status === 'success' && (
-                  <Alert className="mb-4 border-success/30 bg-success/10">
-                    <CheckCircle size={16} className="text-success" />
-                    <AlertDescription className="text-success">
-                    {t('data:backup_test.result_passed', { score: backupTestResult.integrityScore?.toFixed(1), duration: ((backupTestResult.duration || 0) / 1000).toFixed(2) })}
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {backupTestResult.status === 'failed' && (
-                <Alert variant="destructive" className="mb-4">
-                  <XCircle size={16} />
-                  <AlertDescription>
-                    {t('data:backup_test.result_failed_detail', { error: backupTestResult.error })}
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {/* 日志展示 */}
-              {backupTestResult.logs.length > 0 && (
-                <CustomScrollArea className="rounded-lg bg-muted/50 max-h-[200px] font-mono text-xs" viewportClassName="p-3 space-y-1">
-                  {backupTestResult.logs.map((log, i) => (
-                    <div key={i} className={cn(
-                      log.includes('✅') ? 'text-success' :
-                      log.includes('❌') ? 'text-destructive' :
-                      log.includes('⚠️') ? 'text-warning' :
-                      log.includes('🚀') || log.includes('🎉') ? 'text-primary' :
-                      'text-muted-foreground'
-                    )}>
-                      {log}
-                    </div>
-                  ))}
-                </CustomScrollArea>
-              )}
-            </CardContent>
-            <CardFooter className="flex gap-2">
-              {backupTestRunning ? (
-                <NotionButton variant="danger" size="sm" onClick={stopBackupTest}>
-                  <Square size={16} className="mr-1.5" />
-                  {t('data:backup_test.stop_button')}
-                </NotionButton>
-              ) : (
-                <>
-                    <NotionButton
-                      variant="default"
-                      size="sm"
-                      onClick={runBackupSystemTest}
-                    >
-                    <Play size={16} className="mr-1.5" />
-                    {t('data:backup_test.run_button')}
-                  </NotionButton>
-                  {backupTestResult.status !== 'idle' && (
-                    <NotionButton variant="ghost" size="sm" onClick={resetBackupTest}>
-                      <ArrowCounterClockwise size={16} className="mr-1.5" />
-                      {t('data:backup_test.reset_button')}
-                    </NotionButton>
-                  )}
-                </>
-              )}
-            </CardFooter>
-          </Card>
         </div>
 
         {/* Tabs */}
         <div className="mb-8 rounded-2xl border border-transparent ring-1 ring-border/40 bg-card shadow-sm">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)} className="w-full">
             <div className="border-b border-border/60 px-4 py-3">
-              <TabsList className="h-9 gap-2 rounded-lg bg-muted/40 p-1">
+              {/* 窄屏（尤其英文长标签）4 个 Tab 挤不下：允许横向滚动而非溢出裁切 */}
+              <TabsList className="h-9 max-w-full gap-2 overflow-x-auto rounded-lg bg-muted/40 p-1">
                 <TabsTrigger value="backup" className="flex-1 text-sm">
                   {t('data:backup_management')}
                 </TabsTrigger>

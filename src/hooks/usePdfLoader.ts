@@ -202,6 +202,12 @@ export function usePdfLoader({
     // 如果有可流式读取的本地路径，不需要整文件 base64 过 IPC
     if (effectiveFilePath) {
       abortControllerRef.current = null;
+      // ★ 走 stream 分支时清掉 base64 去重标记：file state 被置 null 后，
+      // 若之后切回无 stream 路径的同一 key 且缓存已被 LRU 淘汰，
+      // 残留的 lastLoadedKeyRef+fileRef 会让去重判断误判"已加载"而
+      // 直接 early return，导致 file 永远为 null（空白预览且无错误）。
+      lastLoadedKeyRef.current = null;
+      fileRef.current = null;
       setFile(null);
       setLoading(false);
       setError(null);

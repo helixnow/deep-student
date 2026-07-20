@@ -14,14 +14,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/sh
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
 import { Switch } from '@/components/ui/shad/Switch';
 import {
-  Play,
   Square,
   Download,
   ArrowClockwise,
   CheckCircle,
   XCircle,
   CircleNotch,
-  Upload,
   FileImage,
   FileText,
   Copy,
@@ -43,7 +41,6 @@ import {
   PIPELINE_TEST_EVENT,
   type AttachmentType,
   type TestConfig,
-  type TestCase,
   type TestCaseResult,
   type PipelineLogEntry,
   type OverallStatus,
@@ -133,9 +130,11 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
     }
   }, []);
 
-  // 启动时从保存的路径恢复文件
+  // 启动时从保存的路径恢复文件（仅在首次激活时执行一次）
+  const hasRestoredFilesRef = useRef(false);
   useEffect(() => {
-    if (!isActivated) return;
+    if (!isActivated || hasRestoredFilesRef.current) return;
+    hasRestoredFilesRef.current = true;
     (async () => {
       if (imagePath && !imageFile) {
         const f = await loadFileFromPath(imagePath, 'image/png');
@@ -148,6 +147,9 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
         else { setPdfPath(''); saveConfig({ pdfPath: '' }); }
       }
     })();
+    // 有意豁免 imagePath/pdfPath/imageFile/pdfFile/loadFileFromPath 依赖：
+    // 该 effect 只负责激活时的一次性恢复（由 hasRestoredFilesRef 保证），后续变化由用户选择文件驱动。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActivated]);
 
   // 加载模型列表
@@ -170,6 +172,8 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
         else { const mm = chatModels.find(x => x.isMultimodal); if (mm) setMultimodalModelId(mm.id); }
       }
     }).catch(console.error);
+    // 有意豁免 textModelId/multimodalModelId/saved 依赖：仅在激活时加载一次模型列表并恢复默认选择。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActivated]);
 
   // 监听实时日志

@@ -148,6 +148,8 @@ const CitationTestPlugin: React.FC<DebugPanelPluginProps> = ({
         else { const first = chatModels[0]; if (first) setModelId(first.id); }
       }
     }).catch(console.error);
+    // 有意豁免 modelId/saved 依赖：仅在激活时加载一次模型列表并恢复默认选择。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActivated]);
 
   // 自动滚动日志

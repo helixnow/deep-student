@@ -122,3 +122,35 @@
     height: 6px;
   }
 }
+
+/* ---------------------------------------------------------------- */
+/* Touch devices — thumb must not depend on :hover                   */
+/* ---------------------------------------------------------------- */
+/*
+ * 2026-07 修复（移动端审计 M-1）：上面的隐藏/悬停显影策略依赖 hover，
+ * 触屏没有 hover，导致 Android WebView 等触屏环境下所有原生滚动容器
+ * 完全没有滚动位置指示。触屏改为恒显细 thumb（token 色本身很淡），
+ * CSS 无法做到"仅滚动时显示"，这是无 JS 前提下的最优解。
+ * OverlayScrollbars 路径的触屏 autoHide 策略见 src/components/ui/scroll-area.tsx。
+ */
+@media (hover: none) and (pointer: coarse) {
+  * {
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-width: 1px;
+    background-clip: padding-box;
+  }
+
+  /* OverlayScrollbars 容器仍由库自绘，维持隐藏原生条 */
+  [data-overlayscrollbars-viewport] {
+    scrollbar-width: none;
+  }
+}

@@ -1,23 +1,21 @@
 {
-  "generatedAt": "2026-05-14T23:53:36.542Z",
-  "scanDurationMs": 359,
+  "generatedAt": "2026-07-19T12:50:19.424Z",
+  "scanDurationMs": 926,
   "summary": {
-    "totalFiles": 1293,
-    "tsxFiles": 521,
-    "cssFiles": 75
+    "totalFiles": 1929,
+    "tsxFiles": 686,
+    "cssFiles": 151
   },
   "components": {
     "NotionButton": {
       "id": "NotionButton",
       "label": "NotionButton",
       "target": true,
-      "refs": 3772,
-      "files": 310,
+      "refs": 4654,
+      "files": 360,
       "topFiles": [
         "src/App.tsx",
         "src/command-palette/components/ShortcutSettings.tsx",
-        "src/components/AnkiCardPreviewModal.tsx",
-        "src/components/ApiConfigRecovery.tsx",
         "src/components/AttachmentValidationNotice.tsx",
         "src/components/BatchOperationToolbar/BatchEditDialog.tsx",
         "src/components/BatchOperationToolbar/FilterBuilder.tsx",
@@ -25,178 +23,185 @@
         "src/components/Card3DPreview.tsx",
         "src/components/ConflictResolutionDialog.tsx",
         "src/components/CsvImportDialog.tsx",
-        "src/components/Dashboard.tsx",
         "src/components/DataImportExport.tsx",
-        "src/components/DocumentViewer.tsx",
-        "src/components/EnhancedTemplateEditor.tsx",
         "src/components/ErrorBoundary.tsx",
-        "src/components/ExamSheetMobileLayout.tsx",
         "src/components/ExamSheetUploader.tsx",
         "src/components/FieldTypeConfigurator.tsx",
-        "src/components/HeaderTemplate.tsx"
+        "src/components/HeaderTemplate.tsx",
+        "src/components/ImageCropDialog.tsx",
+        "src/components/ImageViewer.tsx",
+        "src/components/ImportConversationDialog.tsx",
+        "src/components/LearningHeatmap/index.tsx",
+        "src/components/McpStatusIndicator.tsx",
+        "src/components/MinimalTemplateEditor.tsx"
       ],
-      "totalFileCount": 310
+      "totalFileCount": 360
     },
     "ShadButton": {
       "id": "ShadButton",
       "label": "shad Button",
       "target": false,
-      "refs": 1,
-      "files": 1,
+      "refs": 2,
+      "files": 2,
       "topFiles": [
-        "src/components/style-lab/ComponentCompareTab.tsx"
+        "src/components/style-lab/ComponentCompareTab.tsx",
+        "src/features/settings/components/WorkbenchSettingsSection.tsx"
       ],
-      "totalFileCount": 1
+      "totalFileCount": 2
     },
     "NativeButton": {
       "id": "NativeButton",
       "label": "原生 <button>",
       "target": false,
-      "refs": 191,
-      "files": 70,
+      "refs": 528,
+      "files": 176,
       "topFiles": [
         "src/App.tsx",
         "src/command-palette/CommandPalette.tsx",
+        "src/components/MinimalTemplateEditor.tsx",
         "src/components/ModernSidebar.tsx",
         "src/components/QuestionBankEditor.tsx",
+        "src/components/QuestionBankExportDialog.tsx",
+        "src/components/ReviewPlanView.tsx",
+        "src/components/ReviewQuestionsView.tsx",
+        "src/components/ReviewSession.tsx",
         "src/components/SecurePasswordInput.tsx",
+        "src/components/TemplateEditorFieldManager.tsx",
+        "src/components/TemplateEditorInsertBar.tsx",
+        "src/components/TemplateEditorPreviewPanel.tsx",
+        "src/components/UnifiedNotification.tsx",
         "src/components/context-menu/TextContextMenu.tsx",
+        "src/components/crepe/CrepeEditor.tsx",
+        "src/components/dashboard/TodayCommandCenter.tsx",
         "src/components/essay-grading/InputPanel.tsx",
-        "src/components/layout/BottomTabBar.tsx",
-        "src/components/layout/MobileSlidingLayout.tsx",
-        "src/components/shared/CommonTooltip.example.tsx",
-        "src/components/shared/CommonTooltip.tsx",
-        "src/components/shared/UnifiedDragDropZone.example.tsx",
-        "src/components/style-lab/ComponentCompareTab.tsx",
-        "src/components/style-lab/MixedUsageTab.tsx",
-        "src/components/style-lab/TokenInspectorTab.tsx",
-        "src/components/ui/NotionButton.tsx",
-        "src/components/ui/SegmentedControl.tsx",
-        "src/components/ui/app-menu/AppMenu.tsx",
-        "src/components/ui/app-menu/AppMenuDemo.tsx",
-        "src/components/ui/shad/Collapsible.tsx"
+        "src/components/essay-grading/SentenceDetailView.tsx",
+        "src/components/essay-grading/SettingsDrawer.tsx"
       ],
-      "totalFileCount": 70
+      "totalFileCount": 176
     },
     "ShadInput": {
       "id": "ShadInput",
       "label": "shad Input",
       "target": true,
-      "refs": 87,
-      "files": 87,
+      "refs": 88,
+      "files": 88,
       "topFiles": [
         "src/command-palette/components/ShortcutSettings.tsx",
         "src/components/BatchOperationToolbar/BatchEditDialog.tsx",
         "src/components/BatchOperationToolbar/FilterBuilder.tsx",
-        "src/components/DocumentViewer.tsx",
-        "src/components/EnhancedTemplateEditor.tsx",
         "src/components/FieldTypeConfigurator.tsx",
         "src/components/ModernSidebar.tsx",
         "src/components/QuestionBankListView.tsx",
         "src/components/QuestionBankManageView.tsx",
         "src/components/QuestionInlineEditor.tsx",
-        "src/components/RealTimeTemplateEditor/index.tsx",
         "src/components/TagNavigationView.tsx",
-        "src/components/anki/TaskDashboardPage.tsx",
         "src/components/practice/DailyPracticeMode.tsx",
         "src/components/practice/MockExamMode.tsx",
         "src/components/practice/PaperGenerator.tsx",
         "src/components/practice/TimedPracticeMode.tsx",
         "src/components/shared/UnifiedModelSelector.tsx",
+        "src/components/skills-management/SkillTapBrowser.tsx",
         "src/components/skills-management/SkillsManagementPage.tsx",
-        "src/components/style-lab/ComponentCompareTab.tsx"
+        "src/components/style-lab/ComponentCompareTab.tsx",
+        "src/components/ui/unified-sidebar/UnifiedSidebar.tsx",
+        "src/dstu/editors/EssayEditorWrapper.tsx",
+        "src/features/anki-tasks/AnkiTasksApp.tsx"
       ],
-      "totalFileCount": 87
+      "totalFileCount": 88
     },
     "ShadTextarea": {
       "id": "ShadTextarea",
       "label": "shad Textarea",
       "target": true,
-      "refs": 24,
-      "files": 24,
+      "refs": 23,
+      "files": 23,
       "topFiles": [
         "src/components/BatchOperationToolbar/BatchEditDialog.tsx",
-        "src/components/EnhancedTemplateEditor.tsx",
         "src/components/FieldTypeConfigurator.tsx",
         "src/components/QuestionInlineEditor.tsx",
         "src/components/style-lab/ComponentCompareTab.tsx",
         "src/dstu/editors/EssayEditorWrapper.tsx",
-        "src/features/chat/components/SystemPromptEditor.tsx",
         "src/features/chat/components/groups/GroupEditorDialog.tsx",
-        "src/features/chat/components/input-bar/InputBarUI.tsx",
         "src/features/chat/components/message/MessageInlineEdit.tsx",
         "src/features/chat/components/panels/OcrResultCard.tsx",
         "src/features/chat/plugins/blocks/ankiCardsBlock.tsx",
         "src/features/chat/workspace/components/AgentOutputDrawer.tsx",
-        "src/features/chat/workspace/components/CreateAgentDialog.tsx",
+        "src/features/chat/workspace/components/CreateAgentCard.tsx",
+        "src/features/flashcards/library/LibraryCardRow.tsx",
         "src/features/learning-hub/components/MemoryFolderBanner.tsx",
         "src/features/learning-hub/views/MemoryView.tsx",
-        "src/features/settings/components/ApisTab.tsx",
         "src/features/settings/components/McpToolEditorModal.tsx",
         "src/features/settings/components/McpToolsManager.tsx",
-        "src/features/settings/components/SettingsCommon.tsx"
+        "src/features/settings/components/SettingsCommon.tsx",
+        "src/features/settings/components/VendorConfigModal.tsx",
+        "src/features/settings/components/VendorDetailPanel.tsx",
+        "src/features/settings/components/VoiceInputSettingsSection.tsx"
       ],
-      "totalFileCount": 24
+      "totalFileCount": 23
     },
     "ShadSwitch": {
       "id": "ShadSwitch",
       "label": "shad Switch",
       "target": true,
-      "refs": 24,
-      "files": 24,
+      "refs": 26,
+      "files": 26,
       "topFiles": [
         "src/components/BatchOperationToolbar/BatchEditDialog.tsx",
-        "src/components/EnhancedTemplateEditor.tsx",
         "src/components/FieldTypeConfigurator.tsx",
         "src/components/practice/MockExamMode.tsx",
         "src/components/practice/PaperGenerator.tsx",
         "src/components/style-lab/ComponentCompareTab.tsx",
-        "src/features/chat/components/ChatParamsPanel.tsx",
         "src/features/chat/plugins/chat/AdvancedPanel.tsx",
         "src/features/chat/plugins/chat/RagPanel.tsx",
+        "src/features/pomodoro/components/PomodoroPanel.tsx",
         "src/features/settings/components/AnkiConnectSettingsSection.tsx",
-        "src/features/settings/components/ApisTab.tsx",
-        "src/features/settings/components/AppearanceTab.tsx",
+        "src/features/settings/components/AutomationSettingsSection.tsx",
         "src/features/settings/components/CloudStorageSection.tsx",
         "src/features/settings/components/IndexMaintenanceSection.tsx",
         "src/features/settings/components/McpToolsSection.tsx",
-        "src/features/settings/components/MemorySettingsSection.tsx",
         "src/features/settings/components/OcrEngineCard.tsx",
         "src/features/settings/components/OcrSettingsSection.tsx",
         "src/features/settings/components/ParamsTab.tsx",
-        "src/features/settings/components/PdfSettingsSection.tsx"
+        "src/features/settings/components/PdfSettingsSection.tsx",
+        "src/features/settings/components/Settings.tsx",
+        "src/features/settings/components/ShadApiEditModal.tsx",
+        "src/features/settings/components/SystemSettingsSection.tsx"
       ],
-      "totalFileCount": 24
+      "totalFileCount": 26
     },
     "ShadCheckbox": {
       "id": "ShadCheckbox",
       "label": "shad Checkbox",
       "target": true,
-      "refs": 13,
-      "files": 13,
+      "refs": 17,
+      "files": 17,
       "topFiles": [
         "src/components/QuestionBankExportDialog.tsx",
         "src/components/QuestionBankManageView.tsx",
         "src/components/SyncConflictDialog.tsx",
-        "src/components/anki/panels/MaterialQueuePanel.tsx",
         "src/components/practice/PaperGenerator.tsx",
         "src/components/style-lab/ComponentCompareTab.tsx",
         "src/features/chat/components/groups/GroupEditorDialog.tsx",
+        "src/features/chat/components/input-bar/BlockingAskUserBar.tsx",
         "src/features/chat/plugins/blocks/askUserBlock.tsx",
+        "src/features/flashcards/library/LibraryCardRow.tsx",
+        "src/features/flashcards/screens/LibraryScreen.tsx",
         "src/features/settings/components/McpEditorSection.tsx",
+        "src/features/settings/components/McpToolsSection.tsx",
         "src/features/settings/components/MediaCacheSection.tsx",
         "src/features/settings/components/Settings.tsx",
         "src/features/settings/components/ShadApiEditModal.tsx",
-        "src/features/settings/components/data-governance/BackupTab.tsx"
+        "src/features/settings/components/data-governance/BackupTab.tsx",
+        "src/features/template-management/components/TemplateInlinePanels.tsx"
       ],
-      "totalFileCount": 13
+      "totalFileCount": 17
     },
     "AppSelect": {
       "id": "AppSelect",
       "label": "AppSelect",
       "target": false,
-      "refs": 85,
-      "files": 28,
+      "refs": 93,
+      "files": 30,
       "topFiles": [
         "src/components/CsvFieldMapper.tsx",
         "src/components/FieldTypeConfigurator.tsx",
@@ -207,38 +212,35 @@
         "src/components/essay-grading/InputPanel.tsx",
         "src/components/style-lab/MixedUsageTab.tsx",
         "src/components/translation/PromptPanel.tsx",
-        "src/components/translation/SourcePanel.tsx",
         "src/components/ui/app-menu/AppSelect.tsx",
         "src/components/ui/app-menu/index.ts",
         "src/config/fontConfig.ts",
-        "src/features/chat/components/input-bar/InputBarUI.tsx",
+        "src/features/chat/components/TranslationPopover.tsx",
         "src/features/learning-hub/apps/views/ExamContentView.tsx",
-        "src/features/notes/NotesLibraryManager.tsx",
         "src/features/settings/components/AppearanceTab.tsx",
         "src/features/settings/components/DimensionManagement.tsx",
         "src/features/settings/components/EngineSettingsSection.tsx",
-        "src/features/settings/components/McpEditorSection.tsx"
+        "src/features/settings/components/GeneralTab.tsx",
+        "src/features/settings/components/McpEditorSection.tsx",
+        "src/features/settings/components/McpToolEditorModal.tsx"
       ],
-      "totalFileCount": 28
+      "totalFileCount": 30
     },
     "NativeInput": {
       "id": "NativeInput",
       "label": "原生 <input>",
       "target": false,
-      "refs": 36,
-      "files": 29,
+      "refs": 76,
+      "files": 54,
       "topFiles": [
         "src/command-palette/CommandPalette.tsx",
         "src/components/BatchOperationToolbar/index.tsx",
-        "src/components/ExamSheetMobileLayout.tsx",
         "src/components/ExamSheetUploader.tsx",
         "src/components/QuestionInlineEditor.tsx",
         "src/components/SyncConflictDialog.tsx",
-        "src/components/TemplateManagementPage.tsx",
-        "src/components/TemplateManager.tsx",
-        "src/components/anki/panels/DocumentUploadPanel.tsx",
         "src/components/crepe/CrepeEditor.tsx",
         "src/components/essay-grading/InputPanel.tsx",
+        "src/components/skills-management/SkillTapBrowser.tsx",
         "src/components/skills-management/SkillsManagementPage.tsx",
         "src/components/style-lab/ComponentCompareTab.tsx",
         "src/components/style-lab/TokenInspectorTab.tsx",
@@ -246,29 +248,38 @@
         "src/components/ui/app-menu/AppMenu.tsx",
         "src/components/ui/shad/Input.tsx",
         "src/features/chat/components/AttachmentUploader.tsx",
-        "src/features/chat/components/ChatParamsPanel.tsx",
-        "src/features/chat/components/input-bar/InputBarUI.tsx"
+        "src/features/chat/components/ToolApprovalCard.tsx",
+        "src/features/chat/components/input-bar/BlockingApprovalBar.tsx",
+        "src/features/chat/components/input-bar/BlockingAskUserBar.tsx",
+        "src/features/chat/components/input-bar/InputBarUI.tsx",
+        "src/features/chat/debug/attachmentPipelineTestPlugin.ts"
       ],
-      "totalFileCount": 29
+      "totalFileCount": 54
     },
     "NativeSelect": {
       "id": "NativeSelect",
       "label": "原生 <select>",
       "target": false,
-      "refs": 2,
-      "files": 2,
+      "refs": 10,
+      "files": 8,
       "topFiles": [
         "src/components/style-lab/ComponentCompareTab.tsx",
-        "src/features/settings/components/SystemSettingsSection.tsx"
+        "src/features/chat/components/groups/GroupEditorDialog.tsx",
+        "src/features/chat/dev/playground/EvalPanel.tsx",
+        "src/features/chat/dev/playground/PlaygroundControlPanel.tsx",
+        "src/features/settings/components/AutomationSettingsSection.tsx",
+        "src/features/settings/components/SystemSettingsSection.tsx",
+        "src/features/template-management/components/TemplateToolbar.tsx",
+        "src/features/todo/components/automation/AutomationRunHistory.tsx"
       ],
-      "totalFileCount": 2
+      "totalFileCount": 8
     },
     "NativeTextarea": {
       "id": "NativeTextarea",
       "label": "原生 <textarea>",
       "target": false,
-      "refs": 10,
-      "files": 8,
+      "refs": 14,
+      "files": 10,
       "topFiles": [
         "src/components/shared/UnifiedDragDropZone.example.tsx",
         "src/components/style-lab/ComponentCompareTab.tsx",
@@ -276,49 +287,54 @@
         "src/features/chat/components/InputBar.tsx",
         "src/features/chat/components/input-bar/InputBarUI.tsx",
         "src/features/chat/debug/chatInteractionTestPlugin.ts",
+        "src/features/flashcards/screens/ReviewSessionScreen.tsx",
         "src/features/learning-hub/views/MemoryView.tsx",
-        "src/features/mindmap/components/mindmap/nodes/NodeContent.tsx"
+        "src/features/mindmap/components/mindmap/nodes/NodeContent.tsx",
+        "src/features/settings/components/AutomationSettingsSection.tsx"
       ],
-      "totalFileCount": 8
+      "totalFileCount": 10
     },
     "NotionDialog": {
       "id": "NotionDialog",
       "label": "NotionDialog",
       "target": true,
-      "refs": 188,
-      "files": 55,
+      "refs": 148,
+      "files": 50,
       "topFiles": [
         "src/App.tsx",
         "src/components/ConflictResolutionDialog.tsx",
         "src/components/CsvImportDialog.tsx",
         "src/components/DataImportExport.tsx",
-        "src/components/EssayGradingWorkbench.tsx",
         "src/components/ImageCropDialog.tsx",
         "src/components/ImportConversationDialog.tsx",
         "src/components/ModernSidebar.tsx",
+        "src/components/QuestionBankEditor.tsx",
         "src/components/QuestionBankExportDialog.tsx",
         "src/components/QuestionBankListView.tsx",
         "src/components/QuestionBankManageView.tsx",
+        "src/components/QuestionInlineEditor.tsx",
         "src/components/SyncConflictDialog.tsx",
-        "src/components/TemplateManagementPage.tsx",
-        "src/components/TemplateManager.tsx",
-        "src/components/TemplatePickerDialog.tsx",
         "src/components/UnifiedModal.tsx",
-        "src/components/essay-grading/InputPanel.tsx",
         "src/components/legal/PrivacyPolicyDialog.tsx",
         "src/components/practice/MockExamMode.tsx",
-        "src/components/skills-management/SkillDeleteConfirm.tsx"
+        "src/components/skills-management/SkillDeleteConfirm.tsx",
+        "src/components/skills-management/SkillEditorModal.tsx",
+        "src/components/style-lab/ComponentCompareTab.tsx",
+        "src/components/style-lab/MixedUsageTab.tsx"
       ],
-      "totalFileCount": 55
+      "totalFileCount": 50
     },
     "ShadDialog": {
       "id": "ShadDialog",
       "label": "shad Dialog",
       "target": false,
-      "refs": 0,
-      "files": 0,
-      "topFiles": [],
-      "totalFileCount": 0
+      "refs": 2,
+      "files": 2,
+      "topFiles": [
+        "src/components/style-lab/ComponentCompareTab.tsx",
+        "src/features/settings/components/VendorDetailPanel.tsx"
+      ],
+      "totalFileCount": 2
     },
     "ShadSheet": {
       "id": "ShadSheet",
@@ -327,11 +343,11 @@
       "refs": 5,
       "files": 5,
       "topFiles": [
-        "src/App.tsx",
         "src/components/QuestionHistoryView.tsx",
+        "src/components/style-lab/ComponentCompareTab.tsx",
         "src/components/ui/unified-sidebar/SidebarDrawer.tsx",
         "src/components/ui/unified-sidebar/SidebarSheet.tsx",
-        "src/features/chat/components/panels/UnifiedSourcePanel.tsx"
+        "src/features/settings/components/McpToolsSection.tsx"
       ],
       "totalFileCount": 5
     },
@@ -339,16 +355,19 @@
       "id": "AppMenu",
       "label": "AppMenu",
       "target": false,
-      "refs": 123,
-      "files": 31,
+      "refs": 171,
+      "files": 46,
       "topFiles": [
+        "src/command-palette/styles/command-palette.css",
         "src/components/ModernSidebar.tsx",
         "src/components/QuestionBankManageView.tsx",
         "src/components/TextbookCard.tsx",
         "src/components/context-menu/TextContextMenu.tsx",
-        "src/components/essay-grading/SettingsDrawer.tsx",
+        "src/components/crepe/CrepeEditor.css",
         "src/components/skills-management/SkillsList.tsx",
+        "src/components/skills-management/SkillsManagementPage.tsx",
         "src/components/style-lab/MixedUsageTab.tsx",
+        "src/components/translation/LanguageSelect.tsx",
         "src/components/ui/app-menu/AppMenu.css",
         "src/components/ui/app-menu/AppMenu.tsx",
         "src/components/ui/app-menu/AppMenuDemo.tsx",
@@ -356,21 +375,18 @@
         "src/components/ui/app-menu/index.ts",
         "src/features/chat/components/Variant/ParallelVariantView.tsx",
         "src/features/chat/components/Variant/VariantActions.tsx",
-        "src/features/chat/components/input-bar/InputBarUI.tsx",
-        "src/features/chat/components/input-bar/InputBarV2.tsx",
-        "src/features/chat/components/input-bar/RuntimeModelMenu.tsx",
-        "src/features/chat/components/input-bar/types.ts",
-        "src/features/chat/pages/SessionGroupActions.tsx",
-        "src/features/chat/pages/SessionItemRenderer.tsx"
+        "src/features/chat/components/input-bar/ComposerPanel/ComposerPanel.tsx",
+        "src/features/chat/components/input-bar/ComposerPlusMenu.tsx",
+        "src/features/chat/components/input-bar/InputBarUI.tsx"
       ],
-      "totalFileCount": 31
+      "totalFileCount": 46
     },
     "ShadCard": {
       "id": "ShadCard",
       "label": "shad Card",
       "target": true,
-      "refs": 23,
-      "files": 23,
+      "refs": 22,
+      "files": 22,
       "topFiles": [
         "src/components/ConflictResolutionDialog.tsx",
         "src/components/QuestionFavoritesView.tsx",
@@ -378,7 +394,6 @@
         "src/components/ReviewPlanView.tsx",
         "src/components/ReviewSession.tsx",
         "src/components/SyncConflictDialog.tsx",
-        "src/components/anki/panels/MaterialQueuePanel.tsx",
         "src/components/practice/DailyPracticeMode.tsx",
         "src/components/practice/MockExamMode.tsx",
         "src/components/practice/PaperGenerator.tsx",
@@ -387,13 +402,14 @@
         "src/features/chat/components/CompletionCard.tsx",
         "src/features/chat/components/ToolApprovalCard.tsx",
         "src/features/chat/components/panels/OcrResultCard.tsx",
-        "src/features/settings/components/AnkiConnectSettingsSection.tsx",
         "src/features/settings/components/CloudStorageSection.tsx",
         "src/features/settings/components/McpToolsManager.tsx",
         "src/features/settings/components/ModelAssignmentPresets.tsx",
-        "src/features/settings/components/ShadApiEditModal.tsx"
+        "src/features/settings/components/ShadApiEditModal.tsx",
+        "src/features/settings/components/SiliconFlowSection.tsx",
+        "src/features/settings/components/SyncSettingsSection.tsx"
       ],
-      "totalFileCount": 23
+      "totalFileCount": 22
     },
     "ShadTabs": {
       "id": "ShadTabs",
@@ -420,19 +436,15 @@
       "id": "CustomScrollArea",
       "label": "CustomScrollArea",
       "target": true,
-      "refs": 402,
-      "files": 120,
+      "refs": 376,
+      "files": 107,
       "topFiles": [
         "src/App.tsx",
         "src/command-palette/CommandPalette.tsx",
         "src/components/ConflictResolutionDialog.tsx",
-        "src/components/Dashboard.tsx",
-        "src/components/DataCenter.tsx",
         "src/components/DataImportExport.tsx",
-        "src/components/EssayGradingWorkbench.tsx",
         "src/components/ImageViewer.tsx",
         "src/components/MinimalTemplateEditor.tsx",
-        "src/components/ModernSidebar.tsx",
         "src/components/NoTagTreeShadPanel.tsx",
         "src/components/QuestionBankEditor.tsx",
         "src/components/QuestionBankListView.tsx",
@@ -442,57 +454,64 @@
         "src/components/SourcePreviewPanel.tsx",
         "src/components/SyncConflictDialog.tsx",
         "src/components/TagNavigationView.tsx",
-        "src/components/TemplateJsonPreviewPage.tsx"
+        "src/components/TemplateJsonPreviewPage.tsx",
+        "src/components/TemplatePickerDialog.tsx",
+        "src/components/crepe/CrepeEditor.css",
+        "src/components/custom-scroll-area.tsx",
+        "src/components/essay-grading/SettingsDrawer.tsx"
       ],
-      "totalFileCount": 120
+      "totalFileCount": 107
     },
     "CommonTooltip": {
       "id": "CommonTooltip",
       "label": "CommonTooltip",
       "target": true,
-      "refs": 318,
-      "files": 39,
+      "refs": 341,
+      "files": 45,
       "topFiles": [
         "src/App.tsx",
         "src/components/ConflictResolutionDialog.tsx",
         "src/components/LearningHeatmap/index.tsx",
         "src/components/ModernSidebar.tsx",
         "src/components/SyncConflictDialog.tsx",
-        "src/components/anki/TaskDashboardPage.tsx",
-        "src/components/essay-grading/AnnotatedText.tsx",
-        "src/components/essay-grading/GradingHeader.tsx",
-        "src/components/essay-grading/GradingHistory.tsx",
         "src/components/essay-grading/InputPanel.tsx",
-        "src/components/essay-grading/PolishSectionView.tsx",
         "src/components/essay-grading/ResultPanel.tsx",
-        "src/components/essay-grading/SentenceDetailView.tsx",
         "src/components/essay-grading/StreamingAnnotatedText.tsx",
-        "src/components/layout/Topbar.tsx",
         "src/components/shared/AiContentLabel.tsx",
         "src/components/shared/CommonTooltip.example.tsx",
         "src/components/shared/CommonTooltip.tsx",
         "src/components/shared/ModelCapabilityIcons.tsx",
-        "src/components/shared/MultimodalIndexButton.tsx"
+        "src/components/shared/MultimodalIndexButton.tsx",
+        "src/components/stats/LearningHeatmapChart.tsx",
+        "src/components/style-lab/ComponentCompareTab.tsx",
+        "src/components/style-lab/MixedUsageTab.tsx",
+        "src/components/translation/SourcePanel.tsx",
+        "src/components/translation/TargetPanel.tsx",
+        "src/components/translation/TranslationMain.tsx",
+        "src/components/ui/shad/Tooltip.tsx"
       ],
-      "totalFileCount": 39
+      "totalFileCount": 45
     },
     "ShadTooltip": {
       "id": "ShadTooltip",
       "label": "shad Tooltip",
       "target": false,
-      "refs": 1,
-      "files": 1,
+      "refs": 4,
+      "files": 4,
       "topFiles": [
-        "src/components/style-lab/ComponentCompareTab.tsx"
+        "src/components/style-lab/ComponentCompareTab.tsx",
+        "src/features/pomodoro/components/PomodoroPanel.tsx",
+        "src/features/pomodoro/components/PomodoroStatsPopover.tsx",
+        "src/features/workbench/apps/preview/FilePreviewAppWindow.tsx"
       ],
-      "totalFileCount": 1
+      "totalFileCount": 4
     },
     "UnifiedNotification": {
       "id": "UnifiedNotification",
       "label": "UnifiedNotification",
       "target": true,
-      "refs": 1366,
-      "files": 156,
+      "refs": 1697,
+      "files": 194,
       "topFiles": [
         "src/App.tsx",
         "src/command-palette/CommandPalette.tsx",
@@ -511,9 +530,11 @@
         "src/components/QuestionBankListView.tsx",
         "src/components/QuestionBankManageView.tsx",
         "src/components/QuestionFavoritesView.tsx",
-        "src/components/QuestionInlineEditor.tsx"
+        "src/components/QuestionInlineEditor.tsx",
+        "src/components/ReviewPlanView.tsx",
+        "src/components/ReviewQuestionsView.tsx"
       ],
-      "totalFileCount": 156
+      "totalFileCount": 194
     },
     "LucideIcons": {
       "id": "LucideIcons",
@@ -528,12 +549,13 @@
       "id": "PhosphorIcons",
       "label": "Phosphor",
       "target": true,
-      "refs": 398,
-      "files": 392,
+      "refs": 496,
+      "files": 488,
       "topFiles": [
         "src/App.tsx",
         "src/command-palette/CommandPalette.tsx",
         "src/command-palette/components/ShortcutSettings.tsx",
+        "src/command-palette/modules/automation.commands.ts",
         "src/command-palette/modules/chat.commands.ts",
         "src/command-palette/modules/dev.commands.ts",
         "src/command-palette/modules/global.commands.ts",
@@ -542,27 +564,24 @@
         "src/command-palette/modules/notes.commands.ts",
         "src/command-palette/modules/settings.commands.ts",
         "src/command-palette/registry/types.ts",
-        "src/components/AnkiCardPreviewModal.tsx",
         "src/components/AttachmentValidationNotice.tsx",
         "src/components/BatchOperationToolbar/BatchEditDialog.tsx",
         "src/components/BatchOperationToolbar/FilterBuilder.tsx",
         "src/components/BatchOperationToolbar/index.tsx",
         "src/components/ChatV2StatsSection.tsx",
         "src/components/ConflictResolutionDialog.tsx",
-        "src/components/CroppedExamCardImage.tsx",
-        "src/components/CsvFieldMapper.tsx"
+        "src/components/CsvFieldMapper.tsx",
+        "src/components/CsvImportDialog.tsx"
       ],
-      "totalFileCount": 392
+      "totalFileCount": 488
     },
     "UnifiedSidebar": {
       "id": "UnifiedSidebar",
       "label": "UnifiedSidebar",
       "target": true,
-      "refs": 39,
-      "files": 13,
+      "refs": 37,
+      "files": 11,
       "topFiles": [
-        "src/components/TemplateManagementPage.tsx",
-        "src/components/TemplateManager.tsx",
         "src/components/skills-management/SkillsSidebar.tsx",
         "src/components/style-lab/MixedUsageTab.tsx",
         "src/components/ui/unified-sidebar/SidebarDrawer.tsx",
@@ -571,110 +590,110 @@
         "src/components/ui/unified-sidebar/UnifiedSidebarSection.tsx",
         "src/components/ui/unified-sidebar/index.ts",
         "src/components/ui/unified-sidebar/types.ts",
-        "src/features/learning-hub/LearningHubSidebarV2.tsx",
         "src/features/notes/NotesSidebarV2.tsx",
-        "src/features/settings/components/Settings.tsx"
+        "src/features/settings/components/Settings.tsx",
+        "src/features/template-management/TemplateManagementApp.tsx"
       ],
-      "totalFileCount": 13
+      "totalFileCount": 11
     }
   },
   "cssMetrics": {
     "important": {
       "id": "important",
       "label": "CSS !important",
-      "count": 1061,
-      "files": 51,
+      "count": 1052,
+      "files": 66,
       "topFiles": [
         "src/command-palette/styles/shortcut-settings.css",
-        "src/components/AnkiCardPreviewModal.css",
         "src/components/Card3DPreview.css",
         "src/components/FieldTypeConfigurator.css",
         "src/components/LearningHeatmap/LearningHeatmap.css",
         "src/components/MinimalTemplateEditor.css",
         "src/components/SummaryBox.css",
         "src/components/TagTreeImportCheckModal.css",
-        "src/components/TemplateManagementPage.tsx",
         "src/components/TemplateManager.css",
         "src/components/UnifiedNotification.css",
         "src/components/crepe/CrepeEditor.css",
-        "src/components/crepe/hooks/useCrepeBlockDrag.ts",
         "src/components/shared/CommonTooltip.css",
         "src/components/skills-management/SkillFullscreenEditor.css",
         "src/components/style-lab/MigrationOverviewTab.tsx",
         "src/components/ui/app-menu/AppMenu.css",
         "src/components/ui/shad/Button.css",
         "src/components/ui/shad/Switch.css",
-        "src/features/chat/components/ActivityTimeline/ActivityTimeline.css"
+        "src/features/chat/components/ActivityTimeline/ActivityTimeline.css",
+        "src/features/chat/components/Variant/ParallelVariantView.css",
+        "src/features/chat/components/renderers/CodeBlock.tsx",
+        "src/features/chat/components/renderers/ThinkingChain.css"
       ],
-      "totalFileCount": 51
+      "totalFileCount": 66
     },
     "hardcodedColor": {
       "id": "hardcodedColor",
       "label": "硬编码颜色值",
-      "count": 174,
-      "files": 33,
+      "count": 438,
+      "files": 51,
       "topFiles": [
         "src/components/DataImportExport.tsx",
         "src/components/MinimalTemplateEditor.css",
-        "src/components/RealTimeTemplateEditor/RealTimeTemplateEditor.css",
         "src/components/SOTADashboardLite.tsx",
+        "src/components/TemplateEditorEnhancements.css",
+        "src/components/TemplateEditorPreviewPanel.tsx",
         "src/components/UnifiedNotification.css",
-        "src/components/anki/panels/ExportPanel.tsx",
-        "src/components/crepe/CrepeEditor.css",
-        "src/components/crepe/hooks/useCrepeBlockDrag.ts",
-        "src/components/layout/Topbar.tsx",
-        "src/components/llm-usage/LlmUsageStatsSection.tsx",
+        "src/components/anki/utils/cardFaceStyles.ts",
+        "src/components/crepe/plugins/imageLightbox/imageLightbox.css",
         "src/components/skills-management/SkillFullscreenEditor.css",
+        "src/components/skills-management/SkillTapBrowser.css",
         "src/components/ui/app-menu/AppMenu.css",
-        "src/components/ui/shad/Switch.css",
+        "src/essay-grading/exportFormatter.ts",
+        "src/features/chat/components/InlineDocumentViewer.tsx",
         "src/features/chat/components/renderers/CodeBlock.tsx",
-        "src/features/chat/components/renderers/streamingBlocks.css",
+        "src/features/chat/components/renderers/ThinkingChain.css",
         "src/features/chat/debug/sessionSwitchPerf.ts",
+        "src/features/chat/dev/playground/eval/scoring.ts",
         "src/features/chat/skills/builtin-tools/session-manager.ts",
         "src/features/chat/utils/citationRemarkPlugin.ts",
-        "src/features/learning-hub/apps/views/DocxPreview.tsx",
-        "src/features/learning-hub/apps/views/PptxPreview.tsx"
+        "src/features/flashcards/flashcards.css"
       ],
-      "totalFileCount": 33
+      "totalFileCount": 51
     },
     "inlineStyle": {
       "id": "inlineStyle",
       "label": "inline style=",
-      "count": 533,
-      "files": 182,
+      "count": 628,
+      "files": 235,
       "topFiles": [
         "src/App.tsx",
         "src/app/components/ViewLayerRenderer.tsx",
         "src/components/BatchOperationToolbar/index.tsx",
         "src/components/Card3DPreview.tsx",
-        "src/components/CroppedExamCardImage.tsx",
-        "src/components/Dashboard.tsx",
-        "src/components/DocumentViewer.tsx",
-        "src/components/EnhancedTemplateEditor.tsx",
-        "src/components/ExamCardImage.tsx",
-        "src/components/ExamPageImage.tsx",
-        "src/components/ExamSheetMobileLayout.tsx",
         "src/components/ImageCropDialog.tsx",
         "src/components/ImageViewer.tsx",
         "src/components/LearningHeatmap/index.tsx",
         "src/components/ModernSidebar.tsx",
         "src/components/QuestionBankEditor.tsx",
+        "src/components/QuestionBankExportDialog.tsx",
+        "src/components/QuestionBankManageView.tsx",
         "src/components/QuestionBankStatsView.tsx",
+        "src/components/QuestionHistoryView.tsx",
         "src/components/SOTADashboardLite.tsx",
-        "src/components/ShadowDomPreview.tsx",
-        "src/components/SourcePreviewPanel.tsx"
+        "src/components/SourcePreviewPanel.tsx",
+        "src/components/SummaryBox.tsx",
+        "src/components/SyncConflictDialog.tsx",
+        "src/components/TagNavigationView.tsx",
+        "src/components/TagTreeImportCheckModal.tsx",
+        "src/components/TemplateJsonPreviewPage.tsx"
       ],
-      "totalFileCount": 182
+      "totalFileCount": 235
     }
   },
   "migrationProgress": [
     {
       "id": "button",
       "label": "Button",
-      "targetRefs": 3772,
-      "legacyRefs": 192,
-      "total": 3964,
-      "percentage": 95,
+      "targetRefs": 4654,
+      "legacyRefs": 530,
+      "total": 5184,
+      "percentage": 90,
       "targetIds": [
         "NotionButton"
       ],
@@ -686,10 +705,10 @@
     {
       "id": "formControls",
       "label": "Form Controls",
-      "targetRefs": 148,
-      "legacyRefs": 48,
-      "total": 196,
-      "percentage": 76,
+      "targetRefs": 154,
+      "legacyRefs": 100,
+      "total": 254,
+      "percentage": 61,
       "targetIds": [
         "ShadInput",
         "ShadTextarea",
@@ -705,10 +724,10 @@
     {
       "id": "dialog",
       "label": "Dialog / Overlay",
-      "targetRefs": 188,
-      "legacyRefs": 6,
-      "total": 194,
-      "percentage": 97,
+      "targetRefs": 148,
+      "legacyRefs": 7,
+      "total": 155,
+      "percentage": 95,
       "targetIds": [
         "NotionDialog"
       ],
@@ -720,10 +739,10 @@
     {
       "id": "tooltip",
       "label": "Tooltip",
-      "targetRefs": 318,
-      "legacyRefs": 1,
-      "total": 319,
-      "percentage": 100,
+      "targetRefs": 341,
+      "legacyRefs": 4,
+      "total": 345,
+      "percentage": 99,
       "targetIds": [
         "CommonTooltip"
       ],
@@ -734,9 +753,9 @@
     {
       "id": "scroll",
       "label": "Scroll",
-      "targetRefs": 402,
+      "targetRefs": 376,
       "legacyRefs": 0,
-      "total": 402,
+      "total": 376,
       "percentage": 100,
       "targetIds": [
         "CustomScrollArea"
@@ -746,9 +765,9 @@
     {
       "id": "icons",
       "label": "Icons",
-      "targetRefs": 398,
+      "targetRefs": 496,
       "legacyRefs": 0,
-      "total": 398,
+      "total": 496,
       "percentage": 100,
       "targetIds": [
         "PhosphorIcons"

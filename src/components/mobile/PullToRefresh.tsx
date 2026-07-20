@@ -18,9 +18,17 @@
  *   <ListContent />
  * </PullToRefresh>
  * ```
+ *
+ * 📌 推荐接入点（2026-07 移动端审计 H-4：本基元此前全仓库零消费）：
+ * - 聊天会话列表（SessionSidebarContent / SessionBrowser 的移动路径）
+ * - 学习资源 Finder 文件列表（FinderFileList 移动壳）
+ * - 笔记列表（NotesSidebarV2 移动抽屉内容）
+ * - 复习队列 / 错题列表等任何"下拉重新拉取"语义的移动长列表
+ * 接入时本组件自身就是滚动容器，外层给高度（h-full），不要再嵌 overflow 容器。
  */
 
 import React, { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { prefersReducedMotion } from '@/styles/motion-springs';
 
@@ -56,6 +64,7 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({
   contentClassName,
   children,
 }) => {
+  const { t } = useTranslation('common');
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [offset, setOffset] = useState(0);
   const [phase, setPhase] = useState<PullPhase>('idle');
@@ -63,6 +72,7 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({
   /** 原生监听器里读取的可变状态（避免闭包过期）。 */
   const gestureRef = useRef({
     startY: 0,
+    startX: 0,
     tracking: false,
     dragging: false,
     offset: 0,
@@ -112,6 +122,7 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({
       if (!t) return;
       g.tracking = true;
       g.startY = t.clientY;
+      g.startX = t.clientX;
     };
 
     const onTouchMove = (e: TouchEvent) => {
@@ -122,6 +133,14 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({
       if (!t) return;
 
       const rawDelta = t.clientY - g.startY;
+      const rawDeltaX = t.clientX - g.startX;
+
+      // 轴向锁（L-5）：起手以横向为主（如内嵌轮播/横滑手势）时不接管，
+      // 避免斜向轻扫误触发下拉
+      if (!g.dragging && Math.abs(rawDeltaX) > Math.abs(rawDelta)) {
+        g.tracking = false;
+        return;
+      }
 
       // 上滑或容器已离开顶部：交还原生滚动
       if (!g.dragging && (rawDelta <= 0 || node.scrollTop > 0)) {
@@ -204,6 +223,7 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({
           className="mt-auto mb-2 flex h-8 w-8 items-center justify-center rounded-pill bg-muted text-muted-foreground shadow-soft"
           role="status"
           aria-live="polite"
+          aria-label={isRefreshing ? t('refreshing') : undefined}
         >
           <svg
             viewBox="0 0 16 16"

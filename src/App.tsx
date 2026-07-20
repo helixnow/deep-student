@@ -31,7 +31,7 @@ import { ModernSidebar } from './components/ModernSidebar';
 import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
 import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
-import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MobileAppNavigationProvider, MOBILE_APP_NAVIGATE_EVENT } from '@/components/layout';
+import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MobileAppNavigationProvider } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
 import { initReminderScheduler } from '@/features/todo/reminderScheduler';
 import { useAutomationRunNotifications } from '@/features/todo/hooks/useAutomationRunNotifications';
@@ -48,7 +48,6 @@ import {
   subscribeLearningHubNavigation,
 } from './features/learning-hub';
 import { setActiveOpenResourceHandler } from './dstu/openResource';
-import type { ResourceLocator } from './features/learning-hub/learningHubContracts';
 import { pageLifecycleTracker } from './debug-panel/services/pageLifecycleTracker';
 import './styles/tailwind.css'; // Tailwind (should be first to provide base/utility layers)
 import './styles/shadcn-variables.css'; // 设计令牌：支持亮/暗色变量（必须优先）
@@ -57,7 +56,6 @@ import './shared/styles/index.css';
 import 'overlayscrollbars/overlayscrollbars.css';
 
 import './styles/ios-safe-area.css'; // iOS安全区域适配
-import './styles/modern-buttons.css'; // 现代化按钮样式
 import './styles/responsive-utilities.css'; // 响应式工具类
 // 🚀 性能优化：页面组件改为懒加载
 import { NotificationContainer } from './components/NotificationContainer';
@@ -82,7 +80,7 @@ import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from './app/shell/Desk
 import { setPendingSettingsTab, setPendingSettingsRoute } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useNavigationHistory } from './hooks/useNavigationHistory';
-import { shouldBlockMobileNavigation } from './hooks/useKeyboardHeight';
+import { shouldBlockMobileNavigation, ensureKeyboardTracking } from './hooks/useKeyboardHeight';
 import { installAndroidBackBridge, registerBackHandler, BACK_PRIORITY } from './app/navigation/androidBackCoordinator';
 import { useNavigationShortcuts, getNavigationShortcutText } from './hooks/useNavigationShortcuts';
 import type { CurrentView as NavigationCurrentView } from './types/navigation';
@@ -93,6 +91,13 @@ import { TextContextMenuProvider } from './components/context-menu/TextContextMe
 import { useMenuEventBridge } from './menu/menuEventBridge';
 import { useCommandEvents, COMMAND_EVENTS } from './command-palette/hooks/useCommandEvents';
 import { useEventRegistry } from './hooks/useEventRegistry';
+import {
+  APP_EVENTS,
+  addAppEventListener,
+  dispatchAppEvent,
+  toAppEventListener,
+  useAppEvent,
+} from '@/events';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useViewStore } from './stores/viewStore';
 import { debugLog } from './debug-panel/debugMasterSwitch';
@@ -110,6 +115,7 @@ import { DESKTOP_SHELL, getShellSidebarWidth } from './app/shell/desktopShell';
 import { DesktopShellSidebarPortalProvider } from './app/shell/DesktopShellSidebarPortal';
 import { DesktopShellHeaderPortalProvider } from './app/shell/DesktopShellHeaderPortal';
 import { getMobileShellCssVars } from './app/shell/mobileShell';
+import { Z_INDEX } from './config/zIndex';
 
 // 🚀 性能优化：懒加载页面组件
 import {
@@ -496,6 +502,13 @@ const BRIDGE_COMPLETION_REASONS = new Set([
 // 🚀 LRU 视图淘汰：限制保活视图数量，避免内存无限增长
 /** 始终保活的视图（不参与 LRU 淘汰） */
 const PINNED_VIEWS: Set<CurrentView> = new Set(['chat-v2']);
+/**
+ * 暂缓驱逐的视图（2026-07 移动端审计 残留#3）：这两个视图的关键状态是纯本地
+ * state（pdf-reader 已打开的 PDF 与页码、template-json-preview 手输的 JSON），
+ * 被 LRU 驱逐即清零且不可恢复。淘汰时优先驱逐其他视图，仅当候选里只剩它们
+ * 时才驱逐（软保护，不是 pinned——总保活上限不变，不抬高低端机内存天花板）。
+ */
+const EVICTION_DEFERRED_VIEWS: Set<CurrentView> = new Set(['pdf-reader', 'template-json-preview']);
 /** 最大保活视图数量（含 pinned）
  *  桌面用户常用 6-7 个视图，设为 8 避免频繁驱逐导致的重新挂载开销；
  *  搭配 useMemo 缓存子树后，保活视图的 re-render 成本接近零。
@@ -546,15 +559,21 @@ function App() {
   // 🆕 维护模式：从 store 读取全局状态
   const maintenanceMode = useSystemStatusStore((s) => s.maintenanceMode);
   const maintenanceReason = useSystemStatusStore((s) => s.maintenanceReason);
+  const maintenanceRequiresRestart = useSystemStatusStore((s) => s.maintenanceRequiresRestart);
 
   // 🆕 任务3：应用启动时同步后端维护模式状态到前端 store
   useEffect(() => {
     const syncMaintenanceStatus = async () => {
       try {
-        const status = await invoke<{ is_in_maintenance_mode: boolean }>('data_governance_get_maintenance_status');
+        const status = await invoke<{
+          is_in_maintenance_mode: boolean;
+          blocked_components?: string[];
+        }>('data_governance_get_maintenance_status');
         if (status.is_in_maintenance_mode) {
-          useSystemStatusStore.getState().enterMaintenanceMode(
-            t('common:maintenance.banner_description')
+          useSystemStatusStore.getState().requireMaintenanceRestart(
+            status.blocked_components?.length
+              ? t('common:maintenance.recovery_required')
+              : t('common:maintenance.banner_description')
           );
         }
       } catch (err) {
@@ -563,7 +582,7 @@ function App() {
       }
     };
     syncMaintenanceStatus();
-  }, []); // 仅启动时执行一次
+  }, [t]);
 
   // 🌐 全局网络状态监测
   const { isOnline } = useNetworkStatus();
@@ -622,16 +641,15 @@ function App() {
       }
     };
     loadSetting();
-    // 监听设置变化事件
-    const handleSettingsChange = (ev: any) => {
-      if (ev?.detail?.topbarTopMargin) {
-        loadSetting();
+    // 监听设置变化事件（owner: App shell；dispose 与 cancelled 同生命周期）
+    const dispose = addAppEventListener(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, (detail) => {
+      if (detail?.topbarTopMargin) {
+        void loadSetting();
       }
-    };
-    try { window.addEventListener('systemSettingsChanged' as any, handleSettingsChange as any); } catch { /* non-critical: event listener setup may fail in test env */ }
+    });
     return () => {
       cancelled = true;
-      try { window.removeEventListener('systemSettingsChanged' as any, handleSettingsChange as any); } catch { /* non-critical: cleanup */ }
+      dispose();
     };
   }, [isSmallScreen]); // 响应窗口大小变化，自动切换移动端/桌面端默认值
 
@@ -658,28 +676,18 @@ function App() {
 
     void loadFontSmoothingSetting();
 
-    const handleSettingsChange = (event: any) => {
+    const dispose = addAppEventListener(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, (detail) => {
       if (
-        event?.detail?.macosFontSmoothing ||
-        event?.detail?.settingKey === MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY
+        detail?.macosFontSmoothing ||
+        detail?.settingKey === MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY
       ) {
         void loadFontSmoothingSetting();
       }
-    };
-
-    try {
-      window.addEventListener('systemSettingsChanged' as any, handleSettingsChange as any);
-    } catch {
-      /* non-critical: event listener setup may fail in test env */
-    }
+    });
 
     return () => {
       cancelled = true;
-      try {
-        window.removeEventListener('systemSettingsChanged' as any, handleSettingsChange as any);
-      } catch {
-        /* non-critical: cleanup */
-      }
+      dispose();
     };
   }, []);
 
@@ -703,16 +711,15 @@ function App() {
     };
     void loadSidebarTranslucentSetting();
 
-    const handleSettingsChange = (event: CustomEvent<{ settingKey?: string }>) => {
-      if (event.detail?.settingKey === SIDEBAR_TRANSLUCENT_KEY) {
+    const dispose = addAppEventListener(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, (detail) => {
+      if (detail?.settingKey === SIDEBAR_TRANSLUCENT_KEY) {
         void loadSidebarTranslucentSetting();
       }
-    };
-    window.addEventListener('systemSettingsChanged', handleSettingsChange as EventListener);
+    });
 
     return () => {
       cancelled = true;
-      window.removeEventListener('systemSettingsChanged', handleSettingsChange as EventListener);
+      dispose();
     };
   }, []);
 
@@ -732,32 +739,22 @@ function App() {
 
     void loadPointerCursorSetting();
 
-    const handleSettingsChange = (event: any) => {
+    const dispose = addAppEventListener(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, (detail) => {
       if (
-        event?.detail?.pointerCursor ||
-        event?.detail?.settingKey === POINTER_CURSOR_SETTING_KEY
+        detail?.pointerCursor ||
+        detail?.settingKey === POINTER_CURSOR_SETTING_KEY
       ) {
         const enabled =
-          typeof event?.detail?.value === 'boolean'
-            ? event.detail.value
-            : String(event?.detail?.value ?? '').trim() !== 'false';
+          typeof detail?.value === 'boolean'
+            ? detail.value
+            : String(detail?.value ?? '').trim() !== 'false';
         applyPointerCursorPreference(enabled);
       }
-    };
-
-    try {
-      window.addEventListener('systemSettingsChanged' as any, handleSettingsChange as any);
-    } catch {
-      /* non-critical: event listener setup may fail in test env */
-    }
+    });
 
     return () => {
       cancelled = true;
-      try {
-        window.removeEventListener('systemSettingsChanged' as any, handleSettingsChange as any);
-      } catch {
-        /* non-critical: cleanup */
-      }
+      dispose();
     };
   }, []);
   
@@ -837,15 +834,14 @@ function App() {
         /* 默认启用；保留预读缓存 */
       }
     })();
-    const onModeChanged = (event: Event) => {
-      const enabled = Boolean((event as CustomEvent<{ enabled?: boolean }>).detail?.enabled);
+    const dispose = addAppEventListener(APP_EVENTS.WORKBENCH_MODE_CHANGED, (detail) => {
+      const enabled = Boolean(detail?.enabled);
       setWorkbenchMode(enabled);
       cacheMode(enabled);
-    };
-    try { window.addEventListener('workbench:mode-changed', onModeChanged); } catch { /* non-critical */ }
+    });
     return () => {
       cancelled = true;
-      try { window.removeEventListener('workbench:mode-changed', onModeChanged); } catch { /* non-critical */ }
+      dispose();
     };
   }, []);
 
@@ -954,9 +950,7 @@ function App() {
 
       // 视图切换广播：让 portal 到 body 的浮层（如输入栏组合面板）在宿主视图被隐藏时自行关闭，
       // 避免命令面板/程序化导航等无 pointerdown 的切换路径留下悬浮残影
-      window.dispatchEvent(new CustomEvent('app:view-switched', {
-        detail: { from: prevView, to: targetView },
-      }));
+      dispatchAppEvent(APP_EVENTS.VIEW_SWITCHED, { from: prevView, to: targetView });
     }
 
     // 使用 startTransition 将 LRU 更新 + 视图切换 打包在同一个 transition 中。
@@ -968,17 +962,23 @@ function App() {
         const next = new Map(prev);
         next.set(targetView, now);
 
-        // 淘汰逻辑：仅在超出上限时移除最旧的非 pinned 视图
+        // 淘汰逻辑：仅在超出上限时移除最旧的非 pinned 视图。
+        // 两轮扫描：先跳过 EVICTION_DEFERRED_VIEWS（本地状态驱逐即丢的视图），
+        // 候选里只剩暂缓视图时才回退为普通 LRU，保证上限恒成立。
         if (next.size > getMaxAliveViews()) {
           let oldestView: CurrentView | null = null;
           let oldestTime = Infinity;
-          for (const [view, ts] of next) {
-            if (PINNED_VIEWS.has(view)) continue;
-            if (view === targetView) continue;
-            if (ts < oldestTime) {
-              oldestTime = ts;
-              oldestView = view;
+          for (const deferProtected of [true, false]) {
+            for (const [view, ts] of next) {
+              if (PINNED_VIEWS.has(view)) continue;
+              if (view === targetView) continue;
+              if (deferProtected && EVICTION_DEFERRED_VIEWS.has(view)) continue;
+              if (ts < oldestTime) {
+                oldestTime = ts;
+                oldestView = view;
+              }
             }
+            if (oldestView) break;
           }
           if (oldestView) {
             next.delete(oldestView);
@@ -1057,31 +1057,23 @@ function App() {
     textbookReturnContextRef.current = textbookReturnContext;
   }, [textbookReturnContext]);
 
-  // 🎯 监听导入对话事件
-  useEffect(() => {
-    const onOpenImportConversation = () => {
-      setShowImportConversation(true);
-    };
-    window.addEventListener('DSTU_OPEN_IMPORT_CONVERSATION', onOpenImportConversation);
-    return () => { window.removeEventListener('DSTU_OPEN_IMPORT_CONVERSATION', onOpenImportConversation); };
+  // 🎯 监听导入对话事件（owner: App shell）
+  useAppEvent(APP_EVENTS.OPEN_IMPORT_CONVERSATION, () => {
+    setShowImportConversation(true);
   }, []);
 
   // 🎯 监听云存储设置事件
   // 移动端不弹全局配置弹窗（移动端设计契约：表单类流程禁用模态框），
   // 改为导航到 设置 → 数据治理 → 同步 的内联编辑器，可经统一顶栏/系统返回键闭环返回
-  useEffect(() => {
-    const onOpenCloudStorage = () => {
-      if (isSmallScreenRef.current) {
-        const route = { tab: 'data-governance', dataGovernanceTab: 'sync' };
-        setPendingSettingsRoute(route);
-        window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: route }));
-        setCurrentView('settings');
-        return;
-      }
-      setShowCloudStorageSettings(true);
-    };
-    window.addEventListener('DSTU_OPEN_CLOUD_STORAGE_SETTINGS', onOpenCloudStorage);
-    return () => { window.removeEventListener('DSTU_OPEN_CLOUD_STORAGE_SETTINGS', onOpenCloudStorage); };
+  useAppEvent(APP_EVENTS.OPEN_CLOUD_STORAGE_SETTINGS, () => {
+    if (isSmallScreenRef.current) {
+      const route = { tab: 'data-governance' as const, dataGovernanceTab: 'sync' };
+      setPendingSettingsRoute(route);
+      dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, route);
+      setCurrentView('settings');
+      return;
+    }
+    setShowCloudStorageSettings(true);
   }, [setCurrentView]);
 
   // 统一架构：selectedMistake 已移除，由 ChatSessionStore 统一管理
@@ -1110,8 +1102,9 @@ function App() {
   const textbookExportConcurrency = 2;
 
   // 前端错误采集：记录到事件模式（channel='error', eventName='frontend_error'）
-  useEffect(() => {
-    const dispatchFrontendErrorDebug = (payload: any) => {
+  // 原生 DOM 事件走 useEventRegistry（非 CustomEvent 域）
+  const onFrontendError = useCallback((ev: Event) => {
+    const dispatchFrontendErrorDebug = (payload: Record<string, unknown>) => {
       const meta = { path: window.location?.pathname, ua: navigator?.userAgent };
       const emitTask = () => {
         try {
@@ -1127,185 +1120,158 @@ function App() {
       setTimeout(emitTask, 0);
     };
 
-    const onError = (ev: any) => {
-      try {
-        const isResourceError = ev && ev.target && ev.target !== window;
-        if (isResourceError) {
-          const src = ev.target?.currentSrc || ev.target?.src || ev.target?.href || '';
-          // 忽略开发代理的 SSE 410/Gone 噪声
-          if (typeof src === 'string' && src.includes('/sse-proxy/')) {
-            return;
-          }
+    try {
+      const errorEvent = ev as ErrorEvent & { target?: EventTarget | null };
+      const target = errorEvent.target as (EventTarget & {
+        currentSrc?: string;
+        src?: string;
+        href?: string;
+        tagName?: string;
+        baseURI?: string;
+      }) | null;
+      const isResourceError = Boolean(errorEvent && target && target !== window);
+      if (isResourceError) {
+        const src = target?.currentSrc || target?.src || target?.href || '';
+        if (typeof src === 'string' && src.includes('/sse-proxy/')) {
+          return;
         }
-        const payload = isResourceError
-          ? {
-            type: 'ResourceError',
-            tagName: ev.target?.tagName,
-            src: ev.target?.currentSrc || ev.target?.src || ev.target?.href,
-            baseURI: ev.target?.baseURI,
-          }
-          : {
-            type: 'Error',
-            message: ev?.message || String(ev?.error || 'Unknown error'),
-            stack: (ev?.error && ev?.error?.stack) || undefined,
-            filename: ev?.filename,
-            lineno: ev?.lineno,
-            colno: ev?.colno,
-          };
-        dispatchFrontendErrorDebug(payload);
-        // 控制台兜底
-        console.error('[DSTU][FRONTEND_ERROR]', payload);
-      } catch (e) { debugLog.warn('[App] onError handler failed:', e); }
-    };
-    const onRejection = (ev: PromiseRejectionEvent) => {
-      try {
-        const reason = (ev && (ev as any).reason) || 'Unknown rejection';
-        const message = typeof reason === 'string' ? reason : (reason?.message || String(reason));
-        
-        // ★ 2026-02-04: 过滤 Tauri HTTP 插件的已知 bug (fetch_cancel_body)
-        if (message.includes('fetch_cancel_body') || message.includes('http.fetch_cancel_body')) {
-          return; // 静默忽略此错误
+      }
+      const payload = isResourceError
+        ? {
+          type: 'ResourceError',
+          tagName: target?.tagName,
+          src: target?.currentSrc || target?.src || target?.href,
+          baseURI: target?.baseURI,
         }
-        
-        const payload = {
-          type: 'UnhandledRejection',
-          message,
-          stack: reason?.stack || undefined,
+        : {
+          type: 'Error',
+          message: errorEvent?.message || String((errorEvent as ErrorEvent)?.error || 'Unknown error'),
+          stack: (errorEvent?.error && (errorEvent.error as Error)?.stack) || undefined,
+          filename: errorEvent?.filename,
+          lineno: errorEvent?.lineno,
+          colno: errorEvent?.colno,
         };
-        dispatchFrontendErrorDebug(payload);
-      } catch (e) { debugLog.warn('[App] onRejection handler failed:', e); }
-    };
+      dispatchFrontendErrorDebug(payload);
+      console.error('[DSTU][FRONTEND_ERROR]', payload);
+    } catch (e) { debugLog.warn('[App] onError handler failed:', e); }
+  }, []);
+
+  const onUnhandledRejection = useCallback((ev: Event) => {
     try {
-      window.addEventListener('error', onError as any, true);
-      window.addEventListener('unhandledrejection', onRejection as any);
-    } catch { /* non-critical: event listener setup may fail in test env */ }
-    return () => {
-      try {
-        window.removeEventListener('error', onError as any, true);
-        window.removeEventListener('unhandledrejection', onRejection as any);
-      } catch { /* non-critical: cleanup */ }
-    };
-  }, []);
+      const rejection = ev as PromiseRejectionEvent;
+      const reason = rejection?.reason || 'Unknown rejection';
+      const message = typeof reason === 'string' ? reason : (reason?.message || String(reason));
 
-  // Milkdown Markdown Editor: global open event from Settings > 关于
-  useEffect(() => {
-    const open = () => setCurrentView('learning-hub');
-    try {
-      window.addEventListener('OPEN_MARKDOWN_EDITOR' as any, open as any);
-    } catch { /* non-critical: event listener setup may fail in test env */ }
-    return () => {
-      try { window.removeEventListener('OPEN_MARKDOWN_EDITOR' as any, open as any); } catch { /* non-critical: cleanup */ }
-    };
-  }, []);
-
-  // Notes: global open event from Settings > 关于
-  useEffect(() => {
-    const openNotes = () => setCurrentView('learning-hub');
-    try { window.addEventListener('OPEN_NOTES' as any, openNotes as any); } catch { /* non-critical: event listener setup may fail in test env */ }
-    return () => { try { window.removeEventListener('OPEN_NOTES' as any, openNotes as any); } catch { /* non-critical: cleanup */ } };
-  }, []);
-
-  // 全局新建桥接：即便事件在隐藏页面里已被处理，也要把壳层切到对应输入页
-  useEffect(() => {
-    const handleCreateChatSession = (event: Event) => {
-      const detail = (event as CustomEvent<{ action?: string }>).detail;
-      if (
-        detail?.action &&
-        detail.action !== 'create-session' &&
-        detail.action !== 'create-group'
-      ) {
+      if (message.includes('fetch_cancel_body') || message.includes('http.fetch_cancel_body')) {
         return;
       }
-      setCurrentView('chat-v2');
-    };
 
-    const handleCreateNote = () => {
-      setCurrentView('learning-hub');
-    };
-
-    try {
-      window.addEventListener(COMMAND_EVENTS.CHAT_NEW_SESSION, handleCreateChatSession);
-      window.addEventListener('modern-sidebar:group-action', handleCreateChatSession);
-      window.addEventListener(COMMAND_EVENTS.NOTES_CREATE_NEW, handleCreateNote);
-    } catch {
-      /* non-critical: event listener setup may fail in test env */
-    }
-
-    return () => {
-      try {
-        window.removeEventListener(COMMAND_EVENTS.CHAT_NEW_SESSION, handleCreateChatSession);
-        window.removeEventListener('modern-sidebar:group-action', handleCreateChatSession);
-        window.removeEventListener(COMMAND_EVENTS.NOTES_CREATE_NEW, handleCreateNote);
-      } catch {
-        /* non-critical: cleanup */
-      }
-    };
+      emitDebug({
+        channel: 'error',
+        eventName: 'frontend_error',
+        payload: {
+          type: 'UnhandledRejection',
+          message,
+          stack: typeof reason === 'object' && reason ? reason.stack : undefined,
+        },
+        meta: { path: window.location?.pathname, ua: navigator?.userAgent },
+      });
+    } catch (e) { debugLog.warn('[App] onRejection handler failed:', e); }
   }, []);
+
+  useEventRegistry([
+    { target: 'window', type: 'error', listener: onFrontendError, options: true },
+    { target: 'window', type: 'unhandledrejection', listener: onUnhandledRejection },
+  ], [onFrontendError, onUnhandledRejection]);
+
+  // Milkdown / Notes / 新建桥接 / 知识库：壳层导航监听（owner: App）
+  useAppEvent(APP_EVENTS.OPEN_MARKDOWN_EDITOR, () => {
+    setCurrentView('learning-hub');
+  }, [setCurrentView]);
+
+  useAppEvent(APP_EVENTS.OPEN_NOTES, () => {
+    setCurrentView('learning-hub');
+  }, [setCurrentView]);
+
+  const handleCreateChatSessionBridge = useCallback((detail: { action?: string } | undefined) => {
+    if (
+      detail?.action &&
+      detail.action !== 'create-session' &&
+      detail.action !== 'create-group'
+    ) {
+      return;
+    }
+    setCurrentView('chat-v2');
+  }, [setCurrentView]);
+
+  useEventRegistry([
+    {
+      target: 'window',
+      type: APP_EVENTS.CHAT_NEW_SESSION,
+      listener: toAppEventListener(handleCreateChatSessionBridge),
+    },
+    {
+      target: 'window',
+      type: APP_EVENTS.MODERN_SIDEBAR_GROUP_ACTION,
+      listener: toAppEventListener(handleCreateChatSessionBridge),
+    },
+    {
+      target: 'window',
+      type: APP_EVENTS.NOTES_CREATE_NEW,
+      listener: () => {
+        setCurrentView('learning-hub');
+      },
+    },
+  ], [handleCreateChatSessionBridge, setCurrentView]);
 
   // Crepe minimal demo：用于排查编辑器性能的纯净示例（仅开发模式）
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     const openCrepeDemo = () => setCurrentView('crepe-demo');
-    try {
-      window.addEventListener('OPEN_CREPE_DEMO' as any, openCrepeDemo as any);
-      (window as any).openCrepeDemo = openCrepeDemo;
-    } catch { /* non-critical: event listener setup may fail in test env */ }
+    const dispose = addAppEventListener(APP_EVENTS.OPEN_CREPE_DEMO, openCrepeDemo);
+    (window as unknown as { openCrepeDemo?: () => void }).openCrepeDemo = openCrepeDemo;
     return () => {
-      try {
-        window.removeEventListener('OPEN_CREPE_DEMO' as any, openCrepeDemo as any);
-        if ((window as any).openCrepeDemo === openCrepeDemo) {
-          delete (window as any).openCrepeDemo;
-        }
-      } catch { /* non-critical: cleanup */ }
+      dispose();
+      const w = window as unknown as { openCrepeDemo?: () => void };
+      if (w.openCrepeDemo === openCrepeDemo) {
+        delete w.openCrepeDemo;
+      }
     };
-  }, []);
+  }, [setCurrentView]);
 
   // ★ OPEN_RF_DEMO 事件已废弃（图谱演示已移除）
 
   // 顶部安全区功能已移除
 
   // ★ 2026-01 清理：知识库导航统一跳转到 Learning Hub
-  useEffect(() => {
-    const handleNavigateToKnowledgeBase = (event: CustomEvent<{ preferTab?: 'manage' | 'memory'; locator?: ResourceLocator }>) => {
-      // 跳转到 Learning Hub（知识库入口已整合）
-      setCurrentView('learning-hub');
-      // 等待 React 渲染完成后发送事件让 Learning Hub 处理具体导航
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('learningHubNavigateToKnowledge', {
-            detail: event.detail
-          }));
-        }, 0);
-      });
-    };
-    try { window.addEventListener('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE' as any, handleNavigateToKnowledgeBase as any); } catch { /* non-critical: event listener setup may fail in test env */ }
-    return () => { try { window.removeEventListener('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE' as any, handleNavigateToKnowledgeBase as any); } catch { /* non-critical: cleanup */ } };
-  }, []);
+  useAppEvent(APP_EVENTS.NAVIGATE_TO_KNOWLEDGE_BASE, (detail) => {
+    setCurrentView('learning-hub');
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE, detail ?? {});
+      }, 0);
+    });
+  }, [setCurrentView]);
 
   // Chat V2 Integration Test: 集成测试页面入口（仅开发模式）
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     const openChatV2Test = () => setCurrentView('chat-v2-test');
-    try { 
-      window.addEventListener('OPEN_CHAT_V2_TEST' as any, openChatV2Test as any); 
-      (window as any).openChatV2Test = openChatV2Test;
-    } catch { /* non-critical: event listener setup may fail in test env */ }
-    return () => { 
-      try { 
-        window.removeEventListener('OPEN_CHAT_V2_TEST' as any, openChatV2Test as any); 
-        delete (window as any).openChatV2Test;
-      } catch { /* non-critical: cleanup */ } 
+    const dispose = addAppEventListener(APP_EVENTS.OPEN_CHAT_V2_TEST, openChatV2Test);
+    (window as unknown as { openChatV2Test?: () => void }).openChatV2Test = openChatV2Test;
+    return () => {
+      dispose();
+      delete (window as unknown as { openChatV2Test?: () => void }).openChatV2Test;
     };
-  }, []);
+  }, [setCurrentView]);
 
   // 通用导航事件：支持从任意组件跳转到指定视图
-  const handleNavigateToView = useCallback((evt: Event) => {
-    const detail = ((evt as CustomEvent).detail || {}) as {
-      view?: string;
-      returnTo?: string;
-      returnPayload?: any;
-      openResource?: string;
-    };
+  const handleNavigateToView = useCallback((detail: {
+    view?: string;
+    returnTo?: string;
+    returnPayload?: unknown;
+    openResource?: string;
+  }) => {
     if (!detail.view) return;
 
     const targetView = canonicalizeView(detail.view);
@@ -1316,10 +1282,9 @@ function App() {
     }
 
     if (detail.openResource && targetView === 'learning-hub') {
+      const dstuPath = detail.openResource;
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('learningHubOpenResource', {
-          detail: { dstuPath: detail.openResource },
-        }));
+        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_RESOURCE, { dstuPath });
       }, 150);
     }
   }, [setCurrentView, setTextbookReturnContext]);
@@ -1327,8 +1292,8 @@ function App() {
   useEventRegistry([
     {
       target: 'window',
-      type: 'NAVIGATE_TO_VIEW',
-      listener: handleNavigateToView as EventListener,
+      type: APP_EVENTS.NAVIGATE_TO_VIEW,
+      listener: toAppEventListener(handleNavigateToView),
     },
   ], [handleNavigateToView]);
 
@@ -1466,16 +1431,56 @@ function App() {
   // overlay 由协调器内部 handler/Escape 兜底处理；这里注册最低优先级的导航 fallback。
   useEffect(() => {
     installAndroidBackBridge();
+    // ⌨️ 键盘 inset 追踪全局启动（残留#4）：不依赖首个 hook 订阅者（InputBarUI
+    // 在 chat-v2 内，冷启动直达其他视图时可能尚未挂载），在壳层建立视口基线，
+    // 保证 --keyboard-inset 在任何视图聚焦输入前就有定义且基线正确。
+    ensureKeyboardTracking();
   }, []);
   const unifiedGoBackRef = useRef({ canGoBack: unifiedCanGoBack, goBack: unifiedGoBack });
   unifiedGoBackRef.current = { canGoBack: unifiedCanGoBack, goBack: unifiedGoBack };
   useEffect(() => {
     return registerBackHandler(() => {
-      if (!unifiedGoBackRef.current.canGoBack) return false;
-      unifiedGoBackRef.current.goBack();
-      return true;
+      if (unifiedGoBackRef.current.canGoBack) {
+        unifiedGoBackRef.current.goBack();
+        return true;
+      }
+      // F1（移动端审计）：无历史但不在主视图时（如 dashboard / pdf-reader 等
+      // 无抽屉入口的页面成为栈底），返回键先回 chat-v2 主视图而非直接退后台，
+      // 保证"任何页面进得去就出得来"。
+      if (isSmallScreenRef.current && currentViewRef.current !== 'chat-v2') {
+        setCurrentView('chat-v2');
+        return true;
+      }
+      return false;
     }, BACK_PRIORITY.navigation);
-  }, []);
+  }, [setCurrentView]);
+
+  // F1（移动端审计）：移动端统一顶栏的返回兜底。
+  // dashboard / data-management / pdf-reader / sandbox-workbench /
+  // template-json-preview 等视图没有 ☰ 抽屉入口，左上角只有全局历史返回按钮；
+  // 历史为空时按钮会消失，页面失去唯一出口。这里保证非 chat-v2 视图始终
+  // 显示返回按钮：有历史走历史后退，无历史回 chat-v2 主视图。
+  // （注册了 showMenu/showBackArrow 的页面优先级更高，不受影响。）
+  const mobileHeaderCanGoBack = unifiedCanGoBack || currentView !== 'chat-v2';
+  const handleMobileHeaderBack = useCallback(() => {
+    if (unifiedGoBackRef.current.canGoBack) {
+      unifiedGoBackRef.current.goBack();
+      return;
+    }
+    setCurrentView('chat-v2');
+  }, [setCurrentView]);
+
+  // F12（移动端审计）：DEV FAB「重置导航」/ UI 自动化桥派发的全局恢复事件。
+  // 事件名与 src/dev/DevMobileRecoveryFab.tsx 的 MOBILE_VIEW_RESET_EVENT 保持
+  // 一致；刻意使用字面量，避免把 dev-only 模块静态引入主 bundle。
+  const handleMobileViewReset = useCallback(() => {
+    navigationHistory.clear();
+    setCurrentView('chat-v2');
+  }, [navigationHistory, setCurrentView]);
+
+  useEventRegistry([
+    { target: 'window', type: 'deep-student:mobile-view-reset', listener: handleMobileViewReset },
+  ], [handleMobileViewReset]);
 
   // 🎯 P0-01 修复: 监听命令面板导航事件
   // 🎯 P1-04 修复: 监听 GLOBAL_SHORTCUT_SETTINGS 等事件
@@ -1483,7 +1488,7 @@ function App() {
     setCurrentView('settings');
     // 触发设置页面跳转到快捷键 tab
     setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: { tab: 'shortcuts' } }));
+      dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'shortcuts' });
     }, 100);
   }, [setCurrentView]);
 
@@ -1548,111 +1553,102 @@ function App() {
   // handleNavigateToAnalysisFromIrec, handleNavigateToGraph, handleJumpToGraphCard,
   // handleNavigateToMistake, handleNavigateToIrecFromMistake, irecAnalysisData cleanup
 
-  // 其他页面导航事件监听（已迁移到 useEventRegistry）
-  const handleNavigateToExamSheet = useCallback((evt: Event) => {
-    const detail = (evt as CustomEvent<{ sessionId: string; cardId?: string; mistakeId?: string }>).detail;
+  // 其他页面导航事件监听（typed registry + useEventRegistry lifecycle）
+  const handleNavigateToExamSheet = useCallback((detail: {
+    sessionId: string;
+    cardId?: string;
+    mistakeId?: string;
+  }) => {
     const sessionId = detail?.sessionId;
     if (!sessionId) return;
 
-    // 重定向到 Learning Hub，并发送事件让 Learning Hub 打开题目集
     setCurrentView('learning-hub');
-    // 等待 React 渲染完成后发送事件（rAF 确保渲染帧，setTimeout(0) 确保微任务完成）
     requestAnimationFrame(() => {
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('learningHubOpenExam', {
-          detail: {
-            sessionId,
-            cardId: detail?.cardId ?? null,
-            mistakeId: detail?.mistakeId ?? null,
-          },
-        }));
+        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_EXAM, {
+          sessionId,
+          cardId: detail?.cardId ?? null,
+          mistakeId: detail?.mistakeId ?? null,
+        });
       }, 0);
     });
   }, [setCurrentView]);
 
-  // P1-18: 从其他页面跳转到指定翻译
-  const handleNavigateToTranslation = useCallback((evt: Event) => {
-    const detail = (evt as CustomEvent<{ translationId: string; title?: string }>).detail;
+  const handleNavigateToTranslation = useCallback((detail: {
+    translationId: string;
+    title?: string;
+  }) => {
     const translationId = detail?.translationId;
     if (!translationId) return;
 
-    // 重定向到 Learning Hub，并发送事件让 Learning Hub 打开翻译
     setCurrentView('learning-hub');
     requestAnimationFrame(() => {
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('learningHubOpenTranslation', {
-          detail: {
-            translationId,
-            title: detail?.title,
-          },
-        }));
+        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_TRANSLATION, {
+          translationId,
+          title: detail?.title,
+        });
       }, 0);
     });
   }, [setCurrentView]);
 
-  // P1-18: 从其他页面跳转到指定作文
-  const handleNavigateToEssay = useCallback((evt: Event) => {
-    const detail = (evt as CustomEvent<{ essayId: string; title?: string }>).detail;
+  const handleNavigateToEssay = useCallback((detail: {
+    essayId: string;
+    title?: string;
+  }) => {
     const essayId = detail?.essayId;
     if (!essayId) return;
 
-    // 重定向到 Learning Hub，并发送事件让 Learning Hub 打开作文
     setCurrentView('learning-hub');
     requestAnimationFrame(() => {
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('learningHubOpenEssay', {
-          detail: {
-            essayId,
-            title: detail?.title,
-          },
-        }));
+        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_ESSAY, {
+          essayId,
+          title: detail?.title,
+        });
       }, 0);
     });
   }, [setCurrentView]);
 
-  // 从 ChatV2Page 笔记工具跳转到指定笔记
-  const handleNavigateToNote = useCallback((evt: Event) => {
-    const detail = (evt as CustomEvent<{ noteId: string; source?: string }>).detail;
+  const handleNavigateToNote = useCallback((detail: {
+    noteId: string;
+    source?: string;
+  }) => {
     const noteId = detail?.noteId;
     if (!noteId) return;
 
-    // 重定向到 Learning Hub，并发送事件让 Learning Hub 打开笔记
     setCurrentView('learning-hub');
     requestAnimationFrame(() => {
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('learningHubOpenNote', {
-          detail: { noteId, source: detail?.source },
-        }));
+        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_NOTE, {
+          noteId,
+          source: detail?.source,
+        });
       }, 0);
     });
   }, [setCurrentView]);
 
-  // 预填充聊天输入框并跳转到 chat-v2
-  const handlePrefillChatInput = useCallback((evt: Event) => {
-    const event = evt as CustomEvent<{ content: string; autoSend?: boolean }>;
-    const { content, autoSend } = event?.detail ?? {};
+  const handlePrefillChatInput = useCallback((detail: {
+    content: string;
+    autoSend?: boolean;
+  }) => {
+    const { content, autoSend } = detail ?? {};
     if (!content) return;
 
-    // 切换到 chat-v2 视图
     setCurrentView('chat-v2');
-
-    // 延迟设置输入框内容，等待视图切换完成
     setTimeout(() => {
-      // 通过事件通知 ChatV2Page 设置输入框内容
-      window.dispatchEvent(new CustomEvent('CHAT_V2_SET_INPUT', {
-        detail: { content, autoSend }
-      }));
+      dispatchAppEvent(APP_EVENTS.CHAT_V2_SET_INPUT, { content, autoSend });
     }, 150);
   }, [setCurrentView]);
 
   // ★ irec 相关事件监听已废弃（图谱模块已移除）
   // ★ navigateToMistakeById 事件监听已废弃（2026-01 清理）
   useEventRegistry([
-    { target: 'window', type: 'navigateToExamSheet', listener: handleNavigateToExamSheet },
-    { target: 'window', type: 'navigateToTranslation', listener: handleNavigateToTranslation },
-    { target: 'window', type: 'navigateToEssay', listener: handleNavigateToEssay },
-    { target: 'window', type: 'navigateToNote', listener: handleNavigateToNote },
-    { target: 'window', type: 'PREFILL_CHAT_INPUT', listener: handlePrefillChatInput },
+    { target: 'window', type: APP_EVENTS.NAVIGATE_TO_EXAM_SHEET, listener: toAppEventListener(handleNavigateToExamSheet) },
+    { target: 'window', type: APP_EVENTS.NAVIGATE_TO_TRANSLATION, listener: toAppEventListener(handleNavigateToTranslation) },
+    { target: 'window', type: APP_EVENTS.NAVIGATE_TO_ESSAY, listener: toAppEventListener(handleNavigateToEssay) },
+    { target: 'window', type: APP_EVENTS.NAVIGATE_TO_NOTE, listener: toAppEventListener(handleNavigateToNote) },
+    { target: 'window', type: APP_EVENTS.PREFILL_CHAT_INPUT, listener: toAppEventListener(handlePrefillChatInput) },
   ], [handleNavigateToExamSheet, handleNavigateToTranslation, handleNavigateToEssay, handleNavigateToNote, handlePrefillChatInput]);
 
   // 处理页面切换（useCallback 稳定引用，避免 ModernSidebar 每次重渲染）
@@ -1670,63 +1666,66 @@ function App() {
   // 键盘引发的 resize/blur 连锁误触发"输入中被跳转"（社区 issue 113 bug 1/3）。
   // 经 MobileAppNavigationProvider 直连注入 MobileSidebarNavigation；下方的
   // 全局事件监听仅作为无 Provider 场景的兼容回退，两条路径共用同一守卫。
-  const handleMobileAppNavigate = useCallback((view: CurrentView) => {
-    if (shouldBlockMobileNavigation()) return;
+  // 返回 false 表示导航被拦截（抽屉侧据此保持展开，不产生"点了没反应还关菜单"）
+  const handleMobileAppNavigate = useCallback((view: CurrentView): boolean => {
+    if (shouldBlockMobileNavigation()) return false;
     handleViewChange(view);
+    return true;
   }, [handleViewChange]);
 
-  useEffect(() => {
-    const handleMobileSidebarNavigate = (event: Event) => {
-      const view = (event as CustomEvent<{ view?: CurrentView }>).detail?.view;
-      if (!view) return;
-      handleMobileAppNavigate(view);
-    };
-
-    window.addEventListener(MOBILE_APP_NAVIGATE_EVENT, handleMobileSidebarNavigate);
-    return () => window.removeEventListener(MOBILE_APP_NAVIGATE_EVENT, handleMobileSidebarNavigate);
+  useAppEvent(APP_EVENTS.MOBILE_APP_NAVIGATE, (detail) => {
+    const view = detail?.view;
+    if (!view) return;
+    handleMobileAppNavigate(view);
   }, [handleMobileAppNavigate]);
 
   // 历史管理已迁移到 useNavigationHistory Hook
 
   // 开发者工具快捷键支持 (仅生产模式，仅 Ctrl+Shift+I / Cmd+Alt+I)
   // 注：F12 由命令系统 dev.open-devtools 统一处理，此处不再重复
-  useEffect(() => {
-    const isProduction = !window.location.hostname.includes('localhost') && 
+  const handleDevtoolsKeyDown = useCallback(async (event: Event) => {
+    const isProduction = !window.location.hostname.includes('localhost') &&
                         !window.location.hostname.includes('127.0.0.1') &&
                         !window.location.hostname.includes('tauri.localhost');
-    
     if (!isProduction) return;
-    
-    const handleKeyDown = async (event: KeyboardEvent) => {
-      const isDevtoolsShortcut = 
-        (event.ctrlKey && event.shiftKey && event.key === 'I') ||
-        (event.metaKey && event.altKey && event.key === 'I');
-      
-      if (isDevtoolsShortcut) {
-        event.preventDefault();
-        event.stopPropagation();
-        try {
-          const { WebviewWindow } = await import('@tauri-apps/api/window');
-          const webview: any = WebviewWindow.getCurrent();
-          if (await (webview.isDevtoolsOpen?.() ?? Promise.resolve(false))) {
-            await webview.closeDevtools?.();
-          } else {
-            await webview.openDevtools?.();
-          }
-        } catch (e) {
-          debugLog.warn('[App] devtools open/close failed, trying toggle:', e);
-          try {
-            const { WebviewWindow } = await import('@tauri-apps/api/window');
-            const webview: any = WebviewWindow.getCurrent();
-            await webview.toggleDevtools?.();
-          } catch (e2) { debugLog.warn('[App] devtools toggle also failed:', e2); }
-        }
-      }
-    };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    const keyboardEvent = event as KeyboardEvent;
+    const isDevtoolsShortcut =
+      (keyboardEvent.ctrlKey && keyboardEvent.shiftKey && keyboardEvent.key === 'I') ||
+      (keyboardEvent.metaKey && keyboardEvent.altKey && keyboardEvent.key === 'I');
+
+    if (!isDevtoolsShortcut) return;
+
+    keyboardEvent.preventDefault();
+    keyboardEvent.stopPropagation();
+    try {
+      const { WebviewWindow } = await import('@tauri-apps/api/window');
+      const webview = WebviewWindow.getCurrent() as {
+        isDevtoolsOpen?: () => Promise<boolean>;
+        closeDevtools?: () => Promise<void>;
+        openDevtools?: () => Promise<void>;
+        toggleDevtools?: () => Promise<void>;
+      };
+      if (await (webview.isDevtoolsOpen?.() ?? Promise.resolve(false))) {
+        await webview.closeDevtools?.();
+      } else {
+        await webview.openDevtools?.();
+      }
+    } catch (e) {
+      debugLog.warn('[App] devtools open/close failed, trying toggle:', e);
+      try {
+        const { WebviewWindow } = await import('@tauri-apps/api/window');
+        const webview = WebviewWindow.getCurrent() as {
+          toggleDevtools?: () => Promise<void>;
+        };
+        await webview.toggleDevtools?.();
+      } catch (e2) { debugLog.warn('[App] devtools toggle also failed:', e2); }
+    }
   }, []);
+
+  useEventRegistry([
+    { target: 'document', type: 'keydown', listener: handleDevtoolsKeyDown },
+  ], [handleDevtoolsKeyDown]);
 
   // 模板管理状态
   const [isSelectingTemplate, setIsSelectingTemplate] = useState(false);
@@ -1793,32 +1792,25 @@ function App() {
     setCurrentView(previousView);
   }, [previousView]);
 
-  // 监听调试面板的导航请求
-  useEffect(() => {
-    const handleNavigateToTab = (event: Event) => {
-      const customEvent = event as CustomEvent<{ tabName: string }>;
-      const tabName = customEvent.detail?.tabName;
-      
-      // tabName 到 CurrentView 的映射
-      const tabToViewMap: Record<string, CurrentView> = {
-        'anki': 'task-dashboard',
-        'settings': 'settings',
-        'chat-v2': 'chat-v2',
-        'learning-hub': 'learning-hub',
-      };
-      
-      const targetView = tabToViewMap[tabName];
-      if (targetView) {
-        console.log(`[App] 导航请求: ${tabName} -> ${targetView}`);
-        handleViewChange(targetView);
-      } else {
-        console.warn(`[App] 未知的 tabName: ${tabName}`);
-      }
+  // 监听调试面板的导航请求（deps 含 handleViewChange，避免 stale closure）
+  useAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, (detail) => {
+    const tabName = detail?.tabName;
+
+    const tabToViewMap: Record<string, CurrentView> = {
+      'anki': 'task-dashboard',
+      'settings': 'settings',
+      'chat-v2': 'chat-v2',
+      'learning-hub': 'learning-hub',
     };
-    
-    window.addEventListener('navigate-to-tab', handleNavigateToTab as EventListener);
-    return () => window.removeEventListener('navigate-to-tab', handleNavigateToTab as EventListener);
-  }, []);
+
+    const targetView = tabName ? tabToViewMap[tabName] : undefined;
+    if (targetView) {
+      console.log(`[App] 导航请求: ${tabName} -> ${targetView}`);
+      handleViewChange(targetView);
+    } else {
+      console.warn(`[App] 未知的 tabName: ${tabName}`);
+    }
+  }, [handleViewChange]);
 
   // 键盘快捷键：视图导航已迁移到命令系统（navigation.commands.ts）
   // Cmd+1→chat-v2, Cmd+5→dashboard, Cmd+,→settings, Cmd+E→data-management
@@ -2050,12 +2042,12 @@ function App() {
     if (currentView !== 'chat-v2') {
       setCurrentView('chat-v2');
       requestAnimationFrame(() => {
-        window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.CHAT_NEW_SESSION));
+        dispatchAppEvent(APP_EVENTS.CHAT_NEW_SESSION);
       });
       return;
     }
 
-    window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.CHAT_NEW_SESSION));
+    dispatchAppEvent(APP_EVENTS.CHAT_NEW_SESSION);
   }, [currentView, setCurrentView]);
   const openCommandPalette = useCallback(() => {
     commandPaletteTriggerRef.current?.();
@@ -2211,11 +2203,8 @@ function App() {
     setCurrentChatHeaderGroupName(getChatHeaderGroupNameFromStoreState(chatHeaderStore?.getState()));
   }, [getChatHeaderGroupNameFromStoreState]);
 
-  useEffect(() => {
-    window.addEventListener('chat-v2:groups-updated', syncCurrentChatHeaderGroupName);
-    return () => {
-      window.removeEventListener('chat-v2:groups-updated', syncCurrentChatHeaderGroupName);
-    };
+  useAppEvent(APP_EVENTS.CHAT_GROUPS_UPDATED, () => {
+    syncCurrentChatHeaderGroupName();
   }, [syncCurrentChatHeaderGroupName]);
 
   const desktopShellViewLabel = useMemo(() => {
@@ -2271,9 +2260,7 @@ function App() {
       <AnkiTasksApp
         onNavigateToChat={(sessionId) => {
           setCurrentView('chat-v2');
-          window.dispatchEvent(
-            new CustomEvent('navigate-to-session', { detail: { sessionId } })
-          );
+          dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_SESSION, { sessionId });
         }}
         onOpenTemplateManagement={() => {
           setIsSelectingTemplate(false);
@@ -2376,7 +2363,7 @@ function App() {
   // 🔧 时序修复：数据库迁移期间检查可能需要重试，显示轻量加载状态替代白屏
   if (needsAgreement === null) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-background dark:bg-zinc-950">
+      <div className="h-screen w-full flex items-center justify-center bg-background">
         <div className="animate-pulse text-muted-foreground text-sm">{t('common:status.loading')}</div>
       </div>
     );
@@ -2409,7 +2396,7 @@ function App() {
         data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
         className={cn(
           'relative flex h-dvh w-full overflow-hidden font-sans text-foreground'
-          // 背景由 App.css 的 [data-shell-role="app-shell"] 规则根据 data-sidebar-visible
+          // 背景由 src/shared/styles/app.css 的 [data-shell-role="app-shell"] 规则根据 data-sidebar-visible
           // 切换到 --shell-navigation-surface / --shell-backdrop，保证工作区左下凹角
           // 透出的颜色与侧边栏严格同源，避免主题切换时出现色差（与左上凹角一致）。
           //
@@ -2430,12 +2417,13 @@ function App() {
         {/* 移动端：统一顶部导航栏 */}
         {isSmallScreen && (
           <UnifiedMobileHeader
-            canGoBack={unifiedCanGoBack}
-            onBack={unifiedGoBack}
+            canGoBack={mobileHeaderCanGoBack}
+            onBack={handleMobileHeaderBack}
             canGoForward={unifiedCanGoForward}
             onForward={unifiedGoForward}
             fallbackTitle={desktopShellViewLabel}
-            className="fixed top-0 left-0 right-0 z-[1100]"
+            className="fixed top-0 left-0 right-0"
+            style={{ zIndex: Z_INDEX.mobileHeader }}
           />
         )}
 
@@ -2446,10 +2434,12 @@ function App() {
           data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
           data-workbench-chrome={workbenchActive ? 'controls-only' : undefined}
           className={cn(
-            'desktop-shell-titlebar fixed top-0 left-0 right-0 z-[1100] flex motion-reduce:transition-none',
+            'desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none',
             workbenchActive && 'desktop-shell-titlebar--workbench-chrome',
           )}
           style={{
+            // 工作台模式的层级由 CSS（--wb-z-menubar + 1）接管，不能被内联样式压住
+            zIndex: workbenchActive ? undefined : Z_INDEX.desktopTitlebar,
             paddingTop: workbenchActive ? 0 : `${topbarTopMargin}px`,
             height: `${DESKTOP_SHELL.titlebarBaseHeight + (workbenchActive ? 0 : topbarTopMargin)}px`,
             minHeight: `${DESKTOP_SHELL.titlebarBaseHeight + (workbenchActive ? 0 : topbarTopMargin)}px`,
@@ -2608,7 +2598,11 @@ function App() {
 
           {/* 🆕 维护模式全局横幅 */}
           {maintenanceMode && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/15 border-b border-amber-500/30 text-amber-700 dark:text-amber-400 text-sm">
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center gap-2 px-4 py-2 bg-amber-500/15 border-b border-amber-500/30 text-amber-700 dark:text-amber-400 text-sm"
+            >
               <Warning size={16} className="shrink-0" />
               <span className="font-medium shrink-0">{t('common:maintenance.banner_title')}</span>
               <span className="flex-1 truncate">
@@ -2619,18 +2613,35 @@ function App() {
                 size="sm"
                 className="shrink-0 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 h-6 px-2 text-xs"
                 onClick={() => {
+                  if (maintenanceRequiresRestart) {
+                    void (async () => {
+                      try {
+                        await TauriAPI.restartApp();
+                        if (import.meta.env.DEV) window.location.reload();
+                      } catch (error: unknown) {
+                        showGlobalNotification(
+                          'error',
+                          getErrorMessage(error),
+                          t('common:maintenance.restart_failed'),
+                        );
+                      }
+                    })();
+                    return;
+                  }
                   if (currentView === 'settings') {
                     // 已在设置页面，直接通过事件切换到数据治理标签
-                    window.dispatchEvent(
-                      new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: { tab: 'data-governance' } })
-                    );
+                    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'data-governance' });
                   } else {
                     setPendingSettingsTab('data-governance');
                     setCurrentView('settings');
                   }
                 }}
               >
-                {t('common:maintenance.go_to_data_governance')}
+                {t(
+                  maintenanceRequiresRestart
+                    ? 'common:maintenance.restart_now'
+                    : 'common:maintenance.go_to_data_governance',
+                )}
               </NotionButton>
             </div>
           )}

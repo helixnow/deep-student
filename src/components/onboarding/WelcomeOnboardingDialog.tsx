@@ -281,6 +281,8 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
               }}
               size="compact"
               stretch
+              // 触屏：compact 档 28px 行高不满足 ≥40px 触控基线，仅 coarse 放大
+              itemClassName="[@media(pointer:coarse)]:h-10"
               options={[
                 { value: 'zh-CN', label: t('welcome_onboarding.lang_zh') },
                 { value: 'en-US', label: t('welcome_onboarding.lang_en') },

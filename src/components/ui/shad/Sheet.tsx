@@ -5,6 +5,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "@phosphor-icons/react"
 
 import { cn } from "../../../lib/utils"
+import { Z_INDEX } from "@/config/zIndex"
 
 const Sheet = SheetPrimitive.Root
 
@@ -17,12 +18,16 @@ const SheetPortal = SheetPrimitive.Portal
 const SheetOverlay = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
->(({ className, ...props }, ref) => (
+>(({ className, style, ...props }, ref) => (
   <SheetPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-50 bg-[var(--overlay)] ui-fade-in ui-fade-out",
+      "fixed inset-0 bg-[var(--overlay)] ui-fade-in ui-fade-out",
       className
     )}
+    // 层级走 Z_INDEX.sheet（曾为 z-50：portal 到 body 后被移动顶栏 1100 /
+    // 弹窗 3000 盖住，2026-07 移动端审计 H-2）。遮罩与内容同档，
+    // Radix 渲染顺序（overlay 在前）保证内容盖在遮罩上。
+    style={{ zIndex: Z_INDEX.sheet, ...style }}
     {...props}
     ref={ref}
   />
@@ -32,7 +37,8 @@ SheetOverlay.displayName = SheetPrimitive.Overlay.displayName
 const sheetVariants = cva(
   // 开闭动画走 ui-motion（transitions-dev token）：进场 ui-slide-in-*，
   // 离场 ui-slide-out-*（仅 data-state="closed" 时生效，Radix 等 animationend 再卸载）
-  "fixed z-50 gap-4 border-[color:var(--dialog-shell-border)] bg-[color:var(--dialog-shell-surface)] p-6 text-popover-foreground shadow-[var(--shadow-shell-floating)]",
+  // z-index 由 SheetContent 以 Z_INDEX.sheet 内联设置（不要在此写死 z-* 类）
+  "fixed gap-4 border-[color:var(--dialog-shell-border)] bg-[color:var(--dialog-shell-surface)] p-6 text-popover-foreground shadow-[var(--shadow-shell-floating)]",
   {
     variants: {
       side: {
@@ -61,7 +67,7 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, hideCloseButton = false, overlayClassName, ...props }, ref) => {
+>(({ side = "right", className, children, hideCloseButton = false, overlayClassName, style, ...props }, ref) => {
   const { t } = useTranslation("common")
   return (
     <SheetPortal>
@@ -70,6 +76,7 @@ const SheetContent = React.forwardRef<
         ref={ref}
         data-overlay-container="true"
         className={cn(sheetVariants({ side }), className)}
+        style={{ zIndex: Z_INDEX.sheet, ...style }}
         {...props}
       >
         {children}

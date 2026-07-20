@@ -14,6 +14,8 @@ import type {
   ExportAnkiCardsResult,
 } from '../types';
 import { emitDebug } from '../utils/emitDebug';
+import { reportFrontendError } from '@/logging/errorReporter';
+import { parseCommandErrorEnvelope } from '@/api/tauriClient';
 import {
   ChatMessage,
   RagSourceInfo,
@@ -178,7 +180,18 @@ export async function invokeWithDebug<T>(cmd: string, args?: any, meta?: Record<
     return res;
   } catch (e: any) {
     const duration = Date.now() - started;
-    try { emitDebug({ channel: 'tauri_invoke', eventName: `${cmd}:error`, payload: { durationMs: duration, error: (e?.message || String(e)), meta } }); } catch {}
+    // TD-11：优先提取结构化 CommandError envelope，日志/上报带稳定 code 与 traceId；
+    // legacy 字符串错误维持原有 message 提取（对象载荷不再退化成 "[object Object]"）
+    const envelope = parseCommandErrorEnvelope(e);
+    const errorMessage = envelope
+      ? `${envelope.code}: ${envelope.message}`
+      : (e?.message || String(e));
+    try { emitDebug({ channel: 'tauri_invoke', eventName: `${cmd}:error`, payload: { durationMs: duration, error: errorMessage, errorCode: envelope?.code, traceId: envelope?.traceId, meta } }); } catch {}
+    void reportFrontendError(envelope ? new Error(`[${cmd}] ${errorMessage}`) : e, {
+      kind: 'PLUGIN_ERROR',
+      component: 'tauri-invoke',
+      extra: { command: cmd, durationMs: duration, meta, errorCode: envelope?.code, traceId: envelope?.traceId },
+    }).catch(() => undefined);
     throw e;
   }
 }

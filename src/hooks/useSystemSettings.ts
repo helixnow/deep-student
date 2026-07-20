@@ -15,9 +15,10 @@ export interface SystemSettings {
   enableNotifications: boolean;
   maxChatHistory: number;
   debugMode: boolean;
-  enableAnkiConnect: boolean;
   markdownRendererMode: 'legacy' | 'enhanced';
 }
+// 注：旧 key `enableAnkiConnect` 已移除——全仓库无消费方；
+// AnkiConnect 开关统一使用 `anki_connect_enabled`（见 ankiConnectClient）。
 
 // 检查是否在Tauri环境中
 const isTauri = typeof window !== 'undefined' && window.__TAURI_INTERNALS__;
@@ -31,7 +32,6 @@ const DEFAULT_SETTINGS: SystemSettings = {
   enableNotifications: true,
   maxChatHistory: 100,
   debugMode: false,
-  enableAnkiConnect: true,
   markdownRendererMode: 'legacy',
 };
 
@@ -52,7 +52,6 @@ export const useSystemSettings = () => {
           'enableNotifications',
           'maxChatHistory',
           'debugMode',
-          'enableAnkiConnect',
           'markdownRendererMode'
         ];
         
@@ -76,7 +75,6 @@ export const useSystemSettings = () => {
             case 'autoSave':
             case 'enableNotifications':
             case 'debugMode':
-            case 'enableAnkiConnect':
               loadedSettings[settingKey] = !['0', 'false', 'False', 'FALSE', 'null', 'undefined', ''].includes((value ?? '').toString());
               break;
             

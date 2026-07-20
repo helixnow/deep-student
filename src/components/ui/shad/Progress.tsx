@@ -24,7 +24,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
         {...props}
       >
         <div
-          className={cn('bar h-full bg-primary transition-all')}
+          className={cn('bar h-full bg-primary transition-[width] motion-reduce:transition-none')}
           style={{ width: clamped == null ? '40%' : `${clamped}%` }}
         />
       </div>

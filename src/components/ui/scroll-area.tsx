@@ -16,7 +16,8 @@ import { useScrollbarTheme } from "../../lib/scroll-theme";
  * - Windows / macOS / Linux → overlay scrollbars synced to app theme
  *
  * Moved from study-ui so DeepStudent can run independently without the
- * `@study-ui` alias. The `.scroll-area--native` styles live in App.css.
+ * `@study-ui` alias. The `.scroll-area--native` styles live in
+ * src/shared/styles/app.css.
  *
  * ## Migration checklist (when replacing `.custom-scrollbar` or legacy CustomScrollArea)
  * - Do NOT wrap CodeMirror `.cm-scroller`, Crepe/Milkdown editor body,
@@ -176,7 +177,14 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
           options={{
             scrollbars: {
               theme,
-              autoHide: scrollHideDelay > 0 ? "leave" : "never",
+              // 触屏无 hover：'leave' 策略会让滚动条永不出现（M-1），
+              // 改为滚动时显影、停止后按 delay 隐藏
+              autoHide:
+                scrollHideDelay > 0
+                  ? platform.isTouchPrimary
+                    ? "scroll"
+                    : "leave"
+                  : "never",
               autoHideDelay: scrollHideDelay,
               autoHideSuspend: true,
               dragScroll: true,

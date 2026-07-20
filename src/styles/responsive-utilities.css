@@ -95,6 +95,10 @@
   [data-mobile-unified-drawer] .desktop-shell-nav-row,
   [data-mobile-unified-drawer] .desktop-shell-thread-row {
     font-size: 16px !important;
+    /* 豁免 app.css 的 min-height:32px !important 桌面密度（该处同为
+       !important，但本选择器特异性 (0,2,0) 更高）：移动抽屉导航行
+       必须满足 44px 触控高度基线 */
+    min-height: 44px !important;
   }
 
   [data-mobile-unified-drawer] .desktop-shell-nav-row svg,

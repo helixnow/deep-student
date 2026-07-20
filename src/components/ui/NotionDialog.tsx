@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -26,6 +26,34 @@ function useAndroidBackClose(open: boolean, close: () => void) {
       closeRef.current();
       return true;
     }, BACK_PRIORITY.overlay);
+  }, [open]);
+}
+
+/**
+ * ESC 关闭（栈语义，L-7）：每个实例各挂 document keydown 会导致多层弹窗
+ * 叠开时一次 Escape 全部关闭。这里维护模块级打开栈，仅栈顶实例响应，
+ * 与 Android 返回键的 BACK_PRIORITY 栈行为对齐。
+ */
+const escapeStack: symbol[] = [];
+
+function useEscapeClose(open: boolean, close: () => void) {
+  const closeRef = React.useRef(close);
+  closeRef.current = close;
+  React.useEffect(() => {
+    if (!open) return;
+    const token = Symbol('notion-dialog-esc');
+    escapeStack.push(token);
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (escapeStack[escapeStack.length - 1] !== token) return;
+      closeRef.current();
+    };
+    document.addEventListener('keydown', handler);
+    return () => {
+      const index = escapeStack.indexOf(token);
+      if (index >= 0) escapeStack.splice(index, 1);
+      document.removeEventListener('keydown', handler);
+    };
   }, [open]);
 }
 
@@ -113,15 +141,8 @@ export function NotionDialog({
 }: NotionDialogProps) {
   const { t } = useTranslation('common');
 
-  // ESC 关闭
-  React.useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onOpenChange(false);
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [open, onOpenChange]);
+  // ESC 关闭（栈语义：仅最顶层弹窗响应）
+  useEscapeClose(open, () => onOpenChange(false));
 
   // Android 返回键 = 关闭弹窗（与 ESC 同语义）
   useAndroidBackClose(open, () => onOpenChange(false));
@@ -135,6 +156,10 @@ export function NotionDialog({
   // 非 Android 平台 keyboardHeight 恒为 0，无行为变化。
   const keyboardHeight = useKeyboardHeight();
   const keyboardAvoid = keyboardHeight > 0;
+
+  // 移动 sheet 下滑关闭（M-5）：顶部把手视觉暗示可拖拽，此前没有对应手势。
+  // 拖拽只从把手区启动（dragListener=false），不与内容区滚动抢手势。
+  const dragControls = useDragControls();
 
   return (
     <ModalPortal open={open}>
@@ -170,6 +195,16 @@ export function NotionDialog({
           role="dialog"
           aria-modal="true"
           variants={isMobileSheet ? sheetContentVariants : contentVariants}
+          drag={isMobileSheet ? 'y' : false}
+          dragControls={dragControls}
+          dragListener={false}
+          dragConstraints={{ top: 0, bottom: 0 }}
+          dragElastic={{ top: 0, bottom: 0.6 }}
+          onDragEnd={(_, info) => {
+            if (info.offset.y > 96 || info.velocity.y > 600) {
+              onOpenChange(false);
+            }
+          }}
           className={cn(
             'relative border bg-background text-foreground',
             'flex flex-col overflow-hidden',
@@ -191,7 +226,11 @@ export function NotionDialog({
           onClick={(e) => e.stopPropagation()}
         >
           {isMobileSheet && (
-            <div aria-hidden className="flex h-6 shrink-0 items-center justify-center">
+            <div
+              aria-hidden
+              className="flex h-6 shrink-0 cursor-grab touch-none items-center justify-center active:cursor-grabbing"
+              onPointerDown={(e) => dragControls.start(e)}
+            >
               <div className="h-1 w-12 rounded-full bg-[color:var(--mobile-sheet-handle,var(--border))]" />
             </div>
           )}
@@ -203,7 +242,8 @@ export function NotionDialog({
               aria-label={t('actions.close')}
               className={cn(
                 'absolute z-10 text-muted-foreground/50 hover:text-foreground',
-                isMobileSheet ? 'right-3 top-3 h-8 w-8' : 'w-6 h-6 top-2.5 right-2.5',
+                // 移动 sheet 形态：触控目标放大到 40px（右上角命中区）
+                isMobileSheet ? 'right-2 top-2 h-10 w-10' : 'w-6 h-6 top-2.5 right-2.5',
               )}
               onClick={() => onOpenChange(false)}
             >
@@ -357,15 +397,8 @@ export function NotionAlertDialog({
     onOpenChange(false);
   }, [onCancel, onOpenChange]);
 
-  // ESC 关闭
-  React.useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleCancel();
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [open, handleCancel]);
+  // ESC 关闭（栈语义：仅最顶层弹窗响应）
+  useEscapeClose(open, handleCancel);
 
   // Android 返回键 = 取消（确认框不可遮罩关闭，但返回键应等同"取消"，与 ESC 一致）
   useAndroidBackClose(open, handleCancel);

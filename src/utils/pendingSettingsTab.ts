@@ -9,9 +9,12 @@
  * - 写入一个短生命周期的 window 变量作为缓冲
  * - Settings 挂载时消费该值并跳转
  */
+
+import { APP_EVENTS, dispatchAppEvent, type SettingsTabId } from '@/events';
+
 declare global {
   interface Window {
-    __dsPendingSettingsTab?: string;
+    __dsPendingSettingsTab?: SettingsTabId;
     __dsPendingSettingsRoute?: PendingSettingsRoute;
   }
 }
@@ -19,7 +22,7 @@ declare global {
 let pendingTabTimer: ReturnType<typeof setTimeout> | null = null;
 
 export interface PendingSettingsRoute {
-  tab: string;
+  tab: SettingsTabId;
   dataGovernanceTab?: string;
 }
 
@@ -34,22 +37,17 @@ const armPendingRouteExpiry = (): void => {
   (pendingTabTimer as ReturnType<typeof setTimeout> & { unref?: () => void }).unref?.();
 };
 
-export function setPendingSettingsTab(tab: string): void {
-  if (typeof tab !== 'string') return;
-  const trimmed = tab.trim();
-  if (!trimmed) return;
-
-  window.__dsPendingSettingsTab = trimmed;
-  window.__dsPendingSettingsRoute = { tab: trimmed };
+export function setPendingSettingsTab(tab: SettingsTabId): void {
+  window.__dsPendingSettingsTab = tab;
+  window.__dsPendingSettingsRoute = { tab };
 
   // Auto-expire after 10 seconds
   armPendingRouteExpiry();
 }
 
 export function setPendingSettingsRoute(route: PendingSettingsRoute): void {
-  if (!route || typeof route.tab !== 'string') return;
-  const tab = route.tab.trim();
-  if (!tab) return;
+  if (!route) return;
+  const tab = route.tab;
 
   const dataGovernanceTab = typeof route.dataGovernanceTab === 'string'
     ? route.dataGovernanceTab.trim()
@@ -75,18 +73,18 @@ export function consumePendingSettingsRoute(): PendingSettingsRoute | null {
     pendingTabTimer = null;
   }
 
-  if (typeof tab !== 'string' || !tab.trim()) return null;
+  if (!tab) return null;
 
   const dataGovernanceTab = typeof route?.dataGovernanceTab === 'string'
     ? route.dataGovernanceTab.trim()
     : '';
 
   return dataGovernanceTab
-    ? { tab: tab.trim(), dataGovernanceTab }
-    : { tab: tab.trim() };
+    ? { tab, dataGovernanceTab }
+    : { tab };
 }
 
-export function consumePendingSettingsTab(): string | null {
+export function consumePendingSettingsTab(): SettingsTabId | null {
   return consumePendingSettingsRoute()?.tab ?? null;
 }
 
@@ -97,10 +95,6 @@ export function openArchivedSessionsSettings(): void {
   };
 
   setPendingSettingsRoute(route);
-  window.dispatchEvent(new CustomEvent('navigate-to-tab', {
-    detail: { tabName: 'settings' },
-  }));
-  window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', {
-    detail: route,
-  }));
+  dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
+  dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, route);
 }

@@ -396,11 +396,16 @@
  * - .ui-press
  *   触控按压反馈：active 时整体缩至 --m-press-scale（默认 0.97）。
  *   使用独立 `scale` 属性，不会覆盖 inline transform / translate 定位。
- *   JS 侧对应 usePressable（src/hooks/mobile/usePressable.ts）。
+ *   （纯 CSS 实现；原 JS 侧 usePressable 因零消费已于 2026-07 移除。）
+ * - .ui-press-coarse
+ *   同 .ui-press，但仅在 (pointer: coarse) 下生效——共享按钮 primitive
+ *   （buttonPrimitiveContract → NotionButton / shad Button）默认挂载此类，
+ *   给触屏统一按压反馈而不改变桌面鼠标的 active 手感
+ *   （桌面 active 由 native-feel/interaction.css 的 translateY(0.5px) 承担）。
  * - .ui-slide-up-panel
  *   底部内联面板（非全屏 sheet）挂载入场：fade + 自 --m-sheet-distance
  *   （默认 16px）上滑。全屏 Sheet 请继续使用 .ui-slide-in-bottom。
- * 两者的 reduced-motion 降级见文件末尾追加块（同特异性靠源顺序覆盖）。
+ * 三者的 reduced-motion 降级见文件末尾追加块（同特异性靠源顺序覆盖）。
  */
 
 @keyframes ui-kf-slide-up-panel {
@@ -423,6 +428,28 @@
   scale: var(--m-press-scale, 0.97);
 }
 
+/*
+ * 双写类名抬高特异性（0,2,0）：本文件先于 Tailwind utilities 引入，
+ * 单类声明会被按钮自带的 transition-[…] 工具类覆盖。shorthand 里除 scale
+ * 外补上 interaction.css 默认过渡的同组颜色属性，触屏下不丢失 hover/active
+ * 的颜色过渡（stylelint 禁 !important，故用特异性取胜）。
+ */
+@media (pointer: coarse) {
+  .ui-press-coarse.ui-press-coarse {
+    transition:
+      scale var(--m-press-dur, 120ms) var(--m-press-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+      background-color 150ms ease,
+      border-color 150ms ease,
+      color 150ms ease,
+      opacity 150ms ease,
+      box-shadow 150ms ease;
+  }
+
+  .ui-press-coarse:active {
+    scale: var(--m-press-scale, 0.97);
+  }
+}
+
 .ui-slide-up-panel {
   animation: ui-kf-slide-up-panel var(--m-sheet-dur, 260ms) var(--m-sheet-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
 }
@@ -430,11 +457,13 @@
 /* ============ Mobile primitives: reduced motion ============ */
 
 @media (prefers-reduced-motion: reduce) {
-  .ui-press {
+  .ui-press,
+  .ui-press-coarse.ui-press-coarse {
     transition: none;
   }
 
-  .ui-press:active {
+  .ui-press:active,
+  .ui-press-coarse:active {
     scale: 1;
   }
 

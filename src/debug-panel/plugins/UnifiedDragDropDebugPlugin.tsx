@@ -4,6 +4,7 @@ import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { Copy, FloppyDisk, Warning, CheckCircle, XCircle, Funnel, Upload, ArrowSquareOut, FileText, Clipboard, Chat } from '@phosphor-icons/react';
 import { showGlobalNotification } from '../../components/UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 type LogLevel = 'debug' | 'info' | 'warning' | 'error';
 type DragDropStage = 
@@ -139,10 +140,7 @@ const navigateToZone = (zoneId: string) => {
     
     // 通过浮动导航栏切换（如果有 tabName）
     if (zoneInfo.tabName) {
-      const event = new CustomEvent('navigate-to-tab', {
-        detail: { tabName: zoneInfo.tabName },
-      });
-      window.dispatchEvent(event);
+      dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: zoneInfo.tabName });
       console.log(`[UnifiedDragDropDebug] ✅ 已派发导航事件: ${zoneInfo.tabName}`);
       
       // 使用全局通知提示用户

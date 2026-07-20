@@ -12,7 +12,7 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  z-index: 9999;
+  z-index: var(--z-toast);
   pointer-events: none;
 }
 
@@ -39,7 +39,7 @@
   display: flex;
   align-items: center;
   gap: 0;
-  z-index: 9999;
+  z-index: var(--z-toast);
   color: hsl(var(--foreground));
   background: var(--notif-fill);
   border: 1px solid var(--notif-stroke-color);
@@ -300,8 +300,22 @@
 @media (pointer: coarse) {
   .unified-notification-close,
   .unified-notification-copy {
+    position: relative;
     width: 32px;
     height: 32px;
+  }
+
+  /* L-6：视觉保持 32px，用透明伪元素把命中区扩到 44×44（TouchTarget extend
+     同款做法）。相邻按钮扩区有少量重叠，按 DOM 后者（关闭钮）优先，可接受。 */
+  .unified-notification-close::before,
+  .unified-notification-copy::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
   }
 
   .unified-notification-close {
@@ -357,5 +371,25 @@
 
   .unified-notification-text {
     font-size: 12px;
+  }
+
+  /* ★ 2026-07-20（R11）：移动端收起态放宽为最多两行 —— 两击确认
+     （unifiedConfirm）的「再次点击确认」提示与长错误文案在单行省略下
+     不点开完全读不到；两行 clamp 保证关键信息首屏可见。
+     展开态（.expanded，专属更高优先级选择器）仍走整段换行 + 60vh 滚动。 */
+  .unified-notification-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    max-height: 2.7em;
+  }
+
+  .unified-notification-text.expanded {
+    display: block;
+    -webkit-line-clamp: unset;
+    max-height: 60vh;
   }
 }

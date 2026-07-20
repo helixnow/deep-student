@@ -8,7 +8,7 @@
 
 import React, { createContext, useContext, useMemo, useCallback, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass } from '@phosphor-icons/react';
+import { ChartBar, Database, MagnifyingGlass } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { createNavItems, MOBILE_NAV_SECTION_OF_VIEW, type NavItem } from '@/config/navigation';
 import type { CurrentView } from '@/types/navigation';
@@ -21,18 +21,21 @@ import {
   mobileDrawerRowTitleClassName,
   mobileDrawerSectionLabelClassName,
 } from './mobileDrawerStyles';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
-export const MOBILE_APP_NAVIGATE_EVENT = 'deepstudent:mobile-sidebar-navigate';
+/** @deprecated 请优先使用 APP_EVENTS.MOBILE_APP_NAVIGATE；保留导出以兼容既有 import */
+export const MOBILE_APP_NAVIGATE_EVENT = APP_EVENTS.MOBILE_APP_NAVIGATE;
 
 /**
  * P1-7: 导航直连。App.tsx 通过 Provider 注入 navigate 回调（回调内部自带
  * 键盘弹出期间的屏蔽守卫），抽屉导航优先直接调用；无 Provider 时回退到
  * CustomEvent 全局事件（App.tsx 的 window 监听保留，向后兼容）。
+ * 回调可返回 false 表示导航被守卫拦截（此时抽屉保持展开，见 handleNavigate）。
  */
-const MobileAppNavigationContext = createContext<((view: CurrentView) => void) | null>(null);
+const MobileAppNavigationContext = createContext<((view: CurrentView) => boolean | void) | null>(null);
 
 export const MobileAppNavigationProvider: React.FC<{
-  navigate: (view: CurrentView) => void;
+  navigate: (view: CurrentView) => boolean | void;
   children: ReactNode;
 }> = ({ navigate, children }) => (
   <MobileAppNavigationContext.Provider value={navigate}>
@@ -62,24 +65,51 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
 
   const currentCanonicalView = canonicalizeView(currentView);
 
+  // F1（移动端审计）：dashboard / data-management 在桌面侧栏之外没有任何
+  // 移动端入口（原本只能靠命令面板输入命令抵达），补进抽屉「管理」分组，
+  // 保证这两个页面在移动端可发现、可进可出。仅移动抽屉展示，不影响桌面侧栏。
+  const mobileOnlyManageItems = useMemo(() => ([
+    {
+      view: 'dashboard' as CurrentView,
+      name: t('common:navigation.dashboard', '总览'),
+      icon: ChartBar,
+    },
+    {
+      view: 'data-management' as CurrentView,
+      name: t('common:navigation.data_management', '数据管理'),
+      icon: Database,
+    },
+  ]), [t]);
+
   const sections = useMemo(() => {
-    const study: NavItem[] = [];
-    const manage: NavItem[] = [];
+    type DrawerNavItem = Pick<NavItem, 'name' | 'icon'> & { view: CurrentView };
+    const study: DrawerNavItem[] = [];
+    const manage: DrawerNavItem[] = [];
     for (const item of navItems) {
       (MOBILE_NAV_SECTION_OF_VIEW[item.view] === 'study' ? study : manage).push(item);
+    }
+    // 移动端专属入口插在设置之前，保持「设置」按惯例收尾
+    const settingsIndex = manage.findIndex((item) => item.view === 'settings');
+    if (settingsIndex >= 0) {
+      manage.splice(settingsIndex, 0, ...mobileOnlyManageItems);
+    } else {
+      manage.push(...mobileOnlyManageItems);
     }
     return [
       { id: 'study', label: t('sidebar:mobile_drawer.section_study', '学习'), items: study },
       { id: 'manage', label: t('sidebar:mobile_drawer.section_manage', '管理'), items: manage },
     ];
-  }, [navItems, t]);
+  }, [mobileOnlyManageItems, navItems, t]);
 
   const handleNavigate = useCallback((view: CurrentView) => {
     if (navigateDirect) {
-      navigateDirect(view);
+      // 守卫拦截（如 Android 键盘弹出期）返回 false：不收抽屉，
+      // 避免"点了没跳转还把菜单关了"的割裂感
+      const accepted = navigateDirect(view);
+      if (accepted === false) return;
     } else {
-      // 兼容路径：无 Provider（如独立挂载/测试环境）时退回全局事件
-      window.dispatchEvent(new CustomEvent(MOBILE_APP_NAVIGATE_EVENT, { detail: { view } }));
+      // 兼容路径：无 Provider（如独立挂载/测试环境）时退回全局事件（无法感知拦截结果）
+      dispatchAppEvent(APP_EVENTS.MOBILE_APP_NAVIGATE, { view });
     }
     onNavigate?.();
   }, [navigateDirect, onNavigate]);

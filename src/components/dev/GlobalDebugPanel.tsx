@@ -47,7 +47,7 @@ const GlobalDebugPanel = () => {
     return { x: window.innerWidth - 60, y: window.innerHeight - 60 };
   });
   const [isDraggingToggle, setIsDraggingToggle] = useState(false);
-  const toggleDragStart = useRef({ dx: 0, dy: 0, moved: false });
+  const toggleDragStart = useRef({ dx: 0, dy: 0, startX: 0, startY: 0, moved: false });
 
   // 在测试/autorun参数存在时自动挂载面板宿主（即使不可见也会创建插件，便于autorun）
   useEffect(() => {
@@ -205,13 +205,15 @@ const GlobalDebugPanel = () => {
     };
   }, []);
 
-  // 悬浮球拖拽逻辑
+  // 悬浮球拖拽逻辑（Pointer Events：触屏与鼠标共用一条路径）
   useEffect(() => {
     if (!isDraggingToggle) return;
 
-    const handleMove = (ev: MouseEvent) => {
-      const dx = Math.abs(ev.clientX - (togglePos.x + toggleDragStart.current.dx));
-      const dy = Math.abs(ev.clientY - (togglePos.y + toggleDragStart.current.dy));
+    const handleMove = (ev: PointerEvent) => {
+      // moved 判定必须以按下时的指针坐标为基准累计：若与逐帧更新的 togglePos
+      // 比较，慢速拖动每个事件的增量都 <3px，永远不会置位，松手时会误触发 click
+      const dx = Math.abs(ev.clientX - toggleDragStart.current.startX);
+      const dy = Math.abs(ev.clientY - toggleDragStart.current.startY);
       if (dx > 3 || dy > 3) {
         toggleDragStart.current.moved = true;
       }
@@ -228,11 +230,13 @@ const GlobalDebugPanel = () => {
       } catch {}
     };
 
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleUp);
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    window.addEventListener('pointercancel', handleUp);
     return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleUp);
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleUp);
     };
   }, [isDraggingToggle, togglePos]);
 
@@ -268,12 +272,14 @@ const GlobalDebugPanel = () => {
     </>
   );
 
-  const handleToggleMouseDown = (ev: React.MouseEvent) => {
-    if (ev.button !== 0) return;
+  const handleTogglePointerDown = (ev: React.PointerEvent) => {
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     ev.preventDefault();
     toggleDragStart.current = {
       dx: ev.clientX - togglePos.x,
       dy: ev.clientY - togglePos.y,
+      startX: ev.clientX,
+      startY: ev.clientY,
       moved: false,
     };
     setIsDraggingToggle(true);
@@ -300,7 +306,7 @@ const GlobalDebugPanel = () => {
         )}
         aria-label={t('debug_panel.open')}
         aria-pressed={visible}
-        onMouseDown={handleToggleMouseDown}
+        onPointerDown={handleTogglePointerDown}
         onClick={handleToggleClick}
         style={{
           pointerEvents: 'auto',
@@ -311,6 +317,8 @@ const GlobalDebugPanel = () => {
           bottom: 'auto',
           cursor: isDraggingToggle ? 'grabbing' : 'grab',
           userSelect: 'none',
+          // 触摸拖动悬浮球时不触发页面滚动
+          touchAction: 'none',
           transition: isDraggingToggle ? 'none' : 'transform 0.2s, box-shadow 0.2s, border-color 0.2s',
         }}
       >

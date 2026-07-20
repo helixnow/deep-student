@@ -265,6 +265,9 @@ body {
 .desktop-shell-sidebar-row,
 .desktop-shell-nav-row,
 .desktop-shell-thread-row {
+  /* ⚠️ 32px 是桌面密度。移动统一抽屉内由 responsive-utilities.css 的
+     [data-mobile-unified-drawer] 前缀选择器（特异性更高）豁免为 ≥44px
+     触控高度，勿在此处直接加大数值或删除该豁免。 */
   min-height: 32px !important;
   justify-content: flex-start !important;
   border-radius: var(--shell-nav-row-radius) !important;
@@ -289,12 +292,28 @@ body {
   color: var(--shell-navigation-foreground);
 }
 
-.desktop-shell-sidebar-row:hover:not(.desktop-shell-sidebar-row--active),
+/* F（2026-07 移动端审计）：hover 只在真正支持悬停的指针上生效——
+   触屏 sticky hover 会让"最后点按的行"在移动统一抽屉里保持高亮不退。
+   focus-visible / :active 保持全设备生效（键盘可达 + 触屏按压反馈）。 */
+@media (hover: hover) {
+  .desktop-shell-sidebar-row:hover:not(.desktop-shell-sidebar-row--active),
+  .desktop-shell-sidebar-row:focus-visible:not(.desktop-shell-sidebar-row--active),
+  .desktop-shell-nav-row:hover:not(.desktop-shell-nav-row--active),
+  .desktop-shell-nav-row:focus-visible:not(.desktop-shell-nav-row--active),
+  .desktop-shell-thread-row:hover:not(.desktop-shell-thread-row--active),
+  .desktop-shell-thread-row:focus-visible:not(.desktop-shell-thread-row--active) {
+    background: var(--interactive-hover) !important;
+    color: var(--shell-navigation-foreground) !important;
+  }
+}
+
+/* 触屏等无 hover 设备：保留键盘焦点态，并补 :active 按压反馈 */
 .desktop-shell-sidebar-row:focus-visible:not(.desktop-shell-sidebar-row--active),
-.desktop-shell-nav-row:hover:not(.desktop-shell-nav-row--active),
 .desktop-shell-nav-row:focus-visible:not(.desktop-shell-nav-row--active),
-.desktop-shell-thread-row:hover:not(.desktop-shell-thread-row--active),
-.desktop-shell-thread-row:focus-visible:not(.desktop-shell-thread-row--active) {
+.desktop-shell-thread-row:focus-visible:not(.desktop-shell-thread-row--active),
+.desktop-shell-sidebar-row:active:not(.desktop-shell-sidebar-row--active),
+.desktop-shell-nav-row:active:not(.desktop-shell-nav-row--active),
+.desktop-shell-thread-row:active:not(.desktop-shell-thread-row--active) {
   background: var(--interactive-hover) !important;
   color: var(--shell-navigation-foreground) !important;
 }
@@ -435,8 +454,10 @@ body {
  * P2-12: 移动壳（<768，与 useIsMobile / MOBILE_SHELL.breakpointMax 同界）视图切换
  * 改用轻量横向位移：12px 右侧滑入 + fade，消费 --page-slide-* token，不做 blur
  * （移动 WebView 上 filter 逐帧代价高）。离场侧仍为 visibility:hidden 同帧生效。
+ * 断点用 range 语法 (width < 768px)：与 JS 侧 !(min-width:768px) 精确互补，
+ * 767.x 小数视口宽（显示缩放/分屏）下不漏判（2026-07 移动端审计 E）。
  */
-@media (max-width: 767px) {
+@media (width < 768px) {
   @keyframes mobile-shell-content-enter {
     from {
       opacity: 0;
@@ -496,8 +517,16 @@ body {
   border-radius: var(--radius-shell-row);
 }
 
-.sidebar-shell-item:hover,
-.sidebar-shell-item:focus-visible {
+/* F（2026-07 移动端审计）：hover 收窄到悬停指针，避免触屏 sticky hover 残留高亮 */
+@media (hover: hover) {
+  .sidebar-shell-item:hover,
+  .sidebar-shell-item:focus-visible {
+    background: var(--interactive-hover);
+  }
+}
+
+.sidebar-shell-item:focus-visible,
+.sidebar-shell-item:active {
   background: var(--interactive-hover);
 }
 
@@ -769,8 +798,10 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  /* 让 body 占满视口，但实际内容高度由容器按标题栏扣减 */
+  /* 让 body 占满视口，但实际内容高度由容器按标题栏扣减。
+     dvh 优先（Android 软键盘/动态工具栏下取真实可视高度），vh 兜底旧内核 */
   height: 100vh;
+  height: 100dvh;
   /* Windows下使用系统窗口装饰，不应有圆角 */
   /* 在macOS等平台会通过media query覆盖 */
   border-radius: 0;
@@ -778,15 +809,23 @@ body {
 
 #root {
   background-color: var(--surface-root);
-  overflow: hidden;
-  /* 交由 .app 进行高度扣减，root 保持视口高 */
+  /*
+   * 根容器是结构边界，绝不能成为可编程滚动容器。
+   * overflow:hidden 仍允许 focus/scrollIntoView 改写 scrollTop；一旦异常内容
+   * 超过一屏，就会把两个区域同时暴露出来。clip 从机制上禁止根滚动。
+   */
+  overflow: hidden; /* 旧 WebView 回退；useShellScrollGuard 仍会强制归零 */
+  overflow: clip;
+  /* 交由 .app 进行高度扣减，root 保持视口高（dvh 优先，vh 兜底） */
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
   /* Windows下使用系统窗口装饰，不应有圆角 */
   border-radius: 0;
   position: relative;
   box-shadow: 0 0 0 1px var(--border-soft);
   max-height: 100vh;
+  max-height: 100dvh;
 }
 
 .app {
@@ -794,9 +833,11 @@ body {
   border-radius: 0;
   overflow: hidden;
   background-color: var(--surface-elevated);
-  /* 保持视口高度，页面内部通过 absolute top/bottom 扣除标题栏空间 */
+  /* 保持视口高度，页面内部通过 absolute top/bottom 扣除标题栏空间（dvh 优先） */
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
 }
 
 .sidebar {
@@ -811,7 +852,9 @@ main {
   border-bottom-right-radius: 0;
   overflow: hidden;
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
 }
 /* 设置页面样式 */
 .settings {
@@ -841,7 +884,9 @@ main {
   /* 保留整体背景模糊强度，增强沉浸感，适配亮暗主题 */
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  z-index: 10000;
+  /* 全屏图片查看器独立档位（= Z_INDEX.imageViewer 6000）：
+     曾用 --z-modal 导致被移动顶栏(1100)/弹窗(3000)盖住（H-2） */
+  z-index: var(--z-image-viewer, 6000);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -869,20 +914,14 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10000;
+  z-index: var(--z-modal);
 }
 
-/* 统一其他自定义遮罩类为现代预览器风格 */
-:where(
-  .modal-overlay,
-  .tag-selector-modal,
-  .create-tag-modal,
-  .scm__overlay,
-  .anki-preview-modal-overlay,
-  .template-manager-backdrop,
-  .tag-tree-modal-backdrop,
-  .image-viewer-overlay
-) {
+/* 统一其他自定义遮罩类为现代预览器风格
+   （2026-07 清理：modal-overlay / tag-selector-modal / create-tag-modal /
+   scm__overlay / template-manager-backdrop / tag-tree-modal-backdrop /
+   anki-preview-modal-overlay 对应组件已删或改用 UnifiedModal，选择器移除） */
+:where(.image-viewer-overlay) {
   position: fixed !important;
   top: 0 !important;
   left: 0 !important;
@@ -895,14 +934,15 @@ main {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  z-index: 10000 !important;
+  z-index: var(--z-modal) !important;
 }
 
 
 .modern-image-viewer-container {
   position: relative;
   width: 100vw;  /* 全屏铺满 */
-  height: 100vh; /* 全屏铺满 */
+  height: 100vh; /* 全屏铺满（dvh 优先，vh 兜底） */
+  height: 100dvh;
   /* 玻璃态质感：依赖主题变量实现亮暗自适应 */
   background: hsl(var(--card) / 0.62);
   backdrop-filter: blur(28px);

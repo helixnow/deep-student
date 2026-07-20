@@ -20,6 +20,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Copy, Scissors, ClipboardText, ListChecks } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { Z_INDEX } from '@/config/zIndex';
 import { useOverlayCoordinator } from '@/components/shared/OverlayCoordinator';
 import { copyTextToClipboard, readTextFromClipboard } from '@/utils/clipboardUtils';
 
@@ -260,6 +261,9 @@ function TextContextMenu({ position, onClose }: TextContextMenuProps) {
         top: coords.top,
         left: coords.left,
         minWidth: 200,
+        // .app-menu-content 默认 z-index 仅 110，会被弹窗(3000)/抽屉(2500)/
+        // 移动顶栏(1100)盖住；Portal 菜单必须用 contextMenu 档（H-3）
+        zIndex: Z_INDEX.contextMenu,
       }}
       data-context-menu-handled="true"
       onContextMenu={(e) => e.preventDefault()}
@@ -361,6 +365,16 @@ export function TextContextMenuProvider({ children }: { children: React.ReactNod
 
       const sel = window.getSelection();
       const hasSelection = !!(sel && sel.toString().length > 0);
+
+      // 触屏（M-7）：iOS WKWebView 长按根本不派发 contextmenu（本菜单不可达），
+      // Android 长按派发但 preventDefault 会压掉原生选择菜单。触屏上文本域 /
+      // 选区交给系统原生长按菜单（带选择手柄），自定义菜单只服务精确指针。
+      // 需要长按呼出自定义菜单的场景请用 src/hooks/mobile/useLongPress.ts。
+      const isTouch =
+        (e as PointerEvent).pointerType === 'touch' ||
+        (typeof window.matchMedia === 'function' &&
+          window.matchMedia('(hover: none) and (pointer: coarse)').matches);
+      if (isTouch && (editable || hasSelection)) return;
 
       if (editable || hasSelection) {
         e.preventDefault();

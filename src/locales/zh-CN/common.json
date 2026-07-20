@@ -154,7 +154,8 @@
   "card3DPreview": {
     "errorRenderingCard": "渲染卡片出错",
     "noCardsToPreview": "暂无可预览的卡片",
-    "flipCard": "翻转卡片"
+    "flipCard": "翻转卡片",
+    "instructions": "← → 或 A/D：切换 • F：翻面 • 空格或 P：播放/暂停 • 1-9：跳转 • Home/End：首/末张"
   },
   "copy": "复制",
   "copied": "已复制到剪贴板",
@@ -287,6 +288,7 @@
   "confirm_empty_trash": "确认清空回收站？此操作不可恢复",
   "confirm_delete_permanently": "确认彻底删除该笔记？此操作不可恢复",
   "loading": "加载中...",
+  "refreshing": "正在刷新",
   "empty": "暂无数据",
   "untitled": "未命名",
   "comingSoon": "即将推出",
@@ -3574,10 +3576,13 @@
   "maintenance": {
     "banner_title": "维护模式",
     "banner_description": "系统正在进行维护操作，部分功能暂时受限。",
+    "recovery_required": "部分数据服务仍处于安全锁定状态。请重启应用完成恢复后再编辑数据。",
     "blocked_chat_send": "维护模式下无法发送消息，请稍后再试。",
     "blocked_note_save": "维护模式下无法保存笔记，请稍后再试。",
     "blocked_file_upload": "维护模式下无法上传文件，请稍后再试。",
-    "go_to_data_governance": "查看详情"
+    "go_to_data_governance": "查看详情",
+    "restart_now": "立即重启",
+    "restart_failed": "无法重启应用"
   },
   "aiContentLabel": {
     "label": "AI 生成",
@@ -3731,7 +3736,12 @@
     "show_details": "查看错误详情",
     "hide_details": "隐藏详情",
     "copy_error": "复制错误日志",
-    "copied": "已复制"
+    "copied": "已复制",
+    "export_diagnostics": "导出诊断包",
+    "exporting_diagnostics": "正在导出…",
+    "diagnostics_exported": "诊断包已导出",
+    "diagnostics_partial": "诊断包已导出，但有 {{count}} 个文件未包含",
+    "diagnostics_failed": "诊断包导出失败"
   },
   "frontend_errors": {
     "window_error": "窗口错误",

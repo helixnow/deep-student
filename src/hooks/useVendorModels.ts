@@ -238,8 +238,9 @@ export const useVendorModels = () => {
       setSaving(true);
       try {
         await TauriAPI.saveVendorConfigs(next);
-        setVendors(next);
-        dispatchVendorModelChange(next, modelProfiles);
+        const masked = await TauriAPI.getVendorConfigs();
+        setVendors(masked);
+        dispatchVendorModelChange(masked, modelProfiles);
         setError(null);
       } catch (err: unknown) {
         console.error('[useVendorModels] Failed to save vendor configs:', err);

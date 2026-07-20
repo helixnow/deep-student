@@ -6,7 +6,8 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
     <div
       ref={ref}
       className={cn(
-        'rounded-xl border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none',
+        // --radius-card = 12px（与原 rounded-xl 等值，语义 token 化，视觉不变）
+        'rounded-[var(--radius-card)] border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none',
         className
       )}
       {...props}

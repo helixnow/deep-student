@@ -54,7 +54,6 @@ describe('settings quiet hover contract', () => {
     const sources = [
       readSource('src/features/settings/components/data-governance/OverviewTab.tsx'),
       readSource('src/features/settings/components/data-governance/BackupTab.tsx'),
-      readSource('src/features/settings/components/data-governance/MigrationTab.tsx'),
       readSource('src/features/settings/components/data-governance/AuditTab.tsx'),
       readSource('src/features/settings/components/data-governance/SyncTab.tsx'),
     ].join('\n');

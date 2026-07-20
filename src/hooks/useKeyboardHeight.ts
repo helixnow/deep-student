@@ -130,6 +130,19 @@ function ensureTracking(): void {
   vv.addEventListener('scroll', handleViewportChange);
 }
 
+/**
+ * 显式启动键盘追踪（App 壳层启动时调用一次）。
+ *
+ * ensureTracking 本身是惰性的：只有首个 hook 订阅者 / 非 hook 读取方出现时才
+ * 开始监听 visualViewport 并记录基线高度。若首次调用发生在键盘已弹出之后
+ * （例如冷启动直达无输入栏的视图，用户先聚焦了某个输入框），基线会被记成
+ * 「键盘压缩后的视口高度」，导致本轮键盘弹出被漏判、`--keyboard-inset` 缺失。
+ * App.tsx 挂载时调用本函数，保证基线在键盘弹出前建立、CSS 变量全局有定义。
+ */
+export function ensureKeyboardTracking(): void {
+  ensureTracking();
+}
+
 function subscribe(listener: Listener): () => void {
   ensureTracking();
   listeners.add(listener);

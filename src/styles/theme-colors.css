@@ -76,6 +76,33 @@
   --sidebar-quiet-active: var(--interactive-selected);
   --sidebar-quiet-active-foreground: var(--text-primary);
 
+  /* Z-index 阶梯（Tailwind 出口见 tailwind.config.js theme.extend.zIndex，
+     供 z-dropdown / z-modal / z-tooltip 等工具类使用）。
+
+     ⚠️ 单一真相源 = src/config/zIndex.ts（TS 常量表）。本处数值必须与其对齐，
+     两表曾经各自为政（--z-modal:1050 vs Z_INDEX.modal:3000），导致「toast 被
+     弹窗盖住」「图片查看器被移动顶栏盖住」等层级反转（2026-07 移动端审计 H-2）。
+     修改任一档位时请同步更新 zIndex.ts 并 grep 两侧消费方。
+
+     参照 zIndex.ts：mobileHeader/desktopTitlebar=1100、overlay=2000、
+     drawer=2500、modal=3000、sheet=4000、toast=5000、imageViewer=6000、
+     contextMenu=9050、tooltip=10000。 */
+  --z-dropdown: 1000;   /* = Z_INDEX.popover 档（普通下拉，低于 shell 顶栏） */
+  --z-sticky: 1020;
+  --z-overlay: 2000;    /* = Z_INDEX.overlay（遮罩，覆盖移动顶栏 1100） */
+  --z-modal: 3000;      /* = Z_INDEX.modal（与 NotionDialog 同档，高于 drawer 2500） */
+  /* popover 刻意高于 modal：crepe wikilink/mention 等编辑器弹层可能出现在
+     模态内的编辑器上，必须压过模态内容（3000/3001）；低于 sheet(4000)/toast(5000)。 */
+  --z-popover: 3100;
+  --z-toast: 5000;      /* = Z_INDEX.toast（通知永远压过 modal/sheet） */
+  --z-image-viewer: 6000; /* = Z_INDEX.imageViewer（全屏图片查看器） */
+  --z-tooltip: 10000;   /* = Z_INDEX.tooltip */
+  --z-debug: 2147483647;
+
+  /* Tooltip 反色表面（亮色=深灰底浅字，暗色随 --foreground/--background 翻转自动生效） */
+  --tooltip-surface: hsl(var(--foreground));
+  --tooltip-foreground: hsl(var(--background));
+
   --shadow-base: 0 0% 0%;
   --shadow-shell-soft: 0 12px 24px hsl(var(--shadow-base) / 0.04);
   --shadow-shell-panel: 0 16px 32px hsl(var(--shadow-base) / 0.05);

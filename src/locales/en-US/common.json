@@ -150,7 +150,8 @@
   "card3DPreview": {
     "errorRenderingCard": "Error rendering card",
     "noCardsToPreview": "No cards to preview",
-    "flipCard": "Flip card"
+    "flipCard": "Flip card",
+    "instructions": "← → or A/D: Navigate • F: Flip • Space or P: Play/Pause • 1-9: Jump to card • Home/End: First/Last"
   },
   "copy": "Copy",
   "copied": "Copied to clipboard",
@@ -283,6 +284,7 @@
   "confirm_empty_trash": "Empty trash? This action cannot be undone.",
   "confirm_delete_permanently": "Permanently delete this note? This action cannot be undone.",
   "loading": "Loading...",
+  "refreshing": "Refreshing",
   "empty": "No data",
   "untitled": "Untitled",
   "comingSoon": "Coming Soon",
@@ -3631,10 +3633,13 @@
   "maintenance": {
     "banner_title": "Maintenance Mode",
     "banner_description": "The system is undergoing maintenance. Some features are temporarily unavailable.",
+    "recovery_required": "Some data services remain safely locked. Restart the app to finish recovery before editing data.",
     "blocked_chat_send": "Cannot send messages during maintenance mode. Please try again later.",
     "blocked_note_save": "Cannot save notes during maintenance mode. Please try again later.",
     "blocked_file_upload": "Cannot upload files during maintenance mode. Please try again later.",
-    "go_to_data_governance": "View Details"
+    "go_to_data_governance": "View Details",
+    "restart_now": "Restart now",
+    "restart_failed": "Could not restart the app"
   },
   "aiContentLabel": {
     "label": "AI Generated",
@@ -3788,7 +3793,12 @@
     "show_details": "Show Error Details",
     "hide_details": "Hide Details",
     "copy_error": "Copy Error Log",
-    "copied": "Copied"
+    "copied": "Copied",
+    "export_diagnostics": "Export Diagnostics",
+    "exporting_diagnostics": "Exporting…",
+    "diagnostics_exported": "Diagnostic bundle exported",
+    "diagnostics_partial": "Diagnostic bundle exported, but {{count}} files were omitted",
+    "diagnostics_failed": "Failed to export diagnostic bundle"
   },
   "frontend_errors": {
     "window_error": "Window Error",

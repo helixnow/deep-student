@@ -2,14 +2,12 @@
  * 移动端基建组件桶导出。
  *
  * ```tsx
- * import { PullToRefresh, TouchTarget, MobileEmptyState } from '@/components/mobile';
+ * import { PullToRefresh } from '@/components/mobile';
  * ```
+ *
+ * ★ 2026-07 收尾清理：TouchTarget / MobileEmptyState 全仓库零消费已移除
+ *   （触控热区用 NotionButton + `[@media(pointer:coarse)]` 工具类，
+ *   空态沿用各业务现有 study-shell-n / wb-fc-empty 模式）。
  */
 
 export { PullToRefresh, type PullToRefreshProps } from './PullToRefresh';
-export { TouchTarget, type TouchTargetProps } from './TouchTarget';
-export {
-  MobileEmptyState,
-  type MobileEmptyStateProps,
-  type MobileEmptyStateAction,
-} from './MobileEmptyState';

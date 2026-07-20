@@ -2,7 +2,7 @@
  * 移动端手势 / 反馈 hooks 桶导出。
  *
  * ```tsx
- * import { useLongPress, useSwipeGesture, usePressable, useHaptics } from '@/hooks/mobile';
+ * import { useLongPress, useSwipeGesture, useHaptics } from '@/hooks/mobile';
  * ```
  */
 
@@ -22,12 +22,7 @@ export {
   type UseSwipeGestureResult,
 } from './useSwipeGesture';
 
-export {
-  usePressable,
-  type PressableBind,
-  type UsePressableOptions,
-  type UsePressableResult,
-} from './usePressable';
+// ★ 2026-07 收尾清理：usePressable 全仓库零消费已移除（按压反馈由 .ui-press CSS 类承担）
 
 export {
   useHaptics,

@@ -12,7 +12,7 @@
 .command-palette-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: var(--z-modal);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -170,6 +170,8 @@
 
 .command-palette-list {
   padding: 8px;
+  /* 列表滚到边界后不把滚动链传给背景页面（触屏防穿透） */
+  overscroll-behavior: contain;
 }
 
 /* ==================== 分组 ==================== */
@@ -370,8 +372,10 @@
 /* ★ 2026-07 移动端内联化：<768 从「居中浮层」切换为「全屏内联子屏」形态——
    背景实色占满 viewport、顶栏（返回 + 搜索）、结果列表全高滚动、safe-area 兼容。
    软键盘弹出时由 JS 写入 --cp-viewport-height（visualViewport.height）驱动容器收缩，
-   替代旧 max-height:55vh 方案（vh 不随软键盘收缩，底部结果易被裁切）。 */
-@media (max-width: 767.98px) {
+   替代旧 max-height:55vh 方案（vh 不随软键盘收缩，底部结果易被裁切）。
+   断点用 range 语法 (width < 768px)：与 JS 侧 !(min-width:768px) 精确互补，
+   避免 767.x 小数视口宽（显示缩放/分屏）下与移动壳判定分叉。 */
+@media (width < 768px) {
   .command-palette-backdrop {
     padding-top: 0;
     align-items: stretch;
@@ -390,8 +394,11 @@
     border-radius: 0;
     box-shadow: none;
     background-color: hsl(var(--background));
-    padding-top: env(safe-area-inset-top, 0px);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* Android 上 env() 不可用，真实值由 platform.ts 注入 --android-safe-area-*
+       （与 app/shell/mobileShell.ts 的兜底链一致；容器 portal 到 body，
+       不能用只定义在 app-shell 上的 --mobile-safe-area-*） */
+    padding-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px));
+    padding-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px));
     animation: command-palette-page-in 180ms ease-out;
   }
 
@@ -420,6 +427,20 @@
   .command-palette-footer {
     flex-wrap: wrap;
     gap: 8px;
+  }
+
+  /* ★ 2026-07-20（R11）：窄屏结果项改上下两行（名称 / 描述），
+     否则文件路径、会话摘要与命令名同行争抢 ~300px 行宽，
+     描述几乎必被省略号吞掉。max-width 保证列向布局下省略号仍生效。 */
+  .command-palette-item-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .command-palette-item-name,
+  .command-palette-item-description {
+    max-width: 100%;
   }
 }
 

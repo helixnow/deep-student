@@ -4,6 +4,7 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import i18n from '@/i18n';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { reportFrontendError } from '@/logging/errorReporter';
 
 const SHOW_DEV_ERROR_DETAILS = import.meta.env.DEV;
 
@@ -73,10 +74,13 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       void stateError;
     }
     try {
-      // Reuse existing debug bus if available
-      (window as any)?.emitDebug?.({ channel: 'error', eventName: 'error_boundary', payload: { name: this.props.name, error: String(error), info } });
-    } catch (emitError) {
-      void emitError;
+      void reportFrontendError(error, {
+        kind: 'REACT_ERROR_BOUNDARY',
+        component: this.props.name ?? 'unknown',
+        extra: { componentStack: info?.componentStack },
+      }).catch(() => undefined);
+    } catch {
+      // 错误边界本身必须保持无抛出。
     }
     try {
       this.props.onError?.(error, info);

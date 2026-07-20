@@ -454,7 +454,8 @@
   color: var(--menu-shell-foreground);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.15s;
+  /* 显式属性过渡（原 transition: all 会连带 layout 属性） */
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .app-menu-option-item:hover {

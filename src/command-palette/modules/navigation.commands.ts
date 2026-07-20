@@ -15,6 +15,8 @@ import {
   CaretRight,
   Palette,
   Chat,
+  CheckSquare,
+  Cube,
   GraduationCap,
   FileText,
   ChartBar,
@@ -75,6 +77,19 @@ export function getNavigationCommands(): Command[] {
       },
     },
 
+    {
+      id: 'nav.goto.todo',
+      name: i18next.t('command_palette:commands.nav.goto.todo', 'Go to Todo'),
+      description: i18next.t('command_palette:descriptions.nav.goto.todo', 'Todo lists and pomodoro focus'),
+      category: 'navigation',
+      icon: CheckSquare,
+      keywords: kw('nav.goto.todo'),
+      priority: 92,
+      execute: (deps) => {
+        deps.navigate('todo');
+      },
+    },
+
     // ==================== 学习相关视图 ====================
     {
       id: 'nav.goto.learning-hub',
@@ -112,6 +127,18 @@ export function getNavigationCommands(): Command[] {
       priority: 87,
       execute: (deps) => {
         deps.navigate('pdf-reader');
+      },
+    },
+    {
+      id: 'nav.goto.sandbox-workbench',
+      name: i18next.t('command_palette:commands.nav.goto.sandbox-workbench', 'Go to Sandbox Workbench'),
+      description: i18next.t('command_palette:descriptions.nav.goto.sandbox-workbench', 'HTML / preview sandbox workbench'),
+      category: 'navigation',
+      icon: Cube,
+      keywords: kw('nav.goto.sandbox-workbench'),
+      priority: 86,
+      execute: (deps) => {
+        deps.navigate('sandbox-workbench');
       },
     },
 

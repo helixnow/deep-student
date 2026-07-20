@@ -254,6 +254,17 @@ export function CommandPalette() {
     }, BACK_PRIORITY.overlay);
   }, [isOpen]);
 
+  // 打开期间锁定 body 滚动，防止触屏在遮罩/列表边界拖动时背景滚动穿透
+  //（与 ImageViewer 等浮层同款做法）
+  useEffect(() => {
+    if (!isOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isOpen]);
+
   // 移动端全屏内联形态：软键盘弹出时结果区随 visualViewport 收缩，避免底部结果被键盘裁切。
   // 通过 CSS 变量 --cp-viewport-height 驱动容器高度（见 command-palette.css 移动断点）。
   useEffect(() => {

@@ -11,7 +11,14 @@ import React, { createContext, useContext, useState, useCallback, useLayoutEffec
 
 /** 移动端顶栏配置 */
 export interface MobileHeaderConfig {
-  /** 是否暂时隐藏整个移动端顶栏 */
+  /**
+   * 是否暂时隐藏整个移动端顶栏。
+   *
+   * ⚠️ 已知限制：App.tsx 的 workspace paddingTop 恒为
+   * `var(--mobile-header-total-height)`，不随 hidden 联动——设置 hidden 后
+   * 顶部会留下 56px+safe-area 的空白条。若要真正做全屏视图，需同时在
+   * App.tsx 侧按 hidden 切换 paddingTop（目前全仓无 hidden 消费者）。
+   */
   hidden?: boolean;
   /** 标题（字符串形式） */
   title?: string;
@@ -37,6 +44,8 @@ interface MobileHeaderContextValue {
   config: MobileHeaderConfig;
   /** 设置配置（带视图 ID） */
   setConfig: (viewId: string, config: MobileHeaderConfig) => void;
+  /** 清除某视图缓存的配置（视图卸载时调用，释放 rightActions 等引用） */
+  clearConfig: (viewId: string) => void;
   /** 重置配置 */
   resetConfig: () => void;
   /** 设置活跃视图（由 App.tsx 调用） */
@@ -73,6 +82,13 @@ export const MobileHeaderProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
   }, []);
 
+  // 清除某视图的缓存配置：视图被 LRU 驱逐/切壳卸载后，缓存里的 rightActions
+  // ReactNode 及其闭包会一直滞留内存；且回到该视图时会先应用指向已卸载组件
+  // 的陈旧回调（重挂载完成前的窗口期内可被点击）。由 useMobileHeader 卸载时调用。
+  const clearConfig = useCallback((viewId: string) => {
+    configCacheRef.current.delete(viewId);
+  }, []);
+
   // 设置活跃视图
   const setActiveView = useCallback((viewId: string) => {
     activeViewRef.current = viewId;
@@ -91,7 +107,7 @@ export const MobileHeaderProvider: React.FC<{ children: ReactNode }> = ({ childr
   }, []);
 
   return (
-    <MobileHeaderContext.Provider value={{ config, setConfig, resetConfig, setActiveView }}>
+    <MobileHeaderContext.Provider value={{ config, setConfig, clearConfig, resetConfig, setActiveView }}>
       {children}
     </MobileHeaderContext.Provider>
   );
@@ -150,12 +166,16 @@ export function useMobileHeader(viewId: string, config: MobileHeaderConfig, deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  // 首次挂载时立即设置配置
+  // 首次挂载时立即设置配置；卸载时清除缓存（防止 LRU 驱逐后配置滞留，见 clearConfig 注释）
   useLayoutEffect(() => {
     if (ctx) {
       ctx.setConfig(viewIdRef.current, configRef.current);
     }
-  }, []); // 仅首次挂载时执行
+    return () => {
+      ctx?.clearConfig(viewIdRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 仅首次挂载/卸载时执行
 }
 
 /**

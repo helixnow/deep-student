@@ -1,8 +1,11 @@
 /**
  * 聊天相关事件常量与类型定义
- * 
- * 集中管理所有聊天事件名称和载荷类型，确保编译期类型安全
+ *
+ * 集中管理所有聊天事件名称和载荷类型，确保编译期类型安全。
+ * 底层 add/remove/dispatch 走共享 registry。
  */
+
+import { addTypedEventListener, dispatchTypedEvent } from './registry';
 
 /**
  * 聊天事件名称常量
@@ -121,7 +124,7 @@ export function dispatchChatEvent<K extends keyof ChatEventMap>(
   eventName: K,
   detail: ChatEventMap[K]['detail']
 ): void {
-  window.dispatchEvent(new CustomEvent(eventName, { detail }));
+  dispatchTypedEvent(eventName, detail);
 }
 
 /**
@@ -132,9 +135,13 @@ export function addChatEventListener<K extends keyof ChatEventMap>(
   handler: (event: ChatEventMap[K]) => void,
   options?: AddEventListenerOptions
 ): () => void {
-  const typedHandler = handler as EventListener;
-  window.addEventListener(eventName, typedHandler, options);
-  return () => window.removeEventListener(eventName, typedHandler);
+  return addTypedEventListener<ChatEventMap[K]['detail']>(
+    eventName,
+    (_detail, event) => {
+      handler(event as ChatEventMap[K]);
+    },
+    options,
+  );
 }
 
 /**
@@ -148,28 +155,32 @@ export function waitForChatEvent<K extends keyof ChatEventMap>(
   } = {}
 ): Promise<ChatEventMap[K]['detail']> {
   const { timeout = 10000, filter } = options;
-  
+
   return new Promise((resolve, reject) => {
+    let disposed = false;
+    let removeListener: (() => void) | undefined;
+
+    const cleanup = () => {
+      if (disposed) return;
+      disposed = true;
+      clearTimeout(timeoutId);
+      removeListener?.();
+    };
+
     const timeoutId = setTimeout(() => {
       cleanup();
       reject(new Error(`事件超时: ${eventName} (${timeout}ms)`));
     }, timeout);
-    
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      if (filter && !filter(detail)) {
-        return; // 不匹配过滤条件，继续等待
-      }
-      cleanup();
-      resolve(detail);
-    };
-    
-    const cleanup = () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener(eventName, handler as EventListener);
-    };
-    
-    window.addEventListener(eventName, handler as EventListener);
+
+    removeListener = addTypedEventListener<ChatEventMap[K]['detail']>(
+      eventName,
+      (detail) => {
+        if (filter && !filter(detail)) {
+          return;
+        }
+        cleanup();
+        resolve(detail);
+      },
+    );
   });
 }
-

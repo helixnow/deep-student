@@ -11,8 +11,8 @@ describe('archive session toast settings navigation contract', () => {
     expect(pendingSettingsSource).toContain('openArchivedSessionsSettings');
     expect(pendingSettingsSource).toContain("tab: 'data-governance'");
     expect(pendingSettingsSource).toContain("dataGovernanceTab: 'archive'");
-    expect(pendingSettingsSource).toContain("new CustomEvent('navigate-to-tab'");
-    expect(pendingSettingsSource).toContain("new CustomEvent('SETTINGS_NAVIGATE_TAB'");
+    expect(pendingSettingsSource).toContain('dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB');
+    expect(pendingSettingsSource).toContain('dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB');
 
     expect(settingsSource).toContain('consumePendingSettingsRoute');
     expect(settingsSource).toContain('dataGovernanceTabTarget');

@@ -223,47 +223,47 @@ export const CATEGORY_CONFIG: Record<CommandCategory, CategoryConfig> = {
   navigation: {
     order: 1,
     labelKey: 'command_palette:categories.navigation',
-    color: 'text-blue-500',
+    color: 'text-blue-500 dark:text-blue-400',
   },
   chat: {
     order: 2,
     labelKey: 'command_palette:categories.chat',
-    color: 'text-green-500',
+    color: 'text-green-500 dark:text-green-400',
   },
   global: {
     order: 3,
     labelKey: 'command_palette:categories.global',
-    color: 'text-gray-500',
+    color: 'text-muted-foreground',
   },
   notes: {
     order: 4,
     labelKey: 'command_palette:categories.notes',
-    color: 'text-yellow-500',
+    color: 'text-yellow-500 dark:text-yellow-400',
   },
   analysis: {
     order: 5,
     labelKey: 'command_palette:categories.analysis',
-    color: 'text-purple-500',
+    color: 'text-purple-500 dark:text-purple-400',
   },
   anki: {
     order: 6,
     labelKey: 'command_palette:categories.anki',
-    color: 'text-orange-500',
+    color: 'text-orange-500 dark:text-orange-400',
   },
   learning: {
     order: 7,
     labelKey: 'command_palette:categories.learning',
-    color: 'text-pink-500',
+    color: 'text-pink-500 dark:text-pink-400',
   },
   settings: {
     order: 8,
     labelKey: 'command_palette:categories.settings',
-    color: 'text-slate-500',
+    color: 'text-muted-foreground',
   },
   dev: {
     order: 9,
     labelKey: 'command_palette:categories.dev',
-    color: 'text-red-500',
+    color: 'text-red-500 dark:text-red-400',
   },
 };
 

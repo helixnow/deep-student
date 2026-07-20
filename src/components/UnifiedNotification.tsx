@@ -162,6 +162,27 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
     collapseRef.current = setTimeout(() => setIsHoverExpanded(false), 300);
   };
 
+  // ★ 2026-07（移动端审计 L-6）：触屏横滑关闭。只在 touchend 判定
+  // （横向位移 >56px 且明显大于纵向），不做拖拽跟随，避免与
+  // .unified-notification 自身的 transform 过渡打架。
+  const swipeRef = useRef<{ x: number; y: number } | null>(null);
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    swipeRef.current = t ? { x: t.clientX, y: t.clientY } : null;
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const start = swipeRef.current;
+    swipeRef.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) > 56 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      handleClose();
+    }
+  };
+
   // ★ 2026-07-08（移动端审计 D-8）：展开长文本原来只有 hover 一条路，
   // 触屏设备点按切换展开/收起；桌面（细指针）不改变行为。
   const handleTapToggleExpand = (e: React.MouseEvent) => {
@@ -212,6 +233,8 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
       className={`unified-notification ${typeClass} ${borderClass} ${isClosing ? 'hide' : 'show'} ${isHoverExpanded ? 'expanded' : ''}`}
       style={progressStyle}
       onClick={handleTapToggleExpand}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onFocusCapture={() => { focusRef.current = true; pauseTimer(); }}

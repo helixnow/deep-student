@@ -6,35 +6,15 @@
 
 export type CapabilityState = 'ready' | 'experimental' | 'hidden';
 
+/**
+ * Learning Hub：仅列出可执行命令。未知 id 默认 hidden。
+ * 无消费者的 stub 已从 learning.commands.ts 删除（2026-07-20）。
+ */
 const LEARNING_CAPABILITIES: Readonly<Record<string, CapabilityState>> = {
   'learning.translate': 'ready',
-  'learning.translate-selection': 'hidden',
-  'learning.switch-language-pair': 'hidden',
   'learning.essay-grading': 'ready',
   'learning.grade-essay': 'ready',
   'learning.essay-suggestions': 'ready',
-
-  'learning.show-progress': 'hidden',
-  'learning.daily-goal': 'hidden',
-  'learning.statistics': 'hidden',
-  'learning.calendar': 'hidden',
-  'learning.mark-mastered': 'hidden',
-  'learning.schedule-review': 'hidden',
-
-  'learning.start-review': 'hidden',
-  'learning.pause-review': 'hidden',
-  'learning.next-item': 'hidden',
-  'learning.show-answer': 'hidden',
-
-  'learning.read-aloud': 'hidden',
-  'learning.focus-mode': 'hidden',
-  'learning.take-notes': 'hidden',
-  'learning.highlight': 'hidden',
-
-  'learning.achievements': 'hidden',
-  'learning.streak': 'hidden',
-  'learning.export-progress': 'hidden',
-  'learning.history': 'hidden',
 };
 
 export const getLearningCapability = (commandId: string): CapabilityState => {

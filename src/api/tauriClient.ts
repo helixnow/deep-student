@@ -32,6 +32,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { reportFrontendError } from '@/logging/errorReporter';
 
 // ============================================================================
 // 错误分类
@@ -45,6 +46,53 @@ import { invoke } from '@tauri-apps/api/core';
  */
 export type TauriIpcErrorKind = 'business' | 'ipc' | 'timeout';
 
+// ============================================================================
+// 结构化 CommandError envelope（TD-11）
+// ============================================================================
+
+/**
+ * 后端稳定错误 envelope（与 src-tauri `error_details::CommandError` 序列化对齐）。
+ *
+ * 契约：
+ * - `code`：SCREAMING_SNAKE_CASE 稳定错误码，程序逻辑只允许依赖该字段；
+ * - `message`：人类可读文案，随时可能改动，禁止字符串匹配；
+ * - `data`：可选结构化上下文；`traceId`：可选后端日志关联 ID。
+ */
+export interface CommandErrorEnvelope {
+  code: string;
+  message: string;
+  data?: unknown;
+  traceId?: string;
+}
+
+/**
+ * 从任意 invoke 拒因中解析结构化 envelope。
+ * 支持两种传输形态：对象载荷（Result<T, CommandError>）与 JSON 字符串载荷；
+ * 无法解析（legacy 纯文本错误等）返回 null，由调用方走 legacy fallback。
+ */
+export function parseCommandErrorEnvelope(raw: unknown): CommandErrorEnvelope | null {
+  let candidate: unknown = raw;
+  if (typeof candidate === 'string') {
+    const text = candidate.trim();
+    if (!text.startsWith('{')) return null;
+    try {
+      candidate = JSON.parse(text);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof candidate !== 'object' || candidate === null) return null;
+  const record = candidate as Record<string, unknown>;
+  if (typeof record.code !== 'string' || record.code.length === 0) return null;
+  if (typeof record.message !== 'string') return null;
+  return {
+    code: record.code,
+    message: record.message,
+    data: record.data,
+    traceId: typeof record.traceId === 'string' ? record.traceId : undefined,
+  };
+}
+
 export class TauriIpcError extends Error {
   /** 错误分类 */
   readonly kind: TauriIpcErrorKind;
@@ -52,13 +100,25 @@ export class TauriIpcError extends Error {
   readonly command: string;
   /** 原始错误（后端 Err 载荷或底层异常） */
   readonly rawCause: unknown;
+  /** 结构化错误 envelope（TD-11）；legacy 字符串错误为 null */
+  readonly envelope: CommandErrorEnvelope | null;
+  /** 稳定错误码快捷访问（等价 envelope?.code） */
+  readonly code?: string;
 
-  constructor(kind: TauriIpcErrorKind, command: string, message: string, rawCause: unknown) {
+  constructor(
+    kind: TauriIpcErrorKind,
+    command: string,
+    message: string,
+    rawCause: unknown,
+    envelope: CommandErrorEnvelope | null = null,
+  ) {
     super(message);
     this.name = 'TauriIpcError';
     this.kind = kind;
     this.command = command;
     this.rawCause = rawCause;
+    this.envelope = envelope;
+    this.code = envelope?.code;
   }
 }
 
@@ -66,13 +126,17 @@ export class TauriIpcError extends Error {
 // 环境与错误归类辅助
 // ============================================================================
 
+/** Tauri 注入到 WebView window 上的全局标记（仅用于运行时探测） */
+type TauriGlobals = Window & {
+  __TAURI_INTERNALS__?: unknown;
+  __TAURI_IPC__?: unknown;
+};
+
 /** 当前是否运行在 Tauri WebView 中（浏览器纯前端调试时为 false） */
 export function isTauriRuntime(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    (Boolean((window as Record<string, unknown>).__TAURI_INTERNALS__) ||
-      Boolean((window as Record<string, unknown>).__TAURI_IPC__))
-  );
+  if (typeof window === 'undefined') return false;
+  const w = window as TauriGlobals;
+  return Boolean(w.__TAURI_INTERNALS__) || Boolean(w.__TAURI_IPC__);
 }
 
 function toMessage(err: unknown): string {
@@ -85,14 +149,38 @@ function toMessage(err: unknown): string {
   }
 }
 
+/** legacy（非结构化）业务错误的可观测告警：每命令每会话只告警一次，避免刷屏 */
+const legacyErrorShapeWarned = new Set<string>();
+
+function warnLegacyErrorShape(command: string): void {
+  if (legacyErrorShapeWarned.has(command)) return;
+  legacyErrorShapeWarned.add(command);
+  console.warn(
+    LOG_PREFIX,
+    `legacy string error payload from "${command}"; ` +
+      'classification falls back to Display-text heuristics — migrate the backend command to CommandError envelope (TD-11)',
+  );
+}
+
 /**
  * 归类原始 invoke 异常。
  *
- * Tauri 的 `invoke` 对"命令返回 Err(String)"与"IPC 层失败"都以 reject 表达，
- * 这里用保守启发式区分：命令未注册/环境缺失等固定文案归为 `ipc`，
- * 其余（后端命令主动返回的错误字符串/对象）归为 `business`。
+ * TD-11：优先解析结构化 CommandError envelope（{ code, message, ... }），
+ * 命中即为 `business` 且携带稳定 code。未命中时走 legacy 启发式（保守区分
+ * ipc/business），并对 business 路径发出一次性可观测告警——该 fallback 属
+ * 迁移期兜底，后端命令应逐步切到 envelope。
  */
-function classifyInvokeError(command: string, err: unknown): TauriIpcError {
+export function classifyInvokeError(command: string, err: unknown): TauriIpcError {
+  const envelope = parseCommandErrorEnvelope(err);
+  if (envelope) {
+    return new TauriIpcError(
+      'business',
+      command,
+      `[${command}] ${envelope.message}`,
+      err,
+      envelope,
+    );
+  }
   const message = toMessage(err);
   const lower = message.toLowerCase();
   const isInfra =
@@ -101,6 +189,9 @@ function classifyInvokeError(command: string, err: unknown): TauriIpcError {
     lower.includes('not allowed') || // capability/ACL 拒绝
     lower.includes('__tauri') ||
     lower.includes('window.__tauri_ipc__');
+  if (!isInfra) {
+    warnLegacyErrorShape(command);
+  }
   return new TauriIpcError(
     isInfra ? 'ipc' : 'business',
     command,
@@ -149,6 +240,7 @@ export async function tauriInvoke<T>(
   }
 
   const t0 = performance.now();
+  let invocationTimedOut = false;
   const invocation = invoke<T>(command, args).then(
     (result) => {
       const elapsed = Math.round(performance.now() - t0);
@@ -159,12 +251,24 @@ export async function tauriInvoke<T>(
     },
     (err: unknown) => {
       const classified = classifyInvokeError(command, err);
-      if (!options?.silent) {
+      if (!options?.silent && !invocationTimedOut) {
         console.warn(
           LOG_PREFIX,
           `invoke failed (${classified.kind}): ${command}`,
           toMessage(err),
         );
+        void reportFrontendError(classified, {
+          kind: 'PLUGIN_ERROR',
+          component: 'tauri-client',
+          level: classified.kind === 'business' ? 'WARN' : 'ERROR',
+          extra: {
+            command,
+            errorKind: classified.kind,
+            // TD-11：结构化 code/traceId 随上报走，便于后端日志关联
+            errorCode: classified.code,
+            traceId: classified.envelope?.traceId,
+          },
+        }).catch(() => undefined);
       }
       throw classified;
     },
@@ -178,8 +282,14 @@ export async function tauriInvoke<T>(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
+      invocationTimedOut = true;
       if (!options?.silent) {
         console.warn(LOG_PREFIX, `invoke timeout after ${timeoutMs}ms: ${command}`);
+        void reportFrontendError(`IPC timeout after ${timeoutMs}ms`, {
+          kind: 'PLUGIN_ERROR',
+          component: 'tauri-client',
+          extra: { command, timeoutMs },
+        }).catch(() => undefined);
       }
       reject(
         new TauriIpcError(

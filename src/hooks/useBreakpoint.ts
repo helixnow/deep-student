@@ -42,7 +42,9 @@ export function useBreakpoint() {
       // 语义化别名
       // A-6 修复：移除曾经的 isMobile（<640）别名——与 useIsMobile()（<768）同名异义易误用。
       // 判断「是否切移动端布局」请用 isSmallScreen（<768，与 App shell 一致）
-      isTablet: isSm && !isLg,  // 640px ~ 1024px
+      // L-1 修复（2026-07）：isTablet 曾为 640~1024，与 useIsTablet()（768~1280）
+      // 同名异义。现统一对齐 useIsTablet 的区间（改动时全仓库无外部消费方）。
+      isTablet: isMd && !isXl,  // 768px ~ 1280px，与 useIsTablet() 精确一致
       isLaptop: isLg && !is2Xl, // 1024px ~ 1536px
       isDesktop: isXl,          // >= 1280px
       isWide: is2Xl,            // >= 1536px

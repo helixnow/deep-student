@@ -315,9 +315,15 @@ export const useTheme = () => {
   }, []);
 
   const handleThemePaletteChanged = useCallback((event: Event) => {
-    const palette = (event as CustomEvent<{ palette?: string }>).detail?.palette;
+    const detail = (event as CustomEvent<{ palette?: string; customColor?: string }>).detail;
+    const palette = detail?.palette;
     if (!isValidPalette(palette ?? null)) return;
-    setThemeState(prev => ({ ...prev, palette: palette as ThemePalette }));
+    setThemeState(prev => ({
+      ...prev,
+      palette: palette as ThemePalette,
+      // custom 调色板需要同时同步色号，避免其他实例用旧色号重新覆盖 DOM 变量
+      customColor: typeof detail?.customColor === 'string' ? detail.customColor : prev.customColor,
+    }));
   }, []);
 
   useEventRegistry(
@@ -339,6 +345,8 @@ export const useTheme = () => {
       return { ...prev, mode };
     });
     try { localStorage.setItem(STORAGE_KEYS.mode, mode); } catch {}
+    // 广播给其他 useTheme 实例（每个实例持有独立 state，仅靠 DOM 副作用会失同步）
+    window.dispatchEvent(new CustomEvent('dstu-theme-mode-changed', { detail: { mode } }));
   }, []);
 
   const setThemePalette = useCallback((palette: ThemePalette) => {
@@ -348,6 +356,7 @@ export const useTheme = () => {
       return { ...prev, palette };
     });
     try { localStorage.setItem(STORAGE_KEYS.palette, palette); } catch {}
+    window.dispatchEvent(new CustomEvent('dstu-theme-palette-changed', { detail: { palette } }));
   }, []);
 
   const setCustomColor = useCallback((color: string) => {
@@ -361,6 +370,9 @@ export const useTheme = () => {
       localStorage.setItem(STORAGE_KEYS.customColor, color);
       localStorage.setItem(STORAGE_KEYS.palette, 'custom');
     } catch {}
+    window.dispatchEvent(
+      new CustomEvent('dstu-theme-palette-changed', { detail: { palette: 'custom', customColor: color } }),
+    );
   }, []);
 
   const toggleDarkMode = useCallback(() => {

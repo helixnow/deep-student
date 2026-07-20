@@ -7,7 +7,7 @@
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  z-index: 10000 !important;
+  z-index: var(--z-modal) !important;
 }
 
 .tag-tree-modal {

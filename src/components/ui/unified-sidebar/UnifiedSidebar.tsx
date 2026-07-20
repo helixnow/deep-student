@@ -66,15 +66,24 @@ const SIDEBAR_STYLES = {
     footer: { padding: 'p-4' },
     actions: { gap: 'gap-1', opacity: 'opacity-100', btnPadding: 'p-2', iconSize: 'w-4 h-4' },
   },
-  /** 移动滑动模式样式（紧凑布局） */
+  /**
+   * 移动滑动模式样式。
+   *
+   * ⚠️ 这是移动壳的**真实路径**：小屏强制 panel 内联（见 effectiveMode），
+   * 由 MobileSlidingLayout 以 width='full' + onClose 渲染，走的就是本档；
+   * 上面的 mobile 档只在（已废弃于小屏的）drawer/sheet 模式生效。
+   * 2026-07 移动端审计 M-4：本档曾是纯紧凑桌面尺寸（行 ~36px、操作按钮
+   * ~20px、13px 文字），触控完全不达标。现按触控基线修正：
+   * 行 min-h 44、16px 正文（顺带阻止 iOS 聚焦自动放大）、操作按钮 ≥36px。
+   */
   mobileSliding: {
     header: { height: 'var(--touch-target-size)', padding: 'px-2 py-1.5', gap: 'gap-0.5' },
-    search: { iconSize: 'w-3.5 h-3.5', inputPadding: 'pl-8 pr-3 py-1.5 text-sm' },
-    button: { padding: 'p-1.5', iconSize: 'w-4 h-4' },
-    item: { padding: 'gap-2.5 px-3 py-2 mx-1', iconSize: 'w-4 h-4', textSize: 'text-[13px]', indicator: 'w-[3px] h-4' },
+    search: { iconSize: 'w-4 h-4', inputPadding: 'pl-9 pr-3 py-2 text-base' },
+    button: { padding: 'p-2', iconSize: 'w-5 h-5' },
+    item: { padding: 'gap-3 px-3 py-2.5 mx-1 min-h-[44px]', iconSize: 'w-5 h-5', textSize: 'text-[15px]', indicator: 'w-[3px] h-5' },
     content: { viewportPadding: 'py-1', spacing: 'space-y-0.5' },
-    footer: { padding: 'p-2' },
-    actions: { gap: 'gap-0.5', opacity: 'opacity-100', btnPadding: 'p-1', iconSize: 'w-3 h-3' },
+    footer: { padding: 'p-3' },
+    actions: { gap: 'gap-1', opacity: 'opacity-100', btnPadding: 'p-2', iconSize: 'w-4 h-4' },
   },
 } as const;
 
@@ -656,13 +665,30 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
       {!isEditing && (showEdit || showDelete || extraActions) && (
         <div className={cn('flex transition-opacity', styles.actions.gap, styles.actions.opacity)}>
           {extraActions}
+          {/* M-6：在组件内统一阻断冒泡——否则点击会冒泡到行容器的 handleClick，
+              移动端表现为"点编辑/删除 → 行被选中且抽屉直接关闭"。
+              调用方无需（但可以重复）自行 stopPropagation。 */}
           {showEdit && onEditClick && (
-            <NotionButton variant="utility" size="icon" iconOnly onClick={onEditClick} className={styles.actions.btnPadding} aria-label={t('actions.edit')}>
+            <NotionButton
+              variant="utility"
+              size="icon"
+              iconOnly
+              onClick={(e) => { e.stopPropagation(); onEditClick(e); }}
+              className={styles.actions.btnPadding}
+              aria-label={t('actions.edit')}
+            >
               <PencilSimple className={styles.actions.iconSize} weight="regular" />
             </NotionButton>
           )}
           {showDelete && onDeleteClick && (
-            <NotionButton variant="utility" size="icon" iconOnly onClick={onDeleteClick} className={styles.actions.btnPadding} aria-label={t('actions.delete')}>
+            <NotionButton
+              variant="utility"
+              size="icon"
+              iconOnly
+              onClick={(e) => { e.stopPropagation(); onDeleteClick(e); }}
+              className={styles.actions.btnPadding}
+              aria-label={t('actions.delete')}
+            >
               <Trash className={styles.actions.iconSize} weight="regular" />
             </NotionButton>
           )}

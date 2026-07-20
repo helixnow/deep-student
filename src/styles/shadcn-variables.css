@@ -7,6 +7,10 @@
   --radius-shell-control: 12px;
   --radius-shell-window-control: 10px;
   --radius-shell-dialog: 22px;
+  /* 业务卡片圆角语义 token（2026-07 R6 风格统一）：当前业务卡片在
+     rounded-md(6px)/lg(8px)/xl(12px) 间摇摆，统一收敛目标为 12px。
+     新卡片请用 rounded-[var(--radius-card)]，存量渐进替换、不做一次性扫换。 */
+  --radius-card: 12px;
 
   /* ──────────────────────────────────────────────────────────────────────
    * Chat thread layout
@@ -74,6 +78,7 @@
   
   /* 语义化字体大小 */
   --font-size-scale: 1;
+  --font-size-2xs: calc(10px * var(--font-size-scale));
   --font-size-xs: calc(11px * var(--font-size-scale));
   --font-size-sm: calc(12px * var(--font-size-scale));
   --font-size-base: calc(14px * var(--font-size-scale));
@@ -82,6 +87,8 @@
   --font-size-xl: calc(18px * var(--font-size-scale));
   --font-size-2xl: calc(20px * var(--font-size-scale));
   --font-size-3xl: calc(24px * var(--font-size-scale));
+  /* 桌面 UI 控件标准字号（介于 sm 与 base 之间） */
+  --font-size-ui: calc(13px * var(--font-size-scale));
 
   /* 思维链字号（用户可缩放） */
   --chat-thinking-font-size: var(--font-size-sm);
@@ -160,8 +167,9 @@
   --warning-foreground: 0 0% 100%;
   --info: 217 70% 50%;
   --info-foreground: 0 0% 100%;
-  --danger: 0 55% 50%;
-  --danger-foreground: 0 0% 100%;
+  /* danger 与 destructive 统一为同一红色，避免同屏双红 */
+  --danger: var(--destructive);
+  --danger-foreground: var(--destructive-foreground);
 
   /* 状态指示色 */
   --status-working: 152 60% 36%;
@@ -199,8 +207,8 @@
   --warning-foreground: 40 100% 10%;
   --info: 217 65% 55%;
   --info-foreground: 210 100% 10%;
-  --danger: 0 50% 48%;
-  --danger-foreground: 0 0% 98%;
+  --danger: var(--destructive);
+  --danger-foreground: var(--destructive-foreground);
 
   /* 状态指示色 */
   --status-working: 152 55% 42%;
