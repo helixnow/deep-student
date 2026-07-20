@@ -509,11 +509,13 @@ describe('ACR 2.0 app manifests', () => {
 
     const notesActivation = vi.fn(async () => ({ handled: true as const }));
     const notes = createNotesAgentManifest(notesActivation);
+    // scrollToHeading 现经 workspaceRegistry 定向本窗编辑器；无活动笔记时
+    // 返回 ANCHOR_NOT_FOUND（此前是无差别 ACTION_UNAVAILABLE 硬拦截）
     const heading = await notes.execute!(
       { windowId: 'notes-no-ack', typeId: 'notes', instanceKey: null },
       { name: 'scrollToHeading', args: { heading: 'Intro' } },
     );
-    expect(heading).toMatchObject({ handled: false, code: 'ACTION_UNAVAILABLE' });
+    expect(heading).toMatchObject({ handled: false, code: 'ANCHOR_NOT_FOUND' });
     expect(notesActivation).not.toHaveBeenCalled();
 
     const preview = createResourceContentManifest(

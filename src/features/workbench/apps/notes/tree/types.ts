@@ -55,6 +55,7 @@ export const NOTES_WORKSPACE_TREE_ROOT_ID = '__nwt_root__';
 export const AUTO_EXPAND_DELAY_MS = 420;
 export const LONG_PRESS_MS = 500;
 export const LONG_PRESS_MOVE_TOLERANCE_PX = 8;
+export const TYPEAHEAD_TTL_MS = 1000;
 
 export const LEVEL_INDENT_PX = 14;
 export const BASE_INDENT_PX = 8;
@@ -68,6 +69,20 @@ export interface NotesWorkspaceTreeProps {
   expandedIds: ReadonlySet<string> | readonly string[];
   /** Currently selected row id (folder or resource). */
   selectedId: string | null;
+  /**
+   * Optional controlled multi-selection. When provided, the tree renders
+   * these rows as selected and reports changes via `onSelectionChange`
+   * instead of managing an internal selection set. When omitted the tree
+   * manages multi-selection internally and behavior without modifier keys
+   * is identical to the single-selection contract.
+   */
+  selectedIds?: ReadonlySet<string> | readonly string[];
+  /**
+   * Notified whenever the multi-selection set changes (click with
+   * Cmd/Ctrl/Shift, Shift+Arrow extension, plain click collapse).
+   * Ids follow visible-row order for range selections.
+   */
+  onSelectionChange?: (ids: string[]) => void;
   /**
    * Currently open resource id (active tab). Visual emphasis only;
    * distinct from `selectedId` so hosts can keep folder selection + tab active.
@@ -99,9 +114,26 @@ export interface NotesWorkspaceTreeProps {
     targetId: string,
     position: NotesWorkspaceDropPosition,
   ) => void;
+  /**
+   * Optional batch move. When provided it is called once per drop with all
+   * dragged ids (top-level only, descendants of dragged folders excluded);
+   * otherwise the tree falls back to looping `onMove` per dragged id in an
+   * order that preserves the visual sequence.
+   */
+  onMoveMany?: (
+    dragIds: string[],
+    targetId: string,
+    position: NotesWorkspaceDropPosition,
+  ) => void;
   onRename: (id: string, newName: string) => void;
   /** Request host-owned deletion confirmation for the focused item. */
   onDelete?: (item: NotesWorkspaceTreeItem) => void;
+  /**
+   * Optional batch delete. When provided and more than one row is selected,
+   * Delete calls it once with all selected items; otherwise the tree loops
+   * `onDelete` per selected item. Confirmation stays host-owned either way.
+   */
+  onDeleteMany?: (items: NotesWorkspaceTreeItem[]) => void;
   /**
    * Optional: host notified when rename UI opens/closes so it can sync `renamingId`.
    * If omitted, rename mode is managed internally after double-click / F2 / menu.

@@ -48,16 +48,63 @@
   cursor: default;
 }
 
+.notes-tag-filter-selected-count {
+  margin-left: 6px;
+  min-width: 16px;
+  padding: 0 4px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 12%);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.notes-tag-filter-hint {
+  margin: 0;
+  padding: 3px 8px;
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--primary) / 8%);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .notes-tag-filter-chips {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 6px;
   max-height: 160px;
-  overflow: auto;
+  overflow-y: auto;
+}
+
+/* 每行（平铺组 / 前缀组）内溢出走横向滚动，胶囊不换行撑高侧栏 */
+.notes-tag-filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.notes-tag-filter-group-label {
+  flex: 0 0 auto;
+  position: sticky;
+  left: 0;
+  padding-right: 2px;
+  color: hsl(var(--muted-foreground));
+  background: inherit;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .notes-tag-filter-chip {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
   border: 1px solid hsl(var(--border));
@@ -94,9 +141,11 @@
   outline-offset: 1px;
 }
 
-/* 按下微缩，给胶囊一点物理反馈（仅 transform） */
-.notes-tag-filter-chip:active {
-  transform: scale(0.97);
+/* 按下微缩，给胶囊一点物理反馈（仅 transform，减少动态偏好时关闭） */
+@media (prefers-reduced-motion: no-preference) {
+  .notes-tag-filter-chip:active {
+    transform: scale(0.97);
+  }
 }
 
 .notes-tag-filter-chip[data-active='true'] {

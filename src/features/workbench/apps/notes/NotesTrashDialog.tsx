@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   ArrowsClockwise,
   FileText,
@@ -10,6 +10,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { trashApi, type DstuNode } from '@/dstu';
 import { cn } from '@/lib/utils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import './NotesTrashDialog.css';
 
 /** Workspace trash supports notes, mind maps, and folders. */
@@ -35,17 +36,32 @@ const trashItemType = (value: unknown): NotesTrashItemType | null => {
   return null;
 };
 
+const sortByDeletedDesc = (items: DstuNode[]): DstuNode[] =>
+  items.slice().sort((a, b) => b.updatedAt - a.updatedAt);
+
+function resolveLocale(locale: string): string {
+  return locale.startsWith('zh') ? 'zh-CN' : locale;
+}
+
 function formatDeletedAt(updatedAt: number, locale: string): string {
   if (!Number.isFinite(updatedAt) || updatedAt <= 0) return '';
   const date = new Date(updatedAt);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString(locale.startsWith('zh') ? 'zh-CN' : locale, {
+  return date.toLocaleString(resolveLocale(locale), {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+/** Locale-aware month heading used to group entries by deletion time. */
+function monthLabel(updatedAt: number, locale: string): string {
+  if (!Number.isFinite(updatedAt) || updatedAt <= 0) return '';
+  const date = new Date(updatedAt);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(resolveLocale(locale), { year: 'numeric', month: 'long' });
 }
 
 const TrashGlyph: React.FC<{ type: NotesTrashItemType; size?: number }> = ({ type, size = 15 }) => {
@@ -55,8 +71,13 @@ const TrashGlyph: React.FC<{ type: NotesTrashItemType; size?: number }> = ({ typ
 };
 
 /**
- * Controlled trash dialog for the Notes workspace.
- * Owns its own list/load/confirm state; does not read workspace store.
+ * Trash for the Notes workspace, rendered as a non-modal panel anchored to
+ * the top-right of the workspace (no scrim, no focus trap, outside clicks
+ * stay live; the panel hugs its content instead of pinning to the bottom).
+ * Confirmations for purge / empty are inline strips instead of a nested
+ * overlay; Escape collapses the confirm first, then dismisses the panel.
+ * Restore / purge apply optimistically and roll back with a toast on
+ * failure. Component name and props are kept for backward compatibility.
  */
 export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
   open,
@@ -68,14 +89,16 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
   const { t, i18n } = useTranslation();
   const titleId = useId();
   const confirmTitleId = useId();
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const confirmRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [items, setItems] = useState<DstuNode[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
+  const [focusIndex, setFocusIndex] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
 
   const close = useCallback(() => {
     if (busy) return;
@@ -91,10 +114,9 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
       setError(result.error.toUserMessage());
       setItems([]);
     } else {
-      const next = result.value
-        .filter((node) => trashItemType(node.type))
-        .slice()
-        .sort((a, b) => b.updatedAt - a.updatedAt);
+      const next = sortByDeletedDesc(
+        result.value.filter((node) => trashItemType(node.type)),
+      );
       setItems(next);
     }
     setLoading(false);
@@ -103,260 +125,435 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
   useEffect(() => {
     if (open) {
       setConfirm(null);
+      setFocusIndex(0);
+      setSelectedIds(new Set());
       void loadTrash();
     }
   }, [loadTrash, open]);
+
+  // Drop selections that no longer point at a listed item (restore / purge / reload).
+  useEffect(() => {
+    setSelectedIds((current) => {
+      if (current.size === 0) return current;
+      const valid = new Set(items.map((item) => item.id));
+      const next = new Set<string>();
+      current.forEach((id) => {
+        if (valid.has(id)) next.add(id);
+      });
+      return next.size === current.size ? current : next;
+    });
+  }, [items]);
 
   const notifyChanged = useCallback(async () => {
     await onChanged?.();
   }, [onChanged]);
 
+  /** Optimistic restore: drop the row immediately, roll back with a toast on failure. */
   const restoreItem = useCallback(async (node: DstuNode) => {
     const type = trashItemType(node.type);
-    if (!type || busy) return;
-    setBusy(true);
+    if (!type) return;
     setError(null);
+    setItems((current) => current.filter((item) => item.id !== node.id));
     const result = await trashApi.restoreItem(node.id, type);
-    setBusy(false);
     if (!result.ok) {
-      setError(result.error.toUserMessage());
+      setItems((current) => sortByDeletedDesc([...current, node]));
+      showGlobalNotification('error', result.error.toUserMessage());
       return;
     }
-    setItems((current) => current.filter((item) => item.id !== node.id));
     await notifyChanged();
-  }, [busy, notifyChanged]);
+  }, [notifyChanged]);
 
+  /** Batch restore for the current selection; failed rows come back into the list. */
+  const restoreSelected = useCallback(async () => {
+    if (busy || selectedIds.size === 0) return;
+    const targets = items.filter((item) => selectedIds.has(item.id) && trashItemType(item.type));
+    if (targets.length === 0) return;
+    setBusy(true);
+    setError(null);
+    setItems((current) => current.filter((item) => !selectedIds.has(item.id)));
+    setSelectedIds(new Set());
+    const failed: DstuNode[] = [];
+    let lastFailure: string | null = null;
+    for (const node of targets) {
+      const type = trashItemType(node.type);
+      if (!type) continue;
+      const result = await trashApi.restoreItem(node.id, type);
+      if (!result.ok) {
+        failed.push(node);
+        lastFailure = result.error.toUserMessage();
+      }
+    }
+    setBusy(false);
+    if (failed.length > 0) {
+      setItems((current) => sortByDeletedDesc([...current, ...failed]));
+      showGlobalNotification('error', lastFailure ?? t('workbench:notesWorkspace.trash.restoreSelectedFailed', {
+        count: failed.length,
+        defaultValue: 'Could not restore {{count}} item(s).',
+      }));
+    }
+    await notifyChanged();
+  }, [busy, items, notifyChanged, selectedIds, t]);
+
+  const toggleSelected = useCallback((id: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((current) => (
+      current.size === items.length && items.length > 0
+        ? new Set<string>()
+        : new Set(items.map((item) => item.id))
+    ));
+  }, [items]);
+
+  /** Optimistic permanent delete (after inline confirm). */
   const purgeItem = useCallback(async (node: DstuNode, type: NotesTrashItemType) => {
     if (busy) return;
     setBusy(true);
     setError(null);
+    setConfirm(null);
+    setItems((current) => current.filter((item) => item.id !== node.id));
     const result = await trashApi.permanentlyDelete(node.id, type);
     setBusy(false);
     if (!result.ok) {
-      setError(result.error.toUserMessage());
+      setItems((current) => sortByDeletedDesc([...current, node]));
+      showGlobalNotification('error', result.error.toUserMessage());
       return;
     }
-    setConfirm(null);
-    setItems((current) => current.filter((item) => item.id !== node.id));
     await notifyChanged();
   }, [busy, notifyChanged]);
 
+  /** Optimistic empty: clear the list, restore the snapshot on failure. */
   const emptyAll = useCallback(async () => {
     if (busy) return;
     setBusy(true);
     setError(null);
+    setConfirm(null);
+    const snapshot = items;
+    setItems([]);
     const result = await trashApi.emptyTrash();
     setBusy(false);
     if (!result.ok) {
-      setError(result.error.toUserMessage());
+      setItems(snapshot);
+      showGlobalNotification('error', result.error.toUserMessage());
       return;
     }
-    setConfirm(null);
-    setItems([]);
     await notifyChanged();
-  }, [busy, notifyChanged]);
+  }, [busy, items, notifyChanged]);
 
-  // Focus trap + Escape (confirm layer takes priority when open).
+  // Move focus into the panel on open, hand it back on close.
   useEffect(() => {
     if (!open) return;
     const previouslyFocused = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
-
-    const focusRoot = () => (confirm ? confirmRef.current : dialogRef.current);
-    const focusable = () => Array.from(focusRoot()?.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ) ?? []);
-
-    const frame = window.requestAnimationFrame(() => focusable()[0]?.focus());
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        if (confirm) {
-          if (!busy) setConfirm(null);
-          return;
-        }
-        close();
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const elements = focusable();
-      if (elements.length === 0) return;
-      const first = elements[0];
-      const last = elements[elements.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown, true);
+    const frame = window.requestAnimationFrame(() => panelRef.current?.focus());
     return () => {
       window.cancelAnimationFrame(frame);
-      document.removeEventListener('keydown', onKeyDown, true);
       previouslyFocused?.focus();
     };
-  }, [busy, close, confirm, open]);
+  }, [open]);
 
-  if (!open) return null;
+  // Escape: collapse the inline confirm first, then dismiss the panel.
+  // Intentionally no Tab focus trap — this is a non-modal inline panel.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (confirm) {
+        if (!busy) setConfirm(null);
+        return;
+      }
+      close();
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [busy, close, confirm, open]);
 
   const locale = i18n.language || 'zh-CN';
 
+  const groups = useMemo(() => {
+    const result: Array<{ label: string; items: Array<{ node: DstuNode; index: number }> }> = [];
+    items.forEach((node, index) => {
+      const label = monthLabel(node.updatedAt, locale);
+      const last = result[result.length - 1];
+      if (last && last.label === label) {
+        last.items.push({ node, index });
+      } else {
+        result.push({ label, items: [{ node, index }] });
+      }
+    });
+    return result;
+  }, [items, locale]);
+
+  // Roving keyboard navigation over rows: ↑/↓ move, Enter restores,
+  // Delete / Backspace opens the inline purge confirm.
+  const focusRow = useCallback((index: number) => {
+    const clamped = Math.max(0, Math.min(index, items.length - 1));
+    setFocusIndex(clamped);
+    const row = listRef.current?.querySelector<HTMLElement>(`[data-trash-row="${clamped}"]`);
+    row?.focus();
+  }, [items.length]);
+
+  const onListKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (items.length === 0) return;
+    const target = event.target as HTMLElement;
+    const rowAttr = target.closest<HTMLElement>('[data-trash-row]')?.dataset.trashRow;
+    const currentIndex = rowAttr !== undefined ? Number(rowAttr) : focusIndex;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      focusRow(currentIndex + 1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      focusRow(currentIndex - 1);
+    } else if (event.key === 'Enter' && target.dataset.trashRow !== undefined) {
+      event.preventDefault();
+      const node = items[currentIndex];
+      if (node) void restoreItem(node);
+    } else if ((event.key === 'Delete' || event.key === 'Backspace') && target.dataset.trashRow !== undefined) {
+      event.preventDefault();
+      const node = items[currentIndex];
+      const type = node ? trashItemType(node.type) : null;
+      if (node && type) setConfirm({ kind: 'purge', node, type });
+    }
+  }, [focusIndex, focusRow, items, restoreItem]);
+
+  if (!open) return null;
+
+  // Keep the roving tabindex in range after optimistic removals.
+  const rovingIndex = Math.min(focusIndex, Math.max(items.length - 1, 0));
+
   return (
     <div
-      className={cn('ntd-scrim', className)}
-      role="presentation"
-      onPointerDown={close}
+      ref={panelRef}
+      tabIndex={-1}
+      className={cn('ntd-panel ui-rise-in', className)}
+      role="region"
+      aria-labelledby={titleId}
     >
-      <div
-        ref={dialogRef}
-        className="ntd-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <div className="ntd-header">
-          <h2 id={titleId}>
-            {t('workbench:notesWorkspace.trash.title')}
-          </h2>
-          <div className="ntd-header-actions">
-            <button
-              type="button"
-              className="ntd-empty-btn"
-              disabled={loading || busy || items.length === 0}
-              onClick={() => setConfirm({ kind: 'empty', count: items.length })}
-            >
-              {t('workbench:notesWorkspace.trash.emptyAll', { count: items.length })}
+      <div className="ntd-header">
+        <h2 id={titleId}>
+          {t('workbench:notesWorkspace.trash.title')}
+          {items.length > 0 && <span className="ntd-count">{items.length}</span>}
+        </h2>
+        <div className="ntd-header-actions">
+          <button
+            type="button"
+            className="ntd-icon-button"
+            disabled={loading || busy}
+            aria-label={t('workbench:notesWorkspace.tree.retry')}
+            title={t('workbench:notesWorkspace.tree.retry')}
+            onClick={() => void loadTrash()}
+          >
+            <ArrowsClockwise size={14} />
+          </button>
+          <button
+            type="button"
+            className="ntd-empty-btn"
+            disabled={loading || busy || items.length === 0}
+            onClick={() => setConfirm({ kind: 'empty', count: items.length })}
+          >
+            {t('workbench:notesWorkspace.trash.emptyAll', { count: items.length })}
+          </button>
+          <button
+            type="button"
+            className="ntd-icon-button"
+            aria-label={t('workbench:notesWorkspace.trash.close')}
+            title={t('workbench:notesWorkspace.trash.close')}
+            onClick={close}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+
+      {confirm?.kind === 'empty' && (
+        <div
+          className="ntd-confirm-bar"
+          role="group"
+          aria-labelledby={confirmTitleId}
+        >
+          <div className="ntd-confirm-copy">
+            <strong id={confirmTitleId}>
+              {t('workbench:notesWorkspace.trash.confirmEmptyTitle')}
+            </strong>
+            <span>
+              {t('workbench:notesWorkspace.trash.confirmEmptyDesc', { count: confirm.count })}
+            </span>
+          </div>
+          <div className="ntd-confirm-actions">
+            <button type="button" disabled={busy} onClick={() => setConfirm(null)}>
+              {t('workbench:notesWorkspace.dialog.cancel')}
             </button>
             <button
               type="button"
-              className="ntd-icon-button"
-              aria-label={t('workbench:notesWorkspace.trash.close')}
-              title={t('workbench:notesWorkspace.trash.close')}
-              onClick={close}
+              className="is-danger"
+              disabled={busy}
+              onClick={() => void emptyAll()}
             >
-              <X size={14} />
+              {t('workbench:notesWorkspace.trash.confirmEmptyAction')}
             </button>
           </div>
         </div>
+      )}
 
-        <div className="ntd-body">
-          {loading ? (
-            <div
-              className="ntd-loading"
-              aria-label={t('workbench:notesWorkspace.trash.loading')}
-            >
-              <i /><i /><i />
-            </div>
-          ) : error ? (
-            <div className="ntd-message" data-state="error" role="alert">
-              <span>{error}</span>
-              <button type="button" onClick={() => void loadTrash()}>
-                {t('workbench:notesWorkspace.tree.retry')}
-              </button>
-            </div>
-          ) : items.length === 0 ? (
-            <div className="ntd-message" data-state="empty">
-              <span>{t('workbench:notesWorkspace.trash.empty')}</span>
-            </div>
-          ) : (
-            <div className="ntd-list">
-              {items.map((node) => {
-                const type = trashItemType(node.type);
-                if (!type) return null;
-                const time = formatDeletedAt(node.updatedAt, locale);
-                return (
-                  <div key={`${type}:${node.id}`} className="ntd-item">
-                    <span className="ntd-item-icon"><TrashGlyph type={type} /></span>
-                    <div className="ntd-item-meta">
-                      <span className="ntd-item-name">{node.name}</span>
-                      {time ? (
-                        <span className="ntd-item-time">
-                          {t('workbench:notesWorkspace.trash.deletedAt', { time })}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="ntd-item-actions">
-                      <button
-                        type="button"
-                        className="ntd-icon-button"
-                        disabled={busy}
-                        aria-label={t('workbench:notesWorkspace.trash.restore', { name: node.name })}
-                        title={t('workbench:notesWorkspace.trash.restore', { name: node.name })}
-                        onClick={() => void restoreItem(node)}
-                      >
-                        <ArrowsClockwise size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        className="ntd-icon-button is-danger"
-                        disabled={busy}
-                        aria-label={t('workbench:notesWorkspace.trash.purge', { name: node.name })}
-                        title={t('workbench:notesWorkspace.trash.purge', { name: node.name })}
-                        onClick={() => setConfirm({ kind: 'purge', node, type })}
-                      >
-                        <Trash size={14} />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {confirm && (
+      <div className="ntd-body">
+        {loading ? (
           <div
-            className="ntd-confirm-scrim"
-            role="presentation"
-            onPointerDown={(event) => {
-              event.stopPropagation();
-              if (!busy) setConfirm(null);
-            }}
+            className="ntd-loading"
+            aria-label={t('workbench:notesWorkspace.trash.loading')}
           >
-            <div
-              ref={confirmRef}
-              className="ntd-confirm"
-              role="alertdialog"
-              aria-modal="true"
-              aria-labelledby={confirmTitleId}
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              <h3 id={confirmTitleId}>
-                {confirm.kind === 'empty'
-                  ? t('workbench:notesWorkspace.trash.confirmEmptyTitle')
-                  : t('workbench:notesWorkspace.trash.confirmPurgeTitle')}
-              </h3>
-              <p>
-                {confirm.kind === 'empty'
-                  ? t('workbench:notesWorkspace.trash.confirmEmptyDesc', { count: confirm.count })
-                  : t('workbench:notesWorkspace.trash.confirmPurgeDesc', { name: confirm.node.name })}
-              </p>
-              <div className="ntd-confirm-actions">
-                <button type="button" disabled={busy} onClick={() => setConfirm(null)}>
-                  {t('workbench:notesWorkspace.dialog.cancel')}
-                </button>
+            <i /><i /><i />
+          </div>
+        ) : error ? (
+          <div className="ntd-message" data-state="error" role="alert">
+            <span>{error}</span>
+            <button type="button" onClick={() => void loadTrash()}>
+              {t('workbench:notesWorkspace.tree.retry')}
+            </button>
+          </div>
+        ) : items.length === 0 ? (
+          <div className="ntd-message" data-state="empty">
+            <span className="ntd-empty-glyph" aria-hidden>
+              <Trash size={26} />
+            </span>
+            <span>{t('workbench:notesWorkspace.trash.empty')}</span>
+          </div>
+        ) : (
+          <>
+            <div className="ntd-select-bar">
+              <label className="ntd-select-all">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.size === items.length && items.length > 0}
+                  disabled={busy}
+                  onChange={toggleSelectAll}
+                  aria-label={t('workbench:notesWorkspace.trash.selectAll', {
+                    defaultValue: 'Select all',
+                  })}
+                />
+                <span>
+                  {t('workbench:notesWorkspace.trash.selectAll', { defaultValue: 'Select all' })}
+                </span>
+              </label>
+              {selectedIds.size > 0 && (
                 <button
                   type="button"
-                  className="is-danger"
+                  className="ntd-restore-selected"
                   disabled={busy}
-                  onClick={() => void (confirm.kind === 'empty'
-                    ? emptyAll()
-                    : purgeItem(confirm.node, confirm.type))}
+                  onClick={() => void restoreSelected()}
                 >
-                  {confirm.kind === 'empty'
-                    ? t('workbench:notesWorkspace.trash.confirmEmptyAction')
-                    : t('workbench:notesWorkspace.trash.confirmPurgeAction')}
+                  {t('workbench:notesWorkspace.trash.restoreSelected', {
+                    count: selectedIds.size,
+                    defaultValue: 'Restore selected ({{count}})',
+                  })}
                 </button>
-              </div>
+              )}
             </div>
-          </div>
+            <div
+              ref={listRef}
+              className="ntd-list"
+              role="list"
+              onKeyDown={onListKeyDown}
+            >
+            {groups.map((group) => (
+              <React.Fragment key={group.label || 'undated'}>
+                {group.label && (
+                  <div className="ntd-group-label" aria-hidden>{group.label}</div>
+                )}
+                {group.items.map(({ node, index }) => {
+                  const type = trashItemType(node.type);
+                  if (!type) return null;
+                  const time = formatDeletedAt(node.updatedAt, locale);
+                  const confirmingRow = confirm?.kind === 'purge' && confirm.node.id === node.id;
+                  return (
+                    <div key={`${type}:${node.id}`} role="listitem" className="ntd-item-shell">
+                      <div
+                        className="ntd-item"
+                        data-trash-row={index}
+                        tabIndex={index === rovingIndex ? 0 : -1}
+                        aria-label={node.name}
+                        onFocus={() => setFocusIndex(index)}
+                      >
+                        <input
+                          type="checkbox"
+                          className="ntd-item-check"
+                          checked={selectedIds.has(node.id)}
+                          disabled={busy}
+                          tabIndex={-1}
+                          onChange={() => toggleSelected(node.id)}
+                          aria-label={t('workbench:notesWorkspace.trash.selectItem', {
+                            name: node.name,
+                            defaultValue: 'Select {{name}}',
+                          })}
+                        />
+                        <span className="ntd-item-icon"><TrashGlyph type={type} /></span>
+                        <div className="ntd-item-meta">
+                          <span className="ntd-item-name">{node.name}</span>
+                          {time ? (
+                            <span className="ntd-item-time">
+                              {t('workbench:notesWorkspace.trash.deletedAt', { time })}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="ntd-item-actions">
+                          <button
+                            type="button"
+                            className="ntd-icon-button"
+                            disabled={busy}
+                            aria-label={t('workbench:notesWorkspace.trash.restore', { name: node.name })}
+                            title={t('workbench:notesWorkspace.trash.restore', { name: node.name })}
+                            onClick={() => void restoreItem(node)}
+                          >
+                            <ArrowsClockwise size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className="ntd-icon-button is-danger"
+                            disabled={busy}
+                            aria-label={t('workbench:notesWorkspace.trash.purge', { name: node.name })}
+                            title={t('workbench:notesWorkspace.trash.purge', { name: node.name })}
+                            onClick={() => setConfirm({ kind: 'purge', node, type })}
+                          >
+                            <Trash size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      {confirmingRow && confirm?.kind === 'purge' && (
+                        <div className="ntd-row-confirm" role="group" aria-label={t('workbench:notesWorkspace.trash.confirmPurgeTitle')}>
+                          <span>
+                            {t('workbench:notesWorkspace.trash.confirmPurgeDesc', { name: node.name })}
+                          </span>
+                          <div className="ntd-confirm-actions">
+                            <button type="button" disabled={busy} onClick={() => setConfirm(null)}>
+                              {t('workbench:notesWorkspace.dialog.cancel')}
+                            </button>
+                            <button
+                              type="button"
+                              className="is-danger"
+                              disabled={busy}
+                              onClick={() => void purgeItem(confirm.node, confirm.type)}
+                            >
+                              {t('workbench:notesWorkspace.trash.confirmPurgeAction')}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </React.Fragment>
+            ))}
+            </div>
+          </>
         )}
       </div>
     </div>

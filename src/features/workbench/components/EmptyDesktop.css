@@ -14,7 +14,8 @@
   top: 18px;
   left: 24px;
   width: 292px;
-  max-width: calc(100% - 412px);
+  /* 窄桌面（<412px 工作区）下钳到非负，避免负 max-width 布局未定义行为 */
+  max-width: max(180px, calc(100% - 412px));
   padding: 20px 22px 18px;
   align-items: flex-start;
   text-align: left;

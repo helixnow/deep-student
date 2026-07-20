@@ -92,3 +92,56 @@ export function resolveTreeKeyboardNav(input: KeyboardNavInput): KeyboardNavResu
       return { type: 'noop' };
   }
 }
+
+export type TypeaheadInput = {
+  /** Accumulated lowercase-insensitive query buffer. */
+  query: string;
+  currentId: string;
+  rows: readonly FlattenedTreeRow[];
+};
+
+/**
+ * Type-ahead resolution over visible rows (Obsidian-like):
+ * - single char cycles to the next matching row after the current one (wraps);
+ * - multi-char buffer keeps matching from the current row so the focus stays
+ *   put while the user refines the prefix.
+ * Returns the matching row id or null when nothing matches.
+ */
+export function resolveTypeaheadTarget(input: TypeaheadInput): string | null {
+  const { query, currentId, rows } = input;
+  const normalized = query.toLowerCase();
+  if (!normalized || rows.length === 0) return null;
+
+  const currentIndex = rows.findIndex((row) => row.id === currentId);
+  const start = currentIndex === -1
+    ? 0
+    : currentIndex + (normalized.length === 1 ? 1 : 0);
+
+  for (let offset = 0; offset < rows.length; offset++) {
+    const row = rows[(start + offset) % rows.length];
+    if (row.item.name.toLowerCase().startsWith(normalized)) {
+      return row.id;
+    }
+  }
+  return null;
+}
+
+/**
+ * Visible-row range between `anchorId` and `targetId` (inclusive, in row
+ * order). Falls back to `[targetId]` when either end is not visible.
+ * The synthetic root row is never part of a range.
+ */
+export function resolveRangeSelection(
+  rows: readonly FlattenedTreeRow[],
+  anchorId: string | null,
+  targetId: string,
+): string[] {
+  const ids = rows.map((row) => row.id);
+  const targetIndex = ids.indexOf(targetId);
+  if (targetIndex === -1) return [];
+  const anchorIndex = anchorId ? ids.indexOf(anchorId) : -1;
+  if (anchorIndex === -1) return [targetId];
+  const start = Math.min(anchorIndex, targetIndex);
+  const end = Math.max(anchorIndex, targetIndex);
+  return ids.slice(start, end + 1);
+}

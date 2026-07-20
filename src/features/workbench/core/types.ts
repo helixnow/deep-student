@@ -402,6 +402,13 @@ export interface AppWindowProps {
    * （流式降档或 useDragRenderPause）；声明却忽略会在拖窗时抢帧。
    */
   renderThrottleMs?: number;
+  /**
+   * lifecycle === 'background'（含最小化/被完全遮挡）：壳层已对本窗
+   * visibility:hidden + contentVisibility:hidden 停绘，但 React 子树仍挂载全速跑。
+   * 应用可据此暂停纯视觉提交（如流式渲染的 markdown 重解析），数据管线不受影响。
+   * 可选新增字段（契约向后兼容）：不传/不读的应用行为不变。
+   */
+  isSuspended?: boolean;
   onTitleChange: (title: string) => void;
   /** 请求关闭：壳会先询问 AppDefinition.canClose */
   requestClose: () => void;
@@ -538,6 +545,11 @@ export interface WorkbenchStoreState {
    * 语义与逐次 setDisplayMode 一致（restoreFrame 进出 floating 规则相同）。
    */
   batchSetDisplayModes?: (entries: ReadonlyArray<{ id: string; mode: DisplayMode }>) => void;
+  /**
+   * 浮动落位合并提交（单次 set，供拖拽松手 commit 避免全部 selector 跑两遍）。
+   * 语义等价 setDisplayMode(id,'floating') + moveWindow(id, frame) 的顺序执行。
+   */
+  commitFloatingFrame?: (id: string, frame: Frame) => void;
   setTitle: (id: string, title: string) => void;
   setLifecycles: (map: Record<string, WindowLifecycle>) => void;
   setTilingRatio: (key: string, ratio: number) => void;

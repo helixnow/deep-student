@@ -853,9 +853,12 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       const zoneMode = zoneToDisplayMode(zone);
       if (zoneMode) {
         store.setDisplayMode(windowId, zoneMode);
+      } else if (typeof store.commitFloatingFrame === 'function') {
+        // tear-out / 从平铺拖走：松手才写 floating + frame（合并单次 set，
+        // 避免全部 selector 在 commit 瞬间跑两遍）
+        store.commitFloatingFrame(windowId, final);
       } else {
         if (store.windows[windowId].displayMode !== 'floating') {
-          // tear-out / 从平铺拖走：松手才写 floating（拖动中只改了 DOM）
           store.setDisplayMode(windowId, 'floating');
         }
         store.moveWindow(windowId, final);
@@ -974,26 +977,38 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
   }, [windowId]);
 
   const handleMinimize = useCallback(() => {
+    // 生命周期重算由 useWindowLifecycleAnim.finishPhase 在 genie 完成、
+    // minimized 真正提交后触发；此处提前重算会在窗口仍可见时误判遮挡。
     requestMinimizeAnimated(windowId);
-    recomputeLifecycles();
   }, [windowId]);
 
-  const handleZoom = useCallback(() => {
+  /**
+   * 绿灯 / 双击标题栏 zoom（对齐 macOS 语义）：
+   * - floating → maximized；maximized → 还原 floating
+   * - tiled-* → 还原 floating（此前误进 maximized，与绿灯"还原"符号矛盾）
+   * - Option（alt）：无视当前平铺态，直接在 floating ↔ maximized 间切换
+   *   （对标 macOS ⌥+绿灯 = 填满桌面）
+   */
+  const handleZoom = useCallback((opts?: { alt?: boolean }) => {
     const store = useWindowStore.getState();
     const current = store.windows[windowId];
     if (!current) return;
     const title = current.title || appName || '';
-    if (current.displayMode === 'maximized') {
-      restoreToFloating();
-      announceWorkbench(
-        t('a11y.restored', { title }),
-      );
-    } else {
-      // floating / tiled → maximized（tiled 进入方向由 SnapPreview settle 承接）
+    if (opts?.alt) {
+      if (current.displayMode === 'maximized') {
+        restoreToFloating();
+        announceWorkbench(t('a11y.restored', { title }));
+      } else {
+        store.setDisplayMode(windowId, 'maximized');
+        announceWorkbench(t('a11y.zoomed', { title }));
+      }
+    } else if (current.displayMode === 'floating') {
       store.setDisplayMode(windowId, 'maximized');
-      announceWorkbench(
-        t('a11y.zoomed', { title }),
-      );
+      announceWorkbench(t('a11y.zoomed', { title }));
+    } else {
+      // maximized / tiled-* → 还原到浮动（与绿灯还原符号、aria 文案一致）
+      restoreToFloating();
+      announceWorkbench(t('a11y.restored', { title }));
     }
     recomputeLifecycles();
   }, [windowId, restoreToFloating, appName, t]);

@@ -69,6 +69,16 @@ export interface ActiveTilingPair {
   key: string;
 }
 
+// 按 windows 引用的单槽缓存（模式同 windowListCache）：每个 WindowShell 都经
+// getTilingRatioForWindow 订阅本函数，每次 store.set 对每窗跑一遍全量遍历
+// 会放大成 O(N²)；同一引用只算一次即回到 O(N)。store 从不原地改 windows，
+// 引用相等 ⇒ 内容相等。
+let pairCacheInput:
+  | Record<string, WorkbenchWindow>
+  | readonly WorkbenchWindow[]
+  | null = null;
+let pairCacheValue: ActiveTilingPair | null = null;
+
 /**
  * 当前可交互的左右平铺对。桌面允许同一侧暂存多扇窗口（例如先后吸附），
  * 视觉上真正组成一对的是左右两侧各自 zIndex 最高且未最小化的窗口。
@@ -76,6 +86,7 @@ export interface ActiveTilingPair {
 export function getActiveTilingPair(
   windows: Record<string, WorkbenchWindow> | readonly WorkbenchWindow[],
 ): ActiveTilingPair | null {
+  if (windows === pairCacheInput) return pairCacheValue;
   const list = Array.isArray(windows) ? windows : Object.values(windows);
   let left: WorkbenchWindow | undefined;
   let right: WorkbenchWindow | undefined;
@@ -84,9 +95,17 @@ export function getActiveTilingPair(
     if (win.displayMode === 'tiled-left' && (!left || win.zIndex > left.zIndex)) left = win;
     if (win.displayMode === 'tiled-right' && (!right || win.zIndex > right.zIndex)) right = win;
   }
-  return left && right
+  pairCacheInput = windows;
+  pairCacheValue = left && right
     ? { left, right, key: tilingPairKey(left.id, right.id) }
     : null;
+  return pairCacheValue;
+}
+
+/** 仅供测试：清空 active pair 缓存 */
+export function resetActiveTilingPairCacheForTests(): void {
+  pairCacheInput = null;
+  pairCacheValue = null;
 }
 
 /**

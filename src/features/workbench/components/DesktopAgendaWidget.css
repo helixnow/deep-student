@@ -9,18 +9,36 @@
   flex-direction: column;
   padding: 16px;
   overflow: hidden;
-  border-radius: 18px;
+  border-radius: var(--wb-radius-xl, 18px);
   box-shadow: var(--wb-shadow-idle);
   pointer-events: auto;
   color: var(--text-primary, hsl(var(--foreground)));
   transition:
     box-shadow 180ms ease,
-    border-color 180ms ease;
+    border-color 180ms ease,
+    opacity var(--wb-motion-standard, 280ms) var(--wb-ease-out, ease-out);
 }
 
 .wb-agenda-widget:hover,
 .wb-agenda-widget:focus-within {
   box-shadow: var(--wb-shadow-focused, var(--wb-shadow-idle));
+}
+
+/*
+ * Tahoe widget 语义：前景有可见窗口时桌面小组件淡出为「背景装饰」，
+ * hover / 键盘进入时恢复实体可读；minimal 档保持全不透明（性能/可读优先）。
+ */
+.wb-agenda-widget[data-wb-widget-dim] {
+  opacity: 0.55;
+}
+
+.wb-agenda-widget[data-wb-widget-dim]:hover,
+.wb-agenda-widget[data-wb-widget-dim]:focus-within {
+  opacity: 1;
+}
+
+:root[data-wb-material='minimal'] .wb-agenda-widget[data-wb-widget-dim] {
+  opacity: 1;
 }
 
 .wb-agenda-header,

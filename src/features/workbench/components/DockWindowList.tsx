@@ -283,7 +283,10 @@ export function DockWindowList({
     if (!closedWindowId || windows.some((win) => win.id === closedWindowId)) return;
     refocusAfterCloseRef.current = null;
     if (windows.length === 0) {
-      ownerRef.current?.focus({ preventScroll: true });
+      // owner 是 wrap div（不可聚焦），焦点应落回 Dock 图标按钮本体
+      const ownerButton =
+        ownerRef.current?.querySelector<HTMLButtonElement>('button.wb-dock-item') ?? null;
+      (ownerButton ?? ownerRef.current)?.focus({ preventScroll: true });
       return;
     }
     if (refocusRafRef.current) cancelAnimationFrame(refocusRafRef.current);

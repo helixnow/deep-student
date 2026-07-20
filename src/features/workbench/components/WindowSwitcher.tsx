@@ -109,11 +109,10 @@ const WindowSwitcherComponent: React.FC<WindowSwitcherProps> = ({ thumbnails = f
     const last = lastSessionRef.current;
     lastSessionRef.current = null;
     if (!last) return undefined;
-    // commit 判定：关闭与 focusWindow 同批提交（commitSwitcher / handlePick），
-    // effect 执行时焦点栈已更新 → 栈顶 === 选中 id 即为「松开聚焦」
-    const selectedId = last.ids[last.index];
-    const stack = useWindowStore.getState().focusStack;
-    const commit = Boolean(selectedId) && stack[stack.length - 1] === selectedId;
+    // commit 判定：读 overlay 的显式退出原因（commitSwitcher / handlePick 传
+    // 'commit'，Esc/失焦为 'cancel'）。此前用「焦点栈顶 === 选中 id」推断，
+    // 单窗会话或循环回原点时 Esc 取消会被误判成提交。
+    const commit = useWorkbenchOverlay.getState().switcherExitReason === 'commit';
     setExitSession({ ...last, commit });
     const timer = window.setTimeout(() => setExitSession(null), EXIT_FALLBACK_MS);
     return () => window.clearTimeout(timer);
@@ -164,7 +163,7 @@ const WindowSwitcherComponent: React.FC<WindowSwitcherProps> = ({ thumbnails = f
       if (!useWorkbenchOverlay.getState().switcherOpen) return;
       // 点选项即为提交项：同步冻结快照，保证退出动画的 commit 脉冲落在被点项上
       lastSessionRef.current = { ids: useWorkbenchOverlay.getState().switcherIds, index };
-      closeSwitcher();
+      closeSwitcher('commit');
       focusWindow(id);
     },
     [closeSwitcher, focusWindow],

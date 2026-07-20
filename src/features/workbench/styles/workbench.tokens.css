@@ -68,14 +68,24 @@
     inset 1px 0 0 rgba(255, 255, 255, 0.08),
     inset -1px 0 0 rgba(255, 255, 255, 0.08);
 
-  /* ==== 窗口 chrome（圆角分档） ====================================== */
-  /* compact/min：无 toolbar 或紧凑面；默认窗走 toolbar 档（多数有标题栏） */
-  --wb-window-radius-compact: 12px;
-  --wb-window-radius: 18px;
-  --wb-window-radius-toolbar: 18px;
+  /* ==== 圆角阶梯（统一档位；组件禁止再写字面量圆角） ================== */
+  --wb-radius-xs: 6px;   /* menubar item / kbd 键帽 */
+  --wb-radius-sm: 8px;   /* 小控件 / chip / 菜单行 */
+  --wb-radius-md: 12px;  /* dock item / compact 窗 / 小面板 */
+  --wb-radius-lg: 14px;  /* 菜单 / dock 弹层 / switcher cell */
+  --wb-radius-xl: 18px;  /* 窗 / overlay / Spotlight 面板 */
+  --wb-radius-2xl: 22px; /* dock 药丸 / switcher bar */
+
+  /* ==== 窗口 chrome（圆角分档，别名指向阶梯） ======================== */
+  /* compact/min：无 toolbar 或紧凑面；默认窗走 toolbar 档（多数有标题栏）。
+   * 窗本体 20px：对标 Tahoe 更软的窗角（介于 xl/2xl 之间；maximized 时
+   * 由 WindowShell.css 收束为 0） */
+  --wb-window-radius-compact: var(--wb-radius-md);
+  --wb-window-radius: 20px;
+  --wb-window-radius-toolbar: 20px;
   /* 菜单 / HUD 浮层；cheat/sheet 与窗 toolbar 档对齐 */
-  --wb-menu-radius: 14px;
-  --wb-overlay-radius: 18px;
+  --wb-menu-radius: var(--wb-radius-lg);
+  --wb-overlay-radius: var(--wb-radius-xl);
   /* 内容区一律不透明（设计文档 §6.5） */
   --wb-window-bg: var(--surface-elevated, hsl(var(--card)));
   --wb-window-border: color-mix(in hsl, hsl(var(--border)) 72%, transparent 28%);
@@ -151,7 +161,7 @@
   /* ==== Dock ======================================================== */
   --wb-dock-bg: var(--wb-glass-bg-strong);
   --wb-dock-blur: var(--wb-glass-blur-strong);
-  --wb-dock-radius: 22px;
+  --wb-dock-radius: var(--wb-radius-2xl);
   --wb-dock-border: var(--wb-glass-border);
   --wb-dock-shadow:
     0 0 0 0.5px hsl(var(--shadow-base, 0 0% 0%) / 0.08),
@@ -160,7 +170,7 @@
   --wb-dock-padding: 7px;
   --wb-dock-gap: 6px;
   --wb-dock-item-size: 44px;
-  --wb-dock-item-radius: 12px;
+  --wb-dock-item-radius: var(--wb-radius-md);
   --wb-dock-item-hover-bg: var(--interactive-hover, rgba(0, 0, 0, 0.08));
   /* 非 mag 默认不整键放大（toolbar 式 1.18 已弃）；邻近放大由 Dock.css fisheye 负责 */
   --wb-dock-item-hover-scale: 1;
@@ -215,15 +225,16 @@
   /* Windows 窗控宿主的完整宽度：图标拖拽区 + 三键胶囊 + 右侧外边距。 */
   --wb-windows-chrome-width: 165px;
   --wb-menubar-chrome-inset: var(--wb-windows-chrome-width);
-  /* 顶条与桌面日历小组件共用同一套液态玻璃材质，切档/降级自动跟随 */
-  --wb-menubar-bg: var(--wb-glass-bg);
-  --wb-menubar-border: var(--wb-glass-border);
+  /* 对标 Tahoe 透明菜单栏：fill 降到近透明（保留 blur 维持文字可读），
+   * 底缘分隔弱化；reduced/minimal 档在下方降级块单独回填实底 */
+  --wb-menubar-bg: hsl(var(--card) / 0.10);
+  --wb-menubar-border: color-mix(in hsl, hsl(var(--border)) 30%, transparent 70%);
   --wb-menubar-sheen: var(--wb-glass-sheen);
   --wb-menubar-blur: var(--wb-glass-blur);
   --wb-menubar-fg: color-mix(in hsl, hsl(var(--foreground)) 78%, transparent 22%);
   --wb-menubar-fg-strong: hsl(var(--foreground));
   --wb-menubar-item-hover-bg: var(--interactive-hover, rgba(0, 0, 0, 0.08));
-  --wb-menubar-item-radius: 6px;
+  --wb-menubar-item-radius: var(--wb-radius-xs);
 
   /* ==== 动效（全部 transform/opacity） ============================== */
   --wb-anim-open-duration: 160ms;
@@ -231,7 +242,8 @@
   /* 焦点阴影 idle↔focused 过渡（勿接拖窗抬起阴影切换） */
   --wb-shadow-transition-duration: 140ms;
   --wb-dock-transition-duration: 160ms;
-  --wb-snap-fade-duration: 60ms;
+  /* 吸附预览淡入/区间切换（单一真相源；SnapPreview.css 直接消费） */
+  --wb-snap-fade-duration: 130ms;
   --wb-ease: cubic-bezier(0.32, 0.72, 0.28, 1);
   --wb-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
@@ -342,6 +354,9 @@
   --wb-menubar-fg: color-mix(in hsl, hsl(var(--foreground)) 82%, transparent 18%);
   --wb-menubar-fg-strong: hsl(var(--foreground));
   --wb-menubar-item-hover-bg: var(--interactive-hover, rgba(255, 255, 255, 0.10));
+  /* 暗色透明菜单栏：fill 略高于亮色保对比 */
+  --wb-menubar-bg: hsl(var(--card) / 0.18);
+  --wb-menubar-border: color-mix(in hsl, hsl(var(--border)) 40%, transparent 60%);
 
   --wb-snap-stroke: color-mix(in hsl, hsl(var(--primary)) 80%, transparent 20%);
   --wb-snap-fill: hsl(var(--primary) / 0.10);
@@ -392,6 +407,9 @@
   --wb-glass-bg-strong: color-mix(in hsl, hsl(var(--card)) 97%, transparent 3%);
   --wb-titlebar-bg: color-mix(in hsl, hsl(var(--card)) 92%, transparent 8%);
   --wb-expose-backdrop-bg: hsl(var(--background) / 0.82);
+  /* 透明菜单栏在无 blur 档不可读：回填实底 */
+  --wb-menubar-bg: var(--wb-glass-bg);
+  --wb-menubar-border: var(--wb-glass-border);
 }
 
 :root[data-wb-material='minimal'] {
@@ -404,6 +422,8 @@
   --wb-titlebar-bg: hsl(var(--card));
   --wb-expose-backdrop-bg: hsl(var(--background) / 0.92);
   --wb-wallpaper-scrim: none;
+  --wb-menubar-bg: hsl(var(--card));
+  --wb-menubar-border: var(--wb-glass-border);
 
   /* 焦点环不降级（a11y）；motion.css 的 --wb-motion-* 已在其自身 minimal 块归零 */
   --wb-anim-open-duration: 0ms;
@@ -445,5 +465,7 @@ html[data-wb-material-switching] .wb-menubar::before {
     --wb-expose-backdrop-blur: none;
     --wb-glass-bg: color-mix(in hsl, hsl(var(--card)) 94%, transparent 6%);
     --wb-glass-bg-strong: color-mix(in hsl, hsl(var(--card)) 97%, transparent 3%);
+    --wb-menubar-bg: var(--wb-glass-bg);
+    --wb-menubar-border: var(--wb-glass-border);
   }
 }

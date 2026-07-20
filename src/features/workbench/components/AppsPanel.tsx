@@ -507,7 +507,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
           ) : (
             <span className="wb-apps-command-text">
               <span className="wb-apps-item-name">{item.title}</span>
-              {item.subtitle && item.kind !== 'app' && (
+              {item.subtitle && (
                 <span className="wb-apps-command-desc">{item.subtitle}</span>
               )}
             </span>
@@ -555,28 +555,31 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
       >
         <div className="wb-apps-header">
           <h2 className="wb-apps-title">{t('workbench:appsPanel.title')}</h2>
-          <div className="wb-apps-view-toggle" role="group" aria-label={t('workbench:appsPanel.view')}>
-            <button
-              type="button"
-              className="wb-apps-view-btn"
-              aria-pressed={viewMode === 'grid'}
-              aria-label={t('workbench:appsPanel.gridView')}
-              data-testid="wb-apps-view-grid"
-              onClick={() => setViewMode('grid')}
-            >
-              <GridFour size={16} weight="bold" />
-            </button>
-            <button
-              type="button"
-              className="wb-apps-view-btn"
-              aria-pressed={viewMode === 'list'}
-              aria-label={t('workbench:appsPanel.listView')}
-              data-testid="wb-apps-view-list"
-              onClick={() => setViewMode('list')}
-            >
-              <List size={16} weight="bold" />
-            </button>
-          </div>
+          {/* 搜索态结果固定为分区列表，网格/列表切换不适用 → 隐藏死控件 */}
+          {!searching && (
+            <div className="wb-apps-view-toggle" role="group" aria-label={t('workbench:appsPanel.view')}>
+              <button
+                type="button"
+                className="wb-apps-view-btn"
+                aria-pressed={viewMode === 'grid'}
+                aria-label={t('workbench:appsPanel.gridView')}
+                data-testid="wb-apps-view-grid"
+                onClick={() => setViewMode('grid')}
+              >
+                <GridFour size={16} weight="bold" />
+              </button>
+              <button
+                type="button"
+                className="wb-apps-view-btn"
+                aria-pressed={viewMode === 'list'}
+                aria-label={t('workbench:appsPanel.listView')}
+                data-testid="wb-apps-view-list"
+                onClick={() => setViewMode('list')}
+              >
+                <List size={16} weight="bold" />
+              </button>
+            </div>
+          )}
           <button
             type="button"
             className="wb-apps-close"

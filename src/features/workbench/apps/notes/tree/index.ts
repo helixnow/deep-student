@@ -3,11 +3,16 @@ export { default } from './NotesWorkspaceTree';
 export { TreeRow } from './TreeRow';
 export { TreeContextMenu } from './TreeContextMenu';
 export { calculateDropPosition, isInvalidFolderDrop } from './dropPosition';
-export { resolveTreeKeyboardNav } from './keyboard';
+export {
+  resolveRangeSelection,
+  resolveTreeKeyboardNav,
+  resolveTypeaheadTarget,
+} from './keyboard';
 export {
   collectDescendantIds,
   collectFolderEntries,
   collectFolderIds,
+  excludeNestedIds,
   expandedIdsFromCollapsedPaths,
   findItemById,
   flattenVisibleTree,
@@ -20,6 +25,7 @@ export {
   AUTO_EXPAND_DELAY_MS,
   LONG_PRESS_MS,
   NOTES_WORKSPACE_TREE_ROOT_ID,
+  TYPEAHEAD_TTL_MS,
   type FlattenedTreeRow,
   type NotesWorkspaceDropPosition,
   type NotesWorkspaceTreeItem,

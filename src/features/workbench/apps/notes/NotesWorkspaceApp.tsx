@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelGroupHandle } from 'react-resizable-panels';
 import {
   ArrowsClockwise,
+  CaretLeft,
   FileArchive,
   FileArrowUp,
   ArrowLeft,
@@ -38,6 +39,7 @@ import {
 } from '@/command-palette/modules/notes.commands';
 import { publishNotesFindQuery } from '@/features/notes/findQueryBridge';
 import { cn } from '@/lib/utils';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { isMacOS } from '@/utils/platform';
 import type { FolderTreeNode, VfsFolder } from '@/dstu/types/folder';
@@ -833,6 +835,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const [selectedTreeId, setSelectedTreeId] = useState<string | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [sizeClass, setSizeClass] = useState<WbSysSizeClass>('wide');
+  const sizeClassRef = useRef<WbSysSizeClass>('wide');
+  sizeClassRef.current = sizeClass;
   const [workspaceWidth, setWorkspaceWidth] = useState(0);
   const [titlebarTarget, setTitlebarTarget] = useState<HTMLElement | null>(null);
   const [status, setStatus] = useState(() => t('notesWorkspace.status.ready', 'Ready'));
@@ -944,7 +948,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     };
     if (!findTarget()) {
       observer = new MutationObserver(findTarget);
-      observer.observe(document.body, { childList: true, subtree: true });
+      // 观察范围收窄到本窗口壳：slot 只出现在自己的窗壳内，观察整个 body
+      // 会让桌面任何 DOM 变动都触发全页 querySelectorAll
+      const shell = document.querySelector<HTMLElement>(
+        `[data-wb-window-id="${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(windowId) : windowId}"]`,
+      );
+      observer.observe(shell ?? document.body, { childList: true, subtree: true });
     }
     return () => observer?.disconnect();
   }, [windowId]);
@@ -1592,6 +1601,15 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     if (explorerOpen && backlinksOpen) setExplorerOpen(false);
   }, [backlinksOpen, backlinksOverlay, explorerOpen]);
 
+  // 窄窗「文件」内联子屏打开时接管 Android 返回键：先关子屏，不关笔记窗口
+  useEffect(() => {
+    if (sizeClass !== 'compact' || !explorerOpen) return;
+    return registerBackHandler(() => {
+      setExplorerOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [explorerOpen, sizeClass]);
+
   useEffect(() => {
     const onFocusModeChanged = (event: Event) => {
       const nextOwners = updateFocusModeOwners(
@@ -1723,6 +1741,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     const type = resourceType(node.type);
     if (!type) return;
     await openResource({ type, id: node.id }, node.name);
+    // 搜索可能从「文件」子屏进入：打开结果后一并收起子屏，直达编辑器
+    if (sizeClassRef.current === 'compact') setExplorerOpen(false);
     if (type === 'note' && context?.mode === 'full-text' && context.query.trim()) {
       publishNotesFindQuery({ noteId: node.id, query: context.query });
     }
@@ -1840,11 +1860,17 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     }
   }, [treeItems]);
 
+  // 窄窗（compact）下「文件」以全屏内联子屏呈现：选中打开资源后自动收起，回到编辑器
+  const closeExplorerIfCompact = useCallback(() => {
+    if (sizeClassRef.current === 'compact') setExplorerOpen(false);
+  }, []);
+
   const openTreeItem = useCallback((id: string) => {
     const item = findItemById(treeItems, id);
     if (!item || item.kind === 'folder') return;
     void openResource({ type: item.kind, id: item.id }, item.name);
-  }, [openResource, treeItems]);
+    closeExplorerIfCompact();
+  }, [closeExplorerIfCompact, openResource, treeItems]);
 
   const renameTreeItem = useCallback(async (id: string, newName: string) => {
     const item = findItemById(treeItems, id);
@@ -2060,49 +2086,9 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     return () => window.removeEventListener('keydown', onWindowKeyDown, true);
   }, [activateHistoryEntry, isActive, navHistory, openSearchOverlay]);
 
-  return (
-    <>
-      {titlebarTarget ? createPortal(
-        <WorkspaceTabs
-          tabs={tabs}
-          activeKey={activeTab?.key ?? null}
-          rightTabKey={splitTab?.key ?? null}
-          onActivate={activateTab}
-          onClose={closeTab}
-          onReorder={reorderTabs}
-          onOpenContextMenu={openTabContextMenu}
-          contextMenuKey={tabContextMenu?.key ?? null}
-          leftOffset={titlebarTabsLeft}
-          saveStates={saveStates}
-        />,
-        titlebarTarget,
-      ) : null}
-      <div
-        ref={hostRef}
-        className="notes-workspace"
-        data-wb-notes-workspace
-        data-focus-mode={focusMode ? 'true' : 'false'}
-        data-compact={sizeClass === 'compact' ? 'true' : 'false'}
-        data-explorer-open={sizeClass === 'compact' ? (explorerOpen ? 'true' : 'false') : 'true'}
-        onKeyDown={handleWorkspaceKeyDown}
-        onDragOver={(event) => {
-          if (!Array.from(event.dataTransfer.files).some((file) => /\.md(?:own)?$/i.test(file.name))) return;
-          event.preventDefault();
-          event.dataTransfer.dropEffect = 'copy';
-        }}
-        onDrop={(event) => {
-          const files = Array.from(event.dataTransfer.files);
-          if (!files.some((file) => /\.md(?:own)?$/i.test(file.name))) return;
-          event.preventDefault();
-          void importDroppedMarkdown(files);
-        }}
-      >
-      <WorkbenchSidebarLayout
-        sizeClass={sizeClass}
-        navLabel={t('notesWorkspace.explorer.title', 'Files')}
-        drawerOpen={explorerOpen}
-        onDrawerOpenChange={setExplorerOpen}
-        sidebar={<WorkbenchSidebarSurface
+  // 资源管理器面板：宽/中窗作为并排侧栏；窄窗（compact）复用为全屏内联「文件」子屏（P0-5 去抽屉化）
+  const explorerSurface = (
+    <WorkbenchSidebarSurface
         ariaLabel={t('notesWorkspace.explorer.title', 'Files')}
         ref={explorerRef}
         className="notes-explorer"
@@ -2151,7 +2137,10 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         <FavoritesSection
           items={favorites.items}
           activeId={activeTab?.id ?? null}
-          onOpen={(item) => void openResource({ type: item.type, id: item.id }, item.name)}
+          onOpen={(item) => {
+            void openResource({ type: item.type, id: item.id }, item.name);
+            closeExplorerIfCompact();
+          }}
           onUnfavorite={(item) => {
             void favorites.setFavorite(item.id, item.type, false, { path: item.path, name: item.name });
           }}
@@ -2270,7 +2259,52 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             />
           )}
         </div>
-      </WorkbenchSidebarSurface>}
+      </WorkbenchSidebarSurface>
+  );
+
+  return (
+    <>
+      {titlebarTarget ? createPortal(
+        <WorkspaceTabs
+          tabs={tabs}
+          activeKey={activeTab?.key ?? null}
+          rightTabKey={splitTab?.key ?? null}
+          onActivate={activateTab}
+          onClose={closeTab}
+          onReorder={reorderTabs}
+          onOpenContextMenu={openTabContextMenu}
+          contextMenuKey={tabContextMenu?.key ?? null}
+          leftOffset={titlebarTabsLeft}
+          saveStates={saveStates}
+        />,
+        titlebarTarget,
+      ) : null}
+      <div
+        ref={hostRef}
+        className="notes-workspace"
+        data-wb-notes-workspace
+        data-focus-mode={focusMode ? 'true' : 'false'}
+        data-compact={sizeClass === 'compact' ? 'true' : 'false'}
+        data-explorer-open={sizeClass === 'compact' ? (explorerOpen ? 'true' : 'false') : 'true'}
+        onKeyDown={handleWorkspaceKeyDown}
+        onDragOver={(event) => {
+          if (!Array.from(event.dataTransfer.files).some((file) => /\.md(?:own)?$/i.test(file.name))) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+        }}
+        onDrop={(event) => {
+          const files = Array.from(event.dataTransfer.files);
+          if (!files.some((file) => /\.md(?:own)?$/i.test(file.name))) return;
+          event.preventDefault();
+          void importDroppedMarkdown(files);
+        }}
+      >
+      <WorkbenchSidebarLayout
+        sizeClass={sizeClass}
+        navLabel={t('notesWorkspace.explorer.title', 'Files')}
+        drawerOpen={sizeClass === 'compact' ? false : explorerOpen}
+        onDrawerOpenChange={setExplorerOpen}
+        sidebar={sizeClass === 'compact' ? null : explorerSurface}
       >
 
       <main className="notes-workspace-main" data-notes-split={splitTab ? 'true' : 'false'}>
@@ -2366,6 +2400,26 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         </footer>
       </main>
       </WorkbenchSidebarLayout>
+      {/* 窄窗「文件」全屏内联子屏（移动端契约：无遮罩抽屉；顶栏返回 + Android back） */}
+      {sizeClass === 'compact' && explorerOpen && (
+        <div className="notes-files-subscreen" data-notes-files-subscreen>
+          <div className="notes-files-subscreen-header">
+            <button
+              type="button"
+              className="notes-files-subscreen-back"
+              onClick={() => setExplorerOpen(false)}
+              aria-label={t('notesWorkspace.explorer.closeFiles', 'Close files')}
+            >
+              <CaretLeft size={16} aria-hidden />
+              <span>{t('notesWorkspace.navigation.back', 'Back')}</span>
+            </button>
+            <span className="notes-files-subscreen-title">
+              {t('notesWorkspace.explorer.title', 'Files')}
+            </span>
+          </div>
+          <div className="notes-files-subscreen-body">{explorerSurface}</div>
+        </div>
+      )}
       <NotesSearchOverlay
         open={searchOpen}
         mode={searchMode}

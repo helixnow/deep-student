@@ -5,9 +5,12 @@
  * 本模块只应被 workbench lazy chunk（WorkbenchDesktop）引用——
  * 开关关闭时不加载，不污染 legacy bundle。
  *
- * - chat / content(七类) / mindmap / files：import 即幂等注册
- *   （files register 同时启动资源删除联动 resourceSync）；
- * - system(六个) / sandbox / browser：调用幂等注册函数。
+ * - chat / content(六类：textbook/exam/translation/essay/image/file) /
+ *   notes(承载 note + mindmap 资源) / files / preview(file-preview)：
+ *   import 即幂等注册（files register 同时启动资源删除联动 resourceSync）。
+ *   独立 mindmap 应用定义存在但**有意不注册**（导图在 notes 工作区打开，
+ *   契约见 content/__tests__/registers.test.tsx）。
+ * - system(七个) / sandbox / browser：调用幂等注册函数。
  *   browser 不钉 DEFAULT_DOCK_PINNED；发现走 AppsPanel。
  */
 import './chat/register';

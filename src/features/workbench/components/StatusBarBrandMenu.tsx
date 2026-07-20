@@ -39,27 +39,59 @@ export const StatusBarBrandMenu: React.FC<StatusBarBrandMenuProps> = ({
   const panelRef = useRef<HTMLDivElement | null>(null);
   const prevFocusRef = useRef<HTMLElement | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-  useLiquidGlassLens(panelRef, open);
+  // 离场相位：open→false 时先播 wb-desk-menu 的 closing 动画再卸载
+  const [closing, setClosing] = useState(false);
+  const wasOpenRef = useRef(false);
+  const mounted = open || closing;
+  useLiquidGlassLens(panelRef, mounted);
+
+  useEffect(() => {
+    if (open) {
+      wasOpenRef.current = true;
+      setClosing(false);
+      return undefined;
+    }
+    // 从已打开状态收起才播离场；初始 closed 不播
+    if (!wasOpenRef.current) return undefined;
+    wasOpenRef.current = false;
+    setClosing(true);
+    const timer = window.setTimeout(() => setClosing(false), 100);
+    return () => window.clearTimeout(timer);
+  }, [open]);
 
   // 定位：品牌钮正下方、左缘对齐，视口内钳制
-  useLayoutEffect(() => {
-    if (!open) {
-      setPos(null);
-      return;
-    }
+  const place = useCallback(() => {
     const rect = anchorRef.current?.getBoundingClientRect();
     if (!rect) return;
     const w = panelRef.current?.offsetWidth || FALLBACK_W;
     const left = Math.max(EDGE_PAD, Math.min(rect.left, window.innerWidth - w - EDGE_PAD));
     setPos({ left, top: rect.bottom + MENU_GAP });
-  }, [open, anchorRef]);
+  }, [anchorRef]);
 
-  // 焦点：打开时记录前一焦点并聚焦面板；关闭时归还
+  useLayoutEffect(() => {
+    if (!open) {
+      if (!closing) setPos(null);
+      return undefined;
+    }
+    place();
+    // 打开期间跟随视口变化重定位（拖窗/缩放后菜单不脱锚）
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open, closing, place]);
+
+  // 焦点：打开时记录前一焦点并聚焦首个菜单项（macOS 菜单键盘语义）；关闭时归还
   useEffect(() => {
     if (!open) return undefined;
     prevFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    panelRef.current?.focus({ preventScroll: true });
+    const firstItem = panelRef.current?.querySelector<HTMLButtonElement>(
+      'button[data-wb-desk-item]:not(:disabled)',
+    );
+    (firstItem ?? panelRef.current)?.focus({ preventScroll: true });
     return () => {
       const prev = prevFocusRef.current;
       prevFocusRef.current = null;
@@ -131,7 +163,7 @@ export const StatusBarBrandMenu: React.FC<StatusBarBrandMenuProps> = ({
     }
   };
 
-  if (!open) return null;
+  if (!mounted) return null;
 
   return createPortal(
     <>
@@ -139,16 +171,17 @@ export const StatusBarBrandMenu: React.FC<StatusBarBrandMenuProps> = ({
         className="wb-desk-menu-backdrop"
         style={{ position: 'fixed' }}
         aria-hidden="true"
-        onPointerDown={onClose}
+        onPointerDown={open ? onClose : undefined}
         onContextMenu={(e) => {
           e.preventDefault();
-          onClose();
+          if (open) onClose();
         }}
       />
       <div
         ref={panelRef}
         className="wb-desk-menu wb-glass-lens"
         data-wb-brand-menu
+        data-phase={open ? 'open' : 'closing'}
         role="menu"
         aria-label={t('menubar.brandMenu')}
         tabIndex={-1}

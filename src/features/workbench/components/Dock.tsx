@@ -8,7 +8,9 @@
  *   弹出后指针未进入 Dock 就离开底缘也会自动收起（macOS 同语义）
  *
  * O5 动效层（样式见 Dock.css）：
- * - Dock 悬停保持静止，只显示名称气泡；邻近放大已关闭。
+ * - 邻近放大 magnification 默认开启（对标 macOS Dock）：高斯邻域 + 指针连续
+ *   锚定，rAF 直写 DOM；设置 data-wb-dock-mag=off / minimal 材质档 /
+ *   prefers-reduced-motion 时关闭（useDockMagnificationEnabled 门控）。
  * - autohide 滑入用 O1 overshoot 曲线（wb-dock-slide，复合 translate(-50%, y)）。
  * - dockGeometry：每次布局来源变化（items / 显隐 / resize / 滑动结束）rAF 防抖发布
  *   各 typeId 图标 wrap 的视口坐标，供 O9 genie 最小化收敛点消费。
@@ -130,6 +132,39 @@ interface MagState {
 const MAG_REMEASURE_EXTRA_PX = 2;
 /** 即使 magExtra 未超阈值，每 N 帧也重测一次 item（防慢漂） */
 const MAG_REMEASURE_EVERY_N_FRAMES = 8;
+
+/**
+ * 放大引擎运行时门控（macOS Dock 默认开启 magnification）：
+ * - 设置 `data-wb-dock-mag="off"`（WorkbenchDesktop 按 desktop.workbenchDockMagnification 写入）→ 关
+ * - `data-wb-material="minimal"` 性能档 → 关
+ * - `prefers-reduced-motion` → 关
+ * 三者均为 html 级信号，用 MutationObserver + matchMedia 订阅，
+ * 变化即重挂/卸载放大监听器（引擎本体零改动）。
+ */
+function useDockMagnificationEnabled(): boolean {
+  const subscribe = React.useCallback((notify: () => void) => {
+    const root = document.documentElement;
+    const observer = new MutationObserver(notify);
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ['data-wb-dock-mag', 'data-wb-material'],
+    });
+    const media = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    media?.addEventListener?.('change', notify);
+    return () => {
+      observer.disconnect();
+      media?.removeEventListener?.('change', notify);
+    };
+  }, []);
+  const getSnapshot = React.useCallback(() => {
+    const root = document.documentElement;
+    if (root.dataset.wbDockMag === 'off') return false;
+    if (root.dataset.wbMaterial === 'minimal') return false;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return false;
+    return true;
+  }, []);
+  return React.useSyncExternalStore(subscribe, getSnapshot, () => false);
+}
 
 function readCssNumber(el: HTMLElement, name: string, fallback: number): number {
   const raw = getComputedStyle(el).getPropertyValue(name);
@@ -550,8 +585,10 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     scheduleConceal();
   };
 
-  // Dock 悬停不做放大或位移，只保留 DockItem 的名称 tooltip。
-  useDockMagnification(dockRef, false, orderedKey);
+  // 邻近放大（对标 macOS Dock magnification）：设置 off / minimal 档 /
+  // prefers-reduced-motion 时关闭；引擎为高斯邻域 + 指针连续锚定（rAF 直写 DOM）。
+  const magEnabled = useDockMagnificationEnabled();
+  useDockMagnification(dockRef, magEnabled, orderedKey);
 
   // ---- dockGeometry 发布（O9 genie 收敛点；§4 协作接口）----
   const geometryRafRef = React.useRef(0);
@@ -709,6 +746,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
         )}
         <div
           data-testid={`wb-dock-item-${APPS_DOCK_TYPE_ID}`}
+          data-wb-dock-item-wrap=""
           className="wb-dock-item-wrap relative flex flex-col items-center"
         >
           <div className="wb-dock-mag" data-wb-dock-mag-item={APPS_DOCK_TYPE_ID}>

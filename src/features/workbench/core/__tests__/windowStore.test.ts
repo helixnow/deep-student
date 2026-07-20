@@ -343,6 +343,70 @@ describe('windowStore — restoreFrame 恢复语义', () => {
   });
 });
 
+describe('windowStore — commitFloatingFrame（拖拽松手合并提交）', () => {
+  beforeEach(() => resetWindowStoreForTests({ w: 1600, h: 900 }));
+
+  it('语义等价 setDisplayMode(floating)+moveWindow：落位 frame 生效、restoreFrame 清空', () => {
+    const id = store().openWindow({
+      typeId: 'test-app',
+      initialFrame: { x: 120, y: 80, w: 640, h: 480 },
+    });
+    store().setDisplayMode(id, 'tiled-left');
+    expect(store().windows[id].restoreFrame).not.toBeNull();
+
+    const final = { x: 300, y: 200, w: 640, h: 480 };
+    store().commitFloatingFrame!(id, final);
+    expect(store().windows[id].displayMode).toBe('floating');
+    expect(store().windows[id].frame).toEqual(final);
+    expect(store().windows[id].restoreFrame).toBeNull();
+  });
+
+  it('managed → floating 落位只触发一次订阅通知（单次 set）', () => {
+    const id = store().openWindow({ typeId: 'test-app' });
+    store().setDisplayMode(id, 'maximized');
+
+    let notifications = 0;
+    const unsubscribe = useWindowStore.subscribe(() => {
+      notifications += 1;
+    });
+    store().commitFloatingFrame!(id, { x: 50, y: 60, w: 400, h: 300 });
+    unsubscribe();
+    expect(notifications).toBe(1);
+    expect(store().windows[id].displayMode).toBe('floating');
+    expect(store().windows[id].frame).toEqual({ x: 50, y: 60, w: 400, h: 300 });
+  });
+
+  it('已是 floating 时等价 moveWindow', () => {
+    const id = store().openWindow({
+      typeId: 'test-app',
+      initialFrame: { x: 100, y: 100, w: 400, h: 300 },
+    });
+    store().commitFloatingFrame!(id, { x: 500, y: 400, w: 400, h: 300 });
+    expect(store().windows[id].displayMode).toBe('floating');
+    expect(store().windows[id].frame).toEqual({ x: 500, y: 400, w: 400, h: 300 });
+    expect(store().windows[id].restoreFrame).toBeNull();
+  });
+
+  it('从平铺侧拖走会清理失效 pair ratio（与 setDisplayMode 相同的 prune 语义）', () => {
+    const left = store().openWindow({ typeId: 'test-app' });
+    const right = store().openWindow({ typeId: 'test-app' });
+    store().setDisplayMode(left, 'tiled-left');
+    store().setDisplayMode(right, 'tiled-right');
+    const key = `${left}:${right}`;
+    store().setTilingRatio(key, 0.7);
+
+    store().commitFloatingFrame!(right, { x: 400, y: 300, w: 400, h: 300 });
+    expect(store().tilingRatios[key]).toBeUndefined();
+  });
+
+  it('未知 windowId 为 no-op', () => {
+    store().openWindow({ typeId: 'test-app' });
+    const before = store().windows;
+    store().commitFloatingFrame!('missing', { x: 0, y: 0, w: 100, h: 100 });
+    expect(store().windows).toBe(before);
+  });
+});
+
 describe('windowStore — hydrate 与 desktopSize', () => {
   beforeEach(() => resetWindowStoreForTests({ w: 1600, h: 900 }));
 

@@ -25,12 +25,17 @@ import { cn } from '@/lib/utils';
 import { calculateDropPosition, isInvalidFolderDrop } from './dropPosition';
 import {
   collectDescendantIds,
+  excludeNestedIds,
   findItemById,
   flattenVisibleTree,
   isFolderItem,
   toExpandedSet,
 } from './flatten';
-import { resolveTreeKeyboardNav } from './keyboard';
+import {
+  resolveRangeSelection,
+  resolveTreeKeyboardNav,
+  resolveTypeaheadTarget,
+} from './keyboard';
 import { TreeContextMenu } from './TreeContextMenu';
 import { TreeRow } from './TreeRow';
 import {
@@ -39,6 +44,7 @@ import {
   DROP_INDICATOR_SIDE_GAP_PX,
   LEVEL_INDENT_PX,
   NOTES_WORKSPACE_TREE_ROOT_ID,
+  TYPEAHEAD_TTL_MS,
   type ContextMenuState,
   type NotesWorkspaceDropPosition,
   type NotesWorkspaceTreeItem,
@@ -65,10 +71,27 @@ function clampMenuPosition(x: number, y: number): { x: number; y: number } {
   };
 }
 
+function collectExpandableFolderIds(
+  items: readonly NotesWorkspaceTreeItem[],
+): string[] {
+  const ids: string[] = [];
+  const visit = (nodes: readonly NotesWorkspaceTreeItem[]) => {
+    for (const node of nodes) {
+      if (isFolderItem(node) && node.children?.length) {
+        ids.push(node.id);
+        visit(node.children);
+      }
+    }
+  };
+  visit(items);
+  return ids;
+}
+
 export function NotesWorkspaceTree({
   items,
   expandedIds,
   selectedId,
+  selectedIds: controlledSelectedIds,
   activeId = null,
   renamingId = null,
   showRoot = true,
@@ -79,10 +102,13 @@ export function NotesWorkspaceTree({
   'aria-busy': ariaBusy,
   onToggleExpand,
   onSelect,
+  onSelectionChange,
   onOpen,
   onMove,
+  onMoveMany,
   onRename,
   onDelete,
+  onDeleteMany,
   onRenameStart,
   onRenameEnd,
   getMenuItems,
@@ -96,12 +122,23 @@ export function NotesWorkspaceTree({
   const autoExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoExpandCandidateRef = useRef<string | null>(null);
   const dropPositionRef = useRef<NotesWorkspaceDropPosition>('inside');
+  const dropInvalidRef = useRef(false);
+  const draggedIdsRef = useRef<string[]>([]);
+  const draggedDescendantsRef = useRef<ReadonlySet<string>>(new Set());
+  const selectionAnchorRef = useRef<string | null>(selectedId);
+  const lastLeadRef = useRef<string | null>(selectedId);
+  const typeaheadBufferRef = useRef('');
+  const typeaheadDeadlineRef = useRef(0);
 
   const [activeDragId, setActiveDragId] = useState<UniqueIdentifier | null>(null);
+  const [draggedIds, setDraggedIds] = useState<string[]>([]);
   const [overId, setOverId] = useState<UniqueIdentifier | null>(null);
   const [dropPosition, setDropPosition] = useState<NotesWorkspaceDropPosition>('inside');
+  const [dropInvalid, setDropInvalid] = useState(false);
   const [internalRenamingId, setInternalRenamingId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [internalSelectedIds, setInternalSelectedIds] = useState<ReadonlySet<string> | null>(null);
 
   const expandedSet = useMemo(() => toExpandedSet(expandedIds), [expandedIds]);
   const expandedRef = useRef(expandedSet);
@@ -114,6 +151,37 @@ export function NotesWorkspaceTree({
   const visibleIds = useMemo(() => rows.map((row) => row.id), [rows]);
 
   const effectiveRenamingId = renamingId ?? internalRenamingId;
+
+  // Effective multi-selection: controlled prop wins; otherwise the internal
+  // set once a multi interaction happened; otherwise mirror `selectedId`.
+  const selectionSet = useMemo<ReadonlySet<string>>(() => {
+    if (controlledSelectedIds) return toExpandedSet(controlledSelectedIds);
+    if (internalSelectedIds) return internalSelectedIds;
+    return selectedId ? new Set([selectedId]) : new Set();
+  }, [controlledSelectedIds, internalSelectedIds, selectedId]);
+  const selectionRef = useRef(selectionSet);
+  selectionRef.current = selectionSet;
+
+  // Host-driven selectedId changes (not echoes of our own onSelect calls)
+  // collapse the internal multi-selection back to the single row.
+  useEffect(() => {
+    if (selectedId === lastLeadRef.current) return;
+    lastLeadRef.current = selectedId;
+    selectionAnchorRef.current = selectedId;
+    setInternalSelectedIds(null);
+    setFocusedId(selectedId);
+  }, [selectedId]);
+
+  const applySelection = useCallback((ids: readonly string[], anchor: string | null) => {
+    selectionAnchorRef.current = anchor;
+    setInternalSelectedIds(new Set(ids));
+    onSelectionChange?.([...ids]);
+  }, [onSelectionChange]);
+
+  const notifyLead = useCallback((id: string | null) => {
+    lastLeadRef.current = id;
+    onSelect(id);
+  }, [onSelect]);
 
   const cancelAutoExpand = useCallback(() => {
     if (autoExpandTimerRef.current) {
@@ -148,20 +216,28 @@ export function NotesWorkspaceTree({
     }, AUTO_EXPAND_DELAY_MS);
   }, [cancelAutoExpand, expandFolder]);
 
+  const hideDropIndicator = useCallback(() => {
+    const indicator = dropIndicatorRef.current;
+    if (!indicator) return;
+    indicator.style.display = 'none';
+    indicator.dataset.invalid = 'false';
+  }, []);
+
   const updateDropIndicator = useCallback((
     overRect: { top: number; height: number } | null | undefined,
     position: NotesWorkspaceDropPosition,
     targetId: string,
     depth: number,
+    invalid: boolean,
   ) => {
     const indicator = dropIndicatorRef.current;
     const tree = treeRef.current;
     if (!indicator || !tree || !overRect) {
-      if (indicator) indicator.style.display = 'none';
+      hideDropIndicator();
       return;
     }
     if (position === 'inside') {
-      indicator.style.display = 'none';
+      hideDropIndicator();
       return;
     }
     const containerTop = tree.getBoundingClientRect().top;
@@ -176,7 +252,8 @@ export function NotesWorkspaceTree({
     indicator.style.left = `${indentLeft}px`;
     indicator.style.right = `${DROP_INDICATOR_SIDE_GAP_PX}px`;
     indicator.dataset.targetId = targetId;
-  }, []);
+    indicator.dataset.invalid = invalid ? 'true' : 'false';
+  }, [hideDropIndicator]);
 
   const resolvePointerY = (event: DragOverEvent): number => {
     const activeRect = event.active.rect.current;
@@ -189,14 +266,61 @@ export function NotesWorkspaceTree({
 
   const handleDragStart = (event: DragStartEvent) => {
     if (disableDrag) return;
+    const dragId = String(event.active.id);
     setActiveDragId(event.active.id);
     setOverId(null);
     setDropPosition('inside');
     dropPositionRef.current = 'inside';
-    if (dropIndicatorRef.current) dropIndicatorRef.current.style.display = 'none';
+    setDropInvalid(false);
+    dropInvalidRef.current = false;
+    hideDropIndicator();
     cancelAutoExpand();
-    onSelect(String(event.active.id));
+
+    const selection = selectionRef.current;
+    let dragged: string[];
+    if (selection.has(dragId) && selection.size > 1) {
+      dragged = excludeNestedIds(items, selection);
+    } else {
+      dragged = [dragId];
+      applySelection([dragId], dragId);
+      notifyLead(dragId);
+    }
+    draggedIdsRef.current = dragged;
+    setDraggedIds(dragged);
+
+    const descendants = new Set<string>();
+    for (const id of dragged) {
+      const item = findItemById(items, id);
+      if (item && isFolderItem(item)) {
+        for (const childId of collectDescendantIds(items, id)) {
+          descendants.add(childId);
+        }
+      }
+    }
+    draggedDescendantsRef.current = descendants;
   };
+
+  const isInvalidDropTarget = useCallback((
+    targetId: string,
+    position: NotesWorkspaceDropPosition,
+  ): boolean => {
+    if (targetId === NOTES_WORKSPACE_TREE_ROOT_ID) return false;
+    const dragged = draggedIdsRef.current;
+    if (dragged.includes(targetId)) return true;
+    if (dragged.length === 1) {
+      const dragItem = findItemById(items, dragged[0]);
+      if (dragItem && isFolderItem(dragItem)) {
+        return isInvalidFolderDrop(
+          dragged[0],
+          targetId,
+          position,
+          draggedDescendantsRef.current,
+        );
+      }
+      return false;
+    }
+    return draggedDescendantsRef.current.has(targetId);
+  }, [items]);
 
   const handleDragOver = (event: DragOverEvent) => {
     const { over } = event;
@@ -204,8 +328,10 @@ export function NotesWorkspaceTree({
       setOverId(null);
       setDropPosition('inside');
       dropPositionRef.current = 'inside';
+      setDropInvalid(false);
+      dropInvalidRef.current = false;
       cancelAutoExpand();
-      if (dropIndicatorRef.current) dropIndicatorRef.current.style.display = 'none';
+      hideDropIndicator();
       return;
     }
 
@@ -215,8 +341,10 @@ export function NotesWorkspaceTree({
     if (targetId === NOTES_WORKSPACE_TREE_ROOT_ID) {
       setDropPosition('inside');
       dropPositionRef.current = 'inside';
+      setDropInvalid(false);
+      dropInvalidRef.current = false;
       cancelAutoExpand();
-      if (dropIndicatorRef.current) dropIndicatorRef.current.style.display = 'none';
+      hideDropIndicator();
       return;
     }
 
@@ -235,48 +363,63 @@ export function NotesWorkspaceTree({
     setDropPosition(position);
     dropPositionRef.current = position;
 
-    if (isFolder && position === 'inside') {
+    const invalid = isInvalidDropTarget(targetId, position);
+    setDropInvalid(invalid);
+    dropInvalidRef.current = invalid;
+
+    if (isFolder && position === 'inside' && !invalid) {
       scheduleAutoExpand(targetId);
     } else {
       cancelAutoExpand();
     }
 
     const row = rows.find((entry) => entry.id === targetId);
-    updateDropIndicator(over.rect, position, targetId, row?.depth ?? 0);
+    updateDropIndicator(over.rect, position, targetId, row?.depth ?? 0, invalid);
+  };
+
+  const resetDragState = () => {
+    setActiveDragId(null);
+    setDraggedIds([]);
+    setOverId(null);
+    setDropPosition('inside');
+    dropPositionRef.current = 'inside';
+    setDropInvalid(false);
+    cancelAutoExpand();
+    hideDropIndicator();
+    draggedIdsRef.current = [];
+    draggedDescendantsRef.current = new Set();
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     const position = dropPositionRef.current;
-    setActiveDragId(null);
-    setOverId(null);
-    setDropPosition('inside');
-    dropPositionRef.current = 'inside';
-    cancelAutoExpand();
-    if (dropIndicatorRef.current) dropIndicatorRef.current.style.display = 'none';
+    const targetId = over ? String(over.id) : null;
+    const invalid = dropInvalidRef.current
+      || (targetId !== null && isInvalidDropTarget(targetId, position));
+    const dragged = draggedIdsRef.current.length
+      ? [...draggedIdsRef.current]
+      : [String(active.id)];
+    resetDragState();
+    dropInvalidRef.current = false;
 
-    if (!over || active.id === over.id) return;
+    if (targetId === null || invalid) return;
+    if (dragged.includes(targetId)) return;
 
-    const dragId = String(active.id);
-    const targetId = String(over.id);
-    const dragItem = findItemById(items, dragId);
-    if (!dragItem) return;
-
-    if (isFolderItem(dragItem)) {
-      const descendants = collectDescendantIds(items, dragId);
-      if (isInvalidFolderDrop(dragId, targetId, position, descendants)) return;
+    if (onMoveMany) {
+      onMoveMany(dragged, targetId, position);
+      return;
     }
-
-    onMove(dragId, targetId, position);
+    // `after` inserts each id right after the target, so iterate in reverse
+    // to keep the original visual order in the destination.
+    const ordered = position === 'after' ? [...dragged].reverse() : dragged;
+    for (const dragId of ordered) {
+      onMove(dragId, targetId, position);
+    }
   };
 
   const handleDragCancel = () => {
-    setActiveDragId(null);
-    setOverId(null);
-    setDropPosition('inside');
-    dropPositionRef.current = 'inside';
-    cancelAutoExpand();
-    if (dropIndicatorRef.current) dropIndicatorRef.current.style.display = 'none';
+    resetDragState();
+    dropInvalidRef.current = false;
   };
 
   const beginRename = useCallback((id: string) => {
@@ -296,6 +439,13 @@ export function NotesWorkspaceTree({
     endRename();
   }, [endRename, onRename]);
 
+  const focusRowDom = useCallback((id: string) => {
+    requestAnimationFrame(() => {
+      const el = treeRef.current?.querySelector<HTMLElement>(`[data-nwt-id="${id}"]`);
+      el?.focus();
+    });
+  }, []);
+
   const openMenu = useCallback((
     item: NotesWorkspaceTreeItem,
     event: { clientX: number; clientY: number; preventDefault?: () => void },
@@ -311,17 +461,122 @@ export function NotesWorkspaceTree({
     setContextMenu({ item, x: pos.x, y: pos.y });
   }, [beginRename, getMenuItems, onContextMenuOpen]);
 
-  const focusRow = useCallback((id: string) => {
-    onSelect(id === NOTES_WORKSPACE_TREE_ROOT_ID ? null : id);
-    requestAnimationFrame(() => {
-      const el = treeRef.current?.querySelector<HTMLElement>(
-        id === NOTES_WORKSPACE_TREE_ROOT_ID
-          ? `[data-nwt-id="${NOTES_WORKSPACE_TREE_ROOT_ID}"]`
-          : `[data-nwt-id="${id}"]`,
-      );
-      el?.focus();
+  const closeMenu = useCallback(() => {
+    setContextMenu((current) => {
+      if (current) focusRowDom(current.item.id);
+      return null;
     });
-  }, [onSelect]);
+  }, [focusRowDom]);
+
+  const focusRow = useCallback((id: string) => {
+    const lead = id === NOTES_WORKSPACE_TREE_ROOT_ID ? null : id;
+    applySelection(lead ? [lead] : [], lead);
+    setFocusedId(lead);
+    notifyLead(lead);
+    focusRowDom(id);
+  }, [applySelection, focusRowDom, notifyLead]);
+
+  const handleRowClick = useCallback((
+    item: NotesWorkspaceTreeItem,
+    event: React.MouseEvent,
+  ) => {
+    if (event.shiftKey) {
+      const anchor = selectionAnchorRef.current ?? selectedId ?? item.id;
+      const range = resolveRangeSelection(rows, anchor, item.id);
+      applySelection(range, anchor);
+      setFocusedId(item.id);
+      notifyLead(item.id);
+      return;
+    }
+    if (event.metaKey || event.ctrlKey) {
+      const next = new Set(selectionRef.current);
+      if (next.has(item.id)) next.delete(item.id);
+      else next.add(item.id);
+      const ordered = visibleIds.filter((id) => next.has(id));
+      applySelection(ordered, item.id);
+      setFocusedId(item.id);
+      if (next.has(item.id)) notifyLead(item.id);
+      return;
+    }
+    applySelection([item.id], item.id);
+    setFocusedId(item.id);
+    notifyLead(item.id);
+    if (isFolderItem(item)) onToggleExpand(item.id);
+    else onOpen(item.id);
+  }, [applySelection, notifyLead, onOpen, onToggleExpand, rows, selectedId, visibleIds]);
+
+  const handleRootSelect = useCallback(() => {
+    applySelection([], null);
+    setFocusedId(null);
+    notifyLead(null);
+  }, [applySelection, notifyLead]);
+
+  const deleteSelection = useCallback((currentId: string) => {
+    if (!onDelete && !onDeleteMany) return false;
+    const selection = selectionRef.current;
+    const batchIds = selection.has(currentId) && selection.size > 1
+      ? visibleIds.filter((id) => selection.has(id))
+      : [currentId];
+    const batchItems = batchIds
+      .map((id) => findItemById(items, id))
+      .filter((item): item is NotesWorkspaceTreeItem => item !== null);
+    if (!batchItems.length) return false;
+    if (batchItems.length > 1 && onDeleteMany) {
+      onDeleteMany(batchItems);
+      return true;
+    }
+    if (!onDelete) {
+      onDeleteMany?.(batchItems);
+      return true;
+    }
+    for (const item of batchItems) {
+      onDelete(item);
+    }
+    return true;
+  }, [items, onDelete, onDeleteMany, visibleIds]);
+
+  const extendSelectionTo = useCallback((currentId: string, targetIndex: number) => {
+    const clamped = Math.max(0, Math.min(visibleIds.length - 1, targetIndex));
+    const targetId = visibleIds[clamped];
+    if (!targetId) return;
+    const anchor = selectionAnchorRef.current
+      ?? (currentId !== NOTES_WORKSPACE_TREE_ROOT_ID ? currentId : targetId);
+    const range = resolveRangeSelection(rows, anchor, targetId);
+    applySelection(range, anchor);
+    setFocusedId(targetId);
+    notifyLead(targetId);
+    focusRowDom(targetId);
+  }, [applySelection, focusRowDom, notifyLead, rows, visibleIds]);
+
+  const toggleExpandAll = useCallback(() => {
+    const folderIds = collectExpandableFolderIds(items);
+    if (!folderIds.length) return;
+    const collapsed = folderIds.filter((id) => !expandedRef.current.has(id));
+    if (collapsed.length) {
+      for (const id of collapsed) expandFolder(id);
+      return;
+    }
+    for (const id of folderIds) {
+      if (expandedRef.current.has(id)) onToggleExpand(id);
+    }
+  }, [expandFolder, items, onToggleExpand]);
+
+  const handleTypeahead = useCallback((currentId: string, char: string): boolean => {
+    const now = Date.now();
+    typeaheadBufferRef.current = now <= typeaheadDeadlineRef.current
+      ? typeaheadBufferRef.current + char
+      : char;
+    typeaheadDeadlineRef.current = now + TYPEAHEAD_TTL_MS;
+    const target = resolveTypeaheadTarget({
+      query: typeaheadBufferRef.current,
+      currentId,
+      rows,
+    });
+    if (target && target !== currentId) {
+      focusRow(target);
+    }
+    return target !== null;
+  }, [focusRow, rows]);
 
   const handleTreeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (effectiveRenamingId) return;
@@ -333,12 +588,51 @@ export function NotesWorkspaceTree({
     if (!currentId) return;
 
     if ((event.key === 'Delete' || event.key === 'Backspace') && currentId !== NOTES_WORKSPACE_TREE_ROOT_ID) {
-      const item = findItemById(items, currentId);
-      if (item && onDelete) {
+      if (deleteSelection(currentId)) {
         event.preventDefault();
         event.stopPropagation();
-        onDelete(item);
       }
+      return;
+    }
+
+    if (event.shiftKey && (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End')) {
+      const index = visibleIds.indexOf(currentId);
+      let targetIndex: number;
+      if (event.key === 'Home') targetIndex = 0;
+      else if (event.key === 'End') targetIndex = visibleIds.length - 1;
+      else if (index === -1) targetIndex = event.key === 'ArrowDown' ? 0 : visibleIds.length - 1;
+      else targetIndex = event.key === 'ArrowDown' ? index + 1 : index - 1;
+      event.preventDefault();
+      extendSelectionTo(currentId, targetIndex);
+      return;
+    }
+
+    const wantsMenuKey = event.key === 'ContextMenu'
+      || (event.key === 'Enter' && event.altKey)
+      || (event.key === 'F10' && event.shiftKey);
+    if (wantsMenuKey && currentId !== NOTES_WORKSPACE_TREE_ROOT_ID) {
+      const item = findItemById(items, currentId);
+      if (item) {
+        event.preventDefault();
+        const rect = target.getBoundingClientRect();
+        openMenu(item, {
+          clientX: rect.left + Math.min(rect.width / 2, 160),
+          clientY: rect.bottom,
+          preventDefault: () => {},
+        });
+      }
+      return;
+    }
+
+    if (event.key === '*' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      toggleExpandAll();
+      return;
+    }
+
+    if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      handleTypeahead(currentId, event.key);
       return;
     }
 
@@ -358,12 +652,16 @@ export function NotesWorkspaceTree({
       return;
     }
     if (result.type === 'toggle') {
-      onSelect(result.id);
+      applySelection([result.id], result.id);
+      setFocusedId(result.id);
+      notifyLead(result.id);
       onToggleExpand(result.id);
       return;
     }
     if (result.type === 'open') {
-      onSelect(result.id);
+      applySelection([result.id], result.id);
+      setFocusedId(result.id);
+      notifyLead(result.id);
       onOpen(result.id);
       return;
     }
@@ -373,11 +671,13 @@ export function NotesWorkspaceTree({
   };
 
   const activeDragItem = activeDragId ? findItemById(items, String(activeDragId)) : null;
+  const draggedIdSet = useMemo(() => new Set(draggedIds), [draggedIds]);
 
   const resolvedRootLabel = rootLabel
     ?? t('workbench:notesWorkspace.tree.root');
 
   const rootDropInside = overId === NOTES_WORKSPACE_TREE_ROOT_ID && dropPosition === 'inside';
+  const focusTargetId = focusedId ?? selectedId;
 
   return (
     <DndContext
@@ -398,6 +698,7 @@ export function NotesWorkspaceTree({
           role="tree"
           aria-label={ariaLabel ?? t('workbench:notesWorkspace.tree.aria')}
           aria-busy={ariaBusy}
+          aria-multiselectable="true"
           onKeyDown={handleTreeKeyDown}
         >
           <div ref={dropIndicatorRef} className="nwt-drop-indicator" style={{ display: 'none' }} />
@@ -407,14 +708,14 @@ export function NotesWorkspaceTree({
               selected={selectedId === null}
               dropInside={rootDropInside}
               label={resolvedRootLabel}
-              onSelect={() => onSelect(null)}
+              onSelect={handleRootSelect}
             />
           ) : null}
 
           {rows.map((row) => {
             const isOver = overId === row.id;
             const dropInside = Boolean(
-              isOver && isFolderItem(row.item) && dropPosition === 'inside',
+              isOver && isFolderItem(row.item) && dropPosition === 'inside' && !dropInvalid,
             );
             // When the library-root row is shown, offset depth so aria-level /
             // indent treat root as level 1 and first real items as level 2.
@@ -425,15 +726,19 @@ export function NotesWorkspaceTree({
                 item={row.item}
                 depth={depth}
                 expanded={expandedSet.has(row.id)}
-                selected={selectedId === row.id}
+                selected={selectionSet.has(row.id)}
                 active={activeId === row.id}
                 renaming={effectiveRenamingId === row.id}
                 dropInside={dropInside}
                 dropPosition={isOver ? dropPosition : null}
+                dropInvalid={isOver && dropInvalid}
                 disableDrag={disableDrag}
+                dragMember={activeDragId !== null && draggedIdSet.has(row.id)}
+                focusable={focusTargetId === row.id}
                 siblingCount={row.siblingCount}
                 indexAmongSiblings={row.indexAmongSiblings}
                 onSelect={onSelect}
+                onRowClick={handleRowClick}
                 onOpen={onOpen}
                 onToggleExpand={onToggleExpand}
                 onRenameCommit={commitRename}
@@ -450,7 +755,7 @@ export function NotesWorkspaceTree({
         ? createPortal(
           <DragOverlay dropAnimation={dropAnimationConfig}>
             {activeDragItem ? (
-              <div className="nwt-drag-overlay">
+              <div className="nwt-drag-overlay" data-invalid={dropInvalid ? 'true' : undefined}>
                 <span className="nwt-icon" aria-hidden>
                   {isFolderItem(activeDragItem) ? (
                     <FolderSimple size={15} weight="fill" />
@@ -461,6 +766,9 @@ export function NotesWorkspaceTree({
                   )}
                 </span>
                 <span className="nwt-drag-overlay-title">{activeDragItem.name}</span>
+                {draggedIds.length > 1 ? (
+                  <span className="nwt-drag-overlay-badge">{draggedIds.length}</span>
+                ) : null}
               </div>
             ) : null}
           </DragOverlay>,
@@ -475,7 +783,7 @@ export function NotesWorkspaceTree({
           items={getMenuItems(contextMenu.item, {
             beginRename: () => beginRename(contextMenu.item.id),
           })}
-          onClose={() => setContextMenu(null)}
+          onClose={closeMenu}
         />
       ) : null}
     </DndContext>

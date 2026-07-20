@@ -215,7 +215,7 @@ const PaneContent: React.FC<{ config: WallpaperConfig }> = ({ config }) => {
 const FADE_PRUNE_FALLBACK_MS = 640;
 
 export interface WallpaperLayerProps {
-  /** 缺省 = 默认渐变预设 aurora */
+  /** 缺省 = DEFAULT_WALLPAPER（mountain-mist 静态图预设） */
   wallpaper?: WallpaperConfig;
 }
 

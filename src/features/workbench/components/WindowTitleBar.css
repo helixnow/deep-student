@@ -171,6 +171,7 @@
  * 标题：焦点/非焦点 色与权重过渡 + 长标题渐隐省略
  * ========================================================================== */
 
+/* font-weight 不做 transition：插值差且触发文本重排；焦点切换只动 color/opacity */
 .wb-title-text {
   display: block;
   max-width: 100%;
@@ -181,13 +182,11 @@
   opacity: 1;
   transition:
     color var(--wb-title-fade-duration) var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
-    opacity var(--wb-title-fade-duration) var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
-    font-weight var(--wb-title-fade-duration) var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+    opacity var(--wb-title-fade-duration) var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
 }
 
 .wb-title-bar-idle .wb-title-text {
   color: var(--wb-titlebar-fg-idle);
-  font-weight: 500;
   opacity: 0.82;
 }
 

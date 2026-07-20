@@ -101,13 +101,25 @@ export function registerProjectionSource(typeId: string, source: ProjectionSourc
 
 /**
  * workbench 开关打开（或快照恢复完成）后调用：
- * 把各源当前存活的实例补投成窗口（project 幂等，已有窗不重复开）。
+ * - 把各源当前存活的实例补投成窗口（project 幂等，已有窗不重复开）；
+ * - 反向收口：禁用期间已结束的实例（快照里还挂着壳）默认关窗，
+ *   否则启用后会残留「业务已结束的孤儿窗」（keepShell 源不收口）。
  */
 export function resyncProjections(): void {
   if (!workbenchBus.isEnabled()) return;
+  const store = useWindowStore.getState();
   for (const state of sources.values()) {
     if (state.source.projectWindows === false) continue;
     for (const inst of state.current.values()) projectInstance(state.typeId, inst);
+    if (!state.source.keepShell) {
+      for (const win of Object.values(store.windows)) {
+        if (win.typeId !== state.typeId) continue;
+        if (!win.instanceKey) continue;
+        if (!state.current.has(win.instanceKey)) {
+          closeProjectedWindow(state.typeId, win.instanceKey);
+        }
+      }
+    }
   }
 }
 

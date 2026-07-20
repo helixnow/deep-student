@@ -89,8 +89,14 @@ export const PRESENCE_TTL_MS = 8000;
 export const HEARTBEAT_MS = 3000;
 /** R2-06：过期 presence 自愈扫描周期 */
 export const PRESENCE_SWEEP_MS = 2000;
-/** stop 后等待当前 op 自然结算的上限；超时转为明确 orphan partial。 */
-export const ORPHAN_DRAIN_MS = 15_000;
+/**
+ * stop 后等待当前 op 自然结算的上限；超时转为明确 orphan partial。
+ * 与 Rust 侧 CANCEL_DRAIN_MS(3s) 对齐语义：Rust 3s 后已向模型报
+ * RESULT_UNKNOWN，前端无需再等 15s 才承认 orphan——6s（2× Rust drain +
+ * 余量）即可进入 orphan-draining 诊断态；写租约仍保持到 promise 真正
+ * settle（防幽灵写），此常量只控制状态标记时机。
+ */
+export const ORPHAN_DRAIN_MS = 6_000;
 /** DESIGN §4.3 / §7：同时演出窗口上限 */
 const MAX_STAGED_WINDOWS = 2;
 const SETTING_AGENT_CONTROL = 'desktop.workbenchAgentControl';
@@ -1532,12 +1538,15 @@ async function handleObserve(req: AcrBridgeRequest): Promise<AcrBridgeResponse> 
 }
 
 async function handleAct(req: AcrBridgeRequest): Promise<AcrBridgeResponse> {
-  if (!isAgentActRequestReadOnly(req.args) && !workbenchBus.isEnabled()) {
+  const readOnly = isAgentActRequestReadOnly(req.args);
+  if (!readOnly && !workbenchBus.isEnabled()) {
     return bridgeGateErr(req.correlationId, gateDisabledOs());
   }
   const request = asRecord(req.args) as unknown as AgentActRequest;
   const windowId = resolveAgentRequestWindowId(request);
-  const startedOperation = beginManagedOperation(req, 'act', windowId, true);
+  // 只读 act（整批 mutates=false）不占窗口写租约：不阻塞并行的
+  // mutating run / 另一路只读 act（对齐 observe/wait_for 语义）
+  const startedOperation = beginManagedOperation(req, 'act', windowId, !readOnly);
   if (startedOperation.error) return startedOperation.error;
   const operation = startedOperation.operation!;
   bindRunLedgerMetadata(operation.key, {

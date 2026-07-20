@@ -71,15 +71,21 @@ const mapCache = new Map<number, string>();
 /** bucket → 引用计数（共享 filter 生命周期） */
 const filterRefs = new Map<string, number>();
 let materialWatchInstalled = false;
-/** 当前真正挂了 url(#filter) 的元素（FIFO 抢占） */
+/** materialWatch 的拆除函数（测试 reset 需真正 disconnect，避免叠加监听） */
+let materialWatchDispose: (() => void) | null = null;
+/** 当前真正挂了 url(#filter) 的元素（FIFO 抢占；静态降级后让出名额） */
 const activeEls: HTMLElement[] = [];
 
 function isChromiumLike(): boolean {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent || '';
   if (/CriOS|FxiOS/.test(ua)) return false;
+  // 只认真正的 Chromium 内核（Chrome/Chromium/Edge UA 或 window.chrome）。
+  // 此前把裸 `WebView`/`Tauri` 也算进来，macOS Tauri 的 WKWebView 会被误判
+  // 可跑 SVG displacement（WebKit 对 backdrop-filter+url(#) 支持不一致）；
+  // Windows Tauri 走 WebView2，UA 自带 Chrome/Edg 标记，不受影响。
   return (
-    /Chrome|Chromium|Edg|EdgA|EdgiOS|WebView|Tauri/i.test(ua) ||
+    /Chrome\/|Chromium\/|Edg\//.test(ua) ||
     Boolean((window as unknown as { chrome?: unknown }).chrome)
   );
 }
@@ -137,6 +143,7 @@ function ensureMaterialWatch(): void {
     attributes: true,
     attributeFilter: ['data-wb-material'],
   });
+  let removeMedia: (() => void) | null = null;
   if (typeof window !== 'undefined' && window.matchMedia) {
     try {
       const mq = window.matchMedia(REDUCED_TRANSPARENCY_QUERY);
@@ -147,12 +154,21 @@ function ensureMaterialWatch(): void {
           /* ignore */
         }
       };
-      if (mq && typeof mq.addEventListener === 'function') mq.addEventListener('change', onChange);
-      else if (mq && typeof mq.addListener === 'function') mq.addListener(onChange);
+      if (mq && typeof mq.addEventListener === 'function') {
+        mq.addEventListener('change', onChange);
+        removeMedia = () => mq.removeEventListener('change', onChange);
+      } else if (mq && typeof mq.addListener === 'function') {
+        mq.addListener(onChange);
+        removeMedia = () => mq.removeListener?.(onChange);
+      }
     } catch {
       /* ignore */
     }
   }
+  materialWatchDispose = () => {
+    mo.disconnect();
+    removeMedia?.();
+  };
   syncLiquidGlassCapability();
 }
 
@@ -389,6 +405,10 @@ function scheduleStaticDegrade(binding: LensBinding): void {
     releaseFilter(binding.filterId);
     binding.staticMode = true;
     applyStaticFilter(binding.el);
+    // 降级后让出真折射并发槽：静态毛玻璃不再占 MAX_ACTIVE_LENSES 名额，
+    // 否则两个常驻浮层降级后，新浮层永远拿不到入口帧折射。
+    const idx = activeEls.indexOf(binding.el);
+    if (idx >= 0) activeEls.splice(idx, 1);
   }, LENS_STATIC_DEGRADE_MS);
 }
 
@@ -532,7 +552,7 @@ export function useLiquidGlassLens(
   }, [ref, enabled, radius, scale]);
 }
 
-/** 单测：重置 */
+/** 单测：重置（真正 disconnect observer/media 监听，防重复挂载叠加） */
 export function resetLiquidGlassLensForTests(): void {
   capability = null;
   for (const el of [...bindings.keys()]) detachLiquidGlassLens(el);
@@ -540,6 +560,8 @@ export function resetLiquidGlassLensForTests(): void {
   mapCache.clear();
   filterRefs.clear();
   activeEls.length = 0;
+  materialWatchDispose?.();
+  materialWatchDispose = null;
   materialWatchInstalled = false;
   if (typeof document !== 'undefined') {
     document.getElementById(SVG_HOST_ID)?.remove();

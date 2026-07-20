@@ -11,6 +11,7 @@ import {
   FolderOpen,
   GearSix,
   Globe,
+  Lightning,
   ListChecks,
   ShieldCheck,
   Stop,
@@ -48,7 +49,9 @@ export interface KillSwitchStatus {
 function parseKillSwitchStatus(raw: unknown): KillSwitchStatus {
   const value = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   return {
-    tripped: Boolean(value.tripped),
+    tripped: Boolean(
+      value.killSwitchTripped ?? value.kill_switch_tripped ?? value.tripped,
+    ),
     trippedAtMs:
       typeof value.trippedAtMs === 'number'
         ? value.trippedAtMs
@@ -242,6 +245,8 @@ export function AgentControlDockEntry({
   });
   const [killSwitchBusy, setKillSwitchBusy] = React.useState(false);
   const [killSwitchError, setKillSwitchError] = React.useState<string | null>(null);
+  /** Inline error for the automation recovery card (resume agents / resume automations). */
+  const [automationError, setAutomationError] = React.useState<string | null>(null);
   const [confirmStop, setConfirmStop] = React.useState(false);
   const [confirmResumeAutomations, setConfirmResumeAutomations] = React.useState(false);
   const popoverRef = React.useRef<HTMLDivElement | null>(null);
@@ -295,6 +300,7 @@ export function AgentControlDockEntry({
       setConfirmStop(false);
       setConfirmResumeAutomations(false);
       setKillSwitchError(null);
+      setAutomationError(null);
     })
       .then((fn) => {
         if (cancelled) fn();
@@ -340,6 +346,7 @@ export function AgentControlDockEntry({
       setConfirmStop(false);
       setConfirmResumeAutomations(false);
       setKillSwitchError(null);
+      setAutomationError(null);
     }
   }, [seen]);
 
@@ -380,12 +387,12 @@ export function AgentControlDockEntry({
   const runResumeAgents = React.useCallback(async () => {
     if (killSwitchBusy) return;
     setKillSwitchBusy(true);
-    setKillSwitchError(null);
+    setAutomationError(null);
     try {
       const raw = await tauriInvoke('chat_v2_resume_agents');
       setKillSwitch(parseKillSwitchStatus(raw));
     } catch {
-      setKillSwitchError(t('agentControlCenter.killSwitch.resumeFailed'));
+      setAutomationError(t('agentControlCenter.killSwitch.resumeFailed'));
     } finally {
       setKillSwitchBusy(false);
     }
@@ -394,13 +401,15 @@ export function AgentControlDockEntry({
   const runResumeAutomations = React.useCallback(async () => {
     if (killSwitchBusy) return;
     setKillSwitchBusy(true);
-    setKillSwitchError(null);
+    setAutomationError(null);
     try {
+      // Backend emits kill_switch_changed on success, so StatusBar and other
+      // listeners refresh without any cross-component imports.
       const raw = await tauriInvoke('chat_v2_resume_automations');
       setKillSwitch(parseKillSwitchStatus(raw));
       setConfirmResumeAutomations(false);
     } catch {
-      setKillSwitchError(t('agentControlCenter.killSwitch.resumeFailed'));
+      setAutomationError(t('agentControlCenter.killSwitch.resumeFailed'));
     } finally {
       setKillSwitchBusy(false);
     }
@@ -409,6 +418,12 @@ export function AgentControlDockEntry({
   const statusLabel = t(`settings.agentControl.${mode}`);
   const showAutomationsPausedNotice =
     !killSwitch.tripped && killSwitch.automationsPaused;
+  /** Automation scheduler card state: tripped > paused (KS cleared) > running. */
+  const automationState: 'running' | 'tripped' | 'paused' = killSwitch.tripped
+    ? 'tripped'
+    : killSwitch.automationsPaused
+      ? 'paused'
+      : 'running';
   const baseTriggerLabel = t('agentControlCenter.triggerLabel', {
     status: statusLabel,
   });
@@ -521,42 +536,78 @@ export function AgentControlDockEntry({
                   )}
                 </div>
 
-                {(killSwitch.tripped || showAutomationsPausedNotice) && (
-                  <div
-                    className="wb-agent-kill-banner"
-                    data-testid="wb-agent-kill-switch-banner"
-                    role="status"
-                    aria-live="assertive"
-                    aria-atomic="true"
-                    aria-busy={killSwitchBusy || undefined}
-                  >
-                    <p>
-                      {killSwitch.tripped
-                        ? t('agentControlCenter.killSwitch.trippedBanner')
-                        : t('agentControlCenter.killSwitch.automationsStillPaused')}
-                    </p>
-                    {killSwitch.tripped && killSwitch.reason ? (
-                      <small>
-                        {t('agentControlCenter.killSwitch.trippedReason', {
-                          reason: killSwitch.reason,
-                        })}
-                      </small>
+                {/* Automation scheduling status card (always visible, three states) */}
+                <div
+                  className={cn(
+                    'mx-3 mb-2 flex flex-col gap-1.5 rounded-lg border px-2.5 py-2 transition-colors duration-150',
+                    automationState === 'running' &&
+                      'border-[var(--border-soft,hsl(var(--border)/38%))]',
+                    automationState === 'paused' && 'border-amber-500/45 bg-amber-500/10',
+                    automationState === 'tripped' && 'border-red-500/45 bg-red-500/10',
+                  )}
+                  data-testid="wb-agent-automation-card"
+                  data-state={automationState}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'h-2 w-2 shrink-0 rounded-full transition-colors duration-150',
+                        automationState === 'running' && 'bg-emerald-500',
+                        automationState === 'paused' && 'bg-amber-500',
+                        automationState === 'tripped' && 'bg-red-500',
+                      )}
+                    />
+                    <span className="flex items-center gap-1 text-[11px] font-semibold">
+                      <Lightning size={12} weight="duotone" aria-hidden="true" />
+                      {t('agentControlCenter.automationCard.title')}
+                    </span>
+                    {automationState === 'running' ? (
+                      <span className="ml-auto text-[10px] text-muted-foreground">
+                        {t('agentControlCenter.automationCard.running')}
+                      </span>
                     ) : null}
-                    <div className="wb-agent-kill-banner-actions">
-                      {killSwitch.tripped ? (
-                        <NotionButton
-                          type="button"
-                          size="sm"
-                          variant="shell"
-                          disabled={killSwitchBusy}
-                          data-testid="wb-agent-resume-agents"
-                          onClick={() => void runResumeAgents()}
-                        >
-                          {t('agentControlCenter.killSwitch.resumeAgents')}
-                        </NotionButton>
+                  </div>
+
+                  {automationState !== 'running' && (
+                    <div
+                      className="flex flex-col gap-1.5"
+                      data-testid="wb-agent-kill-switch-banner"
+                      role="status"
+                      aria-live="assertive"
+                      aria-atomic="true"
+                      aria-busy={killSwitchBusy || undefined}
+                    >
+                      <p className="m-0 text-[11px] font-semibold leading-snug">
+                        {automationState === 'tripped'
+                          ? t('agentControlCenter.automationCard.tripped')
+                          : t('agentControlCenter.automationCard.paused')}
+                      </p>
+                      <small className="text-[10px] leading-snug text-muted-foreground">
+                        {automationState === 'tripped'
+                          ? t('agentControlCenter.automationCard.trippedHint')
+                          : t('agentControlCenter.automationCard.pausedHint')}
+                      </small>
+                      {automationState === 'tripped' && killSwitch.reason ? (
+                        <small className="text-[10px] leading-snug text-muted-foreground">
+                          {t('agentControlCenter.killSwitch.trippedReason', {
+                            reason: killSwitch.reason,
+                          })}
+                        </small>
                       ) : null}
-                      {showAutomationsPausedNotice ? (
-                        confirmResumeAutomations ? (
+                      <div className="wb-agent-kill-banner-actions">
+                        {automationState === 'tripped' ? (
+                          <NotionButton
+                            type="button"
+                            size="sm"
+                            variant="shell"
+                            disabled={killSwitchBusy}
+                            data-testid="wb-agent-resume-agents"
+                            onClick={() => void runResumeAgents()}
+                          >
+                            {t('agentControlCenter.killSwitch.resumeAgents')}
+                          </NotionButton>
+                        ) : confirmResumeAutomations ? (
                           <>
                             <NotionButton
                               type="button"
@@ -566,7 +617,9 @@ export function AgentControlDockEntry({
                               data-testid="wb-agent-resume-automations-confirm"
                               onClick={() => void runResumeAutomations()}
                             >
-                              {t('agentControlCenter.killSwitch.confirmResumeAutomations')}
+                              {killSwitchBusy
+                                ? t('agentControlCenter.automationCard.resuming')
+                                : t('agentControlCenter.killSwitch.confirmResumeAutomations')}
                             </NotionButton>
                             <NotionButton
                               type="button"
@@ -589,16 +642,21 @@ export function AgentControlDockEntry({
                           >
                             {t('agentControlCenter.killSwitch.resumeAutomations')}
                           </NotionButton>
-                        )
+                        )}
+                      </div>
+                      {confirmResumeAutomations && automationState === 'paused' ? (
+                        <small className="wb-agent-kill-confirm-copy">
+                          {t('agentControlCenter.killSwitch.resumeAutomationsConfirm')}
+                        </small>
+                      ) : null}
+                      {automationError ? (
+                        <p className="wb-agent-control-error" role="alert">
+                          {automationError}
+                        </p>
                       ) : null}
                     </div>
-                    {confirmResumeAutomations && showAutomationsPausedNotice ? (
-                      <small className="wb-agent-kill-confirm-copy">
-                        {t('agentControlCenter.killSwitch.resumeAutomationsConfirm')}
-                      </small>
-                    ) : null}
-                  </div>
-                )}
+                  )}
+                </div>
 
                 <div
                   className="wb-agent-kill-switch"

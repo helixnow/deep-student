@@ -18,6 +18,7 @@ import {
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { TodoItem, TodoList } from '@/features/todo/types';
 import { workbenchBus } from '../core/workbenchBus';
+import { useWindowStore } from '../core/windowStore';
 import { useWorkbenchGestures } from '../hooks/useWorkbenchGestures';
 import {
   completeTodoAgendaItem,
@@ -87,11 +88,31 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
     getTodoAgendaSnapshot,
     getTodoAgendaSnapshot,
   );
-  const today = useMemo(
-    () => new Date(snapshot.updatedAt || Date.now()),
-    [snapshot.updatedAt],
-  );
-  const todayKey = formatLocalDateKey(today);
+  // 「今天」用墙钟而非 snapshot.updatedAt（数据新鲜度 ≠ 日历日期）：
+  // 跨日时若轮询迟迟不刷新，日历/逾期判定会错一天。午夜与回前台时校正。
+  const [wallClockDayKey, setWallClockDayKey] = useState(() => formatLocalDateKey(new Date()));
+  useEffect(() => {
+    const syncDay = () => {
+      const next = formatLocalDateKey(new Date());
+      setWallClockDayKey((cur) => (cur === next ? cur : next));
+    };
+    const scheduleMidnight = () => {
+      const now = new Date();
+      const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+      return window.setTimeout(() => {
+        syncDay();
+        timer = scheduleMidnight();
+      }, midnight.getTime() - now.getTime());
+    };
+    let timer = scheduleMidnight();
+    document.addEventListener('visibilitychange', syncDay);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', syncDay);
+    };
+  }, []);
+  const today = useMemo(() => new Date(`${wallClockDayKey}T00:00:00`), [wallClockDayKey]);
+  const todayKey = wallClockDayKey;
   const [visibleMonth, setVisibleMonth] = useState(
     () => new Date(today.getFullYear(), today.getMonth(), 1),
   );
@@ -115,6 +136,15 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
     ));
     previousTodayKey.current = todayKey;
   }, [today, todayKey]);
+
+  // macOS Tahoe widget 语义：前景有可见窗口时桌面小组件半透明淡出，
+  // 空桌面（或全部最小化）时恢复实体；hover 时临时恢复可读（CSS 处理）。
+  const hasVisibleWindows = useWindowStore((s) => {
+    for (const win of Object.values(s.windows)) {
+      if (!win.minimized) return true;
+    }
+    return false;
+  });
 
   const locale = i18n.language?.startsWith('zh') ? 'zh-CN' : 'en-US';
   const calendarDays = useMemo(() => buildCalendarDays(visibleMonth), [visibleMonth]);
@@ -286,7 +316,8 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
         Math.abs(gesture.deltaX) < 52
       ) return;
       swipeCommittedRef.current = true;
-      changeMonth(gesture.deltaX > 0 ? 1 : -1);
+      // 语义化方向（手势层已按自然滚动折算）：左滑下月、右滑上月
+      changeMonth(gesture.direction === 'left' ? 1 : -1);
     },
   });
 
@@ -296,6 +327,7 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
       className="wb-agenda-widget wb-glass wb-glass-highlight"
       aria-label={t('agenda.label')}
       data-testid="wb-agenda-widget"
+      data-wb-widget-dim={hasVisibleWindows || undefined}
       onClick={(event) => {
         if (event.target === event.currentTarget) void openTodoView();
       }}

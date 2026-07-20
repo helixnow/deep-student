@@ -6,7 +6,7 @@
  */
 
 :where(:root) {
-  --wb-apps-duration: 200ms;
+  --wb-apps-duration: var(--wb-motion-spotlight, 200ms);
   --wb-apps-ease: var(--wb-motion-ease-out, var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)));
 }
 
@@ -56,7 +56,8 @@
   width: min(720px, 100%);
   max-height: min(560px, 100%);
   border-radius: var(--wb-radius-xl, 18px);
-  box-shadow: var(--wb-dock-shadow, 0 12px 40px hsl(var(--shadow-base, 0 0% 0%) / 0.22));
+  /* 中央玻璃件走 overlay 阴影档（--wb-dock-shadow 是 Dock 条专用，层级语义不同） */
+  box-shadow: var(--wb-shadow-overlay, 0 32px 96px hsl(var(--shadow-base, 0 0% 0%) / 0.30));
   color: var(--wb-titlebar-fg, inherit);
   opacity: 0;
   transform: translateY(10px) scale(0.97);
@@ -338,7 +339,15 @@
 .wb-apps-item-icon:has(> svg[data-workbench-app-icon]) > svg {
   width: 100%;
   height: 100%;
-  filter: drop-shadow(0 2px 4px rgba(33, 43, 54, 0.22));
+  filter: drop-shadow(0 2px 4px hsl(var(--shadow-base, 220 12% 17%) / 0.22));
+}
+
+/* 暗色主题：图标底座去掉写死的白色提亮/白高光，避免暗玻璃上出现粉白瓷贴 */
+:root.dark .wb-apps-item-icon {
+  background: color-mix(in hsl, hsl(var(--background)) 88%, white 12%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 2px 5px rgba(0, 0, 0, 0.35);
 }
 
 /* 网格视图：选中/悬停时图标轻微上浮（仅 transform） */

@@ -103,7 +103,12 @@ const FilesAppWindow: React.FC<AppWindowProps> = ({
     };
     findTarget();
     const observer = new MutationObserver(findTarget);
-    observer.observe(document.body, { childList: true, subtree: true });
+    // 观察范围收窄到本窗口壳（titlebar slot 只会出现在自己的窗壳内）；
+    // 观察整个 body 会让桌面任何 DOM 变动都触发全页 querySelectorAll。
+    const shell = document.querySelector<HTMLElement>(
+      `[data-wb-window-id="${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(windowId) : windowId}"]`,
+    );
+    observer.observe(shell ?? document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, [windowId]);
 

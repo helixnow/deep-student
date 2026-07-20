@@ -10,6 +10,7 @@ import { WbSysFade } from './SystemWindowShared';
 import { useWbSysSize } from './useWbSysSize';
 import { FlashcardsApp } from '@/features/flashcards/FlashcardsApp';
 import '@/features/flashcards/flashcards.css';
+import '@/features/flashcards/flashcards-dashboard.css';
 
 const FlashcardsAppWindow: React.FC<AppWindowProps> = ({ launchPayload, onTitleChange }) => {
   const { t } = useTranslation('workbench');

@@ -19,6 +19,7 @@ import {
 } from '../agentManifestUtils';
 import { buildMindmapAffordances } from '../mindmap/agentManifest';
 import {
+  activateWorkspaceResource,
   getWorkspaceActiveResource,
   getWorkspaceResourcesForWindow,
 } from './workspaceRegistry';
@@ -289,12 +290,23 @@ export function createNotesAgentManifest(
       const active = getWorkspaceActiveResource(ctx.windowId);
       const requestedArgs = actionArgs(action);
       if (action.name === 'scrollToHeading') {
-        return {
-          handled: false,
-          changed: false,
-          code: 'ACTION_UNAVAILABLE',
-          hint: '笔记表面尚未提供可确认的标题滚动 ACK',
-        };
+        // 经 workspaceRegistry 定向到本窗编辑器（editor.scrollToHeading 已实现，
+        // 此前这里硬返回 ACTION_UNAVAILABLE 与 activation 路径不一致）
+        if (!active || active.type !== 'note') {
+          return {
+            handled: false,
+            changed: false,
+            code: 'ANCHOR_NOT_FOUND',
+            hint: '当前活动标签不是笔记',
+          };
+        }
+        const { result } = await activateWorkspaceResource(
+          { type: 'note', id: active.id },
+          'scrollToHeading',
+          requestedArgs,
+          ctx.windowId,
+        );
+        return { changed: false, ...result };
       }
       if (action.name === 'openResource') {
         const type = requestedArgs.resourceType;

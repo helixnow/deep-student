@@ -34,10 +34,21 @@ export interface TreeRowProps {
   renaming: boolean;
   dropInside: boolean;
   dropPosition: NotesWorkspaceDropPosition | null;
+  /** Row hovered as an invalid drop target (self / descendant of drag). */
+  dropInvalid?: boolean;
   disableDrag?: boolean;
+  /** Row belongs to the current multi-drag payload (dimmed like the active row). */
+  dragMember?: boolean;
+  /** Roving-tabindex owner; defaults to `selected` when omitted. */
+  focusable?: boolean;
   siblingCount: number;
   indexAmongSiblings: number;
   onSelect: (id: string) => void;
+  /**
+   * When provided, replaces the default click behavior (select + toggle/open)
+   * so the host component can implement modifier-aware multi-selection.
+   */
+  onRowClick?: (item: NotesWorkspaceTreeItem, event: React.MouseEvent) => void;
   onOpen: (id: string) => void;
   onToggleExpand: (id: string) => void;
   onRenameCommit: (id: string, name: string) => void;
@@ -55,10 +66,14 @@ export function TreeRow({
   renaming,
   dropInside,
   dropPosition,
+  dropInvalid,
   disableDrag,
+  dragMember,
+  focusable,
   siblingCount,
   indexAmongSiblings,
   onSelect,
+  onRowClick,
   onOpen,
   onToggleExpand,
   onRenameCommit,
@@ -175,14 +190,19 @@ export function TreeRow({
       data-active={active ? 'true' : 'false'}
       data-drop-inside={dropInside ? 'true' : 'false'}
       data-drop-position={dropPosition ?? undefined}
-      data-dragging={isDragging ? 'true' : undefined}
+      data-drop-invalid={dropInvalid ? 'true' : undefined}
+      data-dragging={isDragging || dragMember ? 'true' : undefined}
       data-kind={item.kind}
       style={{
         paddingLeft,
         transform: isDragging ? CSS.Transform.toString(transform) : undefined,
         transition: isDragging ? transition : undefined,
       }}
-      onClick={() => {
+      onClick={(event) => {
+        if (onRowClick) {
+          onRowClick(item, event);
+          return;
+        }
         onSelect(item.id);
         if (folder) onToggleExpand(item.id);
         else onOpen(item.id);
@@ -201,7 +221,7 @@ export function TreeRow({
       {...(renaming ? {} : listeners)}
       // Keep tree semantics; sortable attributes default role="button".
       role="treeitem"
-      tabIndex={selected ? 0 : -1}
+      tabIndex={(focusable ?? selected) ? 0 : -1}
       aria-level={depth + 1}
       aria-setsize={siblingCount}
       aria-posinset={indexAmongSiblings + 1}

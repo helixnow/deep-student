@@ -189,9 +189,17 @@ export function useWorkbenchGestures(
       activeRef.current = pinch !== null || swipe !== null;
     };
 
+    // 目标 rect 会话级缓存：pinch 每帧 emit 若都 getBoundingClientRect，
+    // 会在跟手帧强制 layout；改为首次读取 + 会话结束/resize 失效。
+    let cachedRect: DOMRect | null = null;
+    const invalidateRect = () => {
+      cachedRect = null;
+    };
+    window.addEventListener('resize', invalidateRect);
+
     const centerOf = (clientX: number, clientY: number) => {
-      const rect = el.getBoundingClientRect();
-      return { centerX: clientX - rect.left, centerY: clientY - rect.top };
+      if (!cachedRect) cachedRect = el.getBoundingClientRect();
+      return { centerX: clientX - cachedRect.left, centerY: clientY - cachedRect.top };
     };
 
     const emitPinch = (phase: WorkbenchGesturePhase, session: PinchSession) => {
@@ -265,6 +273,8 @@ export function useWorkbenchGestures(
         if (swipe.started) emitSwipe('end', swipe);
         swipe = null;
       }
+      // 会话结束失效 rect 缓存：两次手势之间布局可能已变
+      invalidateRect();
       syncActive();
     };
 
@@ -387,6 +397,7 @@ export function useWorkbenchGestures(
       endSessions();
       disposed = true;
       if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener('resize', invalidateRect);
       el.removeEventListener('wheel', onWheel);
       el.removeEventListener('gesturestart', onGestureStart);
       el.removeEventListener('gesturechange', onGestureChange);

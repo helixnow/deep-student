@@ -1,10 +1,11 @@
 /**
- * PomodoroAppWindow.css — 番茄钟投射窗（控制坞自绘改版）
+ * PomodoroAppWindow.css — 番茄钟投射窗（控制坞自绘改版 → 视图内联化）
  * ---------------------------------------------------------------------------
- * wb-sys-pomo- 前缀隔离。模式语义色沿用全局映射：
- * 专注=warning / 短休=success / 长休=info / 空闲=muted。
+ * wb-sys-pomo- 前缀隔离。模式语义色对齐全局映射（沉浸模式/全局药丸同款）：
+ * 专注=primary / 短休=success / 长休=info / 空闲=muted。
  *
- * 结构：Hero 计时盘 → 今日条 → 传输控制坞 → 全窗 Sheet（设置/统计）。
+ * 结构：主视图（Hero 计时盘 → 今日条 → 传输控制坞）⇄ 子视图（设置/统计），
+ * 同层视图切换：transform/opacity 过渡 320ms cubic-bezier(0.22,1,0.36,1)。
  * 装饰动画仅 transform/opacity；进度环 stroke-dashoffset 的 1s linear
  * 过渡属状态过渡（对齐 legacy 进度条 width 过渡），已在进度文件向 O20 备案。
  */
@@ -12,11 +13,14 @@
 .wb-sys-pomo {
   position: relative;
   --wb-sys-pomo-accent: hsl(var(--muted-foreground) / 0.5);
+  /* 视图切换出口曲线（overshoot-免疫的 easeOutQuint 近似） */
+  --wb-sys-pomo-view-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --wb-sys-pomo-view-ms: 320ms;
   background: var(--wb-window-bg, hsl(var(--background)));
 }
 
 .wb-sys-pomo[data-mode='work'] {
-  --wb-sys-pomo-accent: hsl(var(--warning));
+  --wb-sys-pomo-accent: hsl(var(--primary));
 }
 
 .wb-sys-pomo[data-mode='short_break'] {
@@ -45,6 +49,37 @@
 .wb-sys-pomo[data-status='running']::before,
 .wb-sys-pomo[data-status='paused']::before {
   opacity: 1;
+}
+
+/* ==== 视图切换（主视图 ⇄ 设置/统计，同层非模态） ======================= */
+
+/*
+ * 主视图：常驻挂载。子视图前台时向左轻移 + 淡出，过渡结束后 visibility
+ * 收尾（0s 延迟到过渡末端），把它从焦点/辅助树上摘掉（配合 aria-hidden）。
+ */
+.wb-sys-pomo-view-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  /* 回主视图：visibility 立即可见，transform/opacity 走过渡 */
+  transition:
+    transform var(--wb-sys-pomo-view-ms) var(--wb-sys-pomo-view-ease),
+    opacity var(--wb-sys-pomo-view-ms) var(--wb-sys-pomo-view-ease),
+    visibility 0s;
+}
+
+.wb-sys-pomo:not([data-view='main']) .wb-sys-pomo-view-main {
+  transform: translateX(-18px) scale(0.985);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  /* 离场：visibility 延迟到过渡末端再隐藏（焦点/辅助树同步摘除） */
+  transition:
+    transform var(--wb-sys-pomo-view-ms) var(--wb-sys-pomo-view-ease),
+    opacity var(--wb-sys-pomo-view-ms) var(--wb-sys-pomo-view-ease),
+    visibility 0s linear var(--wb-sys-pomo-view-ms);
 }
 
 /* ==== Hero 区 ========================================================= */
@@ -218,6 +253,32 @@
   }
 }
 
+/* ---- 完成瞬间环闪光（一次性，transform/opacity only） ---- */
+
+.wb-sys-pomo-flash {
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  border: 3px solid var(--wb-sys-pomo-accent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.wb-sys-pomo[data-flash='true'] .wb-sys-pomo-flash {
+  animation: wb-sys-pomo-flash 720ms var(--wb-sys-pomo-view-ease) both;
+}
+
+@keyframes wb-sys-pomo-flash {
+  0% {
+    opacity: 0.75;
+    transform: scale(0.96);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.14);
+  }
+}
+
 /* ==== 中央读数 ======================================================== */
 
 .wb-sys-pomo-readout {
@@ -265,6 +326,7 @@
 
 .wb-sys-pomo-sub {
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: hsl(var(--muted-foreground));
   max-width: 100%;
   overflow: hidden;
@@ -328,29 +390,14 @@
   background: color-mix(in hsl, hsl(var(--card)) 50%, transparent 50%);
 }
 
-/* ---- 今日条（整行按钮 → 统计面板） ---- */
+/* ---- 今日条（数字展示区不可点 + 独立统计按钮） ---- */
 
 .wb-sys-pomo-today {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
-  margin: 0;
-  padding: 7px 12px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-  transition: background-color 140ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
-}
-
-.wb-sys-pomo-today:hover {
-  background: var(--interactive-hover, rgba(0, 0, 0, 0.06));
-}
-
-.wb-sys-pomo-today:focus-visible {
-  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
-  outline-offset: -2px;
+  padding: 7px 10px 7px 12px;
 }
 
 .wb-sys-pomo-today-info {
@@ -397,7 +444,7 @@
 .wb-sys-pomo-today-goalbar-fill {
   height: 100%;
   border-radius: 999px;
-  background: hsl(var(--warning));
+  background: hsl(var(--primary));
   transition: width 400ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
 }
 
@@ -410,6 +457,13 @@
   color: hsl(var(--success));
 }
 
+/* 连续达标 streak（暖色轻强调，与 Todo 面板 streak 同语义色） */
+.wb-sys-pomo-today-streak {
+  font-weight: 500;
+  color: hsl(var(--warning));
+  white-space: nowrap;
+}
+
 .wb-sys-pomo-today-meta {
   white-space: nowrap;
 }
@@ -418,15 +472,33 @@
   color: hsl(var(--muted-foreground) / 0.6);
 }
 
-.wb-sys-pomo-today-chevron {
+/* 明确的「统计」入口按钮（替代原整行可点，降低误触） */
+.wb-sys-pomo-today-stats {
   flex-shrink: 0;
-  color: hsl(var(--muted-foreground) / 0.5);
-  transition: transform 140ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 11px;
+  line-height: 16px;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition:
+    color 150ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    background-color 150ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
 }
 
-.wb-sys-pomo-today:hover .wb-sys-pomo-today-chevron {
-  transform: translateX(1.5px);
-  color: hsl(var(--muted-foreground));
+.wb-sys-pomo-today-stats:hover {
+  color: hsl(var(--foreground));
+  background: var(--interactive-hover, rgba(0, 0, 0, 0.06));
+}
+
+.wb-sys-pomo-today-stats:focus-visible {
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
+  outline-offset: 1px;
 }
 
 /* ---- 传输控制行 ---- */
@@ -480,9 +552,13 @@
   user-select: none;
 }
 
-/* ==== 全窗 Sheet（设置 / 统计） ======================================== */
+/* ==== 子视图（设置 / 统计，同层切换非模态） ============================ */
 
-.wb-sys-pomo-sheet {
+/*
+ * 与主视图同层的兄弟视图：挂载即从右侧滑入（keyframes 进场），
+ * data-active 翻 false 时按 transition 滑出（父级过渡结束后再卸载）。
+ */
+.wb-sys-pomo-view-sub {
   position: absolute;
   inset: 0;
   /* 窗内局部层级锚定 --wb-z-window-content（恒低于标题栏 10） */
@@ -490,26 +566,44 @@
   display: flex;
   flex-direction: column;
   background: var(--wb-window-bg, hsl(var(--background)));
-  animation: wb-sys-pomo-sheet-in 220ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+  transition:
+    transform var(--wb-sys-pomo-view-ms) var(--wb-sys-pomo-view-ease),
+    opacity var(--wb-sys-pomo-view-ms) var(--wb-sys-pomo-view-ease),
+    visibility 0s linear var(--wb-sys-pomo-view-ms);
 }
 
-@keyframes wb-sys-pomo-sheet-in {
+.wb-sys-pomo-view-sub[data-active='true'] {
+  transform: none;
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+  animation: wb-sys-pomo-view-in var(--wb-sys-pomo-view-ms) var(--wb-sys-pomo-view-ease) both;
+}
+
+.wb-sys-pomo-view-sub[data-active='false'] {
+  transform: translateX(22px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+@keyframes wb-sys-pomo-view-in {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateX(22px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
 /* 面板自身可编程聚焦（tabIndex=-1），不画默认外框 */
-.wb-sys-pomo-sheet:focus {
+.wb-sys-pomo-view-sub:focus {
   outline: none;
 }
 
-.wb-sys-pomo-sheet-head {
+.wb-sys-pomo-view-head {
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -518,7 +612,7 @@
   border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
 }
 
-.wb-sys-pomo-sheet-back {
+.wb-sys-pomo-view-back {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -531,31 +625,31 @@
   color: hsl(var(--muted-foreground));
   cursor: pointer;
   transition:
-    color 120ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
-    background-color 120ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+    color 150ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    background-color 150ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
 }
 
-.wb-sys-pomo-sheet-back:hover {
+.wb-sys-pomo-view-back:hover {
   color: hsl(var(--foreground));
   background: var(--interactive-hover, rgba(0, 0, 0, 0.08));
 }
 
-.wb-sys-pomo-sheet-back:focus-visible {
+.wb-sys-pomo-view-back:focus-visible {
   outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
   outline-offset: 1px;
 }
 
-.wb-sys-pomo-sheet-title {
+.wb-sys-pomo-view-title {
   font-size: 13px;
   font-weight: 600;
   color: hsl(var(--foreground));
 }
 
-.wb-sys-pomo-sheet-body {
+.wb-sys-pomo-view-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* sheet 滚到边缘不把滚动链传给底下的 hero */
+  /* 子视图滚到边缘不把滚动链传给底下的主视图 */
   overscroll-behavior: contain;
   padding: 2px 14px 16px;
 }
@@ -622,9 +716,9 @@
 
   .wb-sys-pomo::before,
   .wb-sys-pomo-cycle,
-  .wb-sys-pomo-today,
-  .wb-sys-pomo-today-chevron,
-  .wb-sys-pomo-today-goalbar-fill {
+  .wb-sys-pomo-today-stats,
+  .wb-sys-pomo-today-goalbar-fill,
+  .wb-sys-pomo-view-back {
     transition-duration: 0ms;
   }
 
@@ -632,8 +726,13 @@
     animation: none;
   }
 
-  .wb-sys-pomo-sheet {
-    animation-duration: 0ms;
+  .wb-sys-pomo[data-flash='true'] .wb-sys-pomo-flash {
+    animation: none;
+  }
+
+  /* 视图切换即时完成：过渡/动画/visibility 延迟全部经由该变量归零 */
+  .wb-sys-pomo {
+    --wb-sys-pomo-view-ms: 0ms;
   }
 }
 
@@ -648,9 +747,9 @@
 
 :root[data-wb-material='minimal'] .wb-sys-pomo::before,
 :root[data-wb-material='minimal'] .wb-sys-pomo-cycle,
-:root[data-wb-material='minimal'] .wb-sys-pomo-today,
-:root[data-wb-material='minimal'] .wb-sys-pomo-today-chevron,
-:root[data-wb-material='minimal'] .wb-sys-pomo-today-goalbar-fill {
+:root[data-wb-material='minimal'] .wb-sys-pomo-today-stats,
+:root[data-wb-material='minimal'] .wb-sys-pomo-today-goalbar-fill,
+:root[data-wb-material='minimal'] .wb-sys-pomo-view-back {
   transition-duration: 0ms;
 }
 
@@ -658,6 +757,10 @@
   animation: none;
 }
 
-:root[data-wb-material='minimal'] .wb-sys-pomo-sheet {
-  animation-duration: 0ms;
+:root[data-wb-material='minimal'] .wb-sys-pomo[data-flash='true'] .wb-sys-pomo-flash {
+  animation: none;
+}
+
+:root[data-wb-material='minimal'] .wb-sys-pomo {
+  --wb-sys-pomo-view-ms: 0ms;
 }

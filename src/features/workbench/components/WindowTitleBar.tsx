@@ -30,8 +30,8 @@ export interface WindowTitleBarProps {
   /** 关闭（外层走 requestCloseAnimated → canClose 拦截） */
   onClose: () => void;
   onMinimize: () => void;
-  /** 缩放键点击 = maximize/还原 toggle；双击标题栏同 */
-  onZoom: () => void;
+  /** 缩放键点击 = maximize/还原 toggle；双击标题栏同；alt = ⌥+绿灯（填满桌面） */
+  onZoom: (opts?: { alt?: boolean }) => void;
   /** 平铺菜单选择 */
   onTileAction: (action: TileMenuAction) => void;
   /** 标题栏按下开始拖动（指针引擎接管） */
@@ -211,10 +211,17 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
     setRipples((prev) => [...prev, { id, x, y, size }]);
   }, []);
 
+  /** 本次按下序列是否发生过拖拽（armed）；拖过后的双击不触发 zoom（对齐 macOS） */
+  const recentDragRef = useRef(false);
+
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      if (recentDragRef.current) {
+        recentDragRef.current = false;
+        return;
+      }
       spawnRipple(e.clientX, e.clientY);
-      onZoom();
+      onZoom({ alt: e.altKey });
     },
     [onZoom, spawnRipple],
   );
@@ -230,6 +237,8 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
       const startX = e.clientX;
       const startY = e.clientY;
       dragArmRef.current = { x: startX, y: startY, armed: false };
+      // 每次按下重置"拖过"标记：仅当本次双击序列中发生拖拽才抑制 zoom
+      recentDragRef.current = false;
       const bar = barRef.current;
       const THRESHOLD_SQ = 1; // 1px²
       const onMove = (ev: PointerEvent) => {
@@ -239,6 +248,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
         const dy = ev.clientY - arm.y;
         if (dx * dx + dy * dy < THRESHOLD_SQ) return;
         arm.armed = true;
+        recentDragRef.current = true;
         bar?.classList.add('wb-title-dragging');
       };
       const onUp = () => {
@@ -373,7 +383,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
             onClick={(e) => {
               e.stopPropagation();
               closeMenu();
-              onZoom();
+              onZoom({ alt: e.altKey });
             }}
             onKeyDown={(e) => {
               if (e.key === 'ArrowDown') {

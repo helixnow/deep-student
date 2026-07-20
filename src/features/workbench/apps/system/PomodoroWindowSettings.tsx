@@ -13,7 +13,7 @@ import { Slider } from '@/components/ui/shad/Slider';
 import { Switch } from '@/components/ui/shad/Switch';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
-import { noiseEngine, NOISE_TYPES, type NoiseType } from '@/features/pomodoro/noiseEngine';
+import { NOISE_TYPES, type NoiseType } from '@/features/pomodoro/noiseEngine';
 
 // ============================================================================
 // 行件
@@ -69,6 +69,10 @@ export const PomodoroWindowSettings: React.FC = () => {
   const { t } = useTranslation('todo');
   const settings = usePomodoroStore((s) => s.settings);
   const updateSettings = usePomodoroStore((s) => s.updateSettings);
+
+  // noiseAutoWithFocus 为新增设置字段；持久化快照可能缺省，防御性读取
+  const noiseAutoWithFocus =
+    (settings as { noiseAutoWithFocus?: boolean }).noiseAutoWithFocus ?? false;
 
   const minutesUnit = t('pomodoro.settings.minutesUnit');
   const pomodorosUnit = t('pomodoro.settings.pomodorosUnit');
@@ -162,7 +166,8 @@ export const PomodoroWindowSettings: React.FC = () => {
         onChange={(v) => updateSettings({ dailyGoal: v })}
       />
 
-      {/* ---- 环境音 ---- */}
+      {/* ---- 环境音 ----
+          音色/音量改动经 updateSettings 落库，播放中的引擎同步由 store 统一处理 */}
       <SectionTitle>{t('pomodoro.settings.noiseType')}</SectionTitle>
       <SegmentedControl<NoiseType>
         ariaLabel={t('pomodoro.settings.noiseType')}
@@ -170,10 +175,7 @@ export const PomodoroWindowSettings: React.FC = () => {
         className="w-full"
         itemClassName="flex-1 justify-center"
         value={settings.noiseType}
-        onValueChange={(type) => {
-          updateSettings({ noiseType: type });
-          noiseEngine.setType(type);
-        }}
+        onValueChange={(type) => updateSettings({ noiseType: type })}
         options={NOISE_TYPES.map((type) => ({
           value: type,
           label: t(`pomodoro.noise.${type}`),
@@ -185,10 +187,14 @@ export const PomodoroWindowSettings: React.FC = () => {
         value={Math.round(settings.noiseVolume * 100)}
         min={0}
         max={100}
-        onChange={(v) => {
-          updateSettings({ noiseVolume: v / 100 });
-          noiseEngine.setVolume(v / 100);
-        }}
+        onChange={(v) => updateSettings({ noiseVolume: v / 100 })}
+      />
+      <ToggleRow
+        label={t('pomodoro.settings.noiseAutoWithFocus')}
+        checked={noiseAutoWithFocus}
+        onChange={(v) =>
+          updateSettings({ noiseAutoWithFocus: v } as Parameters<typeof updateSettings>[0])
+        }
       />
     </div>
   );

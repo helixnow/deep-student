@@ -162,3 +162,61 @@ export function resetShellGestureFlagsForTests(): void {
   setAttr(SETTLING_ATTR, false);
   flushHeavyContentPause(false);
 }
+
+// ============================================================================
+// Exposé 重内容暂停（追加导出；不改动上方既有拖/缩/settle 逻辑）
+// ============================================================================
+
+/**
+ * Exposé 打开期间窗口内容缩至 0.2–0.4 倍，流式聊天 / 编辑器光标等微动
+ * 已不可辨，复用 per-host `data-wb-render-paused` 暂停即视觉零损失。
+ * 与拖拽手势相互独立计深度；仅共享 flush 出口，摘旗前互查对方状态。
+ */
+let exposeHeavyPauseDepth = 0;
+let exposeHeavyPauseGen = 0;
+
+export function isExposeHeavyContentPaused(): boolean {
+  return exposeHeavyPauseDepth > 0;
+}
+
+/**
+ * 进入 Exposé：暂停重内容宿主。
+ * 与起拖路径同规（见文件头 ANTI-REGRESSION）：per-host flush 双 rAF 延后，
+ * 避免打开瞬间与 FLIP transform 同帧触发整树 style 重算。
+ */
+export function beginExposeHeavyContentPause(): void {
+  exposeHeavyPauseDepth += 1;
+  if (exposeHeavyPauseDepth !== 1) return;
+  const gen = ++exposeHeavyPauseGen;
+  const armDeferred = () => {
+    if (gen !== exposeHeavyPauseGen || exposeHeavyPauseDepth === 0) return;
+    flushHeavyContentPause(true);
+  };
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(armDeferred);
+    });
+  } else {
+    armDeferred();
+  }
+}
+
+/**
+ * 退出 Exposé：恢复重内容渲染。调用时机须在退出 FLIP 动画收尾之后
+ * （由 ExposeOverlay 的退出定时器保证），飞回途中内容保持静止。
+ * 若拖/缩手势仍活跃则不摘旗，交由手势收尾统一 flush(false)；
+ * 反向（手势在 Exposé 期间先收尾提前摘旗）只损失暂停优化，不损失正确性。
+ */
+export function endExposeHeavyContentPause(): void {
+  if (exposeHeavyPauseDepth === 0) return;
+  exposeHeavyPauseDepth -= 1;
+  if (exposeHeavyPauseDepth !== 0) return;
+  exposeHeavyPauseGen += 1;
+  if (!isShellGestureActive()) flushHeavyContentPause(false);
+}
+
+export function resetExposeHeavyContentPauseForTests(): void {
+  exposeHeavyPauseDepth = 0;
+  exposeHeavyPauseGen += 1;
+  if (!isShellGestureActive()) flushHeavyContentPause(false);
+}

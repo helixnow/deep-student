@@ -89,6 +89,16 @@ export function markWindowActivationReady(windowId: string): void {
   settleActivationWaiters(windowId, true);
 }
 
+/**
+ * WindowBody 宿主卸载（关窗 / 冻结卸载 App 子树）时收口：删除 readiness
+ * 条目并以 not-ready 冲刷 waiters，避免留下 stale `false` 让后续
+ * waitForActivationTarget 白等 10s 超时。
+ */
+export function clearWindowActivation(windowId: string): void {
+  activationReadiness.delete(windowId);
+  settleActivationWaiters(windowId, false);
+}
+
 async function waitForActivationTarget(windowId: string): Promise<boolean> {
   // 刚 launch 的窗口尚未经过一次 React commit；先让 WindowBody 有机会登记 pending。
   if (!activationReadiness.has(windowId)) {

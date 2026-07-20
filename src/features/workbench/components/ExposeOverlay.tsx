@@ -19,6 +19,10 @@ import { appRegistry } from '../core/appRegistry';
 import type { Frame, Size, WorkbenchWindow } from '../core/types';
 import { requestCloseAnimated } from '../hooks/useWindowLifecycleAnim';
 import { useFocusReturn } from '../hooks/useWorkbenchA11y';
+import {
+  beginExposeHeavyContentPause,
+  endExposeHeavyContentPause,
+} from '../core/shellGestureFlags';
 import './ExposeOverlay.css';
 
 // ============================================================================
@@ -51,6 +55,13 @@ export interface ExposeLayoutOptions {
 }
 
 /**
+ * 标签槽高度单一常量：布局预留（computeExposeLayout labelHeight 缺省）与
+ * cell 渲染高度（target.h + EXPOSE_LABEL_SLOT）必须一致，否则末行标签
+ * 会挤进 gap 或与下一行叠约 4px。
+ */
+export const EXPOSE_LABEL_SLOT = 36;
+
+/**
  * 按窗口数计算行列网格；每窗在自己的格内等比缩放（保持宽高比，不放大），
  * 空间顺序（先上后下、先左后右）排布，末行居中。
  */
@@ -64,7 +75,7 @@ export function computeExposeLayout(
 
   const padding = options?.padding ?? 48;
   const gap = options?.gap ?? 24;
-  const labelHeight = options?.labelHeight ?? 32;
+  const labelHeight = options?.labelHeight ?? EXPOSE_LABEL_SLOT;
 
   // 空间顺序：主序 y、次序 x（120px 行容差聚类，避免近似同行时抖动）
   const sorted = [...items].sort((a, b) => {
@@ -230,7 +241,6 @@ function moveSelection(
 ): number {
   if (count <= 0) return 0;
   const row = Math.floor(index / cols);
-  const col = index % cols;
   const lastRow = Math.floor((count - 1) / cols);
   switch (key) {
     case 'ArrowRight':
@@ -249,6 +259,46 @@ function moveSelection(
     default:
       return index;
   }
+}
+
+/**
+ * 视觉最近邻导航：末行居中（rowOffsetX）时线性 index±cols 会落到视觉上
+ * 偏一格的位置；上下键改按 target 中心点几何找最近邻，左右保持线性序。
+ */
+function moveSelectionVisual(
+  index: number,
+  key: string,
+  cols: number,
+  targets: ReadonlyArray<ExposeTarget>,
+): number {
+  const count = targets.length;
+  if (count <= 0) return 0;
+  if (key === 'ArrowLeft' || key === 'ArrowRight') {
+    return moveSelection(index, key, cols, count);
+  }
+  if (key !== 'ArrowUp' && key !== 'ArrowDown') return index;
+  const cur = targets[index];
+  if (!cur) return index;
+  const curCx = cur.x + cur.w / 2;
+  const curCy = cur.y + cur.h / 2;
+  let best = index;
+  let bestDist = Infinity;
+  for (let i = 0; i < count; i++) {
+    if (i === index) continue;
+    const tg = targets[i];
+    const cy = tg.y + tg.h / 2;
+    // 只考虑目标方向上有明显纵向位移的格子
+    if (key === 'ArrowDown' && cy <= curCy + 1) continue;
+    if (key === 'ArrowUp' && cy >= curCy - 1) continue;
+    const cx = tg.x + tg.w / 2;
+    // 纵向距离权重高：优先相邻行，行内取水平最近
+    const dist = Math.abs(cy - curCy) * 3 + Math.abs(cx - curCx);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = i;
+    }
+  }
+  return best;
 }
 
 // ============================================================================
@@ -276,7 +326,22 @@ const ExposeOverlayComponent: React.FC = () => {
 
   // 关闭且不在退出动画期时不消费 windows（恒返回同一空引用，窗口变更不重渲染）
   const active = exposeOpen || rendered;
-  const windows = useWindowStore((s) => (active ? s.windows : EMPTY_WINDOWS));
+  // 会话中只订阅布局真正消费的字段指纹（id/minimized/title/typeId/frame）：
+  // focusWindow 带来的 zIndex/lastFocusedAt 变更不再触发整轮 FLIP 重排。
+  const windowsKey = useWindowStore((s) => {
+    if (!active) return '';
+    return Object.values(s.windows)
+      .map(
+        (w) =>
+          `${w.id}:${w.minimized ? 1 : 0}:${w.title}:${w.typeId}:${w.frame.x},${w.frame.y},${w.frame.w},${w.frame.h}`,
+      )
+      .join('|');
+  });
+  const windows = React.useMemo<Record<string, WorkbenchWindow>>(
+    () => (active ? useWindowStore.getState().windows : EMPTY_WINDOWS),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- windowsKey 即窗口布局指纹
+    [active, windowsKey],
+  );
   const desktopSize = useWindowStore((s) => s.desktopSize);
   const focusWindow = useWindowStore((s) => s.focusWindow);
 
@@ -298,8 +363,24 @@ const ExposeOverlayComponent: React.FC = () => {
   const dissolveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dissolveUnsubscribeRef = useRef<(() => void) | null>(null);
   const restoreTimersRef = useRef<Map<string, PendingRestore>>(new Map());
+  /** 本会话是否持有重内容暂停（begin/end 必须严格配对） */
+  const heavyPauseHeldRef = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
+
+  const releaseHeavyPause = useCallback(() => {
+    if (!heavyPauseHeldRef.current) return;
+    heavyPauseHeldRef.current = false;
+    endExposeHeavyContentPause();
+  }, []);
+
+  // 打开即暂停重内容：缩略窗内容微动不可辨，流式/动画白耗主线程。
+  // 退出动画中重新打开时暂停仍被持有（exit 定时器已被清除），不重复 begin。
+  useEffect(() => {
+    if (!exposeOpen || heavyPauseHeldRef.current) return;
+    heavyPauseHeldRef.current = true;
+    beginExposeHeavyContentPause();
+  }, [exposeOpen]);
 
   const cancelPendingRestore = useCallback((id: string) => {
     const pending = restoreTimersRef.current.get(id);
@@ -486,6 +567,8 @@ const ExposeOverlayComponent: React.FC = () => {
       // 恢复，并清理由异常重挂载遗留、已不在 appliedRef 中的标记。
       restoreAll(false);
       clearOrphanedExposeTransforms();
+      // 退出 FLIP 已收尾，恢复重内容渲染（飞回途中保持静止）
+      releaseHeavyPause();
       setRendered(false);
       setTargets([]);
       setSelectedId(null);
@@ -499,17 +582,18 @@ const ExposeOverlayComponent: React.FC = () => {
         exitTimerRef.current = null;
       }
     };
-  }, [exposeOpen, rendered, restoreAll]);
+  }, [exposeOpen, rendered, restoreAll, releaseHeavyPause]);
 
   // 组件卸载兜底恢复
   useEffect(() => () => {
     restoreAll(false);
     for (const id of [...restoreTimersRef.current.keys()]) finishPendingRestore(id);
     clearOrphanedExposeTransforms();
+    releaseHeavyPause();
     if (dissolveTimerRef.current) clearTimeout(dissolveTimerRef.current);
     dissolveUnsubscribeRef.current?.();
     dissolveUnsubscribeRef.current = null;
-  }, [restoreAll, finishPendingRestore]);
+  }, [restoreAll, finishPendingRestore, releaseHeavyPause]);
 
   const focusWindowShell = useCallback((id: string) => {
     const esc =
@@ -573,8 +657,9 @@ const ExposeOverlayComponent: React.FC = () => {
       return;
     }
     const duration = getMotionDurationMs(rootRef.current);
-    // dissolve 视觉 + closing orphan 兜底（~340ms）取较大值，避免 cell 提前恢复
-    const wait = duration > 0 ? Math.max(DISSOLVE_FALLBACK_MS, 400) : 0;
+    // 兜底超时 = max(实际 dissolve 时长, closing orphan ~340ms)；
+    // 主路径是 store 移除订阅即 settle，此处仅防窗口迟迟不消失
+    const wait = duration > 0 ? Math.max(duration, DISSOLVE_FALLBACK_MS, 340) : 0;
     if (dissolveTimerRef.current) clearTimeout(dissolveTimerRef.current);
     if (wait <= 0) {
       settle();
@@ -640,7 +725,7 @@ const ExposeOverlayComponent: React.FC = () => {
           if (ids.length === 0) return prev;
           const gridCols = computeExposeCols(ids.length, desktopSize);
           const cur = Math.max(0, ids.indexOf(prev ?? ids[0]));
-          const next = moveSelection(cur, e.key, gridCols, ids.length);
+          const next = moveSelectionVisual(cur, e.key, gridCols, targets);
           return ids[next] ?? prev;
         });
       }
@@ -723,7 +808,7 @@ const ExposeOverlayComponent: React.FC = () => {
                 left: target.x,
                 top: target.y,
                 width: target.w,
-                height: target.h + 36,
+                height: target.h + EXPOSE_LABEL_SLOT,
               }}
               onMouseEnter={() => setHoveredId(target.id)}
               onMouseLeave={() => setHoveredId((cur) => (cur === target.id ? null : cur))}

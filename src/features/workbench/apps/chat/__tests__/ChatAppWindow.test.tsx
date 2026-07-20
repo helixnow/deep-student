@@ -36,7 +36,13 @@ vi.mock('@/components/ModernSidebar', () => ({
 }));
 
 vi.mock('@/features/chat/pages', () => ({
-  ChatV2Page: () => <div data-testid="chat-v2-page" />,
+  ChatV2Page: ({ streamPreset, isSuspended }: { streamPreset?: string; isSuspended?: boolean }) => (
+    <div
+      data-testid="chat-v2-page"
+      data-stream-preset={streamPreset ?? ''}
+      data-suspended={isSuspended ? 'true' : 'false'}
+    />
+  ),
 }));
 
 vi.mock('../../system/useWbSysSize', () => ({
@@ -51,6 +57,7 @@ vi.mock('../../system/SystemWindowShared', () => ({
 }));
 
 import { ChatAppWindow } from '../ChatAppWindow';
+import { STREAM_PRESET_DOWNSHIFT_DELAY_MS } from '../useDeferredStreamPreset';
 
 function makeProps(overrides: Partial<AppWindowProps> = {}): AppWindowProps {
   return {
@@ -98,6 +105,45 @@ describe('ChatAppWindow', () => {
 
     act(() => storeB.setState({ title: '会话 B 新标题' }));
     expect(onTitleChange).toHaveBeenLastCalledWith('会话 B 新标题');
+  });
+
+  it('keeps the focused window on balanced full-speed streaming (parity with legacy)', async () => {
+    render(<ChatAppWindow {...makeProps()} />);
+    const page = await screen.findByTestId('chat-v2-page');
+    expect(page).toHaveAttribute('data-stream-preset', 'balanced');
+    expect(page).toHaveAttribute('data-suspended', 'false');
+  });
+
+  it('downshifts to silky after sustained invisibility and restores immediately on return', async () => {
+    const { rerender } = render(<ChatAppWindow {...makeProps()} />);
+    const page = await screen.findByTestId('chat-v2-page');
+
+    vi.useFakeTimers();
+    try {
+      rerender(<ChatAppWindow {...makeProps({ isVisible: false })} />);
+      // 瞬时失去可见性：宽限期内仍保持全速档
+      expect(page).toHaveAttribute('data-stream-preset', 'balanced');
+
+      act(() => {
+        vi.advanceTimersByTime(STREAM_PRESET_DOWNSHIFT_DELAY_MS + 50);
+      });
+      expect(page).toHaveAttribute('data-stream-preset', 'silky');
+
+      rerender(<ChatAppWindow {...makeProps({ isVisible: true })} />);
+      expect(page).toHaveAttribute('data-stream-preset', 'balanced');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('forwards the shell suspension signal to the chat page', async () => {
+    render(
+      <ChatAppWindow {...makeProps({ isActive: false, isVisible: false, isSuspended: true })} />,
+    );
+    const page = await screen.findByTestId('chat-v2-page');
+    expect(page).toHaveAttribute('data-suspended', 'true');
+    // 挂载即不可见（background 恢复）：直接从 silky 起步
+    expect(page).toHaveAttribute('data-stream-preset', 'silky');
   });
 
   it('replays an initial history-session target after a cold launch', () => {

@@ -96,10 +96,10 @@ describe('NotesTrashDialog', () => {
 
     renderDialog();
 
-    const dialog = await screen.findByRole('dialog', { name: /回收站|Trash/i });
+    const panel = await screen.findByRole('region', { name: /回收站|Trash/i });
     await waitFor(() => expect(listTrash).toHaveBeenCalled());
 
-    const names = within(dialog).getAllByText(/Old|Map|Folder|Essay/).map((el) => el.textContent);
+    const names = within(panel).getAllByText(/Old|Map|Folder|Essay/).map((el) => el.textContent);
     expect(names).toEqual(['Map', 'Folder', 'Old']);
   });
 
@@ -126,7 +126,7 @@ describe('NotesTrashDialog', () => {
     const { onChanged } = renderDialog();
 
     fireEvent.click(await screen.findByRole('button', { name: /彻底删除 Draft note|Delete Draft note permanently/i }));
-    const confirm = await screen.findByRole('alertdialog');
+    const confirm = await screen.findByRole('group', { name: /彻底删除|Delete permanently/i });
     fireEvent.click(within(confirm).getByRole('button', { name: /彻底删除|Delete permanently/i }));
 
     await waitFor(() => expect(permanentlyDelete).toHaveBeenCalledWith('note_1', 'note'));
@@ -152,7 +152,7 @@ describe('NotesTrashDialog', () => {
 
     const emptyBtn = await screen.findByRole('button', { name: /清空回收站（2）|Empty trash \(2\)/i });
     fireEvent.click(emptyBtn);
-    const confirm = await screen.findByRole('alertdialog');
+    const confirm = await screen.findByRole('group', { name: /清空回收站|Empty trash/i });
     expect(confirm).toHaveTextContent(/2/);
     fireEvent.click(within(confirm).getByRole('button', { name: /^清空$|^Empty$/i }));
 

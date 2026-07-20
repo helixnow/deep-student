@@ -44,8 +44,10 @@ export const AGENT_MAX_BATCH_ACTIONS = 20;
 export const AGENT_MAX_AFFORDANCE_NODES = 200;
 export const AGENT_MAX_AFFORDANCE_DEPTH = 6;
 export const AGENT_WAIT_TIMEOUT_MAX_MS = 30_000;
-export const AGENT_WAIT_INTERVAL_MIN_MS = 25;
-export const AGENT_WAIT_INTERVAL_MAX_MS = 1_000;
+/** 与 LLM 工具 schema（workbench-tools.ts wait_for intervalMs 50–2000）对齐，
+ * 避免模型的合法参数被静默改写 */
+export const AGENT_WAIT_INTERVAL_MIN_MS = 50;
+export const AGENT_WAIT_INTERVAL_MAX_MS = 2_000;
 const AGENT_RISK_RANK = {
   read: 0,
   low: 1,

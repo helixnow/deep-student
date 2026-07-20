@@ -76,8 +76,8 @@ export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
         <span className="nfs-header-count" aria-hidden>{items.length}</span>
       </button>
 
-      {isExpanded ? (
-        <div id={listId} className="nfs-list" role="list">
+      <div className="nfs-list-wrap">
+        <div id={listId} className="nfs-list" role="list" aria-hidden={!isExpanded}>
           {items.length === 0 ? (
             <p className="nfs-empty">
               {t('workbench:notesWorkspace.favorites.empty')}
@@ -114,7 +114,7 @@ export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
             })
           )}
         </div>
-      ) : null}
+      </div>
     </section>
   );
 };

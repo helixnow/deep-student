@@ -240,6 +240,36 @@ describe('渲染与 aria', () => {
   });
 });
 
+describe('重内容暂停', () => {
+  it('打开后暂停重内容宿主；退出动画收尾后恢复', async () => {
+    const heavyHost = document.createElement('div');
+    heavyHost.setAttribute('data-wb-content-host', '');
+    document.body.appendChild(heavyHost);
+    const id = openWin('chat', 'heavy-pause', '暂停测试');
+    mountWindowShell(id);
+    render(<ExposeOverlay />);
+    openExpose();
+
+    // per-host flush 双 rAF 延后，不与打开同栈
+    await vi.waitFor(() => {
+      expect(heavyHost.hasAttribute('data-wb-render-paused')).toBe(true);
+    });
+
+    act(() => {
+      useWorkbenchOverlay.getState().closeExpose();
+    });
+    // 退出 FLIP 飞回途中仍保持暂停
+    expect(heavyHost.hasAttribute('data-wb-render-paused')).toBe(true);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+    expect(heavyHost.hasAttribute('data-wb-render-paused')).toBe(false);
+
+    heavyHost.remove();
+  });
+});
+
 describe('退出恢复', () => {
   it('卸载遮罩前强制清理由中断更新遗留的缩略 transform', async () => {
     const id = openWin('chat', 'restore-orphan', '恢复测试');

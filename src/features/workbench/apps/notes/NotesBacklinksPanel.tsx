@@ -15,9 +15,15 @@ import { dstu, type DstuNode } from '@/dstu';
 import {
   getWikiLinkRelationships,
   type UnresolvedWikiLink,
+  type WikiLink,
   type WikiLinkRelationship,
   type WikiLinkRelationships,
 } from '@/features/notes/wikilinks';
+import {
+  findUnlinkedMentions,
+  UNLINKED_MENTION_MIN_TITLE_LENGTH,
+  type UnlinkedMention,
+} from '@/features/notes/unlinkedMentions';
 import { cn } from '@/lib/utils';
 import './NotesBacklinksPanel.css';
 import './notes-backlinks-extras.css';
@@ -40,22 +46,37 @@ interface CachedContent {
   content: string;
 }
 
-type SectionKey = 'outgoing' | 'incoming' | 'unresolved';
+type SectionKey = 'outgoing' | 'incoming' | 'mentions' | 'unresolved';
 
 interface SectionCollapseState {
   outgoing: boolean;
   incoming: boolean;
+  mentions: boolean;
   unresolved: boolean;
 }
+
+interface UnlinkedMentionRow {
+  node: DstuNode;
+  mention: UnlinkedMention;
+  content: string;
+}
+
+type MentionsLoadState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'ready'; entries: readonly UnlinkedMentionRow[]; mayBeIncomplete: boolean }
+  | { status: 'error'; message: string };
 
 export const NOTE_CONTENT_LOAD_CONCURRENCY = 8;
 /**
  * A backlink query may match a popular note thousands of times. The panel
  * deliberately loads a bounded candidate set instead of fetching every note
- * in the workspace on every save.
+ * in the workspace on every save. "加载更多" raises the budget one page at a
+ * time (see `candidateLimit`).
  */
 export const BACKLINK_CANDIDATE_LIMIT = 256;
-const BACKLINK_SEARCH_RESULT_LIMIT = BACKLINK_CANDIDATE_LIMIT + 1;
+export const UNLINKED_MENTION_CANDIDATE_LIMIT = 64;
+const UNLINKED_MENTION_MAX_PER_NOTE = 3;
 const BACKLINK_WATCH_REFRESH_DEBOUNCE_MS = 120;
 const CONTEXT_RADIUS_DEFAULT = 80;
 const CONTEXT_RADIUS_EXPANDED = 220;
@@ -65,6 +86,7 @@ const MORE_CONTEXT_STORAGE_KEY = 'notes-backlinks-panel:more-context';
 const DEFAULT_SECTION_COLLAPSE: SectionCollapseState = {
   outgoing: false,
   incoming: false,
+  mentions: false,
   unresolved: false,
 };
 
@@ -198,9 +220,11 @@ function backlinkSearchQueries(activeResource: DstuNode): string[] {
     // looking for `[[Chapter 1]]` and could exhaust the bounded candidate set.
     queries.add(`[[${target}]]`);
     queries.add(`[[${target}|`);
+    queries.add(`[[${target}#`);
     queries.add(`[[${target} `);
     queries.add(`[[ ${target}]]`);
     queries.add(`[[ ${target}|`);
+    queries.add(`[[ ${target}#`);
     queries.add(`[[ ${target} `);
   }
   // `@` mentions serialize to `[Title](note://id)`, so ID search is exact and
@@ -209,15 +233,16 @@ function backlinkSearchQueries(activeResource: DstuNode): string[] {
   return [...queries];
 }
 
-async function findBacklinkCandidates(activeResource: DstuNode): Promise<{
+async function findBacklinkCandidates(activeResource: DstuNode, candidateLimit: number): Promise<{
   nodes: DstuNode[];
   incomingMayBeIncomplete: boolean;
   scannedCandidateCount: number;
 }> {
+  const searchResultLimit = candidateLimit + 1;
   const searchResults = await Promise.all(backlinkSearchQueries(activeResource).map(async (query) => {
     const result = await dstu.search(query, {
       typeFilter: 'note',
-      limit: BACKLINK_SEARCH_RESULT_LIMIT,
+      limit: searchResultLimit,
     });
     if (!result.ok) throw result.error;
     return result.value;
@@ -228,7 +253,7 @@ async function findBacklinkCandidates(activeResource: DstuNode): Promise<{
   for (const result of searchResults) {
     // Asking for one more than the displayed budget lets us distinguish a
     // complete result from a query whose remaining matches were not fetched.
-    if (result.length >= BACKLINK_SEARCH_RESULT_LIMIT) incomingMayBeIncomplete = true;
+    if (result.length >= searchResultLimit) incomingMayBeIncomplete = true;
     for (const node of result) {
       if (node.type !== 'note' || node.id === activeResource.id) continue;
       nodesById.set(node.id, node);
@@ -236,8 +261,8 @@ async function findBacklinkCandidates(activeResource: DstuNode): Promise<{
   }
 
   const nodes = Array.from(nodesById.values()).sort(compareNotesByRecentUpdate);
-  if (nodes.length > BACKLINK_CANDIDATE_LIMIT) incomingMayBeIncomplete = true;
-  const limited = nodes.slice(0, BACKLINK_CANDIDATE_LIMIT);
+  if (nodes.length > candidateLimit) incomingMayBeIncomplete = true;
+  const limited = nodes.slice(0, candidateLimit);
   return {
     nodes: limited,
     incomingMayBeIncomplete,
@@ -311,6 +336,7 @@ function readSectionCollapseState(): SectionCollapseState {
     return {
       outgoing: Boolean(parsed.outgoing),
       incoming: Boolean(parsed.incoming),
+      mentions: Boolean(parsed.mentions),
       unresolved: Boolean(parsed.unresolved),
     };
   } catch {
@@ -355,11 +381,19 @@ function yieldForIdleWork(): Promise<void> {
   });
 }
 
-const ContextSnippetView: React.FC<{ snippet: ContextSnippet }> = ({ snippet }) => (
+/** Human-readable link text for context snippets, mirroring the editor view. */
+export function wikiLinkDisplayText(link: WikiLink): string {
+  return link.label?.trim() || link.target;
+}
+
+const ContextSnippetView: React.FC<{ snippet: ContextSnippet; matchDisplay?: string }> = ({
+  snippet,
+  matchDisplay,
+}) => (
   <p className="notes-backlinks-panel-context">
     {snippet.truncatedStart && <span className="notes-backlinks-panel-context-ellipsis">…</span>}
     <span>{snippet.before}</span>
-    <mark className="notes-backlinks-panel-context-mark">{snippet.match}</mark>
+    <mark className="notes-backlinks-panel-context-mark">{matchDisplay ?? snippet.match}</mark>
     <span>{snippet.after}</span>
     {snippet.truncatedEnd && <span className="notes-backlinks-panel-context-ellipsis">…</span>}
   </p>
@@ -403,7 +437,59 @@ const LinkedNoteRow: React.FC<{
           {showsAlias && <span className="notes-backlinks-panel-link-name">{resource.name}</span>}
         </span>
       </button>
-      {contextSnippet && <ContextSnippetView snippet={contextSnippet} />}
+      {contextSnippet && (
+        <ContextSnippetView
+          snippet={contextSnippet}
+          matchDisplay={wikiLinkDisplayText(relationship.link)}
+        />
+      )}
+    </li>
+  );
+};
+
+const UnlinkedMentionRowView: React.FC<{
+  row: UnlinkedMentionRow;
+  disabled: boolean;
+  contextRadius: number;
+  onOpen: (resource: DstuNode) => void;
+  openLabel: (title: string) => string;
+  convertLabel: (title: string) => string;
+}> = ({ row, disabled, contextRadius, onOpen, openLabel, convertLabel }) => {
+  const snippet = extractContextSnippet(
+    row.content,
+    row.mention.start,
+    row.mention.end,
+    contextRadius,
+  );
+
+  return (
+    <li className="notes-backlinks-panel-link-row notes-backlinks-panel-mention-row">
+      <div className="notes-backlinks-panel-mention-main">
+        <button
+          type="button"
+          className="notes-backlinks-panel-link"
+          data-direction="mention"
+          disabled={disabled}
+          onClick={() => onOpen(row.node)}
+          aria-label={openLabel(row.node.name)}
+        >
+          <FileText size={15} aria-hidden="true" />
+          <span className="notes-backlinks-panel-link-copy">
+            <span className="notes-backlinks-panel-link-title">{row.node.name}</span>
+          </span>
+        </button>
+        <button
+          type="button"
+          className="notes-backlinks-panel-create-button"
+          disabled={disabled}
+          onClick={() => onOpen(row.node)}
+          aria-label={convertLabel(row.node.name)}
+          title={convertLabel(row.node.name)}
+        >
+          <LinkSimple size={14} aria-hidden="true" />
+        </button>
+      </div>
+      {snippet && <ContextSnippetView snippet={snippet} />}
     </li>
   );
 };
@@ -466,6 +552,8 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
   const [activeTab, switchTab] = useRequestedPanelTab(hasPropertiesTab, requestedTab);
   const resolvedTab: PanelTab = hasPropertiesTab ? activeTab : 'links';
   const [loadState, setLoadState] = useState<RelationshipsLoadState>({ status: 'idle' });
+  const [mentionsState, setMentionsState] = useState<MentionsLoadState>({ status: 'idle' });
+  const [candidateLimit, setCandidateLimit] = useState(BACKLINK_CANDIDATE_LIMIT);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [openingResourceId, setOpeningResourceId] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -477,6 +565,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
   const [moreContext, setMoreContext] = useState(readMoreContextPreference);
   const contentCacheRef = useRef(new Map<string, CachedContent>());
   const loadSequenceRef = useRef(0);
+  const mentionsSequenceRef = useRef(0);
   const watchRefreshTimerRef = useRef<number | null>(null);
   const creatingTitlesRef = useRef(new Set<string>());
   const titleId = useId();
@@ -495,6 +584,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
     creatingTitlesRef.current = new Set();
     setCreatingTitles(new Set());
     setResolvedCreatedTitles(new Set());
+    setCandidateLimit(BACKLINK_CANDIDATE_LIMIT);
   }, [activeNoteId]);
 
   useEffect(() => {
@@ -547,7 +637,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
           nodes: candidateNodes,
           incomingMayBeIncomplete,
           scannedCandidateCount,
-        } = await findBacklinkCandidates(activeNote);
+        } = await findBacklinkCandidates(activeNote, candidateLimit);
         if (!isCurrentLoad()) return;
 
         // The resolver still receives every known note title/ID, but content
@@ -606,7 +696,99 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
     return () => {
       disposed = true;
     };
-  }, [activeNoteId, noteNodes, open, refreshVersion, t]);
+  }, [activeNoteId, candidateLimit, noteNodes, open, refreshVersion, t]);
+
+  // Unlinked mentions: plain-text hits on the active title that no note has
+  // linked yet. Runs after the relationship graph so linked sources can be
+  // filtered out, and reuses the same content cache.
+  useEffect(() => {
+    const sequence = ++mentionsSequenceRef.current;
+    const activeNote = activeResource?.type === 'note' ? activeResource : null;
+    if (!open || !activeNote || loadState.status !== 'ready') {
+      setMentionsState({ status: 'idle' });
+      return undefined;
+    }
+
+    const title = activeNote.name.trim();
+    if (title.length < UNLINKED_MENTION_MIN_TITLE_LENGTH) {
+      setMentionsState({ status: 'ready', entries: [], mayBeIncomplete: false });
+      return undefined;
+    }
+
+    let disposed = false;
+    const isCurrentLoad = () => !disposed && sequence === mentionsSequenceRef.current;
+    setMentionsState({ status: 'loading' });
+
+    const linkedSourceIds = new Set(
+      (loadState.relationships.inboundByNoteId[activeNote.id] ?? [])
+        .map((relationship) => relationship.sourceId),
+    );
+
+    void (async () => {
+      try {
+        const result = await dstu.search(title, {
+          typeFilter: 'note',
+          limit: UNLINKED_MENTION_CANDIDATE_LIMIT + 1,
+        });
+        if (!result.ok) throw result.error;
+        if (!isCurrentLoad()) return;
+
+        const mayBeIncomplete = result.value.length > UNLINKED_MENTION_CANDIDATE_LIMIT;
+        const candidates = result.value
+          .filter((node) => node.type === 'note'
+            && node.id !== activeNote.id
+            && !linkedSourceIds.has(node.id))
+          .sort(compareNotesByRecentUpdate)
+          .slice(0, UNLINKED_MENTION_CANDIDATE_LIMIT);
+
+        const contentEntries = await mapWithConcurrency(
+          candidates,
+          NOTE_CONTENT_LOAD_CONCURRENCY,
+          async (node) => {
+            const version = cacheVersion(node);
+            const cached = contentCacheRef.current.get(node.id);
+            if (cached?.version === version) return [node, cached.content] as const;
+
+            const contentResult = await dstu.getContent(node.path);
+            if (!contentResult.ok) throw contentResult.error;
+            const content = typeof contentResult.value === 'string'
+              ? contentResult.value
+              : await contentResult.value.text();
+            if (isCurrentLoad()) contentCacheRef.current.set(node.id, { version, content });
+            return [node, content] as const;
+          },
+          isCurrentLoad,
+        );
+        if (!isCurrentLoad()) return;
+
+        const entries: UnlinkedMentionRow[] = [];
+        for (const [node, content] of contentEntries) {
+          const mentions = findUnlinkedMentions(content, title, {
+            maxMentions: UNLINKED_MENTION_MAX_PER_NOTE,
+          });
+          for (const mention of mentions) entries.push({ node, mention, content });
+        }
+        setMentionsState({ status: 'ready', entries, mayBeIncomplete });
+      } catch (error) {
+        if (!isCurrentLoad()) return;
+        setMentionsState({
+          status: 'error',
+          message: getErrorMessage(
+            error,
+            t('notesWorkspace.backlinks.mentionsFailed', { defaultValue: '无法扫描未链接提及。' }),
+          ),
+        });
+      }
+    })();
+
+    return () => {
+      disposed = true;
+    };
+  }, [activeResource, loadState, open, t]);
+
+  const loadMoreCandidates = useCallback(() => {
+    setCandidateLimit((value) => value + BACKLINK_CANDIDATE_LIMIT);
+  }, []);
 
   const refresh = useCallback(() => {
     contentCacheRef.current.clear();
@@ -706,6 +888,10 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
   const panelTitle = t('notesWorkspace.backlinks.title');
   const openLinkedNoteLabel = (title: string) => t('notesWorkspace.backlinks.openLinkedNote', { title },);
   const createNoteLabel = (title: string) => t('notesWorkspace.backlinks.createFromUnresolved', { title },);
+  const convertMentionLabel = (title: string) => t('notesWorkspace.backlinks.convertMention', {
+    defaultValue: '在「{{title}}」中转为链接',
+    title,
+  });
   const canCreate = typeof onCreateFromUnresolved === 'function';
 
   const renderSectionHeader = (
@@ -864,29 +1050,31 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
                 id={`${titleId}-outgoing-body`}
                 className="notes-backlinks-panel-section-body"
               >
-                {outgoing.length > 0 ? (
-                  <ul>
-                    {outgoing.map((relationship, index) => {
-                      const resource = relationshipNodesById.get(relationship.targetId);
-                      return resource ? (
-                        <LinkedNoteRow
-                          key={`${relationship.sourceId}:${relationship.link.start}:${index}`}
-                          relationship={relationship}
-                          resource={resource}
-                          direction="outbound"
-                          disabled={openingResourceId !== null}
-                          onOpen={(node) => void openLinkedResource(node)}
-                          openLabel={openLinkedNoteLabel}
-                        />
-                      ) : null;
-                    })}
-                  </ul>
-                ) : (
-                  <EmptySection
-                    icon={<LinkSimple size={18} aria-hidden="true" />}
-                    message={t('notesWorkspace.backlinks.noOutgoing')}
-                  />
-                )}
+                <div className="notes-backlinks-panel-section-body-inner">
+                  {outgoing.length > 0 ? (
+                    <ul>
+                      {outgoing.map((relationship, index) => {
+                        const resource = relationshipNodesById.get(relationship.targetId);
+                        return resource ? (
+                          <LinkedNoteRow
+                            key={`${relationship.sourceId}:${relationship.link.start}:${index}`}
+                            relationship={relationship}
+                            resource={resource}
+                            direction="outbound"
+                            disabled={openingResourceId !== null}
+                            onOpen={(node) => void openLinkedResource(node)}
+                            openLabel={openLinkedNoteLabel}
+                          />
+                        ) : null;
+                      })}
+                    </ul>
+                  ) : (
+                    <EmptySection
+                      icon={<LinkSimple size={18} aria-hidden="true" />}
+                      message={t('notesWorkspace.backlinks.noOutgoing')}
+                    />
+                  )}
+                </div>
               </div>
             </section>
 
@@ -908,55 +1096,123 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
                 id={`${titleId}-incoming-body`}
                 className="notes-backlinks-panel-section-body"
               >
-                {incoming.length > 0 ? (
-                  <>
-                    <button
-                      type="button"
-                      className="notes-backlinks-panel-more-context"
-                      aria-pressed={moreContext}
-                      onClick={toggleMoreContext}
-                    >
-                      {moreContext
-                        ? t('notesWorkspace.backlinks.lessContext')
-                        : t('notesWorkspace.backlinks.moreContext')}
-                    </button>
+                <div className="notes-backlinks-panel-section-body-inner">
+                  {incoming.length > 0 ? (
+                    <>
+                      <button
+                        type="button"
+                        className="notes-backlinks-panel-more-context"
+                        aria-pressed={moreContext}
+                        onClick={toggleMoreContext}
+                      >
+                        {moreContext
+                          ? t('notesWorkspace.backlinks.lessContext')
+                          : t('notesWorkspace.backlinks.moreContext')}
+                      </button>
+                      <ul>
+                        {incoming.map((relationship, index) => {
+                          const resource = relationshipNodesById.get(relationship.sourceId);
+                          const sourceContent = contentsByNoteId?.get(relationship.sourceId) ?? '';
+                          const contextSnippet = extractContextSnippet(
+                            sourceContent,
+                            relationship.link.start,
+                            relationship.link.end,
+                            contextRadius,
+                          );
+                          return resource ? (
+                            <LinkedNoteRow
+                              key={`${relationship.sourceId}:${relationship.link.start}:${index}`}
+                              relationship={relationship}
+                              resource={resource}
+                              direction="inbound"
+                              disabled={openingResourceId !== null}
+                              onOpen={(node) => void openLinkedResource(node)}
+                              openLabel={openLinkedNoteLabel}
+                              contextSnippet={contextSnippet}
+                            />
+                          ) : null;
+                        })}
+                      </ul>
+                    </>
+                  ) : (
+                    <EmptySection
+                      icon={<MagnifyingGlass size={18} aria-hidden="true" />}
+                      message={t('notesWorkspace.backlinks.noIncoming')}
+                    />
+                  )}
+                  {loadState.status === 'ready' && loadState.incomingMayBeIncomplete && (
+                    <div className="notes-backlinks-panel-scanned-hint" role="status">
+                      <p>
+                        {t('notesWorkspace.backlinks.incomingLimited', { scanned: loadState.scannedCandidateCount,
+                            count: BACKLINK_CANDIDATE_LIMIT },)}
+                      </p>
+                      <button
+                        type="button"
+                        className="notes-backlinks-panel-load-more"
+                        onClick={loadMoreCandidates}
+                      >
+                        {t('notesWorkspace.backlinks.loadMore', { defaultValue: '加载更多来源' })}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section
+              className={cn(
+                'notes-backlinks-panel-section',
+                sectionCollapse.mentions && 'notes-backlinks-panel-section-collapsed',
+              )}
+              aria-labelledby={`${titleId}-mentions`}
+            >
+              {renderSectionHeader(
+                'mentions',
+                `${titleId}-mentions`,
+                t('notesWorkspace.backlinks.mentions', { defaultValue: '未链接提及' }),
+                mentionsState.status === 'ready' ? mentionsState.entries.length : 0,
+              )}
+              <div
+                id={`${titleId}-mentions-body`}
+                className="notes-backlinks-panel-section-body"
+              >
+                <div className="notes-backlinks-panel-section-body-inner">
+                  {mentionsState.status === 'loading' || mentionsState.status === 'idle' ? (
+                    <div className="notes-backlinks-panel-mentions-loading">
+                      <CircleNotch className="notes-backlinks-panel-spinner" size={13} aria-hidden="true" />
+                      {t('notesWorkspace.backlinks.mentionsLoading', { defaultValue: '正在扫描提及…' })}
+                    </div>
+                  ) : mentionsState.status === 'error' ? (
+                    <p className="notes-backlinks-panel-mentions-error">{mentionsState.message}</p>
+                  ) : mentionsState.entries.length > 0 ? (
                     <ul>
-                      {incoming.map((relationship, index) => {
-                        const resource = relationshipNodesById.get(relationship.sourceId);
-                        const sourceContent = contentsByNoteId?.get(relationship.sourceId) ?? '';
-                        const contextSnippet = extractContextSnippet(
-                          sourceContent,
-                          relationship.link.start,
-                          relationship.link.end,
-                          contextRadius,
-                        );
-                        return resource ? (
-                          <LinkedNoteRow
-                            key={`${relationship.sourceId}:${relationship.link.start}:${index}`}
-                            relationship={relationship}
-                            resource={resource}
-                            direction="inbound"
-                            disabled={openingResourceId !== null}
-                            onOpen={(node) => void openLinkedResource(node)}
-                            openLabel={openLinkedNoteLabel}
-                            contextSnippet={contextSnippet}
-                          />
-                        ) : null;
-                      })}
+                      {mentionsState.entries.map((row, index) => (
+                        <UnlinkedMentionRowView
+                          key={`${row.node.id}:${row.mention.start}:${index}`}
+                          row={row}
+                          disabled={openingResourceId !== null}
+                          contextRadius={contextRadius}
+                          onOpen={(node) => void openLinkedResource(node)}
+                          openLabel={openLinkedNoteLabel}
+                          convertLabel={convertMentionLabel}
+                        />
+                      ))}
                     </ul>
-                  </>
-                ) : (
-                  <EmptySection
-                    icon={<MagnifyingGlass size={18} aria-hidden="true" />}
-                    message={t('notesWorkspace.backlinks.noIncoming')}
-                  />
-                )}
-                {loadState.status === 'ready' && loadState.incomingMayBeIncomplete && (
-                  <p className="notes-backlinks-panel-scanned-hint" role="status">
-                    {t('notesWorkspace.backlinks.incomingLimited', { scanned: loadState.scannedCandidateCount,
-                        count: BACKLINK_CANDIDATE_LIMIT },)}
-                  </p>
-                )}
+                  ) : (
+                    <EmptySection
+                      icon={<MagnifyingGlass size={18} aria-hidden="true" />}
+                      message={t('notesWorkspace.backlinks.noMentions', { defaultValue: '没有找到未链接的提及' })}
+                    />
+                  )}
+                  {mentionsState.status === 'ready' && mentionsState.mayBeIncomplete && (
+                    <p className="notes-backlinks-panel-scanned-hint">
+                      {t('notesWorkspace.backlinks.mentionsLimited', {
+                        defaultValue: '仅扫描最近 {{count}} 篇候选笔记。',
+                        count: UNLINKED_MENTION_CANDIDATE_LIMIT,
+                      })}
+                    </p>
+                  )}
+                </div>
               </div>
             </section>
 
@@ -978,18 +1234,20 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
                   id={`${titleId}-unresolved-body`}
                   className="notes-backlinks-panel-section-body"
                 >
-                  <ul>
-                    {unresolved.map((item, index) => (
-                      <UnresolvedLinkRow
-                        key={`${item.sourceId}:${item.link.start}:${index}`}
-                        item={item}
-                        canCreate={canCreate}
-                        creating={creatingTitles.has(item.link.target)}
-                        onCreate={(title) => void createFromUnresolved(title)}
-                        createLabel={createNoteLabel}
-                      />
-                    ))}
-                  </ul>
+                  <div className="notes-backlinks-panel-section-body-inner">
+                    <ul>
+                      {unresolved.map((item, index) => (
+                        <UnresolvedLinkRow
+                          key={`${item.sourceId}:${item.link.start}:${index}`}
+                          item={item}
+                          canCreate={canCreate}
+                          creating={creatingTitles.has(item.link.target)}
+                          onCreate={(title) => void createFromUnresolved(title)}
+                          createLabel={createNoteLabel}
+                        />
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               </section>
             )}

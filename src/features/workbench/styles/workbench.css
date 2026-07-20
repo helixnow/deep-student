@@ -153,13 +153,20 @@ html[data-wb-material='minimal'] .wb-desk-menu.wb-glass-lens {
   transition: none;
 }
 
-/* 契约玻璃面 + 系统抽屉把手 + Tailwind blur：跟手期强制实色 */
+/*
+ * 契约玻璃面 + 系统抽屉把手 + Tailwind blur：跟手期强制实色。
+ *
+ * Tailwind blur 面用 [data-wb-blur-surface] 精确属性匹配，禁止回退到
+ * [class*='backdrop-blur'] 子串匹配——子串属性选择器在起拖挂 class 那一刻
+ * 会逼整棵窗内子树按选择器重匹配（大 DOM style recalc 的历史卡顿路径）。
+ * 会出现在窗口内的 Tailwind backdrop-blur-* 元素须自行挂 data-wb-blur-surface。
+ */
 .wb-window.wb-shell-dragging .wb-glass,
 .wb-window.wb-shell-resizing .wb-glass,
 .wb-window.wb-shell-dragging .wb-sys-drawer-handle,
 .wb-window.wb-shell-resizing .wb-sys-drawer-handle,
-.wb-window.wb-shell-dragging [class*='backdrop-blur'],
-.wb-window.wb-shell-resizing [class*='backdrop-blur'] {
+.wb-window.wb-shell-dragging [data-wb-blur-surface],
+.wb-window.wb-shell-resizing [data-wb-blur-surface] {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }

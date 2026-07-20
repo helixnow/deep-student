@@ -123,6 +123,15 @@
       "confirmResumeAutomations": "Resume automations",
       "stopFailed": "Could not power off agents. Try again.",
       "resumeFailed": "Could not resume. Try again."
+    },
+    "automationCard": {
+      "title": "Automations",
+      "running": "Scheduler running",
+      "tripped": "Emergency stop triggered — automations paused",
+      "trippedHint": "Agents are powered off. Resume agents first, then resume automation scheduling.",
+      "paused": "Automation scheduling is paused",
+      "pausedHint": "Automations are still paused after the emergency stop. Scheduled tasks run again once you resume.",
+      "resuming": "Resuming…"
     }
   },
   "menubar": {
@@ -132,6 +141,13 @@
     "tasksRunning": "{{count}} card tasks running",
     "automations": "Open scheduled tasks: {{enabled}} enabled, {{running}} running, {{failed}} recently failed",
     "automationsTitle": "Scheduled tasks",
+    "automationsEnabledShort": "{{count}} enabled",
+    "automationsNextRun": "next run {{relative}}",
+    "automationsFailedShort": "{{count}} recently failed",
+    "automationsRelativeSoon": "soon",
+    "automationsRelativeMinutes": "in {{count}} min",
+    "automationsRelativeHours": "in {{count}} h",
+    "automationsRelativeDays": "in {{count}} d",
     "pomodoroFocus": "Focus remaining {{time}}",
     "pomodoroIdle": "Not started",
     "pomodoroWork": "Focusing",
@@ -395,6 +411,7 @@
     "tileAll": "Tile all windows",
     "expose": "Window overview",
     "wallpaper": "Desktop wallpaper",
+    "customWallpaper": "Custom image",
     "materialTier": "Visual material",
     "showDesktop": "Show desktop",
     "restoreWindows": "Restore windows",
@@ -894,7 +911,14 @@
     "referenceToChat": "Reference to chat",
     "previous": "Previous",
     "next": "Next",
-    "close": "Close"
+    "searchPlaceholder": "Find in document…",
+    "noMatches": "No matches",
+    "tooManyMatches": "Too many matches; only the first {{limit}} are counted",
+    "highlightUnsupported": "Match highlighting isn't supported here; press Enter to jump between matches",
+    "printUnsupported": "This file type can't be printed from the preview. Open it with a system app to print.",
+    "searchUnavailable": "Text search isn't available for this file type",
+    "moreActions": "More actions",
+    "closeSearch": "Close search"
   },
   "pomodoro": {
     "modes": {
@@ -927,7 +951,9 @@
       "minutes": "{{value}} min",
       "hours": "{{value}} h",
       "interrupted": "{{value}} interrupted",
-      "goalReached": "Goal reached"
+      "goalReached": "Goal reached",
+      "streak": "{{count}}-day streak",
+      "statsButton": "Stats"
     }
   }
 }

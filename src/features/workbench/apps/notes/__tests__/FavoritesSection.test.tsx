@@ -62,7 +62,7 @@ describe('FavoritesSection', () => {
     expect(onExpandedChange).toHaveBeenCalledWith(false);
   });
 
-  it('hides the list when collapsed (uncontrolled)', () => {
+  it('hides the list from assistive tech when collapsed (uncontrolled)', () => {
     render(
       <FavoritesSection
         items={items}
@@ -75,9 +75,12 @@ describe('FavoritesSection', () => {
     const header = screen.getByRole('button', { expanded: false });
     const section = header.closest('section');
     expect(section).toHaveAttribute('data-expanded', 'false');
-    expect(screen.queryByText('Algebra')).toBeNull();
+    // 列表保持挂载以支持 0fr→1fr 折叠动画，收起时通过 aria-hidden 屏蔽
+    expect(screen.queryByRole('list')).toBeNull();
+    expect(screen.getByRole('list', { hidden: true })).toHaveAttribute('aria-hidden', 'true');
 
     fireEvent.click(header);
+    expect(screen.getByRole('list')).toHaveAttribute('aria-hidden', 'false');
     expect(screen.getByText('Algebra')).toBeInTheDocument();
   });
 

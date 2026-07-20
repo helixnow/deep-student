@@ -53,11 +53,33 @@ const MindmapAppWindow: React.FC<AppWindowProps> = ({
   useResizeSettle(hostRef, contentRef, hasResource);
   useDragRenderPause(hostRef, renderThrottleMs);
 
+  // B-9：独立窗口的窗口级保存指示——dirty/saving 时窗口标题追加 ●，
+  // 与 Notes 标签条圆点语义对齐（AppWindowProps 无专用保存通道，经标题透出）。
+  const lastTitleRef = useRef('');
+  const saveStateRef = useRef<'saved' | 'saving' | 'dirty'>('saved');
+
+  const emitTitle = useCallback(() => {
+    const title = lastTitleRef.current;
+    const showMarker = saveStateRef.current !== 'saved';
+    onTitleChange(showMarker && title ? `● ${title}` : title);
+  }, [onTitleChange]);
+
   const handleTitleChange = useCallback(
     (title: string) => {
-      onTitleChange(title);
+      lastTitleRef.current = title;
+      emitTitle();
     },
-    [onTitleChange],
+    [emitTitle],
+  );
+
+  const handleSaveStateChange = useCallback(
+    (state: 'saved' | 'saving' | 'dirty') => {
+      const wasMarked = saveStateRef.current !== 'saved';
+      saveStateRef.current = state;
+      const isMarked = state !== 'saved';
+      if (wasMarked !== isMarked) emitTitle();
+    },
+    [emitTitle],
   );
 
   const handleContentReady = useCallback(() => markReady(), [markReady]);
@@ -89,6 +111,7 @@ const MindmapAppWindow: React.FC<AppWindowProps> = ({
           storeInstanceId={windowId}
           isActive={isActive}
           onTitleChange={handleTitleChange}
+          onSaveStateChange={handleSaveStateChange}
           onReady={handleContentReady}
           onLoadError={handleLoadError}
           className="h-full"

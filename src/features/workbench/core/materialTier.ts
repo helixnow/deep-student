@@ -20,8 +20,11 @@
  *     时长 token 已归零，自动退化为硬切。
  *   - auto 检测补 prefers-reduced-transparency → reduced（WebView2/WebKit
  *     均已支持该媒体查询；不支持的平台 matchMedia 返回 not-matched，无副作用）。
+ *   - auto 检测补软件渲染探测 → reduced（WebView2 在远程桌面/虚拟机/驱动
+ *     黑名单下落到 SwiftShader/WARP，backdrop-filter 走 CPU 光栅代价极高）。
  */
 import { useSyncExternalStore } from 'react';
+import { isMobilePlatform } from '@/utils/platform';
 import type { MaterialTier } from './types';
 
 /** 设置页取值：'auto' = 跟随平台与系统偏好 */
@@ -42,10 +45,54 @@ let resolvedTier: MaterialTier = 'full';
 let initialized = false;
 let switchingTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** 软件渲染器特征（大小写不敏感）：SwiftShader（Chromium 兜底）、WARP（D3D 软光栅）、
+ *  llvmpipe（Mesa 软光栅）、泛化的 "Software" 字样 */
+const SOFTWARE_RENDERER_PATTERN = /swiftshader|warp|llvmpipe|software/i;
+
+/** WebGL 探测结果缓存：null = 未探测；渲染器字符串在会话内不会变，只探一次 */
+let softwareRendererCache: boolean | null = null;
+
+/**
+ * 一次性 WebGL 探测：判断当前 WebView 是否落在软件渲染
+ * （远程桌面 / 虚拟机 / GPU 驱动黑名单下 WebView2 会退回 SwiftShader/WARP）。
+ *
+ * 实现取舍：
+ * - 直接读 WEBGL_debug_renderer_info 的 UNMASKED_RENDERER_WEBGL 字符串做特征
+ *   匹配——比 failIfMajorPerformanceCaveat 更稳（后者置 true 时软渲染直接拿不到
+ *   context，无法区分「软渲染」与「WebGL 整体不可用」，而后者不应降档）；
+ * - 探测完成立即 loseContext 释放，1×1 离屏 canvas 开销可忽略；
+ * - 任何一步失败/异常（拿不到 context、扩展缺失）都保守返回 false（不降档）。
+ */
+function isSoftwareRenderer(): boolean {
+  if (softwareRendererCache !== null) return softwareRendererCache;
+  let detected = false;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const gl = (canvas.getContext('webgl') ??
+      canvas.getContext('experimental-webgl')) as WebGLRenderingContext | null;
+    if (gl) {
+      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+      if (debugInfo) {
+        const renderer = String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) ?? '');
+        detected = SOFTWARE_RENDERER_PATTERN.test(renderer);
+      }
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+    }
+  } catch {
+    detected = false;
+  }
+  softwareRendererCache = detected;
+  return detected;
+}
+
 /**
  * 平台/系统偏好检测：
  * prefers-reduced-motion → minimal；prefers-reduced-transparency → reduced；
- * Linux 桌面（WebKitGTK 合成弱）→ reduced；其余 full。
+ * Linux 桌面（WebKitGTK 合成弱）→ reduced；
+ * 桌面端软件渲染（SwiftShader/WARP 等，backdrop-filter 走 CPU 光栅）→ reduced；
+ * 其余 full。
  */
 export function detectAutoMaterialTier(): MaterialTier {
   if (typeof window === 'undefined') return 'full';
@@ -53,6 +100,8 @@ export function detectAutoMaterialTier(): MaterialTier {
   if (window.matchMedia?.(REDUCED_TRANSPARENCY_QUERY)?.matches) return 'reduced';
   const ua = (navigator.userAgent || '').toLowerCase();
   if (ua.includes('linux') && !ua.includes('android')) return 'reduced';
+  // 仅桌面端且未命中上述降档分支时才探（移动端有独立降级路径，避免无谓建 context）
+  if (!isMobilePlatform() && isSoftwareRenderer()) return 'reduced';
   return 'full';
 }
 
@@ -89,14 +138,19 @@ function resolve(): void {
   }
 }
 
+/** 已挂载的媒体查询监听拆除函数（测试 reset 用，防重复 init 叠加监听） */
+const mediaWatchDisposers: Array<() => void> = [];
+
 function watchMediaQuery(queryText: string, onChange: () => void): void {
   if (typeof window === 'undefined' || !window.matchMedia) return;
   const query = window.matchMedia(queryText);
   if (typeof query.addEventListener === 'function') {
     query.addEventListener('change', onChange);
+    mediaWatchDisposers.push(() => query.removeEventListener('change', onChange));
   } else if (typeof query.addListener === 'function') {
     // 旧 WebKit 兼容
     query.addListener(onChange);
+    mediaWatchDisposers.push(() => query.removeListener?.(onChange));
   }
 }
 
@@ -151,7 +205,10 @@ export function resetMaterialTierForTests(): void {
   explicitTier = null;
   resolvedTier = 'full';
   initialized = false;
+  softwareRendererCache = null;
   listeners.clear();
+  // 真正移除媒体查询监听：否则每次 reset+ensureInit 都会叠加一层
+  for (const dispose of mediaWatchDisposers.splice(0)) dispose();
   if (typeof document !== 'undefined') {
     document.documentElement.removeAttribute(HTML_ATTR);
     document.documentElement.removeAttribute(SWITCHING_ATTR);

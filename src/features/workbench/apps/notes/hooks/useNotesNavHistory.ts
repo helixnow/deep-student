@@ -121,8 +121,10 @@ export function pruneNavHistory(
   }
 
   // Current entry was removed — land on the nearest predecessor, else first.
-  const preferred = Math.min(state.index, stack.length) - 1;
-  return { stack, index: Math.max(0, preferred) };
+  // `removedBefore` must be discounted, otherwise duplicates of the pruned
+  // key sitting before the cursor push the landing slot onto a successor.
+  const anchor = state.index - removedBefore;
+  return { stack, index: Math.min(Math.max(0, anchor - 1), stack.length - 1) };
 }
 
 export function matchNotesNavHistoryShortcut(

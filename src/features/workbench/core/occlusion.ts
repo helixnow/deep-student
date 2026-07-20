@@ -232,6 +232,36 @@ export function computeOcclusionDetail(
 }
 
 /**
+ * 桌面（壁纸）被窗口矩形并集覆盖的比例（0–1）。
+ *
+ * 供壁纸流动层「基本被遮即暂停」判定：桌面矩形依次减去各非 minimized
+ * 窗口裁剪到可视区后的有效矩形，剩余面积即壁纸可见面积。并集减法与
+ * 窗口顺序 / z 序无关；重叠区域不会重复计入。
+ */
+export function computeDesktopCoveredRatio(
+  windows: WorkbenchWindow[],
+  desktopSize: Size,
+  margin = 0,
+): number {
+  const desktopArea = desktopSize.w * desktopSize.h;
+  if (desktopArea <= 0) return 0;
+  const bounds: Rect = { x1: 0, y1: 0, x2: desktopSize.w, y2: desktopSize.h };
+  let remaining: Rect[] = [bounds];
+  for (const win of windows) {
+    if (win.minimized) continue;
+    const cover = clip(effectiveRect(win, desktopSize, margin), bounds);
+    if (!cover) continue;
+    const next: Rect[] = [];
+    for (const piece of remaining) next.push(...subtract(piece, cover));
+    remaining = next;
+    if (remaining.length === 0) return 1;
+  }
+  let visible = 0;
+  for (const piece of remaining) visible += area(piece);
+  return Math.min(1, Math.max(0, 1 - visible / desktopArea));
+}
+
+/**
  * 遮挡矩阵（签名冻结）：windowId -> 是否完全被遮挡（true = 无可见面积）。
  *
  * - minimized 窗口：本身记为 true（无可见面积），且不遮挡其他窗口；

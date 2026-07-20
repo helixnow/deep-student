@@ -68,6 +68,19 @@
   z-index: var(--wb-z-window-content, 0);
 }
 
+/*
+ * 最大化：圆角收束到 0（对齐 macOS 全屏/最大化观感），避免桌面四角漏出
+ * 壁纸缺口。用 display-mode 属性选择器叠加，不改契约 .wb-window 本体。
+ */
+.wb-window[data-display-mode='maximized'] {
+  border-radius: 0;
+}
+
+.wb-window[data-display-mode='maximized'] .wb-titlebar {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
 /* ==========================================================================
  * 八向缩放命中区（视觉透明；边 8px、角 14px）
  * 边区自角部各退让 14px，保证四角始终由角柄（对角光标）优先命中；
@@ -81,6 +94,18 @@
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/*
+ * 顶边/顶角命中区必须压过标题栏（z=10），否则窗内 0–4px 的命中带被
+ * 标题栏吞掉，从顶部缩放几乎不可用（macOS 任意边可缩）。
+ * 命中区极窄（8/14px）且视觉透明，抬高 z 不影响三键与拖拽区点击
+ * （三键自带 pointer 命中且位于命中带以下 ≥7px）。
+ */
+.wb-shell-rz-n,
+.wb-shell-rz-ne,
+.wb-shell-rz-nw {
+  z-index: calc(var(--wb-z-window-titlebar, 10) + 1);
 }
 
 .wb-shell-rz-n {

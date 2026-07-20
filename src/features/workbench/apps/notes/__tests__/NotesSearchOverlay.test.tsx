@@ -161,7 +161,7 @@ describe('NotesSearchOverlay', () => {
       query: '',
     }));
 
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('region', { name: 'Search notes' }), { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 

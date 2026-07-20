@@ -1,31 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-1.6 -5.7 116.5 117">
-<!-- SVG created with Arrow, by QuiverAI (https://quiver.ai) -->
-  <style type="text/css">.cls-2 {fill:url(#SVGID_1_);}
-.cls-3 {fill:url(#SVGID_2_);}
-.cls-4 {fill:url(#SVGID_3_);}
-.cls-5 {fill:url(#SVGID_4_);}</style>
-  <linearGradient id="SVGID_1_" x1="5.57" x2="56.38" y1="34.91" y2="34.91" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#1D6FA8" offset=".2306"/>
-    <stop stop-color="#1E74AE" offset=".6854"/>
-    <stop stop-color="#1D3F6E" offset="1"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+  <linearGradient id="tr_warm" x1="52" x2="52" y1="14" y2="76" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F9AC33" offset="0"/>
+    <stop stop-color="#F0603C" offset="1"/>
   </linearGradient>
-  <path class="cls-2" d="m43.8 41.2h-16.7l14.9-31.1h-12.7l-23.7 50.3h12.2l4.5-9.4h21.1c9.6 0 8.7 5.9 18.8 8.4-2-5-3.7-8.7-7.1-14.6-1.5-1.1-5.4-3.6-11.3-3.6z"/>
-  <linearGradient id="SVGID_2_" x1="29.5" x2="56.38" y1="27.27" y2="27.27" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#1E74AE" offset=".2527"/>
-    <stop stop-color="#1D3F6E" offset="1"/>
-  </linearGradient>
-  <polygon class="cls-3" points="42.1 10.1 35.5 23.6 42.3 37.4 43.8 37.4 44.7 37.4 45 37.4 45 37.4 45.1 37.4 47.6 37.7 49.6 38 51.4 38.5 53.2 39.1 54.3 39.5 56.4 41.1"/>
-  <linearGradient id="SVGID_3_" x1="5.836" x2="29.82" y1="29.29" y2="15.03" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#E8422F" offset="0"/>
-    <stop stop-color="#F0603C" offset=".5591"/>
-    <stop stop-color="#F9AC33" offset="1"/>
-  </linearGradient>
-  <polygon class="cls-4" points="29.3 10.1 5.6 60.4 17.9 60.4 42 10.1"/>
-  <linearGradient id="SVGID_4_" x1="17.76" x2="107.7" y1="65.54" y2="65.54" gradientUnits="userSpaceOnUse">
+  <path d="M30 14h44a16 16 0 0 1 16 16v16a16 16 0 0 1-16 16H48l-18 14 5-14h-5a16 16 0 0 1-16-16V30a16 16 0 0 1 16-16z" fill="url(#tr_warm)"/>
+  <g stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M42 53l10-27 10 27"/>
+    <path d="M46 44h12"/>
+  </g>
+  <linearGradient id="tr_cool" x1="97" x2="97" y1="52" y2="126" gradientUnits="userSpaceOnUse">
     <stop stop-color="#2BB3A3" offset="0"/>
-    <stop stop-color="#14A5A0" offset=".2486"/>
-    <stop stop-color="#1D6FA8" offset=".5225"/>
-    <stop stop-color="#1D3F6E" offset=".8664"/>
+    <stop stop-color="#1D3F6E" offset="1"/>
   </linearGradient>
-  <path class="cls-5" d="m86.1 50.9v-9.7h-9.8v9.7h-7.9c-5.9-0.1-7.9-1.8-11.9-5-3.4-2.5-7.3-4.6-13.4-4.6v9.7c6.8 0 8.7 2.6 12.6 5.4 2.2 1.6 5.7 3.3 10.8 3.8 1.1 0.1 3.2 0.1 3.4 0.1h20.3c-1.7 3.8-4.3 8.4-9.1 12.5-2.8-2.7-4.7-5.5-6.9-9-3.2 0.1-7.3 0-10.6-0.5 2.2 4.8 5.8 10.3 10.3 15.1-4.9 3.6-13.9 7.1-15.5 8.6l4 8.4c5.6-2.1 12.8-6.2 18.7-10.6 5.3 3.6 12.4 8 18.8 10.7l4.5-8.5c-5-2.2-11-4.8-15.9-8.5 5-4.8 9.3-12.6 11.4-18.1h7.8v-9.5h-21.6zm-45.6 22.2v4.9c-10.5 0.9-19.5-3.8-22.7-14.1-1 12.6 9.8 21.8 21.9 21.4h0.8v5.1l15.7-8.8-15.7-8.5zm33.5-57.8v-5.1l-15.8 8.8 15.7 8.7v-5c10.8-0.8 21.7 5.3 24.8 17.3 1.9-13.6-8.8-25.4-24.7-24.7z"/>
+  <path d="M76 52h42a18 18 0 0 1 18 18v22a18 18 0 0 1-18 18h-2l6 16-22-16H76a18 18 0 0 1-18-18V70a18 18 0 0 1 18-18z" fill="url(#tr_cool)"/>
+  <path d="M76 58h42a12 12 0 0 1 12 12v4a12 12 0 0 0-12-12H76a12 12 0 0 0-12 12v-4a12 12 0 0 1 12-12z" fill="#fff" opacity=".25"/>
+  <g stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M97 59v4"/>
+    <path d="M80 73h34"/>
+    <path d="M104 76L85 102"/>
+    <path d="M90 76l19 26"/>
+  </g>
 </svg>

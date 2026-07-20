@@ -46,17 +46,39 @@
   flex: 0 0 auto;
 }
 
+/* 折叠动画：grid-template-rows 0fr→1fr，内容层 overflow:hidden 收纳 */
+.notes-backlinks-panel-section-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 200ms var(--dropdown-ease);
+}
+
+.notes-backlinks-panel-section-body-inner {
+  min-height: 0;
+  overflow: hidden;
+  visibility: visible;
+  transition: visibility 0s linear;
+}
+
 .notes-backlinks-panel-section-collapsed .notes-backlinks-panel-section-body {
-  display: none;
+  grid-template-rows: 0fr;
+}
+
+.notes-backlinks-panel-section-collapsed .notes-backlinks-panel-section-body-inner {
+  visibility: hidden;
+  transition-delay: 200ms;
 }
 
 .notes-backlinks-panel-empty {
-  margin: 3px 0 0;
-  padding: 10px 6px 6px;
+  margin: 6px 2px 2px;
+  padding: 12px 8px 10px;
   display: grid;
   justify-items: center;
-  gap: 5px;
+  gap: 6px;
+  border: 1px dashed hsl(var(--border) / 85%);
+  border-radius: var(--notes-radius-control);
   color: hsl(var(--muted-foreground));
+  background: hsl(var(--background) / 35%);
   text-align: center;
 }
 
@@ -214,17 +236,106 @@
   margin: 6px 4px 0 !important;
   padding: 4px 6px !important;
   border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
   background: hsl(var(--background) / 55%);
   font-size: 10px !important;
   line-height: 1.4;
+}
+
+div.notes-backlinks-panel-scanned-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+div.notes-backlinks-panel-scanned-hint > p {
+  margin: 0;
+  padding: 0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.notes-backlinks-panel-load-more {
+  padding: 2px 7px;
+  flex: 0 0 auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition),
+    border-color var(--notes-hover-transition);
+}
+
+.notes-backlinks-panel-load-more:hover {
+  background: hsl(var(--accent));
+}
+
+.notes-backlinks-panel-load-more:focus-visible {
+  background: hsl(var(--accent));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+/* ===== 未链接提及 ===== */
+
+.notes-backlinks-panel-mention-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.notes-backlinks-panel-mention-main > .notes-backlinks-panel-link {
+  min-width: 0;
+  flex: 1;
+}
+
+.notes-backlinks-panel-mention-row .notes-backlinks-panel-create-button {
+  align-self: center;
+}
+
+.notes-backlinks-panel-mention-row:hover .notes-backlinks-panel-create-button,
+.notes-backlinks-panel-mention-row:focus-within .notes-backlinks-panel-create-button {
+  opacity: 1;
+}
+
+.notes-backlinks-panel-mentions-loading {
+  min-height: 26px;
+  padding: 5px 4px 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+}
+
+.notes-backlinks-panel-mentions-error {
+  padding: 5px 4px 2px;
+  color: hsl(var(--destructive));
+  font-size: 11px;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .notes-backlinks-panel-section-toggle,
   .notes-backlinks-panel-more-context,
   .notes-backlinks-panel-unresolved-row,
-  .notes-backlinks-panel-create-button {
+  .notes-backlinks-panel-create-button,
+  .notes-backlinks-panel-load-more {
     transition-duration: 0.01ms;
+  }
+
+  .notes-backlinks-panel-section-body {
+    transition: none;
+  }
+
+  .notes-backlinks-panel-section-collapsed .notes-backlinks-panel-section-body-inner {
+    transition-delay: 0s;
   }
 
   .notes-backlinks-panel-context {

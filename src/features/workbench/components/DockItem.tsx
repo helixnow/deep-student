@@ -150,9 +150,16 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
     // 初值 = 首渲染的 running：挂载时已在运行（固定切换重建、快照恢复）不弹
     // reduced-motion / minimal：CSS animation:none → animationend 永不触发，故不置 bouncing
     const tier = useMaterialTier();
-    const prefersReduced =
-      typeof window !== 'undefined' &&
-      Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
+    // 订阅系统偏好变化（此前只在渲染时读一次，会话中改系统设置不生效）
+    const prefersReduced = React.useSyncExternalStore(
+      React.useCallback((notify: () => void) => {
+        const media = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+        media?.addEventListener?.('change', notify);
+        return () => media?.removeEventListener?.('change', notify);
+      }, []),
+      () => Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches),
+      () => false,
+    );
     const bounceEnabled = tier !== 'minimal' && !prefersReduced;
 
     const [bouncing, setBouncing] = React.useState(false);
@@ -339,11 +346,12 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
                   aria-hidden
                   data-testid={`wb-dock-badge-${typeId}`}
                   data-kind={badge.kind}
+                  /* 颜色一律走契约 token（--wb-dock-badge-bg/fg），不用 Tailwind 色板压主题 */
                   className={cn(
-                    'wb-dock-badge absolute bg-danger text-danger-foreground',
+                    'wb-dock-badge absolute',
                     badge.kind === 'count'
                       ? '-right-1 -top-1 h-4 min-w-[16px] rounded-full px-1 text-center text-[10px] font-medium leading-4'
-                      : 'right-0 top-0 h-2 w-2 rounded-full',
+                      : 'right-0 top-0 h-2 w-2 min-w-0 rounded-full p-0',
                   )}
                 >
                   {badgeText}

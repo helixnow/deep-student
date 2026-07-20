@@ -97,6 +97,10 @@ describe('gates helpers', () => {
     expect(isCommandAllowedWhenOff('list_windows')).toBe(true);
     expect(isCommandAllowedWhenOff('query_state')).toBe(true);
     expect(isCommandAllowedWhenOff('probe')).toBe(true);
+    // 与 ACR_COMMAND_ACCESS 对齐补录的只读命令
+    expect(isCommandAllowedWhenOff('get_capabilities')).toBe(true);
+    expect(isCommandAllowedWhenOff('observe')).toBe(true);
+    expect(isCommandAllowedWhenOff('wait_for')).toBe(true);
     expect(isCommandAllowedWhenOff('open_app')).toBe(false);
     expect(isMutatingCommand('apply_ops')).toBe(true);
   });

@@ -12,6 +12,7 @@ import {
   type MindMapStoreApi,
 } from '@/features/mindmap/store/mindmapStore';
 import type { MindMapViewType } from '@/features/mindmap/types';
+import { getMindMapViewController } from '@/features/mindmap/viewController';
 import { findNodeById } from '@/features/mindmap/utils/node/find';
 import type { ActivationContext, ActivationResult, AppDefinition } from '../../core/types';
 import { MINDMAP_APP_TYPE_ID } from '../content/typeMap';
@@ -61,7 +62,15 @@ function applyMindmapActivation(
       if (view !== 'outline' && view !== 'mindmap') {
         return { handled: false, code: 'INVALID_ARGS', message: 'setView 的 view 无效' };
       }
-      store.setCurrentView(view as MindMapViewType);
+      // B-5：agent 路径复用 UI 的 switchView（blur 未提交编辑 + 落 viewport +
+      // 恢复大纲 caret），避免绕过防护直接 setCurrentView 丢字符。
+      // 组件未挂载（headless store，测试场景）时回退旧行为。
+      const controller = getMindMapViewController(storeApi);
+      if (controller) {
+        controller.switchView(view as MindMapViewType);
+      } else {
+        store.setCurrentView(view as MindMapViewType);
+      }
       return { handled: true };
     }
     case 'search': {

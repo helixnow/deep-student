@@ -363,7 +363,8 @@ export async function activateWorkspaceResource(
         result: { handled: false, code: 'INVALID_ARGS', hint: 'scrollToHeading 需要 payload.heading' },
       };
     }
-    const editor = await waitForNoteEditor(resource.id);
+    // 带 windowId 定向：多 Notes 宿主（分屏/多窗）时避免拿到别的窗口的编辑器
+    const editor = await waitForNoteEditor(resource.id, windowId);
     if (!editor) {
       return {
         windowId,

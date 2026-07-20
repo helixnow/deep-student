@@ -143,6 +143,7 @@ export function SandboxWorkbenchSurface({
               onClick={() => openWorkbench(ownerKey)}
               aria-label={t('sandbox.open')}
               title={t('sandbox.open')}
+              data-wb-blur-surface
               className="!h-12 !w-12 rounded-2xl border border-border/80 bg-background/90 text-muted-foreground shadow-[var(--shadow-shell-soft)] backdrop-blur-md hover:bg-background hover:text-foreground"
             >
               <SidebarSimple size={18} />

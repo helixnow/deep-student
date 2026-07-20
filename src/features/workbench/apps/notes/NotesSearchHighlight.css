@@ -13,17 +13,13 @@
   background: hsl(var(--primary) / 34%);
 }
 
-/* Extra auto row when the active-tag strip is mounted (do not edit NotesSearchOverlay.css). */
-.notes-search-overlay-dialog:has(.notes-search-overlay-active-tags) {
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
-}
-
 .notes-search-overlay-active-tags {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  padding: 0 14px 10px;
+  flex: 0 0 auto;
+  padding: 8px 14px;
   border-bottom: 1px solid hsl(var(--border));
 }
 

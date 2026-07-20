@@ -366,8 +366,11 @@ export function matchWorkbenchShortcut(e: KeyboardEvent): WorkbenchShortcutDefin
     if (!b.shiftAgnostic && b.shift !== e.shiftKey) continue;
     if (b.code) {
       if (e.code === b.code) return def;
-    } else if (b.key && e.key === b.key) {
-      return def;
+    } else if (b.key) {
+      if (e.key === b.key) return def;
+      // `?` 类 shiftAgnostic 绑定的布局兜底：部分键盘布局未按 Shift 时
+      // e.key 为 '/'（物理 Slash 键），按 code 也算命中，速查表不失联
+      if (b.shiftAgnostic && b.key === '?' && e.code === 'Slash') return def;
     }
   }
   return null;
@@ -494,6 +497,8 @@ export interface WorkbenchOverlayState {
   /** 会话内候选窗口 id（lastFocusedAt 降序，最近使用在前），会话期间冻结不重排 */
   switcherIds: string[];
   switcherIndex: number;
+  /** 最近一次会话的退出方式（展示层播 commit/cancel 退出动画的显式依据） */
+  switcherExitReason: 'commit' | 'cancel' | null;
   /** 快捷键速查表是否显示（O12） */
   cheatsheetOpen: boolean;
   /** true = ? 键切换的常驻显示；false = 长按 Ctrl+Alt 的临时显示（松开即收） */
@@ -506,7 +511,8 @@ export interface WorkbenchOverlayState {
   /** 循环步进（正=下一个，负=上一个），自动回绕 */
   stepSwitcher: (delta: number) => void;
   setSwitcherIndex: (index: number) => void;
-  closeSwitcher: () => void;
+  /** reason 缺省为 cancel；commit = 松开修饰键/点选确认（展示层据此播提交脉冲） */
+  closeSwitcher: (reason?: 'commit' | 'cancel') => void;
   openCheatsheet: (options?: { sticky?: boolean }) => void;
   closeCheatsheet: () => void;
   toggleCheatsheet: () => void;
@@ -517,6 +523,7 @@ export const useWorkbenchOverlay = create<WorkbenchOverlayState>((set, get) => (
   switcherOpen: false,
   switcherIds: [],
   switcherIndex: 0,
+  switcherExitReason: null,
   cheatsheetOpen: false,
   cheatsheetSticky: false,
 
@@ -536,6 +543,7 @@ export const useWorkbenchOverlay = create<WorkbenchOverlayState>((set, get) => (
       switcherOpen: true,
       switcherIds: ids,
       switcherIndex: clamped,
+      switcherExitReason: null,
       exposeOpen: false,
       cheatsheetOpen: false,
     });
@@ -554,7 +562,13 @@ export const useWorkbenchOverlay = create<WorkbenchOverlayState>((set, get) => (
     set({ switcherIndex: index });
   },
 
-  closeSwitcher: () => set({ switcherOpen: false, switcherIds: [], switcherIndex: 0 }),
+  closeSwitcher: (reason = 'cancel') =>
+    set((s) => ({
+      switcherOpen: false,
+      switcherIds: [],
+      switcherIndex: 0,
+      switcherExitReason: s.switcherOpen ? reason : s.switcherExitReason,
+    })),
 
   openCheatsheet: (options) =>
     set({

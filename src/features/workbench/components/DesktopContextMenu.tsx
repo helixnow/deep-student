@@ -226,10 +226,11 @@ export function useDesktopGestures(
       if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return;
       e.preventDefault();
       e.stopPropagation();
+      // 键盘打开：落在工作区中心（此前 Math.min(32, …) 把锚点错钳到左上角）
       const rect = rootRef.current?.getBoundingClientRect();
       setMenuAnchor({
-        x: Math.min(32, Math.max(0, (rect?.width ?? 0) / 2)),
-        y: Math.min(32, Math.max(0, (rect?.height ?? 0) / 2)),
+        x: Math.max(0, (rect?.width ?? 0) / 2),
+        y: Math.max(0, (rect?.height ?? 0) / 2),
       });
     },
     [rootRef],
@@ -416,12 +417,25 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
     // renderedAnchor 走 ref 镜像、不列入依赖：closing 置位不应重触发本 effect
     if (!renderedAnchorRef.current) return;
     setClosing(true);
+    // 主面板淡出时子菜单同步卸载（此前子菜单 portal 会在 body 上多挂 ~180ms）
+    setOpenSub(null);
     exitTimerRef.current = window.setTimeout(() => {
       exitTimerRef.current = null;
       setRenderedAnchor(null);
       setClosing(false);
     }, DESK_MENU_EXIT_MS);
   }, [anchor]);
+
+  // 卸载兜底：清掉进行中的离场计时器，避免对已卸载组件 setState
+  useEffect(
+    () => () => {
+      if (exitTimerRef.current !== null) {
+        window.clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   const subOpensLeft = pos.left + (panelRef.current?.offsetWidth || MENU_FALLBACK_W) + SUBMENU_APPROX_W >
     desktopSize.w - MENU_EDGE_PAD;
@@ -634,18 +648,18 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
 
   return (
     <>
-      {closing ? null : (
-        <div
-          className="wb-desk-menu-backdrop"
-          data-wb-desk-menu-backdrop
-          aria-hidden="true"
-          onPointerDown={onClose}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            onClose();
-          }}
-        />
-      )}
+      {/* backdrop 在 closing 期间保留（仅拦截，不再触发关闭）：
+          离场 ~90ms 内的点击不应穿透到桌面/窗口（首次点击只收起菜单语义） */}
+      <div
+        className="wb-desk-menu-backdrop"
+        data-wb-desk-menu-backdrop
+        aria-hidden="true"
+        onPointerDown={closing ? undefined : onClose}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (!closing) onClose();
+        }}
+      />
       <div
         ref={panelRef}
         className="wb-desk-menu wb-glass-lens"
@@ -762,15 +776,30 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
               onKeyDown={onPanelKeyDown}
             >
               {openSub === 'wallpaper'
-                ? WALLPAPER_PRESETS.map((preset) => (
-                    <RadioItem
-                      key={preset.id}
-                      value={preset.id}
-                      label={t(preset.nameKey, preset.id)}
-                      checked={wallpaper.kind === 'theme' && wallpaper.value === preset.id}
-                      onSelect={() => selectWallpaper(preset.id)}
-                    />
-                  ))
+                ? (
+                    <>
+                      {/* 自定义图片壁纸：显示为选中态的只读项，避免用户以为"没选任何壁纸" */}
+                      {wallpaper.kind === 'image' ? (
+                        <RadioItem
+                          value="__custom-image__"
+                          label={t('workbench:desktopMenu.customWallpaper', '自定义图片')}
+                          checked
+                          onSelect={() => {
+                            /* 保持当前自定义图片；更换请进设置页 */
+                          }}
+                        />
+                      ) : null}
+                      {WALLPAPER_PRESETS.map((preset) => (
+                        <RadioItem
+                          key={preset.id}
+                          value={preset.id}
+                          label={t(preset.nameKey, preset.id)}
+                          checked={wallpaper.kind === 'theme' && wallpaper.value === preset.id}
+                          onSelect={() => selectWallpaper(preset.id)}
+                        />
+                      ))}
+                    </>
+                  )
                 : (
                     [
                       ['auto', t('workbench:settings.materialTier.auto')],

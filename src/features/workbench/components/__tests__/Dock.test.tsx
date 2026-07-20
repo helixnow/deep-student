@@ -431,13 +431,13 @@ describe('dock magnification gate', () => {
     expect(dock).not.toHaveAttribute('data-wb-dock-magging');
   });
 
-  it('默认悬停也不挂 magging，只显示 tooltip', () => {
+  it('默认悬停启动邻近放大（挂 magging），且保留 tooltip', () => {
     setMaterialTier('full');
     setDockPinned(['chat']);
     render(<Dock />);
     const dock = screen.getByTestId('wb-dock');
     fireEvent.pointerEnter(dock, { pointerType: 'mouse', clientX: 100 });
-    expect(dock).not.toHaveAttribute('data-wb-dock-magging');
+    expect(dock).toHaveAttribute('data-wb-dock-magging');
     expect(screen.getByTestId('wb-dock-tip-chat')).toBeInTheDocument();
   });
 

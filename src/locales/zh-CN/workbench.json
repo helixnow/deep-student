@@ -123,6 +123,15 @@
       "confirmResumeAutomations": "确认恢复自动化",
       "stopFailed": "断电失败，请重试。",
       "resumeFailed": "恢复失败，请重试。"
+    },
+    "automationCard": {
+      "title": "自动化",
+      "running": "调度正常",
+      "tripped": "紧急停止已触发，自动化已暂停",
+      "trippedHint": "Agent 已断电。请先恢复 Agent，再恢复自动化调度。",
+      "paused": "自动化调度暂停中",
+      "pausedHint": "紧急停止后自动化仍处于暂停状态，点击恢复后定时任务才会再次运行。",
+      "resuming": "恢复中…"
     }
   },
   "menubar": {
@@ -132,6 +141,13 @@
     "tasksRunning": "{{count}} 个制卡任务进行中",
     "automations": "打开定时任务：{{enabled}} 个启用，{{running}} 个运行中，{{failed}} 个最近失败",
     "automationsTitle": "定时任务",
+    "automationsEnabledShort": "{{count}} 个启用",
+    "automationsNextRun": "下次运行 {{relative}}",
+    "automationsFailedShort": "{{count}} 个最近失败",
+    "automationsRelativeSoon": "即将开始",
+    "automationsRelativeMinutes": "{{count}} 分钟后",
+    "automationsRelativeHours": "{{count}} 小时后",
+    "automationsRelativeDays": "{{count}} 天后",
     "pomodoroFocus": "专注剩余 {{time}}",
     "pomodoroIdle": "未开始",
     "pomodoroWork": "专注中",
@@ -395,6 +411,7 @@
     "tileAll": "平铺全部窗口",
     "expose": "窗口俯瞰",
     "wallpaper": "桌面壁纸",
+    "customWallpaper": "自定义图片",
     "materialTier": "视觉材质",
     "showDesktop": "显示桌面",
     "restoreWindows": "恢复窗口",
@@ -894,7 +911,14 @@
     "referenceToChat": "引用到对话",
     "previous": "上一个",
     "next": "下一个",
-    "close": "关闭"
+    "searchPlaceholder": "在文档中查找…",
+    "noMatches": "无匹配",
+    "tooManyMatches": "匹配过多，仅统计前 {{limit}} 处",
+    "highlightUnsupported": "当前环境不支持高亮标注，仍可用 Enter 在匹配间跳转",
+    "printUnsupported": "该文件类型不支持在预览内打印，可使用系统应用打开后打印",
+    "searchUnavailable": "该文件类型不支持文本搜索",
+    "moreActions": "更多操作",
+    "closeSearch": "关闭搜索"
   },
   "pomodoro": {
     "modes": {
@@ -927,7 +951,9 @@
       "minutes": "{{value}} 分钟",
       "hours": "{{value}} 小时",
       "interrupted": "中断 {{value}} 次",
-      "goalReached": "目标达成"
+      "goalReached": "目标达成",
+      "streak": "连续 {{count}} 天达标",
+      "statsButton": "统计"
     }
   }
 }

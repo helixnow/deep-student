@@ -37,6 +37,11 @@
   padding: 32px;
 }
 
+/* 退场期（~200ms）透明层不再拦截指针，桌面立即可点（与 AppsPanel 同策略） */
+.wb-cheat-root[data-wb-cheat-open='false'] {
+  pointer-events: none;
+}
+
 .wb-cheat-backdrop {
   position: absolute;
   inset: 0;

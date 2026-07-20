@@ -150,6 +150,16 @@ describe('OS mode drag performance anti-regression', () => {
     expect(wb).not.toMatch(
       /\.wb-window\.wb-shell-dragging[^{]*\{[^}]*--wb-glass-blur:\s*none/,
     );
+    // Tailwind blur 面必须走 [data-wb-blur-surface] 精确属性匹配；
+    // 禁止 [class*='backdrop-blur'] 子串选择器（起拖时逼整棵窗内子树重匹配）
+    expect(wb).toMatch(
+      /\.wb-window\.wb-shell-dragging \[data-wb-blur-surface\]/,
+    );
+    expect(wb).toMatch(
+      /\.wb-window\.wb-shell-resizing \[data-wb-blur-surface\]/,
+    );
+    const wbWithoutComments = wb.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(wbWithoutComments).not.toMatch(/\[class\*=/);
 
     // 跟手期 inert+aria-hidden：剪 AX 树，内容仍可见
     const shell = readRepo('src', 'features', 'workbench', 'components', 'WindowShell.tsx');
@@ -194,6 +204,15 @@ describe('OS mode drag performance anti-regression', () => {
   it('重内容窗必须消费 renderThrottleMs（Chat / Content / Mindmap）', () => {
     const chat = readRepo('src', 'features', 'workbench', 'apps', 'chat', 'ChatSessionSurface.tsx');
     expect(chat).toContain('useDeferredStreamPreset(isVisible, renderThrottleMs)');
+
+    // 生产挂载路径：ChatAppWindow 必须同样消费降档信号并把挂起语义传给 ChatV2Page
+    const chatWindow = readRepo('src', 'features', 'workbench', 'apps', 'chat', 'ChatAppWindow.tsx');
+    expect(chatWindow).toContain('useDeferredStreamPreset(isVisible, renderThrottleMs)');
+    expect(chatWindow).toContain('isSuspended');
+
+    // background 窗的「已停绘」语义由 WindowBody 显式下传
+    const windowBody = readRepo('src', 'features', 'workbench', 'components', 'WindowBody.tsx');
+    expect(windowBody).toContain('isSuspended={hidden}');
 
     const content = readRepo(
       'src',

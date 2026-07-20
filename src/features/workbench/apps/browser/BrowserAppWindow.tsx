@@ -44,7 +44,7 @@ import { hubListenKeyed } from '../../core/eventHub';
 import { useWorkbenchOverlay } from '../../core/shortcuts';
 import { useWindowStore, useWindowTransientPhase } from '../../core/windowStore';
 import {
-  WORKBENCH_NATIVE_SURFACE_LAYOUT_EVENT,
+  addNativeSurfaceLayoutListener,
   type NativeSurfaceLayoutEventDetail,
 } from '../../core/nativeSurfaceEvents';
 import { useAppsPanelOpen } from '../../components/appsPanelStore';
@@ -755,9 +755,7 @@ function useNativeBrowserSurface({
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
-    const onLayout = (event: Event) => {
-      const detail = (event as CustomEvent<NativeSurfaceLayoutEventDetail>).detail;
-      if (!detail) return;
+    const onLayout = (detail: NativeSurfaceLayoutEventDetail) => {
       const scope = detail.scope ?? 'window';
       const appliesToSurface = scope === 'all' || detail.windowId === windowId;
       if (!appliesToSurface && detail.phase !== 'sync') {
@@ -781,8 +779,8 @@ function useNativeBrowserSurface({
       }
       scheduleMeasureRef.current();
     };
-    window.addEventListener(WORKBENCH_NATIVE_SURFACE_LAYOUT_EVENT, onLayout);
-    return () => window.removeEventListener(WORKBENCH_NATIVE_SURFACE_LAYOUT_EVENT, onLayout);
+    // 注册式监听：维护消费者计数，使无 browser 窗时拖拽每帧的 sync 直接短路
+    return addNativeSurfaceLayoutListener(onLayout);
   }, [requestVisibility, windowId]);
 
   useEffect(() => {

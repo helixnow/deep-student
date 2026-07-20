@@ -10,11 +10,14 @@
  *
  * 映射表（typeId → legacy 行为）：
  * - chat                → NAVIGATE_TO_VIEW chat-v2 (+ navigate-to-session / CHAT_V2_SET_INPUT)
- * - note/textbook/exam/translation/essay/image/file/mindmap
+ * - note/textbook/exam/translation/essay/image/file/mindmap（资源 typeId）
+ *   与 file-preview（OS 统一预览壳）
  *                       → NAVIGATE_TO_VIEW learning-hub + openResource=/{resourceId}
- * - files               → NAVIGATE_TO_VIEW learning-hub
+ * - files / notes       → NAVIGATE_TO_VIEW learning-hub（notes 工作区是 OS 专属壳，
+ *                         legacy 下资源仍在资源库中打开）
  * - settings/todo/skills/templates/taskDashboard/sandbox → NAVIGATE_TO_VIEW 对应视图
- * - pomodoro            → no-op（GlobalPomodoroWidget 常驻，无对应页面）
+ * - pomodoro / browser / flashcards → 显式 no-op（GlobalPomodoroWidget 常驻；
+ *                         内置浏览器与闪卡复习台是 OS 模式专属，legacy 无对应页面）
  */
 import type { ActivateRequest, LaunchRequest } from './types';
 import { workbenchBus } from './workbenchBus';
@@ -28,11 +31,15 @@ const RESOURCE_TYPE_IDS = new Set([
   'image',
   'file',
   'mindmap',
+  // OS 统一预览壳：instanceKey 即资源 id，legacy 同样进资源库打开
+  'file-preview',
 ]);
 
 const VIEW_BY_TYPE_ID: Record<string, string> = {
   chat: 'chat-v2',
   files: 'learning-hub',
+  // OS notes 工作区（应用 typeId）：legacy 无对应工作区页，落资源库
+  notes: 'learning-hub',
   settings: 'settings',
   todo: 'todo',
   skills: 'skills-management',
@@ -40,6 +47,10 @@ const VIEW_BY_TYPE_ID: Record<string, string> = {
   taskDashboard: 'task-dashboard',
   sandbox: 'sandbox-workbench',
 };
+
+/** 有意 no-op 的 typeId：legacy 壳没有对应页面，静默忽略而非 warn
+ * （flashcards 复习台与内置浏览器均为 OS 模式专属应用） */
+const LEGACY_NOOP_TYPE_IDS = new Set(['pomodoro', 'browser', 'flashcards']);
 
 function dispatch(name: string, detail?: unknown): void {
   try {
@@ -100,6 +111,8 @@ export function translateLegacyNavigation(
     dispatch('NAVIGATE_TO_VIEW', { view });
     return;
   }
+
+  if (LEGACY_NOOP_TYPE_IDS.has(typeId)) return;
 
   console.warn('[workbench] legacy fallback has no mapping for typeId:', typeId);
 }

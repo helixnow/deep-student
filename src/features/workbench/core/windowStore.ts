@@ -424,6 +424,24 @@ export const useWindowStore = create<WorkbenchStoreState>((set, get) => ({
     });
   },
 
+  commitFloatingFrame: (id, frame) => {
+    set((s) => {
+      const win = s.windows[id];
+      if (!win) return s;
+      // 已是 floating：等价 moveWindow
+      if (win.displayMode === 'floating') {
+        return { windows: { ...s.windows, [id]: { ...win, frame } } };
+      }
+      // managed → floating + 落位 frame 合并为单次 set（拖拽松手 commit 热路径）；
+      // restoreFrame 清空规则沿用 applyDisplayModeTransition，frame 以落位值为准
+      const windows = {
+        ...s.windows,
+        [id]: { ...applyDisplayModeTransition(win, 'floating'), frame },
+      };
+      return { windows, tilingRatios: pruneTilingRatios(s.tilingRatios, windows) };
+    });
+  },
+
   batchSetDisplayModes: (entries) => {
     if (!entries.length) return;
     set((s) => {

@@ -74,14 +74,15 @@
 .wb-menubar[data-macos-chrome='integrated'] {
   min-height: 40px;
   height: var(--wb-menubar-height, 40px);
-  padding-left: var(--wb-macos-traffic-lights-inset, 76px);
+  /* fallback 与 token（workbench.tokens.css 72px）保持同值，避免双源漂移 */
+  padding-left: var(--wb-macos-traffic-lights-inset, 72px);
   cursor: default;
   pointer-events: none;
 }
 
 .wb-menubar-drag-region {
   position: absolute;
-  inset: 0 0 0 var(--wb-macos-traffic-lights-inset, 76px);
+  inset: 0 0 0 var(--wb-macos-traffic-lights-inset, 72px);
   z-index: 0;
   pointer-events: auto;
   user-select: none;

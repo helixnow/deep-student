@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  computeDesktopCoveredRatio,
   computeOcclusion,
   computeOcclusionDetail,
   computeOcclusionIncremental,
@@ -165,6 +166,66 @@ describe('computeOcclusionDetail — 可见比例', () => {
       occluded: true,
       visibleRatio: 0,
     });
+  });
+});
+
+// ============================================================================
+// 桌面（壁纸）覆盖比例
+// ============================================================================
+
+describe('computeDesktopCoveredRatio — 桌面覆盖比例', () => {
+  it('无窗口 / 全 minimized → 0', () => {
+    expect(computeDesktopCoveredRatio([], DESKTOP)).toBe(0);
+    const mini = makeWin({ id: 'dm', minimized: true, frame: { x: 0, y: 0, w: 1600, h: 900 } });
+    expect(computeDesktopCoveredRatio([mini], DESKTOP)).toBe(0);
+  });
+
+  it('桌面面积非法（0）→ 0', () => {
+    const win = makeWin({ id: 'dz', frame: { x: 0, y: 0, w: 400, h: 300 } });
+    expect(computeDesktopCoveredRatio([win], { w: 0, h: 0 })).toBe(0);
+  });
+
+  it('单窗覆盖半个桌面 → 0.5', () => {
+    const win = makeWin({ id: 'dh', frame: { x: 0, y: 0, w: 800, h: 900 } });
+    expect(computeDesktopCoveredRatio([win], DESKTOP)).toBeCloseTo(0.5, 6);
+  });
+
+  it('并集去重：两窗重叠不会重复计入', () => {
+    // 两窗各 1000 宽、重叠 400 → 并集 1600 宽盖满桌面
+    const a = makeWin({ id: 'da', zIndex: 1, frame: { x: 0, y: 0, w: 1000, h: 900 } });
+    const b = makeWin({ id: 'db', zIndex: 2, frame: { x: 600, y: 0, w: 1000, h: 900 } });
+    expect(computeDesktopCoveredRatio([a, b], DESKTOP)).toBe(1);
+  });
+
+  it('多窗拼合：中间留缝时比例 < 1 且精确', () => {
+    // 左右两窗中间留 20px 竖缝 → 1 - 20*900/(1600*900) = 0.9875
+    const left = makeWin({ id: 'dl', zIndex: 1, frame: { x: 0, y: 0, w: 790, h: 900 } });
+    const right = makeWin({ id: 'dr', zIndex: 2, frame: { x: 810, y: 0, w: 790, h: 900 } });
+    expect(computeDesktopCoveredRatio([left, right], DESKTOP)).toBeCloseTo(0.9875, 6);
+  });
+
+  it('越界部分不计入（先裁剪到桌面可视区）', () => {
+    // 左半在屏外：有效覆盖 400x900
+    const win = makeWin({ id: 'do', frame: { x: -400, y: 0, w: 800, h: 900 } });
+    expect(computeDesktopCoveredRatio([win], DESKTOP)).toBeCloseTo(0.25, 6);
+    // 完全离屏 → 0
+    const off = makeWin({ id: 'df', frame: { x: 2000, y: 0, w: 800, h: 900 } });
+    expect(computeDesktopCoveredRatio([off], DESKTOP)).toBe(0);
+  });
+
+  it('maximized / tiled 按平铺派生几何计入', () => {
+    const max = makeWin({
+      id: 'dx',
+      displayMode: 'maximized',
+      frame: { x: 0, y: 0, w: 10, h: 10 },
+    });
+    expect(computeDesktopCoveredRatio([max], DESKTOP)).toBe(1);
+    const tiledLeft = makeWin({
+      id: 'dt',
+      displayMode: 'tiled-left',
+      frame: { x: 0, y: 0, w: 10, h: 10 },
+    });
+    expect(computeDesktopCoveredRatio([tiledLeft], DESKTOP)).toBeCloseTo(0.5, 6);
   });
 });
 

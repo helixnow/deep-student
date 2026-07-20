@@ -117,8 +117,9 @@ function getFocusable(container: HTMLElement): HTMLElement[] {
   });
 }
 
-/** 学习中心 flyout 离场编排：wb-kf-window-close(90ms) 播完再卸载 + 余量 */
-const MENUBAR_FLYOUT_EXIT_MS = 180;
+/** 学习中心 flyout 离场编排：wb-kf-window-close(90ms) 播完再卸载 + 小余量
+ * （此前 180ms 多挂约一倍空壳时间，离场显拖沓） */
+const MENUBAR_FLYOUT_EXIT_MS = 120;
 
 const StatusBarComponent: React.FC = () => {
   const { t } = useTranslation('workbench');
@@ -155,16 +156,22 @@ const StatusBarComponent: React.FC = () => {
     () => setCenterPhase((p) => (p === 'open' ? 'closing' : p)),
     [],
   );
-  const toggleCenter = useCallback(
-    () => setCenterPhase((p) => (p === 'open' ? 'closing' : 'open')),
-    [],
-  );
+  const closeBrandMenu = useCallback(() => setBrandMenuOpen(false), []);
+  // 浮层互斥（macOS 菜单栏语义：同时最多一个打开的菜单/面板）
+  const toggleCenter = useCallback(() => {
+    setBrandMenuOpen(false);
+    setCenterPhase((p) => (p === 'open' ? 'closing' : 'open'));
+  }, []);
+  const toggleBrandMenu = useCallback(() => {
+    closeCenter();
+    setBrandMenuOpen((v) => !v);
+  }, [closeCenter]);
   // 统一搜索入口：打开全部应用面板（应用 + 命令），不再弹独立命令面板
   const openUnifiedSearch = useCallback(() => toggleAppsPanel(), []);
-  const closeBrandMenu = useCallback(() => setBrandMenuOpen(false), []);
 
   useEffect(() => {
     let disposed = false;
+    let timer: number | undefined;
     const refresh = async () => {
       try {
         const value = await getAutomationSummary((command, args) => invoke(command, args));
@@ -173,24 +180,40 @@ const StatusBarComponent: React.FC = () => {
         // The status item stays as a quiet entry even when summary loading fails.
       }
     };
+    const schedulePoll = (intervalMs: number) => {
+      if (disposed) return;
+      if (timer !== undefined) window.clearInterval(timer);
+      timer = window.setInterval(refresh, intervalMs);
+    };
     void refresh();
-    const timer = window.setInterval(refresh, 30_000);
+    // 事件优先：先按 30s 轮询启动；事件桥建立后放宽到 5 分钟兜底（防事件丢失），
+    // listen 失败则保持 30s 轮询作为唯一刷新通道。
+    schedulePoll(30_000);
     let unlisten: (() => void) | undefined;
     void listen('chat_v2://automations_changed', refresh).then((value) => {
-      if (disposed) value(); else unlisten = value;
+      if (disposed) {
+        value();
+        return;
+      }
+      unlisten = value;
+      schedulePoll(300_000);
     }).catch(() => {
       // The 30-second poll remains available when the desktop event bridge fails.
     });
     return () => {
       disposed = true;
-      window.clearInterval(timer);
+      if (timer !== undefined) window.clearInterval(timer);
       unlisten?.();
     };
   }, []);
 
   useEffect(() => {
-    if (exposeOpen) closeCenter();
-  }, [exposeOpen, closeCenter]);
+    // Exposé 打开时收起全部菜单栏浮层（此前品牌菜单会残留在 Exposé 之上）
+    if (exposeOpen) {
+      closeCenter();
+      closeBrandMenu();
+    }
+  }, [exposeOpen, closeCenter, closeBrandMenu]);
 
   // 离场相位：播完 wb-kf-window-close 再真正卸载（jsdom 无动画也走同一定时器）
   useEffect(() => {
@@ -308,7 +331,7 @@ const StatusBarComponent: React.FC = () => {
           aria-haspopup="menu"
           aria-expanded={brandMenuOpen}
           title={t('menubar.appName')}
-          onClick={() => setBrandMenuOpen((v) => !v)}
+          onClick={toggleBrandMenu}
         >
           <DeepStudentMark className="wb-menubar-brand-mark" title="" />
           <span className="wb-menubar-brand-label">

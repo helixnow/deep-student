@@ -473,11 +473,19 @@ export const WorkbenchDesktop: React.FC = () => {
 
   // ---- 窗口集合 ----
   // selector 只返回渲染相关字段的指纹字符串：moveWindow / setTitle 等不改变
-  // id/displayMode/minimized/zIndex 的 set 不再触发 Desktop 整树重渲染
-  //（zIndex 进指纹是因为 tilingPair 取 zIndex 最高者）
+  // id/displayMode/minimized 的 set 不再触发 Desktop 整树重渲染。
+  // zIndex 只对左右平铺窗进指纹（tilingPair 取同侧 zIndex 最高者）；
+  // 浮动窗焦点切换的 zIndex bump 与 Desktop 的全部派生（tilingPair /
+  // dockForceAutohide / WindowShell 只取 id）无关，不再刷整棵 Desktop
   const windowsFingerprint = useWindowStore((s) =>
     getSortedWindows(s.windows)
-      .map((w) => `${w.id}:${w.displayMode}:${w.minimized ? 1 : 0}:${w.zIndex}`)
+      .map((w) => {
+        const zPart =
+          w.displayMode === 'tiled-left' || w.displayMode === 'tiled-right'
+            ? `:${w.zIndex}`
+            : '';
+        return `${w.id}:${w.displayMode}:${w.minimized ? 1 : 0}${zPart}`;
+      })
       .join('|'),
   );
   const orderedWindows = useMemo(() => {

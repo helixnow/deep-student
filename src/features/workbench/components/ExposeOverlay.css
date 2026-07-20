@@ -132,9 +132,13 @@
   opacity: 0.72;
 }
 
+/*
+ * hover/选中只做描边 + 标签浮现，不再对命中格做 scale/translate：
+ * 真实窗口的 transform 由 TS FLIP 独立控制，格子单独抬升会造成
+ * 「描边动了、窗口没动」的错位感（对齐 macOS Mission Control）。
+ */
 .wb-expose-cell:hover,
 .wb-expose-cell[data-selected='true'] {
-  transform: translateY(-2px) scale(1.02);
   z-index: 1;
 }
 
@@ -275,7 +279,7 @@
 @keyframes wb-expose-dissolve {
   from {
     opacity: 1;
-    transform: translateY(-2px) scale(1.02);
+    transform: scale(1);
   }
   to {
     opacity: 0;
@@ -316,8 +320,4 @@
     --wb-expose-dissolve-duration: 0ms;
   }
 
-  .wb-expose-cell:hover,
-  .wb-expose-cell[data-selected='true'] {
-    transform: none;
-  }
 }

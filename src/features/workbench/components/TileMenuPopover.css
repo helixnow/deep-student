@@ -122,12 +122,17 @@
   opacity: 0.2;
 }
 
+/* will-change 仅在可交互 hover 期挂载（父 item hover 时才提升合成层），
+ * 避免菜单常驻期间每个 is-active 格都占一层 */
 .wb-tilemenu-glyph-cell.is-active {
   opacity: 0.78;
   transform: scale(1);
   transform-origin: center center;
   transition: transform var(--wb-tilemenu-glyph-bounce)
     var(--wb-ease-spring, cubic-bezier(0.32, 1.25, 0.36, 1));
+}
+
+.wb-tilemenu-item:hover .wb-tilemenu-glyph-cell.is-active {
   will-change: transform;
 }
 

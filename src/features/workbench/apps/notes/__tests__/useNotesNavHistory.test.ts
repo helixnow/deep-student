@@ -119,6 +119,22 @@ describe('notesNavHistory pure logic', () => {
     expect(state).toEqual(createNotesNavHistoryState());
   });
 
+  it('prune lands on the true predecessor when duplicates of the pruned key precede the cursor', () => {
+    let state = createNotesNavHistoryState();
+    state = pushNavHistory(state, entry('note', 'x'));
+    state = pushNavHistory(state, entry('note', 'a'));
+    state = pushNavHistory(state, entry('note', 'x'));
+    state = pushNavHistory(state, entry('note', 'b'));
+    ({ state } = backNavHistory(state));
+    expect(state.stack[state.index]?.id).toBe('x');
+
+    state = pruneNavHistory(state, 'note:x');
+    expect(state.stack.map((item) => item.id)).toEqual(['a', 'b']);
+    // 光标应落在被删项的前驱 a，而不是后继 b
+    expect(state.index).toBe(0);
+    expect(canNavForward(state)).toBe(true);
+  });
+
   it('prune preserves cursor among duplicate keys when a middle entry is removed', () => {
     let state = createNotesNavHistoryState();
     state = pushNavHistory(state, entry('note', 'a'));

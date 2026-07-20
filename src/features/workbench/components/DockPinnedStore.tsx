@@ -258,14 +258,24 @@ export function useDockPinnedDragReorder(typeId: string): DockPinnedDragBind | R
       const originIndex = wraps.indexOf(wrap);
       if (originIndex < 0) return;
 
-      const width = wrap.getBoundingClientRect().width || 44;
+      // 槽位步长 = 项宽 + flex gap：只按 width 折算会在多格拖动时目标索引偏一格。
+      // 相邻 wrap 中心差是含 gap 的真实步长；单项时回退 width。
+      const rect = wrap.getBoundingClientRect();
+      const width = rect.width || 44;
+      let slotStride = width;
+      if (wraps.length >= 2) {
+        const a = wraps[0].getBoundingClientRect();
+        const b = wraps[1].getBoundingClientRect();
+        const stride = Math.abs(b.left + b.width / 2 - (a.left + a.width / 2));
+        if (stride > 1) slotStride = stride;
+      }
       dragRef.current = {
         pointerId: event.pointerId,
         startX: event.clientX,
         originIndex,
         currentIndex: originIndex,
         active: false,
-        width,
+        width: slotStride,
         wraps,
         suppressClick: false,
         latestClientX: event.clientX,

@@ -17,8 +17,12 @@ import {
   BACKLINK_CANDIDATE_LIMIT,
   extractContextSnippet,
   NotesBacklinksPanel,
+  UNLINKED_MENTION_CANDIDATE_LIMIT,
   useRequestedPanelTab,
 } from '../NotesBacklinksPanel';
+
+/** 每次完整加载的 search 次数：2 目标 × 8 变体 + note:// + 未链接提及标题查询 */
+const SEARCHES_PER_LOAD = 18;
 
 const notes: DstuNode[] = [
   {
@@ -157,6 +161,14 @@ describe('NotesBacklinksPanel', () => {
       typeFilter: 'note',
       limit: BACKLINK_CANDIDATE_LIMIT + 1,
     });
+    expect(search).toHaveBeenCalledWith('[[Alpha#', {
+      typeFilter: 'note',
+      limit: BACKLINK_CANDIDATE_LIMIT + 1,
+    });
+    expect(search).toHaveBeenCalledWith('[[note_alpha#', {
+      typeFilter: 'note',
+      limit: BACKLINK_CANDIDATE_LIMIT + 1,
+    });
     expect(search).toHaveBeenCalledWith('[[Alpha ', {
       typeFilter: 'note',
       limit: BACKLINK_CANDIDATE_LIMIT + 1,
@@ -165,9 +177,13 @@ describe('NotesBacklinksPanel', () => {
       typeFilter: 'note',
       limit: BACKLINK_CANDIDATE_LIMIT + 1,
     });
+    await waitFor(() => expect(search).toHaveBeenCalledWith('Alpha', {
+      typeFilter: 'note',
+      limit: UNLINKED_MENTION_CANDIDATE_LIMIT + 1,
+    }));
     expect(screen.getByText('Gamma alias')).toBeInTheDocument();
     expect(screen.getByText('[[missing]]')).toBeInTheDocument();
-    expect(screen.getByText('入链')).toBeInTheDocument();
+    expect(screen.getByText('反向链接')).toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: /出链/ }))
       .getByRole('button', { name: '打开 Beta' })).toHaveTextContent('Beta');
     expect(screen.queryByText('Alpha alias')).toBeNull();
@@ -175,12 +191,13 @@ describe('NotesBacklinksPanel', () => {
 
   it('shows inbound context snippets and a more-context toggle', async () => {
     renderPanel();
-    await screen.findByText('入链');
+    await screen.findByText('反向链接');
 
-    const incoming = screen.getByRole('region', { name: /入链/ });
+    const incoming = screen.getByRole('region', { name: /反向链接/ });
     expect(within(incoming).getAllByText(/Points back to/).length).toBeGreaterThanOrEqual(1);
-    expect(within(incoming).getByText('[[Alpha|Alpha alias]]')).toBeInTheDocument();
-    expect(within(incoming).getByText('[[note_alpha]]')).toBeInTheDocument();
+    // 上下文片段中的链接以可读文本（别名或目标）而非原始 [[...]] 高亮
+    expect(within(incoming).getByText('Alpha alias')).toBeInTheDocument();
+    expect(within(incoming).getByText('note_alpha')).toBeInTheDocument();
 
     fireEvent.click(within(incoming).getByRole('button', { name: '显示更多上下文' }));
     expect(within(incoming).getByRole('button', { name: '显示更少上下文' })).toBeInTheDocument();
@@ -195,9 +212,9 @@ describe('NotesBacklinksPanel', () => {
       .getByRole('button', { name: '打开 Gamma' }));
     await waitFor(() => expect(onOpenResource).toHaveBeenCalledWith(notes[2]));
 
-    fireEvent.click(screen.getByRole('button', { name: '刷新关联笔记' }));
+    fireEvent.click(screen.getByRole('button', { name: '刷新链接' }));
     await waitFor(() => expect(getContent).toHaveBeenCalledTimes(6));
-    expect(search).toHaveBeenCalledTimes(24);
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(SEARCHES_PER_LOAD * 2));
   });
 
   it('limits note-content fetches to the bounded concurrency pool', async () => {
@@ -269,6 +286,15 @@ describe('NotesBacklinksPanel', () => {
     const status = screen.getByRole('status');
     expect(status).toHaveTextContent(String(BACKLINK_CANDIDATE_LIMIT));
     expect(status).toHaveTextContent('已扫描');
+
+    // 增量加载：提升候选预算一页并重新扫描，补齐被截断的来源
+    fireEvent.click(screen.getByRole('button', { name: '加载更多来源' }));
+    await waitFor(() => expect(search).toHaveBeenCalledWith('[[note_active]]', {
+      typeFilter: 'note',
+      limit: BACKLINK_CANDIDATE_LIMIT * 2 + 1,
+    }));
+    await waitFor(() => expect(getContent).toHaveBeenCalledWith(candidateNotes[0].path));
+    await waitFor(() => expect(screen.queryByRole('button', { name: '加载更多来源' })).toBeNull());
   });
 
   it('invalidates cached markdown from an updated-note event while the panel is open', async () => {
@@ -289,7 +315,7 @@ describe('NotesBacklinksPanel', () => {
     }));
     watchCallback?.({ type: 'updated', node: { ...notes[0], updatedAt: 2 } });
 
-    await waitFor(() => expect(search).toHaveBeenCalledTimes(24));
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(SEARCHES_PER_LOAD * 2));
     expect(getContent).toHaveBeenCalledTimes(4);
 
     rerender(
@@ -311,7 +337,7 @@ describe('NotesBacklinksPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '重试' }));
     await screen.findByText('出链');
 
-    fireEvent.click(screen.getByRole('button', { name: '关闭关联笔记' }));
+    fireEvent.click(screen.getByRole('button', { name: '关闭链接' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -337,7 +363,7 @@ describe('NotesBacklinksPanel', () => {
 
     renderPanel();
 
-    const incoming = await screen.findByRole('region', { name: /入链/ });
+    const incoming = await screen.findByRole('region', { name: /反向链接/ });
     expect(search).toHaveBeenCalledWith('[[ Alpha ', {
       typeFilter: 'note',
       limit: BACKLINK_CANDIDATE_LIMIT + 1,
@@ -384,7 +410,7 @@ describe('NotesBacklinksPanel', () => {
     renderPanel({ activeResource: notes[3], notes });
 
     const outgoing = await screen.findByRole('region', { name: /出链/ });
-    const incoming = screen.getByRole('region', { name: /入链/ });
+    const incoming = screen.getByRole('region', { name: /反向链接/ });
     expect(within(outgoing).getByText('本篇还没有链接其他笔记，输入 [[ 即可创建双链')).toBeInTheDocument();
     expect(within(incoming).getByText('还没有其他笔记链接到这里')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: /未解析链接/ })).toBeNull();
@@ -397,5 +423,43 @@ describe('NotesBacklinksPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /出链/ }));
     expect(localStorage.getItem('notes-backlinks-panel:section-collapse')).toContain('"outgoing":true');
+  });
+
+  it('lists unlinked mentions, filters linked sources, and opens via the convert entry', async () => {
+    search.mockImplementation(async (query: string) => ({
+      ok: true,
+      value: query === 'Alpha'
+        ? [notes[1], notes[3]]
+        : query === '[[Alpha|'
+          ? [notes[1]]
+          : [],
+    }));
+    getContent.mockImplementation(async (path: string) => ({
+      ok: true,
+      value: path === notes[3].path
+        ? 'Talks about Alpha in plain text.'
+        : contentByPath[path],
+    }));
+    const { onOpenResource } = renderPanel();
+
+    const mentions = await screen.findByRole('region', { name: /未链接提及/ });
+    await waitFor(() => expect(search).toHaveBeenCalledWith('Alpha', {
+      typeFilter: 'note',
+      limit: UNLINKED_MENTION_CANDIDATE_LIMIT + 1,
+    }));
+
+    expect(await within(mentions).findByRole('button', { name: '打开 Delta' })).toBeInTheDocument();
+    // Beta 已经链接到当前笔记，属于已链接来源，不出现在未链接提及中
+    expect(within(mentions).queryByRole('button', { name: '打开 Beta' })).toBeNull();
+    expect(within(mentions).getByText('Alpha')).toHaveClass('notes-backlinks-panel-context-mark');
+
+    fireEvent.click(within(mentions).getByRole('button', { name: '在「Delta」中转为链接' }));
+    await waitFor(() => expect(onOpenResource).toHaveBeenCalledWith(notes[3]));
+  });
+
+  it('shows the empty mentions state when nothing mentions the active title', async () => {
+    renderPanel();
+    const mentions = await screen.findByRole('region', { name: /未链接提及/ });
+    expect(await within(mentions).findByText('没有找到未链接的提及')).toBeInTheDocument();
   });
 });

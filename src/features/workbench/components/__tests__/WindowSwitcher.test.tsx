@@ -221,9 +221,9 @@ describe('退出动画（commit / cancel）', () => {
     render(<WindowSwitcher />);
     openSession([b, a], 1);
 
-    // 模拟 useWorkbenchShortcuts.commitSwitcher：先关会话，再聚焦选中窗口
+    // 模拟 useWorkbenchShortcuts.commitSwitcher：显式 commit 关会话，再聚焦选中窗口
     act(() => {
-      useWorkbenchOverlay.getState().closeSwitcher();
+      useWorkbenchOverlay.getState().closeSwitcher('commit');
       useWindowStore.getState().focusWindow(a);
     });
 

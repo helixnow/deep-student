@@ -1,11 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ArrowDown,
   ArrowSquareOut,
   ArrowUp,
   ChatCircleDots,
+  DotsThree,
   FloppyDisk,
   FolderOpen,
   MagnifyingGlass,
@@ -16,15 +18,39 @@ import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
 import { useReferenceToChat, type SourceType } from '@/features/learning-hub/useReferenceToChat';
 import type { DstuNode } from '@/dstu/types';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
+import {
+  AppMenu,
+  AppMenuContent,
+  AppMenuItem,
+  AppMenuSeparator,
+  AppMenuTrigger,
+} from '@/components/ui/app-menu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { fileManager } from '@/utils/fileManager';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { AppWindowProps } from '../../core/types';
 import { ContentEmptyState } from '../content/ContentEmptyState';
 import { normalizeResourceInstanceKey } from '../content/resourceIdentity';
+import {
+  isPrintablePreview,
+  isTextSearchablePreview,
+  resolvePreviewShellMode,
+} from './previewShellUtils';
 import './FilePreviewAppWindow.css';
 
 const MAX_SEARCH_MATCHES = 2_000;
+
+const IS_MAC = typeof navigator !== 'undefined' && /mac|iphone|ipad|ipod/i.test(navigator.platform ?? '');
+
+function shortcutLabel(key: string): string {
+  return IS_MAC ? `⌘${key}` : `Ctrl+${key}`;
+}
+
+const SUPPORTS_HIGHLIGHT_API =
+  typeof globalThis.CSS !== 'undefined'
+  && 'highlights' in globalThis.CSS
+  && typeof (globalThis as { Highlight?: unknown }).Highlight === 'function';
 
 interface SearchState {
   ranges: Range[];
@@ -123,6 +149,56 @@ function applyCssHighlights(ranges: Range[], current: number, names: { all: stri
   }
 }
 
+/** Fallback when the CSS Highlight API is missing: make the current match visible via selection. */
+function selectRangeFallback(range: Range): void {
+  const selection = window.getSelection();
+  if (!selection) return;
+  selection.removeAllRanges();
+  selection.addRange(range.cloneRange());
+}
+
+function findScrollContainer(start: Element | null, root: HTMLElement): HTMLElement | null {
+  let element: HTMLElement | null = start instanceof HTMLElement ? start : start?.parentElement ?? null;
+  while (element && root.contains(element)) {
+    if (element.scrollHeight > element.clientHeight + 1) {
+      const overflowY = window.getComputedStyle(element).overflowY;
+      if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') return element;
+    }
+    if (element === root) break;
+    element = element.parentElement;
+  }
+  return null;
+}
+
+/**
+ * Scroll a match into view using the range's own rect instead of
+ * `startContainer.parentElement.scrollIntoView` (which centers the whole
+ * ancestor block — unusable for matches inside a large `<pre>` or paragraph).
+ */
+function scrollRangeIntoView(range: Range, root: HTMLElement): void {
+  const target = closestElement(range.startContainer);
+  if (!target) return;
+  const reduceMotion = typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const behavior: ScrollBehavior = reduceMotion ? 'auto' : 'smooth';
+
+  const rect = range.getBoundingClientRect();
+  const scroller = findScrollContainer(target, root);
+  if (!scroller || (rect.width === 0 && rect.height === 0)) {
+    target.scrollIntoView({ behavior, block: 'center' });
+    return;
+  }
+
+  const scrollerRect = scroller.getBoundingClientRect();
+  const top = rect.top - scrollerRect.top - scroller.clientHeight / 2 + rect.height / 2;
+  const outsideX = rect.left < scrollerRect.left || rect.right > scrollerRect.right;
+  scroller.scrollBy({
+    top,
+    left: outsideX ? rect.left - scrollerRect.left - scroller.clientWidth / 2 : 0,
+    behavior,
+  });
+}
+
 function findTextRanges(root: HTMLElement, query: string): Range[] {
   const normalized = query.trim().toLocaleLowerCase();
   if (!normalized) return [];
@@ -161,6 +237,58 @@ function sourceTypeForNode(node: DstuNode): SourceType | null {
   return null;
 }
 
+interface ToolbarActionProps {
+  label: string;
+  shortcut?: string;
+  /** Extra tooltip line, e.g. explaining why the action is disabled. */
+  note?: string;
+  disabled?: boolean;
+  busy?: boolean;
+  /** Toggle buttons: renders aria-pressed plus a persistent active background. */
+  active?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}
+
+// Trigger 用 span 包裹而非 asChild：禁用按钮 pointer-events 为 none，
+// 悬停事件落在 span 上，禁用原因的 Tooltip 才能弹出。
+const ToolbarAction: React.FC<ToolbarActionProps> = ({
+  label,
+  shortcut,
+  note,
+  disabled,
+  busy,
+  active,
+  onClick,
+  children,
+}) => (
+  <Tooltip>
+    <TooltipTrigger className="wb-file-preview-tip-anchor">
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        iconOnly
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+        aria-pressed={active}
+        className={active ? 'wb-file-preview-btn-active' : undefined}
+      >
+        {busy ? <span className="wb-file-preview-spinner" aria-hidden="true" /> : children}
+      </NotionButton>
+    </TooltipTrigger>
+    <TooltipContent side="bottom">
+      {label}
+      {shortcut ? <span className="wb-file-preview-kbd">{shortcut}</span> : null}
+      {note ? <span className="wb-file-preview-tip-note">{note}</span> : null}
+    </TooltipContent>
+  </Tooltip>
+);
+
+const ToolbarSeparator: React.FC = () => (
+  <span className="wb-file-preview-sep" role="separator" aria-orientation="vertical" />
+);
+
 const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
   instanceKey,
   isActive,
@@ -171,27 +299,66 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
   const resourceId = normalizeResourceInstanceKey(instanceKey);
   const highlightNames = useMemo(() => getPreviewHighlightNames(resourceId), [resourceId]);
   const previewRootRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [node, setNode] = useState<DstuNode | null>(null);
   const [sourcePath, setSourcePath] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchState, setSearchState] = useState<SearchState>({ ranges: [], current: 0 });
+  // 通过 ref 读取最新搜索状态，把滚动/高亮副作用留在 setState 之外
+  const searchStateRef = useRef<SearchState>(searchState);
+  useEffect(() => {
+    searchStateRef.current = searchState;
+  }, [searchState]);
+  const [toolbarWidth, setToolbarWidth] = useState(Number.POSITIVE_INFINITY);
   const epubSelectionRef = useRef<PreviewSelectionMetadata>({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const { referenceToChat, canReferenceToChat } = useReferenceToChat();
-  const isEpub = node?.name.split('.').pop()?.toLowerCase() === 'epub';
+  const reducedMotion = useReducedMotion();
 
-  const openSearch = useCallback(() => {
-    if (isEpub) {
-      previewRootRef.current?.querySelector('[data-epub-preview]')?.dispatchEvent(
-        new CustomEvent('epub-preview-open-search')
-      );
+  const previewMode = useMemo(() => resolvePreviewShellMode(node), [node]);
+  // 节点未加载完成前先按可用处理，加载后再按类型收紧
+  const canSearch = node === null || isTextSearchablePreview(previewMode);
+  const canPrint = node !== null && isPrintablePreview(previewMode);
+
+  const openSearchPanel = useCallback(() => {
+    const epubTarget = previewRootRef.current?.querySelector('[data-epub-preview]');
+    if (epubTarget) {
+      epubTarget.dispatchEvent(new CustomEvent('epub-preview-open-search'));
       return;
     }
-    setSearchOpen((value) => !value);
-    requestAnimationFrame(() => searchInputRef.current?.focus());
-  }, [isEpub]);
+    setSearchOpen(true);
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    // Keep the query so reopening restores the last search (Chrome parity).
+    setSearchOpen(false);
+    previewRootRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  // 加载期（node === null）先按可搜索放行；节点随后解析为图片/音视频等
+  // 不可搜索类型时，收起可能已被 Cmd+F 打开的搜索条，避免停留在无效状态
+  useEffect(() => {
+    if (!canSearch) setSearchOpen(false);
+  }, [canSearch]);
+
+  const toggleSearchPanel = useCallback(() => {
+    const epubTarget = previewRootRef.current?.querySelector('[data-epub-preview]');
+    if (epubTarget) {
+      epubTarget.dispatchEvent(new CustomEvent('epub-preview-open-search'));
+      return;
+    }
+    if (searchOpen) {
+      closeSearch();
+    } else {
+      openSearchPanel();
+    }
+  }, [closeSearch, openSearchPanel, searchOpen]);
 
   useEffect(() => {
     if (!node) return;
@@ -207,6 +374,18 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
     return () => { cancelled = true; };
   }, [node]);
 
+  useLayoutEffect(() => {
+    const element = toolbarRef.current;
+    if (!element) return;
+    setToolbarWidth(element.getBoundingClientRect().width);
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (typeof width === 'number') setToolbarWidth(width);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [resourceId]);
+
   useEffect(() => {
     clearCssHighlights(highlightNames);
     if (!searchOpen || !searchQuery.trim() || !previewRootRef.current) {
@@ -216,17 +395,31 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
 
     const root = previewRootRef.current;
     let frame = 0;
+    let initialRun = true;
     const update = () => {
       if (frame) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const ranges = findTextRanges(root, searchQuery);
-        applyCssHighlights(ranges, 0, highlightNames);
-        setSearchState({ ranges, current: 0 });
+        // DOM 变更触发的重扫保留当前命中序号（夹取到新范围内），换关键词才归零
+        const current = initialRun
+          ? 0
+          : Math.min(searchStateRef.current.current, Math.max(0, ranges.length - 1));
+        applyCssHighlights(ranges, current, highlightNames);
+        setSearchState({ ranges, current });
+        if (initialRun) {
+          initialRun = false;
+          if (ranges[0]) {
+            if (!SUPPORTS_HIGHLIGHT_API) selectRangeFallback(ranges[0]);
+            scrollRangeIntoView(ranges[0], root);
+          }
+        }
       });
     };
     update();
     const observer = new MutationObserver(update);
-    observer.observe(root, { childList: true, subtree: true, characterData: true });
+    // 只观察内容区：命中计数等工具栏文本变化不应触发全文重扫
+    const contentElement = root.querySelector('[data-file-preview-content]') ?? root;
+    observer.observe(contentElement, { childList: true, subtree: true, characterData: true });
     return () => {
       observer.disconnect();
       if (frame) cancelAnimationFrame(frame);
@@ -236,45 +429,42 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
 
   useEffect(() => () => clearCssHighlights(highlightNames), [highlightNames]);
 
+  // Bound per resourceId: with the previous `[]` deps, mounting through the
+  // empty state left previewRootRef.current null and the listener never bound.
   useEffect(() => {
     const root = previewRootRef.current;
+    if (!root) return;
     const handleEpubSelection = (event: Event) => {
       epubSelectionRef.current = (event as CustomEvent<PreviewSelectionMetadata>).detail ?? {};
     };
-    root?.addEventListener('file-preview-selection', handleEpubSelection);
-    return () => root?.removeEventListener('file-preview-selection', handleEpubSelection);
-  }, []);
+    root.addEventListener('file-preview-selection', handleEpubSelection);
+    return () => root.removeEventListener('file-preview-selection', handleEpubSelection);
+  }, [resourceId]);
 
   useEffect(() => {
     epubSelectionRef.current = {};
   }, [node?.id]);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'f') return;
-      event.preventDefault();
-      if (previewRootRef.current?.querySelector('[data-epub-preview]')) {
-        previewRootRef.current.querySelector('[data-epub-preview]')?.dispatchEvent(
-          new CustomEvent('epub-preview-open-search')
-        );
-      } else {
-        setSearchOpen(true);
-        requestAnimationFrame(() => searchInputRef.current?.focus());
-      }
-    };
-    const root = previewRootRef.current;
-    root?.addEventListener('keydown', onKeyDown);
-    return () => root?.removeEventListener('keydown', onKeyDown);
-  }, []);
-
   const navigateSearch = useCallback((delta: number) => {
-    setSearchState((previous) => {
-      if (!previous.ranges.length) return previous;
-      const current = (previous.current + delta + previous.ranges.length) % previous.ranges.length;
-      applyCssHighlights(previous.ranges, current, highlightNames);
-      previous.ranges[current]?.startContainer.parentElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return { ...previous, current };
-    });
+    const { ranges, current } = searchStateRef.current;
+    const total = ranges.length;
+    if (!total) return;
+    let next = current;
+    // DOM 变更后个别 Range 可能已失联（MutationObserver 重扫存在窗口期），跳过失效项
+    for (let step = 0; step < total; step += 1) {
+      next = (next + delta + total) % total;
+      const range = ranges[next];
+      if (range && range.startContainer.isConnected) {
+        applyCssHighlights(ranges, next, highlightNames);
+        const root = previewRootRef.current;
+        if (root) {
+          if (!SUPPORTS_HIGHLIGHT_API) selectRangeFallback(range);
+          scrollRangeIntoView(range, root);
+        }
+        setSearchState((previous) => ({ ...previous, current: next }));
+        return;
+      }
+    }
   }, [highlightNames]);
 
   const fileFilters = useMemo(() => {
@@ -317,6 +507,32 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
     await revealItemInDir(sourcePath);
   }), [runAction, sourcePath, t]);
 
+  const handlePrint = useCallback(() => {
+    if (!canPrint) {
+      showGlobalNotification('info', t('filePreview.printUnsupported'));
+      return;
+    }
+    const root = previewRootRef.current;
+    if (!root) return;
+    // Tag the printing window so print CSS only affects this preview and
+    // never bleeds into portals, notifications, or other preview windows.
+    root.setAttribute('data-file-preview-printing', '');
+    // 双保险：window.print() 返回后立即清理；某些 WebKit 场景 print() 立刻返回、
+    // 打印真正结束时才派发 afterprint。cleanup 自行摘除监听，避免残留。
+    const cleanup = () => {
+      root.removeAttribute('data-file-preview-printing');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    requestAnimationFrame(() => {
+      try {
+        window.print();
+      } finally {
+        cleanup();
+      }
+    });
+  }, [canPrint, t]);
+
   const handleReference = useCallback(() => runAction('reference', async () => {
     if (!node) return;
     const sourceType = sourceTypeForNode(node);
@@ -334,6 +550,53 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
     });
   }), [node, referenceToChat, runAction, t]);
 
+  // Window-level shortcuts gated on window focus: reliable regardless of
+  // which element inside the preview currently has DOM focus.
+  useEffect(() => {
+    if (!isActive) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const mod = event.metaKey || event.ctrlKey;
+      if (!mod && event.key === 'Escape' && searchOpen
+        && (event.target === document.body
+          || previewRootRef.current?.contains(event.target as Node))) {
+        closeSearch();
+        return;
+      }
+      if (!mod || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === 'f' && !event.shiftKey) {
+        event.preventDefault();
+        if (canSearch) openSearchPanel();
+      } else if (key === 'g' && searchOpen) {
+        event.preventDefault();
+        navigateSearch(event.shiftKey ? -1 : 1);
+      } else if (key === 'p' && !event.shiftKey && !busyAction) {
+        // 与工具栏打印钮的禁用条件对齐：文件对话框等忙碌期不弹打印
+        event.preventDefault();
+        handlePrint();
+      } else if (key === 's' && !event.shiftKey && sourcePath && !busyAction) {
+        event.preventDefault();
+        void handleSave();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [busyAction, canSearch, closeSearch, handlePrint, handleSave, isActive, navigateSearch, openSearchPanel, searchOpen, sourcePath]);
+
+  const handleSearchInputKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+    // 中文等 IME 组词中的 Enter 是确认候选词，不应触发跳转
+    if (event.nativeEvent.isComposing) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      navigateSearch(event.shiftKey ? -1 : 1);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeSearch();
+    }
+  }, [closeSearch, navigateSearch]);
+
   if (!resourceId) {
     return (
       <ContentEmptyState
@@ -343,39 +606,209 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
     );
   }
 
+  const actionsDisabled = !sourcePath || busyAction !== null;
+  const collapseActions = toolbarWidth < (searchOpen ? 560 : 300);
+  const truncated = searchState.ranges.length >= MAX_SEARCH_MATCHES;
+  const hasQuery = Boolean(searchQuery.trim());
+  const countLabel = !hasQuery
+    ? ''
+    : searchState.ranges.length
+      ? `${searchState.current + 1}/${searchState.ranges.length}${truncated ? '+' : ''}`
+      : t('filePreview.noMatches');
+  const countHint = truncated
+    ? t('filePreview.tooManyMatches', { limit: MAX_SEARCH_MATCHES })
+    : !SUPPORTS_HIGHLIGHT_API && hasQuery && searchState.ranges.length
+      ? t('filePreview.highlightUnsupported')
+      : undefined;
+
   return (
     <div ref={previewRootRef} className="wb-file-preview" data-file-preview-root tabIndex={-1}>
       <style>{`
-        ::highlight(${highlightNames.all}) { background: rgb(250 204 21 / 50%); }
-        ::highlight(${highlightNames.current}) { background: rgb(249 115 22 / 80%); color: #111; }
+        ::highlight(${highlightNames.all}) { background-color: hsl(var(--warning) / 28%); }
+        ::highlight(${highlightNames.current}) { background-color: hsl(var(--warning) / 90%); color: hsl(var(--warning-foreground)); }
       `}</style>
-      <div className="wb-file-preview-toolbar" data-file-preview-toolbar role="toolbar" aria-label={t('workbench:apps.filePreview')}>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={openSearch} title={t('filePreview.search')} aria-label={t('filePreview.search')}>
+      <div
+        ref={toolbarRef}
+        className="wb-file-preview-toolbar"
+        data-file-preview-toolbar
+        role="toolbar"
+        aria-label={t('workbench:apps.filePreview')}
+      >
+        <ToolbarAction
+          label={t('filePreview.search')}
+          shortcut={shortcutLabel('F')}
+          note={canSearch ? undefined : t('filePreview.searchUnavailable')}
+          disabled={!canSearch}
+          active={searchOpen}
+          onClick={toggleSearchPanel}
+        >
           <MagnifyingGlass size={16} />
-        </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleSave} disabled={!sourcePath || busyAction !== null} title={t('filePreview.saveAs')} aria-label={t('filePreview.saveAs')}>
-          <FloppyDisk size={16} />
-        </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpen} disabled={!sourcePath || busyAction !== null} title={t('filePreview.openExternal')} aria-label={t('filePreview.openExternal')}>
-          <ArrowSquareOut size={16} />
-        </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleReveal} disabled={!sourcePath || busyAction !== null} title={t('filePreview.showInFolder')} aria-label={t('filePreview.showInFolder')}>
-          <FolderOpen size={16} />
-        </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => window.print()} title={t('filePreview.print')} aria-label={t('filePreview.print')}>
-          <Printer size={16} />
-        </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleReference} disabled={!node || !canReferenceToChat() || busyAction !== null} title={t('filePreview.referenceToChat')} aria-label={t('filePreview.referenceToChat')}>
+        </ToolbarAction>
+        {!collapseActions && (
+          <>
+            <ToolbarSeparator />
+            <ToolbarAction
+              label={t('filePreview.saveAs')}
+              shortcut={shortcutLabel('S')}
+              disabled={actionsDisabled}
+              busy={busyAction === 'save'}
+              onClick={() => { void handleSave(); }}
+            >
+              <FloppyDisk size={16} />
+            </ToolbarAction>
+            <ToolbarAction
+              label={t('filePreview.openExternal')}
+              disabled={actionsDisabled}
+              busy={busyAction === 'open'}
+              onClick={() => { void handleOpen(); }}
+            >
+              <ArrowSquareOut size={16} />
+            </ToolbarAction>
+            <ToolbarAction
+              label={t('filePreview.showInFolder')}
+              disabled={actionsDisabled}
+              busy={busyAction === 'reveal'}
+              onClick={() => { void handleReveal(); }}
+            >
+              <FolderOpen size={16} />
+            </ToolbarAction>
+            <ToolbarSeparator />
+            <ToolbarAction
+              label={t('filePreview.print')}
+              shortcut={shortcutLabel('P')}
+              note={canPrint ? undefined : t('filePreview.printUnsupported')}
+              disabled={!canPrint || busyAction !== null}
+              onClick={handlePrint}
+            >
+              <Printer size={16} />
+            </ToolbarAction>
+            <ToolbarSeparator />
+          </>
+        )}
+        <ToolbarAction
+          label={t('filePreview.referenceToChat')}
+          disabled={!node || !canReferenceToChat() || busyAction !== null}
+          busy={busyAction === 'reference'}
+          onClick={() => { void handleReference(); }}
+        >
           <ChatCircleDots size={16} />
-        </NotionButton>
-        {searchOpen && (
-          <div className="wb-file-preview-search">
-            <input ref={searchInputRef} type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t('filePreview.search')} aria-label={t('filePreview.search')} />
-            <span>{searchState.ranges.length ? `${searchState.current + 1}/${searchState.ranges.length}` : '0/0'}</span>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => navigateSearch(-1)} disabled={!searchState.ranges.length} aria-label={t('filePreview.previous')}><ArrowUp size={14} /></NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => navigateSearch(1)} disabled={!searchState.ranges.length} aria-label={t('filePreview.next')}><ArrowDown size={14} /></NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { setSearchOpen(false); setSearchQuery(''); }} aria-label={t('filePreview.close')}><X size={14} /></NotionButton>
-          </div>
+        </ToolbarAction>
+        <AnimatePresence initial={false}>
+          {searchOpen && (
+            <motion.div
+              key="file-preview-search"
+              className="wb-file-preview-search"
+              role="search"
+              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.98 }}
+              animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+              exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.98 }}
+              transition={
+                reducedMotion
+                  ? { duration: 0.01 }
+                  : { duration: 0.15, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }
+              }
+            >
+              <MagnifyingGlass size={14} className="wb-file-preview-search-icon" aria-hidden="true" />
+              <input
+                ref={searchInputRef}
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={handleSearchInputKeyDown}
+                placeholder={t('filePreview.searchPlaceholder')}
+                aria-label={t('filePreview.search')}
+              />
+              <span
+                className="wb-file-preview-search-count"
+                aria-live="polite"
+                title={countHint}
+              >
+                {countLabel}
+              </span>
+              <NotionButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                className="wb-file-preview-search-btn"
+                onClick={() => navigateSearch(-1)}
+                disabled={!searchState.ranges.length}
+                title={`${t('filePreview.previous')} (Shift+Enter)`}
+                aria-label={t('filePreview.previous')}
+              >
+                <ArrowUp size={14} />
+              </NotionButton>
+              <NotionButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                className="wb-file-preview-search-btn"
+                onClick={() => navigateSearch(1)}
+                disabled={!searchState.ranges.length}
+                title={`${t('filePreview.next')} (Enter)`}
+                aria-label={t('filePreview.next')}
+              >
+                <ArrowDown size={14} />
+              </NotionButton>
+              <NotionButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                className="wb-file-preview-search-btn"
+                onClick={closeSearch}
+                title={`${t('filePreview.closeSearch')} (Esc)`}
+                aria-label={t('filePreview.closeSearch')}
+              >
+                <X size={14} />
+              </NotionButton>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {collapseActions && (
+          <AppMenu className={searchOpen ? undefined : 'ml-auto'}>
+            <AppMenuTrigger asChild>
+              <NotionButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                aria-label={t('filePreview.moreActions')}
+              >
+                <DotsThree size={16} weight="bold" />
+              </NotionButton>
+            </AppMenuTrigger>
+            <AppMenuContent align="end" width={240}>
+              <AppMenuItem
+                icon={<FloppyDisk size={16} />}
+                shortcut={shortcutLabel('S')}
+                disabled={actionsDisabled}
+                onClick={() => { void handleSave(); }}
+              >
+                {t('filePreview.saveAs')}
+              </AppMenuItem>
+              <AppMenuItem
+                icon={<ArrowSquareOut size={16} />}
+                disabled={actionsDisabled}
+                onClick={() => { void handleOpen(); }}
+              >
+                {t('filePreview.openExternal')}
+              </AppMenuItem>
+              <AppMenuItem
+                icon={<FolderOpen size={16} />}
+                disabled={actionsDisabled}
+                onClick={() => { void handleReveal(); }}
+              >
+                {t('filePreview.showInFolder')}
+              </AppMenuItem>
+              <AppMenuSeparator />
+              <AppMenuItem
+                icon={<Printer size={16} />}
+                shortcut={shortcutLabel('P')}
+                disabled={!canPrint || busyAction !== null}
+                onClick={handlePrint}
+              >
+                {t('filePreview.print')}
+              </AppMenuItem>
+            </AppMenuContent>
+          </AppMenu>
         )}
       </div>
       <div className="wb-file-preview-content" data-file-preview-content>

@@ -18,8 +18,20 @@ export function setAgentControlMode(mode: AgentControlMode): void {
   currentMode = mode;
 }
 
-/** 只读：off 仍允许 */
-export const ACR_READONLY_COMMANDS = new Set(['list_windows', 'query_state', 'probe']);
+/**
+ * 只读：off 仍允许。
+ * 与 types.ts 的 ACR_COMMAND_ACCESS 保持同步（运行时闸门以后者为准；
+ * 本表供辅助/测试消费）——`act` 为 dynamic（按 isAgentActRequestReadOnly 判定），
+ * 不在两个静态集合中。
+ */
+export const ACR_READONLY_COMMANDS = new Set([
+  'list_windows',
+  'query_state',
+  'probe',
+  'get_capabilities',
+  'observe',
+  'wait_for',
+]);
 
 /** 写与导航：off 拒绝 */
 export const ACR_MUTATING_COMMANDS = new Set([

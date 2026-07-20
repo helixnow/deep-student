@@ -193,8 +193,12 @@ function commitSwitcher(): void {
   const overlay = useWorkbenchOverlay.getState();
   if (!overlay.switcherOpen) return;
   const selectedId = overlay.switcherIds[overlay.switcherIndex];
-  overlay.closeSwitcher();
-  if (selectedId && useWindowStore.getState().windows[selectedId]) {
+  const targetAlive = Boolean(
+    selectedId && useWindowStore.getState().windows[selectedId],
+  );
+  // 选中窗已被关闭 → 无操作提交，按 cancel 退出（避免误播提交脉冲）
+  overlay.closeSwitcher(targetAlive ? 'commit' : 'cancel');
+  if (targetAlive && selectedId) {
     useWindowStore.getState().focusWindow(selectedId);
   }
 }

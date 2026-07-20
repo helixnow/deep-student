@@ -153,6 +153,9 @@ describe('StatusBar 信号项可见性', () => {
     const entry = await screen.findByTestId('wb-menubar-automations');
     await waitFor(() => expect(entry).toHaveTextContent('2'));
     expect(entry).toHaveAttribute('data-status', 'running');
+    // running>0 → 图标脉冲；failed>0 → 红点角标
+    expect(entry.querySelector('.wb-menubar-automation-iconwrap')).toHaveAttribute('data-pulse', 'true');
+    expect(screen.getByTestId('wb-menubar-automations-failed-dot')).toBeTruthy();
   });
 
   it('命令入口打开统一搜索面板（应用 + 命令），不再弹独立命令面板', () => {

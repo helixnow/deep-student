@@ -6,6 +6,7 @@ import { NotesAPI } from '@/utils/notesApi';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   NotesLibraryManager,
+  NOTES_LIBRARY_LAST_EXPORT_PREF,
   type ImportConflictStrategy,
   type ImportProgress,
 } from '@/features/notes/NotesLibraryManager';
@@ -39,11 +40,19 @@ export function WorkbenchNotesLibraryDialog({
 
   useEffect(() => {
     if (!importing) return;
+    let disposed = false;
     let unlisten: UnlistenFn | undefined;
     void listen<ImportProgress>('notes-import-progress', (event) => {
       setImportProgress(event.payload);
-    }).then((next) => { unlisten = next; });
-    return () => unlisten?.();
+    }).then((next) => {
+      // The effect may be cleaned up before `listen` resolves; unhook immediately.
+      if (disposed) next();
+      else unlisten = next;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
   }, [importing]);
 
   const pickExportPath = async () => {
@@ -65,6 +74,8 @@ export function WorkbenchNotesLibraryDialog({
     setExporting(true);
     try {
       const result = await NotesAPI.exportNotes({ outputPath: exportTargetPath, includeVersions: true });
+      // Remember when the library was last exported (shown inside the panel).
+      void NotesAPI.setPref(NOTES_LIBRARY_LAST_EXPORT_PREF, String(Date.now())).catch(() => {});
       showGlobalNotification('success', t('export.success_desc', {
         count: result.note_count,
         path: result.output_path,

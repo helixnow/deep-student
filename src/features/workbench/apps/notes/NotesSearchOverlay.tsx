@@ -6,10 +6,11 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { CircleNotch, FileText, MagnifyingGlass, TreeStructure, X } from '@phosphor-icons/react';
+import { CaretRight, CircleNotch, FileText, MagnifyingGlass, TreeStructure, X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { dstu, type DstuListOptions, type DstuNode, type DstuNodeType } from '@/dstu';
 import { cn } from '@/lib/utils';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { highlightRanges } from './highlightRanges';
 import {
   nodeMatchesTags,
@@ -26,7 +27,7 @@ const DEFAULT_MAX_RESULTS = 24;
 const DEFAULT_DEBOUNCE_MS = 180;
 
 export interface NotesSearchOverlayProps {
-  /** Whether the modal is currently visible. */
+  /** Whether the floating search palette is currently visible. */
   open: boolean;
   /**
    * The current workspace resources. Quick open searches this in-memory list,
@@ -72,9 +73,14 @@ function resourceKey(resource: DstuNode): string {
   return `${resource.type}:${resource.id}`;
 }
 
-function pathLabel(resource: DstuNode): string {
+function pathSegments(resource: DstuNode): string[] {
   const segments = resource.path.split('/').filter(Boolean);
   if (segments.at(-1) === resource.id) segments.pop();
+  return segments;
+}
+
+function pathLabel(resource: DstuNode): string {
+  const segments = pathSegments(resource);
   return segments.length > 0 ? segments.join(' / ') : '/';
 }
 
@@ -209,6 +215,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   const [isOpening, setIsOpening] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [searchAttempt, setSearchAttempt] = useState(0);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const priorFocusRef = useRef<HTMLElement | null>(null);
   const wasOpenRef = useRef(open);
@@ -231,7 +238,6 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   const displayedResults = activeMode === 'quick-open' ? quickOpenResults : fullTextResults;
   const hasResultList = displayedResults.length > 0 && !searchError && !openError;
   const listId = `${overlayId}-notes-search-results`;
-  const titleId = `${overlayId}-notes-search-title`;
   const activeResult = displayedResults[activeIndex] ?? null;
   const activeDescendantId = activeResult
     ? `${overlayId}-notes-search-result-${activeIndex}`
@@ -433,7 +439,8 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
     }
   }, [activeResult, moveActiveResult, openResult]);
 
-  const onDialogKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+  // 无遮罩悬浮面板：不做 Tab 焦点陷阱，仅保留 Escape 关闭与 Ctrl+Tab 切模式
+  const onPanelKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -444,25 +451,33 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
       event.preventDefault();
       event.stopPropagation();
       setSearchMode(activeMode === 'quick-open' ? 'full-text' : 'quick-open');
-      return;
-    }
-    if (event.key !== 'Tab') return;
-    const dialog = event.currentTarget;
-    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
-      'button:not([disabled]):not([tabindex="-1"]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ));
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    const focused = document.activeElement;
-    if (event.shiftKey && (!dialog.contains(focused) || focused === first)) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && (!dialog.contains(focused) || focused === last)) {
-      event.preventDefault();
-      first.focus();
     }
   }, [activeMode, onClose, setSearchMode]);
+
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // 点击面板外任意位置关闭（无遮罩形态下的轻量 dismiss）
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const root = rootRef.current;
+      if (!root) return;
+      if (event.target instanceof Node && root.contains(event.target)) return;
+      onCloseRef.current();
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [open]);
+
+  // Android 返回键：先关搜索面板，不退出笔记工作区
+  useEffect(() => {
+    if (!open) return;
+    return registerBackHandler(() => {
+      onCloseRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [open]);
 
   if (!open) return null;
 
@@ -473,190 +488,222 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
     ? t('notesWorkspace.searchOverlay.quickOpenPlaceholder', 'Filter openable files...')
     : t('notesWorkspace.searchOverlay.fullTextPlaceholder', 'Search note contents...');
   const hasSearchIntent = Boolean(highlightQuery.trim() || activeFilterTags.length > 0);
+  const tagHint = t('notesWorkspace.searchOverlay.tagHint', 'tag:name filters by tag');
 
   return (
-    <div className={cn('notes-search-overlay', className)} data-notes-search-overlay>
-      <div className="notes-search-overlay-backdrop" aria-hidden="true" onMouseDown={onClose} />
-      <div
-        className="notes-search-overlay-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        onKeyDown={onDialogKeyDown}
-      >
-        <div className="notes-search-overlay-header">
-          <h2 id={titleId}>{searchTitle}</h2>
+    // 顶部居中悬浮命令条（无 backdrop / 无 aria-modal；点击外部、Esc、关闭按钮均可退出）
+    <div
+      ref={rootRef}
+      className={cn('notes-search-overlay', 'ui-drop-in', className)}
+      data-notes-search-overlay
+      role="region"
+      aria-label={searchTitle}
+      onKeyDown={onPanelKeyDown}
+    >
+      <div className="notes-search-overlay-input-wrap">
+        <MagnifyingGlass size={17} aria-hidden="true" />
+        <input
+          ref={inputRef}
+          type="search"
+          role="combobox"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpenError(null);
+          }}
+          onKeyDown={onInputKeyDown}
+          placeholder={placeholder}
+          aria-label={searchTitle}
+          aria-autocomplete="list"
+          aria-controls={hasResultList ? listId : undefined}
+          aria-expanded={hasResultList}
+          aria-activedescendant={hasResultList ? activeDescendantId : undefined}
+          autoComplete="off"
+        />
+        {query && (
           <button
-            className="notes-search-overlay-close"
+            className="notes-search-overlay-clear"
             type="button"
-            onClick={onClose}
-            aria-label={t('notesWorkspace.searchOverlay.close', 'Close search')}
-            title={t('notesWorkspace.searchOverlay.close', 'Close search')}
+            onClick={() => setQuery('')}
+            aria-label={t('notesWorkspace.searchOverlay.clear', 'Clear search')}
+            title={t('notesWorkspace.searchOverlay.clear', 'Clear search')}
           >
-            <X size={16} aria-hidden="true" />
+            <X size={14} aria-hidden="true" />
           </button>
-        </div>
+        )}
+        <button
+          className="notes-search-overlay-close"
+          type="button"
+          onClick={onClose}
+          aria-label={t('notesWorkspace.searchOverlay.close', 'Close search')}
+          title={t('notesWorkspace.searchOverlay.close', 'Close search')}
+        >
+          <X size={15} aria-hidden="true" />
+        </button>
+      </div>
 
-        <div className="notes-search-overlay-input-wrap">
-          <MagnifyingGlass size={17} aria-hidden="true" />
-          <input
-            ref={inputRef}
-            type="search"
-            role="combobox"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setOpenError(null);
-            }}
-            onKeyDown={onInputKeyDown}
-            placeholder={placeholder}
-            aria-label={searchTitle}
-            aria-autocomplete="list"
-            aria-controls={hasResultList ? listId : undefined}
-            aria-expanded={hasResultList}
-            aria-activedescendant={hasResultList ? activeDescendantId : undefined}
-            autoComplete="off"
-          />
-          {query && (
-            <button
-              className="notes-search-overlay-clear"
-              type="button"
-              onClick={() => setQuery('')}
-              aria-label={t('notesWorkspace.searchOverlay.clear', 'Clear search')}
-              title={t('notesWorkspace.searchOverlay.clear', 'Clear search')}
-            >
-              <X size={14} aria-hidden="true" />
-            </button>
+      {activeFilterTags.length > 0 && (
+        <div
+          className="notes-search-overlay-active-tags"
+          data-notes-search-active-tags
+          aria-label={t('workbench:notesWorkspace.searchOverlay.activeTags')}
+        >
+          <span className="notes-search-overlay-active-tags-label">
+            {t('workbench:notesWorkspace.searchOverlay.activeTags')}
+          </span>
+          {activeFilterTags.map((tag) => (
+            <span key={tag} className="notes-search-overlay-active-tag">
+              <span className="notes-search-overlay-active-tag-name">{tag}</span>
+              <button
+                type="button"
+                className="notes-search-overlay-active-tag-remove"
+                onClick={() => removeActiveTag(tag)}
+                aria-label={t('workbench:notesWorkspace.searchOverlay.removeTag', { tag })}
+                title={t('workbench:notesWorkspace.searchOverlay.removeTag', { tag })}
+              >
+                <X size={12} aria-hidden="true" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div
+        className="notes-search-overlay-modes"
+        role="group"
+        aria-label={t('notesWorkspace.searchOverlay.modeLabel', 'Search mode')}
+      >
+        <button
+          type="button"
+          data-active={activeMode === 'quick-open' ? 'true' : undefined}
+          aria-pressed={activeMode === 'quick-open'}
+          onClick={() => setSearchMode('quick-open')}
+        >
+          {quickOpenLabel}
+        </button>
+        <button
+          type="button"
+          data-active={activeMode === 'full-text' ? 'true' : undefined}
+          aria-pressed={activeMode === 'full-text'}
+          onClick={() => setSearchMode('full-text')}
+        >
+          {fullTextLabel}
+        </button>
+        <span className="notes-search-overlay-taghint">
+          <code>tag:</code>
+          {' '}
+          {tagHint}
+        </span>
+      </div>
+
+      <div className="notes-search-overlay-results-wrap">
+        <div className="notes-search-overlay-status" aria-live="polite">
+          {isSearching && (
+            <span>
+              <CircleNotch className="notes-search-overlay-spinner" size={14} aria-hidden="true" />
+              {t('notesWorkspace.searchOverlay.searching', 'Searching...')}
+            </span>
+          )}
+          {!isSearching && activeMode === 'full-text' && !hasSearchIntent && (
+            <span>{t('notesWorkspace.searchOverlay.enterQuery', 'Enter text to search note contents.')}</span>
           )}
         </div>
 
-        {activeFilterTags.length > 0 && (
-          <div
-            className="notes-search-overlay-active-tags"
-            data-notes-search-active-tags
-            aria-label={t('workbench:notesWorkspace.searchOverlay.activeTags')}
-          >
-            <span className="notes-search-overlay-active-tags-label">
-              {t('workbench:notesWorkspace.searchOverlay.activeTags')}
-            </span>
-            {activeFilterTags.map((tag) => (
-              <span key={tag} className="notes-search-overlay-active-tag">
-                <span className="notes-search-overlay-active-tag-name">{tag}</span>
-                <button
-                  type="button"
-                  className="notes-search-overlay-active-tag-remove"
-                  onClick={() => removeActiveTag(tag)}
-                  aria-label={t('workbench:notesWorkspace.searchOverlay.removeTag', { tag })}
-                  title={t('workbench:notesWorkspace.searchOverlay.removeTag', { tag })}
-                >
-                  <X size={12} aria-hidden="true" />
-                </button>
-              </span>
-            ))}
+        {searchError ? (
+          <div className="notes-search-overlay-message" role="alert">
+            <span>{searchError}</span>
+            <button type="button" onClick={() => setSearchAttempt((attempt) => attempt + 1)}>
+              {t('notesWorkspace.searchOverlay.retry', 'Retry')}
+            </button>
           </div>
-        )}
-
-        <div
-          className="notes-search-overlay-modes"
-          role="group"
-          aria-label={t('notesWorkspace.searchOverlay.modeLabel', 'Search mode')}
-        >
-          <button
-            type="button"
-            data-active={activeMode === 'quick-open' ? 'true' : undefined}
-            aria-pressed={activeMode === 'quick-open'}
-            onClick={() => setSearchMode('quick-open')}
-          >
-            {quickOpenLabel}
-          </button>
-          <button
-            type="button"
-            data-active={activeMode === 'full-text' ? 'true' : undefined}
-            aria-pressed={activeMode === 'full-text'}
-            onClick={() => setSearchMode('full-text')}
-          >
-            {fullTextLabel}
-          </button>
-        </div>
-
-        <div className="notes-search-overlay-results-wrap">
-          <div className="notes-search-overlay-status" aria-live="polite">
-            {isSearching && (
-              <span>
-                <CircleNotch className="notes-search-overlay-spinner" size={14} aria-hidden="true" />
-                {t('notesWorkspace.searchOverlay.searching', 'Searching...')}
-              </span>
-            )}
-            {!isSearching && activeMode === 'full-text' && !hasSearchIntent && (
-              <span>{t('notesWorkspace.searchOverlay.enterQuery', 'Enter text to search note contents.')}</span>
-            )}
+        ) : openError ? (
+          <div className="notes-search-overlay-message" role="alert">
+            {openError}
           </div>
-
-          {searchError ? (
-            <div className="notes-search-overlay-message" role="alert">
-              <span>{searchError}</span>
-              <button type="button" onClick={() => setSearchAttempt((attempt) => attempt + 1)}>
-                {t('notesWorkspace.searchOverlay.retry', 'Retry')}
-              </button>
-            </div>
-          ) : openError ? (
-            <div className="notes-search-overlay-message" role="alert">
-              {openError}
-            </div>
-          ) : displayedResults.length > 0 ? (
-            <ul id={listId} className="notes-search-overlay-results" role="listbox" aria-label={searchTitle}>
-              {displayedResults.map((resource, index) => {
-                const snippet = activeMode === 'full-text'
-                  ? stripNotesSearchSnippet(resource.metadata?.snippet)
-                  : null;
-                const selected = index === activeIndex;
-                return (
-                  <li key={resourceKey(resource)} role="presentation">
-                    <button
-                      id={`${overlayId}-notes-search-result-${index}`}
-                      type="button"
-                      role="option"
-                      tabIndex={-1}
-                      className="notes-search-overlay-result"
-                      aria-selected={selected}
-                      data-active={selected ? 'true' : undefined}
-                      data-notes-search-index={index}
-                      disabled={isOpening}
-                      onMouseEnter={() => setActiveIndex(index)}
-                      onClick={() => void openResult(resource)}
-                    >
-                      <span className="notes-search-overlay-result-icon"><ResourceIcon type={resource.type} /></span>
-                      <span className="notes-search-overlay-result-main">
-                        <span className="notes-search-overlay-result-title">
-                          {renderHighlightedText(resource.name, highlightQuery)}
-                        </span>
-                        <span className="notes-search-overlay-result-path">{pathLabel(resource)}</span>
-                        {snippet && (
-                          <span className="notes-search-overlay-result-snippet">
-                            {renderHighlightedText(snippet, highlightQuery)}
-                          </span>
+        ) : displayedResults.length > 0 ? (
+          <ul id={listId} className="notes-search-overlay-results" role="listbox" aria-label={searchTitle}>
+            {displayedResults.map((resource, index) => {
+              const snippet = activeMode === 'full-text'
+                ? stripNotesSearchSnippet(resource.metadata?.snippet)
+                : null;
+              const selected = index === activeIndex;
+              const crumbs = pathSegments(resource);
+              return (
+                <li key={resourceKey(resource)} role="presentation">
+                  <button
+                    id={`${overlayId}-notes-search-result-${index}`}
+                    type="button"
+                    role="option"
+                    tabIndex={-1}
+                    className="notes-search-overlay-result"
+                    aria-selected={selected}
+                    data-active={selected ? 'true' : undefined}
+                    data-notes-search-index={index}
+                    disabled={isOpening}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onClick={() => void openResult(resource)}
+                  >
+                    <span className="notes-search-overlay-result-icon"><ResourceIcon type={resource.type} /></span>
+                    <span className="notes-search-overlay-result-main">
+                      <span className="notes-search-overlay-result-title">
+                        {renderHighlightedText(resource.name, highlightQuery)}
+                      </span>
+                      <span className="notes-search-overlay-result-path" title={pathLabel(resource)}>
+                        {crumbs.length === 0 ? (
+                          <span className="notes-search-overlay-result-crumb">/</span>
+                        ) : (
+                          crumbs.map((segment, crumbIndex) => (
+                            <React.Fragment key={`${crumbIndex}-${segment}`}>
+                              {crumbIndex > 0 && (
+                                <CaretRight
+                                  size={9}
+                                  className="notes-search-overlay-result-crumb-sep"
+                                  aria-hidden="true"
+                                />
+                              )}
+                              <span className="notes-search-overlay-result-crumb">{segment}</span>
+                            </React.Fragment>
+                          ))
                         )}
                       </span>
-                      <span className="notes-search-overlay-result-type">
-                        {resource.type === 'mindmap'
-                          ? t('notesWorkspace.searchOverlay.mindmap', 'Mind map')
-                          : t('notesWorkspace.searchOverlay.note', 'Note')}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : !isSearching && (activeMode === 'quick-open' || hasSearchIntent) ? (
-            <div className="notes-search-overlay-empty">
-              {t('notesWorkspace.searchOverlay.empty', 'No matching notes or mind maps.')}
-            </div>
-          ) : null}
-        </div>
+                      {snippet && (
+                        <span className="notes-search-overlay-result-snippet">
+                          {renderHighlightedText(snippet, highlightQuery)}
+                        </span>
+                      )}
+                    </span>
+                    <span className="notes-search-overlay-result-type">
+                      {resource.type === 'mindmap'
+                        ? t('notesWorkspace.searchOverlay.mindmap', 'Mind map')
+                        : t('notesWorkspace.searchOverlay.note', 'Note')}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : !isSearching && (activeMode === 'quick-open' || hasSearchIntent) ? (
+          <div className="notes-search-overlay-empty">
+            <span>{t('notesWorkspace.searchOverlay.empty', 'No matching notes or mind maps.')}</span>
+            <span className="notes-search-overlay-empty-hint">
+              {activeMode === 'quick-open'
+                ? t('notesWorkspace.searchOverlay.emptyQuickOpenHint', 'Try “Search content” for full-text matches.')
+                : tagHint}
+            </span>
+          </div>
+        ) : null}
+      </div>
 
-        <div className="notes-search-overlay-footer">
-          {t('notesWorkspace.searchOverlay.keyboardHint', 'Up/Down to select, Enter to open, Esc to close')}
-        </div>
+      <div className="notes-search-overlay-footer">
+        <span>{t('notesWorkspace.searchOverlay.keyboardHint', 'Up/Down to select, Enter to open, Esc to close')}</span>
+        {hasResultList && (
+          <span>
+            {t('notesWorkspace.searchOverlay.resultCount', {
+              count: displayedResults.length,
+              defaultValue: '{{count}} results',
+            })}
+          </span>
+        )}
       </div>
     </div>
   );

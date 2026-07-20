@@ -94,6 +94,28 @@ export function collectDescendantIds(
   return result;
 }
 
+/**
+ * Keep only the top-most ids of `ids`: any id nested inside another selected
+ * folder is dropped (moving the ancestor already carries it). Result follows
+ * depth-first tree order so batched moves preserve the visual sequence.
+ */
+export function excludeNestedIds(
+  items: readonly NotesWorkspaceTreeItem[],
+  ids: ReadonlySet<string> | readonly string[],
+): string[] {
+  const idSet = ids instanceof Set ? ids : new Set(ids);
+  const result: string[] = [];
+  const walk = (nodes: readonly NotesWorkspaceTreeItem[], underSelected: boolean) => {
+    for (const node of nodes) {
+      const selected = idSet.has(node.id);
+      if (selected && !underSelected) result.push(node.id);
+      if (node.children?.length) walk(node.children, underSelected || selected);
+    }
+  };
+  walk(items, false);
+  return result;
+}
+
 export function findItemById(
   items: readonly NotesWorkspaceTreeItem[],
   id: string,

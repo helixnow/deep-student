@@ -25,6 +25,7 @@ import {
 } from '../hooks/useWindowLifecycleAnim';
 import './WindowLifecycle.css';
 import {
+  clearWindowActivation,
   markWindowActivationPending,
   markWindowActivationReady,
 } from '../core/workbenchBus';
@@ -32,7 +33,9 @@ import {
 const ActivationPendingMarker: React.FC<{ windowId: string }> = ({ windowId }) => {
   useEffect(() => {
     markWindowActivationPending(windowId);
-    return () => markWindowActivationPending(windowId);
+    // 宿主卸载（关窗/冻结）时删除条目，而不是再次置 pending：
+    // stale `false` 会让后续 activate 白等 10s 超时。
+    return () => clearWindowActivation(windowId);
   }, [windowId]);
   return null;
 };
@@ -40,6 +43,8 @@ const ActivationPendingMarker: React.FC<{ windowId: string }> = ({ windowId }) =
 const ActivationReadyMarker: React.FC<{ windowId: string }> = ({ windowId }) => {
   useEffect(() => {
     markWindowActivationReady(windowId);
+    // App 子树卸载 = 不再可送达；回到 pending 会误导 waiter，这里直接收口。
+    // 若只是重挂载（Suspense 重试），PendingMarker 会重新登记。
     return () => markWindowActivationPending(windowId);
   }, [windowId]);
   return null;
@@ -144,7 +149,9 @@ export const WindowBody: React.FC<WindowBodyProps> = ({ windowId }) => {
   const isActive = lifecycle === 'focused';
   const isVisible = lifecycle === 'focused' || lifecycle === 'visible';
   const hidden = lifecycle === 'background';
-  // 仅可见窗需要节流提示；hidden/frozen 已由壳层停绘
+  // 仅可见窗需要节流提示；hidden/frozen 已由壳层停绘。
+  // hidden 窗另以 isSuspended 显式下传「已停绘」语义：React 树仍全速跑，
+  // 重应用（如 Chat 流式）可据此暂停纯视觉提交（缓冲不丢，回可见即补渲）。
   const renderThrottleMs = isVisible ? throttleMs : 0;
 
   if (!win) return null;
@@ -195,6 +202,7 @@ export const WindowBody: React.FC<WindowBodyProps> = ({ windowId }) => {
               isActive={isActive}
               isVisible={isVisible}
               renderThrottleMs={renderThrottleMs}
+              isSuspended={hidden}
               onTitleChange={handleTitleChange}
               requestClose={handleRequestClose}
             />
