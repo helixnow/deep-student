@@ -7,7 +7,7 @@ import { LanguageSelect } from './LanguageSelect';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Switch } from '../ui/shad/Switch';
 import { Label } from '../ui/shad/Label';
@@ -336,7 +336,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
         <CommonTooltip
           content={`${t('translation:actions.swap_languages')} · ${t('translation:shortcuts.swap')}`}
         >
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={handleSwapClick}
@@ -350,7 +350,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
             >
               <ArrowsLeftRight size={16} />
             </span>
-          </NotionButton>
+          </DsButton>
         </CommonTooltip>
         <LanguageSelect
           value={tgtLang}
@@ -401,7 +401,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
         <div className="hidden lg:block w-px h-4 bg-border" />
 
         <CommonTooltip content={t('translation:prompt_editor.title')}>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={() => setShowPromptEditor(!showPromptEditor)}
@@ -416,7 +416,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
             )}
           >
             <GearSix size={16} />
-          </NotionButton>
+          </DsButton>
         </CommonTooltip>
       </div>
     </div>

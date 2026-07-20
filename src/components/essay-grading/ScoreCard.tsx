@@ -1,5 +1,5 @@
 /**
- * 评分卡片组件 - Notion 风格设计
+ * 评分卡片组件 - 简洁风格设计
  * 简洁、留白、细线边框、语义色 token
  * 支持：圆环动画、分数滚动、维度条加载动画、维度雷达图（≥3 维）
  */
@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import type { ParsedScore, DimensionScore } from '../../essay-grading/streamingMarkerParser';
 import type { GradeCode } from '../../essay-grading/types';
 import { ChartBar, ChartPolar } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 interface ScoreCardProps {
   score: ParsedScore;
@@ -307,7 +307,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className }) => {
             </div>
             {canShowRadar && (
               <div className="flex items-center gap-0.5 rounded-md border border-border/40 p-0.5">
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
@@ -322,8 +322,8 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className }) => {
                   )}
                 >
                   <ChartBar size={13} />
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
@@ -338,7 +338,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className }) => {
                   )}
                 >
                   <ChartPolar size={13} />
-                </NotionButton>
+                </DsButton>
               </div>
             )}
           </div>

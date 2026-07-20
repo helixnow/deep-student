@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Textarea } from '../ui/shad/Textarea';
 import { CommonTooltip } from '../shared/CommonTooltip';
 import { FileArrowUp, Lightning, TextAa, Trash, X } from '@phosphor-icons/react';
@@ -167,15 +167,15 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
             aria-label={t('translation:panel_ux.clear_confirm')}
         >
             <span className="whitespace-nowrap">{t('translation:panel_ux.clear_confirm')}</span>
-            <NotionButton
+            <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={confirmClear}
                 className="h-6 px-1.5 text-destructive hover:bg-destructive/15 font-medium"
             >
                 {t('translation:actions.clear')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
                 variant="ghost"
                 size="icon"
                 onClick={dismissClearConfirm}
@@ -183,11 +183,11 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 aria-label={t('common:cancel')}
             >
                 <X size={12} />
-            </NotionButton>
+            </DsButton>
         </div>
     ) : (
         <CommonTooltip content={t('translation:actions.clear')}>
-            <NotionButton
+            <DsButton
                 variant="ghost"
                 size="icon"
                 onClick={requestClear}
@@ -196,7 +196,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 aria-label={t('translation:actions.clear')}
             >
                 <Trash size={14} />
-            </NotionButton>
+            </DsButton>
         </CommonTooltip>
     );
 
@@ -223,7 +223,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 <div className="flex items-center gap-0.5 shrink-0">
                     {sourceText && !isTranslating && clearControl}
                     {isTranslating ? (
-                        <NotionButton
+                        <DsButton
                             variant="ghost"
                             size="sm"
                             onClick={onCancelTranslation}
@@ -231,9 +231,9 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                         >
                             <X size={14} className="mr-1" />
                             {t('common:cancel')}
-                        </NotionButton>
+                        </DsButton>
                     ) : (
-                        <NotionButton
+                        <DsButton
                             variant="ghost"
                             size="sm"
                             onClick={onTranslate}
@@ -241,7 +241,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                             className="h-8 px-2 text-primary font-medium"
                         >
                             {t('translation:actions.translate')}
-                        </NotionButton>
+                        </DsButton>
                     )}
                 </div>
             </div>
@@ -306,16 +306,16 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
             {/* 桌面主操作栏 */}
             <div data-wb-blur-surface className="hidden sm:flex p-3 border-t bg-background/50 backdrop-blur items-center justify-end shrink-0">
                 {isTranslating ? (
-                    <NotionButton
+                    <DsButton
                         variant="default"
                         onClick={onCancelTranslation}
                         className="min-w-[120px]"
                     >
                         <X size={14} className="mr-2" />
                         {t('common:cancel')}
-                    </NotionButton>
+                    </DsButton>
                 ) : (
-                    <NotionButton
+                    <DsButton
                         variant="primary"
                         onClick={onTranslate}
                         disabled={!sourceText.trim()}
@@ -326,7 +326,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                         <kbd className="ml-2 hidden md:inline text-[10px] font-mono opacity-60 tracking-tight">
                             {isMacLike ? '⌘↵' : 'Ctrl↵'}
                         </kbd>
-                    </NotionButton>
+                    </DsButton>
                 )}
             </div>
         </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import {
@@ -62,20 +62,20 @@ const StatusBanner: React.FC<{
     className={cn(
       'mx-4 mt-3 rounded-md border px-3 py-2.5',
       tone === 'warning'
-        ? 'border-amber-400/40 dark:border-amber-500/30 bg-amber-500/5'
-        : 'border-red-400/40 dark:border-red-500/30 bg-red-500/5'
+        ? 'border-warning/30 bg-warning/5'
+        : 'border-destructive/30 bg-destructive/5'
     )}
   >
     <div className="flex items-start gap-2">
       <WarningCircle
         size={15}
-        className={cn('shrink-0 mt-0.5', tone === 'warning' ? 'text-amber-500/80' : 'text-red-500/80')}
+        className={cn('mt-0.5 shrink-0', tone === 'warning' ? 'text-warning' : 'text-destructive')}
       />
       <div className="flex-1 min-w-0">
         <div
           className={cn(
             'text-sm font-medium',
-            tone === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'
+            tone === 'warning' ? 'text-warning' : 'text-destructive'
           )}
         >
           {title}
@@ -130,7 +130,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   return (
     <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 overflow-hidden transition-all duration-200 group/target">
       {/* Toolbar - 简洁风格 */}
-      <div className="flex h-[41px] items-center justify-between px-4 border-b border-border/30">
+      <div className="flex h-[41px] items-center justify-between border-b border-border/30 px-3 sm:px-4">
         <div className="flex items-center gap-3 min-w-0">
           {/* 标题 - 简洁风格简洁 */}
           <div className="flex items-center gap-2 text-sm text-foreground/70 shrink-0">
@@ -141,9 +141,9 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           {currentRound > 0 && (
             <div className="flex items-center gap-0.5 shrink-0">
               {roundNavigation && roundNavigation.total > 1 && (
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10">
                   <CaretLeft size={12} />
-                </NotionButton>
+                </DsButton>
               )}
               <span className="text-xs text-muted-foreground/60 tabular-nums">
                 {roundNavigation && roundNavigation.total > 1 ? (
@@ -156,9 +156,9 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
                 )}
               </span>
               {roundNavigation && roundNavigation.total > 1 && (
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10">
                   <CaretRight size={12} />
-                </NotionButton>
+                </DsButton>
               )}
             </div>
           )}
@@ -182,28 +182,28 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           {gradingResult && (
             <>
               <CommonTooltip content={copied ? t('essay_grading:result_section.copied_feedback') : t('essay_grading:result_section.copy')}>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
                   onClick={handleCopy}
-                  className="!h-7 !w-7 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150 motion-reduce:transition-none"
+                  className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
                   aria-label={t('essay_grading:result_section.copy')}
                 >
-                  {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
-                </NotionButton>
+                  {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+                </DsButton>
               </CommonTooltip>
               <CommonTooltip content={t('essay_grading:result_section.export')}>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
                   onClick={onExportResult}
-                  className="!h-7 !w-7 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150 motion-reduce:transition-none"
+                  className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
                   aria-label={t('essay_grading:result_section.export')}
                 >
                   <Download size={14} />
-                </NotionButton>
+                </DsButton>
               </CommonTooltip>
             </>
           )}
@@ -227,10 +227,10 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
             description={error}
           >
             {canRetry && onRetry && (
-              <NotionButton variant="default" size="sm" onClick={onRetry} className="mt-2.5 text-xs text-foreground/80 hover:text-foreground border border-border/50 hover:bg-[var(--interactive-hover)]">
+              <DsButton variant="default" size="sm" onClick={onRetry} className="mt-2.5 text-xs text-foreground/80 hover:text-foreground border border-border/50 hover:bg-[var(--interactive-hover)]">
                 <ArrowClockwise size={12} />
                 {t('essay_grading:actions.retry')}
-              </NotionButton>
+              </DsButton>
             )}
           </StatusBanner>
         )}

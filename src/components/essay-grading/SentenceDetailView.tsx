@@ -14,7 +14,7 @@ import type { StreamingMarker } from '@/essay-grading/streamingMarkerParser';
 import { isSuggestionErr } from './StreamingAnnotatedText';
 import { Warning, ArrowRight, Trash, Pen, Sparkle, Copy, Check, ListChecks } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface SentenceDetailViewProps {
@@ -100,7 +100,7 @@ const InlineCopyButton: React.FC<{ text: string; label: string; copiedLabel: str
   };
 
   return (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="sm"
       aria-label={copied ? copiedLabel : label}
@@ -114,7 +114,7 @@ const InlineCopyButton: React.FC<{ text: string; label: string; copiedLabel: str
     >
       {copied ? <Check size={12} /> : <Copy size={12} />}
       <span>{copied ? copiedLabel : label}</span>
-    </NotionButton>
+    </DsButton>
   );
 };
 

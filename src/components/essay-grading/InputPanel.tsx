@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Textarea } from '../ui/shad/Textarea';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { AppSelect } from '../ui/app-menu';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import {
@@ -105,7 +105,7 @@ interface InputPanelProps {
 
 /**
  * 内联二段确认：第一次点击进入"确认？"态，3 秒无操作自动复位，再次点击才执行。
- * 替代模态确认框（NotionAlertDialog），桌面与移动统一交互。
+ * 替代模态确认框（DsAlertDialog），桌面与移动统一交互。
  */
 function useInlineConfirm(onConfirm: () => void) {
   const [armed, setArmed] = useState(false);
@@ -358,13 +358,13 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
   const limitTone = charCount >= ESSAY_MAX_CHARS
     ? 'text-destructive font-medium'
     : charCount >= ESSAY_MAX_CHARS * 0.9
-      ? 'text-orange-500 dark:text-orange-400'
+      ? 'text-warning'
       : 'text-muted-foreground/50';
 
   return (
     <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 transition-all duration-200 border-b lg:border-b-0 lg:border-r border-border/40 relative group/source">
-      {/* Toolbar - Notion 风格简洁布局 */}
-      <div className="flex h-[41px] items-center px-4 border-b border-border/30 gap-1.5">
+      {/* Toolbar - 简洁风格简洁布局 */}
+      <div className="flex h-[41px] items-center gap-1 border-b border-border/30 px-2 sm:gap-1.5 sm:px-4">
         {/* 左侧：模式选择 - 保持固定宽度 */}
         {modes.length > 0 && (
           <div className="min-w-0 max-w-[50%] sm:max-w-none sm:shrink-0">
@@ -392,19 +392,19 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         {/* 右侧：操作按钮组 - 桌面端不收缩；移动端允许收缩以防溢出（统计文本可截断） */}
         <div className="flex min-w-0 items-center gap-1 sm:shrink-0">
           <CommonTooltip content={t('essay_grading:import_images.hint', { max: ocrMaxFiles })}>
-            <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isGrading} aria-label={t('common:aria.upload_image')} className={cn(COARSE_HIT, "flex shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-40 transition-colors duration-150")}>
+            <DsButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isGrading} aria-label={t('common:aria.upload_image')} className={cn(COARSE_HIT, "flex shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-40 transition-colors duration-150")}>
               <Image size={14} />
               <span className="text-xs hidden xl:inline">{t('essay_grading:import_images.button')}</span>
-            </NotionButton>
+            </DsButton>
           </CommonTooltip>
 
           {/* 设置按钮（始终显示图标，大屏显示文字） */}
           {onOpenSettings && (
             <CommonTooltip content={t('essay_grading:settings.title')}>
-              <NotionButton variant="ghost" size="sm" onClick={onOpenSettings} className={cn(COARSE_HIT, "shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150")}>
+              <DsButton variant="ghost" size="sm" onClick={onOpenSettings} className={cn(COARSE_HIT, "shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150")}>
                 <PenNib size={14} />
                 <span className="text-xs hidden xl:inline">{t('essay_grading:settings.title')}</span>
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
           )}
 
@@ -417,9 +417,9 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
 
           {roundNavigation && roundNavigation.total > 1 && (
             <div className="hidden sm:flex items-center gap-1">
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} aria-label={t('common:aria.previous_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 transition-colors duration-150">
+              <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} aria-label={t('common:aria.previous_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 transition-colors duration-150">
                 <CaretLeft size={14} />
-              </NotionButton>
+              </DsButton>
               <div className="flex items-center">
                 {Array.from({ length: roundNavigation.total }, (_, i) => (
                   <button
@@ -448,47 +448,38 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   </button>
                 ))}
               </div>
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} aria-label={t('common:aria.next_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 transition-colors duration-150">
+              <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} aria-label={t('common:aria.next_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 transition-colors duration-150">
                 <CaretRight size={14} />
-              </NotionButton>
+              </DsButton>
             </div>
           )}
 
-          {/* 移动端：字符统计 + 清空 + 批改按钮 */}
+          {/* 移动端：清空 + 批改按钮（字数统计移到输入区右下角悬浮条，避免顶栏拥挤截断） */}
           <div className="sm:hidden flex min-w-0 items-center gap-1">
-            <span className="text-xs text-muted-foreground/60 tabular-nums truncate min-w-0">
-              {t('essay_grading:stats.han_chars')}: {textStats.hanChars.toLocaleString()}
-              {' · '}
-              {t('essay_grading:stats.english_words')}: {textStats.englishWords.toLocaleString()}
-              {' · '}
-              <span className={limitTone}>
-                {charCount.toLocaleString()}/{ESSAY_MAX_CHARS.toLocaleString()}
-              </span>
-            </span>
             {hasClearableContent && !isGrading && (
               mobileClearConfirm.armed ? (
-                <NotionButton variant="destructive" size="sm" onClick={mobileClearConfirm.handleClick} aria-label={t('essay_grading:confirm.clear')} className="!h-7 shrink-0 px-2 text-xs transition-colors duration-150">
+                <DsButton variant="destructive" size="sm" onClick={mobileClearConfirm.handleClick} aria-label={t('essay_grading:confirm.clear')} className="!h-7 shrink-0 px-2 text-xs transition-colors duration-150">
                   <Trash size={13} />
                   {t('essay_grading:confirm.clear')}
-                </NotionButton>
+                </DsButton>
               ) : (
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={mobileClearConfirm.handleClick} aria-label={t('common:aria.clear_content')} className={cn(COARSE_HIT, "!h-7 !w-7 shrink-0 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150")}>
+                <DsButton variant="ghost" size="icon" iconOnly onClick={mobileClearConfirm.handleClick} aria-label={t('common:aria.clear_content')} className={cn(COARSE_HIT, "!h-7 !w-7 shrink-0 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150")}>
                   <Trash size={14} />
-                </NotionButton>
+                </DsButton>
               )
             )}
             {isGrading ? (
               mobileCancelConfirm.armed ? (
-                <NotionButton variant="destructive" size="sm" onClick={mobileCancelConfirm.handleClick} aria-label={t('essay_grading:confirm.cancel')} className="!h-7 shrink-0 px-2 text-xs transition-colors duration-150">
+                <DsButton variant="destructive" size="sm" onClick={mobileCancelConfirm.handleClick} aria-label={t('essay_grading:confirm.cancel')} className="!h-7 shrink-0 px-2 text-xs transition-colors duration-150">
                   {t('essay_grading:confirm.cancel')}
-                </NotionButton>
+                </DsButton>
               ) : (
-                <NotionButton variant="ghost" size="sm" onClick={mobileCancelConfirm.handleClick} aria-label={t('common:aria.cancel_grading')} className={cn(COARSE_HIT, "h-7 px-2 shrink-0 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150")}>
+                <DsButton variant="ghost" size="sm" onClick={mobileCancelConfirm.handleClick} aria-label={t('common:aria.cancel_grading')} className={cn(COARSE_HIT, "h-7 px-2 shrink-0 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150")}>
                   <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" />
-                </NotionButton>
+                </DsButton>
               )
             ) : (
-              <NotionButton
+              <DsButton
                 variant="primary"
                 size="sm"
                 onClick={onGrade}
@@ -496,7 +487,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 className="shrink-0"
               >
                 {t('essay_grading:actions.grade')}
-              </NotionButton>
+              </DsButton>
             )}
           </div>
         </div>
@@ -698,18 +689,20 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   <span aria-hidden="true">·</span>
                   <span className="inline-flex items-center gap-1">
                     <UploadSimple size={12} />
-                    {t('essay_grading:empty_state.drop_hint')}
+                    {/* 移动端无拖拽交互，改用"导入/粘贴"文案 */}
+                    <span className="sm:hidden">{t('essay_grading:empty_state.drop_hint_mobile')}</span>
+                    <span className="hidden sm:inline">{t('essay_grading:empty_state.drop_hint')}</span>
                   </span>
                 </div>
                 <div className="flex items-center justify-center gap-2 flex-wrap">
-                  <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="pointer-events-auto text-xs text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)] border border-border/30 transition-colors duration-150">
+                  <DsButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="pointer-events-auto text-xs text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)] border border-border/30 transition-colors duration-150 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:px-3">
                     <Image size={14} />
                     {t('essay_grading:empty_state.ocr_hint')}
-                  </NotionButton>
-                  <NotionButton variant="ghost" size="sm" onClick={handleFillSample} className="pointer-events-auto text-xs text-primary/80 hover:text-primary hover:bg-primary/10 border border-primary/25 transition-colors duration-150">
+                  </DsButton>
+                  <DsButton variant="ghost" size="sm" onClick={handleFillSample} className="pointer-events-auto text-xs text-primary/80 hover:text-primary hover:bg-primary/10 border border-primary/25 transition-colors duration-150 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:px-3">
                     <Sparkle size={14} />
                     {t('essay_grading:workbench.sample.fill_button')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               </div>
             </div>
@@ -728,43 +721,49 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           />
         </UnifiedDragDropZone>
 
-        {/* Floating Bottom Controls - Notion 风格悬浮工具 */}
-        <div className="absolute bottom-3 left-4 right-4 hidden sm:flex items-center justify-end pointer-events-none">
+        {/* Floating Bottom Controls - 简洁风格悬浮工具（移动端显示缩略统计，桌面端显示完整统计 + 清空钮） */}
+        <div className="absolute bottom-3 left-4 right-4 flex items-center justify-end pointer-events-none">
           {/* ★ UX#7：字数统计不再依赖 hover（有内容即常显），渐进警示色 */}
           <div className={cn(
-            "pointer-events-auto flex items-center gap-2 shrink-0 transition-opacity duration-200 motion-reduce:transition-none",
+            "pointer-events-auto flex min-w-0 items-center gap-2 shrink-0 transition-opacity duration-200 motion-reduce:transition-none",
             charCount > 0 || hasClearableContent ? "opacity-100" : "opacity-0 group-hover/source:opacity-100"
           )}>
-            <span className={cn("text-xs tabular-nums transition-colors duration-150", limitTone)}>
+            <span className={cn("min-w-0 truncate text-xs tabular-nums transition-colors duration-150", limitTone)}>
               {t('essay_grading:stats.han_chars')}: {textStats.hanChars.toLocaleString()}
               {' · '}
               {t('essay_grading:stats.english_words')}: {textStats.englishWords.toLocaleString()}
+              <span className="hidden sm:inline">
+                {' · '}
+                {t('essay_grading:workbench.stats.paragraphs')}: {textStats.paragraphCount.toLocaleString()}
+                {' · '}
+                {t('essay_grading:stats.punctuation_total')}: {textStats.punctuationTotal.toLocaleString()}
+              </span>
               {' · '}
-              {t('essay_grading:workbench.stats.paragraphs')}: {textStats.paragraphCount.toLocaleString()}
-              {' · '}
-              {t('essay_grading:stats.punctuation_total')}: {textStats.punctuationTotal.toLocaleString()}
-              {' · '}
-              {charCount.toLocaleString()} / {ESSAY_MAX_CHARS.toLocaleString()} {t('essay_grading:stats.characters')}
+              {charCount.toLocaleString()} / {ESSAY_MAX_CHARS.toLocaleString()}
+              <span className="hidden sm:inline"> {t('essay_grading:stats.characters')}</span>
             </span>
+            {/* 清空钮仅桌面端悬浮显示（移动端已在顶栏提供） */}
             {hasClearableContent && !isGrading && (
-              desktopClearConfirm.armed ? (
-                <NotionButton variant="destructive" size="sm" onClick={desktopClearConfirm.handleClick} className="!h-6 px-2 text-xs transition-colors duration-150">
-                  <Trash size={12} />
-                  {t('essay_grading:confirm.clear')}
-                </NotionButton>
-              ) : (
-                <CommonTooltip content={t('essay_grading:actions.clear')}>
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={desktopClearConfirm.handleClick} aria-label={t('common:aria.clear_content')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors duration-150">
-                    <Trash size={14} />
-                  </NotionButton>
-                </CommonTooltip>
-              )
+              <div className="hidden sm:flex items-center">
+                {desktopClearConfirm.armed ? (
+                  <DsButton variant="destructive" size="sm" onClick={desktopClearConfirm.handleClick} className="!h-6 px-2 text-xs transition-colors duration-150">
+                    <Trash size={12} />
+                    {t('essay_grading:confirm.clear')}
+                  </DsButton>
+                ) : (
+                  <CommonTooltip content={t('essay_grading:actions.clear')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={desktopClearConfirm.handleClick} aria-label={t('common:aria.clear_content')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors duration-150">
+                      <Trash size={14} />
+                    </DsButton>
+                  </CommonTooltip>
+                )}
+              </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Action Bar - 桌面端 Notion 风格 */}
+      {/* Action Bar - 桌面端 简洁风格 */}
       <div className="hidden sm:flex px-4 py-2.5 border-t border-border/30 items-center gap-2">
         {/* 左侧：模型选择 - 向上展开 */}
         {models.length > 0 && (
@@ -788,24 +787,24 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         <div className="flex items-center gap-2 shrink-0">
           {isGrading ? (
             desktopCancelConfirm.armed ? (
-              <NotionButton variant="destructive" size="sm" onClick={desktopCancelConfirm.handleClick} className="transition-colors duration-150">
+              <DsButton variant="destructive" size="sm" onClick={desktopCancelConfirm.handleClick} className="transition-colors duration-150">
                 {t('essay_grading:confirm.cancel')}
-              </NotionButton>
+              </DsButton>
             ) : (
-              <NotionButton variant="ghost" size="sm" onClick={desktopCancelConfirm.handleClick} className="text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150">
+              <DsButton variant="ghost" size="sm" onClick={desktopCancelConfirm.handleClick} className="text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150">
                 <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" />
                 {t('common:cancel')}
-              </NotionButton>
+              </DsButton>
             )
           ) : (
-            <NotionButton
+            <DsButton
               variant="primary"
               size="lg"
               onClick={onGrade}
               disabled={!canGrade}
             >
               {t('essay_grading:actions.grade')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       </div>

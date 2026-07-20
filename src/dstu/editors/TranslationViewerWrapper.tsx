@@ -34,7 +34,7 @@ import {
 } from '../adapters/translationDstuAdapter';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -109,7 +109,7 @@ const CopyIconButton: React.FC<{ text: string; label: string; copiedLabel: strin
   }, [text]);
 
   return (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="icon"
       aria-label={copied ? copiedLabel : label}
@@ -123,7 +123,7 @@ const CopyIconButton: React.FC<{ text: string; label: string; copiedLabel: strin
         a={<Copy size={14} aria-hidden="true" />}
         b={<Check size={14} aria-hidden="true" />}
       />
-    </NotionButton>
+    </DsButton>
   );
 };
 
@@ -269,14 +269,14 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
         </div>
         <p className="text-sm text-destructive text-center max-w-md px-4">{state.message}</p>
         <div className="flex gap-2">
-          <NotionButton variant="primary" size="sm" onClick={() => void loadTranslation()}>
+          <DsButton variant="primary" size="sm" onClick={() => void loadTranslation()}>
             <ArrowClockwise size={14} aria-hidden="true" />
             {t('common:actions.retry')}
-          </NotionButton>
+          </DsButton>
           {onClose && (
-            <NotionButton variant="ghost" size="sm" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" onClick={onClose}>
               {t('common:actions.close')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       </div>
@@ -331,9 +331,9 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
             />
           )}
           {onClose && (
-            <NotionButton variant="ghost" size="sm" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" onClick={onClose}>
               {t('common:actions.close')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       </div>

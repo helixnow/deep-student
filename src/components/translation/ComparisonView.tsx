@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Check, Copy } from '@phosphor-icons/react';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { PulseDot } from '@/components/ui/PulseDot';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { cn } from '@/utils/cn';
@@ -207,7 +207,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
 
             {/* 逐段复制（复制该段译文；hover / 键盘聚焦 / 触屏可见） */}
             {pair.tgt && (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 onClick={() => void handleCopySegment(index, pair.tgt)}
@@ -229,7 +229,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                   a={<Copy size={13} aria-hidden="true" />}
                   b={<Check size={13} aria-hidden="true" />}
                 />
-              </NotionButton>
+              </DsButton>
             )}
           </div>
         ))}

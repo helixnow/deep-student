@@ -1,5 +1,5 @@
 /**
- * 批改流式渲染容器 - Notion 风格
+ * 批改流式渲染容器 - 简洁风格
  *
  * 职责：
  * - 封装流式批改结果的渲染逻辑
@@ -56,7 +56,7 @@ const SectionGeneratingPlaceholder: React.FC<{ label: string }> = ({ label }) =>
 );
 
 /**
- * 批改流式渲染容器 - Notion 风格
+ * 批改流式渲染容器 - 简洁风格
  */
 export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
   content,
@@ -223,7 +223,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
 
   return (
     <div className={`grading-stream-renderer flex flex-col h-full ${className || ''}`}>
-      {/* 顶部流式状态提示 - Notion 风格简洁 */}
+      {/* 顶部流式状态提示 - 简洁风格简洁 */}
       {!hideToolbar && !hideStreamingIndicator && isStreaming && (
         <div className="flex items-center gap-2 px-5 py-2 border-b border-border/20">
           <div className="flex items-center gap-2 text-xs text-muted-foreground/70">
@@ -322,7 +322,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
         </div>
       )}
 
-      {/* 批改内容 - Notion 风格留白 */}
+      {/* 批改内容 - 简洁风格留白 */}
       {content ? (
         <CustomScrollArea
           className="grading-content flex-1 min-h-0"
@@ -393,7 +393,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
         </div>
       )}
 
-      {/* 字符统计 - Notion 风格极简 */}
+      {/* 字符统计 - 简洁风格极简 */}
       {showStats && content && (
         <div className="flex items-center gap-4 px-5 pb-3 text-xs text-muted-foreground/50 tabular-nums">
           <span>{t('essay_grading:stats.characters')}: {charCount}</span>

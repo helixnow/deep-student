@@ -20,7 +20,7 @@
   },
   "result_empty": {
     "title": "Ready to grade",
-    "description": "Enter or paste an essay on the left, then click \"Start Grading\" to see annotated results here in real time"
+    "description": "Enter or paste an essay in the input area, then click \"Start Grading\" to see annotated results here in real time"
   },
   "confirm": {
     "clear": "Clear?",
@@ -273,6 +273,7 @@
     "description": "Enter or paste essay content below, or import images for OCR recognition",
     "paste_hint": "Paste or type essay",
     "drop_hint": "Drag & drop or paste images",
+    "drop_hint_mobile": "Import or paste images",
     "ocr_hint": "Import images",
     "ocr_supported": "Supports PNG/JPG/WEBP, up to {{max}} images"
   },

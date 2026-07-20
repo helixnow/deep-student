@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CaretDown, ClockCounterClockwise, Globe, Sparkle } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import {
@@ -237,7 +237,7 @@ export const LanguageSelect: React.FC<LanguageSelectProps> = ({
   return (
     <AppMenu onOpenChange={handleOpenChange} className={cn(className?.includes('flex-1') && 'flex-1 min-w-0')}>
       <AppMenuTrigger asChild>
-        <NotionButton
+        <DsButton
           variant="ghost"
           disabled={disabled}
           aria-label={t('translation:language_select.trigger_label')}
@@ -250,7 +250,7 @@ export const LanguageSelect: React.FC<LanguageSelectProps> = ({
         >
           <span className="truncate">{triggerLabel}</span>
           <CaretDown size={14} className="shrink-0 opacity-50" />
-        </NotionButton>
+        </DsButton>
       </AppMenuTrigger>
 
       <AppMenuContent

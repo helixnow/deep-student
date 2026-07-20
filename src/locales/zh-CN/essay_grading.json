@@ -20,7 +20,7 @@
   },
   "result_empty": {
     "title": "等待批改",
-    "description": "在左侧输入或粘贴作文，点击「开始批改」后，批注结果将实时显示在这里"
+    "description": "在输入区输入或粘贴作文，点击「开始批改」后，批注结果将实时显示在这里"
   },
   "confirm": {
     "clear": "确认清空？",
@@ -273,6 +273,7 @@
     "description": "在下方输入或粘贴作文内容，也可以导入图片进行 OCR 识别",
     "paste_hint": "粘贴或输入作文",
     "drop_hint": "拖拽或粘贴图片",
+    "drop_hint_mobile": "导入或粘贴图片",
     "ocr_hint": "导入图片识别",
     "ocr_supported": "支持 PNG/JPG/WEBP，最多 {{max}} 张"
   },

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Textarea } from '../ui/shad/Textarea';
 import { Switch } from '../ui/shad/Switch';
 import { Label } from '../ui/shad/Label';
@@ -137,7 +137,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                 <div className="flex items-center gap-1 shrink-0">
                     {/* 对照切换（tooltip 带用途说明，帮助首次用户理解该视图） */}
                     <CommonTooltip content={`${t('translation:comparison.toggle')} · ${t('translation:tabs.comparison_description')}`}>
-                        <NotionButton
+                        <DsButton
                             variant="ghost"
                             size="icon"
                             onClick={() => setShowComparison(!showComparison)}
@@ -153,7 +153,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             )}
                         >
                             <Columns size={16} />
-                        </NotionButton>
+                        </DsButton>
                     </CommonTooltip>
 
                     {/* 同步滚动（lg+ 由顶部工具栏承载，这里只补足中等宽度） */}
@@ -173,7 +173,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                         <>
                             <div className="w-px h-4 bg-border mx-1" />
                             <CommonTooltip content={t('translation:target_section.edit')}>
-                                <NotionButton
+                                <DsButton
                                     variant="ghost"
                                     size="icon"
                                     onClick={onEditTranslation}
@@ -182,10 +182,10 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     className={cn(COARSE_HIT, "w-8 h-8 text-muted-foreground hover:text-foreground")}
                                 >
                                     <PencilSimple size={16} />
-                                </NotionButton>
+                                </DsButton>
                             </CommonTooltip>
                             <CommonTooltip content={isSpeaking ? t('translation:target_section.stop_listen') : t('translation:target_section.listen')}>
-                                <NotionButton
+                                <DsButton
                                     variant="ghost"
                                     size="icon"
                                     onClick={onSpeak}
@@ -198,10 +198,10 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     )}
                                 >
                                     <SpeakerHigh size={16} className={isSpeaking ? 'animate-pulse motion-reduce:animate-none' : ''} />
-                                </NotionButton>
+                                </DsButton>
                             </CommonTooltip>
                             <CommonTooltip content={justCopied ? t('translation:target_section.copied') : t('translation:target_section.copy')}>
-                                <NotionButton
+                                <DsButton
                                     variant="ghost"
                                     size="icon"
                                     onClick={handleCopy}
@@ -210,10 +210,10 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     className={cn(COARSE_HIT, "w-8 h-8 text-muted-foreground hover:text-foreground")}
                                 >
                                     {copyIcon}
-                                </NotionButton>
+                                </DsButton>
                             </CommonTooltip>
                             <CommonTooltip content={t('translation:target_section.export')}>
-                                <NotionButton
+                                <DsButton
                                     variant="ghost"
                                     size="icon"
                                     onClick={onExportTranslation}
@@ -222,7 +222,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     className={cn(COARSE_HIT, "w-8 h-8 text-muted-foreground hover:text-foreground")}
                                 >
                                     <Download size={16} />
-                                </NotionButton>
+                                </DsButton>
                             </CommonTooltip>
                         </>
                     )}
@@ -238,7 +238,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                         <span className="tabular-nums text-muted-foreground/60">· {targetCharCount.toLocaleString()}</span>
                     </span>
                     <div className="flex items-center gap-0.5 shrink-0">
-                        <NotionButton
+                        <DsButton
                             variant="ghost"
                             size="icon"
                             onClick={() => setShowComparison(!showComparison)}
@@ -247,8 +247,8 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             aria-label={t('translation:comparison.toggle')}
                         >
                             <Columns size={16} />
-                        </NotionButton>
-                        <NotionButton
+                        </DsButton>
+                        <DsButton
                             variant="ghost"
                             size="icon"
                             onClick={onEditTranslation}
@@ -257,8 +257,8 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             aria-label={t('translation:target_section.edit')}
                         >
                             <PencilSimple size={16} />
-                        </NotionButton>
-                        <NotionButton
+                        </DsButton>
+                        <DsButton
                             variant="ghost"
                             size="icon"
                             onClick={onSpeak}
@@ -267,8 +267,8 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             aria-label={isSpeaking ? t('translation:target_section.stop_listen') : t('translation:target_section.listen')}
                         >
                             <SpeakerHigh size={16} className={isSpeaking ? 'animate-pulse motion-reduce:animate-none' : ''} />
-                        </NotionButton>
-                        <NotionButton
+                        </DsButton>
+                        <DsButton
                             variant="ghost"
                             size="icon"
                             onClick={handleCopy}
@@ -277,8 +277,8 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             aria-label={t('translation:target_section.copy')}
                         >
                             {copyIcon}
-                        </NotionButton>
-                        <NotionButton
+                        </DsButton>
+                        <DsButton
                             variant="ghost"
                             size="icon"
                             onClick={onExportTranslation}
@@ -287,7 +287,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             aria-label={t('translation:target_section.export')}
                         >
                             <Download size={16} />
-                        </NotionButton>
+                        </DsButton>
                     </div>
                 </div>
             )}
@@ -308,13 +308,13 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                 {editedTranslation.length.toLocaleString()} {t('translation:stats.characters')}
                             </span>
                             <div className="flex gap-2">
-                                <NotionButton variant="outline" size="sm" onClick={onCancelEdit}>
+                                <DsButton variant="outline" size="sm" onClick={onCancelEdit}>
                                     {t('common:cancel')}
-                                </NotionButton>
-                                <NotionButton variant="default" size="sm" onClick={onSaveEditedTranslation}>
+                                </DsButton>
+                                <DsButton variant="default" size="sm" onClick={onSaveEditedTranslation}>
                                     <CheckCircle size={16} className="mr-2" />
                                     {t('common:save')}
-                                </NotionButton>
+                                </DsButton>
                             </div>
                         </div>
                     </div>
@@ -344,7 +344,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none opacity-0 group-hover/target:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-200">
                                 <div data-wb-blur-surface className="pointer-events-auto bg-background/80 backdrop-blur-sm border rounded-full shadow-sm px-1 py-0.5 flex items-center">
                                     {[1, 2, 3, 4, 5].map((rating) => (
-                                        <NotionButton
+                                        <DsButton
                                             key={rating}
                                             variant="ghost"
                                             size="icon"
@@ -361,7 +361,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                                         : 'text-muted-foreground hover:text-warning'
                                                 )}
                                             />
-                                        </NotionButton>
+                                        </DsButton>
                                     ))}
                                 </div>
                                 <div data-wb-blur-surface className="bg-background/80 backdrop-blur-sm border rounded-lg px-2 py-1 text-xs text-muted-foreground shadow-sm tabular-nums">

@@ -30,7 +30,7 @@ import {
 } from '@phosphor-icons/react';
 import { UnifiedModelSelector } from '../shared/UnifiedModelSelector';
 import { CustomScrollArea } from '../custom-scroll-area';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type {
   GradingMode,
   ModelInfo,
@@ -526,22 +526,22 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
   return (
     <div className="h-full flex flex-col bg-background">
       {/* 头部 */}
-      <div className="flex h-[41px] flex-shrink-0 items-center justify-between border-b border-border/30 px-4">
+      <div className="flex h-[41px] flex-shrink-0 items-center justify-between border-b border-border/30 px-3 sm:px-4">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground/80">
           <GearSix size={14} />
           <span>{t('essay_grading:settings.title')}</span>
         </div>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
           onClick={onClose}
-          className="h-7 w-7 text-muted-foreground/60 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+          className="h-7 w-7 text-muted-foreground/60 hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
           aria-label={t('essay_grading:settings_panel.close')}
           title={t('essay_grading:settings_panel.close')}
         >
           <X size={16} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 内容区 */}
@@ -569,7 +569,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {modes.map((mode) => (
-                    <NotionButton
+                    <DsButton
                       key={mode.id}
                       variant="ghost"
                       size="sm"
@@ -580,7 +580,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                       className={choiceChipClassName(mode.id === modeId)}
                     >
                       {mode.name}
-                    </NotionButton>
+                    </DsButton>
                   ))}
                 </div>
 
@@ -628,7 +628,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {ESSAY_TYPE_OPTIONS.map(option => (
-                      <NotionButton
+                      <DsButton
                         key={option}
                         variant="ghost"
                         size="sm"
@@ -638,7 +638,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                         className={choiceChipClassName(essayType === option)}
                       >
                         {t(`essay_grading:essay_type.${option}`)}
-                      </NotionButton>
+                      </DsButton>
                     ))}
                   </div>
                 </div>
@@ -652,7 +652,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {GRADE_LEVEL_OPTIONS.map(option => (
-                      <NotionButton
+                      <DsButton
                         key={option}
                         variant="ghost"
                         size="sm"
@@ -662,7 +662,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                         className={choiceChipClassName(gradeLevel === option)}
                       >
                         {t(`essay_grading:grade_level.${option}`)}
-                      </NotionButton>
+                      </DsButton>
                     ))}
                   </div>
                 </div>
@@ -700,7 +700,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                 className="min-h-[200px] w-full resize-none border-border/40 text-sm focus:border-border/60"
               />
               <div className="flex items-center justify-end gap-2">
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={onRestoreDefaultPrompt}
@@ -708,9 +708,9 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                 >
                   <ArrowCounterClockwise size={14} />
                   {t('essay_grading:prompt_editor.restore_default')}
-                </NotionButton>
+                </DsButton>
                 {/* 保存后就地反馈：勾选图标 + 文案短暂切换，不关闭面板 */}
-                <NotionButton
+                <DsButton
                   variant="primary"
                   size="sm"
                   onClick={handleSavePrompt}
@@ -725,7 +725,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                   {promptJustSaved
                     ? t('essay_grading:settings_panel.prompt_saved_short')
                     : t('essay_grading:prompt_editor.save')}
-                </NotionButton>
+                </DsButton>
               </div>
             </div>
           </CollapsibleSection>
@@ -753,15 +753,15 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                         : t('essay_grading:mode.edit')}
                     </span>
                     <div className="flex flex-shrink-0 items-center gap-1">
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         onClick={handleCancelEdit}
                         className="h-7 px-2 text-xs text-muted-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground"
                       >
                         {t('essay_grading:actions.cancel')}
-                      </NotionButton>
-                      <NotionButton
+                      </DsButton>
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         onClick={handleSave}
@@ -769,7 +769,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                         className="h-7 px-2 text-xs text-primary hover:bg-primary/10 hover:text-primary"
                       >
                         {isLoading ? t('settings:gradingMode.saving') : t('settings:gradingMode.done')}
-                      </NotionButton>
+                      </DsButton>
                     </div>
                   </div>
                   {validationMessage && (
@@ -889,7 +889,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                                 style={{ maxWidth: '3.5rem' }}
                               />
                             </div>
-                            <NotionButton
+                            <DsButton
                               variant="ghost"
                               size="icon"
                               iconOnly
@@ -899,12 +899,12 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                               title={t('essay_grading:settings_panel.remove_dimension')}
                             >
                               <Trash size={12} />
-                            </NotionButton>
+                            </DsButton>
                           </div>
                         );
                       })}
                     </div>
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       onClick={handleAddDimension}
@@ -914,7 +914,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                         <Plus size={10} />
                       </div>
                       {t('settings:gradingMode.addDimension')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
 
                   {/* 总分设置 */}
@@ -955,14 +955,14 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                               })}
                             </span>
                           </span>
-                          <NotionButton
+                          <DsButton
                             variant="ghost"
                             size="sm"
                             onClick={() => setFormData(prev => ({ ...prev, total_max_score: calculatedTotal }))}
                             className="!h-auto flex-shrink-0 !px-1.5 !py-0.5 text-[11px] text-primary hover:bg-primary/10"
                           >
                             {t('essay_grading:settings_panel.validation.sync_total', { sum: calculatedTotal })}
-                          </NotionButton>
+                          </DsButton>
                         </div>
                       )}
                     </div>
@@ -998,7 +998,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
               /* ---------- CRUD 操作入口 ---------- */
               <div className="space-y-1 px-4">
                 {errorBanner}
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={() => currentMode && handleStartEdit(currentMode)}
@@ -1007,8 +1007,8 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                 >
                   <Pencil size={14} className="text-muted-foreground/60" />
                   {t('essay_grading:settings_panel.edit_current')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={() => currentMode && handleCopyMode(currentMode)}
@@ -1017,8 +1017,8 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                 >
                   <Copy size={14} className="text-muted-foreground/60" />
                   {t('essay_grading:settings_panel.copy_current')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={handleStartCreate}
@@ -1026,9 +1026,9 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                 >
                   <Plus size={14} className="text-muted-foreground/60" />
                   {t('essay_grading:settings_panel.create_mode')}
-                </NotionButton>
+                </DsButton>
                 {currentMode?.is_builtin && (
-                  <NotionButton
+                  <DsButton
                     variant={pendingConfirm === 'reset' ? 'destructive' : 'ghost'}
                     size="sm"
                     onClick={() => handleConfirmableClick('reset', currentMode)}
@@ -1042,10 +1042,10 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                     {pendingConfirm === 'reset'
                       ? t('essay_grading:settings_panel.confirm_reset')
                       : t('settings:gradingMode.menuReset')}
-                  </NotionButton>
+                  </DsButton>
                 )}
                 {currentMode && !currentMode.is_builtin && (
-                  <NotionButton
+                  <DsButton
                     variant={pendingConfirm === 'delete' ? 'destructive' : 'ghost'}
                     size="sm"
                     onClick={() => handleConfirmableClick('delete', currentMode)}
@@ -1059,7 +1059,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                     {pendingConfirm === 'delete'
                       ? t('essay_grading:settings_panel.confirm_delete')
                       : t('settings:gradingMode.menuDelete')}
-                  </NotionButton>
+                  </DsButton>
                 )}
               </div>
             )}

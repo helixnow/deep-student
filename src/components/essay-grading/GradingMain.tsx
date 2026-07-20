@@ -1,8 +1,10 @@
 import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Pen } from '@phosphor-icons/react';
 import { InputPanel } from './InputPanel';
 import { ResultPanel } from './ResultPanel';
 import { InlineSettingsPanel } from './InlineSettingsPanel';
-import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useWbSysSize } from '@/features/workbench/apps/system/useWbSysSize';
 import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
@@ -85,6 +87,9 @@ interface GradingMainProps {
 const SETTINGS_WIDTH_LG = 340;
 const SETTINGS_WIDTH_MD = 320;
 
+/** 主区（不含设置列）窄于该宽度时退回上下分栏（与翻译工作台同阈值） */
+const NARROW_LAYOUT_THRESHOLD = 500;
+
 export type GradingPhase = 'preparing' | 'annotating' | 'scoring' | 'polishing' | 'model_essay';
 
 /** 根据已生成内容推断当前批改阶段（与 ResultPanel 的推断口径一致：批注 → 评分 → 润色 → 范文） */
@@ -143,7 +148,37 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   onModesChange,
   roundNavigation,
 }) => {
-  const { isSmallScreen, isLg } = useBreakpoint();
+  // 容器级断点：工作台可能运行在 workbench 窗口里（窗口远窄于视口），
+  // viewport media query 在那里恒等于"桌面大屏"会把三栏挤成一条（O18 同款问题），
+  // 故以工作台自身宽度分级：compact(<640) 走移动布局。
+  const { t } = useTranslation(['essay_grading']);
+  const { ref: layoutRef, sizeClass } = useWbSysSize();
+  const isSmallScreen = sizeClass === 'compact';
+  const isLg = sizeClass === 'wide';
+
+  // 左右 / 上下分栏：与翻译工作台同一口径——非小屏默认左右，仅当主区
+  // （不含右侧设置列）实测窄于阈值时退回上下。此前要求容器 ≥880(wide)
+  // 才左右，浮窗扣掉资源侧栏后常年落在 medium，被迫上下分栏。
+  const mainAreaRef = React.useRef<HTMLDivElement>(null);
+  const [mainAreaWidth, setMainAreaWidth] = React.useState(0);
+
+  useEffect(() => {
+    const el = mainAreaRef.current;
+    if (!el || isSmallScreen || typeof ResizeObserver === 'undefined') return;
+
+    const updateWidth = () => setMainAreaWidth(el.clientWidth);
+    updateWidth();
+
+    const ro = new ResizeObserver(updateWidth);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isSmallScreen]);
+
+  // 未测得宽度前（首帧）以容器分级兜底，避免闪一帧上下布局
+  const isSplit = !isSmallScreen
+    && (mainAreaWidth > 0 ? mainAreaWidth >= NARROW_LAYOUT_THRESHOLD : true);
+  // 小屏下批改结果区是否"有内容可看"：无内容时折叠为占位条，把高度让给输入区
+  const resultActive = isGrading || Boolean(gradingResult) || Boolean(error) || currentRound > 0;
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const resultRef = React.useRef<HTMLDivElement>(null);
 
@@ -292,12 +327,12 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   // 小屏：设置区块在上（高度过渡）+ 上下分栏；
   // 中屏：上下分栏 + 右侧内联设置列；大屏：左右分栏 + 右侧内联设置列。
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
+    <div ref={layoutRef} className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
       {isSmallScreen && mobileSettingsSection}
 
       <div className="flex flex-1 min-h-0">
-        <div className="flex-1 min-w-0 h-full">
-          {isLg ? (
+        <div ref={mainAreaRef} className="flex-1 min-w-0 h-full">
+          {isSplit ? (
             <HorizontalResizable
               initial={0.5}
               minLeft={0.3}
@@ -306,6 +341,18 @@ export const GradingMain: React.FC<GradingMainProps> = ({
               left={inputPanel}
               right={resultPanel}
             />
+          ) : isSmallScreen && !resultActive ? (
+            /* 小屏且尚无批改内容：输入区占满，结果区折叠为占位条（开始批改后自动展开为上下分栏） */
+            <div className="flex h-full min-h-0 flex-col bg-background">
+              <div className="flex-1 min-h-0 [&>*]:!h-full [&>*]:!min-h-0 [&>*]:!basis-auto [&>*]:!flex-none">
+                {inputPanel}
+              </div>
+              <div className="flex shrink-0 items-center gap-2 border-t border-border/40 px-4 py-2.5 text-xs text-muted-foreground/60 select-none">
+                <Pen size={13} className="shrink-0" />
+                <span>{t('essay_grading:result_section.title')}</span>
+                <span className="ml-auto text-muted-foreground/40">{t('essay_grading:result_empty.title')}</span>
+              </div>
+            </div>
           ) : (
             <VerticalResizable
               initial={isSmallScreen ? 0.4 : 0.45}

@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { PolishItem } from '@/essay-grading/streamingMarkerParser';
 import { ArrowRight, Sparkle, Copy, Check, Eye, EyeSlash } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface PolishSectionViewProps {
@@ -160,7 +160,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
           <span className="truncate">{t('essay_grading:sections.polish_desc')}</span>
         </div>
         <div className="flex-1" />
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           aria-pressed={showDiff}
@@ -172,7 +172,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
         >
           {showDiff ? <Eye size={12} /> : <EyeSlash size={12} />}
           <span>{showDiff ? t('essay_grading:result_ui.polish_hide_diff') : t('essay_grading:result_ui.polish_show_diff')}</span>
-        </NotionButton>
+        </DsButton>
       </div>
       {items.map((item, index) => {
         const diff = diffs[index];
@@ -197,7 +197,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
                   <span>{t('essay_grading:sections.polished')}</span>
                 </div>
                 {/* 常显复制按钮 + 就地反馈 */}
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   aria-label={copied ? t('essay_grading:sections.copied') : t('common:copy')}
@@ -211,7 +211,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
                 >
                   {copied ? <Check size={12} /> : <Copy size={12} />}
                   <span>{copied ? t('essay_grading:sections.copied') : t('common:copy')}</span>
-                </NotionButton>
+                </DsButton>
               </div>
               <div className="text-sm text-foreground/85 leading-relaxed font-medium whitespace-pre-wrap">
                 {showDiff ? diff.polished : item.polished}

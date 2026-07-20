@@ -1,7 +1,7 @@
 /**
- * 流式批注文本渲染组件 - Notion 风格设计
+ * 流式批注文本渲染组件 - 简洁风格设计
  *
- * 交互模型（对标 Grammarly）：
+ * 交互模型（行内批注高亮）：
  * - hover 批注 → 轻量 Tooltip 提示（类型 + 简要说明）
  * - 点击批注 → 选中高亮，并在其所在段落下方展开内联批注详情卡
  *   （文档流内，非 portal / 浮层），再次点击或点其他批注收起/切换
@@ -32,7 +32,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface StreamingAnnotatedTextProps {
@@ -439,7 +439,7 @@ const MarkerDetailCard: React.FC<{
               <span className="text-xs text-muted-foreground/50 tabular-nums mr-1">
                 {nav.position}/{nav.total}
               </span>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -449,8 +449,8 @@ const MarkerDetailCard: React.FC<{
                 className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)]"
               >
                 <CaretLeft size={11} />
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -460,8 +460,8 @@ const MarkerDetailCard: React.FC<{
                 className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)]"
               >
                 <CaretRight size={11} />
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -470,7 +470,7 @@ const MarkerDetailCard: React.FC<{
                 className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)]"
               >
                 <X size={11} />
-              </NotionButton>
+              </DsButton>
             </div>
           )}
         </div>
@@ -524,7 +524,7 @@ const MarkerDetailCard: React.FC<{
       {(suggestionText || (applyChange && onApplySuggestion)) && (
         <div className="mt-2 flex items-center justify-end gap-1">
           {applyChange && onApplySuggestion && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => onApplySuggestion(applyChange)}
@@ -532,10 +532,10 @@ const MarkerDetailCard: React.FC<{
             >
               <Check size={12} />
               {t('essay_grading:markers.apply')}
-            </NotionButton>
+            </DsButton>
           )}
           {suggestionText && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={handleCopy}
@@ -543,7 +543,7 @@ const MarkerDetailCard: React.FC<{
             >
               {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
               {copied ? t('essay_grading:annotation_card.copied') : t('essay_grading:annotation_card.copy_suggestion')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       )}
@@ -595,7 +595,7 @@ function buildParagraphs(markers: StreamingMarker[]): ParagraphBlock[] {
 }
 
 /**
- * 流式批注文本组件 - Notion 风格
+ * 流式批注文本组件 - 简洁风格
  */
 export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
   text,

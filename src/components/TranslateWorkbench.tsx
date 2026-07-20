@@ -17,7 +17,7 @@ import * as TTS from '../utils/tts';
 import { fileManager } from '../utils/fileManager';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
 import { WarningCircle, ArrowClockwise, WifiSlash, Info, Translate } from '@phosphor-icons/react';
-import { NotionButton } from './ui/NotionButton';
+import { DsButton } from './ui/DsButton';
 
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 
@@ -949,7 +949,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               <WarningCircle size={16} className="shrink-0" />
               <span className="text-sm truncate">{translationError}</span>
             </div>
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={handleRetryTranslation}
@@ -958,7 +958,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
             >
               <ArrowClockwise className={`h-3.5 w-3.5 mr-1.5 ${isRetrying ? 'animate-spin' : ''}`} />
               {t('common:retry')}
-            </NotionButton>
+            </DsButton>
           </div>
         )}
 
@@ -970,22 +970,22 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               <span className="text-sm truncate">{t('translation:workbench_ui.cancelled_partial')}</span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={handleDiscardPartial}
                 className="text-info hover:bg-info/10"
               >
                 {t('translation:workbench_ui.discard_partial')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={translationStream.acknowledgePartialResult}
                 className="text-muted-foreground"
               >
                 {t('translation:workbench_ui.dismiss')}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         )}

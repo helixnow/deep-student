@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { BookOpen, Copy, Check, TextT } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface ModelEssayViewProps {
@@ -73,7 +73,7 @@ export const ModelEssayView: React.FC<ModelEssayViewProps> = ({ essay, className
         <span className="text-xs text-muted-foreground/50 tabular-nums shrink-0">
           {t('essay_grading:sections.model_essay_word_count', { total: wordCount })}
         </span>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -86,8 +86,8 @@ export const ModelEssayView: React.FC<ModelEssayViewProps> = ({ essay, className
           )}
         >
           <TextT size={13} />
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost"
           size="sm"
           aria-label={copied ? t('essay_grading:sections.copied') : t('common:copy')}
@@ -101,7 +101,7 @@ export const ModelEssayView: React.FC<ModelEssayViewProps> = ({ essay, className
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
           <span>{copied ? t('essay_grading:sections.copied') : t('common:copy')}</span>
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 正文：首行缩进 + 段间距，可选 serif */}

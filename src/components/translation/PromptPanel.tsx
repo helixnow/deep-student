@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Textarea } from '../ui/shad/Textarea';
 import { Input } from '../ui/shad/Input';
 import { Badge } from '../ui/shad/Badge';
@@ -252,7 +252,7 @@ const GlossaryEditor: React.FC<{
           placeholder={t('translation:prompt_editor.glossary_target')}
           className={cn('flex-1 min-w-0', compactInputClass)}
         />
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           onClick={handleAdd}
@@ -261,7 +261,7 @@ const GlossaryEditor: React.FC<{
           className="w-8 h-8 shrink-0 text-primary hover:bg-primary/10"
         >
           <Plus size={16} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 已添加的术语 */}
@@ -300,7 +300,7 @@ const GlossaryEditor: React.FC<{
                       onKeyDown={handleEditKeyDown}
                       className={cn('flex-1 min-w-0', compactInputClass, 'h-7')}
                     />
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="icon"
                       onClick={commitEdit}
@@ -309,8 +309,8 @@ const GlossaryEditor: React.FC<{
                       className="w-6 h-6 shrink-0 text-primary hover:bg-primary/10"
                     >
                       <Check size={14} />
-                    </NotionButton>
-                    <NotionButton
+                    </DsButton>
+                    <DsButton
                       variant="ghost"
                       size="icon"
                       onClick={cancelEdit}
@@ -318,14 +318,14 @@ const GlossaryEditor: React.FC<{
                       className="w-6 h-6 shrink-0 text-muted-foreground/60 hover:text-foreground"
                     >
                       <X size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </>
                 ) : (
                   <>
                     <span className="flex-1 text-sm truncate font-mono">{src}</span>
                     <span className="text-muted-foreground/40 text-xs shrink-0">→</span>
                     <span className="flex-1 text-sm truncate font-mono text-primary/80">{tgt}</span>
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="icon"
                       onClick={() => startEdit(entryKey, src, tgt)}
@@ -333,8 +333,8 @@ const GlossaryEditor: React.FC<{
                       className="w-6 h-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-70 p-0.5 shrink-0 text-muted-foreground/60 hover:text-foreground"
                     >
                       <PencilSimple size={14} />
-                    </NotionButton>
-                    <NotionButton
+                    </DsButton>
+                    <DsButton
                       variant="ghost"
                       size="icon"
                       onClick={() => handleRemove(entryKey)}
@@ -342,7 +342,7 @@ const GlossaryEditor: React.FC<{
                       className="w-6 h-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-70 p-0.5 shrink-0 hover:bg-destructive/10 hover:text-destructive"
                     >
                       <X size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </>
                 )}
               </div>
@@ -412,7 +412,7 @@ const PromptTemplates: React.FC<{
         {presetItems.map((preset) => {
           const active = normalizedPrompt === preset.prompt.trim();
           return (
-            <NotionButton
+            <DsButton
               key={preset.id}
               variant="outline"
               size="sm"
@@ -421,14 +421,14 @@ const PromptTemplates: React.FC<{
               className={chipClass(active)}
             >
               {preset.label}
-            </NotionButton>
+            </DsButton>
           );
         })}
         {customTemplates.map((tpl) => {
           const active = normalizedPrompt === tpl.prompt.trim();
           return (
             <span key={tpl.id} className="inline-flex items-center gap-0.5 ui-rise-in">
-              <NotionButton
+              <DsButton
                 variant="outline"
                 size="sm"
                 aria-pressed={active}
@@ -437,8 +437,8 @@ const PromptTemplates: React.FC<{
               >
                 <BookmarkSimple size={12} className="mr-1" />
                 {tpl.name}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
                 size="icon"
                 onClick={() => handleDeleteTemplate(tpl.id)}
@@ -446,7 +446,7 @@ const PromptTemplates: React.FC<{
                 className="w-5 h-5 text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive"
               >
                 <X size={11} />
-              </NotionButton>
+              </DsButton>
             </span>
           );
         })}
@@ -472,7 +472,7 @@ const PromptTemplates: React.FC<{
             placeholder={t('translation:prompt_panel.templates.name_placeholder')}
             className="flex-1 min-w-0 h-8 min-h-0 lg:min-h-0 px-2.5 text-sm"
           />
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={handleSaveTemplate}
@@ -481,8 +481,8 @@ const PromptTemplates: React.FC<{
             className="w-8 h-8 shrink-0 text-primary hover:bg-primary/10"
           >
             <Check size={16} />
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={() => {
@@ -493,10 +493,10 @@ const PromptTemplates: React.FC<{
             className="w-8 h-8 shrink-0 text-muted-foreground/60 hover:text-foreground"
           >
             <X size={16} />
-          </NotionButton>
+          </DsButton>
         </div>
       ) : (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => setIsNaming(true)}
@@ -505,7 +505,7 @@ const PromptTemplates: React.FC<{
         >
           <BookmarkSimple size={13} className="mr-1" />
           {t('translation:prompt_panel.templates.save_as')}
-        </NotionButton>
+        </DsButton>
       )}
     </div>
   );
@@ -651,14 +651,14 @@ const PromptEditorContent: React.FC<{
       </PanelSection>
 
       <div className="flex gap-2 justify-end">
-        <NotionButton variant="outline" size="sm" onClick={onRestoreDefaultPrompt}>
+        <DsButton variant="outline" size="sm" onClick={onRestoreDefaultPrompt}>
           <ArrowCounterClockwise size={16} className="mr-2" />
           {t('translation:prompt_editor.restore_default')}
-        </NotionButton>
-        <NotionButton variant="default" size="sm" onClick={onSavePrompt}>
+        </DsButton>
+        <DsButton variant="default" size="sm" onClick={onSavePrompt}>
           <FloppyDisk size={16} className="mr-2" />
           {t('translation:prompt_editor.save')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );
@@ -732,7 +732,7 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
           <span className="text-sm font-medium text-foreground/80">
             {t('translation:prompt_editor.title')}
           </span>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={() => setIsOpen(false)}
@@ -740,7 +740,7 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
             aria-label={t('common:close')}
           >
             <X size={18} />
-          </NotionButton>
+          </DsButton>
         </div>
         <CustomScrollArea
           className="flex-1"
@@ -760,7 +760,7 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
         <span className="text-sm font-medium text-foreground/80">
           {t('translation:prompt_editor.title')}
         </span>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           onClick={() => setIsOpen(false)}
@@ -768,7 +768,7 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
           aria-label={t('common:close')}
         >
           <X size={16} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 内容区 */}
