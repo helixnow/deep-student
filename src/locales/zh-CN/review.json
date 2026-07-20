@@ -143,6 +143,8 @@
     "cancel": "取消",
     "reset": "重置",
     "delete": "删除",
+    "confirmReset": "确认重置 {{count}} 题",
+    "confirmDelete": "确认删除 {{count}} 题",
     "toReview": "待复习",
     "mastered": "已掌握",
     "avgAttempts": "平均 <bold>{{count}}</bold> 次尝试",

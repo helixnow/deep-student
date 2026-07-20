@@ -19,21 +19,29 @@ interface DocumentSessionLite {
   failedTasks: number;
 }
 
-/** 同一 document 只通知一次 */
+/** 同一轮处理只通知一次；重新开始处理（重试失败段）后允许再次通知 */
 const notified = new Set<string>();
 
-function extractCompletedDocumentId(payload: unknown): string | null {
+function extractDocumentIdByVariant(payload: unknown, variant: string): string | null {
   if (!payload || typeof payload !== 'object') return null;
   const obj = payload as Record<string, any>;
-  // 外部标签格式 { DocumentProcessingCompleted: { document_id } }
-  if (obj.DocumentProcessingCompleted) {
-    return obj.DocumentProcessingCompleted.document_id ?? null;
+  // 外部标签格式 { <Variant>: { document_id } }
+  if (obj[variant]) {
+    return obj[variant].document_id ?? null;
   }
   // 兼容 { type, data } 格式
-  if (obj.type === 'DocumentProcessingCompleted') {
+  if (obj.type === variant) {
     return obj.data?.document_id ?? null;
   }
   return null;
+}
+
+function extractCompletedDocumentId(payload: unknown): string | null {
+  return extractDocumentIdByVariant(payload, 'DocumentProcessingCompleted');
+}
+
+function extractStartedDocumentId(payload: unknown): string | null {
+  return extractDocumentIdByVariant(payload, 'DocumentProcessingStarted');
 }
 
 async function notifyCompletion(documentId: string): Promise<void> {
@@ -77,6 +85,12 @@ export function initAnkiCompletionNotifier(): () => void {
   let unlisten: (() => void) | null = null;
 
   listen('anki_generation_event', (event) => {
+    // 新一轮处理开始（含重试失败段）→ 重置去重标记，本轮完成时可再次通知
+    const startedId = extractStartedDocumentId(event.payload);
+    if (startedId) {
+      notified.delete(startedId);
+      return;
+    }
     const documentId = extractCompletedDocumentId(event.payload);
     if (documentId) {
       void notifyCompletion(documentId);

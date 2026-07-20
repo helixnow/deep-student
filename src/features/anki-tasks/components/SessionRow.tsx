@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import {
   CaretDown, CaretRight, Play, Pause, ArrowCounterClockwise,
-  Trash, DownloadSimple, ArrowSquareOut, Warning,
+  Trash, DownloadSimple, ArrowSquareOut, XCircle,
   CircleNotch, FileText, Hash, TrendUp, ChartBar, Circle,
 } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -22,10 +22,15 @@ import {
   selectTaskExportCards,
 } from '@/components/anki/utils/normalizeTaskCardsForExport';
 import {
+  controlDocumentTask,
+  retryFailedDocumentTasks,
+} from '@/features/anki/taskControl';
+import {
   classify, timeAgo, formatDate, getCardFieldValue,
   CARDS_PAGE_SIZE, type DocumentSession,
 } from '../types';
 import { PropRow, StatusTag, InlineProgress } from './bits';
+import { FailedTasksPanel } from './FailedTasksPanel';
 
 export const SessionRow: React.FC<{
   session: DocumentSession;
@@ -54,7 +59,11 @@ export const SessionRow: React.FC<{
   const group = classify(session);
 
   // 加载卡片 — 错误时通知用户而非静默吞没；同时并行加载关联模板，避免列名闪烁
-  const loadCards = useCallback(async () => {
+  const loadedSigRef = useRef<string | null>(null);
+  const loadingRef = useRef(false);
+  const loadCards = useCallback(async (signature: string) => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoadingCards(true);
     try {
       const [loadedCards, allTemplates] = await Promise.all([
@@ -70,70 +79,59 @@ export const SessionRow: React.FC<{
           .map(c => c.template_id)
           .filter((id): id is string => !!id && id.trim() !== '')
       );
+      const map: Record<string, CustomAnkiTemplate> = {};
       if (uniqueTemplateIds.size > 0 && allTemplates.length > 0) {
-        const map: Record<string, CustomAnkiTemplate> = {};
         for (const tpl of allTemplates) {
           if (uniqueTemplateIds.has(tpl.id)) {
             map[tpl.id] = tpl;
           }
         }
-        setTemplateMap(map);
       }
+      setTemplateMap(map);
+      // 仅成功后记录签名：失败时保持未加载态，下次展开/数据变化会自动重试
+      loadedSigRef.current = signature;
     } catch (err: unknown) {
       debugLog.error('[AnkiTasks] loadCards failed:', err);
       showGlobalNotification('error', getErrorMessage(err));
     } finally {
+      loadingRef.current = false;
       setLoadingCards(false);
     }
   }, [session.documentId]);
 
-  // 首次展开 或 卡片数增长 或 模板信息缺失 时加载
+  // 缓存失效策略：以「卡片数 + 最后更新时间」为签名，任何变化（新增、删除、
+  // 编辑）都会使缓存失效并重新拉取；不再只增不减
   useEffect(() => {
-    if (!expanded || loadingCards) return;
-    const needLoadCards = session.totalCards > 0 && session.totalCards > cards.length;
-    const needLoadTemplates = cards.length > 0 && Object.keys(templateMap).length === 0
-      && cards.some(c => c.template_id);
-    if (needLoadCards || needLoadTemplates) {
-      loadCards();
+    if (!expanded) return;
+    const signature = `${session.totalCards}|${session.lastUpdated}`;
+    if (loadedSigRef.current !== signature) {
+      void loadCards(signature);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expanded, session.totalCards]);
+  }, [expanded, session.totalCards, session.lastUpdated, loadCards]);
 
-  // 后端操作（pause/resume/delete/retryFailed）
+  // 后端操作（pause/resume/cancel/delete/retryFailed）
   const act = useCallback(async (action: string) => {
     setBusy(action);
     try {
       if (action === 'pause') {
-        await invoke('pause_document_processing', { documentId: session.documentId });
+        await controlDocumentTask({ documentId: session.documentId, action: 'pause' });
         showGlobalNotification('success', t('taskDashboard.paused'));
       } else if (action === 'resume') {
-        await invoke('resume_document_processing', { documentId: session.documentId });
+        await controlDocumentTask({ documentId: session.documentId, action: 'resume' });
         showGlobalNotification('success', t('taskDashboard.resumed'));
+      } else if (action === 'cancel') {
+        await controlDocumentTask({ documentId: session.documentId, action: 'cancel' });
+        showGlobalNotification('success', t('tasks.cancelled'));
       } else if (action === 'retryFailed') {
-        // 真正重试失败任务：获取文档所有 task → 筛选失败的 → 并行 trigger。
-        // Cancelled 一并覆盖：会话统计将其计入"失败"组（database/mod.rs 的 failed_tasks），
-        // 重试入口需与徽标口径一致，否则仅含 Cancelled 的会话点重试会提示"没有卡住的任务"
-        const tasks = await invoke<{ id: string; status: string }[]>(
-          'get_document_tasks',
-          { documentId: session.documentId },
-        );
-        const failedTasks = tasks.filter(
-          t2 => t2.status === 'Failed' || t2.status === 'Truncated' || t2.status === 'Cancelled',
-        );
-        if (failedTasks.length === 0) {
+        // 失败口径含 Failed / Truncated / Cancelled（与会话统计 failed_tasks 一致），
+        // 否则仅含 Cancelled 的会话点重试会提示"没有卡住的任务"
+        const result = await retryFailedDocumentTasks(session.documentId);
+        if (result.total === 0) {
           showGlobalNotification('info', t('taskDashboard.noStuckTasks'));
+        } else if (result.failed === 0) {
+          showGlobalNotification('success', t('taskDashboard.retryStarted', { count: result.succeeded }));
         } else {
-          // allSettled 避免部分失败中断其余任务
-          const results = await Promise.allSettled(
-            failedTasks.map(ft => invoke('trigger_task_processing', { taskId: ft.id })),
-          );
-          const succeeded = results.filter(r => r.status === 'fulfilled').length;
-          const failed = results.length - succeeded;
-          if (failed === 0) {
-            showGlobalNotification('success', t('taskDashboard.retryStarted', { count: succeeded }));
-          } else {
-            showGlobalNotification('warning', t('taskDashboard.retryPartial', { succeeded, failed }));
-          }
+          showGlobalNotification('warning', t('taskDashboard.retryPartial', { succeeded: result.succeeded, failed: result.failed }));
         }
       } else if (action === 'delete') {
         await invoke('delete_document_session', { documentId: session.documentId });
@@ -252,8 +250,10 @@ export const SessionRow: React.FC<{
     return { templateName: null, columns: [], isFallback: true };
   }, [normalCards, templateMap, t]);
 
+  const isRunning = group === 'active' && session.activeTasks > 0;
+
   return (
-    <div className="wb-at-row group/row">
+    <div className={`wb-at-row group/row${isRunning ? ' wb-at-row-running' : ''}`}>
       {/* ---- 主行 ---- */}
       <div
         className={`wb-at-row-main${isSmallScreen ? ' min-h-[44px]' : ''}`}
@@ -274,7 +274,7 @@ export const SessionRow: React.FC<{
 
         {/* 状态（宽度与表头 60/72px 对齐，避免小屏列错位） */}
         <div className="w-[60px] sm:w-[72px] flex-shrink-0">
-          <StatusTag group={group} />
+          <StatusTag group={group} paused={group === 'active' && session.activeTasks === 0 && session.pausedTasks > 0} />
         </div>
 
         {/* 卡片数 */}
@@ -286,7 +286,7 @@ export const SessionRow: React.FC<{
 
         {/* 进度（窄窗隐藏，随窗口分级而非视口） */}
         <div className="w-[140px] flex-shrink-0 wb-at-col-progress">
-          <InlineProgress completed={session.completedTasks} total={session.totalTasks} failed={session.failedTasks} />
+          <InlineProgress completed={session.completedTasks} total={session.totalTasks} failed={session.failedTasks} active={isRunning} />
         </div>
 
         {/* 时间 */}
@@ -299,7 +299,7 @@ export const SessionRow: React.FC<{
             操作统一收入展开区的 44px 按钮（见下方） */}
         {!isSmallScreen && (
         <div
-          className="flex items-center justify-end gap-0 flex-shrink-0 w-[96px]
+          className="flex items-center justify-end gap-0 flex-shrink-0 w-[120px]
             opacity-40 group-hover/row:opacity-100
             transition-opacity duration-150"
           onClick={e => e.stopPropagation()}
@@ -315,6 +315,13 @@ export const SessionRow: React.FC<{
             <CommonTooltip content={t('resume')}>
               <NotionButton size="sm" variant="ghost" onClick={() => act('resume')} disabled={!!busy} className="w-6 h-6 p-0">
                 <Play size={12} />
+              </NotionButton>
+            </CommonTooltip>
+          )}
+          {group === 'active' && (
+            <CommonTooltip content={t('tasks.cancelTask')}>
+              <NotionButton size="sm" variant="ghost" onClick={() => act('cancel')} disabled={!!busy} className="w-6 h-6 p-0">
+                <XCircle size={12} />
               </NotionButton>
             </CommonTooltip>
           )}
@@ -364,7 +371,7 @@ export const SessionRow: React.FC<{
           {/* 属性行 */}
           <div className="space-y-0.5">
             <PropRow icon={<Hash size={14} />} label={t('taskDashboard.colStatus')}>
-              <StatusTag group={group} />
+              <StatusTag group={group} paused={group === 'active' && session.activeTasks === 0 && session.pausedTasks > 0} />
               {group === 'active' && (
                 <span className="ml-2 text-xs text-muted-foreground">
                   {session.activeTasks} {t('taskDashboard.statusActive')} / {session.pausedTasks} {t('taskDashboard.statusPaused')}
@@ -372,7 +379,7 @@ export const SessionRow: React.FC<{
               )}
             </PropRow>
             <PropRow icon={<ChartBar size={14} />} label={t('taskDashboard.progressLabel')}>
-              <InlineProgress completed={session.completedTasks} total={session.totalTasks} failed={session.failedTasks} />
+              <InlineProgress completed={session.completedTasks} total={session.totalTasks} failed={session.failedTasks} active={isRunning} />
             </PropRow>
             <PropRow icon={<TrendUp size={14} />} label={t('taskDashboard.propTotalCards')}>
               <span className="tabular-nums">{session.totalCards}</span>
@@ -407,6 +414,11 @@ export const SessionRow: React.FC<{
                 <Play size={14} />{t('resume')}
               </NotionButton>
             )}
+            {isSmallScreen && group === 'active' && (
+              <NotionButton size="sm" variant="default" onClick={() => act('cancel')} disabled={!!busy}>
+                <XCircle size={14} />{t('tasks.cancelTask')}
+              </NotionButton>
+            )}
             {isSmallScreen && session.sourceSessionId && (
               <NotionButton size="sm" variant="default" onClick={onJump}>
                 <ArrowSquareOut size={14} />{t('taskDashboard.jumpToChat')}
@@ -423,14 +435,13 @@ export const SessionRow: React.FC<{
             </NotionButton>
           </div>
 
-          {/* 失败警告 */}
+          {/* 失败分段面板 — 展示后端写入的 error_message + 逐段/整体重试入口 */}
           {session.failedTasks > 0 && (
-            <div className="text-xs text-[color:hsl(var(--warning))] py-1.5 space-y-1.5">
-              <div className="flex items-center gap-2">
-                <Warning size={14} className="flex-shrink-0" />
-                {t('taskDashboard.failedSegments', { count: session.failedTasks })}
-              </div>
-            </div>
+            <FailedTasksPanel
+              documentId={session.documentId}
+              failedCount={session.failedTasks}
+              onRetried={onRefresh}
+            />
           )}
 
           {/* 错误卡片详情（从已加载卡片中提取） */}

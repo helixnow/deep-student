@@ -83,6 +83,13 @@ export type ReviewSessionErrorKind =
   | 'suspend'
   | 'resume';
 
+/** 本轮各评分次数（前端会话统计，undo 时回滚） */
+export type SessionRatingCounts = Record<FsrsRating, number>;
+
+function emptyRatingCounts(): SessionRatingCounts {
+  return { 1: 0, 2: 0, 3: 0, 4: 0 };
+}
+
 export interface FlashcardsLaunchPayload {
   screen?: FlashcardsScreen;
   mode?: 'due' | 'batch';
@@ -115,6 +122,14 @@ interface FsrsReviewState {
   retryBatchRequest: BatchReviewRequest | null;
   sessionRatedCount: number;
   sessionAgainCount: number;
+  /** 本轮各评分（Again/Hard/Good/Easy）次数，供完成态分布图 */
+  sessionRatingCounts: SessionRatingCounts;
+  /** 当前连续非 Again 评分次数 */
+  sessionStreak: number;
+  /** 本轮最长连击 */
+  sessionBestStreak: number;
+  /** 会话开始时间（前端计时；null=无活动会话） */
+  sessionStartedAtMs: number | null;
   remainingDueAfterSession: number | null;
   ratingPreviews: RatingPreviews | null;
   lastSchedule: { dueMs: number; scheduledDays: number } | null;
@@ -167,6 +182,11 @@ interface FsrsReviewState {
   ) => Promise<boolean>;
   suspendCurrent: () => Promise<boolean>;
   resumeLastSuspended: () => Promise<boolean>;
+  /**
+   * 跳过当前卡：移到本轮队列末尾稍后再练（纯前端队列操作，不触碰调度状态）。
+   * 当前卡已是最后一张可复习卡时仅收起背面。
+   */
+  skipCurrent: () => void;
   endSession: () => void;
   resetFlip: () => void;
 }
@@ -567,6 +587,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   retryBatchRequest: null,
   sessionRatedCount: 0,
   sessionAgainCount: 0,
+  sessionRatingCounts: emptyRatingCounts(),
+  sessionStreak: 0,
+  sessionBestStreak: 0,
+  sessionStartedAtMs: null,
   remainingDueAfterSession: null,
   ratingPreviews: null,
   lastSchedule: null,
@@ -649,6 +673,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         lastSuspended: null,
         sessionRatedCount: 0,
         sessionAgainCount: 0,
+        sessionRatingCounts: emptyRatingCounts(),
+        sessionStreak: 0,
+        sessionBestStreak: 0,
+        sessionStartedAtMs: null,
         remainingDueAfterSession: null,
         ratingPreviews: null,
         lastSchedule: null,
@@ -668,6 +696,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       lastSuspended: null,
       sessionRatedCount: 0,
       sessionAgainCount: 0,
+      sessionRatingCounts: emptyRatingCounts(),
+      sessionStreak: 0,
+      sessionBestStreak: 0,
+      sessionStartedAtMs: Date.now(),
       remainingDueAfterSession: null,
       ratingPreviews: null,
       lastSchedule: null,
@@ -703,6 +735,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       lastSuspended: null,
       sessionRatedCount: 0,
       sessionAgainCount: 0,
+      sessionRatingCounts: emptyRatingCounts(),
+      sessionStreak: 0,
+      sessionBestStreak: 0,
+      sessionStartedAtMs: null,
       remainingDueAfterSession: null,
       ratingPreviews: null,
       lastSchedule: null,
@@ -734,6 +770,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         lastSuspended: null,
         sessionRatedCount: 0,
         sessionAgainCount: 0,
+        sessionRatingCounts: emptyRatingCounts(),
+        sessionStreak: 0,
+        sessionBestStreak: 0,
+        sessionStartedAtMs: Date.now(),
         remainingDueAfterSession: null,
         ratingPreviews: null,
         lastSchedule: null,
@@ -1125,6 +1165,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         const sessionRatedCount = state.sessionRatedCount + 1;
         const sessionAgainCount =
           rating === 1 ? state.sessionAgainCount + 1 : state.sessionAgainCount;
+        const sessionRatingCounts: SessionRatingCounts = { ...state.sessionRatingCounts };
+        sessionRatingCounts[rating] += 1;
+        const sessionStreak = rating === 1 ? 0 : state.sessionStreak + 1;
+        const sessionBestStreak = Math.max(state.sessionBestStreak, sessionStreak);
         const sessionDone = nextIndex >= nextQueue.length && nextQueue.length > 0;
         // 先用粗估；下方再以 fsrs_get_stats.due 校正，避免学习回插导致虚高剩余。
         const remainingDueAfterSession = sessionDone
@@ -1152,6 +1196,9 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
               : null,
           sessionRatedCount,
           sessionAgainCount,
+          sessionRatingCounts,
+          sessionStreak,
+          sessionBestStreak,
           remainingDueAfterSession,
           recentLocalLogIds: pushRecentLocalLogId(state.recentLocalLogIds, logId),
         };
@@ -1249,6 +1296,11 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           Math.max(0, lastReview.queueIndex),
           Math.max(0, snapshot.length - 1),
         );
+        const sessionRatingCounts = { ...s.sessionRatingCounts };
+        if (lastReview.rating != null) {
+          sessionRatingCounts[lastReview.rating] =
+            Math.max(0, sessionRatingCounts[lastReview.rating] - 1);
+        }
         return {
           queue: snapshot,
           queueIndex,
@@ -1264,6 +1316,9 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
             lastReview.rating === 1
               ? Math.max(0, s.sessionAgainCount - 1)
               : s.sessionAgainCount,
+          sessionRatingCounts,
+          // 撤销打断连续性；诚实归零而非猜测之前的连击值
+          sessionStreak: 0,
           error: null,
           errorKind: null,
         };
@@ -1332,7 +1387,8 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         extraFields: edit.extraFields,
       };
       set((state) => ({
-        queue: state.queue.map((card, index) => index === queueIndex ? updated : card),
+        // await 期间队列可能变化；按 id 定位当前卡，避免旧下标写错行
+        queue: state.queue.map((card) => (card.id === current.id ? updated : card)),
         dueCards: state.dueCards.map((card) => (
           card.id === current.id || card.ankiCardId === current.ankiCardId ? updated : card
         )),
@@ -1374,17 +1430,21 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         throw new Error(i18n.t('flashcards:session.errors.mismatchedSuspendResponse'));
       }
       set((state) => {
-        const queue = state.queue.map((card, index) => (
-          index === queueIndex ? { ...card, suspended: true } : card
+        // await 期间队列可能被外部 reconcile 调整；按 id 定位而不是沿用旧下标
+        const liveIndex = state.queue.findIndex((card) => card.id === current.id);
+        const baseIndex = liveIndex >= 0 ? liveIndex : Math.min(queueIndex, state.queue.length);
+        const queue = state.queue.map((card) => (
+          card.id === current.id ? { ...card, suspended: true } : card
         ));
         return {
           queue,
-          queueIndex: nextReviewableIndex(queue, queueIndex + 1),
+          queueIndex: nextReviewableIndex(queue, baseIndex + (liveIndex >= 0 ? 1 : 0)),
           flipped: false,
           ratingBusy: false,
           lastRated: null,
+          ratingPreviews: null,
           lastSuspended: resultRow.changed
-            ? { cardStateId: current.id, queueIndex }
+            ? { cardStateId: current.id, queueIndex: baseIndex }
             : null,
           error: null,
           errorKind: null,
@@ -1445,6 +1505,28 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
     }
   },
 
+  skipCurrent: () => {
+    const { queue, queueIndex, ratingBusy } = get();
+    if (ratingBusy) return;
+    const current = queue[queueIndex];
+    if (!current) return;
+    // 已是最后一张：无处可挪，仅收起背面
+    if (queueIndex >= queue.length - 1) {
+      set({ flipped: false, ratingPreviews: null, lastRated: null });
+      return;
+    }
+    const next = [...queue];
+    const [moved] = next.splice(queueIndex, 1);
+    if (moved) next.push(moved);
+    set({
+      queue: next,
+      queueIndex: nextReviewableIndex(next, queueIndex),
+      flipped: false,
+      ratingPreviews: null,
+      lastRated: null,
+    });
+  },
+
   endSession: () => {
     set({
       screen: 'today',
@@ -1459,6 +1541,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       retryBatchRequest: null,
       sessionRatedCount: 0,
       sessionAgainCount: 0,
+      sessionRatingCounts: emptyRatingCounts(),
+      sessionStreak: 0,
+      sessionBestStreak: 0,
+      sessionStartedAtMs: null,
       remainingDueAfterSession: null,
       ratingPreviews: null,
       lastSchedule: null,

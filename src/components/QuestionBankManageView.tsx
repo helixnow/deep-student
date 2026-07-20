@@ -8,6 +8,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
@@ -129,11 +130,15 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
   pagination,
 }) => {
   const { t } = useTranslation(['exam_sheet', 'common', 'practice']);
+  // <768：表格换卡片列表（hidden md: 列在窄屏信息残缺），确认改行内条
+  const { isSmallScreen } = useBreakpoint();
   
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<QuestionFilters>(controlledFilters ?? {});
   const [showFilters, setShowFilters] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  // 移动端卡片操作区行内展开的题目 id（一次只展开一张卡）
+  const [expandedActionId, setExpandedActionId] = useState<string | null>(null);
   
   // 确认对话框状态
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -393,6 +398,86 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             </NotionButton>
           </div>
         )}
+
+        {/* 移动端行内二次确认条（桌面端为模态 AlertDialog，见文末） */}
+        {isSmallScreen && deleteConfirmOpen && (
+          <div
+            className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2"
+            role="alert"
+            aria-label={t('exam_sheet:questionBank.confirmDelete')}
+          >
+            <div className="flex items-start gap-2">
+              <Warning size={16} className="mt-0.5 flex-shrink-0 text-destructive" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-foreground">
+                  {t('exam_sheet:questionBank.confirmDelete')}
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {singleDeleteId
+                    ? t('exam_sheet:questionBank.confirmDeleteSingle')
+                    : t('exam_sheet:questionBank.confirmDeleteBatch', { count: selectedIds.size })}
+                </p>
+              </div>
+            </div>
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                className="!h-9 px-3 text-xs"
+                onClick={() => { setDeleteConfirmOpen(false); setSingleDeleteId(null); }}
+              >
+                {t('common:cancel')}
+              </NotionButton>
+              <NotionButton
+                variant="danger"
+                size="sm"
+                className="!h-9 px-3 text-xs"
+                onClick={() => void handleDeleteConfirm()}
+              >
+                {t('common:delete')}
+              </NotionButton>
+            </div>
+          </div>
+        )}
+        {isSmallScreen && resetConfirmOpen && (
+          <div
+            className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2"
+            role="alert"
+            aria-label={t('exam_sheet:questionBank.confirmReset')}
+          >
+            <div className="flex items-start gap-2">
+              <Warning size={16} className="mt-0.5 flex-shrink-0 text-warning" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-foreground">
+                  {t('exam_sheet:questionBank.confirmReset')}
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {singleResetId
+                    ? t('exam_sheet:questionBank.confirmResetSingle')
+                    : t('exam_sheet:questionBank.confirmResetBatch', { count: selectedIds.size })}
+                </p>
+              </div>
+            </div>
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                className="!h-9 px-3 text-xs"
+                onClick={() => { setResetConfirmOpen(false); setSingleResetId(null); }}
+              >
+                {t('common:cancel')}
+              </NotionButton>
+              <NotionButton
+                variant="warning"
+                size="sm"
+                className="!h-9 px-3 text-xs"
+                onClick={() => void handleResetConfirm()}
+              >
+                {t('exam_sheet:questionBank.resetProgress')}
+              </NotionButton>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 表格 */}
@@ -410,6 +495,162 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 {t('exam_sheet:questionBank.import')}
               </NotionButton>
             )}
+          </div>
+        ) : isSmallScreen ? (
+          /* <768：卡片列表（表格的 hidden md: 列在窄屏信息残缺）。
+             每题一卡：题干摘要 + 标签 + 状态；操作经「⋯」行内展开，不用浮层 */
+          <div
+            className="space-y-2 px-3 py-2"
+            style={{
+              paddingBottom:
+                'calc(var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 12px)',
+            }}
+          >
+            {/* 全选行 */}
+            <label className="flex min-h-[40px] items-center gap-2.5 px-1">
+              <Checkbox
+                checked={allSelected || (someSelected ? 'indeterminate' : false)}
+                onCheckedChange={handleSelectAll}
+              />
+              <span className="text-xs text-muted-foreground">
+                {selectedIds.size > 0
+                  ? t('practice:questionBank.selectedCount', { count: selectedIds.size })
+                  : t('common:contextMenu.selectAll')}
+              </span>
+            </label>
+
+            {questions.map((q) => {
+              const actionsExpanded = expandedActionId === q.id;
+              return (
+                <div
+                  key={q.id}
+                  className={cn(
+                    'rounded-lg border bg-card p-3 transition-colors motion-reduce:transition-none',
+                    selectedIds.has(q.id)
+                      ? 'border-primary/40 bg-muted/30'
+                      : 'border-border/60',
+                  )}
+                  onClick={() => onViewDetail?.(q)}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <span
+                      className="flex min-h-[24px] items-center"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Checkbox
+                        checked={selectedIds.has(q.id)}
+                        onCheckedChange={(checked) => handleSelectOne(q.id, !!checked)}
+                      />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {q.questionLabel || q.cardId}
+                        </span>
+                        {q.isCorrect === true && (
+                          <CheckCircle size={14} className="flex-shrink-0 text-success" />
+                        )}
+                        {q.isCorrect === false && (
+                          <XCircle size={14} className="flex-shrink-0 text-destructive" />
+                        )}
+                      </div>
+                      <p className="mt-1 text-sm leading-snug line-clamp-2">
+                        {q.content.slice(0, 100)}
+                        {q.content.length > 100 && '...'}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
+                        <span className={cn('font-medium', statusColors[q.status])}>
+                          {t(statusLabelKeys[q.status])}
+                        </span>
+                        {q.difficulty && (
+                          <span className={cn('font-medium', difficultyColors[q.difficulty])}>
+                            {t(difficultyLabelKeys[q.difficulty])}
+                          </span>
+                        )}
+                        <span className="tabular-nums text-muted-foreground">
+                          {q.correctCount}/{q.attemptCount}
+                        </span>
+                        {q.tags?.slice(0, 3).map((tag) => (
+                          <span
+                            key={tag}
+                            className="max-w-[8rem] truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <NotionButton
+                      variant="ghost"
+                      iconOnly
+                      size="sm"
+                      className="!h-11 !w-11 -mr-1 -mt-1 flex-shrink-0 text-muted-foreground"
+                      aria-label={t('common:more')}
+                      aria-expanded={actionsExpanded}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedActionId(actionsExpanded ? null : q.id);
+                      }}
+                    >
+                      <DotsThree size={18} weight="bold" />
+                    </NotionButton>
+                  </div>
+
+                  {/* 行内展开的操作区 */}
+                  {actionsExpanded && (
+                    <div
+                      className="mt-2 grid grid-cols-4 gap-1 border-t border-border/40 pt-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <NotionButton
+                        variant="ghost"
+                        size="sm"
+                        className="!h-11 flex-col gap-0.5 px-1 text-[10px] text-muted-foreground"
+                        onClick={() => { setExpandedActionId(null); onViewHistory?.(q.id); }}
+                      >
+                        <ClockCounterClockwise size={16} />
+                        {t('exam_sheet:questionBank.history.title')}
+                      </NotionButton>
+                      <NotionButton
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          '!h-11 flex-col gap-0.5 px-1 text-[10px]',
+                          q.isFavorite ? 'text-warning' : 'text-muted-foreground',
+                        )}
+                        disabled={!canToggleFavorite || actionLoading === `favorite:${q.id}` || isLoading}
+                        onClick={() => void handleToggleFavoriteAction(q.id)}
+                      >
+                        <Star size={16} weight={q.isFavorite ? 'fill' : 'regular'} />
+                        {q.isFavorite
+                          ? t('exam_sheet:questionBank.unfavorite')
+                          : t('exam_sheet:questionBank.favorite')}
+                      </NotionButton>
+                      <NotionButton
+                        variant="ghost"
+                        size="sm"
+                        className="!h-11 flex-col gap-0.5 px-1 text-[10px] text-muted-foreground"
+                        disabled={!canReset}
+                        onClick={() => { setExpandedActionId(null); handleSingleResetClick(q.id); }}
+                      >
+                        <ArrowCounterClockwise size={16} />
+                        {t('exam_sheet:questionBank.resetProgress')}
+                      </NotionButton>
+                      <NotionButton
+                        variant="ghost"
+                        size="sm"
+                        className="!h-11 flex-col gap-0.5 px-1 text-[10px] text-destructive hover:bg-destructive/10"
+                        disabled={!canDelete}
+                        onClick={() => { setExpandedActionId(null); handleSingleDeleteClick(q.id); }}
+                      >
+                        <Trash size={16} />
+                        {t('common:delete')}
+                      </NotionButton>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ) : (
           <Table>
@@ -558,7 +799,8 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
         </div>
       )}
       
-      {/* 删除确认对话框 */}
+      {/* 删除确认对话框（移动端改为工具栏行内确认条） */}
+      {!isSmallScreen && (
       <NotionAlertDialog
         open={deleteConfirmOpen}
         onOpenChange={(open) => {
@@ -577,8 +819,10 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
         confirmVariant="danger"
         onConfirm={handleDeleteConfirm}
 />
+      )}
       
-      {/* 重置进度确认对话框 */}
+      {/* 重置进度确认对话框（移动端改为工具栏行内确认条） */}
+      {!isSmallScreen && (
       <NotionAlertDialog
         open={resetConfirmOpen}
         onOpenChange={(open) => {
@@ -597,6 +841,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
         confirmVariant="warning"
         onConfirm={handleResetConfirm}
 />
+      )}
     </div>
   );
 };

@@ -143,6 +143,8 @@
     "cancel": "Cancel",
     "reset": "Reset",
     "delete": "Delete",
+    "confirmReset": "Reset {{count}}?",
+    "confirmDelete": "Delete {{count}}?",
     "toReview": "To Review",
     "mastered": "Mastered",
     "avgAttempts": "Avg <bold>{{count}}</bold> attempts",

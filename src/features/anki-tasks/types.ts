@@ -72,6 +72,43 @@ export function formatDate(iso: string): string {
   }
 }
 
+export interface WindowCardStats {
+  /** 可确定归属该时间窗口的卡片数 + 跨窗口会话的卡片数（估算部分） */
+  count: number;
+  /** 是否包含跨窗口会话（其卡片无法精确归期，count 为估算值） */
+  approximate: boolean;
+}
+
+/**
+ * 按时间窗口聚合卡片数。
+ *
+ * 会话只暴露 createdAt(MIN)/lastUpdated(MAX)，没有逐卡时间戳：
+ * - createdAt >= windowStart：所有卡片都在窗口内（精确）；
+ * - lastUpdated < windowStart：没有卡片在窗口内（精确）；
+ * - 跨越窗口边界（createdAt < windowStart <= lastUpdated）：卡片可能分布在
+ *   边界两侧，计入 count 并标记 approximate，UI 以 ≈ 提示口径。
+ */
+export function computeWindowCardStats(
+  sessions: DocumentSession[],
+  windowStartMs: number,
+): WindowCardStats {
+  let count = 0;
+  let approximate = false;
+  for (const s of sessions) {
+    if (s.totalCards <= 0) continue;
+    const created = new Date(s.createdAt).getTime();
+    const updated = new Date(s.lastUpdated).getTime();
+    if (Number.isNaN(created) || Number.isNaN(updated)) continue;
+    if (created >= windowStartMs) {
+      count += s.totalCards;
+    } else if (updated >= windowStartMs) {
+      count += s.totalCards;
+      approximate = true;
+    }
+  }
+  return { count, approximate };
+}
+
 /** 根据模板字段名获取卡片对应的值
  *  注意：后端 streaming_anki_service 将 extra_fields 的 key 统一转为小写存储，
  *  但模板 fields 数组保留原始大小写，因此需要同时尝试两种 key。

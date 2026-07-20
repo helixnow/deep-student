@@ -245,19 +245,21 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
       });
     }
     
-    // 初始计算
-    setTimeout(calculateHeight, 100);
-    
+    // 初始计算（保存句柄，卸载时清理，避免 setTimeout 泄漏到已卸载组件）
+    const initialTimer = window.setTimeout(calculateHeight, 100);
+
     // 监听 ShadowDom 内容载入（用于图片/字体延迟导致的高度变化）
     const handleShadowContentLoaded = () => calculateHeight();
-    containerRef.current?.addEventListener('shadowContentLoaded', handleShadowContentLoaded as EventListener);
+    const containerEl = containerRef.current;
+    containerEl?.addEventListener('shadowContentLoaded', handleShadowContentLoaded as EventListener);
 
     // 监听窗口尺寸变化
     window.addEventListener('resize', calculateHeight);
     
     return () => {
+      window.clearTimeout(initialTimer);
       window.removeEventListener('resize', calculateHeight);
-      containerRef.current?.removeEventListener('shadowContentLoaded', handleShadowContentLoaded as EventListener);
+      containerEl?.removeEventListener('shadowContentLoaded', handleShadowContentLoaded as EventListener);
       resizeObserver.disconnect();
     };
   }, [cards, currentIndex, template, templateMap]);
@@ -398,6 +400,9 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
     }
   };
 
+  // 滑动只切卡；记录最近一次滑动时间，抑制随后的合成 click 误触翻面
+  const lastSwipeAtRef = useRef(0);
+
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStart(e.touches[0].clientX);
   };
@@ -407,6 +412,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
     const diff = touchStart - touchEnd;
     
     if (Math.abs(diff) > 50) {
+      lastSwipeAtRef.current = Date.now();
       if (diff > 0) handleNext();
       else handlePrevious();
     }
@@ -497,7 +503,18 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
               className={`card-3d${flippedCards.has(index) ? ' card-3d-flipped' : ''}`}
               data-card-index={index}
               style={getCardTransform(index)}
-              onClick={() => onCardClick && onCardClick(card, index)}
+              onClick={() => {
+                // 刚发生过滑动切卡时抑制合成 click，避免误触翻面
+                if (Date.now() - lastSwipeAtRef.current < 350) return;
+                // 触屏语义：点旁边的卡 → 切换到该卡；点中心卡 → 翻面
+                //（外部传入 onCardClick 时保留原有点击回调优先级，避免破坏调用方契约）
+                if (index !== currentIndex) {
+                  setCurrentIndex(index);
+                  return;
+                }
+                if (onCardClick) onCardClick(card, index);
+                else handleFlipCurrent();
+              }}
             >
               <div className="card-3d-inner">
                 <div className="card-3d-face card-3d-front">

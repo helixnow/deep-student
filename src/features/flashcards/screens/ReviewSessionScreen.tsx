@@ -1,5 +1,8 @@
 /**
- * 复习会话：模板卡面、Cloze、评分、撤销、编辑与暂停。
+ * 复习会话：模板卡面、Cloze、评分、撤销、编辑、暂停/跳过。
+ *
+ * 键盘流：Space/Enter 翻面（已翻面时评 Good）、1–4 评分、
+ * Z 或 Ctrl/Cmd+Z 撤销、E 编辑、S 跳过；编辑中 Esc 取消、Ctrl/Cmd+Enter 保存。
  */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
@@ -8,40 +11,43 @@ import {
   ArrowLeft,
   ArrowClockwise,
   FloppyDisk,
+  Lightning,
   Pause,
   PencilSimple,
   Play,
+  SkipForward,
+  Timer,
+  Warning,
   X,
 } from '@phosphor-icons/react';
-import { AnkiTemplateCardFace } from '@/components/anki/AnkiTemplateCardFace';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useAnkiTemplateLoader } from '@/hooks/useAnkiTemplateLoader';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
-import type { CustomAnkiTemplate } from '@/types';
 import { cn } from '@/utils/cn';
-import { hasValidCloze, renderClozeText } from '../cloze';
+import { hasValidCloze } from '../cloze';
+import { useSwipeRating } from '../hooks/useSwipeRating';
 import { isEditableTarget } from '../isEditableTarget';
 import {
   getReviewCardEditValues,
   isClozeReviewCard,
-  toRenderableReviewCard,
 } from '../reviewCardEditFields';
 import {
-  formatInterval,
   isReviewSessionDone,
   isReviewSessionEmpty,
   useFsrsReviewStore,
   type FsrsRating,
-  type ReviewCard,
   type ReviewSessionErrorKind,
 } from '../store/fsrsReviewStore';
+import { RatingBar } from '../review/RatingBar';
+import { ReviewCardSurface } from '../review/ReviewCardSurface';
+import { SessionSummary } from '../review/SessionSummary';
+import { formatDuration, useNow } from '../review/useSessionClock';
 
-const RATINGS: Array<{ value: FsrsRating; labelKey: string; tone: string }> = [
-  { value: 1, labelKey: 'session.again', tone: 'border-destructive/40 text-destructive hover:bg-destructive/10' },
-  { value: 2, labelKey: 'session.hard', tone: 'border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10' },
-  { value: 3, labelKey: 'session.good', tone: 'border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10' },
-  { value: 4, labelKey: 'session.easy', tone: 'border-sky-500/40 text-sky-700 dark:text-sky-400 hover:bg-sky-500/10' },
-];
+/** 翻面后短时间内忽略指针评分，防止翻面双击误评（键盘不受限） */
+const POINTER_RATE_GUARD_MS = 280;
+const PRESS_FLASH_MS = 240;
+const STREAK_BADGE_THRESHOLD = 3;
 
 function ratingFromKey(event: KeyboardEvent): FsrsRating | null {
   if (event.key === '1' || event.key === '2' || event.key === '3' || event.key === '4') {
@@ -64,76 +70,6 @@ function ratingFromKey(event: KeyboardEvent): FsrsRating | null {
       return null;
   }
 }
-
-const ReviewCardSurface: React.FC<{
-  card: ReviewCard;
-  template: CustomAnkiTemplate | null;
-  templateLoading: boolean;
-  flipped: boolean;
-  disabled: boolean;
-  onFlip: () => void;
-  frontLabel: string;
-  backLabel: string;
-  flipAriaLabel: string;
-  noFrontText: string;
-  noBackText: string;
-}> = ({
-  card,
-  template,
-  templateLoading,
-  flipped,
-  disabled,
-  onFlip,
-  frontLabel,
-  backLabel,
-  flipAriaLabel,
-  noFrontText,
-  noBackText,
-}) => {
-  const side = flipped ? 'back' : 'front';
-  const isCloze = hasValidCloze(card.text);
-  const fallbackText = isCloze
-    ? renderClozeText(card.text ?? '', flipped)
-    : flipped
-      ? card.back || card.text || ''
-      : card.front || card.text || '';
-  const renderCard = React.useMemo(() => toRenderableReviewCard(card), [card]);
-
-  return (
-    <div
-      role="button"
-      tabIndex={disabled ? -1 : 0}
-      aria-disabled={disabled}
-      aria-busy={templateLoading}
-      aria-label={flipAriaLabel}
-      onClick={disabled ? undefined : onFlip}
-      className={cn(
-        'relative flex min-h-[16rem] min-w-0 flex-1 cursor-pointer flex-col overflow-auto rounded-lg border border-border/70',
-        'bg-card px-5 py-6 text-center transition-colors',
-        'hover:bg-[var(--interactive-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        disabled && 'cursor-default opacity-70',
-      )}
-    >
-      <span className="mb-3 text-[10px] uppercase text-muted-foreground/70">
-        {flipped ? backLabel : frontLabel}
-      </span>
-      <AnkiTemplateCardFace
-        card={renderCard}
-        template={template}
-        side={side}
-        compact={false}
-        fallbackText={fallbackText}
-        emptyText={flipped ? noBackText : noFrontText}
-        className="pointer-events-none flex min-h-0 flex-1 items-center justify-center [&_iframe]:max-h-[55vh]"
-      />
-      <ArrowClockwise
-        size={14}
-        className="pointer-events-none absolute bottom-3 right-3 text-muted-foreground/60"
-        aria-hidden="true"
-      />
-    </div>
-  );
-};
 
 function errorTitle(
   t: (key: string) => string,
@@ -168,7 +104,10 @@ export const ReviewSessionScreen: React.FC = () => {
   const lastSuspended = useFsrsReviewStore((state) => state.lastSuspended);
   const retryBatchRequest = useFsrsReviewStore((state) => state.retryBatchRequest);
   const sessionRatedCount = useFsrsReviewStore((state) => state.sessionRatedCount);
-  const sessionAgainCount = useFsrsReviewStore((state) => state.sessionAgainCount);
+  const sessionRatingCounts = useFsrsReviewStore((state) => state.sessionRatingCounts);
+  const sessionStreak = useFsrsReviewStore((state) => state.sessionStreak);
+  const sessionBestStreak = useFsrsReviewStore((state) => state.sessionBestStreak);
+  const sessionStartedAtMs = useFsrsReviewStore((state) => state.sessionStartedAtMs);
   const remainingDueAfterSession = useFsrsReviewStore((state) => state.remainingDueAfterSession);
   const ratingPreviews = useFsrsReviewStore((state) => state.ratingPreviews);
   const current = queue[queueIndex];
@@ -179,17 +118,30 @@ export const ReviewSessionScreen: React.FC = () => {
   const updateCurrentCard = useFsrsReviewStore((state) => state.updateCurrentCard);
   const suspendCurrent = useFsrsReviewStore((state) => state.suspendCurrent);
   const resumeLastSuspended = useFsrsReviewStore((state) => state.resumeLastSuspended);
+  const skipCurrent = useFsrsReviewStore((state) => state.skipCurrent);
   const retryBatchSession = useFsrsReviewStore((state) => state.retryBatchSession);
   const endSession = useFsrsReviewStore((state) => state.endSession);
+
   const [editing, setEditing] = React.useState(false);
   const [draftFront, setDraftFront] = React.useState('');
   const [draftBack, setDraftBack] = React.useState('');
   const editedCardIdentityRef = React.useRef<string | null>(null);
 
+  // 键盘评分的按钮闪烁反馈
+  const [pressedRating, setPressedRating] = React.useState<FsrsRating | null>(null);
+  const pressTimerRef = React.useRef<number | null>(null);
+  React.useEffect(() => () => {
+    if (pressTimerRef.current != null) window.clearTimeout(pressTimerRef.current);
+  }, []);
+
+  // 指针防误触：记录最近一次翻到背面的时间
+  const flippedAtRef = React.useRef(0);
+
   const progress = queue.length > 0 ? Math.min(queueIndex + 1, queue.length) : 0;
   const sessionDone = isReviewSessionDone({ queue, queueIndex, loading });
   const sessionEmpty = isReviewSessionEmpty({ queue, loading });
   const draftIsCloze = Boolean(current && isClozeReviewCard(current, template));
+  const draftClozeInvalid = draftIsCloze && Boolean(draftFront.trim()) && !hasValidCloze(draftFront);
   const draftIsValid = Boolean(
     current
     && draftFront.trim()
@@ -198,6 +150,42 @@ export const ReviewSessionScreen: React.FC = () => {
   const flipAriaLabel = flipped
     ? t('session.showFront')
     : t('session.showBack');
+
+  // ---- 前端计时（本卡用时 + 本轮用时） ----
+  const cardKey = current ? `${current.id}:${current.ankiCardId ?? ''}` : null;
+  const clockEnabled = !loading && Boolean(current) && !sessionDone && !editing;
+  const now = useNow(clockEnabled);
+  const [cardShownAt, setCardShownAt] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    setCardShownAt(Date.now());
+  }, [cardKey, sessionRatedCount]);
+  const [doneAt, setDoneAt] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (sessionDone) {
+      setDoneAt((prev) => prev ?? Date.now());
+    } else {
+      setDoneAt(null);
+    }
+  }, [sessionDone]);
+  const cardElapsedMs = Math.max(0, now - cardShownAt);
+  const sessionElapsedMs = sessionStartedAtMs != null
+    ? Math.max(0, (doneAt ?? now) - sessionStartedAtMs)
+    : null;
+
+  // ---- 剩余队列计数（new = 从未评过；learn = 已有复习记录） ----
+  const upcoming = React.useMemo(
+    () => queue.slice(queueIndex).filter((card) => card.suspended !== true),
+    [queue, queueIndex],
+  );
+  const remainingCount = upcoming.length;
+  const newCount = React.useMemo(
+    () => upcoming.filter((card) => card.lastReviewMs === null).length,
+    [upcoming],
+  );
+  const learnCount = React.useMemo(
+    () => upcoming.filter((card) => typeof card.lastReviewMs === 'number').length,
+    [upcoming],
+  );
 
   React.useEffect(() => {
     const cardIdentity = current ? `${current.id}:${current.ankiCardId ?? ''}` : null;
@@ -215,56 +203,116 @@ export const ReviewSessionScreen: React.FC = () => {
     setDraftBack(values.back);
   }, [current, editing, template]);
 
+  const flashRating = React.useCallback((rating: FsrsRating) => {
+    if (pressTimerRef.current != null) window.clearTimeout(pressTimerRef.current);
+    setPressedRating(rating);
+    pressTimerRef.current = window.setTimeout(() => {
+      setPressedRating(null);
+      pressTimerRef.current = null;
+    }, PRESS_FLASH_MS);
+  }, []);
+
+  const handleFlip = React.useCallback(() => {
+    if (!flipped) flippedAtRef.current = Date.now();
+    flip();
+  }, [flip, flipped]);
+
+  const handleRate = React.useCallback((rating: FsrsRating) => {
+    if (ratingBusy || !flipped) return;
+    flashRating(rating);
+    void rate(rating);
+  }, [flashRating, flipped, rate, ratingBusy]);
+
+  const handleRateClick = React.useCallback((
+    rating: FsrsRating,
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => {
+    // 真实指针点击（detail>0）在翻面后的极短窗口内忽略，防止双击卡面误评
+    if (event.detail > 0 && Date.now() - flippedAtRef.current < POINTER_RATE_GUARD_MS) {
+      return;
+    }
+    handleRate(rating);
+  }, [handleRate]);
+
+  const beginEdit = React.useCallback(() => {
+    const live = useFsrsReviewStore.getState();
+    const liveCurrent = live.queue[live.queueIndex];
+    if (!liveCurrent || live.ratingBusy || templateLoading || !liveCurrent.ankiCardId) return;
+    const values = getReviewCardEditValues(liveCurrent, template);
+    setDraftFront(values.front);
+    setDraftBack(values.back);
+    setEditing(true);
+  }, [template, templateLoading]);
+
+  const saveEdit = React.useCallback(async () => {
+    if (await updateCurrentCard(draftFront, draftBack, template)) setEditing(false);
+  }, [draftBack, draftFront, template, updateCurrentCard]);
+
   const onKeyDown = React.useCallback((rawEvent: Event) => {
     const event = rawEvent as KeyboardEvent;
     if (event.isComposing || event.keyCode === 229 || event.repeat) return;
     if (isEditableTarget(event.target)) return;
-    if (event.metaKey || event.ctrlKey || event.altKey || ratingBusy) return;
-    if (editing) return;
+    if (ratingBusy || editing) return;
 
-    if ((event.key.toLowerCase() === 'z' || event.code === 'KeyZ') && lastReview) {
-      event.preventDefault();
-      void undoLastReview();
+    // 撤销：Z 与 Ctrl/Cmd+Z 都支持（完成态也可用）
+    const isUndoKey = event.key.toLowerCase() === 'z' || event.code === 'KeyZ';
+    if (isUndoKey && !event.altKey && !event.shiftKey) {
+      if (lastReview) {
+        event.preventDefault();
+        void undoLastReview();
+      }
       return;
     }
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
     if (loading || !current || sessionDone) return;
 
     if (event.code === 'Space' || event.key === ' ') {
       event.preventDefault();
       if (!flipped) {
-        flip();
+        handleFlip();
       } else {
-        void rate(3);
+        handleRate(3);
       }
       return;
     }
-    if (!flipped && event.key === 'Enter') {
+    if (event.key === 'Enter') {
       event.preventDefault();
-      flip();
-      return;
-    }
-    if (flipped && event.key === 'Enter') {
-      event.preventDefault();
-      void rate(3);
+      if (!flipped) {
+        handleFlip();
+      } else {
+        handleRate(3);
+      }
       return;
     }
     if (flipped) {
       const rating = ratingFromKey(event);
       if (rating != null) {
         event.preventDefault();
-        void rate(rating);
+        handleRate(rating);
+        return;
       }
     }
+    if (event.key.toLowerCase() === 'e' || event.code === 'KeyE') {
+      event.preventDefault();
+      beginEdit();
+      return;
+    }
+    if (event.key.toLowerCase() === 's' || event.code === 'KeyS') {
+      event.preventDefault();
+      skipCurrent();
+    }
   }, [
+    beginEdit,
     current,
     editing,
     flipped,
+    handleFlip,
+    handleRate,
     lastReview,
     loading,
-    rate,
     ratingBusy,
     sessionDone,
-    flip,
+    skipCurrent,
     undoLastReview,
   ]);
   useEventRegistry(
@@ -272,21 +320,48 @@ export const ReviewSessionScreen: React.FC = () => {
     [onKeyDown],
   );
 
-  const beginEdit = () => {
-    if (!current || ratingBusy || templateLoading) return;
-    const values = getReviewCardEditValues(current, template);
-    setDraftFront(values.front);
-    setDraftBack(values.back);
-    setEditing(true);
-  };
+  const onEditKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      setEditing(false);
+      return;
+    }
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      if (draftIsValid && !ratingBusy) void saveEdit();
+    }
+  }, [draftIsValid, ratingBusy, saveEdit]);
 
-  const saveEdit = async () => {
-    if (await updateCurrentCard(draftFront, draftBack, template)) setEditing(false);
-  };
+  const errorBanner = error ? (
+    <div role="alert" className="wb-fc-session-error flex items-start justify-between gap-3">
+      <div className="min-w-0 flex items-start gap-2">
+        <Warning size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-destructive" />
+        <div className="min-w-0 space-y-0.5 text-left">
+          <p className="text-xs font-medium text-destructive">{errorTitle(t, errorKind)}</p>
+          <p className="break-words text-[11px] text-destructive/90">{error}</p>
+        </div>
+      </div>
+      {errorKind === 'rate' && lastRated && flipped ? (
+        <NotionButton
+          type="button"
+          size="sm"
+          variant="default"
+          disabled={ratingBusy}
+          onClick={() => void rate(lastRated)}
+          className="shrink-0 text-xs"
+        >
+          <ArrowClockwise size={14} />
+          {t('session.retry')}
+        </NotionButton>
+      ) : null}
+    </div>
+  ) : null;
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+      <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+        <span className="wb-fc-spinner" aria-hidden="true" />
         {t('session.loading')}
       </div>
     );
@@ -294,7 +369,10 @@ export const ReviewSessionScreen: React.FC = () => {
 
   if (error && !current && (errorKind === 'prepare' || retryBatchRequest)) {
     return (
-      <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+      <div role="alert" className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
+        <div className="wb-fc-summary-icon wb-fc-summary-icon--error">
+          <Warning size={30} weight="duotone" aria-hidden="true" />
+        </div>
         <div className="space-y-1">
           <p className="text-sm font-medium text-foreground">
             {t('session.prepareFailed')}
@@ -325,68 +403,72 @@ export const ReviewSessionScreen: React.FC = () => {
         : t('session.done');
 
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-        <p className="text-sm text-muted-foreground">{headline}</p>
-        {!sessionEmpty && sessionRatedCount > 0 ? (
-          <div className="space-y-1 text-xs text-muted-foreground">
-            <p>{t('session.summaryRated', { count: sessionRatedCount })}</p>
-            {sessionAgainCount > 0 ? (
-              <p>{t('session.again')}: {sessionAgainCount}</p>
-            ) : null}
-            {stillDue ? (
-              <p>{t('session.stillDue', { count: remainingDueAfterSession })}</p>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="flex items-center gap-2">
-          {lastReview ? (
-            <NotionButton
-              type="button"
-              variant="default"
-              disabled={ratingBusy}
-              onClick={() => void undoLastReview()}
-            >
-              <ArrowCounterClockwise size={16} />
-              {t('session.undo')}
-            </NotionButton>
-          ) : null}
-          {lastSuspended ? (
-            <NotionButton
-              type="button"
-              variant="default"
-              disabled={ratingBusy}
-              onClick={() => void resumeLastSuspended()}
-            >
-              <Play size={16} />
-              {t('session.resume')}
-            </NotionButton>
-          ) : null}
-          <NotionButton type="button" variant="primary" onClick={endSession}>
-            {t('session.backToday')}
-          </NotionButton>
-        </div>
-        {error ? (
-          <div role="alert" className="max-w-md rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
-            <p className="text-xs font-medium text-destructive">{errorTitle(t, errorKind)}</p>
-            <p className="mt-0.5 break-words text-[11px] text-destructive/90">{error}</p>
-          </div>
-        ) : null}
-      </div>
+      <SessionSummary
+        empty={sessionEmpty}
+        headline={headline}
+        ratedCount={sessionRatedCount}
+        ratingCounts={sessionRatingCounts}
+        bestStreak={sessionBestStreak}
+        elapsedMs={sessionEmpty ? null : sessionElapsedMs}
+        remainingDue={remainingDueAfterSession}
+        busy={ratingBusy}
+        canUndo={Boolean(lastReview)}
+        canResume={Boolean(lastSuspended)}
+        onUndo={() => void undoLastReview()}
+        onResume={() => void resumeLastSuspended()}
+        onBack={endSession}
+        errorBanner={errorBanner}
+      />
     );
   }
 
+  const progressPct = queue.length > 0
+    ? Math.round((Math.min(queueIndex, queue.length) / queue.length) * 100)
+    : 0;
+
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-4 sm:p-5">
+    <div className="wb-fc-session flex h-full min-h-0 flex-col gap-3 p-4 sm:p-5">
+      <div
+        className="wb-fc-session-progress"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={queue.length}
+        aria-valuenow={Math.min(queueIndex, queue.length)}
+        aria-label={t('review.progressLabel')}
+      >
+        <div className="wb-fc-session-progress-fill" style={{ width: `${progressPct}%` }} />
+      </div>
+
       <div className="flex items-center justify-between gap-2">
         <NotionButton type="button" variant="ghost" size="sm" onClick={endSession} className="gap-1">
           <ArrowLeft size={14} />
           {t('session.exit')}
         </NotionButton>
-        <div className="text-xs text-muted-foreground">
-          {t('session.progress', {
-            current: progress,
-            total: queue.length,
-          })}
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+          {sessionStreak >= STREAK_BADGE_THRESHOLD ? (
+            <span key={sessionStreak} className="wb-fc-chip wb-fc-chip--streak" title={t('review.streakTitle')}>
+              <Lightning size={11} weight="fill" aria-hidden="true" />
+              {t('review.streak', { count: sessionStreak })}
+            </span>
+          ) : null}
+          {newCount > 0 ? (
+            <span className="wb-fc-chip wb-fc-chip--new">{t('review.newCount', { count: newCount })}</span>
+          ) : null}
+          {learnCount > 0 ? (
+            <span className="wb-fc-chip wb-fc-chip--learn">{t('review.learnCount', { count: learnCount })}</span>
+          ) : null}
+          <span className="wb-fc-chip wb-fc-chip--due" title={t('review.remainingTitle', { count: remainingCount })}>
+            {t('session.progress', { current: progress, total: queue.length })}
+          </span>
+          <span
+            className="wb-fc-chip wb-fc-chip--timer"
+            title={sessionElapsedMs != null
+              ? t('review.sessionTimeTitle', { time: formatDuration(sessionElapsedMs) })
+              : t('review.cardTimeTitle')}
+          >
+            <Timer size={11} aria-hidden="true" />
+            {formatDuration(cardElapsedMs)}
+          </span>
         </div>
       </div>
 
@@ -399,7 +481,8 @@ export const ReviewSessionScreen: React.FC = () => {
           disabled={!lastReview || ratingBusy}
           onClick={() => void undoLastReview()}
           aria-label={t('session.undo')}
-          title={t('session.undo')}
+          aria-keyshortcuts="Z Control+Z Meta+Z"
+          title={`${t('session.undo')} · Z`}
         >
           <ArrowCounterClockwise size={16} />
         </NotionButton>
@@ -425,9 +508,23 @@ export const ReviewSessionScreen: React.FC = () => {
           disabled={ratingBusy || templateLoading || !current.ankiCardId}
           onClick={beginEdit}
           aria-label={t('session.edit')}
-          title={t('session.edit')}
+          aria-keyshortcuts="E"
+          title={`${t('session.edit')} · E`}
         >
           <PencilSimple size={16} />
+        </NotionButton>
+        <NotionButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          iconOnly
+          disabled={ratingBusy || editing}
+          onClick={skipCurrent}
+          aria-label={t('review.skip')}
+          aria-keyshortcuts="S"
+          title={`${t('review.skip')} · S`}
+        >
+          <SkipForward size={16} />
         </NotionButton>
         <NotionButton
           type="button"
@@ -444,15 +541,25 @@ export const ReviewSessionScreen: React.FC = () => {
       </div>
 
       {editing ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto rounded-lg border border-border/70 bg-card p-4">
+        <div
+          className="wb-fc-edit-panel flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4"
+          onKeyDown={onEditKeyDown}
+        >
           <label className="flex min-h-0 flex-1 flex-col gap-1.5 text-left text-xs font-medium text-muted-foreground">
             {t('session.front')}
             <textarea
               value={draftFront}
               onChange={(event) => setDraftFront(event.target.value)}
+              autoFocus
               className="min-h-28 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-ring"
             />
           </label>
+          {draftClozeInvalid ? (
+            <p className="wb-fc-edit-hint" role="status">
+              <Warning size={12} aria-hidden="true" />
+              {t('session.invalidClozeEdit')}
+            </p>
+          ) : null}
           <label className="flex min-h-0 flex-1 flex-col gap-1.5 text-left text-xs font-medium text-muted-foreground">
             {t('session.back')}
             <textarea
@@ -461,25 +568,32 @@ export const ReviewSessionScreen: React.FC = () => {
               className="min-h-28 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-ring"
             />
           </label>
-          <div className="flex justify-end gap-2">
-            <NotionButton
-              type="button"
-              variant="ghost"
-              disabled={ratingBusy}
-              onClick={() => setEditing(false)}
-            >
-              <X size={16} />
-              {t('session.cancelEdit')}
-            </NotionButton>
-            <NotionButton
-              type="button"
-              variant="primary"
-              disabled={ratingBusy || !draftIsValid}
-              onClick={() => void saveEdit()}
-            >
-              <FloppyDisk size={16} />
-              {t('session.saveEdit')}
-            </NotionButton>
+          <div className="flex items-center justify-between gap-2">
+            <span className="wb-fc-shortcut-hint" aria-hidden="true">
+              <kbd className="wb-fc-keycap">Esc</kbd> {t('session.cancelEdit')}
+              <span className="wb-fc-shortcut-sep">·</span>
+              <kbd className="wb-fc-keycap">⌘/Ctrl+Enter</kbd> {t('session.saveEdit')}
+            </span>
+            <div className="flex gap-2">
+              <NotionButton
+                type="button"
+                variant="ghost"
+                disabled={ratingBusy}
+                onClick={() => setEditing(false)}
+              >
+                <X size={16} />
+                {t('session.cancelEdit')}
+              </NotionButton>
+              <NotionButton
+                type="button"
+                variant="primary"
+                disabled={ratingBusy || !draftIsValid}
+                onClick={() => void saveEdit()}
+              >
+                <FloppyDisk size={16} />
+                {t('session.saveEdit')}
+              </NotionButton>
+            </div>
           </div>
         </div>
       ) : (
@@ -489,63 +603,36 @@ export const ReviewSessionScreen: React.FC = () => {
           templateLoading={templateLoading}
           flipped={flipped}
           disabled={ratingBusy}
-          onFlip={flip}
+          onFlip={handleFlip}
           frontLabel={t('session.front')}
           backLabel={t('session.back')}
           flipAriaLabel={flipAriaLabel}
+          flipHint={t('session.tapToFlip')}
           noFrontText={t('card.untitled')}
           noBackText={t('card.noBack')}
         />
       )}
 
-      <div className="grid grid-cols-4 gap-2">
-        {RATINGS.map((rating) => {
-          const preview = ratingPreviews?.[rating.value];
-          const intervalLabel = preview
-            ? formatInterval(preview.intervalMs)
-            : null;
-          return (
-            <NotionButton
-              key={rating.value}
-              type="button"
-              variant="default"
-              disabled={!flipped || ratingBusy || editing}
-              onClick={() => void rate(rating.value)}
-              className={cn('h-auto min-h-11 min-w-0 flex-col gap-0.5 px-1 py-1.5 text-xs', rating.tone)}
-              title={`${rating.value}${intervalLabel ? ` · ${intervalLabel}` : ''}`}
-            >
-              <span>{t(rating.labelKey)}</span>
-              {intervalLabel ? (
-                <span className="text-[10px] font-normal opacity-70">
-                  {t('session.intervalHint', { interval: intervalLabel })}
-                </span>
-              ) : null}
-            </NotionButton>
-          );
-        })}
-      </div>
-      {error ? (
-        <div role="alert" className="flex items-start justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
-          <div className="min-w-0 space-y-0.5">
-            <p className="text-xs font-medium text-destructive">{errorTitle(t, errorKind)}</p>
-            <p className="break-words text-[11px] text-destructive/90">{error}</p>
+      {!editing ? (
+        <>
+          <RatingBar
+            flipped={flipped}
+            disabled={ratingBusy}
+            previews={ratingPreviews}
+            pressedRating={pressedRating}
+            onShowAnswer={handleFlip}
+            onRate={handleRateClick}
+          />
+          <div className="wb-fc-shortcut-hint justify-center" aria-hidden="true">
+            <span><kbd className="wb-fc-keycap">Space</kbd> {t('review.shortcutFlip')}</span>
+            <span className="wb-fc-shortcut-sep">·</span>
+            <span><kbd className="wb-fc-keycap">1–4</kbd> {t('review.shortcutRate')}</span>
+            <span className="wb-fc-shortcut-sep">·</span>
+            <span><kbd className="wb-fc-keycap">Z</kbd> {t('review.shortcutUndo')}</span>
           </div>
-          {errorKind === 'rate' && lastRated ? (
-            <NotionButton
-              type="button"
-              size="sm"
-              variant="default"
-              disabled={ratingBusy}
-              onClick={() => void rate(lastRated)}
-              className="shrink-0 text-xs"
-            >
-              <ArrowClockwise size={14} />
-              {t('session.retry')}
-            </NotionButton>
-          ) : null}
-        </div>
+        </>
       ) : null}
-      <div className="h-4" />
+      {errorBanner}
     </div>
   );
 };

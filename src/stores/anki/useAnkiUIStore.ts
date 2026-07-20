@@ -14,11 +14,9 @@ import { useShallow } from 'zustand/react/shallow';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type {
   AnkiUIStore,
-  AnkiUIStoreState,
   DocumentTaskUI,
   DialogsState,
   PanelsState,
-  MistakeSummary,
 } from './types';
 import {
   createInitialState,
@@ -250,57 +248,10 @@ export const useAnkiUIStore = create<AnkiUIStore>()(
     },
 
     // ========================================================================
-    // Import Slice Actions
-    // ========================================================================
-    setMistakeSummaries: (summaries: MistakeSummary[]) => {
-      set({ mistakeSummaries: summaries });
-    },
-
-    setMistakeSearchTerm: (term: string) => {
-      set({ mistakeSearchTerm: term });
-    },
-
-    setSelectedMistakeIds: (ids: Set<string>) => {
-      set({ selectedMistakeIds: ids });
-    },
-
-    toggleMistakeSelection: (id: string) => {
-      set((state) => {
-        const next = new Set(state.selectedMistakeIds);
-        if (next.has(id)) {
-          next.delete(id);
-        } else {
-          next.add(id);
-        }
-        return { selectedMistakeIds: next };
-      });
-    },
-
-    selectAllMistakes: () => {
-      set((state) => ({
-        selectedMistakeIds: new Set(state.mistakeSummaries.map((m) => m.id)),
-      }));
-    },
-
-    clearMistakeSelection: () => {
-      set({ selectedMistakeIds: new Set() });
-    },
-
-    setIsLoadingMistakes: (value: boolean) => {
-      set({ isLoadingMistakes: value });
-    },
-
-    setIsApplyingMistakeImport: (value: boolean) => {
-      set({ isApplyingMistakeImport: value });
-    },
-
-    setShowMistakeImportDialog: (value: boolean) => {
-      set({ showMistakeImportDialog: value });
-    },
-
-    // ========================================================================
     // UI Slice Actions
     // ========================================================================
+    // ★ 2026-07 清理：错题导入（Import Slice）相关 actions 已随废弃的
+    //   MistakeImportDialog 一并移除（Grep 确认无消费者）。
     setDialogOpen: (dialog: keyof DialogsState, open: boolean) => {
       set((state) => ({
         dialogs: { ...state.dialogs, [dialog]: open },

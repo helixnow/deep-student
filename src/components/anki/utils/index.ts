@@ -4,3 +4,5 @@
 
 export * from './formatters';
 export * from './cardHelpers';
+export * from './cardFaceStyles';
+export * from './normalizeTaskCardsForExport';

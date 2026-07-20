@@ -31,12 +31,13 @@ import {
   type TaskDashboardAgentSnapshot,
 } from '@/features/workbench/apps/system/agentSurfaceRegistry';
 import {
-  classify,
+  classify, computeWindowCardStats,
   POLL_ACTIVE, POLL_IDLE, DASHBOARD_SESSION_LIMIT,
   type DocumentSession, type AnkiStats, type FilterTab, type SortKey,
 } from './types';
 import { DonutChart, HBarChart } from './components/charts';
 import { PropRow } from './components/bits';
+import { AnimatedNumber } from './components/AnimatedNumber';
 import { SessionRow } from './components/SessionRow';
 import './anki-tasks.css';
 
@@ -270,23 +271,22 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
     const errorRate = totalTasks > 0 ? ((failedTasks / totalTasks) * 100).toFixed(1) : '0.0';
     const avgCards = totalDocs > 0 ? Math.round(totalCards / totalDocs) : 0;
 
-    // 使用 createdAt（任务创建时间）而非 lastUpdated
+    // 今日/本周口径：会话只有 createdAt(MIN)/lastUpdated(MAX) 两个端点，
+    // 无逐卡时间戳。窗口内创建的会话计入全部卡片（精确）；跨窗口边界的
+    // 会话（创建早于窗口、更新晚于窗口起点）也计入并标记为估算（UI 显示 ≈）
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const weekStart = todayStart - 6 * 86_400_000; // 最近 7 天
-    let todayCards = 0;
-    let weekCards = 0;
-    for (const s of sessions) {
-      try {
-        const created = new Date(s.createdAt).getTime();
-        if (created >= todayStart) todayCards += s.totalCards;
-        if (created >= weekStart) weekCards += s.totalCards;
-      } catch {
-        /* skip */
-      }
-    }
+    const today = computeWindowCardStats(sessions, todayStart);
+    const week = computeWindowCardStats(sessions, weekStart);
 
-    return { totalCards, totalDocs, totalTasks, failedTasks, errorRate, avgCards, todayCards, weekCards };
+    return {
+      totalCards, totalDocs, totalTasks, failedTasks, errorRate, avgCards,
+      todayCards: today.count,
+      todayApprox: today.approximate,
+      weekCards: week.count,
+      weekApprox: week.approximate,
+    };
   }, [sessions, stats]);
 
   // 环形图（语义状态色，明暗模式均可）
@@ -336,6 +336,14 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
       case 'name':
         sorted.sort((a, b) => (a.documentName || '').localeCompare(b.documentName || ''));
         break;
+    }
+    // 运行中会话置顶（stable partition，组内保持排序维度的相对顺序），
+    // 仅混合列表（全部 tab）需要，单状态 tab 不改动顺序
+    if (filter === 'all') {
+      const running = sorted.filter(s => s.activeTasks > 0);
+      if (running.length > 0 && running.length < sorted.length) {
+        return [...running, ...sorted.filter(s => s.activeTasks === 0)];
+      }
     }
     return sorted;
   }, [sessions, filter, search, sortKey]);
@@ -454,7 +462,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
           {/* 左：属性区 */}
           <div className="space-y-0">
             <PropRow icon={<Hash size={14} />} label={t('taskDashboard.propTotalCards')}>
-              <span className="font-semibold tabular-nums">{metrics.totalCards}</span>
+              <AnimatedNumber value={metrics.totalCards} className="font-semibold" />
               {metrics.avgCards > 0 && (
                 <span className="text-muted-foreground/50 ml-1 text-[12px]">
                   ({t('taskDashboard.avgCardsPerDoc')} {metrics.avgCards})
@@ -462,7 +470,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               )}
             </PropRow>
             <PropRow icon={<FileText size={14} />} label={t('taskDashboard.propDocuments')}>
-              <span className="font-semibold tabular-nums">{metrics.totalDocs}</span>
+              <AnimatedNumber value={metrics.totalDocs} className="font-semibold" />
             </PropRow>
             <PropRow icon={<TrendUp size={14} />} label={t('taskDashboard.propActiveJobs')}>
               {groups.active.length > 0 ? (
@@ -498,8 +506,14 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 </span>
               )}
             </PropRow>
-            <PropRow icon={<FileText size={14} />} label={t('taskDashboard.propTemplates')}>
-              <span className="tabular-nums">{stats?.templateCount ?? 0}</span>
+            {/* templateCount 实为「卡片引用过的 distinct template_id」数，
+                非模板库总量，文案按此口径诚实标注 */}
+            <PropRow icon={<FileText size={14} />} label={t('tasks.templatesUsed')}>
+              <CommonTooltip content={t('tasks.templatesUsedHint')}>
+                <span className="tabular-nums cursor-default">
+                  <AnimatedNumber value={stats?.templateCount ?? 0} />
+                </span>
+              </CommonTooltip>
               {/* 移动端已有整行"打开模板库"入口，避免重复渲染小号链接 */}
               {!isSmallScreen && (
                 <NotionButton size="sm" variant="ghost" onClick={onOpenTemplateManagement} className="ml-2 h-6 text-[12px]">
@@ -508,10 +522,22 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               )}
             </PropRow>
             <PropRow icon={<ChartBar size={14} />} label={t('taskDashboard.todayCards')}>
-              <span className="tabular-nums font-medium">{metrics.todayCards}</span>
+              <span
+                className="inline-flex items-baseline font-medium"
+                title={metrics.todayApprox ? t('tasks.windowApproxHint') : undefined}
+              >
+                {metrics.todayApprox && <span className="text-muted-foreground/50 mr-0.5">≈</span>}
+                <AnimatedNumber value={metrics.todayCards} />
+              </span>
               <span className="text-muted-foreground/40 mx-1.5">·</span>
               <span className="text-muted-foreground/60 text-xs">{t('taskDashboard.weekCards')}</span>
-              <span className="tabular-nums ml-1">{metrics.weekCards}</span>
+              <span
+                className="inline-flex items-baseline ml-1"
+                title={metrics.weekApprox ? t('tasks.windowApproxHint') : undefined}
+              >
+                {metrics.weekApprox && <span className="text-muted-foreground/50 mr-0.5">≈</span>}
+                <AnimatedNumber value={metrics.weekCards} />
+              </span>
             </PropRow>
           </div>
 
@@ -682,7 +708,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 <span className="w-[140px] flex-shrink-0 wb-at-col-progress">{t('taskDashboard.progressLabel')}</span>
                 <span className="w-[80px] flex-shrink-0 text-right hidden sm:block">{t('taskDashboard.colTime')}</span>
                 {/* 操作列占位：移动端行内操作簇已隐藏（操作收入展开区），无需占位 */}
-                {!isSmallScreen && <span className="w-[96px] flex-shrink-0" />}
+                {!isSmallScreen && <span className="w-[120px] flex-shrink-0" />}
               </div>
 
               {/* 行 */}

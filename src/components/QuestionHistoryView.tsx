@@ -27,9 +27,11 @@ import {
   Chat,
   CircleNotch,
   CaretRight,
+  ArrowLeft,
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 type ChangeType = 'create' | 'update' | 'answer' | 'status_change';
 
@@ -51,6 +53,11 @@ interface QuestionHistoryViewProps {
   questionId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * inline 模式（移动端）：不渲染右侧 Sheet 抽屉，改为宿主容器内的
+   * 全屏内联子屏（absolute inset-0 + 顶栏返回 + Android 返回键）。
+   */
+  inline?: boolean;
 }
 
 const changeTypeIcons: Record<string, React.ReactNode> = {
@@ -83,6 +90,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
   questionId,
   open,
   onOpenChange,
+  inline = false,
 }) => {
   const { t } = useTranslation(['exam_sheet', 'common', 'practice']);
   const [history, setHistory] = useState<QuestionHistory[]>([]);
@@ -125,6 +133,15 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
       void loadHistory();
     }
   }, [open, questionId, loadHistory]);
+
+  // inline 子屏：Android 返回键 = 关闭（Sheet 形态由 Radix 兜底处理）
+  useEffect(() => {
+    if (!inline || !open) return;
+    return registerBackHandler(() => {
+      onOpenChange(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [inline, open, onOpenChange]);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -169,20 +186,9 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
     return <span>{value}</span>;
   };
 
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[min(92vw,400px)] sm:w-[540px]">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <ClockCounterClockwise size={20} />
-            {t('exam_sheet:questionBank.history.title')}
-          </SheetTitle>
-          <SheetDescription>
-            {t('exam_sheet:questionBank.history.description')}
-          </SheetDescription>
-        </SheetHeader>
-
-        <div className="mt-6">
+  // 历史时间线主体（Sheet 与 inline 子屏共用）
+  const historyBody = (scrollAreaClassName: string) => (
+    <>
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <CircleNotch size={24} className="animate-spin text-muted-foreground" />
@@ -203,7 +209,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
               </p>
             </div>
           ) : (
-            <CustomScrollArea className="h-[calc(100vh-200px)]">
+            <CustomScrollArea className={scrollAreaClassName}>
               <div className="space-y-4 pr-4">
                 {history.map((item, index) => (
                   <div
@@ -285,6 +291,68 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
               </div>
             </CustomScrollArea>
           )}
+    </>
+  );
+
+  // ==================== inline 模式：全屏内联子屏（移动端） ====================
+  if (inline) {
+    if (!open) return null;
+    return (
+      <div
+        className="absolute inset-0 z-30 flex flex-col bg-background"
+        role="dialog"
+        aria-label={t('exam_sheet:questionBank.history.title')}
+      >
+        {/* 顶栏：返回 + 标题 */}
+        <div className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b border-border/60 px-2">
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={() => onOpenChange(false)}
+            aria-label={t('common:back')}
+            className="!h-11 !w-11 text-muted-foreground"
+          >
+            <ArrowLeft size={20} />
+          </NotionButton>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <ClockCounterClockwise size={16} className="flex-shrink-0 text-muted-foreground" />
+            <span className="truncate text-sm font-medium text-foreground">
+              {t('exam_sheet:questionBank.history.title')}
+            </span>
+          </div>
+        </div>
+        <p className="flex-shrink-0 border-b border-border/40 px-4 py-2 text-xs text-muted-foreground">
+          {t('exam_sheet:questionBank.history.description')}
+        </p>
+        <div
+          className="min-h-0 flex-1 overflow-hidden px-4 pt-4"
+          style={{
+            paddingBottom: 'var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
+          }}
+        >
+          {historyBody('h-full')}
+        </div>
+      </div>
+    );
+  }
+
+  // ==================== 桌面端：右侧 Sheet ====================
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-[min(92vw,400px)] sm:w-[540px]">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <ClockCounterClockwise size={20} />
+            {t('exam_sheet:questionBank.history.title')}
+          </SheetTitle>
+          <SheetDescription>
+            {t('exam_sheet:questionBank.history.description')}
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="mt-6">
+          {historyBody('h-[calc(100vh-200px)]')}
         </div>
       </SheetContent>
     </Sheet>

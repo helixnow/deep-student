@@ -568,7 +568,7 @@ impl EnhancedAnkiService {
         Ok(())
     }
 
-    /// 手动触发单个任务处理
+    /// 手动触发单个任务处理（单卡级/单任务级重试入口）
     pub async fn trigger_task_processing(
         &self,
         task_id: String,
@@ -586,15 +586,37 @@ impl EnhancedAnkiService {
             return Err(AppError::validation("任务状态不是待处理"));
         }
 
+        // 防重入：任务已注册运行句柄或取消通道时拒绝重复触发，
+        // 避免同一任务被并发处理两次产生重复卡片与状态竞争。
+        if RUNNING_HANDLES.contains_key(&task_id)
+            || self.streaming_service.is_streaming(&task_id).await
+        {
+            return Err(AppError::validation("任务正在处理中，请勿重复触发"));
+        }
+
         let streaming_service = Arc::new(self.streaming_service.clone());
         let window_clone = window.clone();
 
-        tokio::spawn(async move {
+        // 与调度协程保持一致的生命周期管理：注册运行句柄 + 就绪信号，
+        // 使暂停/取消路径的 abort 兜底与取消通道同样覆盖手动重试的任务。
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
+        let handle = tokio::spawn(async move {
             if let Err(e) = streaming_service
-                .process_task_and_generate_cards_stream(task, window_clone, None)
+                .process_task_and_generate_cards_stream(task, window_clone, Some(ready_tx))
                 .await
             {
                 tracing::warn!("任务处理失败: {}", e);
+            }
+        });
+        RUNNING_HANDLES.insert(task_id.clone(), handle);
+
+        // 后台等待取消通道注册完成后移除句柄并接管等待，
+        // 与 process_all_tasks_async 中的模式一致（不阻塞命令返回）。
+        tokio::spawn(async move {
+            let _ = ready_rx.await;
+            let owned_handle_opt = RUNNING_HANDLES.remove(&task_id).map(|(_, h)| h);
+            if let Some(handle) = owned_handle_opt {
+                let _ = handle.await;
             }
         });
 

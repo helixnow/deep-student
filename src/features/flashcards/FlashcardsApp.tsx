@@ -1,5 +1,8 @@
 /**
- * 闪卡应用主界面 — 今日 / 库 / 设置 三屏 + 复习会话
+ * 闪卡应用主界面 — 今日 / 库 / 统计 三屏 + 复习会话
+ *
+ * 屏幕切换带轻量过渡（transform/opacity，尊重 reduced-motion）；
+ * 今日 tab 显示到期数 badge。
  */
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -13,6 +16,7 @@ import {
   type FlashcardsScreen,
 } from './store/fsrsReviewStore';
 import './flashcards.css';
+import './flashcards-dashboard.css';
 
 const TABS: Array<{
   id: Exclude<FlashcardsScreen, 'session'>;
@@ -33,6 +37,7 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({ launchPayload }) =
   const screen = useFsrsReviewStore((s) => s.screen);
   const setScreen = useFsrsReviewStore((s) => s.setScreen);
   const applyLaunchPayload = useFsrsReviewStore((s) => s.applyLaunchPayload);
+  const dueTotal = useFsrsReviewStore((s) => s.dueTotal);
 
   useEffect(() => {
     applyLaunchPayload(launchPayload);
@@ -41,7 +46,9 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({ launchPayload }) =
   if (screen === 'session') {
     return (
       <div className="wb-fc-root flex flex-col" data-flashcards-app>
-        <ReviewSessionScreen />
+        <div key="session" className="wb-fcx-screen-anim flex min-h-0 flex-1 flex-col">
+          <ReviewSessionScreen />
+        </div>
       </div>
     );
   }
@@ -51,25 +58,33 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({ launchPayload }) =
       <nav className="wb-fc-nav" aria-label={t('tabs.nav')}>
         {TABS.map((tab) => {
           const active = screen === tab.id;
+          const showDueBadge = tab.id === 'today' && dueTotal > 0;
           return (
             <button
               key={tab.id}
               type="button"
               onClick={() => setScreen(tab.id)}
-              className="wb-fc-tab"
+              className="wb-fc-tab wb-fcx-tab"
               data-active={active ? 'true' : undefined}
               aria-current={active ? 'page' : undefined}
             >
               {tab.icon}
               {t(tab.labelKey)}
+              {showDueBadge ? (
+                <span className="wb-fcx-tab-badge" aria-hidden="true">
+                  {dueTotal > 99 ? '99+' : dueTotal}
+                </span>
+              ) : null}
             </button>
           );
         })}
       </nav>
       <div className="wb-fc-body">
-        {screen === 'today' ? <TodayScreen /> : null}
-        {screen === 'library' ? <LibraryScreen /> : null}
-        {screen === 'settings' ? <StatisticsScreen /> : null}
+        <div key={screen} className="wb-fcx-screen-anim">
+          {screen === 'today' ? <TodayScreen /> : null}
+          {screen === 'library' ? <LibraryScreen /> : null}
+          {screen === 'settings' ? <StatisticsScreen /> : null}
+        </div>
       </div>
     </div>
   );

@@ -19,8 +19,6 @@ import {
   CaretRight,
   Calendar,
   CheckCircle,
-  XCircle,
-  Clock,
   Target,
   TrendUp,
   Flame,
@@ -28,7 +26,7 @@ import {
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
-import { useReviewPlanStore, type CalendarHeatmapData, type ReviewHistory } from '@/stores/reviewPlanStore';
+import { useReviewPlanStore, type CalendarHeatmapData } from '@/stores/reviewPlanStore';
 
 // ============================================================================
 // 类型定义
@@ -43,7 +41,6 @@ interface ReviewCalendarViewProps {
 interface DayDetailProps {
   date: string;
   data: CalendarHeatmapData | null;
-  histories: ReviewHistory[];
   onClose: () => void;
 }
 
@@ -92,7 +89,6 @@ const getAccuracyColor = (passed: number, total: number): string => {
 const DayDetail: React.FC<DayDetailProps> = ({
   date,
   data,
-  histories,
   onClose,
 }) => {
   const { t, i18n } = useTranslation(['review']);
@@ -156,42 +152,8 @@ const DayDetail: React.FC<DayDetailProps> = ({
             </div>
           </div>
 
-          {/* 复习历史列表 */}
-          {histories.length > 0 && (
-            <div>
-              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                {t('review:calendar.history')}
-              </h4>
-              <div className="space-y-1 max-h-40 overflow-y-auto">
-                {histories.slice(0, 10).map((h) => (
-                  <div
-                    key={h.id}
-                    className={cn(
-                      'flex items-center justify-between p-2 rounded text-sm',
-                      h.passed ? 'bg-emerald-500/5' : 'bg-red-500/5'
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      {h.passed ? (
-                        <CheckCircle size={16} className="text-emerald-500" />
-                      ) : (
-                        <XCircle size={16} className="text-red-500" />
-                      )}
-                      <span className="text-muted-foreground">
-                        Q{h.quality}
-                      </span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(h.reviewed_at).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* 说明：store 仅提供按计划（planId）查询复习历史的接口，没有按日期查询的方法；
+              此前这里固定渲染空的「复习记录」区块（histories 恒为 []），已移除，仅展示当日统计。 */}
         </>
       ) : (
         <div className="text-center py-6 text-muted-foreground">
@@ -230,8 +192,10 @@ const CalendarCell: React.FC<CalendarCellProps> = ({
     <NotionButton
       variant="ghost" size="sm"
       onClick={onClick}
+      aria-pressed={isSelected}
       className={cn(
-        '!p-1 !h-auto !rounded-lg aspect-square relative',
+        // 触控目标 ≥40px（min-h/min-w 兜底，宽格子仍随网格拉伸）
+        '!p-1 !h-auto !rounded-lg aspect-square relative min-h-10 min-w-10',
         'hover:ring-2 hover:ring-primary/30',
         isCurrentMonth ? 'opacity-100' : 'opacity-30',
         isToday && 'ring-2 ring-primary',
@@ -404,7 +368,6 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
   // 本地状态
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [selectedHistories, setSelectedHistories] = useState<ReviewHistory[]>([]);
 
   // 加载数据
   useEffect(() => {
@@ -493,18 +456,15 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
     setCurrentDate(new Date());
   }, []);
 
-  // 选择日期
+  // 选择日期（点击已选中的日期再次点击可收起）
   const handleSelectDate = useCallback((date: Date) => {
     const dateStr = formatLocalDate(date);
-    setSelectedDate(dateStr);
-    // 这里可以加载当日的复习历史
-    setSelectedHistories([]);
+    setSelectedDate((prev) => (prev === dateStr ? null : dateStr));
   }, []);
 
   // 关闭详情
   const handleCloseDetail = useCallback(() => {
     setSelectedDate(null);
-    setSelectedHistories([]);
   }, []);
 
   const today = new Date();
@@ -612,7 +572,6 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
         <DayDetail
           date={selectedDate}
           data={dataMap.get(selectedDate) || null}
-          histories={selectedHistories}
           onClose={handleCloseDetail}
 />
       )}

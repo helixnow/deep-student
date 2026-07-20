@@ -31,6 +31,86 @@ fn card_has_cloze_markup(card: &AnkiCard) -> bool {
     card.extra_fields.values().any(|v| contains_cloze_markup(v))
 }
 
+/// 计算卡片内容指纹（sha1 hex），用于导出 receipt 的 content_hash 回写：
+/// 覆盖 front/back/text/排序后的 extra_fields/tags/template_id，
+/// 字段间用不可见分隔符隔离，避免拼接歧义。
+pub(crate) fn compute_anki_card_content_hash(card: &AnkiCard) -> String {
+    use sha1::{Digest, Sha1};
+    const FIELD_SEP: [u8; 1] = [0x1f];
+    const PAIR_SEP: [u8; 1] = [0x1e];
+
+    let mut hasher = Sha1::new();
+    hasher.update(card.front.as_bytes());
+    hasher.update(FIELD_SEP);
+    hasher.update(card.back.as_bytes());
+    hasher.update(FIELD_SEP);
+    if let Some(text) = card.text.as_deref() {
+        hasher.update(text.as_bytes());
+    }
+    hasher.update(FIELD_SEP);
+    let mut keys: Vec<&String> = card.extra_fields.keys().collect();
+    keys.sort();
+    for key in keys {
+        hasher.update(key.as_bytes());
+        hasher.update(PAIR_SEP);
+        if let Some(value) = card.extra_fields.get(key) {
+            hasher.update(value.as_bytes());
+        }
+        hasher.update(PAIR_SEP);
+    }
+    hasher.update(FIELD_SEP);
+    for tag in &card.tags {
+        hasher.update(tag.as_bytes());
+        hasher.update(PAIR_SEP);
+    }
+    hasher.update(FIELD_SEP);
+    if let Some(template_id) = card.template_id.as_deref() {
+        hasher.update(template_id.as_bytes());
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+/// 在 receipt（anki_note_id + export_status）已由 `write_anki_export_receipts`
+/// 写回后，补写 content_hash（V20260710 迁移已提供该列，但通用回写函数不覆盖）。
+/// 仅更新本次真正同步成功（note_id 存在）且已标记 synced 的活卡。
+fn write_anki_export_content_hashes(
+    database: &crate::database::Database,
+    card_ids: &[String],
+    content_hashes: &[String],
+    note_ids: &[Option<u64>],
+) -> std::result::Result<usize, String> {
+    let len = card_ids.len().min(content_hashes.len()).min(note_ids.len());
+    if len == 0 {
+        return Ok(0);
+    }
+    let conn = database
+        .get_conn_safe()
+        .map_err(|e| format!("获取数据库连接失败: {}", e))?;
+    let mut written = 0usize;
+    for i in 0..len {
+        if note_ids[i].is_none() {
+            continue;
+        }
+        let card_id = card_ids[i].trim();
+        if card_id.is_empty() {
+            continue;
+        }
+        let affected = conn
+            .execute(
+                "UPDATE anki_cards SET content_hash = ?1
+                 WHERE id = ?2
+                   AND deleted_at IS NULL
+                   AND export_status = 'synced'",
+                rusqlite::params![content_hashes[i], card_id],
+            )
+            .map_err(|e| format!("回写 content_hash 失败 (card={}): {}", card_id, e))?;
+        if affected > 0 {
+            written += 1;
+        }
+    }
+    Ok(written)
+}
+
 pub(crate) fn sanitize_filename_component(raw: &str, fallback: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -230,8 +310,13 @@ pub async fn add_cards_to_anki_connect(
         }
     }
 
-    // 保留卡片 id 顺序，供 Sync 成功后按位回写 anki_note_id receipt
+    // 保留卡片 id 顺序，供 Sync 成功后按位回写 anki_note_id receipt；
+    // 同步前先算好内容指纹，卡片随后会被移动进 detailed 同步调用。
     let card_ids: Vec<String> = selected_cards.iter().map(|c| c.id.clone()).collect();
+    let card_content_hashes: Vec<String> = selected_cards
+        .iter()
+        .map(compute_anki_card_content_hash)
+        .collect();
 
     // D1 修复：detailed 版本会自动创建缺失模型、用 canAddNotes 把重复与失败分开
     match crate::anki_connect_service::add_notes_to_anki_detailed(
@@ -264,15 +349,35 @@ pub async fn add_cards_to_anki_connect(
                 reason.push_str("。请检查 Anki 中是否存在对应笔记类型、卡片字段是否为空");
                 Err(AppError::validation(reason))
             } else {
-                // M4：按卡片回写 note id + export_status='synced'
+                // M4：按卡片回写 note id + export_status='synced'。
+                // 双库路由修复：anki_cards 属于 Anki 独立数据库（AppState.anki_database），
+                // 之前误写主库 state.database；模板类读取仍走主库（custom_anki_templates 在主库）。
                 if report.added > 0 {
                     match state
-                        .database
+                        .anki_database
                         .write_anki_export_receipts(&card_ids, &report.note_ids)
                     {
                         Ok(n) => {
                             if n > 0 {
                                 println!("✅ Anki export receipt 已回写 {} 张卡片", n);
+                            }
+                            // 补写 content_hash（write_anki_export_receipts 不覆盖该列）
+                            match write_anki_export_content_hashes(
+                                &state.anki_database,
+                                &card_ids,
+                                &card_content_hashes,
+                                &report.note_ids,
+                            ) {
+                                Ok(h) if h > 0 => {
+                                    println!("✅ Anki export content_hash 已回写 {} 张卡片", h);
+                                }
+                                Ok(_) => {}
+                                Err(e) => {
+                                    log::warn!(
+                                        "[add_cards_to_anki_connect] content_hash 回写失败: {}",
+                                        e
+                                    );
+                                }
                             }
                         }
                         Err(e) => {
@@ -1174,8 +1279,79 @@ pub async fn batch_export_cards(
             save_json_file(json_content, filename).await
         }
         "anki-connect" => {
-            // AnkiConnect 导出暂时返回成功（实际由前端处理）
-            Ok("anki-connect export delegated to frontend".to_string())
+            // 真实同步：复用 detailed 通道（自动建组/建模、canAddNotes 去重、分批推送），
+            // 不再返回占位字符串。批量导出的卡片是临时构造（batch_N id），
+            // 不落本地库，因此这里不做 receipt 回写。
+            if anki_cards.is_empty() {
+                return Err(AppError::validation("没有卡片可以同步到 AnkiConnect"));
+            }
+
+            if let Err(e) =
+                crate::anki_connect_service::create_deck_if_not_exists(&deck_name).await
+            {
+                log::warn!("[batch_export_cards] 创建牌组失败（可能已存在）: {}", e);
+            }
+
+            // 模板 → 模型映射：模板读取走主库（custom_anki_templates 在主库）
+            let mut card_models: HashMap<String, String> = HashMap::new();
+            let mut templates_by_model: HashMap<String, crate::models::CustomAnkiTemplate> =
+                HashMap::new();
+            if let Some(tid) = anki_cards
+                .iter()
+                .find_map(|card| card.template_id.as_deref())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                match state.database.get_custom_template_by_id(tid) {
+                    Ok(Some(template)) => {
+                        let model_name = template.note_type.trim().to_string();
+                        if !model_name.is_empty() {
+                            for card in &anki_cards {
+                                card_models.insert(card.id.clone(), model_name.clone());
+                            }
+                            templates_by_model.insert(model_name, template);
+                        }
+                    }
+                    Ok(None) => {
+                        log::warn!(
+                            "[batch_export_cards] 模板不存在: {}，将按 note_type 直接同步",
+                            tid
+                        );
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[batch_export_cards] 读取模板失败: {}，将按 note_type 直接同步: {}",
+                            tid,
+                            e
+                        );
+                    }
+                }
+            }
+
+            match crate::anki_connect_service::add_notes_to_anki_detailed(
+                anki_cards,
+                deck_name,
+                note_type,
+                card_models,
+                templates_by_model,
+            )
+            .await
+            {
+                Ok(report) => {
+                    if report.added == 0 && report.failed > 0 {
+                        Err(AppError::validation(format!(
+                            "AnkiConnect 同步失败：新增 0 张，失败 {} 张，重复 {} 张",
+                            report.failed, report.duplicates
+                        )))
+                    } else {
+                        // 返回 JSON 化的同步报告字符串（历史契约为不透明字符串，向后兼容）
+                        serde_json::to_string(&report).map_err(|e| {
+                            AppError::validation(format!("序列化同步报告失败: {}", e))
+                        })
+                    }
+                }
+                Err(e) => Err(AppError::validation(e)),
+            }
         }
         _ => Err(AppError::validation(format!(
             "不支持的导出格式: {}",
@@ -1802,6 +1978,65 @@ mod batch_export_tests {
     fn test_sanitize_filename_with_extension_normalizes_suffix() {
         let got = sanitize_filename_with_extension(" deck-name ", "fallback", "apkg");
         assert_eq!(got, "deck-name.apkg");
+    }
+
+    fn hash_fixture_card() -> AnkiCard {
+        let now = chrono::Utc::now().to_rfc3339();
+        AnkiCard {
+            id: "hash-card".to_string(),
+            task_id: String::new(),
+            front: "front".to_string(),
+            back: "back".to_string(),
+            text: Some("text".to_string()),
+            tags: vec!["a".to_string(), "b".to_string()],
+            images: vec![],
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now,
+            extra_fields: std::collections::HashMap::from([
+                ("Zeta".to_string(), "z".to_string()),
+                ("Alpha".to_string(), "a".to_string()),
+            ]),
+            template_id: Some("tmpl-1".to_string()),
+        }
+    }
+
+    #[test]
+    fn content_hash_is_stable_across_extra_field_iteration_order() {
+        let card = hash_fixture_card();
+        let first = compute_anki_card_content_hash(&card);
+        let second = compute_anki_card_content_hash(&card);
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 40, "sha1 hex digest");
+    }
+
+    #[test]
+    fn content_hash_changes_when_content_changes() {
+        let card = hash_fixture_card();
+        let base = compute_anki_card_content_hash(&card);
+
+        let mut changed_back = hash_fixture_card();
+        changed_back.back = "different".to_string();
+        assert_ne!(base, compute_anki_card_content_hash(&changed_back));
+
+        let mut changed_field = hash_fixture_card();
+        changed_field
+            .extra_fields
+            .insert("Alpha".to_string(), "mutated".to_string());
+        assert_ne!(base, compute_anki_card_content_hash(&changed_field));
+
+        // 字段边界不产生歧义：("ab","c") 与 ("a","bc") 哈希不同
+        let mut ambiguous_one = hash_fixture_card();
+        ambiguous_one.front = "ab".to_string();
+        ambiguous_one.back = "c".to_string();
+        let mut ambiguous_two = hash_fixture_card();
+        ambiguous_two.front = "a".to_string();
+        ambiguous_two.back = "bc".to_string();
+        assert_ne!(
+            compute_anki_card_content_hash(&ambiguous_one),
+            compute_anki_card_content_hash(&ambiguous_two)
+        );
     }
 }
 

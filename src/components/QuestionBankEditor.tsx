@@ -1464,7 +1464,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       : 0;
 
     const celebrationContent = (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div data-wb-blur-surface className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm">
         <div className="max-w-sm mx-4 p-4 rounded-md bg-card border border-border/50 shadow-sm text-center space-y-3">
           <div className="flex justify-center">
             <div className="p-2 rounded-md bg-warning/10">
@@ -1925,6 +1925,35 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         {deleteConfirmation}
         {draftNavigationConfirmation}
         {noteDiscardConfirmation}
+        {/* 原始图片裁剪：移动端全屏内联裁剪工具（此前移动分支未挂载，裁剪入口点了没反应） */}
+        {currentQuestion && (
+          <ImageCropDialog
+            open={cropDialogOpen}
+            onOpenChange={setCropDialogOpen}
+            examId={sessionId}
+            questionId={currentQuestion.id}
+            inline
+            onImageAdded={() => {
+              if (!currentQuestion?.id) return;
+
+              const reloadImages = () => {
+                setQuestionImageUrls({});
+                setImageRefreshKey(k => k + 1);
+              };
+
+              if (onRefreshQuestion) {
+                onRefreshQuestion(currentQuestion.id)
+                  .catch((err) => {
+                    debugLog.error('[QuestionBankEditor] refresh after crop failed:', err);
+                  })
+                  .finally(reloadImages);
+                return;
+              }
+
+              reloadImages();
+            }}
+          />
+        )}
       </div>
     );
   }

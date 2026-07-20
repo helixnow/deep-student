@@ -6,8 +6,13 @@
  *   不再回退渲染内部 UnifiedSidebar；
  * - legacy 桌面壳：继续通过 useDesktopShellSidebarPortal 投送壳侧栏；
  * - 移动端：MobileSlidingLayout 统一抽屉（与 Chat / 学习资源同构）；
- * - 保留：选择模式、模板 CRUD、导入 / 批量导出对话框、AI 编辑器集成、
- *   Agent Surface、refreshToken 强制刷新。
+ * - 保留：选择模式、模板 CRUD、AI 编辑器集成、Agent Surface、refreshToken 强制刷新。
+ *
+ * SOTA 浏览体验重构：
+ * - 网格 / 列表双视图 + 防抖搜索 + 类型/来源筛选 chips + 排序；
+ * - 导入 / 批量导出改为页内内联面板（不再使用模态框）；
+ * - 删除改为卡片内联二次确认（内置模板如实提示"升级后会自动恢复"）；
+ * - 浏览态 ⇄ 编辑态页内平滑切换（尊重 prefers-reduced-motion）。
  */
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -17,7 +22,6 @@ import {
   Gear, Palette, Upload, Download,
   ArrowClockwise, ArrowLeft, BookOpen, Code, Database, CaretRight,
 } from '@phosphor-icons/react';
-import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
 import {
   UnifiedSidebar,
   UnifiedSidebarHeader,
@@ -31,11 +35,6 @@ import { renderCardPreview } from '@/components/SharedPreview';
 import MinimalTemplateEditor, { EditorTabType } from '@/components/MinimalTemplateEditor';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input as ShadInput } from '@/components/ui/shad/Input';
-import {
-  NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription,
-  NotionDialogBody, NotionDialogFooter,
-} from '@/components/ui/NotionDialog';
-import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { getErrorMessage, formatErrorMessage, logError } from '@/utils/errorUtils';
 import { templateService } from '@/services/templateService';
 import { useUIStore } from '@/stores/uiStore';
@@ -60,6 +59,24 @@ import {
   type TemplateAgentSnapshot,
 } from '@/features/workbench/apps/system/agentSurfaceRegistry';
 import { TemplateBrowser } from './components/TemplateBrowser';
+import { TemplateToolbar } from './components/TemplateToolbar';
+import {
+  TemplateImportPanel,
+  TemplateExportPanel,
+  type ImportPanelResult,
+} from './components/TemplateInlinePanels';
+import { useDebouncedValue } from './hooks/useDebouncedValue';
+import {
+  filterAndSortTemplates,
+  hasActiveFilters,
+  persistViewMode,
+  readStoredViewMode,
+  type TemplateLibraryQuery,
+  type TemplateSortOrder,
+  type TemplateSourceFilter,
+  type TemplateTypeFilter,
+  type TemplateViewMode,
+} from './lib/templateLibrary';
 import './template-management.css';
 
 function buildExportErrorMessage(permissionDeniedText: string, prefix: string, error: unknown) {
@@ -77,6 +94,8 @@ function buildExportErrorMessage(permissionDeniedText: string, prefix: string, e
 
   return formatErrorMessage(prefix, error);
 }
+
+type InlinePanel = 'import' | 'export' | null;
 
 export interface TemplateManagementAppProps {
   isSelectingMode?: boolean;
@@ -169,14 +188,35 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [defaultTemplateId, setDefaultTemplateId] = useState<string | null>(null);
+
+  // ===== 库浏览：视图 / 筛选 / 排序 =====
+  const [viewMode, setViewMode] = useState<TemplateViewMode>(() => readStoredViewMode());
+  const [typeFilter, setTypeFilter] = useState<TemplateTypeFilter>('all');
+  const [sourceFilter, setSourceFilter] = useState<TemplateSourceFilter>('all');
+  const [sortOrder, setSortOrder] = useState<TemplateSortOrder>('updated_desc');
+  const debouncedSearch = useDebouncedValue(searchTerm, 200);
+
+  const handleViewModeChange = useCallback((mode: TemplateViewMode) => {
+    setViewMode(mode);
+    persistViewMode(mode);
+  }, []);
+
+  const resetFilters = useCallback(() => {
+    setSearchTerm('');
+    setTypeFilter('all');
+    setSourceFilter('all');
+  }, []);
+
+  // ===== 内联面板（导入 / 导出，替代原模态框） =====
+  const [activePanel, setActivePanel] = useState<InlinePanel>(null);
   const [isImporting, setIsImporting] = useState(false);
-  const [showImportExternalDialog, setShowImportExternalDialog] = useState(false);
   const [overwriteExisting, setOverwriteExisting] = useState(true);
   const [selectedImportFile, setSelectedImportFile] = useState<File | null>(null);
-  const [showBatchExportDialog, setShowBatchExportDialog] = useState(false);
+  const [importResult, setImportResult] = useState<ImportPanelResult | null>(null);
   const [batchExportSelection, setBatchExportSelection] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [exportPanelError, setExportPanelError] = useState<string | null>(null);
+
   const agentTemplatesRef = useRef<CustomAnkiTemplate[]>([]);
   const agentSnapshotRef = useRef<TemplateAgentSnapshot>({
     activeTab: 'browse',
@@ -271,17 +311,14 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     }
   }, [refreshToken, loadTemplates]);
 
-  // 导入外部模板（JSON）
-  const handleImportExternalClick = () => {
+  // 打开导入面板（重置上次状态）
+  const handleImportExternalClick = useCallback(() => {
     setSelectedImportFile(null);
     setOverwriteExisting(true);
-    setShowImportExternalDialog(true);
-  };
-
-  const handleExternalFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files && e.target.files[0];
-    setSelectedImportFile(file || null);
-  };
+    setImportResult(null);
+    setActiveTab('browse');
+    setActivePanel((prev) => (prev === 'import' ? null : 'import'));
+  }, []);
 
   const copyJsonToClipboard = useCallback(async (content: string) => {
     if (navigator?.clipboard?.writeText) {
@@ -315,14 +352,15 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         if (result.canceled) {
           return;
         }
-        unifiedAlert(t('export_success', { path: result.path ?? defaultFile }));
+        showGlobalNotification('success', t('export_success', { path: result.path ?? defaultFile }));
         return;
       } catch (dialogError: unknown) {
         console.warn('保存模板文件失败，尝试复制到剪贴板', dialogError);
       }
 
       const copied = await copyJsonToClipboard(response.template_data);
-      unifiedAlert(
+      showGlobalNotification(
+        copied ? 'info' : 'warning',
         copied
           ? t('dialog_unavailable_clipboard', { name: template.name })
           : t('dialog_unavailable_no_clipboard'),
@@ -334,15 +372,19 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       logError(t('export_failed'), err);
       setError(buildExportErrorMessage(t('template:permission_denied'), t('export_failed'), err));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [copyJsonToClipboard, getSuggestedFileName]);
+  }, [copyJsonToClipboard, getSuggestedFileName, t]);
 
-  const handleOpenBatchExportDialog = () => {
+  // 打开 / 收起批量导出面板
+  const handleOpenBatchExportPanel = useCallback(() => {
     setBatchExportSelection(new Set());
-    setShowBatchExportDialog(true);
-  };
+    setExportPanelError(null);
+    setActiveTab('browse');
+    setActivePanel((prev) => (prev === 'export' ? null : 'export'));
+  }, []);
 
-  const handleToggleBatchExportSelection = (templateId: string, checked: boolean) => {
+  const closePanel = useCallback(() => setActivePanel(null), []);
+
+  const handleToggleBatchExportSelection = useCallback((templateId: string, checked: boolean) => {
     setBatchExportSelection(prev => {
       const next = new Set(prev);
       if (checked) {
@@ -352,22 +394,22 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       }
       return next;
     });
-  };
+  }, []);
 
-  const handleSelectAllBatch = () => {
+  const handleSelectAllBatch = useCallback(() => {
     setBatchExportSelection(new Set(templates.map(item => item.id)));
-  };
+  }, [templates]);
 
-  const handleClearBatchSelection = () => {
+  const handleClearBatchSelection = useCallback(() => {
     setBatchExportSelection(new Set());
-  };
+  }, []);
 
   const handleBatchExportConfirm = async () => {
     if (batchExportSelection.size === 0) {
-      unifiedAlert(t('select_at_least_one'));
       return;
     }
     setIsExporting(true);
+    setExportPanelError(null);
     try {
       const ids = Array.from(batchExportSelection);
       const exportJson = await templateService.exportTemplates(ids);
@@ -386,9 +428,10 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           content: exportJson,
         });
         if (!result.canceled) {
-          unifiedAlert(t('export_success', { path: result.path ?? defaultFile }));
+          showGlobalNotification('success', t('export_success', { path: result.path ?? defaultFile }));
           saved = true;
-          setShowBatchExportDialog(false);
+          setActivePanel(null);
+          setBatchExportSelection(new Set());
         } else {
           return;
         }
@@ -398,15 +441,19 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
 
       if (!saved) {
         const copied = await copyJsonToClipboard(exportJson);
-        unifiedAlert(copied ? t('dialog_unavailable_batch') : t('dialog_unavailable_no_clipboard'));
+        showGlobalNotification(
+          copied ? 'info' : 'warning',
+          copied ? t('dialog_unavailable_batch') : t('dialog_unavailable_no_clipboard'),
+        );
         if (!copied) {
           console.log('Templates JSON:', exportJson);
         }
-        setShowBatchExportDialog(false);
+        setActivePanel(null);
+        setBatchExportSelection(new Set());
       }
     } catch (err: unknown) {
       logError(t('batch_export_failed'), err);
-      setError(buildExportErrorMessage(t('template:permission_denied'), t('batch_export_failed'), err));
+      setExportPanelError(buildExportErrorMessage(t('template:permission_denied'), t('batch_export_failed'), err));
     } finally {
       setIsExporting(false);
     }
@@ -415,6 +462,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   const handleConfirmImportExternal = async () => {
     if (!selectedImportFile) return;
     setIsImporting(true);
+    setImportResult(null);
     try {
       const text = await selectedImportFile.text();
       let strictBuiltin = true;
@@ -433,22 +481,31 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           strict_builtin: strictBuiltin,
         },
       });
-      unifiedAlert(t('import_success', { result }));
-      setShowImportExternalDialog(false);
+      setImportResult({ ok: true, message: result });
+      setSelectedImportFile(null);
       await loadTemplates();
     } catch (err: unknown) {
       logError(t('import_external_failed'), err);
-      setError(formatErrorMessage(t('import_external_failed'), err));
+      setImportResult({ ok: false, message: formatErrorMessage(t('import_external_failed'), err) });
     } finally {
       setIsImporting(false);
     }
   };
 
-  // 过滤模板
-  const filteredTemplates = templates.filter(template =>
-    template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    template.description.toLowerCase().includes(searchTerm.toLowerCase())
+  // ===== 过滤 + 排序（防抖搜索） =====
+  const libraryQuery = useMemo<TemplateLibraryQuery>(() => ({
+    search: debouncedSearch,
+    typeFilter,
+    sourceFilter,
+    sortOrder,
+  }), [debouncedSearch, typeFilter, sourceFilter, sortOrder]);
+
+  const filteredTemplates = useMemo(
+    () => filterAndSortTemplates(templates, libraryQuery),
+    [templates, libraryQuery],
   );
+
+  const filtersActive = hasActiveFilters({ ...libraryQuery, search: searchTerm });
 
   // 选择模板
   const handleSelectTemplate = (template: CustomAnkiTemplate) => {
@@ -461,6 +518,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       await templateManager.setDefaultTemplate(template.id);
       setDefaultTemplateId(template.id);
       setError(null);
+      showGlobalNotification('success', t('templateMgmt.default_set_toast', { name: template.name }));
     } catch (err: unknown) {
       logError('设置默认模板失败', err);
       setError(formatErrorMessage(t('set_default_failed'), err));
@@ -498,7 +556,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     setIsImporting(true);
     try {
       const result = await invoke<string>('import_builtin_templates');
-      unifiedAlert(t('import_success', { result }));
+      showGlobalNotification('success', t('import_success', { result }));
       await loadTemplates();
     } catch (err: unknown) {
       logError(t('import_builtin_failed'), err);
@@ -508,16 +566,20 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     }
   };
 
-  // 删除模板
+  // 删除模板（二次确认已由卡片内联确认完成，此处直接执行）
   const handleDeleteTemplate = async (template: CustomAnkiTemplate) => {
-    const confirmed = await Promise.resolve(unifiedConfirm(t('delete_confirmation', { name: template.name })));
-    if (!confirmed) {
-      return;
-    }
-
     try {
       await templateManager.deleteTemplate(template.id);
       setError(null);
+      if (selectedTemplate?.id === template.id) {
+        setSelectedTemplate(null);
+      }
+      showGlobalNotification(
+        template.is_built_in ? 'info' : 'success',
+        template.is_built_in
+          ? t('templateMgmt.deleted_builtin_toast', { name: template.name })
+          : t('templateMgmt.deleted_toast', { name: template.name }),
+      );
     } catch (err: unknown) {
       logError('删除模板失败', err);
       setError(formatErrorMessage(t('delete_failed'), err));
@@ -530,6 +592,12 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     setActiveTab('browse');
     setEditingTemplate(null);
     setEditorTab('basic');
+  }, []);
+
+  const startCreateTemplate = useCallback(() => {
+    setEditingTemplate(null);
+    setActivePanel(null);
+    setActiveTab('create');
   }, []);
 
   const editorNavItems: Array<{ id: EditorTabType; icon: React.ElementType; label: string; selected: boolean }> = [
@@ -559,7 +627,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         searchPlaceholder={t('search_placeholder')}
         showCreate={!isSelectingMode}
         createTitle={t('tab_create')}
-        onCreateClick={() => setActiveTab('create')}
+        onCreateClick={startCreateTemplate}
         showRefresh={!isSelectingMode}
         refreshTitle={t('refresh')}
         onRefreshClick={loadTemplates}
@@ -634,7 +702,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             />
             <UnifiedSidebarItem
               id="export"
-              onClick={handleOpenBatchExportDialog}
+              onClick={handleOpenBatchExportPanel}
               icon={Download}
               title={t('export_templates_sidebar')}
             />
@@ -642,7 +710,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         )}
       </UnifiedSidebarContent>
 
-      {/* 选择模板弹窗模式保留取消入口 */}
+      {/* 选择模板模式保留取消入口 */}
       {isSelectingMode && onCancel && (
         <div className="mt-auto p-2 border-t border-border">
           <NotionButton
@@ -700,22 +768,10 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       )}
 
       <div className="wb-tm-nav-actions">
-        {(isSelectingMode || activeTab === 'browse') && (
-          <div className="relative">
-            <MagnifyingGlass size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/40" />
-            <ShadInput
-              type="search"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder={t('search_placeholder')}
-              className="wb-tm-nav-search h-7 w-[170px] border-transparent pl-7 text-xs"
-            />
-          </div>
-        )}
         {!isSelectingMode && activeTab === 'browse' && (
           <>
             <CommonTooltip content={t('tab_create')}>
-              <NotionButton variant="utility" size="icon" iconOnly onClick={() => setActiveTab('create')} aria-label={t('tab_create')} className="h-7 w-7">
+              <NotionButton variant="utility" size="icon" iconOnly onClick={startCreateTemplate} aria-label={t('tab_create')} className="h-7 w-7">
                 <Plus size={14} />
               </NotionButton>
             </CommonTooltip>
@@ -730,12 +786,30 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
               </NotionButton>
             </CommonTooltip>
             <CommonTooltip content={t('import_external_templates')}>
-              <NotionButton variant="utility" size="icon" iconOnly onClick={handleImportExternalClick} aria-label={t('import_external_templates')} className="h-7 w-7">
+              <NotionButton
+                variant="utility"
+                size="icon"
+                iconOnly
+                onClick={handleImportExternalClick}
+                aria-label={t('import_external_templates')}
+                aria-pressed={activePanel === 'import'}
+                data-active={activePanel === 'import' ? 'true' : undefined}
+                className="h-7 w-7 wb-tm-nav-toggle"
+              >
                 <Upload size={14} />
               </NotionButton>
             </CommonTooltip>
             <CommonTooltip content={t('export_templates_sidebar')}>
-              <NotionButton variant="utility" size="icon" iconOnly onClick={handleOpenBatchExportDialog} aria-label={t('export_templates_sidebar')} className="h-7 w-7">
+              <NotionButton
+                variant="utility"
+                size="icon"
+                iconOnly
+                onClick={handleOpenBatchExportPanel}
+                aria-label={t('export_templates_sidebar')}
+                aria-pressed={activePanel === 'export'}
+                data-active={activePanel === 'export' ? 'true' : undefined}
+                className="h-7 w-7 wb-tm-nav-toggle"
+              >
                 <Download size={14} weight="bold" />
               </NotionButton>
             </CommonTooltip>
@@ -751,7 +825,75 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     </nav>
   );
 
+  // ===== 浏览视图内容（内联面板 + 工具栏 + 模板库） =====
+  const browseContent = (
+    <>
+      {!isSelectingMode && activePanel === 'import' && (
+        <TemplateImportPanel
+          selectedFile={selectedImportFile}
+          onFileChange={setSelectedImportFile}
+          overwriteExisting={overwriteExisting}
+          onOverwriteChange={setOverwriteExisting}
+          isImporting={isImporting}
+          onConfirm={handleConfirmImportExternal}
+          onClose={closePanel}
+          result={importResult}
+        />
+      )}
+      {!isSelectingMode && activePanel === 'export' && (
+        <TemplateExportPanel
+          templates={templates}
+          selection={batchExportSelection}
+          onToggleSelection={handleToggleBatchExportSelection}
+          onSelectAll={handleSelectAllBatch}
+          onClearSelection={handleClearBatchSelection}
+          isExporting={isExporting}
+          onConfirm={handleBatchExportConfirm}
+          onClose={closePanel}
+          error={exportPanelError}
+        />
+      )}
+
+      <TemplateToolbar
+        searchInput={searchTerm}
+        onSearchInputChange={setSearchTerm}
+        query={libraryQuery}
+        onTypeFilterChange={setTypeFilter}
+        onSourceFilterChange={setSourceFilter}
+        onSortOrderChange={setSortOrder}
+        onResetFilters={resetFilters}
+        viewMode={viewMode}
+        onViewModeChange={handleViewModeChange}
+        resultCount={filteredTemplates.length}
+        totalCount={templates.length}
+      />
+
+      <TemplateBrowser
+        templates={filteredTemplates}
+        totalCount={templates.length}
+        hasFilters={filtersActive}
+        viewMode={viewMode}
+        selectedTemplate={selectedTemplate}
+        onSelectTemplate={handleSelectTemplate}
+        onEditTemplate={handleEditTemplate}
+        onDuplicateTemplate={handleDuplicateTemplate}
+        onDeleteTemplate={handleDeleteTemplate}
+        onSetDefaultTemplate={handleSetDefaultTemplate}
+        onExportTemplate={handleExportTemplate}
+        onCreateTemplate={isSelectingMode ? undefined : startCreateTemplate}
+        onResetFilters={resetFilters}
+        defaultTemplateId={defaultTemplateId}
+        isLoading={isLoading}
+        isSelectingMode={isSelectingMode}
+        onTemplateSelected={onTemplateSelected}
+        renderPreview={renderTemplatePreview}
+        isSmallScreen={isSmallScreen}
+      />
+    </>
+  );
+
   // ===== 主内容 =====
+  const isEditorView = !isSelectingMode && (activeTab === 'create' || (activeTab === 'edit' && Boolean(editingTemplate)));
   const mainContent = (
     <div className="flex-1 flex flex-col min-w-0 h-full min-h-0">
       {/* 错误提示 */}
@@ -770,11 +912,13 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       {/* 主内容 - 创建/编辑模式渲染单一编辑器实例；浏览模式用 ScrollArea。
           编辑器固定在同一 JSX 位置（key 只随 create/edit 与模板 id 变化），
           仅通过 className 切换代码模式（撑满）与表单模式的外层样式，
-          避免切换导航 Tab 导致编辑器重挂载、未保存的编辑静默丢失。 */}
-      {!isSelectingMode && (activeTab === 'create' || (activeTab === 'edit' && editingTemplate)) ? (
+          避免切换导航 Tab 导致编辑器重挂载、未保存的编辑静默丢失。
+          浏览态 ⇄ 编辑态用 wb-tm-view 做页内淡入过渡（key 触发重放动画）。 */}
+      {isEditorView ? (
         <div
+          key="editor-view"
           className={cn(
-            'flex-1 min-h-0 flex flex-col overflow-hidden',
+            'wb-tm-view flex-1 min-h-0 flex flex-col overflow-hidden',
             !isCodeEditorTab && (isSmallScreen ? 'py-2 px-0' : 'p-4')
           )}
         >
@@ -818,28 +962,12 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         </div>
       ) : (
         <CustomScrollArea
-          className="flex-1 min-h-0"
+          key="browse-view"
+          className="wb-tm-view flex-1 min-h-0"
           viewportClassName={isSmallScreen ? 'py-2 px-0 pb-0' : 'p-4'}
           trackOffsetRight={isSmallScreen ? 0 : 6}
         >
-          {(isSelectingMode || activeTab === 'browse') && (
-            <TemplateBrowser
-              templates={filteredTemplates}
-              selectedTemplate={selectedTemplate}
-              onSelectTemplate={handleSelectTemplate}
-              onEditTemplate={handleEditTemplate}
-              onDuplicateTemplate={handleDuplicateTemplate}
-              onDeleteTemplate={handleDeleteTemplate}
-              onSetDefaultTemplate={handleSetDefaultTemplate}
-              defaultTemplateId={defaultTemplateId}
-              isLoading={isLoading}
-              isSelectingMode={isSelectingMode}
-              onTemplateSelected={onTemplateSelected}
-              renderPreview={renderTemplatePreview}
-              onExportTemplate={handleExportTemplate}
-              isSmallScreen={isSmallScreen}
-            />
-          )}
+          {(isSelectingMode || activeTab === 'browse') && browseContent}
         </CustomScrollArea>
       )}
     </div>
@@ -900,7 +1028,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             size="icon"
             iconOnly
             onClick={() => {
-              setActiveTab('create');
+              startCreateTemplate();
               closeMobileDrawer();
             }}
             className="shrink-0"
@@ -945,11 +1073,11 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
               {renderMobileDrawerRow('import-external', Upload, t('import_external_templates'), () => {
                 handleImportExternalClick();
                 closeMobileDrawer();
-              })}
+              }, activePanel === 'import')}
               {renderMobileDrawerRow('export', Download, t('export_templates_sidebar'), () => {
-                handleOpenBatchExportDialog();
+                handleOpenBatchExportPanel();
                 closeMobileDrawer();
-              })}
+              }, activePanel === 'export')}
             </>
           )}
         </>
@@ -1012,115 +1140,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     );
   }
 
-  return (
-    <>
-      {layout}
-
-      {/* 导入外部模板 - 模态框 */}
-      <NotionDialog open={showImportExternalDialog} onOpenChange={(o) => { if (!isImporting) setShowImportExternalDialog(o); }} maxWidth="max-w-3xl">
-        <NotionDialogHeader>
-          <NotionDialogTitle>{t('import_external_dialog_title')}</NotionDialogTitle>
-          <NotionDialogDescription>
-            {t('import_external_dialog_desc')}
-          </NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogBody>
-          <div className="space-y-3 text-sm text-foreground">
-            <ul className="list-disc pl-5 space-y-1">
-              <li>{t('import_external_rule_1')}</li>
-              <li>{t('import_external_rule_2')}</li>
-              <li>{t('import_external_rule_3')}</li>
-              <li>{t('import_external_rule_4')}</li>
-              <li>{t('import_external_rule_5')}</li>
-            </ul>
-
-            <div className="flex items-center gap-2">
-              <Checkbox id="overwriteExisting" checked={overwriteExisting} onCheckedChange={(v) => setOverwriteExisting(Boolean(v))} />
-              <label htmlFor="overwriteExisting" className="text-sm select-none">{t('overwrite_existing_label')}</label>
-            </div>
-            <div className="mt-2">
-              <input ref={fileInputRef} type="file" accept="application/json,.json" onChange={handleExternalFilesSelected} />
-              {selectedImportFile && (
-                <div className="mt-1 text-xs text-muted-foreground">{t('file_selected_prefix')}{selectedImportFile.name}</div>
-              )}
-            </div>
-          </div>
-        </NotionDialogBody>
-        <NotionDialogFooter>
-          <NotionButton variant="default" size="sm" onClick={() => setShowImportExternalDialog(false)} disabled={isImporting}>{t('cancel_button')}</NotionButton>
-          <NotionButton variant="primary" size="sm" onClick={handleConfirmImportExternal} disabled={!selectedImportFile || isImporting}>
-            {isImporting ? t('importing') : t('start_import_button')}
-          </NotionButton>
-        </NotionDialogFooter>
-      </NotionDialog>
-
-      {/* 批量导出 - 模态框 */}
-      <NotionDialog
-        open={showBatchExportDialog}
-        onOpenChange={(open) => {
-          if (isExporting) return;
-          setShowBatchExportDialog(open);
-          if (!open) {
-            setBatchExportSelection(new Set());
-          }
-        }}
-        maxWidth="max-w-xl"
-      >
-        <NotionDialogHeader>
-          <NotionDialogTitle>
-            <Download size={16} className="mr-2 inline" /> {t('export_templates_sidebar')}
-          </NotionDialogTitle>
-          <NotionDialogDescription>
-            {t('export_dialog_desc')}
-          </NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogBody>
-          {templates.length === 0 && (
-            <div className="text-sm text-muted-foreground">{t('no_exportable_templates')}</div>
-          )}
-          {templates.map(template => (
-            <label
-              key={template.id}
-              className="study-shell-secondary-card flex items-start gap-3 p-3"
-            >
-              <Checkbox
-                checked={batchExportSelection.has(template.id)}
-                onCheckedChange={(checked) => handleToggleBatchExportSelection(template.id, checked === true)}
-                disabled={isExporting}
-              />
-              <div className="flex flex-col gap-1">
-                <span className="text-sm font-semibold text-foreground">{template.name}</span>
-                <span className="text-xs text-muted-foreground line-clamp-2">{template.description}</span>
-                <div className="text-[11px] text-muted-foreground flex gap-3">
-                  <span>{t('field_count_meta', { count: template.fields.length })}</span>
-                  <span>{t('type_meta', { type: template.note_type })}</span>
-                  {template.is_built_in && <span>{t('builtin_badge')}</span>}
-                </div>
-              </div>
-            </label>
-          ))}
-        </NotionDialogBody>
-        <NotionDialogFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <NotionButton variant="ghost" size="sm" onClick={handleSelectAllBatch} disabled={isExporting || templates.length === 0}>
-              {t('select_all_button')}
-            </NotionButton>
-            <NotionButton variant="ghost" size="sm" onClick={handleClearBatchSelection} disabled={isExporting || batchExportSelection.size === 0}>
-              {t('clear_selection_button')}
-            </NotionButton>
-          </div>
-          <div className="flex items-center gap-2">
-            <NotionButton variant="default" size="sm" onClick={() => setShowBatchExportDialog(false)} disabled={isExporting}>
-              {t('cancel_button')}
-            </NotionButton>
-            <NotionButton variant="primary" size="sm" onClick={handleBatchExportConfirm} disabled={isExporting || batchExportSelection.size === 0}>
-              {isExporting ? t('exporting') : t('export_count_button', { count: batchExportSelection.size })}
-            </NotionButton>
-          </div>
-        </NotionDialogFooter>
-      </NotionDialog>
-    </>
-  );
+  return layout;
 };
 
 export default TemplateManagementApp;

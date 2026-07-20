@@ -16,6 +16,8 @@ export {
 } from './useAnkiUIStore';
 
 // Types
+// ★ 2026-07 清理：错题导入相关类型（ImportSliceState / ImportSliceActions /
+//   MistakeSummary）已随废弃的 MistakeImportDialog 一并移除。
 export type {
   // State Types
   AnkiUIStore,
@@ -24,7 +26,6 @@ export type {
   TemplateSliceState,
   CardsSliceState,
   AnkiConnectSliceState,
-  ImportSliceState,
   UISliceState,
   OptionsSliceState,
   // Action Types
@@ -32,14 +33,12 @@ export type {
   TemplateSliceActions,
   CardsSliceActions,
   AnkiConnectSliceActions,
-  ImportSliceActions,
   UISliceActions,
   OptionsSliceActions,
   // Data Types
   DocumentTaskUI,
   DialogsState,
   PanelsState,
-  MistakeSummary,
 } from './types';
 
 export {

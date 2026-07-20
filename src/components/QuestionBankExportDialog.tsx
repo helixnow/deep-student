@@ -7,7 +7,7 @@
  * 🔄 2026-01 增强：添加 CSV 高级导出选项（字段选择、编码选择、答题记录）
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
@@ -29,9 +29,11 @@ import {
   CheckCircle,
   CaretDown,
   GearSix,
+  ArrowLeft,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { fileManager } from '@/utils/fileManager';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { showGlobalNotification } from './UnifiedNotification';
 import type { Question } from '@/api/questionBankApi';
 
@@ -45,6 +47,12 @@ interface QuestionBankExportDialogProps {
   examName?: string;
   /** 题目集 ID（用于 CSV 高级导出） */
   examId?: string;
+  /**
+   * inline 模式（移动端）：不渲染 NotionDialog 浮层，改为渲染宿主容器内的
+   * 全屏内联导出面板（absolute inset-0，步骤条式：选格式 → 选项 → 导出）。
+   * 顶栏返回逐级回退步骤，Android 返回键同路径；桌面端保持模态 Dialog。
+   */
+  inline?: boolean;
 }
 
 interface ExportOptions {
@@ -108,6 +116,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
   questions,
   examName,
   examId,
+  inline = false,
 }) => {
   const { t } = useTranslation(['exam_sheet', 'common']);
 
@@ -132,6 +141,32 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
   });
   const [csvIncludeAnswerRecords, setCsvIncludeAnswerRecords] = useState(false);
   const [showCsvAdvanced, setShowCsvAdvanced] = useState(false);
+
+  // inline 模式步骤：0 选格式 → 1 导出选项 → 2 确认导出
+  const [inlineStep, setInlineStep] = useState(0);
+  const inlineStepRef = useRef(0);
+  inlineStepRef.current = inlineStep;
+
+  useEffect(() => {
+    if (open) setInlineStep(0);
+  }, [open]);
+
+  // inline 面板返回：先逐级回退步骤，再关闭面板（顶栏返回与 Android 返回键同路径）
+  const handleInlineBack = useCallback(() => {
+    if (inlineStepRef.current > 0) {
+      setInlineStep((s) => Math.max(0, s - 1));
+    } else {
+      onOpenChange(false);
+    }
+  }, [onOpenChange]);
+
+  useEffect(() => {
+    if (!inline || !open) return;
+    return registerBackHandler(() => {
+      handleInlineBack();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [inline, open, handleInlineBack]);
 
   // 当选择包含答题记录时，自动添加相关字段
   const handleIncludeAnswerRecordsChange = useCallback((checked: boolean) => {
@@ -429,23 +464,10 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
     }
   }, [format, examName, examId, generateJsonExport, generateTxtExport, generateCsvExport, handleCsvBackendExport, onOpenChange, t]);
 
-  return (
-    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-md">
-        <NotionDialogHeader>
-          <NotionDialogTitle className="flex items-center gap-2">
-            <Download size={20} />
-            {t('exam_sheet:questionBank.export.title')}
-          </NotionDialogTitle>
-          <NotionDialogDescription>
-            {t('exam_sheet:questionBank.export.description', {
-              count: questions.length,
-            })}
-          </NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogBody>
+  // ==================== 共享内容分区（Dialog 与 inline 面板复用） ====================
 
-        <div className="space-y-6 py-4">
-          {/* 格式选择 */}
+  // 格式选择分区
+  const formatSection = (
           <div className="space-y-3">
             <Label>{t('exam_sheet:questionBank.export.format')}</Label>
             <div className="space-y-2">
@@ -481,8 +503,10 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
               ))}
             </div>
           </div>
+  );
 
-          {/* 导出选项 */}
+  // 导出选项分区
+  const optionsSection = (
           <div className="space-y-3">
             <Label>{t('exam_sheet:questionBank.export.options')}</Label>
             
@@ -665,6 +689,168 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
               </div>
             )}
           </div>
+  );
+
+  // 导出主按钮（两种形态共用）
+  const exportButton = (
+    <NotionButton onClick={handleExport} disabled={isExporting || questions.length === 0}>
+      {isExporting ? (
+        <CircleNotch size={16} className="mr-2 animate-spin" />
+      ) : exportSuccess ? (
+        <CheckCircle size={16} className="mr-2 text-green-500" />
+      ) : (
+        <Download size={16} className="mr-2" />
+      )}
+      {exportSuccess
+        ? t('exam_sheet:questionBank.export.success')
+        : t('exam_sheet:questionBank.export.button')}
+    </NotionButton>
+  );
+
+  // ==================== inline 模式：全屏内联导出面板（移动端） ====================
+  if (inline) {
+    if (!open) return null;
+
+    const stepLabels = [
+      t('exam_sheet:questionBank.export.format'),
+      t('exam_sheet:questionBank.export.options'),
+      t('exam_sheet:questionBank.export.button'),
+    ];
+
+    return (
+      <div
+        className="absolute inset-0 z-30 flex flex-col bg-background"
+        role="dialog"
+        aria-label={t('exam_sheet:questionBank.export.title')}
+      >
+        {/* 顶栏：返回 + 标题 + 步骤位置 */}
+        <div className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b border-border/60 px-2">
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={handleInlineBack}
+            aria-label={t('common:back')}
+            className="!h-11 !w-11 text-muted-foreground"
+          >
+            <ArrowLeft size={20} />
+          </NotionButton>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <Download size={16} className="flex-shrink-0 text-muted-foreground" />
+            <span className="truncate text-sm font-medium text-foreground">
+              {t('exam_sheet:questionBank.export.title')}
+            </span>
+          </div>
+          <span className="flex-shrink-0 pr-2 text-xs tabular-nums text-muted-foreground">
+            {inlineStep + 1}/{stepLabels.length}
+          </span>
+        </div>
+
+        {/* 步骤条 */}
+        <div className="flex flex-shrink-0 items-center gap-1.5 border-b border-border/40 px-4 py-2.5">
+          {stepLabels.map((label, index) => (
+            <React.Fragment key={label}>
+              {index > 0 && <div className="h-px w-4 flex-shrink-0 bg-border" aria-hidden />}
+              <button
+                type="button"
+                onClick={() => {
+                  // 只允许回到已完成的步骤，不允许跳步前进
+                  if (index < inlineStep) setInlineStep(index);
+                }}
+                className={cn(
+                  'flex min-h-[32px] items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors motion-reduce:transition-none',
+                  index === inlineStep
+                    ? 'bg-primary/10 font-medium text-primary'
+                    : index < inlineStep
+                      ? 'text-foreground'
+                      : 'text-muted-foreground/60',
+                )}
+                aria-current={index === inlineStep ? 'step' : undefined}
+              >
+                <span
+                  className={cn(
+                    'flex h-4 w-4 items-center justify-center rounded-full text-[10px] tabular-nums',
+                    index === inlineStep
+                      ? 'bg-primary text-primary-foreground'
+                      : index < inlineStep
+                        ? 'bg-muted text-foreground'
+                        : 'bg-muted text-muted-foreground/60',
+                  )}
+                >
+                  {index < inlineStep ? <CheckCircle size={10} weight="bold" /> : index + 1}
+                </span>
+                {label}
+              </button>
+            </React.Fragment>
+          ))}
+        </div>
+
+        {/* 内容区：全高滚动 */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          {inlineStep === 0 && formatSection}
+          {inlineStep === 1 && optionsSection}
+          {inlineStep === 2 && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                {t('exam_sheet:questionBank.export.description', { count: questions.length })}
+              </p>
+              <div className="flex items-center gap-3 rounded-lg border border-border p-3">
+                <div className="flex-shrink-0 text-muted-foreground">{formatIcons[format]}</div>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-foreground">{formatLabels[format]}</div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{t(FORMAT_DESC_KEYS[format])}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 底部操作栏（safe-area 兼容） */}
+        <div
+          className="flex flex-shrink-0 items-center justify-end gap-2 border-t border-border/60 px-4 pt-3"
+          style={{
+            paddingBottom:
+              'calc(var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 12px)',
+          }}
+        >
+          <NotionButton
+            variant="ghost"
+            onClick={handleInlineBack}
+            disabled={isExporting}
+          >
+            {inlineStep === 0 ? t('common:cancel') : t('common:actions.previous')}
+          </NotionButton>
+          {inlineStep < 2 ? (
+            <NotionButton onClick={() => setInlineStep((s) => Math.min(2, s + 1))}>
+              {t('common:actions.next')}
+            </NotionButton>
+          ) : (
+            exportButton
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ==================== 桌面端：模态 Dialog ====================
+  return (
+    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-md">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
+            <Download size={20} />
+            {t('exam_sheet:questionBank.export.title')}
+          </NotionDialogTitle>
+          <NotionDialogDescription>
+            {t('exam_sheet:questionBank.export.description', {
+              count: questions.length,
+            })}
+          </NotionDialogDescription>
+        </NotionDialogHeader>
+        <NotionDialogBody>
+
+        <div className="space-y-6 py-4">
+          {formatSection}
+          {optionsSection}
         </div>
 
         </NotionDialogBody>
@@ -672,18 +858,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           <NotionButton variant="ghost" onClick={() => onOpenChange(false)} disabled={isExporting}>
             {t('common:cancel')}
           </NotionButton>
-          <NotionButton onClick={handleExport} disabled={isExporting || questions.length === 0}>
-            {isExporting ? (
-              <CircleNotch size={16} className="mr-2 animate-spin" />
-            ) : exportSuccess ? (
-              <CheckCircle size={16} className="mr-2 text-green-500" />
-            ) : (
-              <Download size={16} className="mr-2" />
-            )}
-            {exportSuccess
-              ? t('exam_sheet:questionBank.export.success')
-              : t('exam_sheet:questionBank.export.button')}
-          </NotionButton>
+          {exportButton}
         </NotionDialogFooter>
     </NotionDialog>
   );

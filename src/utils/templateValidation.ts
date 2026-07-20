@@ -135,8 +135,8 @@ export function extractMustachePlaceholders(template: string): Set<string> {
 export function sanitizeCSS(css: string): string {
   let sanitized = css;
 
-  // 1. 移除 <script> 标签
-  sanitized = sanitized.replace(/<script[^>]*>.*?<\/script>/gi, '');
+  // 1. 移除 <script> 标签（[\s\S] 确保跨行脚本也能匹配）
+  sanitized = sanitized.replace(/<script[^>]*>[\s\S]*?<\/script\s*>/gi, '');
 
   // 2. 移除 javascript: URL
   sanitized = sanitized.replace(/javascript:\s*/gi, '');
@@ -159,14 +159,18 @@ export function sanitizeCSS(css: string): string {
 export function sanitizeHTML(html: string): string {
   let sanitized = html;
 
-  // 移除 <script> 标签
-  sanitized = sanitized.replace(/<script[^>]*>.*?<\/script>/gi, '');
+  // 移除 <script> 标签（[\s\S] 确保跨行脚本也能匹配；渲染层还有 DOMPurify 兜底）
+  sanitized = sanitized.replace(/<script[^>]*>[\s\S]*?<\/script\s*>/gi, '');
 
-  // 移除事件处理器属性
+  // 移除事件处理器属性（含带引号与不带引号两种写法）
   sanitized = sanitized.replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '');
+  sanitized = sanitized.replace(/\son\w+\s*=\s*[^\s>"']+/gi, '');
 
-  // 移除 javascript: URL
-  sanitized = sanitized.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, '');
+  // 移除 javascript: URL（href / src / xlink:href 等常见 URL 属性）
+  sanitized = sanitized.replace(
+    /\s(href|src|xlink:href|formaction|action)\s*=\s*["']\s*javascript:[^"']*["']/gi,
+    ''
+  );
 
   return sanitized;
 }

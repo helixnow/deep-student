@@ -1,0 +1,272 @@
+/**
+ * 模板库 — 内联导入 / 导出面板（页内展开，替代原模态框）。
+ */
+import React, { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  Upload, Download, X, FileArrowUp, CheckCircle, WarningCircle,
+} from '@phosphor-icons/react';
+import { NotionButton } from '@/components/ui/NotionButton';
+import { Checkbox } from '@/components/ui/shad/Checkbox';
+import { cn } from '@/lib/utils';
+import type { CustomAnkiTemplate } from '@/types';
+
+export interface ImportPanelResult {
+  ok: boolean;
+  message: string;
+}
+
+/* ── 导入面板 ── */
+
+export interface TemplateImportPanelProps {
+  selectedFile: File | null;
+  onFileChange: (file: File | null) => void;
+  overwriteExisting: boolean;
+  onOverwriteChange: (value: boolean) => void;
+  isImporting: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+  result: ImportPanelResult | null;
+}
+
+export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
+  selectedFile,
+  onFileChange,
+  overwriteExisting,
+  onOverwriteChange,
+  isImporting,
+  onConfirm,
+  onClose,
+  result,
+}) => {
+  const { t } = useTranslation('template');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files && e.target.files[0];
+    onFileChange(file || null);
+    // 允许重复选择同一文件
+    e.target.value = '';
+  };
+
+  return (
+    <section className="wb-tm-panel" aria-label={t('templateMgmt.import_panel_title')}>
+      <header className="wb-tm-panel-header">
+        <h3 className="wb-tm-panel-title">
+          <Upload size={15} aria-hidden />
+          {t('templateMgmt.import_panel_title')}
+        </h3>
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={onClose}
+          disabled={isImporting}
+          aria-label={t('templateMgmt.panel_close')}
+          title={t('templateMgmt.panel_close')}
+        >
+          <X size={14} />
+        </NotionButton>
+      </header>
+
+      <p className="wb-tm-panel-desc">{t('import_external_dialog_desc')}</p>
+
+      <details className="wb-tm-panel-details">
+        <summary>{t('templateMgmt.import_rules_toggle')}</summary>
+        <ul className="wb-tm-panel-rules">
+          <li>{t('import_external_rule_1')}</li>
+          <li>{t('import_external_rule_2')}</li>
+          <li>{t('import_external_rule_3')}</li>
+          <li>{t('import_external_rule_4')}</li>
+          <li>{t('import_external_rule_5')}</li>
+        </ul>
+      </details>
+
+      <div className="wb-tm-panel-body">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json,.json"
+          onChange={handleFileSelected}
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden
+        />
+        <div className="wb-tm-file-row">
+          <NotionButton
+            variant="default"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isImporting}
+          >
+            <FileArrowUp size={14} />
+            {selectedFile ? t('templateMgmt.import_change_file') : t('templateMgmt.import_choose_file')}
+          </NotionButton>
+          {selectedFile ? (
+            <span className="wb-tm-file-name" title={selectedFile.name}>
+              {selectedFile.name}
+              <button
+                type="button"
+                className="wb-tm-file-clear"
+                onClick={() => onFileChange(null)}
+                disabled={isImporting}
+                aria-label={t('templateMgmt.import_clear_file')}
+                title={t('templateMgmt.import_clear_file')}
+              >
+                <X size={11} weight="bold" />
+              </button>
+            </span>
+          ) : (
+            <span className="wb-tm-file-name wb-tm-file-name--empty">{t('templateMgmt.import_no_file')}</span>
+          )}
+        </div>
+
+        <label className="wb-tm-panel-checkline">
+          <Checkbox
+            checked={overwriteExisting}
+            onCheckedChange={(v) => onOverwriteChange(Boolean(v))}
+            disabled={isImporting}
+          />
+          <span>{t('overwrite_existing_label')}</span>
+        </label>
+      </div>
+
+      {result && (
+        <div
+          className={cn('wb-tm-panel-result', result.ok ? 'wb-tm-panel-result--ok' : 'wb-tm-panel-result--error')}
+          role="status"
+        >
+          {result.ok
+            ? <CheckCircle size={15} weight="fill" aria-hidden />
+            : <WarningCircle size={15} weight="fill" aria-hidden />}
+          <pre className="wb-tm-panel-result-text">{result.message}</pre>
+        </div>
+      )}
+
+      <footer className="wb-tm-panel-footer">
+        <NotionButton variant="ghost" size="sm" onClick={onClose} disabled={isImporting}>
+          {t('cancel_button')}
+        </NotionButton>
+        <NotionButton
+          variant="primary"
+          size="sm"
+          onClick={onConfirm}
+          disabled={!selectedFile || isImporting}
+        >
+          {isImporting ? t('importing') : t('start_import_button')}
+        </NotionButton>
+      </footer>
+    </section>
+  );
+};
+
+/* ── 导出面板 ── */
+
+export interface TemplateExportPanelProps {
+  templates: CustomAnkiTemplate[];
+  selection: Set<string>;
+  onToggleSelection: (templateId: string, checked: boolean) => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
+  isExporting: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+  error: string | null;
+}
+
+export const TemplateExportPanel: React.FC<TemplateExportPanelProps> = ({
+  templates,
+  selection,
+  onToggleSelection,
+  onSelectAll,
+  onClearSelection,
+  isExporting,
+  onConfirm,
+  onClose,
+  error,
+}) => {
+  const { t } = useTranslation('template');
+
+  return (
+    <section className="wb-tm-panel" aria-label={t('templateMgmt.export_panel_title')}>
+      <header className="wb-tm-panel-header">
+        <h3 className="wb-tm-panel-title">
+          <Download size={15} aria-hidden />
+          {t('templateMgmt.export_panel_title')}
+        </h3>
+        <div className="wb-tm-panel-header-actions">
+          <NotionButton variant="ghost" size="sm" onClick={onSelectAll} disabled={isExporting || templates.length === 0}>
+            {t('select_all_button')}
+          </NotionButton>
+          <NotionButton variant="ghost" size="sm" onClick={onClearSelection} disabled={isExporting || selection.size === 0}>
+            {t('clear_selection_button')}
+          </NotionButton>
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={onClose}
+            disabled={isExporting}
+            aria-label={t('templateMgmt.panel_close')}
+            title={t('templateMgmt.panel_close')}
+          >
+            <X size={14} />
+          </NotionButton>
+        </div>
+      </header>
+
+      <p className="wb-tm-panel-desc">{t('export_dialog_desc')}</p>
+
+      {templates.length === 0 ? (
+        <div className="wb-tm-panel-desc">{t('no_exportable_templates')}</div>
+      ) : (
+        <div className="wb-tm-export-list">
+          {templates.map((template) => (
+            <label key={template.id} className="wb-tm-export-item">
+              <Checkbox
+                checked={selection.has(template.id)}
+                onCheckedChange={(checked) => onToggleSelection(template.id, checked === true)}
+                disabled={isExporting}
+              />
+              <span className="wb-tm-export-item-body">
+                <span className="wb-tm-export-item-name">{template.name}</span>
+                <span className="wb-tm-export-item-meta">
+                  {t('field_count_meta', { count: template.fields.length })}
+                  {' · '}
+                  {t('type_meta', { type: template.note_type })}
+                  {template.is_built_in ? ` · ${t('builtin_badge')}` : ''}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {error && (
+        <div className="wb-tm-panel-result wb-tm-panel-result--error" role="alert">
+          <WarningCircle size={15} weight="fill" aria-hidden />
+          <pre className="wb-tm-panel-result-text">{error}</pre>
+        </div>
+      )}
+
+      <footer className="wb-tm-panel-footer">
+        <span className="wb-tm-panel-count" aria-live="polite">
+          {t('templateMgmt.export_selected_count', { count: selection.size })}
+        </span>
+        <div className="wb-tm-panel-footer-actions">
+          <NotionButton variant="ghost" size="sm" onClick={onClose} disabled={isExporting}>
+            {t('cancel_button')}
+          </NotionButton>
+          <NotionButton
+            variant="primary"
+            size="sm"
+            onClick={onConfirm}
+            disabled={isExporting || selection.size === 0}
+          >
+            {isExporting ? t('exporting') : t('export_count_button', { count: selection.size })}
+          </NotionButton>
+        </div>
+      </footer>
+    </section>
+  );
+};

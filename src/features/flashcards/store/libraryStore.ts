@@ -19,6 +19,26 @@ import { requestFlashcardsDueRefresh } from '../events';
 
 export const FLASHCARDS_LIBRARY_PAGE_SIZE = 20;
 
+/** 客户端状态筛选（后端 list 命令暂不支持按调度状态过滤，作用于当前页）。 */
+export type LibraryStatusFilter =
+  | 'all'
+  | 'due'
+  | 'new'
+  | 'learning'
+  | 'review'
+  | 'suspended'
+  | 'notEnqueued';
+
+/** 客户端排序（'default' 保持服务端返回顺序）。 */
+export type LibrarySortKey = 'default' | 'due' | 'created' | 'front';
+export type LibrarySortDir = 'asc' | 'desc';
+
+const DEFAULT_SORT_DIR: Record<Exclude<LibrarySortKey, 'default'>, LibrarySortDir> = {
+  due: 'asc',
+  created: 'desc',
+  front: 'asc',
+};
+
 interface FlashcardsLibraryState {
   items: AnkiLibraryCard[];
   total: number;
@@ -30,9 +50,18 @@ interface FlashcardsLibraryState {
   loadError: string | null;
   actionError: string | null;
   busyCardId: string | null;
+  /** 批量操作进行中（与单卡 busyCardId 互斥使用）。 */
+  bulkBusy: boolean;
   loaded: boolean;
+  statusFilter: LibraryStatusFilter;
+  sortKey: LibrarySortKey;
+  sortDir: LibrarySortDir;
 
   setSearchInput: (value: string) => void;
+  setStatusFilter: (filter: LibraryStatusFilter) => void;
+  /** 再次点击当前排序键时翻转方向。 */
+  toggleSort: (key: Exclude<LibrarySortKey, 'default'>) => void;
+  clearSort: () => void;
   clearActionError: () => void;
   load: (query?: string, page?: number) => Promise<boolean>;
   refresh: () => Promise<boolean>;
@@ -43,6 +72,9 @@ interface FlashcardsLibraryState {
   updateCard: (cardId: string, patch: AnkiLibraryCardPatch) => Promise<boolean>;
   undoLastReview: (cardId: string) => Promise<boolean>;
   deleteCard: (cardId: string) => Promise<boolean>;
+  bulkEnqueue: (cardIds: string[]) => Promise<boolean>;
+  bulkSetSuspended: (cardIds: string[], suspended: boolean) => Promise<boolean>;
+  bulkDelete: (cardIds: string[]) => Promise<boolean>;
   reset: () => void;
 }
 
@@ -57,7 +89,11 @@ const initialState = {
   loadError: null as string | null,
   actionError: null as string | null,
   busyCardId: null as string | null,
+  bulkBusy: false,
   loaded: false,
+  statusFilter: 'all' as LibraryStatusFilter,
+  sortKey: 'default' as LibrarySortKey,
+  sortDir: 'asc' as LibrarySortDir,
 };
 
 export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, get) => {
@@ -88,10 +124,68 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
     }
   };
 
+  /**
+   * 批量操作：逐卡执行、聚合失败，只在结束后刷新一次列表。
+   * 目标卡不在当前页时按失败处理（与 runMutation 的 fail-closed 语义一致）。
+   */
+  const runBulkMutation = async (
+    cardIds: string[],
+    mutation: (card: AnkiLibraryCard) => Promise<unknown>,
+  ): Promise<boolean> => {
+    const ids = Array.from(new Set(cardIds));
+    if (ids.length === 0) return true;
+    const byId = new Map(get().items.map((item) => [item.id, item]));
+    const cards = ids
+      .map((id) => byId.get(id))
+      .filter((item): item is AnkiLibraryCard => Boolean(item));
+    if (cards.length === 0) {
+      set({ actionError: i18n.t('flashcards:library.cardNotFound') });
+      return false;
+    }
+    set({ bulkBusy: true, actionError: null });
+    let failed = ids.length - cards.length;
+    let lastError: string | null = null;
+    try {
+      for (const card of cards) {
+        try {
+          await mutation(card);
+        } catch (error) {
+          failed += 1;
+          lastError = getErrorMessage(error) || null;
+        }
+      }
+      requestFlashcardsDueRefresh();
+      await get().refresh();
+      if (failed > 0) {
+        set({
+          actionError: i18n.t('flashcards:library.bulkPartialFailure', {
+            failed,
+            total: ids.length,
+            message: lastError ?? i18n.t('flashcards:library.actionFailed'),
+          }),
+        });
+        return false;
+      }
+      return true;
+    } finally {
+      set({ bulkBusy: false });
+    }
+  };
+
   return {
     ...initialState,
 
     setSearchInput: (value) => set({ searchInput: value }),
+    setStatusFilter: (filter) => set({ statusFilter: filter }),
+    toggleSort: (key) => {
+      const { sortKey, sortDir } = get();
+      if (sortKey === key) {
+        set({ sortDir: sortDir === 'asc' ? 'desc' : 'asc' });
+        return;
+      }
+      set({ sortKey: key, sortDir: DEFAULT_SORT_DIR[key] });
+    },
+    clearSort: () => set({ sortKey: 'default', sortDir: 'asc' }),
     clearActionError: () => set({ actionError: null }),
 
     load: async (query = get().query, page = get().page) => {
@@ -175,6 +269,19 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
     }),
 
     deleteCard: (cardId) => runMutation(cardId, (card) => deleteAnkiCard(card.id)),
+
+    bulkEnqueue: (cardIds) => runBulkMutation(cardIds, async (card) => {
+      if (card.enqueued) return;
+      await enqueueAnkiLibraryCard(card.id);
+    }),
+
+    bulkSetSuspended: (cardIds, suspended) => runBulkMutation(cardIds, async (card) => {
+      if (!card.enqueued || card.suspended === suspended) return;
+      if (!card.stateId) throw new Error(i18n.t('flashcards:library.missingState'));
+      await (suspended ? suspendFsrsCard(card.stateId) : unsuspendFsrsCard(card.stateId));
+    }),
+
+    bulkDelete: (cardIds) => runBulkMutation(cardIds, (card) => deleteAnkiCard(card.id)),
 
     reset: () => {
       requestId += 1;

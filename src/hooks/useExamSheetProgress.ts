@@ -20,7 +20,9 @@ async function triggerMultimodalIndex(resourceId: string) {
     if (!capability.available) {
       const message = capability.reason === 'not_configured'
         ? 'Multimodal embedding is not configured'
-        : `Multimodal embedding is temporarily unavailable: ${capability.error ?? 'unknown error'}`;
+        : capability.reason === 'probe_failed'
+          ? `Multimodal capability probe failed (state unknown): ${capability.error ?? 'unknown error'}`
+          : `Multimodal embedding is temporarily unavailable: ${capability.error ?? 'unknown error'}`;
       console.warn(`[MultimodalIndex] ${message}; skipping auto-index`);
       return;
     }

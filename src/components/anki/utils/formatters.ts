@@ -27,7 +27,7 @@ export function formatDisplayDate(value?: string | null): string {
 /**
  * 渲染 Cloze 填空文本，高亮显示填空部分
  *
- * @param text - 包含 Cloze 语法的文本 (e.g., "{{c1::answer}}")
+ * @param text - 包含 Cloze 语法的文本 (e.g., "{{c1::answer}}" 或 "{{c1::answer::hint}}")
  * @returns 带有高亮 span 的 HTML 字符串
  *
  * @example
@@ -40,8 +40,11 @@ export function renderClozeText(text: string): string {
   // Replace cloze syntax with HTML spans
   // We need to escape the content but keep the span tags
   const processedText = text.replace(
-    /\{\{c(\d+)::([^}]+?)\}\}/g,
-    (_match, _clozeNum, content) => {
+    /\{\{c(\d+)::([\s\S]*?)\}\}/g,
+    (_match, _clozeNum, body: string) => {
+      // 剥离 ::hint 提示部分（Anki 语法 {{cN::answer::hint}}），只高亮答案本身
+      const hintIndex = body.lastIndexOf("::");
+      const content = hintIndex === -1 ? body : body.slice(0, hintIndex);
       // Escape only the content inside cloze markers
       const escapedContent = content
         .replace(/&/g, "&amp;")

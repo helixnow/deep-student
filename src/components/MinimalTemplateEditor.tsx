@@ -3,10 +3,13 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   FileText, Code, Database, Gear, Eye, EyeSlash,
-  Plus, Trash, WarningCircle, Copy
+  Plus, WarningCircle, Copy
 } from '@phosphor-icons/react';
-import { CustomAnkiTemplate, CreateTemplateRequest, FieldExtractionRule } from '../types';
-import { IframePreview, renderCardPreview } from './SharedPreview';
+import {
+  CustomAnkiTemplate, CreateTemplateRequest, FieldExtractionRule,
+  AnkiCardTemplate, FieldType,
+} from '../types';
+import { renderCardPreview } from './SharedPreview';
 import { templateService } from '../services/templateService';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from './ui/shad/Input';
@@ -15,7 +18,7 @@ import { Label } from './ui/shad/Label';
 import { Switch } from './ui/shad/Switch';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/shad/Select';
 import { UnifiedCodeEditor } from './shared/UnifiedCodeEditor';
-import CodeMirror from '@uiw/react-codemirror';
+import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { html } from '@codemirror/lang-html';
 import { css as cssLang } from '@codemirror/lang-css';
 import { EditorView } from '@codemirror/view';
@@ -23,7 +26,12 @@ import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
 import { HorizontalResizable } from './shared/Resizable';
 import { CodeMirrorScrollOverlay } from './skills-management/CodeMirrorScrollOverlay';
 import { CustomScrollArea } from './custom-scroll-area';
+import { TemplateEditorInsertBar } from './TemplateEditorInsertBar';
+import { TemplateEditorPreviewPanel, TemplatePreviewSide } from './TemplateEditorPreviewPanel';
+import { TemplateEditorFieldManager, FieldRenameResult } from './TemplateEditorFieldManager';
+import { lintTemplate, extractFieldReferences, renameFieldReferences } from './TemplateEditorLint';
 import './MinimalTemplateEditor.css';
+import './TemplateEditorEnhancements.css';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -43,12 +51,19 @@ interface MinimalTemplateEditorProps {
   hideSidebar?: boolean;
   // 移动端：编辑器 portal 目标容器（由 MobileSlidingLayout 的 rightPanel 提供）
   mobileEditorPortalTarget?: HTMLDivElement | null;
+  /** 可选：未保存更改状态变化回调（供外层做离开确认等） */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 interface ValidationError {
   field: string;
   message: string;
 }
+
+/** 字段类型选项（与 FieldType 联合类型保持一致，收紧原 as any 写法） */
+const FIELD_TYPE_OPTIONS: FieldType[] = ['Text', 'Number', 'Boolean', 'Date', 'Array', 'RichText', 'Formula'];
+const isFieldType = (value: string): value is FieldType =>
+  (FIELD_TYPE_OPTIONS as string[]).includes(value);
 
 const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
   template,
@@ -59,8 +74,10 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
   onExternalTabChange,
   hideSidebar = false,
   mobileEditorPortalTarget,
+  onDirtyChange,
 }) => {
   const { t } = useTranslation('template');
+  const { t: tAnki } = useTranslation('anki');
   const { isSmallScreen } = useBreakpoint();
 
   // 基础数据
@@ -97,21 +114,22 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
     }, null, 2);
   });
 
+  // 字段默认提取规则
+  const buildDefaultRule = useCallback((field: string): FieldExtractionRule => ({
+    field_type: field.toLowerCase() === 'tags' ? 'Array' : 'Text',
+    is_required: field.toLowerCase() === 'front' || field.toLowerCase() === 'back',
+    default_value: field.toLowerCase() === 'tags' ? '[]' : '',
+    description: t('field_description', { field })
+  }), [t]);
+
   // 字段提取规则
   const [fieldExtractionRules, setFieldExtractionRules] = useState<Record<string, FieldExtractionRule>>(() => {
     if (template?.field_extraction_rules) {
       return template.field_extraction_rules;
     }
-    
-    // 默认规则
     const defaultRules: Record<string, FieldExtractionRule> = {};
     formData.fields.forEach(field => {
-      defaultRules[field] = {
-        field_type: field.toLowerCase() === 'tags' ? 'Array' : 'Text',
-        is_required: field.toLowerCase() === 'front' || field.toLowerCase() === 'back',
-        default_value: field.toLowerCase() === 'tags' ? '[]' : '',
-        description: t('field_description', { field })
-      };
+      defaultRules[field] = buildDefaultRule(field);
     });
     return defaultRules;
   });
@@ -122,41 +140,24 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
   const setActiveTab = onExternalTabChange ?? setInternalActiveTab;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
-  const [previewMode, setPreviewMode] = useState<'front' | 'back'>('front');
+  const [previewMode, setPreviewMode] = useState<TemplatePreviewSide>('front');
+  const [previewDark, setPreviewDark] = useState(false);
   const [showPromptPreview, setShowPromptPreview] = useState(false);
+  // 字段重命名后的引用同步通知（瞬时）
+  const [renameNotice, setRenameNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!renameNotice) return;
+    const timer = setTimeout(() => setRenameNotice(null), 4000);
+    return () => clearTimeout(timer);
+  }, [renameNotice]);
 
   // 代码编辑器子 tab 状态（参考技能编辑器分栏布局）
   type CodeSubTab = 'front' | 'back' | 'css';
   const [codeSubTab, setCodeSubTab] = useState<CodeSubTab>('front');
   const cmContainerRef = useRef<HTMLDivElement>(null);
-
-  // 移动端横向滚动屏
-  const mobileScrollRef = useRef<HTMLDivElement>(null);
-  const scrollToScreen = useCallback((index: number) => {
-    const container = mobileScrollRef.current;
-    if (!container) return;
-    container.scrollTo({ left: index * container.clientWidth, behavior: 'smooth' });
-  }, []);
-  const handleMobileScroll = useCallback(() => {
-    const container = mobileScrollRef.current;
-    if (!container) return;
-    const w = container.clientWidth;
-    if (w === 0) return;
-    const index = Math.round(container.scrollLeft / w);
-    const tabs: CodeSubTab[] = ['front', 'back', 'css'];
-    if (tabs[index] && tabs[index] !== codeSubTab) {
-      setCodeSubTab(tabs[index]);
-    }
-  }, [codeSubTab]);
-
-  // 移动端每屏独立的 CodeMirror 扩展
-  const htmlExtensions = useMemo(() => [html(), EditorView.lineWrapping], []);
-  const cssExtensions = useMemo(() => [cssLang(), EditorView.lineWrapping], []);
-
-  // 移动端每屏独立的 onChange
-  const handleFrontChange = useCallback((v: string) => setFormData(prev => ({ ...prev, front_template: v })), []);
-  const handleBackChange = useCallback((v: string) => setFormData(prev => ({ ...prev, back_template: v })), []);
-  const handleCssChange = useCallback((v: string) => setFormData(prev => ({ ...prev, css_style: v })), []);
+  // CodeMirror 实例引用（桌面/移动端同一时刻只挂载一个），用于光标处插入
+  const editorRef = useRef<ReactCodeMirrorRef>(null);
 
   // 暗色模式检测
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -209,6 +210,37 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
     }
   }, [codeSubTab]);
 
+  // 光标处插入文本（CodeMirror 未挂载时降级为追加）
+  const insertAtCursor = useCallback((text: string, cursorOffset?: number) => {
+    const view = editorRef.current?.view;
+    if (!view) {
+      handleCodeChange(`${codeValue ?? ''}${text}`);
+      return;
+    }
+    const { from, to } = view.state.selection.main;
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + (cursorOffset ?? text.length) },
+    });
+    view.focus();
+  }, [handleCodeChange, codeValue]);
+
+  // 用一对标签包裹选区（无选区则把光标放到标签中间）
+  const wrapSelection = useCallback((open: string, close: string) => {
+    const view = editorRef.current?.view;
+    if (!view) {
+      handleCodeChange(`${codeValue ?? ''}${open}${close}`);
+      return;
+    }
+    const { from, to } = view.state.selection.main;
+    const selected = view.state.sliceDoc(from, to);
+    view.dispatch({
+      changes: { from, to, insert: `${open}${selected}${close}` },
+      selection: { anchor: from + open.length, head: from + open.length + selected.length },
+    });
+    view.focus();
+  }, [handleCodeChange, codeValue]);
+
   // 验证JSON
   const validateJson = (jsonString: string): boolean => {
     try {
@@ -229,25 +261,113 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
       return {};
     }
   }, [debouncedPreviewJson]);
-  const previewHtml = useMemo(
-    () =>
-      renderCardPreview(
+
+  // 传给渲染管线的模板数据（替代原先的 as any 转型）
+  const previewTemplateData = useMemo<AnkiCardTemplate>(() => ({
+    id: template?.id ?? '',
+    name: debouncedFormData.name,
+    description: debouncedFormData.description,
+    preview_front: debouncedFormData.preview_front,
+    preview_back: debouncedFormData.preview_back,
+    preview_data_json: debouncedPreviewJson,
+    front_template: debouncedFormData.front_template,
+    back_template: debouncedFormData.back_template,
+    css_style: debouncedFormData.css_style,
+    note_type: debouncedFormData.note_type,
+    generation_prompt: debouncedFormData.generation_prompt,
+    fields: debouncedFormData.fields,
+  }), [debouncedFormData, debouncedPreviewJson, template?.id]);
+
+  // 渲染预览（异常时给出内联错误信息，不白屏）
+  const preview = useMemo<{ html: string; error: string | null }>(() => {
+    try {
+      const rendered = renderCardPreview(
         previewMode === 'front' ? debouncedFormData.front_template : debouncedFormData.back_template,
-        debouncedFormData as any,
+        previewTemplateData,
         parsedPreviewData,
         previewMode === 'back'
-      ),
-    [previewMode, debouncedFormData, parsedPreviewData]
-  );
+      );
+      return { html: rendered, error: null };
+    } catch (error: unknown) {
+      return { html: '', error: error instanceof Error ? error.message : String(error) };
+    }
+  }, [previewMode, debouncedFormData, parsedPreviewData, previewTemplateData]);
+
+  // 示例数据（未防抖，供字段级快速编辑；JSON 无效时为 null）
+  const sampleDataLive = useMemo<Record<string, unknown> | null>(() => {
+    try {
+      const parsed: unknown = JSON.parse(previewDataJson);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+      return null;
+    } catch (e: unknown) {
+      return null;
+    }
+  }, [previewDataJson]);
+
+  const handleSampleFieldChange = useCallback((field: string, value: unknown) => {
+    setPreviewDataJson(prev => {
+      try {
+        const parsed: unknown = JSON.parse(prev);
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return prev;
+        (parsed as Record<string, unknown>)[field] = value;
+        return JSON.stringify(parsed, null, 2);
+      } catch (e: unknown) {
+        return prev;
+      }
+    });
+  }, []);
+
+  // 模板静态检查（当前子 tab；CSS 不检查），使用防抖值避免输入过程中的抖动
+  const lintIssues = useMemo(() => {
+    if (codeSubTab === 'css') return [];
+    const tpl = codeSubTab === 'front' ? debouncedFormData.front_template : debouncedFormData.back_template;
+    const extraKeys = sampleDataLive ? Object.keys(sampleDataLive) : [];
+    return lintTemplate(tpl, debouncedFormData.fields, extraKeys);
+  }, [codeSubTab, debouncedFormData.front_template, debouncedFormData.back_template, debouncedFormData.fields, sampleDataLive]);
+
+  // 模板中实际引用到的字段集合（字段管理器的「已引用」标记）
+  const usedFields = useMemo(() => {
+    const refs = extractFieldReferences(formData.front_template);
+    extractFieldReferences(formData.back_template).forEach(name => refs.add(name));
+    return refs;
+  }, [formData.front_template, formData.back_template]);
+
+  // ===== 未保存更改跟踪（内联提示条，无弹窗） =====
+  const snapshot = JSON.stringify({ formData, previewDataJson, fieldExtractionRules });
+  const initialStateRef = useRef<{
+    snapshot: string;
+    formData: typeof formData;
+    previewDataJson: string;
+    rules: Record<string, FieldExtractionRule>;
+  } | null>(null);
+  if (initialStateRef.current === null) {
+    initialStateRef.current = { snapshot, formData, previewDataJson, rules: fieldExtractionRules };
+  }
+  const isDirty = snapshot !== initialStateRef.current.snapshot;
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  const discardChanges = useCallback(() => {
+    const initial = initialStateRef.current;
+    if (!initial) return;
+    setFormData(initial.formData);
+    setPreviewDataJson(initial.previewDataJson);
+    setFieldExtractionRules(initial.rules);
+    setValidationErrors([]);
+  }, []);
 
   // 验证表单
   const validateForm = (): ValidationError[] => {
     const errors: ValidationError[] = [];
-    
+
     if (!formData.name.trim()) {
       errors.push({ field: 'name', message: t('template_name_empty') });
     }
-    
+
     if (!formData.description.trim()) {
       errors.push({ field: 'description', message: t('description_empty') });
     }
@@ -258,23 +378,23 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
         message: t('generation_prompt_required_error')
       });
     }
-    
+
     if (formData.fields.length === 0) {
       errors.push({ field: 'fields', message: t('at_least_one_field') });
     }
-    
+
     if (!validateJson(previewDataJson)) {
       errors.push({ field: 'preview_data_json', message: t('preview_data_invalid') });
     }
-    
+
     if (!formData.front_template.trim()) {
       errors.push({ field: 'front_template', message: t('front_template_empty') });
     }
-    
+
     if (!formData.back_template.trim()) {
       errors.push({ field: 'back_template', message: t('back_template_empty') });
     }
- 
+
     const missingRuleFields = formData.fields.filter(field => !fieldExtractionRules[field]);
     if (missingRuleFields.length > 0) {
       errors.push({
@@ -297,34 +417,29 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
         errors.push({ field: 'field_rules', message: t('field_missing_description', { fieldName }) });
       }
     });
-    
+
     return errors;
   };
 
-  // 处理字段变化
+  // 处理字段变化（同步维护提取规则，保持与字段顺序一致）
   const handleFieldsChange = (newFields: string[]) => {
-    setFormData({ ...formData, fields: newFields });
-    
-    // 更新字段提取规则
+    setFormData(prev => ({ ...prev, fields: newFields }));
+
     const newRules: Record<string, FieldExtractionRule> = {};
     newFields.forEach(field => {
-      if (fieldExtractionRules[field]) {
-        newRules[field] = fieldExtractionRules[field];
-      } else {
-        newRules[field] = {
-          field_type: field.toLowerCase() === 'tags' ? 'Array' : 'Text',
-          is_required: field.toLowerCase() === 'front' || field.toLowerCase() === 'back',
-          default_value: field.toLowerCase() === 'tags' ? '[]' : '',
-          description: t('field_description', { field })
-        };
-      }
+      newRules[field] = fieldExtractionRules[field] ?? buildDefaultRule(field);
     });
     setFieldExtractionRules(newRules);
   };
 
-  // 添加字段
+  // 添加字段（保证名称唯一）
   const addField = () => {
-    const newFieldName = `Field${formData.fields.length + 1}`;
+    let index = formData.fields.length + 1;
+    let newFieldName = `Field${index}`;
+    while (formData.fields.includes(newFieldName)) {
+      index += 1;
+      newFieldName = `Field${index}`;
+    }
     handleFieldsChange([...formData.fields, newFieldName]);
   };
 
@@ -334,21 +449,81 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
     handleFieldsChange(newFields);
   };
 
-  // 更新字段名
-  const updateFieldName = (index: number, newName: string) => {
-    const oldName = formData.fields[index];
+  // 上移/下移字段
+  const moveField = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= formData.fields.length) return;
     const newFields = [...formData.fields];
-    newFields[index] = newName;
-    
-    // 更新字段提取规则中的键名
-    const newRules = { ...fieldExtractionRules };
-    if (oldName !== newName && newRules[oldName]) {
-      newRules[newName] = newRules[oldName];
-      delete newRules[oldName];
+    [newFields[index], newFields[target]] = [newFields[target], newFields[index]];
+    handleFieldsChange(newFields);
+  };
+
+  // 提交式字段重命名：校验唯一性 + 迁移提取规则 + 同步模板引用与示例数据键
+  const commitRenameField = (index: number, newName: string): FieldRenameResult => {
+    const oldName = formData.fields[index];
+    if (!newName.trim()) {
+      return { ok: false, error: tAnki('templateEditor.renameEmptyName') as string };
     }
-    
-    setFormData({ ...formData, fields: newFields });
-    setFieldExtractionRules(newRules);
+    const trimmed = newName.trim();
+    if (formData.fields.some((field, i) => i !== index && field === trimmed)) {
+      return { ok: false, error: tAnki('templateEditor.renameDuplicate', { name: trimmed }) as string };
+    }
+    if (oldName === trimmed) return { ok: true };
+
+    const frontSync = renameFieldReferences(formData.front_template, oldName, trimmed);
+    const backSync = renameFieldReferences(formData.back_template, oldName, trimmed);
+    const newFields = [...formData.fields];
+    newFields[index] = trimmed;
+
+    setFormData(prev => ({
+      ...prev,
+      fields: newFields,
+      front_template: frontSync.result,
+      back_template: backSync.result,
+    }));
+    setFieldExtractionRules(prev => {
+      const next: Record<string, FieldExtractionRule> = {};
+      newFields.forEach(field => {
+        if (field === trimmed) {
+          next[field] = prev[oldName] ?? buildDefaultRule(field);
+        } else {
+          next[field] = prev[field] ?? buildDefaultRule(field);
+        }
+      });
+      return next;
+    });
+    // 同步示例数据键名
+    setPreviewDataJson(prev => {
+      try {
+        const parsed: unknown = JSON.parse(prev);
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return prev;
+        const record = parsed as Record<string, unknown>;
+        if (Object.prototype.hasOwnProperty.call(record, oldName)) {
+          record[trimmed] = record[oldName];
+          delete record[oldName];
+          return JSON.stringify(record, null, 2);
+        }
+        return prev;
+      } catch (e: unknown) {
+        return prev;
+      }
+    });
+
+    const syncedCount = frontSync.count + backSync.count;
+    setRenameNotice(
+      (syncedCount > 0
+        ? tAnki('templateEditor.renameSynced', { count: syncedCount })
+        : tAnki('templateEditor.renameSyncedNone')) as string
+    );
+    return { ok: true };
+  };
+
+  // 必填标记切换
+  const toggleFieldRequired = (field: string, required: boolean) => {
+    setFieldExtractionRules(prev => ({
+      ...prev,
+      [field]: { ...(prev[field] ?? buildDefaultRule(field)), is_required: required },
+    }));
   };
 
   // 增加版本号
@@ -362,24 +537,31 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
   // 提交表单
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    
+
     const errors = validateForm();
     if (errors.length > 0) {
       setValidationErrors(errors);
       return;
     }
-    
+
     setValidationErrors([]);
     setIsSubmitting(true);
-    
+
     try {
       const templateData: CreateTemplateRequest = {
         ...formData,
         preview_data_json: previewDataJson,
         field_extraction_rules: fieldExtractionRules
       };
-      
+
       await onSave(templateData);
+      // 保存成功后以当前内容为新基线，清除未保存标记
+      initialStateRef.current = {
+        snapshot: JSON.stringify({ formData, previewDataJson, fieldExtractionRules }),
+        formData,
+        previewDataJson,
+        rules: fieldExtractionRules,
+      };
     } catch (error: unknown) {
       console.error('Failed to save template:', error);
       setValidationErrors([{ field: 'general', message: error instanceof Error ? error.message : t('save_failed') }]);
@@ -390,19 +572,73 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
 
   // 复制JSON模板
   const copyJsonTemplate = () => {
-    const template: Record<string, any> = {};
+    const templateJson: Record<string, unknown> = {};
     formData.fields.forEach(field => {
       if (field.toLowerCase() === 'tags') {
-        template[field] = [t('tag_1'), t('tag_2')];
+        templateJson[field] = [t('tag_1'), t('tag_2')];
       } else {
-        template[field] = t('field_example_content', { field });
+        templateJson[field] = t('field_example_content', { field });
       }
     });
-    
-    const jsonStr = JSON.stringify(template, null, 2);
+
+    const jsonStr = JSON.stringify(templateJson, null, 2);
     setPreviewDataJson(jsonStr);
     copyTextToClipboard(jsonStr);
   };
+
+  // 完整提示词预览用模板对象（替代原先的 as any 转型）
+  const promptPreviewTemplate = useMemo<CustomAnkiTemplate>(() => ({
+    id: template?.id ?? 'draft-template',
+    name: formData.name,
+    description: formData.description,
+    author: formData.author,
+    version: formData.version,
+    preview_front: formData.preview_front,
+    preview_back: formData.preview_back,
+    preview_data_json: previewDataJson,
+    note_type: formData.note_type,
+    fields: formData.fields,
+    generation_prompt: formData.generation_prompt,
+    front_template: formData.front_template,
+    back_template: formData.back_template,
+    css_style: formData.css_style,
+    field_extraction_rules: fieldExtractionRules,
+    created_at: template?.created_at ?? '',
+    updated_at: template?.updated_at ?? '',
+    is_active: formData.is_active,
+    is_built_in: template?.is_built_in ?? false,
+  }), [formData, fieldExtractionRules, previewDataJson, template]);
+
+  // 代码子 tab 切换按钮组（桌面/移动共用）
+  const renderCodeSubTabs = () => (
+    <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
+      <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'front' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('front')}>
+        {t('front_template_title')}
+      </NotionButton>
+      <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'back' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('back')}>
+        {t('back_template_title')}
+      </NotionButton>
+      <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'css' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('css')}>
+        {t('css_style_title')}
+      </NotionButton>
+    </div>
+  );
+
+  const renderPreviewPanel = (compact: boolean) => (
+    <TemplateEditorPreviewPanel
+      html={preview.html}
+      css={debouncedFormData.css_style}
+      renderError={preview.error}
+      previewSide={previewMode}
+      onPreviewSideChange={setPreviewMode}
+      darkPreview={previewDark}
+      onDarkPreviewChange={setPreviewDark}
+      fields={formData.fields}
+      sampleData={sampleDataLive}
+      onSampleFieldChange={handleSampleFieldChange}
+      compact={compact}
+    />
+  );
 
   return (
     <div className={`minimal-template-editor ${hideSidebar ? 'no-sidebar' : ''} ${(activeTab === 'templates' || activeTab === 'styles') ? 'code-mode' : ''}`}>
@@ -563,42 +799,17 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                 <h2 className="text-base font-semibold text-foreground">{t('field_management')}</h2>
                 <p className="text-xs text-muted-foreground mt-0.5 mb-4">{t('field_management_desc')}</p>
               </div>
-                <div className="fields-manager">
-                  <div className="field-list">
-                    {formData.fields.map((field, index) => (
-                      <div key={index} className="field-item">
-                        <Input
-                          type="text"
-                          value={field}
-                          onChange={(e) => updateFieldName(index, e.target.value)}
-                          placeholder={t('field_name_placeholder')}
+              <TemplateEditorFieldManager
+                fields={formData.fields}
+                rules={fieldExtractionRules}
+                usedFields={usedFields}
+                onAddField={addField}
+                onRemoveField={removeField}
+                onMoveField={moveField}
+                onRenameField={commitRenameField}
+                onToggleRequired={toggleFieldRequired}
+                notice={renameNotice}
 />
-                        <div className="field-item-actions">
-                          <NotionButton
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            iconOnly
-                            onClick={() => removeField(index)}
-                            disabled={formData.fields.length <= 1}
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash size={16} />
-                          </NotionButton>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <NotionButton
-                    type="button"
-                    variant="ghost"
-                    onClick={addField}
-                    className="mt-4"
-                  >
-                    <Plus size={16} className="mr-2" />
-                    {t('add_field')}
-                  </NotionButton>
-                </div>
             </div>
           )}
 
@@ -608,69 +819,32 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
               {/* 移动端：预览作为中屏，编辑器 portal 到 MobileSlidingLayout 的右屏 */}
               {isSmallScreen ? (
                 <>
-                  {/* 中屏：模板预览 */}
+                  {/* 中屏：实时预览面板 */}
                   <div className="flex-1 min-h-0 overflow-y-auto">
-                    <div className="p-3 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                          {t('template_preview')}
-                        </span>
-                        <div className="flex gap-1">
-                          <NotionButton variant="ghost" size="sm" className={`!h-auto !px-2 !py-1 text-[11px] font-medium ${previewMode === 'front' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setPreviewMode('front')}>
-                            {t('front_label')}
-                          </NotionButton>
-                          <NotionButton variant="ghost" size="sm" className={`!h-auto !px-2 !py-1 text-[11px] font-medium ${previewMode === 'back' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setPreviewMode('back')}>
-                            {t('back_label')}
-                          </NotionButton>
-                        </div>
-                      </div>
-                      <div className="border border-border/40 rounded-lg overflow-hidden">
-                        <IframePreview
-                          htmlContent={previewHtml}
-                          cssContent={debouncedFormData.css_style}
-/>
-                      </div>
-                      {codeSubTab !== 'css' && (
-                        <div className="text-[10px] text-muted-foreground/60 space-y-1">
-                          <p>{t('use_mustache_hint')}</p>
-                          <div className="flex flex-wrap gap-1">
-                            {formData.fields.map(field => (
-                              <code
-                                key={field}
-                                className="px-1.5 py-0.5 bg-muted/50 rounded text-[10px] font-mono cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
-                                onClick={() => {
-                                  copyTextToClipboard(`{{${field}}}`);
-                                }}
-                                title={t('click_to_copy')}
-                              >
-                                {`{{${field}}}`}
-                              </code>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                    <div className="p-3">
+                      {renderPreviewPanel(true)}
                     </div>
                   </div>
                   {/* 右屏：代码编辑器（portal 到 MobileSlidingLayout 的 rightPanel） */}
                   {mobileEditorPortalTarget && createPortal(
                     <div className="h-full flex flex-col">
-                      {/* 代码子 tab 切换栏 */}
-                      <div className="flex-none px-3 py-2 border-b border-border/30">
-                        <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
-                          <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'front' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('front')}>
-                            {t('front_template_title')}
-                          </NotionButton>
-                          <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'back' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('back')}>
-                            {t('back_template_title')}
-                          </NotionButton>
-                          <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'css' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('css')}>
-                            {t('css_style_title')}
-                          </NotionButton>
-                        </div>
+                      {/* 代码子 tab 切换栏 + 插入按钮条 */}
+                      <div className="flex-none px-3 py-2 border-b border-border/30 space-y-2">
+                        {renderCodeSubTabs()}
+                        {codeSubTab !== 'css' && (
+                          <TemplateEditorInsertBar
+                            fields={formData.fields}
+                            isBackTemplate={codeSubTab === 'back'}
+                            onInsertText={insertAtCursor}
+                            onWrapSelection={wrapSelection}
+                            lintIssues={lintIssues}
+/>
+                        )}
                       </div>
                       {/* 代码编辑器 */}
                       <div className="flex-1 min-h-0 overflow-hidden relative">
                         <CodeMirror
+                          ref={editorRef}
                           value={codeValue}
                           onChange={handleCodeChange}
                           extensions={cmExtensions}
@@ -685,87 +859,34 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                   )}
                 </>
               ) : (
-              /* 桌面端：左右分栏 */
+              /* 桌面端：左侧编辑 / 右侧实时预览（对标 Anki Desktop 布局） */
               <HorizontalResizable
-                initial={0.35}
-                minLeft={0.25}
-                minRight={0.4}
+                initial={0.55}
+                minLeft={0.35}
+                minRight={0.28}
                 className="h-full"
                 left={
-                  <div className="h-full w-full flex flex-col">
-                    <CustomScrollArea className="flex-1" viewportClassName="p-4">
-                      <div className="space-y-4">
-                        {/* 代码子 tab 切换 */}
-                        <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
-                          <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'front' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('front')}>
-                            {t('front_template_title')}
-                          </NotionButton>
-                          <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'back' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('back')}>
-                            {t('back_template_title')}
-                          </NotionButton>
-                          <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'css' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('css')}>
-                            {t('css_style_title')}
-                          </NotionButton>
-                        </div>
-
-                        {/* 描述提示 */}
-                        <p className="text-xs text-muted-foreground/70">
-                          {codeSubTab === 'front' && t('front_template_desc')}
-                          {codeSubTab === 'back' && t('back_template_desc')}
-                          {codeSubTab === 'css' && t('css_style_desc')}
-                        </p>
-
-                        {/* 实时预览 */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                              {t('template_preview')}
-                            </span>
-                            <div className="flex gap-1">
-                              <NotionButton variant="ghost" size="sm" className={`!h-auto !px-2 !py-1 text-[11px] font-medium ${previewMode === 'front' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setPreviewMode('front')}>
-                                {t('front_label')}
-                              </NotionButton>
-                              <NotionButton variant="ghost" size="sm" className={`!h-auto !px-2 !py-1 text-[11px] font-medium ${previewMode === 'back' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setPreviewMode('back')}>
-                                {t('back_label')}
-                              </NotionButton>
-                            </div>
-                          </div>
-                          <div className="border border-border/40 rounded-lg overflow-hidden">
-                            <IframePreview
-                              htmlContent={previewHtml}
-                              cssContent={debouncedFormData.css_style}
-/>
-                          </div>
-                        </div>
-
-                        {/* Mustache 字段提示 */}
-                        {codeSubTab !== 'css' && (
-                          <div className="text-[10px] text-muted-foreground/60 space-y-1">
-                            <p>{t('use_mustache_hint')}</p>
-                            <div className="flex flex-wrap gap-1">
-                              {formData.fields.map(field => (
-                                <code
-                                  key={field}
-                                  className="px-1.5 py-0.5 bg-muted/50 rounded text-[10px] font-mono cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
-                                  onClick={() => {
-                                    copyTextToClipboard(`{{${field}}}`);
-                                  }}
-                                  title={t('click_to_copy')}
-                                >
-                                  {`{{${field}}}`}
-                                </code>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </CustomScrollArea>
-                  </div>
-                }
-                right={
                   <div className="h-full w-full flex flex-col min-w-0">
+                    <div className="flex-none px-3 pt-3 pb-2 space-y-2 border-b border-border/30">
+                      {renderCodeSubTabs()}
+                      <p className="text-xs text-muted-foreground/70">
+                        {codeSubTab === 'front' && t('front_template_desc')}
+                        {codeSubTab === 'back' && t('back_template_desc')}
+                        {codeSubTab === 'css' && t('css_style_desc')}
+                      </p>
+                      {codeSubTab !== 'css' && (
+                        <TemplateEditorInsertBar
+                          fields={formData.fields}
+                          isBackTemplate={codeSubTab === 'back'}
+                          onInsertText={insertAtCursor}
+                          onWrapSelection={wrapSelection}
+                          lintIssues={lintIssues}
+/>
+                      )}
+                    </div>
                     <div ref={cmContainerRef} className="flex-1 min-h-0 overflow-hidden relative">
                       <CodeMirror
+                        ref={editorRef}
                         value={codeValue}
                         onChange={handleCodeChange}
                         extensions={cmExtensions}
@@ -790,6 +911,13 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
 />
                       <CodeMirrorScrollOverlay containerRef={cmContainerRef} />
                     </div>
+                  </div>
+                }
+                right={
+                  <div className="h-full w-full flex flex-col min-w-0">
+                    <CustomScrollArea className="flex-1" viewportClassName="p-4">
+                      {renderPreviewPanel(false)}
+                    </CustomScrollArea>
                   </div>
                 }
 />
@@ -844,11 +972,12 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                           <div className="form-field col-span-1">
                             <Label className="field-label">{t('field_type_label')}</Label>
                             <Select
-                              value={rule.field_type}
+                              value={isFieldType(rule.field_type) ? rule.field_type : 'Text'}
                               onValueChange={(value) => {
+                                if (!isFieldType(value)) return;
                                 setFieldExtractionRules({
                                   ...fieldExtractionRules,
-                                  [fieldName]: { ...rule, field_type: value as any }
+                                  [fieldName]: { ...rule, field_type: value }
                                 });
                               }}
                             >
@@ -857,15 +986,16 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="Text">{t('field_type.text')}</SelectItem>
-                                <SelectItem value="Integer">{t('field_type_option.integer')}</SelectItem>
-                                <SelectItem value="Float">{t('field_type_option.float')}</SelectItem>
+                                <SelectItem value="Number">{t('field_type.number')}</SelectItem>
                                 <SelectItem value="Boolean">{t('field_type.boolean')}</SelectItem>
                                 <SelectItem value="Date">{t('field_type.date')}</SelectItem>
                                 <SelectItem value="Array">{t('field_type.array')}</SelectItem>
+                                <SelectItem value="RichText">{t('field_type.rich_text')}</SelectItem>
+                                <SelectItem value="Formula">{t('field_type.formula')}</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
-                          
+
                           <div className="form-field col-span-2">
                             <Label className="field-label">{t('field_description_label')}</Label>
                             <Textarea
@@ -880,7 +1010,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                               rows={2}
 />
                           </div>
-                          
+
                           <div className="form-field col-span-1">
                             <Label className="field-label">{t('is_required_label')}</Label>
                             <div className="flex items-center gap-3">
@@ -898,7 +1028,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                               </span>
                             </div>
                           </div>
-                          
+
                           <div className="form-field col-span-2">
                             <Label className="field-label">{t('field_default_value')}</Label>
                             <Input
@@ -950,7 +1080,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                     <span className="field-hint">{t('generation_prompt_hint')}</span>
                   </div>
               </div>
-              
+
               {/* 完整提示词预览 */}
               {showPromptPreview && (
                 <div className="space-y-4 mt-4">
@@ -959,7 +1089,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                     <p className="text-xs text-muted-foreground mt-0.5">{t('full_prompt_preview_desc')}</p>
                   </div>
                     <div className="preview-content font-mono text-sm bg-muted p-4 rounded-md">
-                      {templateService.generatePrompt(formData as any)}
+                      {templateService.generatePrompt(promptPreviewTemplate)}
                     </div>
                 </div>
               )}
@@ -969,16 +1099,29 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
         </div>
 
         {/* 底部操作栏 - 固定在 editor-main 底部，不参与滚动 */}
-        <div className="flex-none px-4 py-1.5 border-t border-border/40 flex items-center justify-between">
-          <div className="footer-info">
+        <div className="flex-none px-4 py-1.5 border-t border-border/40 flex items-center justify-between gap-3">
+          <div className="footer-info flex items-center gap-3 min-w-0">
+            {isDirty && (
+              <span className="template-editor-dirty-bar" role="status">
+                <span className="template-editor-dirty-dot" aria-hidden="true" />
+                {tAnki('templateEditor.unsavedChanges')}
+                <button
+                  type="button"
+                  className="template-editor-dirty-discard"
+                  onClick={discardChanges}
+                >
+                  {tAnki('templateEditor.discardChanges')}
+                </button>
+              </span>
+            )}
             {mode === 'edit' && template && (
-              <span className="text-sm text-muted-foreground">
+              <span className="text-sm text-muted-foreground truncate">
                 {t('created_at_label', { date: new Date(template.created_at).toLocaleDateString() })} ·
                 {t('updated_at_label', { date: new Date(template.updated_at).toLocaleDateString() })}
               </span>
             )}
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 shrink-0">
             <NotionButton type="button" variant="ghost" onClick={onCancel}>
               {t('cancel_button')}
             </NotionButton>

@@ -164,6 +164,168 @@
   display: none;
 }
 
+/* ==== 运行中指示 ==== */
+
+/* 运行中会话：左缘细信息条，与置顶策略配合形成"正在工作"分区感 */
+.wb-at-row-running {
+  position: relative;
+}
+
+.wb-at-row-running::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: hsl(var(--info) / 0.55);
+  pointer-events: none;
+}
+
+/* 状态徽标内的脉冲圆点 */
+.wb-at-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: hsl(var(--info));
+  flex-shrink: 0;
+  animation: wb-at-pulse 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes wb-at-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 hsl(var(--info) / 0.45);
+  }
+  50% {
+    opacity: 0.55;
+    box-shadow: 0 0 0 3px hsl(var(--info) / 0);
+  }
+}
+
+/* ==== 进度条 ==== */
+
+.wb-at-progress-fill {
+  transition: width 500ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+/* 运行中：轨道叠加流动光带（伪元素，不干扰分段宽度） */
+.wb-at-progress-track {
+  position: relative;
+}
+
+.wb-at-progress-active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    hsl(var(--info) / 0.28) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: wb-at-shimmer 1.8s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes wb-at-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* ==== 图表 ==== */
+
+.wb-at-donut-seg {
+  transition:
+    stroke-dasharray 700ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    stroke-dashoffset 700ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    opacity 200ms ease;
+}
+
+svg:hover .wb-at-donut-seg:not(:hover) {
+  opacity: 0.75;
+}
+
+.wb-at-bar-fill {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--info) / 0.35),
+    hsl(var(--info) / 0.55)
+  );
+  transition: width 700ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.group:hover .wb-at-bar-fill {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--info) / 0.45),
+    hsl(var(--info) / 0.7)
+  );
+}
+
+/* ==== 失败分段面板 ==== */
+
+.wb-at-failed-panel {
+  padding: 8px 10px;
+  border: 1px solid hsl(var(--warning) / 0.3);
+  border-radius: 6px;
+  background: hsl(var(--warning) / 0.07);
+}
+
+.wb-at-failed-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.wb-at-failed-seg {
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-at-failed-status {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 16px;
+  color: hsl(var(--warning));
+  background: hsl(var(--warning) / 0.14);
+}
+
+.wb-at-failed-msg {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: hsl(var(--foreground) / 0.75);
+}
+
+/* ==== 降级动效 ==== */
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-at-pulse-dot,
+  .wb-at-progress-active::after {
+    animation: none;
+  }
+
+  .wb-at-progress-fill,
+  .wb-at-donut-seg,
+  .wb-at-bar-fill {
+    transition: none;
+  }
+}
+
 /* ==== 空 / 加载态 ==== */
 
 .wb-at-empty,

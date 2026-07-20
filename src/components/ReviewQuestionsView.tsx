@@ -2,11 +2,10 @@
  * 错题本视图 - Notion 风格
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from './custom-scroll-area';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import {
   Check,
   X,
@@ -183,29 +182,34 @@ const ReviewQuestionCard: React.FC<{
   return (
     <div
       className={cn(
-        'group flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors',
+        'group flex min-h-11 items-center gap-2 rounded-md px-2 py-1.5 transition-colors sm:min-h-0',
         !isSelected && 'hover:bg-accent',
         isSelected && 'bg-warning/10'
       )}
     >
-      {/* 复选框 */}
+      {/* 复选框：触控命中区 ≥44px（移动端），视觉盒保持 16px */}
       <button
         type="button"
         role="checkbox"
         aria-checked={isSelected}
         aria-label={t('review:questions.selectQuestion', { label: question.questionLabel || `Q${originalIndex + 1}` })}
-        className={cn(
-          'flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          isSelected
-            ? 'border-warning bg-warning text-warning-foreground'
-            : 'border-muted-foreground/40 text-transparent hover:border-warning'
-        )}
+        className="flex h-11 w-11 -my-2 -ml-2 shrink-0 items-center justify-center sm:h-6 sm:w-6 sm:-my-0 sm:-ml-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
         onClick={(e) => {
           e.stopPropagation();
           onSelect(!isSelected);
         }}
       >
-        {isSelected && <Check size={10} />}
+        <span
+          aria-hidden="true"
+          className={cn(
+            'flex h-4 w-4 items-center justify-center rounded-sm border transition-colors',
+            isSelected
+              ? 'border-warning bg-warning text-warning-foreground'
+              : 'border-muted-foreground/40 text-transparent hover:border-warning'
+          )}
+        >
+          {isSelected && <Check size={10} />}
+        </span>
       </button>
 
       <button type="button" onClick={onClick} disabled={!onClick} className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default">
@@ -268,8 +272,27 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
   const { t } = useTranslation(['review', 'practice', 'common']);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isOperating, setIsOperating] = useState(false);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  // 行内二次确认（无模态框）：首次点击进入待确认态，4s 后自动回退
+  const [armedAction, setArmedAction] = useState<'delete' | 'reset' | null>(null);
+  const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (armTimerRef.current) clearTimeout(armTimerRef.current);
+  }, []);
+
+  const disarm = useCallback(() => {
+    if (armTimerRef.current) clearTimeout(armTimerRef.current);
+    armTimerRef.current = null;
+    setArmedAction(null);
+  }, []);
+
+  const armAction = useCallback((action: 'delete' | 'reset') => {
+    if (armTimerRef.current) clearTimeout(armTimerRef.current);
+    setArmedAction(action);
+    armTimerRef.current = setTimeout(() => {
+      setArmedAction(null);
+      armTimerRef.current = null;
+    }, 4000);
+  }, []);
 
   // 过滤出需要复习的题目
   const reviewQuestions = useMemo(() => {
@@ -283,8 +306,9 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
     return map;
   }, [questions]);
 
-  // 切换选择
+  // 切换选择（选择集变化时撤销待确认态，避免确认数量与实际不一致）
   const toggleSelect = useCallback((id: string, selected: boolean) => {
+    disarm();
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (selected) {
@@ -294,21 +318,22 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
       }
       return next;
     });
-  }, []);
+  }, [disarm]);
 
   // 全选/取消全选
   const toggleSelectAll = useCallback(() => {
+    disarm();
     if (selectedIds.size === reviewQuestions.length) {
       setSelectedIds(new Set());
     } else {
       setSelectedIds(new Set(reviewQuestions.map(q => q.id)));
     }
-  }, [selectedIds.size, reviewQuestions]);
+  }, [selectedIds.size, reviewQuestions, disarm]);
 
   // 重置选中题目进度
   const handleResetProgress = useCallback(async () => {
     if (selectedIds.size === 0 || !onResetProgress) return;
-    setResetConfirmOpen(false);
+    disarm();
     setIsOperating(true);
     try {
       const questionIds = Array.from(selectedIds);
@@ -320,12 +345,12 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
     } finally {
       setIsOperating(false);
     }
-  }, [selectedIds, onResetProgress, t]);
+  }, [selectedIds, onResetProgress, disarm, t]);
 
   // 删除选中题目
   const handleDelete = useCallback(async () => {
     if (selectedIds.size === 0 || !onDelete) return;
-    setDeleteConfirmOpen(false);
+    disarm();
     setIsOperating(true);
     try {
       const questionIds = Array.from(selectedIds);
@@ -337,7 +362,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
     } finally {
       setIsOperating(false);
     }
-  }, [selectedIds, onDelete, t]);
+  }, [selectedIds, onDelete, disarm, t]);
 
   // 点击题目
   const handleQuestionClick = useCallback((questionId: string) => {
@@ -382,13 +407,44 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
             
             {selectedIds.size > 0 && (
               <>
-                <NotionButton variant="ghost" size="sm" onClick={() => setResetConfirmOpen(true)} disabled={isOperating || !onResetProgress} className="!h-auto !px-2 !py-1 text-xs text-info hover:bg-info/10 disabled:opacity-50">
+                {/* 行内二次确认：首次点击进入待确认态（warning/danger 高亮），再次点击执行 */}
+                <NotionButton
+                  variant={armedAction === 'reset' ? 'warning' : 'ghost'}
+                  size="sm"
+                  onClick={() => {
+                    if (armedAction === 'reset') void handleResetProgress();
+                    else armAction('reset');
+                  }}
+                  disabled={isOperating || !onResetProgress}
+                  title={armedAction === 'reset' ? t('practice:questionBank.confirmResetDescDetail', { count: selectedIds.size }) : undefined}
+                  className={cn(
+                    '!h-auto min-h-8 !px-2 !py-1 text-xs disabled:opacity-50',
+                    armedAction !== 'reset' && 'text-info hover:bg-info/10',
+                  )}
+                >
                   <ArrowClockwise className={cn('w-3 h-3', isOperating && 'animate-spin')} />
-                  {t('review:questions.reset')}
+                  {armedAction === 'reset'
+                    ? t('review:questions.confirmReset', { count: selectedIds.size })
+                    : t('review:questions.reset')}
                 </NotionButton>
-                <NotionButton variant="ghost" size="sm" onClick={() => setDeleteConfirmOpen(true)} disabled={isOperating || !onDelete} className="!h-auto !px-2 !py-1 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50">
+                <NotionButton
+                  variant={armedAction === 'delete' ? 'danger' : 'ghost'}
+                  size="sm"
+                  onClick={() => {
+                    if (armedAction === 'delete') void handleDelete();
+                    else armAction('delete');
+                  }}
+                  disabled={isOperating || !onDelete}
+                  title={armedAction === 'delete' ? t('practice:questionBank.confirmDeleteDesc', { count: selectedIds.size }) : undefined}
+                  className={cn(
+                    '!h-auto min-h-8 !px-2 !py-1 text-xs disabled:opacity-50',
+                    armedAction !== 'delete' && 'text-destructive hover:bg-destructive/10',
+                  )}
+                >
                   <Trash size={12} />
-                  {t('review:questions.delete')}
+                  {armedAction === 'delete'
+                    ? t('review:questions.confirmDelete', { count: selectedIds.size })
+                    : t('review:questions.delete')}
                 </NotionButton>
               </>
             )}
@@ -421,30 +477,6 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
           ))}
         </div>
       </CustomScrollArea>
-
-      <NotionAlertDialog
-        open={deleteConfirmOpen}
-        onOpenChange={setDeleteConfirmOpen}
-        icon={<Warning size={20} className="text-destructive" />}
-        title={t('practice:questionBank.confirmDeleteTitle')}
-        description={t('practice:questionBank.confirmDeleteDesc', { count: selectedIds.size })}
-        confirmText={t('common:delete')}
-        cancelText={t('common:cancel')}
-        confirmVariant="danger"
-        onConfirm={handleDelete}
-      />
-
-      <NotionAlertDialog
-        open={resetConfirmOpen}
-        onOpenChange={setResetConfirmOpen}
-        icon={<Warning size={20} className="text-warning" />}
-        title={t('practice:questionBank.confirmResetTitle')}
-        description={t('practice:questionBank.confirmResetDescDetail', { count: selectedIds.size })}
-        confirmText={t('practice:questionBank.resetProgress')}
-        cancelText={t('common:cancel')}
-        confirmVariant="warning"
-        onConfirm={handleResetProgress}
-      />
     </div>
   );
 };

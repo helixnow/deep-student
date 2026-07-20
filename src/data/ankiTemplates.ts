@@ -54,35 +54,17 @@ export class TemplateManager {
         }
       }
 
-      // ⚡ 自动修复模板 CSS：将 overflow:hidden 替换为 overflow:visible
-      const fixOverflowRegex = /overflow:\s*hidden\s*;/gi;
-      const templatesNeedingFix = allTemplates.filter(t => fixOverflowRegex.test(t.css_style || ''));
-
-      if (templatesNeedingFix.length > 0) {
-        const updatePromises = templatesNeedingFix.map(t => {
-          const fixedCss = (t.css_style || '').replace(fixOverflowRegex, 'overflow: visible;');
-          const patched: UpdateTemplateRequest = {
-            css_style: fixedCss,
-            expected_version: t.version
-          };
-          // 直接调用后端更新，避免递归触发 loadTemplates
-          return invoke('update_custom_template', { templateId: t.id, request: patched }).catch(err => {
-            console.error(`Failed to patch template CSS for ${t.name} (${t.id}):`, err);
-          });
-        });
-        await Promise.all(updatePromises);
-        // 将修复后的 CSS 同步到内存副本，以免界面仍然使用旧值
-        templatesNeedingFix.forEach(t => {
-          t.css_style = (t.css_style || '').replace(fixOverflowRegex, 'overflow: visible;');
-        });
-      }
+      // 注意：此处曾在启动时静默把模板 CSS 的 overflow:hidden 改写为 visible 并回写数据库，
+      // 且共享的 /gi 正则配合 .test() 存在 lastIndex 状态残留，会随机漏判/误判模板。
+      // 该逻辑已移除：溢出处理改为渲染时（非持久化）归一化，
+      // 见 src/components/anki/utils/cardFaceStyles.ts 的 normalizeCssForRender。
 
       // 更新内存中的模板
       this.customTemplates = allTemplates;
       this.userDefaultTemplateId = defaultTemplateId;
       this.notifyListeners();
 
-      console.log(`🎯 Loaded ${allTemplates.length} templates from database (CSS auto-fixed: ${templatesNeedingFix.length})`);
+      console.log(`🎯 Loaded ${allTemplates.length} templates from database`);
     } catch (error) {
       console.error('Failed to load templates from database:', error);
 

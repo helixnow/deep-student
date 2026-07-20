@@ -14,7 +14,6 @@ import type {
   AnkiGenerationOptions,
   CustomAnkiTemplate,
   AnkiCardTemplate,
-  MistakeItem,
 } from '../../types';
 
 // ============================================================================
@@ -172,48 +171,11 @@ export interface AnkiConnectSliceActions {
 }
 
 // ============================================================================
-// Import Slice Types
-// ============================================================================
-
-/**
- * 错题摘要（使用现有的 MistakeItem 类型）
- * 直接从 src/types 导入以保持兼容性
- */
-export type MistakeSummary = MistakeItem;
-
-/**
- * 导入相关状态
- */
-export interface ImportSliceState {
-  /** 错题列表 */
-  mistakeSummaries: MistakeSummary[];
-  /** 错题搜索词 */
-  mistakeSearchTerm: string;
-  /** 已选中的错题 ID 集合 */
-  selectedMistakeIds: Set<string>;
-  /** 是否正在加载错题 */
-  isLoadingMistakes: boolean;
-  /** 是否正在导入错题 */
-  isApplyingMistakeImport: boolean;
-  /** 是否显示错题导入弹窗 */
-  showMistakeImportDialog: boolean;
-}
-
-export interface ImportSliceActions {
-  setMistakeSummaries: (summaries: MistakeSummary[]) => void;
-  setMistakeSearchTerm: (term: string) => void;
-  setSelectedMistakeIds: (ids: Set<string>) => void;
-  toggleMistakeSelection: (id: string) => void;
-  selectAllMistakes: () => void;
-  clearMistakeSelection: () => void;
-  setIsLoadingMistakes: (value: boolean) => void;
-  setIsApplyingMistakeImport: (value: boolean) => void;
-  setShowMistakeImportDialog: (value: boolean) => void;
-}
-
-// ============================================================================
 // UI Slice Types
 // ============================================================================
+// ★ 2026-07 清理：错题导入功能已废弃（MistakeImportDialog 早已删除），
+//   ImportSlice（mistakeSummaries / selectedMistakeIds / showMistakeImportDialog
+//   等）与 DialogsState.mistakeImport 经 Grep 确认无任何消费者，已整体移除。
 
 /**
  * 弹窗显示状态
@@ -221,7 +183,6 @@ export interface ImportSliceActions {
 export interface DialogsState {
   templateManager: boolean;
   templatePicker: boolean;
-  mistakeImport: boolean;
   cardPreview: boolean;
   errorDetails: boolean;
   exportOptions: boolean;
@@ -306,7 +267,6 @@ export interface AnkiUIStoreState extends
   TemplateSliceState,
   CardsSliceState,
   AnkiConnectSliceState,
-  ImportSliceState,
   UISliceState,
   OptionsSliceState {}
 
@@ -318,7 +278,6 @@ export interface AnkiUIStoreActions extends
   TemplateSliceActions,
   CardsSliceActions,
   AnkiConnectSliceActions,
-  ImportSliceActions,
   UISliceActions,
   OptionsSliceActions {}
 
@@ -378,19 +337,10 @@ export function createInitialState(): AnkiUIStoreState {
     isCheckingConnection: false,
     showSettingsPanel: false,
 
-    // Import Slice
-    mistakeSummaries: [],
-    mistakeSearchTerm: '',
-    selectedMistakeIds: new Set(),
-    isLoadingMistakes: false,
-    isApplyingMistakeImport: false,
-    showMistakeImportDialog: false,
-
     // UI Slice
     dialogs: {
       templateManager: false,
       templatePicker: false,
-      mistakeImport: false,
       cardPreview: false,
       errorDetails: false,
       exportOptions: false,

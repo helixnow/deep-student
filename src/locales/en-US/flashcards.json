@@ -24,7 +24,21 @@
     "goLibrary": "Open library",
     "errors": {
       "invalidResponse": "fsrs_get_due returned an invalid response"
-    }
+    },
+    "refresh": "Refresh due queue",
+    "progressCaption": "Today's progress",
+    "ringDone": "{{done}} reviewed today, {{remaining}} still due",
+    "statDue": "Due",
+    "statNew": "New",
+    "statLearning": "Learning",
+    "streak": "{{count}}-day streak",
+    "streakHint": "Streak estimated from each card's latest review",
+    "libSummary": "{{count}} cards in library",
+    "allDone": "All reviews done for today",
+    "emptyHint": "Enqueue new cards from the library, or generate a batch in chat, to keep your daily rhythm.",
+    "goStats": "View statistics",
+    "upNext": "Up next",
+    "upNextCount": "{{count}} cards"
   },
   "library": {
     "title": "Card library",
@@ -53,6 +67,59 @@
     "page": "Page {{page}} of {{pages}}",
     "previous": "Previous",
     "next": "Next",
+    "selectCard": "Select card",
+    "selectAll": "Select page",
+    "selectedCount": "{{count}} selected",
+    "clearSelection": "Clear selection",
+    "bulkLabel": "Bulk actions",
+    "bulkReview": "Review selected ({{count}})",
+    "bulkEnqueue": "Enqueue ({{count}})",
+    "bulkSuspend": "Suspend ({{count}})",
+    "bulkResume": "Resume ({{count}})",
+    "bulkDelete": "Delete ({{count}})",
+    "bulkDeleteConfirm": "Click again to delete {{count}} cards",
+    "bulkPartialFailure": "Bulk action partially failed: {{failed}} of {{total}} did not complete ({{message}})",
+    "filter": {
+      "label": "Filter",
+      "all": "All",
+      "due": "Due",
+      "new": "New",
+      "learning": "Learning",
+      "review": "Review",
+      "suspended": "Suspended",
+      "notEnqueued": "Not enqueued"
+    },
+    "sort": {
+      "label": "Sort",
+      "due": "Due date",
+      "created": "Created",
+      "front": "Alphabetical",
+      "asc": "Ascending",
+      "desc": "Descending",
+      "reset": "Reset to default order"
+    },
+    "filteredCount": "{{shown}} of {{total}} on this page",
+    "noMatches": "No cards match the current search or filter",
+    "clearFilters": "Clear filters",
+    "expand": "Expand details",
+    "collapse": "Collapse details",
+    "edit": "Edit",
+    "editFront": "Front",
+    "editBack": "Back",
+    "editTags": "Tags (comma separated)",
+    "editEmpty": "Front and back cannot be empty",
+    "save": "Save",
+    "cancel": "Cancel",
+    "meta": {
+      "status": "Status",
+      "due": "Due",
+      "created": "Created",
+      "tags": "Tags",
+      "lastReview": "Last review"
+    },
+    "undoReview": "Undo last review",
+    "dueNow": "Due now",
+    "keyboardHint": "↑↓ navigate · Enter expand · Space select",
     "state": {
       "notEnqueued": "Not enqueued",
       "suspended": "Suspended",
@@ -127,6 +194,27 @@
     "good": "Good",
     "easy": "Easy"
   },
+  "review": {
+    "showAnswer": "Show answer",
+    "progressLabel": "Review progress",
+    "skip": "Skip this card",
+    "streak": "Streak {{count}}",
+    "streakTitle": "Consecutive non-Again answers",
+    "newCount": "New {{count}}",
+    "learnCount": "Review {{count}}",
+    "remainingTitle": "{{count}} left this round",
+    "cardTimeTitle": "Time on this card",
+    "sessionTimeTitle": "Session time {{time}}",
+    "shortcutFlip": "flip",
+    "shortcutRate": "rate",
+    "shortcutUndo": "undo",
+    "doneHint": "Nice work — here is your session recap",
+    "emptyHint": "Add or enqueue some cards from the library",
+    "statRated": "Rated",
+    "statTime": "Time",
+    "statBestStreak": "Best streak",
+    "distribution": "Rating distribution"
+  },
   "settings": {
     "title": "Flashcard settings",
     "subtitle": "Scheduling options coming later.",
@@ -149,5 +237,49 @@
     "relearning": "Relearning",
     "suspended": "Suspended",
     "total": "Total enqueued"
+  },
+  "stats": {
+    "streak": {
+      "current": "Streak",
+      "days": "{{count}} days",
+      "best": "Best {{count}} days",
+      "activeDays": "{{count}} active days"
+    },
+    "heatmap": {
+      "title": "Review heatmap",
+      "subtitle": "Activity over the past year",
+      "cell": "{{date}}: {{count}} cards",
+      "legendLess": "Less",
+      "legendMore": "More"
+    },
+    "daily": {
+      "title": "Daily reviews",
+      "subtitle": "Last {{days}} days"
+    },
+    "ratings": {
+      "title": "Rating breakdown",
+      "subtitle": "Latest rating of each card",
+      "again": "Again",
+      "hard": "Hard",
+      "good": "Good",
+      "easy": "Easy",
+      "empty": "No ratings yet"
+    },
+    "composition": {
+      "title": "Card states",
+      "center": "Total",
+      "new": "New",
+      "learning": "Learning",
+      "review": "Review",
+      "relearning": "Relearning",
+      "suspended": "Suspended"
+    },
+    "activity": {
+      "loading": "Aggregating review history…",
+      "empty": "No reviews yet — finish your first session to light this up.",
+      "unavailable": "Review history is unavailable: the backend does not expose review logs yet, so these charts rely on library data.",
+      "approxNote": "Estimated on the client from each card's latest review",
+      "truncated": "Only the most recent {{count}} cards were sampled"
+    }
   }
 }

@@ -15,7 +15,6 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils';
 import { MarkdownRenderer } from '@/features/chat/components/renderers';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Card } from '@/components/ui/shad/Card';
@@ -97,7 +96,7 @@ const RatingButton: React.FC<RatingButtonProps> = ({
     onClick={onClick}
     disabled={disabled}
     className={cn(
-      'relative !p-2 !h-auto !rounded-md flex-col !items-center !gap-1',
+      'relative !p-2 !h-auto min-h-11 !rounded-md flex-col !items-center !gap-1',
       'border',
       'disabled:opacity-50 disabled:cursor-not-allowed',
       color
@@ -252,8 +251,16 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
   // 本地状态
   const [showAnswer, setShowAnswer] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
-  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  // 退出改行内二次确认（无模态框）：首次点击进入待确认态，超时自动回退
+  const [exitArmed, setExitArmed] = useState(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 窄屏计时器默认折叠为图标，点按展开
+  const [timerExpanded, setTimerExpanded] = useState(false);
   const ratingInFlightRef = useRef(false);
+
+  useEffect(() => () => {
+    if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+  }, []);
 
   // 当前题目
   const currentItem = getCurrentItem();
@@ -370,16 +377,25 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
     onClose?.();
   }, [endSession, onClose]);
 
-  // 中途离开会丢弃剩余队列的本地进度；已提交的评分已持久化，须让用户明确确认。
+  // 中途离开会丢弃剩余队列的本地进度；已提交的评分已持久化，
+  // 用行内二次确认（点击一次进入待确认态，4s 后回退；再次点击真正退出）。
   const handleClose = useCallback(() => {
     const hasRemainingItems =
       session.isActive && session.currentIndex < session.queue.length;
-    if (hasRemainingItems) {
-      setShowExitConfirm(true);
+    if (!hasRemainingItems) {
+      finishSession();
       return;
     }
+    if (!exitArmed) {
+      setExitArmed(true);
+      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = setTimeout(() => setExitArmed(false), 4000);
+      return;
+    }
+    if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+    setExitArmed(false);
     finishSession();
-  }, [finishSession, session.currentIndex, session.isActive, session.queue.length]);
+  }, [exitArmed, finishSession, session.currentIndex, session.isActive, session.queue.length]);
 
   // 格式化时间
   const formatTime = (seconds: number) => {
@@ -432,18 +448,38 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
 
   return (
     <div className={cn('flex flex-col h-full bg-background', className)}>
-      {/* 顶部导航栏 */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-border/50">
-        <NotionButton variant="ghost" iconOnly size="sm" onClick={handleClose}>
-          <X size={20} />
-        </NotionButton>
+      {/* 顶部导航栏（窄屏：进度条弹性宽度，计时可折叠） */}
+      <div className="flex-shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50">
+        {exitArmed ? (
+          <NotionButton
+            variant="warning"
+            size="sm"
+            onClick={handleClose}
+            title={t('review:session.exitDescription')}
+            className="min-h-11 shrink-0 gap-1.5 text-xs"
+          >
+            <WarningCircle size={14} />
+            {t('review:session.exitConfirm')}
+          </NotionButton>
+        ) : (
+          <NotionButton
+            variant="ghost"
+            iconOnly
+            size="sm"
+            onClick={handleClose}
+            aria-label={t('review:session.exitTitle')}
+            className="h-11 w-11 shrink-0 sm:h-auto sm:w-auto"
+          >
+            <X size={20} />
+          </NotionButton>
+        )}
 
         {/* 进度指示器 */}
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-medium">
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-3">
+          <span className="shrink-0 text-sm font-medium tabular-nums">
             {progress.current} / {progress.total}
           </span>
-          <div className="w-32">
+          <div className="min-w-0 flex-1 max-w-[8rem]">
             <Progress
               value={(progress.current / progress.total) * 100}
               className="h-1.5"
@@ -451,11 +487,19 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
           </div>
         </div>
 
-        {/* 计时器 */}
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        {/* 计时器：<sm 折叠为图标，点按展开 */}
+        <button
+          type="button"
+          onClick={() => setTimerExpanded((v) => !v)}
+          aria-label={`${t('review:complete.time')}: ${formatTime(elapsedTime)}`}
+          aria-expanded={timerExpanded}
+          className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-md text-sm text-muted-foreground tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:pointer-events-none sm:min-h-0"
+        >
           <Clock size={16} />
-          {formatTime(elapsedTime)}
-        </div>
+          <span className={cn(!timerExpanded && 'hidden', 'sm:inline')}>
+            {formatTime(elapsedTime)}
+          </span>
+        </button>
       </div>
 
       {/* 状态栏 */}
@@ -500,13 +544,16 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             </div>
           </div>
 
-          {/* 答案区域 */}
+          {/* 答案区域：grid-rows 技巧实现 0 → auto 高度的 200ms 展开动画 */}
           <div
             className={cn(
-              'border-t border-border/50 pt-4 transition-all duration-200',
-              showAnswer ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden pt-0 border-t-0'
+              'grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none',
+              showAnswer
+                ? 'grid-rows-[1fr] opacity-100 border-t border-border/50 pt-4'
+                : 'grid-rows-[0fr] opacity-0'
             )}
           >
+            <div className="min-h-0 overflow-hidden">
             {showAnswer && (
               <>
                 {/* 答案 */}
@@ -538,19 +585,20 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 )}
               </>
             )}
+            </div>
           </div>
         </Card>
       </div>
 
-      {/* 底部操作区 */}
-      <div className="flex-shrink-0 border-t border-border/50 bg-muted/20 p-4">
+      {/* 底部操作区（移动端手势导航安全区） */}
+      <div className="flex-shrink-0 border-t border-border/50 bg-muted/20 p-4 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]">
         {!showAnswer ? (
           /* 显示答案按钮 */
           <div className="flex items-center justify-center gap-3">
             <NotionButton
               variant="outline"
               onClick={handleSkip}
-              className="gap-2"
+              className="min-h-11 gap-2"
             >
               <SkipForward size={16} />
               {t('review:action.skip')}
@@ -558,7 +606,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             <NotionButton
               size="sm"
               onClick={() => setShowAnswer(true)}
-              className="gap-2 min-w-[160px]"
+              className="min-h-11 gap-2 min-w-[160px]"
             >
               <Eye size={16} />
               {t('review:action.showAnswer')}
@@ -621,20 +669,6 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
           </div>
         )}
       </div>
-      <NotionAlertDialog
-        open={showExitConfirm}
-        onOpenChange={setShowExitConfirm}
-        icon={<WarningCircle size={20} className="text-warning" />}
-        title={t('review:session.exitTitle')}
-        description={t('review:session.exitDescription')}
-        confirmText={t('review:session.exitConfirm')}
-        cancelText={t('common:cancel')}
-        confirmVariant="warning"
-        onConfirm={() => {
-          setShowExitConfirm(false);
-          finishSession();
-        }}
-      />
     </div>
   );
 };
