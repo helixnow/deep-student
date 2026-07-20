@@ -61,11 +61,11 @@
     "redoDisabled": "Nothing to redo"
   },
   "preferences": {
-    "mubuKeymap": "Mubu-compatible keymap",
+    "classicKeymap": "Classic outline keymap",
     "spatialNavigation": "Spatial canvas arrow navigation",
     "descriptionFirstLine": "Preview first description line only",
-    "mubuKeymapActive": "Mubu keymap: Cmd+Enter completes, Shift+Enter edits description, Cmd+[/] focuses; Alt+[/] folds.",
-    "deepStudentKeymapActive": "Deep Student default (not Mubu): Cmd+Enter adds a child, Shift+Enter inserts a line; Alt+[/] folds."
+    "classicKeymapActive": "Classic outline keymap: Cmd+Enter completes, Shift+Enter edits description, Cmd+[/] focuses; Alt+[/] folds.",
+    "deepStudentKeymapActive": "Deep Student default keymap: Cmd+Enter adds a child, Shift+Enter inserts a line; Alt+[/] folds."
   },
   "export": {
     "title": "Export",
@@ -92,9 +92,9 @@
     "processing": "Exporting...",
     "exportJson": "Export JSON",
     "exportSvg": "Export SVG",
-    "exportXmind": "Export XMind",
-    "dialogExportXmind": "Export XMind",
-    "filterXmind": "XMind File",
+    "exportXmind": "Export .xmind",
+    "dialogExportXmind": "Export .xmind",
+    "filterXmind": ".xmind mind map package",
     "exportPdf": "Export PDF",
     "pdfPrintHint": "The system print dialog will open; choose \"Save as PDF\"",
     "pdfPrintDegradeHint": "The system print dialog will open; choose \"Save as PDF\". If no dialog appears, PDF export may not be supported on this system — use PNG/SVG instead",
@@ -116,9 +116,9 @@
     "unsavedTitle": "Import will overwrite unsaved changes",
     "unsavedConfirm": "Continue import",
     "unnamedTopic": "Untitled topic",
-    "multiSheetNote": "Merged from {{count}} XMind sheets: {{titles}}",
+    "multiSheetNote": "Merged from {{count}} .xmind sheets: {{titles}}",
     "labelsNote": "Labels: {{labels}}",
-    "markersNote": "XMind markers: {{markers}}",
+    "markersNote": ".xmind markers: {{markers}}",
     "saveAndImport": "Save & Import"
   },
   "presentation": {
@@ -265,8 +265,8 @@
     "defaultDark": "Default (Dark)",
     "minimalDark": "Minimal (Dark)",
     "colorfulDark": "Colorful (Dark)",
-    "notionDark": "Notion Dark",
-    "notionLight": "Notion Light",
+    "cardDark": "Card Dark",
+    "cardLight": "Card Light",
     "minimalWhite": "Minimal White",
     "minimalBlack": "Minimal Black",
     "paper": "Paper & Ink",
@@ -394,6 +394,7 @@
     "pickTarget": "Click a target node",
     "editLabel": "Edit label",
     "delete": "Delete association",
+    "closeActions": "Close",
     "labelPlaceholder": "Label",
     "doubleClickHint": "Double-click to edit"
   },
@@ -405,7 +406,8 @@
     "empty": "No resources",
     "loadFailed": "Failed to load resources",
     "searchFailed": "Resource search failed",
-    "unavailable": "Resource deleted or unavailable"
+    "unavailable": "Resource deleted or unavailable",
+    "remove": "Remove resource “{{name}}”"
   },
   "node": {
     "unnamed": "Unnamed",
@@ -481,7 +483,7 @@
     },
     "export": {
       "group": "Export as…",
-      "xmindDone": "XMind file exported"
+      "xmindDone": ".xmind file exported"
     },
     "clipboard": {
       "copiedNodes_one": "Copied {{count}} node",

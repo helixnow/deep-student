@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-export type MindMapKeymap = 'deep-student' | 'mubu';
+export type MindMapKeymap = 'deep-student' | 'classic';
 export type MindMapCanvasNavigation = 'document' | 'spatial';
 export type MindMapDescriptionPreview = 'full' | 'first-line';
 
@@ -18,10 +18,14 @@ const DEFAULTS: MindMapPreferences = {
   descriptionPreview: 'full',
 };
 
-function readStored(): Partial<MindMapPreferences> {
+type StoredMindMapPreferences = Omit<Partial<MindMapPreferences>, 'keymap'> & {
+  keymap?: MindMapKeymap | 'mubu';
+};
+
+function readStored(): StoredMindMapPreferences {
   try {
     const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) as Partial<MindMapPreferences> : {};
+    return raw ? JSON.parse(raw) as StoredMindMapPreferences : {};
   } catch {
     return {};
   }
@@ -29,8 +33,17 @@ function readStored(): Partial<MindMapPreferences> {
 
 export function getMindMapPreferences(): MindMapPreferences {
   const stored = readStored();
+  const migratedLegacyKeymap = stored.keymap === 'mubu';
+  const keymap = migratedLegacyKeymap ? 'classic' : DEFAULTS.keymap;
+  if (migratedLegacyKeymap) {
+    try {
+      globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify({ ...stored, keymap }));
+    } catch {
+      // The in-memory migration remains usable if storage is unavailable.
+    }
+  }
   return {
-    keymap: stored.keymap === 'mubu' ? 'mubu' : DEFAULTS.keymap,
+    keymap,
     canvasNavigation: stored.canvasNavigation === 'spatial' ? 'spatial' : DEFAULTS.canvasNavigation,
     descriptionPreview: stored.descriptionPreview === 'first-line' ? 'first-line' : DEFAULTS.descriptionPreview,
   };

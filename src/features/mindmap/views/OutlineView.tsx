@@ -19,6 +19,10 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from '@/hooks/useTouchFriendlyDndSensors';
+import {
+  BACK_PRIORITY,
+  registerBackHandler,
+} from '@/app/navigation/androidBackCoordinator';
 import { useMindMapStore, useMindMapStoreApi } from '../store';
 import { cn } from '@/lib/utils';
 import { ListBullets } from '@phosphor-icons/react';
@@ -374,6 +378,30 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     currentSearchIndex >= 0 ? (searchResults[currentSearchIndex] ?? null) : null;
   const isMultiSelectActive = selection.length > 1;
 
+  // 触屏大纲没有画布式底部节点工具条；系统返回先清除行焦点/多选，
+  // 再由父级处理分支专注或离开导图，避免一次返回直接丢失当前上下文。
+  useEffect(() => {
+    if (
+      !outlineKeyboardActive ||
+      reciteMode ||
+      (!focusedNodeId && selection.length === 0)
+    ) {
+      return;
+    }
+    return registerBackHandler(() => {
+      setFocusedNodeId(null);
+      setSelection([]);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [
+    focusedNodeId,
+    outlineKeyboardActive,
+    reciteMode,
+    selection.length,
+    setFocusedNodeId,
+    setSelection,
+  ]);
+
   // 搜索命中定位：当前命中变化时把对应行滚到视口中部。
   // 搜索期间焦点在搜索框里，行级聚焦 effect 不会接管滚动，这里补上。
   useEffect(() => {
@@ -628,7 +656,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     setResourcePickerNodeId(nodeId);
   }, []);
 
-  // Workflowy 式「幽灵新行」：点击列表底部空行在当前范围末尾新增同级
+  // 「幽灵新行」：点击列表底部空行在当前范围末尾新增同级
   const handleGhostRowClick = useCallback(() => {
     const state = storeApi.getState();
     const root = state.viewRootId
@@ -778,7 +806,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     setOffsetLeft(event.delta.x);
   }, []);
 
-  // 拖拽悬停折叠节点 ≈600ms 自动展开（Workflowy/Finder spring-loading），
+  // 拖拽悬停折叠节点 ≈600ms 自动展开（spring-loading），
   // 无需先放手展开再重新拖拽；skipHistory 不污染 undo 栈。
   const dragExpandRef = useRef<{ nodeId: string; timer: number } | null>(null);
   const clearDragExpandTimer = useCallback(() => {
@@ -951,7 +979,10 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
 
       <CustomScrollArea
         className="flex-1"
-        viewportClassName="p-4 md:px-12 md:py-8"
+        viewportClassName={cn(
+          'p-4 md:px-12 md:py-8',
+          isMultiSelectActive && 'outline-has-multiselect',
+        )}
         viewportRef={setScrollViewport}
       >
         <DndContext
@@ -1014,7 +1045,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
                 />
               ))}
 
-              {/* Workflowy 式幽灵新行：点击在当前范围末尾新增（拖拽/背诵时隐藏） */}
+              {/* 幽灵新行：点击在当前范围末尾新增（拖拽/背诵时隐藏） */}
               {!hasOnlyRoot && !reciteMode && !activeId && (
                 <div
                   className="outline-ghost-row"

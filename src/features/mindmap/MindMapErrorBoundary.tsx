@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import i18next from 'i18next';
 import { reportFrontendError } from '@/logging/errorReporter';
 
@@ -69,14 +69,14 @@ export class MindMapErrorBoundary extends React.Component<
                 {this.state.error.message}
               </p>
             )}
-            <NotionButton
+            <DsButton
               variant="default"
               onClick={this.handleReset}
               className="mt-1"
             >
               <ArrowClockwise size={16} className="mr-2" />
               {i18next.t('mindmap:retryLoad')}
-            </NotionButton>
+            </DsButton>
             {import.meta.env.DEV && this.state.errorInfo && (
               <details className="mt-2 w-full text-xs text-muted-foreground text-left">
                 <summary className="cursor-pointer">{i18next.t('mindmap:errorDetails')}</summary>

@@ -40,7 +40,7 @@ import {
   Highlighter,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useMindMapStore } from '../../store';
 import { findNodeById, findParentNode } from '../../utils/node/find';
@@ -68,7 +68,7 @@ const PanelRow: React.FC<{
   active?: boolean;
   onClick: () => void;
 }> = ({ icon, label, destructive, disabled, active, onClick }) => (
-  <NotionButton
+  <DsButton
     variant="ghost"
     className={cn(
       'mm-mobile-panel-row',
@@ -81,7 +81,7 @@ const PanelRow: React.FC<{
     <span className="w-5 h-5 flex-shrink-0 flex items-center justify-center">{icon}</span>
     <span className="flex-1 text-left">{label}</span>
     {active && <span className="text-[var(--mm-primary)] text-xs">✓</span>}
-  </NotionButton>
+  </DsButton>
 );
 
 export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
@@ -264,7 +264,7 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
               { key: 'underline', icon: TextUnderline, prop: 'textDecoration' as const, val: 'underline', cur: node.style?.textDecoration },
               { key: 'strikethrough', icon: TextStrikethrough, prop: 'textDecoration' as const, val: 'line-through', cur: node.style?.textDecoration },
             ].map(({ key, icon: Icon, prop, val, cur }) => (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 key={key}
                 className={cn('mm-mobile-format-btn', cur === val && 'is-active')}
@@ -275,11 +275,11 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
                 aria-pressed={cur === val}
               >
                 <Icon size={18} />
-              </NotionButton>
+              </DsButton>
             ))}
             <div className="w-px h-5 bg-[var(--mm-border)] mx-1" />
             {([['h1', TextHOne], ['h2', TextHTwo], ['h3', TextHThree]] as const).map(([level, Icon]) => (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 key={level}
                 className={cn('mm-mobile-format-btn', node.style?.headingLevel === level && 'is-active')}
@@ -295,9 +295,9 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
                 aria-pressed={node.style?.headingLevel === level}
               >
                 <Icon size={18} />
-              </NotionButton>
+              </DsButton>
             ))}
-            <NotionButton
+            <DsButton
               variant="ghost"
               className={cn('mm-mobile-format-btn', !node.style?.headingLevel && 'is-active')}
               onClick={() => updateNode(nodeId, { style: { ...node.style, headingLevel: undefined } })}
@@ -305,7 +305,7 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
               aria-pressed={!node.style?.headingLevel}
             >
               <TextT size={18} />
-            </NotionButton>
+            </DsButton>
           </div>
           <div className="flex items-center gap-2 px-2 pt-1.5 pb-0.5 text-[13px] text-[var(--mm-text-muted)] select-none">
             <Palette size={16} className="flex-shrink-0" />
@@ -329,11 +329,11 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
       )}
 
       <div className="mm-mobile-toolbar-row">
-        <NotionButton variant="ghost" className="mm-mobile-toolbar-btn" onClick={handleAddChild}>
+        <DsButton variant="ghost" className="mm-mobile-toolbar-btn" onClick={handleAddChild}>
           <Plus size={18} />
           <span>{t('actions.addChild')}</span>
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost"
           className="mm-mobile-toolbar-btn"
           disabled={isRoot}
@@ -341,12 +341,12 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
         >
           <PlusCircle size={18} />
           <span>{t('contextMenu.addSibling')}</span>
-        </NotionButton>
-        <NotionButton variant="ghost" className="mm-mobile-toolbar-btn" onClick={handleEdit}>
+        </DsButton>
+        <DsButton variant="ghost" className="mm-mobile-toolbar-btn" onClick={handleEdit}>
           <Pencil size={18} />
           <span>{t('contextMenu.edit')}</span>
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost"
           className={cn('mm-mobile-toolbar-btn', panel === 'style' && 'is-active')}
           onClick={() => onPanelChange(panel === 'style' ? null : 'style')}
@@ -354,8 +354,8 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
         >
           <Palette size={18} />
           <span>{t('toolbar.style')}</span>
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost"
           className={cn(
             'mm-mobile-toolbar-btn destructive',
@@ -371,8 +371,8 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
               ? t('canvasV2.tapAgainToDelete', { defaultValue: '再点确认' })
               : t('actions.delete')}
           </span>
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost"
           className={cn('mm-mobile-toolbar-btn', panel === 'more' && 'is-active')}
           onClick={() => onPanelChange(panel === 'more' ? null : 'more')}
@@ -380,7 +380,7 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
         >
           <DotsThree size={18} />
           <span>{t('node.moreActions')}</span>
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );

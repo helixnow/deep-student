@@ -20,8 +20,8 @@
  * - 画布视图：`Tab` 唯一语义是「添加子节点」（多选时批量缩进由 batchOps 行说明，
  *   缩进的键位入口是 `alt+ArrowRight`）；
  * - 大纲视图：`Tab` 唯一语义是「缩进」；添加子节点是 `mod+Enter`
- *   （mubu 键位为 `mod+shift+Enter`）。
- * 两视图语义刻意分叉（画布对标 XMind、大纲对标幕布），本表按视图分列，
+ *   （经典大纲键位为 `mod+shift+Enter`）。
+ * 两视图语义刻意分叉，本表按视图分列，
  * 不再出现同一视图内一键两义的声明。
  */
 
@@ -125,19 +125,19 @@ const GENERAL_BINDINGS: ShortcutBinding[] = [
 
 /**
  * 画布视图（useMindMapKeyboard + useMindMapClipboard 的真实行为）。
- * mubu 差异：mod+Enter=完成、mod+shift+Enter=加子、mod+[/]=聚焦下钻/返回。
+ * 经典大纲键位差异：mod+Enter=完成、mod+shift+Enter=加子、mod+[/]=聚焦下钻/返回。
  */
 const CANVAS_BINDINGS: ShortcutBinding[] = [
   { action: 'addSibling', labelKey: 'addSiblingOrEdit', keys: ['Enter'] },
   {
     action: 'addChild', labelKey: 'addChild',
     keys: ['Tab', 'mod+Enter'],
-    keymapKeys: { mubu: ['Tab', 'mod+shift+Enter'] },
+    keymapKeys: { classic: ['Tab', 'mod+shift+Enter'] },
   },
   {
     action: 'toggleComplete', labelKey: 'toggleComplete',
     keys: [],
-    keymapKeys: { mubu: ['mod+Enter'] },
+    keymapKeys: { classic: ['mod+Enter'] },
   },
   { action: 'edit', labelKey: 'editNode', keys: ['F2', 'Space'] },
   { action: 'note', labelKey: 'editNote', keys: ['shift+Enter'] },
@@ -155,32 +155,32 @@ const CANVAS_BINDINGS: ShortcutBinding[] = [
   {
     action: 'collapse', labelKey: 'collapse',
     keys: ['mod+[', 'alt+['],
-    keymapKeys: { mubu: ['alt+['] },
+    keymapKeys: { classic: ['alt+['] },
   },
   {
     action: 'expand', labelKey: 'expand',
     keys: ['mod+]', 'alt+]'],
-    keymapKeys: { mubu: ['alt+]'] },
+    keymapKeys: { classic: ['alt+]'] },
   },
   {
     action: 'collapseAll', labelKey: 'collapseAll',
     keys: ['mod+shift+[', 'alt+shift+['],
-    keymapKeys: { mubu: ['alt+shift+['] },
+    keymapKeys: { classic: ['alt+shift+['] },
   },
   {
     action: 'expandAll', labelKey: 'expandAll',
     keys: ['mod+shift+]', 'alt+shift+]'],
-    keymapKeys: { mubu: ['alt+shift+]'] },
+    keymapKeys: { classic: ['alt+shift+]'] },
   },
   {
     action: 'drillIn', labelKey: 'drillIn',
     keys: [],
-    keymapKeys: { mubu: ['mod+]'] },
+    keymapKeys: { classic: ['mod+]'] },
   },
   {
     action: 'drillOut', labelKey: 'drillOut',
     keys: [],
-    keymapKeys: { mubu: ['mod+['] },
+    keymapKeys: { classic: ['mod+['] },
   },
   { action: 'bold', labelKey: 'bold', keys: ['mod+b'] },
   { action: 'italic', labelKey: 'italic', keys: ['mod+i'] },
@@ -197,24 +197,24 @@ const CANVAS_BINDINGS: ShortcutBinding[] = [
 
 /**
  * 大纲视图（OutlineView / SortableOutlineNode 编辑态行为）。
- * mubu 差异：mod+Enter=完成、shift+Enter=备注、mod+shift+Enter=加子、mod+[/]=缩放。
+ * 经典大纲键位差异：mod+Enter=完成、shift+Enter=备注、mod+shift+Enter=加子、mod+[/]=缩放。
  */
 const OUTLINE_BINDINGS: ShortcutBinding[] = [
   { action: 'addSibling', labelKey: 'addSiblingOrSplit', keys: ['Enter'] },
   {
     action: 'addChild', labelKey: 'addChild',
     keys: ['mod+Enter'],
-    keymapKeys: { mubu: ['mod+shift+Enter'] },
+    keymapKeys: { classic: ['mod+shift+Enter'] },
   },
   {
     action: 'toggleComplete', labelKey: 'toggleComplete',
     keys: [],
-    keymapKeys: { mubu: ['mod+Enter'] },
+    keymapKeys: { classic: ['mod+Enter'] },
   },
   {
     action: 'note', labelKey: 'editNote',
     keys: ['mod+shift+Enter'],
-    keymapKeys: { mubu: ['shift+Enter'] },
+    keymapKeys: { classic: ['shift+Enter'] },
   },
   { action: 'indent', labelKey: 'indent', keys: ['Tab', 'alt+ArrowRight'] },
   { action: 'outdent', labelKey: 'outdent', keys: ['shift+Tab', 'alt+ArrowLeft'] },
@@ -228,22 +228,22 @@ const OUTLINE_BINDINGS: ShortcutBinding[] = [
   {
     action: 'collapse', labelKey: 'collapse',
     keys: ['mod+[', 'alt+['],
-    keymapKeys: { mubu: ['alt+['] },
+    keymapKeys: { classic: ['alt+['] },
   },
   {
     action: 'expand', labelKey: 'expand',
     keys: ['mod+]', 'alt+]'],
-    keymapKeys: { mubu: ['alt+]'] },
+    keymapKeys: { classic: ['alt+]'] },
   },
   {
     action: 'drillIn', labelKey: 'drillIn',
     keys: [],
-    keymapKeys: { mubu: ['mod+]'] },
+    keymapKeys: { classic: ['mod+]'] },
   },
   {
     action: 'drillOut', labelKey: 'drillOut',
     keys: [],
-    keymapKeys: { mubu: ['mod+['] },
+    keymapKeys: { classic: ['mod+['] },
   },
   // 大纲编辑态无文本选区时，Cmd+C/X/V 作用于节点树（有选区时保持原生文本行为）
   { action: 'copy', labelKey: 'copy', keys: ['mod+c'] },
@@ -457,7 +457,7 @@ function toLegacyRecord(groups: ShortcutBinding[][]): Partial<Record<ShortcutAct
 }
 
 /**
- * 全量动作 → 键位映射（deep-student 视角；mubu 专属动作以 mubu 键位补齐）。
+ * 全量动作 → 键位映射（deep-student 视角；经典大纲专属动作以对应键位补齐）。
  * 仅为兼容旧消费方保留；新代码请使用 getShortcutGroups / resolveShortcutKeys。
  */
 export const SHORTCUTS: Record<ShortcutAction, string[]> = {
@@ -465,7 +465,7 @@ export const SHORTCUTS: Record<ShortcutAction, string[]> = {
     ShortcutAction,
     string[]
   >),
-  // deep-student 下为空的 mubu 专属动作，用 mubu 键位补齐（保持旧表的可查性）
+  // deep-student 下为空的经典大纲专属动作，用对应键位补齐（保持旧表的可查性）
   toggleComplete: ['mod+Enter'],
   drillIn: ['mod+]'],
   drillOut: ['mod+['],

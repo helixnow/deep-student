@@ -1,8 +1,13 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import {
+  BACK_PRIORITY,
+  registerBackHandler,
+} from '@/app/navigation/androidBackCoordinator';
 import { useMindMapStore } from '../../store';
+import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { StyleRegistry } from '../../registry';
 import { ensureInitialized } from '../../init';
 import { 
@@ -71,7 +76,7 @@ const ColorPicker: React.FC<{
     <div className="mm-style-label">{label}</div>
     <div className="mm-style-swatches">
       {colors.map((color) => (
-        <NotionButton variant="ghost"
+        <DsButton variant="ghost"
           key={color}
           className={cn(
             "mm-style-swatch",
@@ -85,7 +90,7 @@ const ColorPicker: React.FC<{
           {color === 'inherit' && (
             <span className="flex items-center justify-center w-full h-full text-[10px] text-muted-foreground">A</span>
           )}
-        </NotionButton>
+        </DsButton>
       ))}
     </div>
   </div>
@@ -104,6 +109,7 @@ export const StyleSettings: React.FC<{
   onOpenChange?: (open: boolean) => void;
 }> = ({ className, trigger, placement = 'bottom-right', open: controlledOpen, onOpenChange }) => {
   const { t } = useTranslation('mindmap');
+  const isMindMapActive = useMindMapIsActive();
   const [internalOpen, setInternalOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -198,6 +204,14 @@ export const StyleSettings: React.FC<{
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, setIsOpen]);
 
+  useEffect(() => {
+    if (!isOpen || isInline || !isMindMapActive) return;
+    return registerBackHandler(() => {
+      setIsOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isInline, isMindMapActive, isOpen, setIsOpen]);
+
   // 视口钳位：锚定面板贴近窗口边缘时向内平移，防止右缘/左缘被裁切
   // 用独立的 translate 属性修正，避免与 ui-zoom-fade-in 的 transform 动画互相覆盖
   useLayoutEffect(() => {
@@ -249,7 +263,7 @@ export const StyleSettings: React.FC<{
         <h4 className="mm-style-heading">{t('style.globalTheme')}</h4>
         <div className="mm-theme-list">
           {themes.map(theme => (
-            <NotionButton variant="ghost"
+            <DsButton variant="ghost"
               key={theme.id}
               onClick={() => setStyleId(theme.id)}
               className={cn(
@@ -263,7 +277,7 @@ export const StyleSettings: React.FC<{
                 <span className="truncate">{t(theme.name)}</span>
               </span>
               {styleId === theme.id && <Check className="w-3 h-3 shrink-0" />}
-            </NotionButton>
+            </DsButton>
           ))}
         </div>
       </div>
@@ -282,9 +296,17 @@ export const StyleSettings: React.FC<{
             <TextT className="w-4 h-4 text-muted-foreground ml-1" />
             <input
               type="number"
+              min={8}
+              max={72}
+              step={1}
+              inputMode="numeric"
               className="mm-font-size-input"
               value={focusedNode.style?.fontSize || 14}
-              onChange={(e) => handleNodeStyleUpdate({ fontSize: parseInt(e.target.value) })}
+              onChange={(e) => {
+                const value = e.currentTarget.valueAsNumber;
+                if (!Number.isFinite(value)) return;
+                handleNodeStyleUpdate({ fontSize: Math.min(72, Math.max(8, value)) });
+              }}
             />
           </div>
 
@@ -296,7 +318,7 @@ export const StyleSettings: React.FC<{
               { key: 'underline', icon: TextUnderline, prop: 'textDecoration' as const, val: 'underline', cur: focusedNode.style?.textDecoration },
               { key: 'strikethrough', icon: TextStrikethrough, prop: 'textDecoration' as const, val: 'line-through', cur: focusedNode.style?.textDecoration },
             ].map(({ key, icon: Icon, prop, val, cur }) => (
-              <NotionButton variant="ghost" key={key}
+              <DsButton variant="ghost" key={key}
                 onClick={() => handleNodeStyleUpdate({ [prop]: cur === val ? undefined : val })}
                 className={cn(
                   "mm-style-icon-button",
@@ -305,7 +327,7 @@ export const StyleSettings: React.FC<{
                     : ""
                 )}
                 title={t(`contextMenu.${key}`)}
-              ><Icon className="w-4 h-4" /></NotionButton>
+              ><Icon className="w-4 h-4" /></DsButton>
             ))}
           </div>
 
@@ -314,7 +336,7 @@ export const StyleSettings: React.FC<{
             <div className="mm-style-label">{t('contextMenu.headingLevel')}</div>
             <div className="mm-style-button-row">
               {([['h1', TextHOne], ['h2', TextHTwo], ['h3', TextHThree]] as const).map(([level, Icon]) => (
-                <NotionButton variant="ghost" key={level}
+                <DsButton variant="ghost" key={level}
                   onClick={() => handleNodeStyleUpdate({ headingLevel: focusedNode.style?.headingLevel === level ? undefined : level })}
                   className={cn(
                     "mm-style-icon-button",
@@ -323,9 +345,9 @@ export const StyleSettings: React.FC<{
                       : ""
                   )}
                   title={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
-                ><Icon className="w-4 h-4" /></NotionButton>
+                ><Icon className="w-4 h-4" /></DsButton>
               ))}
-              <NotionButton variant="ghost"
+              <DsButton variant="ghost"
                 onClick={() => handleNodeStyleUpdate({ headingLevel: undefined })}
                 className={cn(
                   "mm-style-icon-button",
@@ -334,7 +356,7 @@ export const StyleSettings: React.FC<{
                     : ""
                 )}
                 title={t('contextMenu.normalText')}
-              ><TextT className="w-4 h-4" /></NotionButton>
+              ><TextT className="w-4 h-4" /></DsButton>
             </div>
           </div>
 
@@ -376,7 +398,7 @@ export const StyleSettings: React.FC<{
       {trigger ? (
         <div onClick={() => setIsOpen(!isOpen)}>{trigger}</div>
       ) : (
-        <NotionButton variant="ghost"
+        <DsButton variant="ghost"
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
             'flex items-center gap-2 px-2 h-7 rounded',
@@ -391,7 +413,7 @@ export const StyleSettings: React.FC<{
           <Palette className="w-4 h-4 text-muted-foreground" />
           <span>{t('toolbar.style')}</span>
           <CaretDown className={cn('w-4 h-4 transition-transform duration-200', isOpen && 'rotate-180')} />
-        </NotionButton>
+        </DsButton>
       )}
 
       {/* 弹出面板（桌面锚定 popover；窄屏由外壳的 inline 子屏承载，不再走底部 sheet + 遮罩） */}

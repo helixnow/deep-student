@@ -1,5 +1,5 @@
 /**
- * 搜索过滤视图工具（Workflowy 风格：匹配节点 + 祖先路径）
+ * 搜索过滤视图工具（匹配节点 + 祖先路径）
  */
 
 import type { MindMapNode } from '../types';

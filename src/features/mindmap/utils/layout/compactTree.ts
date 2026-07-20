@@ -24,8 +24,8 @@
  *   平衡布局左右分支互不牵拉。
  * - 自底向上递归；每层紧凑完成后立即将父节点重居中于直接子节点
  *  （与 recenterParents 同公式），保证上层比较使用最终坐标。
- * - 默认开启（config.compactSiblings !== false）。理由：紧凑度是对标
- *   XMind 的核心差距，且算法只在既有安全间距内收紧、无重叠风险；
+ * - 默认开启（config.compactSiblings !== false）。理由：紧凑度符合常见导图
+ *   常见导图软件的核心差距，且算法只在既有安全间距内收紧、无重叠风险；
  *   如需回退旧观感，上层传 { compactSiblings: false } 即可。
  */
 

@@ -16,7 +16,7 @@ import {
   Trash,
   X,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { tweenFast, transitionInstant } from '@/styles/motion-springs';
 
 const DELETE_CONFIRM_AUTO_DISMISS_MS = 6000;
@@ -96,7 +96,7 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
                 defaultValue: '删除 {{count}} 项及其子节点？',
               })}
             </span>
-            <NotionButton
+            <DsButton
               variant="danger"
               size="sm"
               className="gap-1.5"
@@ -107,15 +107,15 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             >
               <Trash size={14} />
               {t('outlineV2.confirmDelete', { defaultValue: '删除' })}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               ref={cancelRef}
               variant="utility"
               size="sm"
               onClick={() => setConfirmingDelete(false)}
             >
               {t('outlineV2.cancel', { defaultValue: '取消' })}
-            </NotionButton>
+            </DsButton>
           </motion.div>
         ) : (
           <motion.div
@@ -129,7 +129,7 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             <span className="outline-multiselect-count">
               {t('outline.selectedCount', { count })}
             </span>
-            <NotionButton
+            <DsButton
               variant="ghost"
               className="outline-multiselect-btn"
               onClick={onComplete}
@@ -137,8 +137,8 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             >
               <CheckCircle size={16} />
               <span>{t('outline.batchComplete')}</span>
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               className="outline-multiselect-btn"
               onClick={onIndent}
@@ -146,8 +146,8 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             >
               <TextIndent size={16} />
               <span>{t('mindmap:outline.batchIndent', { defaultValue: '缩进' })}</span>
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               className="outline-multiselect-btn"
               onClick={onOutdent}
@@ -155,8 +155,8 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             >
               <TextOutdent size={16} />
               <span>{t('mindmap:outline.batchOutdent', { defaultValue: '反缩进' })}</span>
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               className="outline-multiselect-btn"
               onClick={onCopy}
@@ -164,8 +164,8 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             >
               <Copy size={16} />
               <span>{t('mindmap:outline.batchCopy', { defaultValue: '复制' })}</span>
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               className="outline-multiselect-btn"
               onClick={onCollapse}
@@ -173,8 +173,8 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             >
               <ArrowsInLineVertical size={16} />
               <span>{t('mindmap:outline.batchCollapse', { defaultValue: '折叠' })}</span>
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               className="outline-multiselect-btn destructive"
               onClick={() => setConfirmingDelete(true)}
@@ -182,8 +182,8 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             >
               <Trash size={16} />
               <span>{t('actions.delete')}</span>
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               className="outline-multiselect-btn"
               onClick={onClear}
@@ -191,7 +191,7 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
               aria-label={t('outline.clearSelection')}
             >
               <X size={16} />
-            </NotionButton>
+            </DsButton>
           </motion.div>
         )}
       </AnimatePresence>

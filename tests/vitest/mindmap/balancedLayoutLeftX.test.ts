@@ -105,7 +105,7 @@ describe('BalancedLayoutEngine left X', () => {
     expect(wideNode.position.x).toBeLessThan(shortNode.position.x);
   });
 
-  it('sends a single child to the right side (XMind convention)', () => {
+  it('sends a single child to the right side (tree layout convention)', () => {
     const only = leaf('only', 'Solo');
     const root: MindMapNode = { id: 'root3', text: 'Root', children: [only] };
 

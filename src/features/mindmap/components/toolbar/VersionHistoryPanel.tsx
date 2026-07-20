@@ -24,7 +24,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { motionSafe, tweenFast } from '@/styles/motion-springs';
 import { useMindMapStoreApi } from '../../store';
@@ -271,22 +271,22 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
       role="region"
       aria-label={t('mindmap:versions.title')}
     >
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--mm-border)]">
+      <div className="mm-version-history-header flex items-center gap-2 px-4 py-2 border-b border-[var(--mm-border)]">
         <ClockCounterClockwise size={15} className="shrink-0 text-[var(--mm-text-muted)]" />
         <h3 className="text-sm font-medium flex-1 text-[var(--mm-text)]">
           {t('mindmap:versions.title')}
         </h3>
-        <NotionButton
+        <DsButton
           variant="ghost"
-          className="p-1 hover:bg-[var(--mm-bg-hover)] rounded"
+          className="mm-version-history-close p-1 hover:bg-[var(--mm-bg-hover)] rounded"
           onClick={onClose}
           aria-label={t('mindmap:versions.close')}
         >
           <X className="w-4 h-4" />
-        </NotionButton>
+        </DsButton>
       </div>
 
-      <div className="max-h-64 overflow-y-auto">
+      <div className="mm-version-history-list max-h-64 overflow-y-auto overscroll-contain">
         {loading ? (
           <div className="flex items-center gap-2 px-4 py-3 text-sm text-[var(--mm-text-muted)]">
             <CircleNotch size={14} className="motion-safe:animate-spin" />
@@ -313,7 +313,7 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
                   key={version.versionId}
                   className="px-4 py-1.5 border-b border-[var(--mm-border)]/50 last:border-b-0 hover:bg-[var(--mm-bg-hover)]/50 transition-colors"
                 >
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="mm-version-history-row flex items-center gap-2 min-w-0">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className="text-sm text-[var(--mm-text)] truncate">
@@ -338,9 +338,9 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
                         )}
                       </div>
                     </div>
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
-                      className="notion-btn shrink-0 text-xs text-[var(--mm-text-secondary)]"
+                      className="ds-btn mm-version-history-action shrink-0 text-xs text-[var(--mm-text-secondary)]"
                       onClick={() => void handlePreview(version.versionId)}
                       disabled={previewingId === version.versionId}
                       aria-expanded={hasPreview}
@@ -351,16 +351,16 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
                         <Eye size={13} />
                       )}
                       {t('mindmap:versions.preview')}
-                    </NotionButton>
-                    <NotionButton
+                    </DsButton>
+                    <DsButton
                       variant="ghost"
-                      className="notion-btn shrink-0 text-xs text-[var(--mm-text-secondary)]"
+                      className="ds-btn mm-version-history-action shrink-0 text-xs text-[var(--mm-text-secondary)]"
                       onClick={() => setConfirmingId(version.versionId)}
                       disabled={isRestoring || restoringId !== null}
                     >
                       <ArrowCounterClockwise size={13} />
                       {t('mindmap:versions.restore')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
 
                   <AnimatePresence initial={false}>
@@ -426,9 +426,9 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
                           <span className="text-xs flex-1 min-w-[120px]">
                             {t('mindmap:versions.restoreConfirmHint')}
                           </span>
-                          <NotionButton
+                          <DsButton
                             variant="ghost"
-                            className="notion-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
+                            className="ds-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
                             onClick={() => void handleConfirmRestore(version.versionId)}
                             disabled={isRestoring}
                           >
@@ -442,15 +442,15 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
                                 ? t('mindmap:versions.restoring')
                                 : t('mindmap:versions.restoreConfirm')}
                             </span>
-                          </NotionButton>
-                          <NotionButton
+                          </DsButton>
+                          <DsButton
                             variant="ghost"
-                            className="notion-btn shrink-0 text-[var(--mm-text-muted)]"
+                            className="ds-btn shrink-0 text-[var(--mm-text-muted)]"
                             onClick={() => setConfirmingId(null)}
                             disabled={isRestoring}
                           >
                             <span className="text-xs">{t('common:cancel')}</span>
-                          </NotionButton>
+                          </DsButton>
                         </div>
                       </motion.div>
                     )}

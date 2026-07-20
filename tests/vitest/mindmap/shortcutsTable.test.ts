@@ -3,7 +3,7 @@
  *
  * 锁定内容：
  * 1. getShortcutGroups 的分组顺序、i18n key 前缀、平台格式化输出；
- * 2. keymap 过滤：mubu 专属（drillIn/Out、mod+Enter=完成）与 deep-student
+ * 2. keymap 过滤：经典大纲专属（drillIn/Out、mod+Enter=完成）与 deep-student
  *    专属（mod+[/] 折叠）互不泄漏；
  * 3. Tab 双义消解：画布 Tab 只出现在 addChild，大纲 Tab 只出现在 indent；
  * 4. eventMatchesShortcut 的修饰符严格匹配语义；
@@ -49,21 +49,21 @@ describe('getShortcutGroups', () => {
     expect(groups.map((g) => g.id)).toEqual(['general', 'outline', 'recite']);
   });
 
-  it('filters keymap-specific bindings: drillIn/out only under mubu', () => {
+  it('filters keymap-specific bindings: drillIn/out only under classic', () => {
     const ds = getShortcutGroups('canvas', 'deep-student', 'mac');
-    const mubu = getShortcutGroups('canvas', 'mubu', 'mac');
+    const classic = getShortcutGroups('canvas', 'classic', 'mac');
     expect(findItem(ds, 'canvas', 'drillIn')).toBeUndefined();
     expect(findItem(ds, 'canvas', 'drillOut')).toBeUndefined();
-    expect(findItem(mubu, 'canvas', 'drillIn')?.combos).toEqual(['mod+]']);
-    expect(findItem(mubu, 'canvas', 'drillOut')?.combos).toEqual(['mod+[']);
+    expect(findItem(classic, 'canvas', 'drillIn')?.combos).toEqual(['mod+]']);
+    expect(findItem(classic, 'canvas', 'drillOut')?.combos).toEqual(['mod+[']);
     expect(findItem(ds, 'canvas', 'toggleComplete')).toBeUndefined();
-    expect(findItem(mubu, 'canvas', 'toggleComplete')?.combos).toEqual(['mod+Enter']);
+    expect(findItem(classic, 'canvas', 'toggleComplete')?.combos).toEqual(['mod+Enter']);
   });
 
-  it('mubu keymap removes mod+[/] from collapse/expand (reserved for drill)', () => {
-    const mubu = getShortcutGroups('canvas', 'mubu', 'mac');
-    expect(findItem(mubu, 'canvas', 'collapse')?.combos).toEqual(['alt+[']);
-    expect(findItem(mubu, 'canvas', 'expand')?.combos).toEqual(['alt+]']);
+  it('classic keymap removes mod+[/] from collapse/expand (reserved for drill)', () => {
+    const classic = getShortcutGroups('canvas', 'classic', 'mac');
+    expect(findItem(classic, 'canvas', 'collapse')?.combos).toEqual(['alt+[']);
+    expect(findItem(classic, 'canvas', 'expand')?.combos).toEqual(['alt+]']);
     const ds = getShortcutGroups('canvas', 'deep-student', 'mac');
     expect(findItem(ds, 'canvas', 'collapse')?.combos).toContain('mod+[');
   });
@@ -169,9 +169,9 @@ describe('resolveShortcutKeys', () => {
       action: 'addChild' as const,
       labelKey: 'addChild',
       keys: ['Tab', 'mod+Enter'],
-      keymapKeys: { mubu: ['Tab', 'mod+shift+Enter'] },
+      keymapKeys: { classic: ['Tab', 'mod+shift+Enter'] },
     };
     expect(resolveShortcutKeys(binding, 'deep-student')).toEqual(['Tab', 'mod+Enter']);
-    expect(resolveShortcutKeys(binding, 'mubu')).toEqual(['Tab', 'mod+shift+Enter']);
+    expect(resolveShortcutKeys(binding, 'classic')).toEqual(['Tab', 'mod+shift+Enter']);
   });
 });

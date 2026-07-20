@@ -56,9 +56,13 @@ import {
   resolveVisibleFocusId,
 } from '../../utils/hideCompleted';
 import { useTranslation } from 'react-i18next';
-import { House, Hand, Selection, Plus, CornersOut, MouseScroll, Pencil, Trash } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { House, Hand, Selection, Plus, CornersOut, MouseScroll, Pencil, Trash, X } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
+import {
+  BACK_PRIORITY,
+  registerBackHandler,
+} from '@/app/navigation/androidBackCoordinator';
 import type { LayoutDirection, MindMapNode } from '../../types';
 import type { ILayoutEngine } from '../../registry/types';
 import { getAncestors } from '../../utils/node/traverse';
@@ -660,7 +664,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   }, [enrichedNodes, dragPositionOverride]);
 
   // 新节点生长起点：父节点中心（树边 target→source 反查），新建节点
-  // 从父节点滑向目标位置 + CSS 淡入缩放，对齐 XMind「从枝上长出」手感。
+  // 从父节点滑向目标位置 + CSS 淡入缩放，呈现「从枝上长出」手感。
   // agent 演出节点走自己的 agent-entering keyframe，不叠加位置插值。
   const parentIdByNodeId = useMemo(() => {
     const map = new Map<string, string>();
@@ -835,13 +839,13 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     return allEdges.map((edge) => {
       const isAssociation = (edge.data as { kind?: string } | undefined)?.kind === 'association';
       const edgeKey = `${edge.source}->${edge.target}`;
-      // 祖先链树边高亮：主色描边 + 类名（样式见 canvas-enhancements.css），对齐 XMind 导航可读性
+      // 祖先链树边高亮：主色描边 + 类名（样式见 canvas-enhancements.css），提升导航可读性
       const isAncestorPath = !isAssociation && !!ancestorPathEdgeKeys?.has(edgeKey);
       // 悬停路径：比焦点路径弱一档的主色混合，帮助扫视时快速看清分支归属
       const isHoverPath =
         !isAssociation && !isAncestorPath && !!hoverPathEdgeKeys?.has(edgeKey);
       // 边强调通道（edgeEmphasis 契约）：焦点节点的直接出边加粗，
-      // 与祖先链一起构成「所在分支」的完整视觉（对齐 XMind 分支高亮）
+      // 与祖先链一起构成「所在分支」的完整视觉
       const isEmphasized =
         !isAssociation && !isAncestorPath && !!focusedNodeId && edge.source === focusedNodeId;
       const pathClass = isAncestorPath
@@ -1137,6 +1141,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
 
   // 触屏底部工具条：单选节点且非编辑/背诵/连线/拖拽中时显示
   const showMobileToolbar =
+    isCanvasActive &&
     isCoarsePointer &&
     !!focusedNodeId &&
     selection.length <= 1 &&
@@ -1150,6 +1155,44 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   useEffect(() => {
     if (!showMobileToolbar) setMobileToolbarPanel(null);
   }, [showMobileToolbar]);
+
+  // 底部工具条（含展开面板）出现后，若覆盖当前节点则只上移必要距离，
+  // 不执行 fitView，避免触屏点选后画布突然大幅缩放。
+  useEffect(() => {
+    if (!showMobileToolbar || !focusedNodeId) return;
+    const frame = requestAnimationFrame(() => {
+      const container = canvasContainerRef.current;
+      const toolbar = container?.querySelector<HTMLElement>('.mm-mobile-node-toolbar');
+      if (!container || !toolbar) return;
+      const escaped =
+        typeof CSS !== 'undefined' && CSS.escape
+          ? CSS.escape(focusedNodeId)
+          : focusedNodeId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const node = container.querySelector<HTMLElement>(
+        `.react-flow__node[data-id="${escaped}"]`,
+      );
+      if (!node) return;
+      const nodeRect = node.getBoundingClientRect();
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const overlap = nodeRect.bottom - (toolbarRect.top - 12);
+      if (overlap <= 0) return;
+      const viewport = reactFlowInstance.getViewport();
+      void reactFlowInstance.setViewport(
+        { ...viewport, y: viewport.y - overlap },
+        {
+          duration: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+            ? 0
+            : 160,
+        },
+      );
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    focusedNodeId,
+    mobileToolbarPanel,
+    reactFlowInstance,
+    showMobileToolbar,
+  ]);
 
   const closeMobileToolbar = useCallback(() => {
     setMobileToolbarPanel(null);
@@ -1615,6 +1658,25 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     reciteMode,
   ]);
 
+  // 关联创建/选中工具条属于画布内临时操作态，Android 返回应先退出该状态，
+  // 不应直接离开导图或工作台。
+  useEffect(() => {
+    if (!isCanvasActive || (!associatingFromId && !selectedAssociationId)) return;
+    return registerBackHandler(() => {
+      if (associatingFromId) {
+        clearAssociationMode();
+      } else {
+        setSelectedAssociationId(null);
+      }
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [
+    associatingFromId,
+    clearAssociationMode,
+    isCanvasActive,
+    selectedAssociationId,
+  ]);
+
   // ★ 移动端虚拟键盘：进入节点编辑后若节点位于键盘遮挡区，向上平移画布。
   // ReactFlow 画布不是文档流，浏览器不会自动滚动聚焦元素，需手动调整 viewport。
   useEffect(() => {
@@ -1658,6 +1720,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         isExporting && 'mm-exporting',
         !isCoarsePointer && `mm-canvas-mode-${dragMode}`,
         showMobileToolbar && 'mm-has-mobile-toolbar',
+        showMobileToolbar && mobileToolbarPanel && 'mm-has-mobile-toolbar-panel',
       )}
       onMouseDownCapture={handleContainerMouseDownCapture}
       /* 任何新交互（指针按下/滚轮）立即接管画布：终止进行中的惯性滑行 */
@@ -1671,18 +1734,18 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     >
       {breadcrumbPath.length > 1 && (
         <div className="mm-canvas-breadcrumb">
-          <NotionButton
+          <DsButton
             variant="ghost"
             onClick={() => setViewRootId(null)}
             className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)]"
             title={t('outline.exitFocusMode')}
           >
             <House size={14} />
-          </NotionButton>
+          </DsButton>
           {breadcrumbPath.map((node, index) => (
             <React.Fragment key={node.id}>
               <span className="text-[var(--mm-text-muted)]">/</span>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 onClick={() => setViewRootId(node.id)}
                 className={cn(
@@ -1693,7 +1756,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
                 )}
               >
                 {node.text || t('outline.untitled')}
-              </NotionButton>
+              </DsButton>
             </React.Fragment>
           ))}
         </div>
@@ -1702,13 +1765,13 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         <div className="mm-association-hint" role="status">
           <span>{t('association.pickTarget', { defaultValue: '点击目标节点' })}</span>
           {isCoarsePointer ? (
-            <NotionButton
+            <DsButton
               variant="ghost"
               className="mm-association-cancel"
               onClick={clearAssociationMode}
             >
               {t('association.cancel', { defaultValue: '取消' })}
-            </NotionButton>
+            </DsButton>
           ) : (
             <kbd>Esc</kbd>
           )}
@@ -1782,7 +1845,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
             role="group"
             aria-label={t('canvas.touchActions', { defaultValue: '画布快捷操作' })}
           >
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className="mm-canvas-touch-button"
@@ -1791,8 +1854,8 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
             >
               <CornersOut size={15} />
               <span>{t('contextMenu.fitView', { defaultValue: '适应视图' })}</span>
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="sm"
               className="mm-canvas-touch-button"
@@ -1801,7 +1864,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
             >
               <Plus size={15} />
               <span>{t('contextMenu.addTopic', { defaultValue: '新建主题' })}</span>
-            </NotionButton>
+            </DsButton>
             <span className="mm-canvas-mode-divider" aria-hidden="true" />
             <CanvasZoomIndicator />
           </div>
@@ -1813,7 +1876,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
             role="group"
             aria-label={t('canvas.dragModeGroup', { defaultValue: '画布拖拽模式' })}
           >
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className={cn('mm-canvas-mode-button', dragMode === 'select' && 'is-active')}
@@ -1825,8 +1888,8 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
             >
               <Selection size={15} weight={dragMode === 'select' ? 'bold' : 'regular'} />
               <span>{t('canvas.selectMode', { defaultValue: '框选' })}</span>
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="sm"
               className={cn('mm-canvas-mode-button', dragMode === 'pan' && 'is-active')}
@@ -1838,10 +1901,10 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
             >
               <Hand size={15} weight={dragMode === 'pan' ? 'fill' : 'regular'} />
               <span>{t('canvas.panMode', { defaultValue: '拖动画布' })}</span>
-            </NotionButton>
+            </DsButton>
             <span className="mm-canvas-mode-divider" aria-hidden="true" />
             {/* 滚轮语义偏好：默认双指平移（平台习惯），可切回旧「滚轮缩放」 */}
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className={cn(
@@ -1862,7 +1925,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
             >
               <MouseScroll size={15} weight={wheelMode === 'zoom' ? 'fill' : 'regular'} />
               <span>{t('canvas.wheelZoom', { defaultValue: '滚轮缩放' })}</span>
-            </NotionButton>
+            </DsButton>
             <span className="mm-canvas-mode-divider" aria-hidden="true" />
             {/* 缩放百分比指示：实时读数，点击恢复 100% */}
             <CanvasZoomIndicator />
@@ -1996,15 +2059,15 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
           aria-label={t('association.menuLabel', { defaultValue: '关联线菜单' })}
         >
           <div className="mm-mobile-toolbar-row">
-            <NotionButton
+            <DsButton
               variant="ghost"
               className="mm-mobile-toolbar-btn"
               onClick={() => setEditingAssociationId(selectedAssociationId)}
             >
               <Pencil size={18} />
               <span>{t('association.editLabel', { defaultValue: '编辑标签' })}</span>
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               className="mm-mobile-toolbar-btn destructive"
               onClick={() => {
@@ -2014,7 +2077,16 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
             >
               <Trash size={18} />
               <span>{t('association.delete', { defaultValue: '删除关联线' })}</span>
-            </NotionButton>
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              className="mm-mobile-toolbar-btn"
+              onClick={() => setSelectedAssociationId(null)}
+              aria-label={t('association.closeActions', { defaultValue: '关闭操作栏' })}
+            >
+              <X size={18} />
+              <span>{t('association.closeActions', { defaultValue: '关闭' })}</span>
+            </DsButton>
           </div>
         </div>
       )}

@@ -33,9 +33,14 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { tweenFast, transitionInstant } from '@/styles/motion-springs';
+import {
+  BACK_PRIORITY,
+  registerBackHandler,
+} from '@/app/navigation/androidBackCoordinator';
 import { useMindMapStore } from '../../store';
+import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { findNodeById, findParentNode } from '../../utils/node/find';
 import { countAllDescendants } from '../../utils/layout/countDescendants';
 import { QUICK_TEXT_COLORS, QUICK_BG_COLORS } from '../../constants';
@@ -87,12 +92,12 @@ interface MenuItemProps {
 }
 
 const MenuItem: React.FC<MenuItemProps> = ({ icon, label, shortcut, destructive, disabled, active, onClick }) => (
-  <NotionButton variant="ghost"
+  <DsButton variant="ghost"
     role="menuitem"
     {...{ [MENU_ITEM_ATTR]: '' }}
     className={cn(
       'flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[var(--menu-shell-row-radius)] text-[13px] text-left transition-colors',
-      '[@media(pointer:coarse)]:min-h-[40px]',
+      '[@media(pointer:coarse)]:min-h-[44px]',
       'focus-visible:outline-none focus-visible:bg-[var(--menu-shell-row-hover)]',
       destructive
         ? 'text-destructive hover:bg-destructive/10 focus-visible:bg-destructive/10'
@@ -112,7 +117,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, label, shortcut, destructive,
     {shortcut && (
       <span className="text-[11px] text-muted-foreground ml-auto pl-2 flex-shrink-0">{shortcut}</span>
     )}
-  </NotionButton>
+  </DsButton>
 );
 
 const MenuSeparator: React.FC = () => (
@@ -135,14 +140,14 @@ export const ColorPalette: React.FC<{
           color,
         });
         return (
-          <NotionButton
+          <DsButton
             key={color}
             variant="ghost" size="icon" iconOnly
             {...{ [MENU_ITEM_ATTR]: '' }}
             className={cn(
               '!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full border-2 hover:scale-125 flex-shrink-0',
               'motion-reduce:hover:scale-100',
-              '[@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6',
+              '[@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10',
               selected ? 'border-primary scale-110' : 'border-transparent',
             )}
             style={{ backgroundColor: color }}
@@ -153,9 +158,9 @@ export const ColorPalette: React.FC<{
           />
         );
       })}
-      <NotionButton variant="ghost" size="icon" iconOnly {...{ [MENU_ITEM_ATTR]: '' }} className="!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6 border border-[var(--menu-shell-border)] text-muted-foreground hover:bg-[var(--menu-shell-row-hover)] flex-shrink-0" onClick={(e) => { e.stopPropagation(); onSelect(undefined); }} aria-label={t('contextMenu.clearColor', { defaultValue: '清除颜色' })}>
+      <DsButton variant="ghost" size="icon" iconOnly {...{ [MENU_ITEM_ATTR]: '' }} className="!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10 border border-[var(--menu-shell-border)] text-muted-foreground hover:bg-[var(--menu-shell-row-hover)] flex-shrink-0" onClick={(e) => { e.stopPropagation(); onSelect(undefined); }} aria-label={t('contextMenu.clearColor', { defaultValue: '清除颜色' })}>
         <X className="w-2.5 h-2.5" />
-      </NotionButton>
+      </DsButton>
     </div>
   );
 };
@@ -177,6 +182,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
 }) => {
   const { t } = useTranslation('mindmap');
   const menuRef = useRef<HTMLDivElement>(null);
+  const isMindMapActive = useMindMapIsActive();
   const document = useMindMapStore(s => s.document);
   const addNode = useMindMapStore(s => s.addNode);
   const deleteNode = useMindMapStore(s => s.deleteNode);
@@ -199,6 +205,26 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   const prefersReducedMotion = useReducedMotion();
   /** 钳位后的最终坐标；null = 尚未测量（隐藏渲染，避免越界闪跳） */
   const [coords, setCoords] = useState<{ left: number; top: number } | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !isMindMapActive) return;
+    return registerBackHandler(() => {
+      if (showIconPanel) {
+        setShowIconPanel(false);
+      } else if (confirmingDelete) {
+        setConfirmingDelete(false);
+      } else {
+        onClose();
+      }
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [
+    confirmingDelete,
+    isMindMapActive,
+    isOpen,
+    onClose,
+    showIconPanel,
+  ]);
 
   const isAssociationMenu = !!associationId && !nodeId;
   const association = associationId
@@ -412,7 +438,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
 
   /** 格式类快捷按钮（加粗/标题等）：保持菜单打开，可连续操作 */
   const formatBtnClass = (activeState: boolean) => cn(
-    'w-7 h-7 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9 flex items-center justify-center rounded-[var(--menu-shell-row-radius)]',
+    'w-7 h-7 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 flex items-center justify-center rounded-[var(--menu-shell-row-radius)]',
     'hover:bg-[var(--menu-shell-row-hover)] focus-visible:outline-none focus-visible:bg-[var(--menu-shell-row-hover)]',
     activeState && 'bg-[var(--menu-shell-row-active)] text-primary',
   );
@@ -529,31 +555,31 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           { key: 'underline', icon: TextUnderline, prop: 'textDecoration' as const, val: 'underline', cur: node.style?.textDecoration },
           { key: 'strikethrough', icon: TextStrikethrough, prop: 'textDecoration' as const, val: 'line-through', cur: node.style?.textDecoration },
         ].map(({ key, icon: Icon, prop, val, cur }) => (
-          <NotionButton variant="ghost" key={key}
+          <DsButton variant="ghost" key={key}
             {...{ [MENU_ITEM_ATTR]: '' }}
             className={formatBtnClass(cur === val)}
             onClick={() => exec(() => updateNode(nodeId, { style: { ...node.style, [prop]: cur === val ? undefined : val } }), { keepOpen: true })}
             aria-pressed={cur === val}
             title={t(`contextMenu.${key}`)}
-          ><Icon className="w-4 h-4" /></NotionButton>
+          ><Icon className="w-4 h-4" /></DsButton>
         ))}
         <div className="w-px h-4 bg-[var(--menu-shell-border)] mx-0.5" />
         {([['h1', TextHOne], ['h2', TextHTwo], ['h3', TextHThree]] as const).map(([level, Icon]) => (
-          <NotionButton variant="ghost" key={level}
+          <DsButton variant="ghost" key={level}
             {...{ [MENU_ITEM_ATTR]: '' }}
             className={formatBtnClass(node.style?.headingLevel === level)}
             onClick={() => exec(() => updateNode(nodeId, { style: { ...node.style, headingLevel: node.style?.headingLevel === level ? undefined : level } }), { keepOpen: true })}
             aria-pressed={node.style?.headingLevel === level}
             title={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
-          ><Icon className="w-4 h-4" /></NotionButton>
+          ><Icon className="w-4 h-4" /></DsButton>
         ))}
-        <NotionButton variant="ghost"
+        <DsButton variant="ghost"
           {...{ [MENU_ITEM_ATTR]: '' }}
           className={formatBtnClass(!node.style?.headingLevel)}
           onClick={() => exec(() => updateNode(nodeId, { style: { ...node.style, headingLevel: undefined } }), { keepOpen: true })}
           aria-pressed={!node.style?.headingLevel}
           title={t('contextMenu.normalText')}
-        ><TextT className="w-4 h-4" /></NotionButton>
+        ><TextT className="w-4 h-4" /></DsButton>
       </div>
       <div className="flex items-center gap-2 px-2 pt-1.5 pb-0.5 text-[13px] text-muted-foreground select-none">
         <Palette className="w-4 h-4 flex-shrink-0" />
@@ -635,15 +661,15 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
                     count: node ? countAllDescendants(node) : 0,
                   })}
                 </span>
-                <NotionButton
+                <DsButton
                   variant="danger"
                   size="sm"
                   {...{ [MENU_ITEM_ATTR]: '' }}
                   onClick={() => exec(() => deleteNode(nodeId))}
                 >
                   {t('canvasV2.confirmDelete', { defaultValue: '删除' })}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   variant="utility"
                   size="sm"
                   autoFocus
@@ -651,7 +677,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
                   onClick={() => setConfirmingDelete(false)}
                 >
                   {t('canvasV2.cancel', { defaultValue: '取消' })}
-                </NotionButton>
+                </DsButton>
               </motion.div>
             ) : (
               <motion.div

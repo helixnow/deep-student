@@ -2,7 +2,7 @@ import React, { useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Plus } from '@phosphor-icons/react';
 import { NodeContent } from './NodeContent';
 import { useNodeHeightObserver } from './useNodeHeightObserver';
@@ -236,13 +236,13 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
         )}
         style={{ right: '-32px', top: '50%', marginTop: '-12px' }}
       >
-        <NotionButton variant="ghost"
+        <DsButton variant="ghost"
           onClick={handleAddChild}
           className="mm-collapse-btn bg-[var(--mm-bg-elevated)] border border-[var(--mm-border)] w-6 h-6 hover:bg-[var(--mm-bg-hover)]"
           aria-label={t('actions.addChild')}
         >
           <Plus className="w-3.5 h-3.5 text-[var(--mm-text-secondary)]" />
-        </NotionButton>
+        </DsButton>
       </div>
       )}
 

@@ -151,7 +151,7 @@ button.collapse-toggle:focus-visible {
   white-space: nowrap;
 }
 
-/* Workflowy 式幽灵新行：常驻弱显示，hover/聚焦时浮现（E01 C2.7） */
+/* 幽灵新行：常驻弱显示，hover/聚焦时浮现（E01 C2.7） */
 .outline-ghost-row {
   display: flex;
   align-items: center;
@@ -167,6 +167,13 @@ button.collapse-toggle:focus-visible {
   transition:
     opacity var(--mm-hover-transition, 120ms ease),
     background-color var(--mm-hover-transition, 120ms ease);
+}
+
+/* 批量操作栏浮在列表底部时，为最后几行预留可滚入的空间。 */
+.outline-has-multiselect {
+  padding-bottom: calc(
+    88px + max(env(safe-area-inset-bottom, 0px), var(--mobile-safe-area-bottom, 0px))
+  ) !important;
 }
 
 .outline-ghost-row:hover,
@@ -196,6 +203,10 @@ button.collapse-toggle:focus-visible {
 /* 触控设备：悬停操作栏依赖 hover 不可达——聚焦/选中行常显，
    并把按钮撑到触控目标下限（E01 C3.6） */
 @media (pointer: coarse) {
+  .outline-node-row {
+    min-height: 44px;
+  }
+
   .outline-node-row.focused .node-actions,
   .outline-node-row.selected .node-actions {
     opacity: 1;

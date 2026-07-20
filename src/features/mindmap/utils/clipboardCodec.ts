@@ -4,7 +4,7 @@
  * 复制时同时产出两种载体：
  * 1. text/plain —— 带缩进的 Markdown 列表：任务节点用 `- [ ]` / `- [x]`，
  *    备注序列化为 `> ` 前缀的缩进续行（与 pasteMarkdown 的续行解析约定一致），
- *    可直接粘贴到幕布 / Workflowy / 任意文本编辑器；
+ *    可直接粘贴到任意大纲工具或文本编辑器；
  * 2. 结构化 JSON（application/x-deep-student-mindmap）—— 保留样式 / 挖空 /
  *    完成态 / 备注 / 资源引用等全部字段，供跨导图粘贴时无损还原。
  *
@@ -389,7 +389,7 @@ async function readRichClipboard(): Promise<{
  * 读取系统剪贴板并归一化为粘贴决策所需的结果，优先级：
  * 1. 自定义 MIME 结构化载荷（浏览器 / 支持富剪贴板的环境）；
  * 2. localStorage 侧车（指纹须与当前系统剪贴板文本一致，Tauri 主通道）；
- * 3. text/html 大纲结构（Word / 网页 / 幕布网页版复制）；
+ * 3. text/html 大纲结构（办公文档 / 网页复制）；
  * 4. Markdown 列表文本；
  * 5. 普通多行文本。
  */

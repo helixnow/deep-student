@@ -13,9 +13,9 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { Keyboard, X } from '@phosphor-icons/react';
+import { ArrowLeft, Keyboard, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { getShortcutGroups, detectShortcutPlatform } from '../../constants/shortcuts';
 import { useCanvasDragMode } from '../../hooks/useCanvasDragMode';
 import type { MindMapKeymap } from '../../utils/mindmapPreferences';
@@ -121,6 +121,8 @@ export interface ShortcutHelpPanelProps {
   keymap: MindMapKeymap;
   onClose: () => void;
   className?: string;
+  /** 移动端全屏子屏：使用统一返回顶栏，并允许内容占满剩余高度 */
+  mobile?: boolean;
 }
 
 export const ShortcutHelpPanel: React.FC<ShortcutHelpPanelProps> = ({
@@ -128,6 +130,7 @@ export const ShortcutHelpPanel: React.FC<ShortcutHelpPanelProps> = ({
   keymap,
   onClose,
   className,
+  mobile = false,
 }) => {
   const { t } = useTranslation(['mindmap']);
   // 画布空白拖拽模式（框选/平移）：手势提示按当前模式展示对应操作
@@ -200,32 +203,52 @@ export const ShortcutHelpPanel: React.FC<ShortcutHelpPanelProps> = ({
     <div
       className={cn(
         'flex flex-col border-b border-[var(--mm-border)] bg-[var(--mm-bg-elevated)]',
+        mobile && 'h-full min-h-0 border-b-0 bg-[var(--mm-bg)]',
         className,
       )}
       role="region"
       aria-label={t('mindmap:shortcuts.title')}
     >
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--mm-border)]">
-        <Keyboard size={15} className="shrink-0 text-[var(--mm-text-muted)]" />
+      <div className={cn(
+        'flex items-center gap-2 px-4 py-2 border-b border-[var(--mm-border)]',
+        mobile && 'mm-mobile-subview-header',
+      )}>
+        {mobile ? (
+          <DsButton
+            variant="ghost"
+            className="mm-mobile-subview-back"
+            onClick={onClose}
+            aria-label={t('mindmap:toolbar.closeShortcuts')}
+          >
+            <ArrowLeft size={20} />
+          </DsButton>
+        ) : (
+          <Keyboard size={15} className="shrink-0 text-[var(--mm-text-muted)]" />
+        )}
         <h3 className="text-sm font-medium flex-1 text-[var(--mm-text)]">
           {t('mindmap:shortcuts.title')}
         </h3>
         <span className="text-xs text-[var(--mm-text-muted)] hidden md:inline">
-          {keymap === 'mubu'
-            ? t('mindmap:preferences.mubuKeymapActive')
+          {keymap === 'classic'
+            ? t('mindmap:preferences.classicKeymapActive')
             : t('mindmap:preferences.deepStudentKeymapActive')}
         </span>
-        <NotionButton
-          variant="ghost"
-          className="p-1 hover:bg-[var(--mm-bg-hover)] rounded"
-          onClick={onClose}
-          aria-label={t('mindmap:toolbar.closeShortcuts')}
-        >
-          <X className="w-4 h-4" />
-        </NotionButton>
+        {!mobile && (
+          <DsButton
+            variant="ghost"
+            className="p-1 hover:bg-[var(--mm-bg-hover)] rounded"
+            onClick={onClose}
+            aria-label={t('mindmap:toolbar.closeShortcuts')}
+          >
+            <X className="w-4 h-4" />
+          </DsButton>
+        )}
       </div>
 
-      <div className="max-h-72 overflow-y-auto px-4 py-3">
+      <div className={cn(
+        'max-h-72 overflow-y-auto px-4 py-3',
+        mobile && 'mm-mobile-subview-scroll max-h-none flex-1 min-h-0',
+      )}>
         <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
           {allGroups.map((group) => (
             <div key={group.id} className="min-w-0">

@@ -19,12 +19,13 @@ import {
   CaretLeft,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Input } from '@/components/ui/shad/Input';
 import { Z_INDEX } from '@/config/zIndex';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useMobileScreen } from '../../hooks/useCoarsePointer';
+import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { getResourceIcon, type ResourceIconType } from '@/features/learning-hub/icons';
 import * as dstuApi from '@/dstu/api';
 import type { DstuNode } from '@/dstu/types';
@@ -142,6 +143,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
   const { t } = useTranslation(['mindmap', 'common']);
   // 移动端窄屏：改为画布内全屏内联列表子屏（非 Portal 居中卡片）
   const isMobile = useMobileScreen();
+  const isMindMapActive = useMindMapIsActive();
   const [query, setQuery] = useState('');
   const [resources, setResources] = useState<DstuNode[]>([]);
   const [loading, setLoading] = useState(false);
@@ -216,14 +218,15 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
     return () => clearTimeout(timer);
   }, [query, isOpen, searchResources]);
 
-  // 移动端子屏：注册 Android 返回键（返回 = 关闭 picker）
+  // 自定义 picker（移动子屏/桌面浮层）都需显式接入 Android 返回键。
+  // 标签页保活时仅允许当前可见导图注册，避免隐藏实例拦截返回。
   useEffect(() => {
-    if (!isOpen || !isMobile) return;
+    if (!isOpen || !isMindMapActive) return;
     return registerBackHandler(() => {
       onCloseRef.current();
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [isOpen, isMobile]);
+  }, [isMindMapActive, isOpen]);
 
   // 锚定定位：打开时解析锚点并钳位，窗口尺寸变化时重算（移动端全屏子屏不需要）
   useLayoutEffect(() => {
@@ -338,7 +341,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
       const isAdded = existingIds.has(node.sourceId || node.id);
 
       return (
-        <NotionButton
+        <DsButton
           key={node.id}
           variant="ghost" size="sm"
           disabled={isAdded}
@@ -356,7 +359,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
           {isAdded && (
             <Check className="w-3.5 h-3.5 text-primary shrink-0" />
           )}
-        </NotionButton>
+        </DsButton>
       );
     })
   );
@@ -368,23 +371,23 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
         ref={panelRef}
         role="dialog"
         aria-label={t('refs.pickerTitle')}
-        className="absolute inset-0 z-50 flex flex-col bg-[var(--mm-bg)]"
+        className="mm-mobile-subview absolute inset-0 z-50 flex flex-col bg-[var(--mm-bg)]"
       >
-        <div className="flex items-center gap-1 px-2 h-12 border-b border-[var(--mm-border)] shrink-0">
-          <NotionButton
+        <div className="mm-mobile-subview-header">
+          <DsButton
             variant="ghost"
-            className="h-10 w-10 p-0 flex items-center justify-center hover:bg-[var(--mm-bg-hover)] rounded"
+            className="mm-mobile-subview-back"
             onClick={onClose}
             aria-label={t('common:back')}
           >
             <CaretLeft className="w-5 h-5" />
-          </NotionButton>
+          </DsButton>
           <span className="font-medium text-sm">{t('refs.pickerTitle')}</span>
         </div>
         {searchBox}
         <CustomScrollArea
           className="flex-1 min-h-0"
-          viewportClassName="p-1 pb-[var(--mobile-safe-area-bottom,0px)]"
+          viewportClassName="mm-mobile-subview-scroll p-1"
           hideTrackWhenIdle
         >
           {listBody}
@@ -414,9 +417,9 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
       {/* 标题栏 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="text-sm font-medium">{t('refs.pickerTitle')}</span>
-        <NotionButton variant="ghost" onClick={onClose} aria-label={t('common:close', { defaultValue: '关闭' })} className="w-6 h-6 p-0 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9">
+        <DsButton variant="ghost" onClick={onClose} aria-label={t('common:close', { defaultValue: '关闭' })} className="w-6 h-6 p-0 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9">
           <X className="w-4 h-4" />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {searchBox}

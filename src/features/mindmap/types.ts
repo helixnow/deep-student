@@ -72,7 +72,7 @@ export interface MindMapNode {
   /** 关联的 VFS 资源引用列表 */
   refs?: MindMapNodeRef[];
   /**
-   * 优先级（XMind 式 1–6；1 最高）。渲染为正文前的圆形数字徽标。
+   * 优先级（1–6；1 最高）。渲染为正文前的圆形数字徽标。
    * 写入入口由样式/属性面板负责（W08），undefined 表示无优先级。
    */
   priority?: number;
@@ -152,7 +152,7 @@ export interface AssociationStyle {
   strokeDasharray?: string;
 }
 
-/** 跨分支关联线（Xmind 式「关联」） */
+/** 跨分支关联线 */
 export interface MindMapAssociation {
   id: string;
   source: NodeId;

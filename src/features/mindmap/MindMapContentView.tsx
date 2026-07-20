@@ -31,15 +31,15 @@ import {
   exportToJson,
   exportToPlainText,
   exportToImage,
-  exportToXMindFile,
+  exportToXmindFile,
 } from './utils/exporters';
-import { createXMindImportReport, importFromXMind, importMindMap } from './utils/importers';
+import { createXmindImportReport, importFromXmindZip, importMindMap } from './utils/importers';
 import { fileManager } from '@/utils/fileManager';
 import { TauriAPI } from '@/utils/tauriApi';
 import { cn } from '@/lib/utils';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   FileText,
   GitBranch,
@@ -112,6 +112,8 @@ import {
   setMindMapPreferences,
   useMindMapPreferences,
 } from './utils/mindmapPreferences';
+import { useCoarsePointer, useMobileScreen } from './hooks/useCoarsePointer';
+import { getAncestors } from './utils/node/traverse';
 import './styles/mindmap.css';
 
 /** 挂在 ActiveContext Provider 内，使大纲/画布共用剪贴板快捷键且受 isActive 门控 */
@@ -172,6 +174,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   const setCurrentView = useMindMapStore(state => state.setCurrentView);
   const reciteMode = useMindMapStore(state => state.reciteMode);
   const setReciteMode = useMindMapStore(state => state.setReciteMode);
+  const viewRootId = useMindMapStore(state => state.viewRootId);
+  const setViewRootId = useMindMapStore(state => state.setViewRootId);
   const hideCompleted = useMindMapStore(state => state.hideCompleted);
   const setHideCompleted = useMindMapStore(state => state.setHideCompleted);
   const mindmapDocument = useMindMapStore(state => state.document);
@@ -239,6 +243,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   const [importError, setImportError] = useState<string | null>(null);
   const [presentationMode, setPresentationMode] = useState(false);
   const [associationModeRequest, setAssociationModeRequest] = useState(0);
+  const isCoarsePointer = useCoarsePointer();
+  const isMobileScreen = useMobileScreen();
 
   useEffect(() => {
     if (!isActive || !focusOnActive) return;
@@ -333,36 +339,48 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
 
   // 移动端浮层/子屏打开时注册 Android 返回键：返回 = 关闭当前层
   useEffect(() => {
-    if (!showMobileStructure) return;
+    if (isActive === false || !showMobileStructure) return;
     return registerBackHandler(() => {
       setShowMobileStructure(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [showMobileStructure]);
+  }, [isActive, showMobileStructure]);
 
   useEffect(() => {
-    if (!showMobileStyle) return;
+    if (isActive === false || !showMobileStyle) return;
     return registerBackHandler(() => {
       setShowMobileStyle(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [showMobileStyle]);
+  }, [isActive, showMobileStyle]);
 
   useEffect(() => {
-    if (!showShortcutHelp) return;
+    if (isActive === false || !showShortcutHelp) return;
     return registerBackHandler(() => {
       setShowShortcutHelp(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [showShortcutHelp]);
+  }, [isActive, showShortcutHelp]);
 
   useEffect(() => {
-    if (!showMobileMore) return;
+    if (isActive === false || !showMobileMore) return;
     return registerBackHandler(() => {
       setShowMobileMore(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [showMobileMore]);
+  }, [isActive, showMobileMore]);
+
+  // 横竖屏/窗口跨过移动断点时，立即收掉只属于移动形态的子屏。
+  // 否则 CSS 隐藏后状态仍为 open，系统返回会先消费一个不可见层。
+  useEffect(() => {
+    if (isMobileScreen) {
+      setActivePanel(null);
+      return;
+    }
+    setShowMobileStructure(false);
+    setShowMobileStyle(false);
+    setShowMobileMore(false);
+  }, [isMobileScreen]);
 
   // 内容区浮层互斥：移动端子屏（更多/结构/样式）与快捷键/版本历史面板同一时间只保留一个
   const openMobileStructure = useCallback(() => {
@@ -406,12 +424,67 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   }, []);
 
   useEffect(() => {
-    if (!showVersionHistory) return;
+    if (isActive === false || !showVersionHistory) return;
     return registerBackHandler(() => {
       setShowVersionHistory(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [showVersionHistory]);
+  }, [isActive, showVersionHistory]);
+
+  // 搜索、导入反馈和演示态不是 Radix 浮层，必须显式接入 Android 返回闭环。
+  useEffect(() => {
+    if (
+      isActive === false ||
+      (!presentationMode && !showImportConfirm && !importError && !showSearch)
+    ) {
+      return;
+    }
+    return registerBackHandler(() => {
+      if (presentationMode) {
+        setPresentationMode(false);
+      } else if (showImportConfirm) {
+        setShowImportConfirm(false);
+      } else if (importError) {
+        setImportError(null);
+      } else if (showSearch) {
+        setShowSearch(false);
+        clearSearch();
+        setSearchInput('');
+      } else {
+        return false;
+      }
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [
+    clearSearch,
+    importError,
+    isActive,
+    presentationMode,
+    showImportConfirm,
+    showSearch,
+  ]);
+
+  // 特殊学习态与分支专注属于视图内导航：先退出背诵，再逐级返回专注路径。
+  useEffect(() => {
+    if (isActive === false || (!reciteMode && !viewRootId)) return;
+    return registerBackHandler(() => {
+      if (reciteMode) {
+        setReciteMode(false);
+        return true;
+      }
+      if (!viewRootId) return false;
+      const parent = getAncestors(mindmapDocument.root, viewRootId).at(-1);
+      setViewRootId(parent && parent.id !== mindmapDocument.root.id ? parent.id : null);
+      return true;
+    }, BACK_PRIORITY.view);
+  }, [
+    isActive,
+    mindmapDocument.root,
+    reciteMode,
+    setReciteMode,
+    setViewRootId,
+    viewRootId,
+  ]);
 
   // 快捷键面板已内联到工具栏下方文档流（同版本历史范式），
   // 由 Esc / 关闭按钮 / 面板互斥收起，不再做点击外部关闭。
@@ -583,15 +656,15 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       return;
     }
 
-    // XMind：二进制 zip 包，走独立导出管线（保存对话框在工具函数内）
+    // .xmind：二进制 zip 包，走独立导出管线（保存对话框在工具函数内）
     if (format === 'xmind') {
       try {
-        const result = await exportToXMindFile(mindmapDocument, filename);
+        const result = await exportToXmindFile(mindmapDocument, filename);
         if (result.saved) {
           showGlobalNotification('success', t('mindmap:shellV2.export.xmindDone'));
         }
       } catch (error: unknown) {
-        console.error('XMind export failed:', error);
+        console.error('.xmind export failed:', error);
         showGlobalNotification('error', t('mindmap:export.failed'));
       }
       return;
@@ -672,10 +745,10 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
 
       if (!filePath) return;
 
-      // P3 导入报告：收集 XMind 导入时被静默丢弃的图片/概要计数
-      const report = createXMindImportReport();
+      // P3 导入报告：收集 .xmind 导入时被静默丢弃的图片/概要计数
+      const report = createXmindImportReport();
       const imported = filePath.toLowerCase().endsWith('.xmind')
-        ? await importFromXMind(await TauriAPI.readFileAsBytes(filePath), report)
+        ? await importFromXmindZip(await TauriAPI.readFileAsBytes(filePath), report)
         : importMindMap(await fileManager.readTextFile(filePath), 'auto');
       setDocument(imported);
       setFocusedNodeId(imported.root.id);
@@ -862,7 +935,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       if (isMod && e.key === 'f' && !isTextInputContext) {
         e.preventDefault();
         if (showSearch) {
-          // 已打开：重新聚焦并全选查询词，直接输入即覆盖（对齐 XMind/浏览器 Cmd+F 习惯）
+          // 已打开：重新聚焦并全选查询词，直接输入即覆盖（常见 Cmd+F 习惯）
           const input = containerRef.current?.querySelector<HTMLInputElement>('.mm-search-input');
           input?.focus();
           input?.select();
@@ -950,8 +1023,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                 ariaLabel: t('mindmap:toolbar.outline'),
                 label: (
                   <span className="inline-flex items-center">
-                    <FileText className="w-3.5 h-3.5 mr-1.5" />
-                    {t('mindmap:toolbar.outline')}
+                    <FileText className="mm-view-switcher-icon w-3.5 h-3.5 mr-1.5" />
+                    <span className="mm-view-switcher-label">{t('mindmap:toolbar.outline')}</span>
                   </span>
                 ),
               },
@@ -960,15 +1033,15 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                 ariaLabel: t('mindmap:toolbar.mindmap'),
                 label: (
                   <span className="inline-flex items-center">
-                    <GitBranch className="w-3.5 h-3.5 mr-1.5" />
-                    {t('mindmap:toolbar.mindmap')}
+                    <GitBranch className="mm-view-switcher-icon w-3.5 h-3.5 mr-1.5" />
+                    <span className="mm-view-switcher-label">{t('mindmap:toolbar.mindmap')}</span>
                   </span>
                 ),
               },
             ]}
           />
           
-          <div className="w-px h-4 bg-[var(--mm-border)]" />
+          <div className="w-px h-4 bg-[var(--mm-border)] hidden md:block" />
           
           <div className="flex items-center gap-0.5">
             {/* disabled 按钮不冒泡鼠标事件，tooltip 挂在外层 span 上保证禁用态也有提示 */}
@@ -978,14 +1051,14 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               position="bottom"
             >
               <span className="inline-flex">
-                <NotionButton variant="ghost"
-                  className="notion-btn"
+                <DsButton variant="ghost"
+                  className="ds-btn"
                   onClick={undo}
                   disabled={!canUndo()}
                   aria-label={t('mindmap:toolbar.undo')}
                 >
                   <ArrowCounterClockwise size={16} />
-                </NotionButton>
+                </DsButton>
               </span>
             </CommonTooltip>
             <CommonTooltip
@@ -994,19 +1067,19 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               position="bottom"
             >
               <span className="inline-flex">
-                <NotionButton variant="ghost"
-                  className="notion-btn"
+                <DsButton variant="ghost"
+                  className="ds-btn"
                   onClick={redo}
                   disabled={!canRedo()}
                   aria-label={t('mindmap:toolbar.redo')}
                 >
                   <ArrowClockwise size={16} />
-                </NotionButton>
+                </DsButton>
               </span>
             </CommonTooltip>
           </div>
 
-          <div className="w-px h-4 bg-[var(--mm-border)] hidden sm:block" />
+          <div className="w-px h-4 bg-[var(--mm-border)] hidden md:block" />
 
           {/* 保存状态内联可视化：状态点常显，未保存时可点击立即保存（替代藏在菜单里的保存项） */}
           <CommonTooltip
@@ -1015,8 +1088,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
             position="bottom"
             disabled={!isDirty || isSaving}
           >
-            <NotionButton variant="ghost"
-              className="notion-btn hidden sm:flex"
+            <DsButton variant="ghost"
+              className="ds-btn hidden md:flex"
               onClick={handleSave}
               disabled={!isDirty || isSaving}
             >
@@ -1043,7 +1116,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                   }
                 />
               </span>
-            </NotionButton>
+            </DsButton>
           </CommonTooltip>
         </div>
 
@@ -1051,36 +1124,36 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         <div className="flex items-center gap-1">
           {/* Structure and style are compact icon commands; their panels remain directly accessible. */}
           <StructureSelector 
-            className="hidden sm:flex"
+            className="hidden md:flex"
             open={activePanel === 'structure'}
             onOpenChange={(open) => setActivePanel(open ? 'structure' : null)}
             trigger={
               <CommonTooltip content={t('mindmap:toolbar.switchStructure')} position="bottom">
-                <NotionButton variant="ghost" className="mm-toolbar-button" aria-label={t('mindmap:toolbar.switchStructure')}>
+                <DsButton variant="ghost" className="mm-toolbar-button" aria-label={t('mindmap:toolbar.switchStructure')}>
                   <GitBranch size={16} />
-                </NotionButton>
+                </DsButton>
               </CommonTooltip>
             }
           />
 
           {/* Desktop: Style Settings */}
           <StyleSettings
-            className="hidden sm:flex"
+            className="hidden md:flex"
             open={activePanel === 'style'}
             onOpenChange={(open) => setActivePanel(open ? 'style' : null)}
             trigger={
               <CommonTooltip content={t('mindmap:toolbar.styleSettings')} position="bottom">
-                <NotionButton variant="ghost" className="mm-toolbar-button" aria-label={t('mindmap:toolbar.styleSettings')}>
+                <DsButton variant="ghost" className="mm-toolbar-button" aria-label={t('mindmap:toolbar.styleSettings')}>
                   <Gear size={16} />
-                </NotionButton>
+                </DsButton>
               </CommonTooltip>
             }
           />
 
           {/* Learning controls stay visible: they are a first-class mind-map workflow. */}
-          <div className="mm-learning-group hidden sm:flex" role="group" aria-label={t('mindmap:toolbar.learning')}>
+          <div className="mm-learning-group hidden md:flex" role="group" aria-label={t('mindmap:toolbar.learning')}>
             <span className="mm-learning-label">{t('mindmap:toolbar.learning')}</span>
-            <NotionButton variant="ghost"
+            <DsButton variant="ghost"
               className={cn("mm-learning-button", reciteMode && "is-active")}
               onClick={() => setReciteMode(!reciteMode)}
               title={reciteMode ? t('mindmap:recite.exit') : t('mindmap:recite.enter')}
@@ -1088,8 +1161,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
             >
               <BookOpen size={15} />
               {reciteMode ? t('mindmap:recite.exit') : t('mindmap:recite.title')}
-            </NotionButton>
-            <NotionButton variant="ghost"
+            </DsButton>
+            <DsButton variant="ghost"
               className={cn("mm-learning-button", hideCompleted && "is-active")}
               onClick={() => setHideCompleted(!hideCompleted)}
               title={t('mindmap:toolbar.hideCompleted')}
@@ -1097,29 +1170,29 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
             >
               <EyeSlash size={15} />
               {t('mindmap:toolbar.hideCompleted')}
-            </NotionButton>
+            </DsButton>
           </div>
 
           {/* Desktop: Search Toggle */}
           <CommonTooltip content={t('mindmap:toolbar.search')} shortcut="⌘F" position="bottom">
-            <NotionButton variant="ghost" 
-              className={cn("mm-toolbar-button hidden sm:flex", showSearch && "is-active")}
+            <DsButton variant="ghost" 
+              className={cn("mm-toolbar-button hidden md:flex", showSearch && "is-active")}
               onClick={() => setShowSearch(!showSearch)}
               aria-label={t('mindmap:toolbar.search')}
               aria-pressed={showSearch}
             >
               <MagnifyingGlass size={16} />
-            </NotionButton>
+            </DsButton>
           </CommonTooltip>
 
-          <div className="w-px h-4 bg-[var(--mm-border)] mx-1 hidden sm:block" />
+          <div className="w-px h-4 bg-[var(--mm-border)] mx-1 hidden md:block" />
 
           {/* Desktop: More Menu (simplified) */}
           <AppMenu open={activePanel === 'more'} onOpenChange={(open) => setActivePanel(open ? 'more' : null)}>
             <AppMenuTrigger asChild>
-              <NotionButton variant="ghost" className="mm-toolbar-button hidden sm:flex" aria-label={t('mindmap:toolbar.moreActions')} title={t('mindmap:toolbar.moreActions')}>
+              <DsButton variant="ghost" className="mm-toolbar-button hidden md:flex" aria-label={t('mindmap:toolbar.moreActions')} title={t('mindmap:toolbar.moreActions')}>
                 <DotsThree size={16} />
-              </NotionButton>
+              </DsButton>
             </AppMenuTrigger>
             {/* NOTE: AppMenuTrigger asChild 需要直接子元素承接 ref/props，此处不包 CommonTooltip */}
             <AppMenuContent align="end" width={200}>
@@ -1146,7 +1219,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               </AppMenuItem>
               <AppMenuSeparator />
               <AppMenuItem icon={<Upload size={16} />} onClick={handleImport}>{t('mindmap:import.title')}</AppMenuItem>
-              {/* 导出分组：每种格式配专属图标，一眼可辨（Markdown/OPML/JSON/XMind/PNG/SVG） */}
+              {/* 导出分组：每种格式配专属图标，一眼可辨（Markdown/OPML/JSON/.xmind/PNG/SVG） */}
               <AppMenuGroup label={t('mindmap:shellV2.export.group')}>
                 <AppMenuItem icon={<FileMd size={16} />} onClick={() => handleExport('markdown')}>{t('mindmap:export.exportMarkdown')}</AppMenuItem>
                 <AppMenuItem icon={<TreeStructure size={16} />} onClick={() => handleExport('opml')}>{t('mindmap:export.exportOpml')}</AppMenuItem>
@@ -1165,10 +1238,10 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                 {t('mindmap:toolbar.hideCompleted')}
               </AppMenuCheckboxItem>
               <AppMenuCheckboxItem
-                checked={mindMapPreferences.keymap === 'mubu'}
-                onCheckedChange={(checked) => setMindMapPreferences({ keymap: checked ? 'mubu' : 'deep-student' })}
+                checked={mindMapPreferences.keymap === 'classic'}
+                onCheckedChange={(checked) => setMindMapPreferences({ keymap: checked ? 'classic' : 'deep-student' })}
               >
-                {t('mindmap:preferences.mubuKeymap')}
+                {t('mindmap:preferences.classicKeymap')}
               </AppMenuCheckboxItem>
               <AppMenuCheckboxItem
                 checked={mindMapPreferences.canvasNavigation === 'spatial'}
@@ -1190,20 +1263,20 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
           </AppMenu>
 
           {/* Mobile: 「更多」入口 → 全屏内联子屏（同结构/样式子屏范式，替代浮层菜单） */}
-          <NotionButton
+          <DsButton
             variant="ghost"
-            className="notion-btn mm-mobile-more w-7 justify-center px-0 sm:hidden"
+            className="ds-btn mm-mobile-more w-10 h-10 justify-center px-0 md:hidden"
             aria-label={t('mindmap:toolbar.moreActions')}
             title={t('mindmap:toolbar.moreActions')}
             onClick={openMobileMore}
           >
             <DotsThree size={16} />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 
       {/* W09 格式条：选中节点时在工具栏下方内联展开（背诵/演示模式下隐藏，避免误编辑） */}
-      {!reciteMode && !presentationMode && (focusedNodeId || hasSelection) && (
+      {!isCoarsePointer && !reciteMode && !presentationMode && (focusedNodeId || hasSelection) && (
         <div className="border-b border-[var(--mm-border)] bg-[var(--mm-bg)] ui-drop-in">
           <MindMapFormatBar />
         </div>
@@ -1213,24 +1286,24 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       <AnimatePresence initial={false}>
         {conflictSnapshot && conflictSnapshot.mindmapId === resourceId && (
           <InlineCollapse role="alert">
-            <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)]">
+            <div className="mm-inline-banner flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)]">
               <WarningCircle size={16} className="shrink-0" />
-              <span className="text-sm flex-1 min-w-0">{t('mindmap:store.conflictBannerTitle')}</span>
-              <NotionButton
+              <span className="text-sm flex-1 min-w-[160px]">{t('mindmap:store.conflictBannerTitle')}</span>
+              <DsButton
                 variant="ghost"
-                className="notion-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
+                className="ds-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
                 onClick={() => restoreConflictSnapshot()}
               >
                 <ArrowCounterClockwise size={14} />
                 <span className="text-xs">{t('mindmap:store.conflictRestoreMine')}</span>
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
-                className="notion-btn shrink-0 text-[var(--mm-text-muted)]"
+                className="ds-btn shrink-0 text-[var(--mm-text-muted)]"
                 onClick={() => dismissConflictSnapshot()}
               >
                 <span className="text-xs">{t('mindmap:shellV2.conflict.keepServer')}</span>
-              </NotionButton>
+              </DsButton>
             </div>
           </InlineCollapse>
         )}
@@ -1240,25 +1313,25 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       <AnimatePresence initial={false}>
         {importError && (
           <InlineCollapse role="alert">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)]">
+            <div className="mm-inline-banner flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)]">
               <WarningCircle size={16} className="shrink-0" />
               <span className="text-sm font-medium shrink-0">{t('mindmap:shellV2.import.errorTitle')}</span>
               <span className="text-xs flex-1 min-w-[160px] break-words opacity-90">{importError}</span>
-              <NotionButton
+              <DsButton
                 variant="ghost"
-                className="notion-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
+                className="ds-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
                 onClick={() => void doImport()}
               >
                 <ArrowClockwise size={14} />
                 <span className="text-xs">{t('mindmap:shellV2.import.retry')}</span>
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
-                className="notion-btn shrink-0 text-[var(--mm-text-muted)]"
+                className="ds-btn shrink-0 text-[var(--mm-text-muted)]"
                 onClick={() => setImportError(null)}
               >
                 <span className="text-xs">{t('mindmap:shellV2.import.dismiss')}</span>
-              </NotionButton>
+              </DsButton>
             </div>
           </InlineCollapse>
         )}
@@ -1269,33 +1342,33 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       {showImportConfirm && (
         <InlineCollapse role="alert">
         <div
-          className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)]"
+          className="mm-inline-banner flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)]"
         >
           <WarningCircle size={16} className="shrink-0" />
           <span className="text-sm flex-1 min-w-[160px]">{t('mindmap:import.unsavedWarning')}</span>
-          <NotionButton
+          <DsButton
             variant="ghost"
-            className="notion-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
+            className="ds-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
             onClick={() => void handleSaveAndImport()}
           >
             <FloppyDisk size={14} />
             <span className="text-xs">{t('mindmap:import.saveAndImport', { defaultValue: '保存并导入' })}</span>
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
-            className="notion-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
+            className="ds-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
             onClick={handleConfirmImport}
           >
             <Upload size={14} />
             <span className="text-xs">{t('mindmap:import.unsavedConfirm')}</span>
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
-            className="notion-btn shrink-0 text-[var(--mm-text-muted)]"
+            className="ds-btn shrink-0 text-[var(--mm-text-muted)]"
             onClick={() => setShowImportConfirm(false)}
           >
             <span className="text-xs">{t('common:cancel')}</span>
-          </NotionButton>
+          </DsButton>
         </div>
         </InlineCollapse>
       )}
@@ -1305,7 +1378,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       <AnimatePresence initial={false}>
       {showSearch && (
         <InlineCollapse role="search">
-        <div className="mm-search-popover max-sm:flex-wrap">
+        <div className="mm-search-popover max-md:flex-wrap">
           <MagnifyingGlass size={16} className="text-[var(--mm-text-muted)]" />
           <Input
             type="search"
@@ -1342,10 +1415,10 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
             aria-label={t('mindmap:toolbar.searchOptions')}
           >
             <CommonTooltip content={t('mindmap:toolbar.searchCaseSensitive')} position="bottom">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 className={cn(
-                  'notion-btn h-6 px-1.5 text-xs font-medium',
+                  'ds-btn h-6 px-1.5 text-xs font-medium',
                   searchCaseSensitive
                     ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]'
                     : 'text-[var(--mm-text-muted)] hover:bg-[var(--mm-bg-hover)]'
@@ -1355,13 +1428,13 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                 aria-label={t('mindmap:toolbar.searchCaseSensitive')}
               >
                 Aa
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
             <CommonTooltip content={t('mindmap:toolbar.searchWholeWord')} position="bottom">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 className={cn(
-                  'notion-btn h-6 px-1.5 text-xs font-medium',
+                  'ds-btn h-6 px-1.5 text-xs font-medium',
                   searchWholeWord
                     ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]'
                     : 'text-[var(--mm-text-muted)] hover:bg-[var(--mm-bg-hover)]'
@@ -1371,7 +1444,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                 aria-label={t('mindmap:toolbar.searchWholeWord')}
               >
                 <span className="underline underline-offset-2">ab</span>
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
           </div>
 
@@ -1381,7 +1454,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               role="group"
               aria-label={t('mindmap:toolbar.searchMode')}
             >
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 className={cn(
                   "mm-search-mode-button",
@@ -1394,9 +1467,9 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                 aria-pressed={searchFilterMode}
               >
                 {t('mindmap:toolbar.searchFilter')}
-              </NotionButton>
+              </DsButton>
               <div className="mm-search-divider" />
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 className={cn(
                   "mm-search-mode-button",
@@ -1409,7 +1482,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                 aria-pressed={!searchFilterMode}
               >
                 {t('mindmap:toolbar.searchLocate')}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
 
@@ -1424,25 +1497,25 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
             <div className="mm-search-results">
               <span className="tabular-nums">{currentSearchIndex + 1}/{searchResults.length}</span>
               <div className="mm-search-navigation">
-                <NotionButton variant="ghost" 
+                <DsButton variant="ghost" 
                   className="mm-search-nav-button"
                   onClick={prevSearchResult}
                   aria-label={t('mindmap:toolbar.prevResult')}
                 >
                   <CaretUp size={12} />
-                </NotionButton>
-                <NotionButton variant="ghost" 
+                </DsButton>
+                <DsButton variant="ghost" 
                   className="mm-search-nav-button"
                   onClick={nextSearchResult}
                   aria-label={t('mindmap:toolbar.nextResult')}
                 >
                   <CaretDown size={12} />
-                </NotionButton>
+                </DsButton>
               </div>
             </div>
           )}
           
-          <NotionButton variant="ghost" 
+          <DsButton variant="ghost" 
             className="mm-search-close"
             aria-label={t('mindmap:toolbar.closeSearch')}
             onClick={() => {
@@ -1452,7 +1525,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
             }}
           >
             <X className="w-4 h-4" />
-          </NotionButton>
+          </DsButton>
         </div>
         </InlineCollapse>
       )}
@@ -1473,9 +1546,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       {/* 快捷键帮助：内联面板（从画布浮动卡片改为工具栏下方文档流，键盘场景桌面端展示） */}
       <AnimatePresence initial={false}>
       {showShortcutHelp && (
-        <InlineCollapse>
+        <InlineCollapse className="hidden md:block">
           <ShortcutHelpPanel
-            className="hidden sm:flex"
             view={currentView === 'outline' ? 'outline' : 'mindmap'}
             keymap={mindMapPreferences.keymap}
             onClose={() => setShowShortcutHelp(false)}
@@ -1512,13 +1584,13 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               <WarningCircle size={32} className="mx-auto mb-3 text-red-500" />
               <p className="text-sm font-medium text-[var(--mm-text)] mb-2">{t('mindmap:loadFailed')}</p>
               <p className="text-xs text-[var(--mm-text-muted)] break-words">{loadError}</p>
-              <NotionButton variant="ghost"
-                className="notion-btn mt-4 mx-auto"
+              <DsButton variant="ghost"
+                className="ds-btn mt-4 mx-auto"
                 onClick={() => void tryLoadMindMap()}
               >
                 <ArrowClockwise size={16} />
                 <span className="text-xs">{t('mindmap:retryLoad')}</span>
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         ) : currentView === 'outline' ? (
@@ -1538,7 +1610,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         </div>
 
         {presentationMode && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             className="mm-presentation-exit"
             onClick={() => setPresentationMode(false)}
@@ -1546,23 +1618,35 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
             title={t('mindmap:presentation.exitHint')}
           >
             <X size={18} />
-          </NotionButton>
+          </DsButton>
+        )}
+
+        {/* Mobile: 快捷帮助必须有真实可见的全屏子屏；移动「更多」中的入口不再落入隐藏面板。 */}
+        {showShortcutHelp && (
+          <div className="mm-mobile-subview absolute inset-0 z-50 md:hidden bg-[var(--mm-bg)]">
+            <ShortcutHelpPanel
+              mobile
+              view={currentView === 'outline' ? 'outline' : 'mindmap'}
+              keymap={mindMapPreferences.keymap}
+              onClose={() => setShowShortcutHelp(false)}
+            />
+          </div>
         )}
 
         {/* Mobile: Structure Panel（inline 子屏：全屏替换内容区 + 顶栏返回） */}
         {showMobileStructure && (
-          <div className="absolute inset-0 z-50 sm:hidden flex flex-col bg-[var(--mm-bg)]">
-            <div className="flex items-center gap-1 px-2 h-12 border-b border-[var(--mm-border)] shrink-0">
-              <NotionButton variant="ghost"
-                className="h-10 w-10 p-0 flex items-center justify-center hover:bg-[var(--mm-bg-hover)] rounded"
+          <div className="mm-mobile-subview absolute inset-0 z-50 md:hidden flex flex-col bg-[var(--mm-bg)]">
+            <div className="mm-mobile-subview-header">
+              <DsButton variant="ghost"
+                className="mm-mobile-subview-back"
                 onClick={() => setShowMobileStructure(false)}
                 aria-label={t('common:back')}
               >
                 <CaretLeft className="w-5 h-5" />
-              </NotionButton>
+              </DsButton>
               <span className="font-medium text-sm">{t('mindmap:selectStructure')}</span>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto p-2 pb-[var(--mobile-safe-area-bottom,0px)]">
+            <div className="mm-mobile-subview-scroll flex-1 min-h-0 overflow-y-auto p-2">
               <StructureSelector 
                 placement="inline"
                 onSelect={() => setShowMobileStructure(false)}
@@ -1573,18 +1657,18 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         
         {/* Mobile: Style Panel（inline 子屏：全屏替换内容区 + 顶栏返回） */}
         {showMobileStyle && (
-          <div className="absolute inset-0 z-50 sm:hidden flex flex-col bg-[var(--mm-bg)]">
-            <div className="flex items-center gap-1 px-2 h-12 border-b border-[var(--mm-border)] shrink-0">
-              <NotionButton variant="ghost"
-                className="h-10 w-10 p-0 flex items-center justify-center hover:bg-[var(--mm-bg-hover)] rounded"
+          <div className="mm-mobile-subview absolute inset-0 z-50 md:hidden flex flex-col bg-[var(--mm-bg)]">
+            <div className="mm-mobile-subview-header">
+              <DsButton variant="ghost"
+                className="mm-mobile-subview-back"
                 onClick={() => setShowMobileStyle(false)}
                 aria-label={t('common:back')}
               >
                 <CaretLeft className="w-5 h-5" />
-              </NotionButton>
+              </DsButton>
               <span className="font-medium text-sm">{t('mindmap:toolbar.styleSettings')}</span>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto p-2 pb-[var(--mobile-safe-area-bottom,0px)]">
+            <div className="mm-mobile-subview-scroll flex-1 min-h-0 overflow-y-auto p-2">
               <StyleSettings placement="inline" />
             </div>
           </div>
@@ -1599,7 +1683,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
             disabled?: boolean;
             onClick: () => void;
           }> = ({ icon, label, checked, disabled, onClick }) => (
-            <NotionButton
+            <DsButton
               variant="ghost"
               className="w-full h-11 !justify-start gap-3 px-3 rounded-md text-sm text-[var(--mm-text)]"
               disabled={disabled}
@@ -1610,7 +1694,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               </span>
               <span className="flex-1 text-left">{label}</span>
               {checked && <Check size={16} className="text-[var(--mm-primary)] shrink-0" />}
-            </NotionButton>
+            </DsButton>
           );
           const MenuGroup: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
             <div className="mb-2">
@@ -1625,18 +1709,18 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
             action();
           };
           return (
-            <div className="absolute inset-0 z-50 sm:hidden flex flex-col bg-[var(--mm-bg)]">
-              <div className="flex items-center gap-1 px-2 h-12 border-b border-[var(--mm-border)] shrink-0">
-                <NotionButton variant="ghost"
-                  className="h-10 w-10 p-0 flex items-center justify-center hover:bg-[var(--mm-bg-hover)] rounded"
+            <div className="mm-mobile-subview absolute inset-0 z-50 md:hidden flex flex-col bg-[var(--mm-bg)]">
+              <div className="mm-mobile-subview-header">
+                <DsButton variant="ghost"
+                  className="mm-mobile-subview-back"
                   onClick={() => setShowMobileMore(false)}
                   aria-label={t('common:back')}
                 >
                   <CaretLeft className="w-5 h-5" />
-                </NotionButton>
+                </DsButton>
                 <span className="font-medium text-sm">{t('mindmap:toolbar.moreActions')}</span>
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto px-1 py-1 pb-[var(--mobile-safe-area-bottom,0px)]">
+              <div className="mm-mobile-subview-scroll flex-1 min-h-0 overflow-y-auto px-1 py-1">
                 <MenuGroup title={t('mindmap:menu.groupView', { defaultValue: '视图' })}>
                   <MenuRow icon={<GitBranch size={18} />} label={t('mindmap:toolbar.structure')} onClick={openMobileStructure} />
                   <MenuRow icon={<Gear size={18} />} label={t('mindmap:toolbar.style')} onClick={openMobileStyle} />

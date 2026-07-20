@@ -8,8 +8,13 @@
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import {
+  BACK_PRIORITY,
+  registerBackHandler,
+} from '@/app/navigation/androidBackCoordinator';
 import { useMindMapStore } from '../../store';
+import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { PresetRegistry } from '../../registry';
 import { ensureInitialized } from '../../init';
 import type { PresetCategory, IPreset } from '../../registry/types';
@@ -72,9 +77,10 @@ const categoryIds: PresetCategory[] = ['mindmap', 'logic', 'orgchart'];
 
 const PresetItem: React.FC<PresetItemProps> = ({ preset, isActive, onClick }) => {
   const { t } = useTranslation('mindmap');
+  const isMindMapActive = useMindMapIsActive();
   const resolvedName = t(preset.name);
   return (
-    <NotionButton variant="ghost"
+    <DsButton variant="ghost"
       className={cn(
         'mm-structure-preset',
         'flex items-center justify-center',
@@ -114,7 +120,7 @@ const PresetItem: React.FC<PresetItemProps> = ({ preset, isActive, onClick }) =>
           <Lock className="w-2.5 h-2.5 text-muted" />
         </div>
       )}
-    </NotionButton>
+    </DsButton>
   );
 };
 
@@ -168,6 +174,7 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
   onOpenChange,
 }) => {
   const { t } = useTranslation('mindmap');
+  const isMindMapActive = useMindMapIsActive();
   const [internalOpen, setInternalOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -272,6 +279,14 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, setIsOpen]);
+
+  useEffect(() => {
+    if (!isOpen || isInline || !isMindMapActive) return;
+    return registerBackHandler(() => {
+      setIsOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isInline, isMindMapActive, isOpen, setIsOpen]);
 
   // 视口钳位：锚定面板贴近窗口边缘时向内平移，防止右缘/左缘被裁切
   // 用独立的 translate 属性修正，避免与 ui-zoom-fade-in 的 transform 动画互相覆盖
@@ -384,7 +399,7 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
       {trigger ? (
         <div onClick={() => setIsOpen(!isOpen)}>{trigger}</div>
       ) : (
-        <NotionButton variant="ghost"
+        <DsButton variant="ghost"
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
             'flex items-center gap-2 px-2 h-7 rounded',
@@ -406,7 +421,7 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
               isOpen && 'rotate-180'
             )}
           />
-        </NotionButton>
+        </DsButton>
       )}
 
       {/* 弹出面板（桌面锚定 popover；窄屏由外壳的 inline 子屏承载，不再走底部 sheet + 遮罩） */}

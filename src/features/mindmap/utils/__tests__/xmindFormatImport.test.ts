@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  importFromXMind,
+  importFromXmindZip,
   MAX_XMIND_ARCHIVE_BYTES,
   MAX_XMIND_CONTENT_BYTES,
 } from '../importers';
@@ -22,8 +22,8 @@ async function zipEntry(name: string, content: string): Promise<Uint8Array> {
   return zip.generateAsync({ type: 'uint8array' });
 }
 
-describe('importFromXMind', () => {
-  it('imports XMind Zen attached topics into the existing tree model', async () => {
+describe('importFromXmindZip', () => {
+  it('imports .xmind attached topics into the existing tree model', async () => {
     const data = await zipEntry('content.json', JSON.stringify([{
       rootTopic: {
         id: 'zen-root',
@@ -39,7 +39,7 @@ describe('importFromXMind', () => {
       },
     }]));
 
-    const document = await importFromXMind(data);
+    const document = await importFromXmindZip(data);
 
     expect(document.root).toMatchObject({
       id: 'root',
@@ -50,7 +50,7 @@ describe('importFromXMind', () => {
     expect(document.associations).toBeUndefined();
   });
 
-  it('maps XMind Zen task markers and relationships onto the document', async () => {
+  it('maps .xmind task markers and relationships onto the document', async () => {
     const data = await zipEntry('content.json', JSON.stringify([{
       rootTopic: {
         id: 'zen-root',
@@ -77,7 +77,7 @@ describe('importFromXMind', () => {
       ],
     }]));
 
-    const document = await importFromXMind(data);
+    const document = await importFromXmindZip(data);
 
     expect(document.root.children.map((node) => node.completed)).toEqual([false, true]);
     expect(document.root.completed).toBeUndefined();
@@ -92,7 +92,7 @@ describe('importFromXMind', () => {
     expect(document.associations?.[1]).toMatchObject({ source: 'root', target: 'done' });
   });
 
-  it('imports XMind 8 attached topics and ignores detached topics', async () => {
+  it('imports XML attached topics and ignores detached topics', async () => {
     const data = await zipEntry('content.xml', `<?xml version="1.0" encoding="UTF-8"?>
       <xmap-content xmlns="urn:xmind:xmap:xmlns:content:2.0">
         <sheet id="sheet-1">
@@ -107,14 +107,14 @@ describe('importFromXMind', () => {
         </sheet>
       </xmap-content>`);
 
-    const document = await importFromXMind(data);
+    const document = await importFromXmindZip(data);
 
     expect(document.root.text).toBe('Physics');
     expect(document.root.note).toBe('Exam review');
     expect(document.root.children.map((node) => node.text)).toEqual(['Waves']);
   });
 
-  it('maps XMind 8 marker-refs and sheet relationships onto the document', async () => {
+  it('maps XML marker references and sheet relationships onto the document', async () => {
     const data = await zipEntry('content.xml', `<?xml version="1.0" encoding="UTF-8"?>
       <xmap-content xmlns="urn:xmind:xmap:xmlns:content:2.0">
         <sheet id="sheet-1">
@@ -140,7 +140,7 @@ describe('importFromXMind', () => {
         </sheet>
       </xmap-content>`);
 
-    const document = await importFromXMind(data);
+    const document = await importFromXmindZip(data);
 
     expect(document.root.children.map((node) => node.completed)).toEqual([false, true]);
     expect(document.associations).toHaveLength(1);
@@ -151,7 +151,7 @@ describe('importFromXMind', () => {
     });
   });
 
-  it('maps Zen labels and non-task markers into note lines, priority into a text prefix', async () => {
+  it('maps labels and non-task markers into note lines, priority into a text prefix', async () => {
     const data = await zipEntry('content.json', JSON.stringify([{
       rootTopic: {
         id: 'zen-root',
@@ -172,7 +172,7 @@ describe('importFromXMind', () => {
       },
     }]));
 
-    const document = await importFromXMind(data);
+    const document = await importFromXmindZip(data);
     const rich = document.root.children[0];
 
     expect(rich.text).toBe('[P1] Rich topic');
@@ -186,7 +186,7 @@ describe('importFromXMind', () => {
     expect(noteLines[2]).not.toContain('priority-1');
   });
 
-  it('maps XMind 8 labels into note lines', async () => {
+  it('maps XML labels into note lines', async () => {
     const data = await zipEntry('content.xml', `<?xml version="1.0" encoding="UTF-8"?>
       <xmap-content xmlns="urn:xmind:xmap:xmlns:content:2.0">
         <sheet id="sheet-1">
@@ -204,7 +204,7 @@ describe('importFromXMind', () => {
         </sheet>
       </xmap-content>`);
 
-    const document = await importFromXMind(data);
+    const document = await importFromXmindZip(data);
 
     expect(document.root.children[0].text).toBe('Tagged');
     expect(document.root.children[0].note).toContain('alpha, beta');
@@ -216,7 +216,7 @@ describe('importFromXMind', () => {
       { rootTopic: { id: 'r2', title: 'Sheet B' } },
     ]));
 
-    const document = await importFromXMind(data);
+    const document = await importFromXmindZip(data);
 
     expect(document.root.note).toContain('2');
     expect(document.root.note).toContain('First sheet');
@@ -231,7 +231,7 @@ describe('importFromXMind', () => {
       { rootTopic: { id: 'root', title: 'Sheet B' } },
     ]));
 
-    const document = await importFromXMind(data);
+    const document = await importFromXmindZip(data);
     const childIds = document.root.children.map((node) => node.id);
 
     expect(document.root.id).toBe('root');
@@ -248,7 +248,7 @@ describe('importFromXMind', () => {
         <sheet id="sheet-b"><topic id="root"><title>Sheet B</title></topic></sheet>
       </xmap-content>`);
 
-    const document = await importFromXMind(data);
+    const document = await importFromXmindZip(data);
     const childIds = document.root.children.map((node) => node.id);
 
     expect(document.root.id).toBe('root');
@@ -259,7 +259,7 @@ describe('importFromXMind', () => {
 
   it('rejects an oversized compressed archive before opening it', async () => {
     const data = new Uint8Array(MAX_XMIND_ARCHIVE_BYTES + 1);
-    await expect(importFromXMind(data)).rejects.toThrow('archive exceeds maximum size');
+    await expect(importFromXmindZip(data)).rejects.toThrow('archive exceeds maximum size');
   });
 
   it('rejects oversized uncompressed content before JSON parsing', async () => {
@@ -268,11 +268,11 @@ describe('importFromXMind', () => {
     const data = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
 
     expect(data.byteLength).toBeLessThan(MAX_XMIND_ARCHIVE_BYTES);
-    await expect(importFromXMind(data)).rejects.toThrow('content exceeds maximum size');
+    await expect(importFromXmindZip(data)).rejects.toThrow('content exceeds maximum size');
   });
 
-  it('rejects archives without XMind content', async () => {
+  it('rejects archives without required content', async () => {
     const data = await zipEntry('metadata.json', '{}');
-    await expect(importFromXMind(data)).rejects.toThrow('content.json or content.xml not found');
+    await expect(importFromXmindZip(data)).rejects.toThrow('content.json or content.xml not found');
   });
 });

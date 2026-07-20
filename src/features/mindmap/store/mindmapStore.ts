@@ -45,6 +45,11 @@ import { mergeMindMapViewport } from '../utils/viewport';
 /** ACR R1-11：agentEnteringIds 使用 Set，需启用 Immer MapSet 插件 */
 enableMapSet();
 
+/** 将历史保存的主题 ID 规范化为中性命名。 */
+function normalizeStyleId(styleId: string): string {
+  return ({ cardDark: 'cardDark', cardLight: 'cardLight' } as Record<string, string>)[styleId] ?? styleId;
+}
+
 /** 大纲 / 导图双模视口状态（内存态，切视图时保留） */
 export interface MindMapViewports {
   outline?: { scrollTop: number };
@@ -504,7 +509,7 @@ export interface MindMapStoreState {
   outdentNodes: (nodeIds: string[]) => void;
 
   /**
-   * Workflowy 惯例：当前节点保留光标前文本，光标后文本成为下方新同级节点；子树留在原节点。
+   * 拆分行惯例：当前节点保留光标前文本，光标后文本成为下方新同级节点；子树留在原节点。
    * @returns 新节点 id，失败返回 null
    */
   splitNode: (
@@ -540,7 +545,7 @@ export interface MindMapStoreState {
   addNodeRef: (nodeId: string, ref: MindMapNodeRef) => void;
   removeNodeRef: (nodeId: string, sourceId: string) => void;
 
-  // 跨分支关联线（Xmind 式「关联」）
+  // 跨分支关联线
   addAssociation: (source: string, target: string, label?: string) => string | null;
   updateAssociationLabel: (id: string, label: string) => void;
   removeAssociation: (id: string) => void;
@@ -1186,7 +1191,7 @@ export function createMindMapStore(): MindMapStoreApi {
             const rc = recoveredDraft ? localDraft : undefined;
             state.layoutId = rc?.layoutId || document.meta?.renderConfig?.layoutId || 'tree';
             state.layoutDirection = (rc?.layoutDirection || document.meta?.renderConfig?.direction || 'right') as LayoutDirection;
-            state.styleId = rc?.styleId || document.meta?.renderConfig?.styleId || 'default';
+            state.styleId = normalizeStyleId(rc?.styleId || document.meta?.renderConfig?.styleId || 'default');
             state.edgeType = (rc?.edgeType || document.meta?.renderConfig?.edgeType || 'bezier') as EdgeType;
             // 修复: 重置搜索状态
             state.searchQuery = '';
@@ -2072,7 +2077,7 @@ export function createMindMapStore(): MindMapStoreApi {
           parentId: string;
           grandParentId: string;
           nodeIds: string[];
-          /** Workflowy/幕布语义：原后续同级被最后一个反缩进节点收养为子树 */
+          /** 反缩进语义：原后续同级被最后一个反缩进节点收养为子树 */
           adoptIds: string[];
         }> = [];
         const visit = (parent: MindMapNode, grandParent: MindMapNode | null) => {
@@ -2192,7 +2197,7 @@ export function createMindMapStore(): MindMapStoreApi {
           delete state.revealedBlanks[nodeId];
 
           if (!parent) {
-            // 根：后半成为第一个子节点（行业折中；Workflowy 根通常不可拆同级）
+            // 根：后半成为第一个子节点（行业折中；根通常不拆为同级）
             current.children.unshift(newNode);
           } else {
             const liveParent = findParentNode(state.document.root, nodeId);
@@ -2910,7 +2915,7 @@ export function createMindMapStore(): MindMapStoreApi {
           state.focusedNodeId = snap.focusedNodeId;
           state.layoutId = snap.layoutId;
           state.layoutDirection = snap.layoutDirection;
-          state.styleId = snap.styleId;
+          state.styleId = normalizeStyleId(snap.styleId);
           state.edgeType = snap.edgeType;
           state.isDirty = true;
           state._documentVersion += 1;
@@ -2964,9 +2969,10 @@ export function createMindMapStore(): MindMapStoreApi {
 
       // 设置样式主题
       setStyleId: (styleId: string) => {
-        if (get().styleId === styleId) return;
+        const normalizedStyleId = normalizeStyleId(styleId);
+        if (get().styleId === normalizedStyleId) return;
         applyRenderConfigChange((state) => {
-          state.styleId = styleId;
+          state.styleId = normalizedStyleId;
         });
       },
 

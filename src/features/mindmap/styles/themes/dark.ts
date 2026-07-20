@@ -2,7 +2,7 @@ import type { IStyleTheme } from '../../registry/types';
 import { DARK_SAFE_PALETTE } from './palettes';
 
 /**
- * 显式暗色主题（Notion 风格深色）
+ * 显式暗色主题（简洁风格深色）
  *
  * 与 hidden 的 default-dark 是两套不同视觉：
  * - dark：用户主动选择的独立主题，主色根节点（primary 底），任何模式下都是深色视觉；

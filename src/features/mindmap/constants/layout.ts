@@ -57,9 +57,9 @@ export function getLevelGap(config: LayoutConfig): number {
 }
 
 // ============================================================================
-// 深度间距收敛（对标 XMind 的间距节奏）
+// 深度间距收敛（常见树状布局的间距节奏）
 // ============================================================================
-// XMind 的视觉节奏：越深的层级，层距与兄弟距越紧。规则：
+// 视觉节奏：越深的层级，层距与兄弟距越紧。规则：
 //   scale(depth) = max(min, ratio^depth)
 // 其中 depth 为「拥有这段间距的父节点」的层级（根 = 0）：
 // - 父节点 level L 与其子节点之间的层距 = horizontalGap × scale(L)
@@ -213,7 +213,7 @@ export const REACTFLOW_CONFIG = {
   maxZoom: 2,
   fitViewPadding: 0.2,
   snapToGrid: false,
-  // 滚轮/触控板语义（默认对齐 XMind/MindNode/macOS 平台习惯）：
+  // 滚轮/触控板语义（默认对齐常见导图软件与 macOS 平台习惯）：
   // 双指滑动/滚轮 = 平移画布，pinch 或 Cmd/Ctrl+滚轮 = 缩放。
   // 旧「滚轮直接缩放」保留为用户偏好（useCanvasWheelMode，localStorage），
   // MindMapCanvas 按偏好在这两组值之间切换（见 WHEEL_MODE_*_PROPS）。

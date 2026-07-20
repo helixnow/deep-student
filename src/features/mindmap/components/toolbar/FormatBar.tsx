@@ -25,7 +25,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useMindMapStore } from '../../store';
 import { findNodeById } from '../../utils/node/find';
 import type { MindMapNode, NodeStyle } from '../../types';
@@ -36,7 +36,7 @@ type ToggleStyleProp = 'fontWeight' | 'fontStyle' | 'textDecoration';
 
 const formatBtnClass = (active: boolean) =>
   cn(
-    'notion-btn !w-7 !h-7 !min-w-0 !p-0 justify-center rounded',
+    'ds-btn !w-7 !h-7 !min-w-0 !p-0 justify-center rounded',
     active
       ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]'
       : 'text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]',
@@ -151,7 +151,7 @@ export const MindMapFormatBar: React.FC = () => {
         {toggles.map(({ key, icon: Icon, prop, val }) => {
           const active = style?.[prop] === val;
           return (
-            <NotionButton
+            <DsButton
               variant="ghost"
               key={key}
               className={formatBtnClass(active)}
@@ -163,7 +163,7 @@ export const MindMapFormatBar: React.FC = () => {
               aria-label={t(`contextMenu.${key}`)}
             >
               <Icon className="w-4 h-4" />
-            </NotionButton>
+            </DsButton>
           );
         })}
       </div>
@@ -174,7 +174,7 @@ export const MindMapFormatBar: React.FC = () => {
         {headings.map(([level, Icon, labelKey]) => {
           const active = style?.headingLevel === level;
           return (
-            <NotionButton
+            <DsButton
               variant="ghost"
               key={level}
               className={formatBtnClass(active)}
@@ -189,10 +189,10 @@ export const MindMapFormatBar: React.FC = () => {
               aria-label={t(`contextMenu.${labelKey}`)}
             >
               <Icon className="w-4 h-4" />
-            </NotionButton>
+            </DsButton>
           );
         })}
-        <NotionButton
+        <DsButton
           variant="ghost"
           className={formatBtnClass(!style?.headingLevel)}
           onClick={() => applyStylePatch((s) => ({ ...s, headingLevel: undefined }))}
@@ -201,7 +201,7 @@ export const MindMapFormatBar: React.FC = () => {
           aria-label={t('contextMenu.normalText')}
         >
           <TextT className="w-4 h-4" />
-        </NotionButton>
+        </DsButton>
       </div>
 
       <div className="w-px h-4 bg-[var(--mm-border)] hidden sm:block" />

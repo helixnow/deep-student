@@ -20,7 +20,7 @@ export type AssociationEdgeData = {
 };
 
 /**
- * Xmind 式跨分支关联线：虚线贝塞尔，色弱于树边，支持居中标签与选中加粗。
+ * 跨分支关联线：虚线贝塞尔，色弱于树边，支持居中标签与选中加粗。
  */
 export const AssociationEdge: React.FC<EdgeProps> = ({
   id,

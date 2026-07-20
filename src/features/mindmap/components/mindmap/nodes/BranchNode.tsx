@@ -4,7 +4,7 @@ import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { cn } from '@/lib/utils';
 import { Plus, Trash, DotsThree } from '@phosphor-icons/react';
 import { NodeContent } from './NodeContent';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useNodeHeightObserver } from './useNodeHeightObserver';
 import { pickDefined } from './styleUtils';
 import { useMindMapStore, useMindMapStoreApi } from '../../../store';
@@ -353,7 +353,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
           )}
           style={getCollapseButtonStyle()}
         >
-          <NotionButton variant="ghost"
+          <DsButton variant="ghost"
             onClick={handleToggleCollapse}
             disabled={isEmbed}
             aria-label={isCollapsed ? t('actions.expand') : t('actions.collapse')}
@@ -370,7 +370,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
             ) : (
                <div className="w-1.5 h-1.5 rounded-full bg-[var(--mm-border-strong)] group-hover:bg-[var(--mm-text-secondary)] transition-colors" />
             )}
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 
@@ -447,31 +447,31 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
         style={{ left: '100%', marginLeft: '8px' }}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <NotionButton variant="ghost"
+        <DsButton variant="ghost"
           onClick={handleAddChild}
           className="mm-action-btn mm-action-btn--add"
           aria-label={t('actions.addChild')}
           title={t('node.addChildShortcut')}
         >
           <Plus className="w-3.5 h-3.5" />
-        </NotionButton>
+        </DsButton>
         {/* 触屏下弱化侧向浮动操作（只保留加号）：菜单/删除走底部工具条 */}
-        <NotionButton variant="ghost"
+        <DsButton variant="ghost"
           onClick={handleOpenMenu}
           className="mm-action-btn mm-action-btn--menu"
           aria-label={t('node.openMenu')}
           title={t('node.moreActions')}
         >
           <DotsThree className="w-3.5 h-3.5" />
-        </NotionButton>
-        <NotionButton variant="ghost"
+        </DsButton>
+        <DsButton variant="ghost"
           onClick={handleDelete}
           className="mm-action-btn mm-action-btn--delete hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
           aria-label={t('actions.delete')}
           title={t('node.deleteShortcut')}
         >
           <Trash className="w-3.5 h-3.5" />
-        </NotionButton>
+        </DsButton>
       </div>
       )}
 

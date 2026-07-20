@@ -108,7 +108,7 @@
   transition: background-color var(--mm-hover-transition, 120ms ease);
 }
 
-/* 悬停整行效果 - 类似 Notion */
+/* 悬停整行效果 - 类似 简洁 */
 .outline-node-row:hover {
   background-color: var(--mm-bg-hover);
 }
@@ -271,7 +271,7 @@
   color: var(--mm-text);
 }
 
-/* 大纲折叠态：+N 胶囊小字（Workflowy/幕布锚点，可点展开） */
+/* 大纲折叠态：+N 胶囊小字（可点展开） */
 .outline-collapse-count {
   display: inline-flex;
   align-items: center;
@@ -365,7 +365,7 @@
   box-shadow: 0 0 0 3px var(--mm-bg-hover);
 }
 
-/* 折叠状态 - 幕布风格 */
+/* 折叠状态 */
 .node-bullet.collapsed {
   background-color: var(--mm-text-secondary);
   width: 10px;
@@ -748,7 +748,7 @@
   background: var(--mm-bg-hover);
 }
 
-.notion-btn,
+.ds-btn,
 .mm-toolbar-button {
   height: 28px;
   padding: 0 8px;
@@ -764,7 +764,7 @@
   transition: background-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease);
 }
 
-.notion-btn:hover,
+.ds-btn:hover,
 .mm-toolbar-button:hover {
   background: var(--mm-bg-hover);
 }
@@ -829,14 +829,14 @@
   background: var(--mm-bg-hover);
 }
 
-@media (min-width: 640px) {
+@media (min-width: 768px) {
   .mm-toolbar .mm-mobile-more {
     display: none;
   }
 }
 
 /* --- 焦点可见性：与 notes 模块同语（2px ring，offset 1） --- */
-.notion-btn:focus-visible,
+.ds-btn:focus-visible,
 .mm-toolbar-button:focus-visible,
 .mm-learning-button:focus-visible,
 .mm-view-switcher-button:focus-visible,
@@ -1112,11 +1112,11 @@
   fill: currentColor;
 }
 
-/* 空白拖拽模式：独立于缩放控件，文字始终说明当前工具。 */
+/* 空白拖拽模式：独立于缩放控件，停靠画布右下角，文字始终说明当前工具。 */
 .mm-canvas-mode-switch {
   position: absolute;
   bottom: 8px;
-  left: 42px;
+  right: 8px;
   z-index: 20;
   display: flex;
   align-items: center;
@@ -1179,6 +1179,9 @@
   border-radius: var(--mm-radius-row, 6px);
   box-shadow: none;
   opacity: 0.82;
+  /* 拖拽模式工具条停靠右下角（bottom 8px + 高 30px），小地图抬到其上方 */
+  margin: 8px;
+  margin-bottom: 46px;
 }
 
 .mm-canvas-breadcrumb {
@@ -1459,9 +1462,10 @@
   text-align: left;
 }
 
-@media (width <= 639px) {
+@media (max-width: 767px) {
   .mm-toolbar {
-    padding: 0 5px;
+    height: 44px;
+    padding: 0 6px;
   }
 
   .mm-toolbar > div:first-child {
@@ -1473,7 +1477,7 @@
   }
 
   .mm-search-popover {
-    top: 42px;
+    top: 52px;
     right: 6px;
     width: calc(100% - 12px);
   }
@@ -1492,7 +1496,7 @@
 
   .outline-multiselect-bar {
     right: 8px;
-    bottom: 8px;
+    bottom: calc(8px + max(env(safe-area-inset-bottom, 0px), var(--mobile-safe-area-bottom, 0px)));
     left: 8px;
     justify-content: center;
     transform: none;
@@ -1513,7 +1517,7 @@
 }
 
 /* --- 提示栏 --- */
-.notion-hint-bar {
+.card-hint-bar {
   position: absolute;
   bottom: 12px;
   left: 50%;
@@ -1533,7 +1537,7 @@
   opacity: 0.9;
 }
 
-.notion-hint-bar kbd {
+.card-hint-bar kbd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1905,7 +1909,7 @@
   .indent-guide,
   .drop-indicator,
   .drop-indicator-vertical,
-  .notion-btn,
+  .ds-btn,
   .mm-toolbar-button,
   .mm-learning-button,
   .mm-view-switcher-button,
@@ -2080,7 +2084,7 @@
 
 .mm-presentation-exit {
   position: absolute;
-  top: 12px;
+  top: calc(12px + env(safe-area-inset-top, 0px));
   right: 12px;
   z-index: 30;
   width: 36px;
@@ -2216,9 +2220,9 @@
 
 /* 展开面板内的格式按钮：44px 触控目标 */
 .mm-mobile-format-btn {
-  width: 40px;
-  height: 40px;
-  min-width: 40px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
   padding: 0;
   justify-content: center;
   border-radius: var(--mm-radius-control, 5px);
@@ -2232,14 +2236,25 @@
 
 /* 工具条出现时，把 ReactFlow 底部面板（缩放控件等）抬到工具条上方 */
 .mm-has-mobile-toolbar .react-flow__panel.bottom {
-  bottom: calc(60px + max(env(safe-area-inset-bottom, 0px), var(--mobile-safe-area-bottom, 0px)));
+  bottom: calc(64px + max(env(safe-area-inset-bottom, 0px), var(--mobile-safe-area-bottom, 0px)));
+}
+
+.mm-has-mobile-toolbar .mm-canvas-touch-actions {
+  bottom: calc(64px + max(env(safe-area-inset-bottom, 0px), var(--mobile-safe-area-bottom, 0px)));
+}
+
+/* 展开工具条子面板时，暂时隐藏画布底部控件，避免两组操作层互相遮挡。 */
+.mm-has-mobile-toolbar-panel .react-flow__panel.bottom,
+.mm-has-mobile-toolbar-panel .mm-canvas-touch-actions {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* 触屏空白画布快捷操作（与 mm-canvas-mode-switch 同槽位：控件条右侧） */
 .mm-canvas-touch-actions {
   position: absolute;
-  bottom: 8px;
-  left: 42px;
+  bottom: calc(8px + max(env(safe-area-inset-bottom, 0px), var(--mobile-safe-area-bottom, 0px)));
+  left: 62px;
   z-index: 20;
   display: flex;
   align-items: center;
@@ -2280,4 +2295,191 @@
 .mm-canvas-touch-button:active {
   background: var(--mm-bg-hover);
   color: var(--mm-text);
+}
+
+/* ============================================
+   窄屏子屏与触控闭环
+   ============================================ */
+
+.mm-mobile-subview-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 48px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--mm-border);
+  background: var(--mm-bg-elevated);
+}
+
+.mm-mobile-subview-back {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0;
+  justify-content: center;
+  border-radius: var(--mm-radius-control, 5px);
+  color: var(--mm-text-secondary);
+}
+
+.mm-mobile-subview-scroll {
+  overscroll-behavior: contain;
+  padding-bottom: calc(
+    12px + max(env(safe-area-inset-bottom, 0px), var(--mobile-safe-area-bottom, 0px))
+  ) !important;
+}
+
+@media (max-width: 767px) {
+  .mm-mobile-subview .mm-structure-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .mm-mobile-subview .mm-structure-preset {
+    height: 56px;
+  }
+
+  .mm-mobile-subview .mm-theme-option {
+    min-height: 48px;
+    height: auto;
+    padding: 8px 10px;
+    font-size: 14px;
+  }
+
+  .mm-mobile-subview .mm-font-size-control {
+    height: 44px;
+    padding: 0 8px;
+  }
+
+  .mm-mobile-subview .mm-font-size-input {
+    width: 52px;
+    height: 42px;
+    font-size: 16px;
+  }
+
+  .mm-mobile-subview .mm-style-button-row {
+    gap: 6px;
+  }
+
+  .mm-mobile-subview .mm-style-icon-button,
+  .mm-mobile-subview .mm-style-swatch {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+  }
+
+  .mm-mobile-subview .mm-style-swatches {
+    gap: 8px;
+  }
+
+  .mm-recite-status-bar {
+    max-height: min(34dvh, 180px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .mm-recite-status-action {
+    min-height: 40px;
+  }
+
+  .mm-inline-banner {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .mm-inline-banner .ds-btn {
+    min-height: 40px;
+  }
+
+  .mm-version-history-header {
+    min-height: 48px;
+    padding-right: 8px;
+    padding-left: 12px;
+  }
+
+  .mm-version-history-close {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .mm-version-history-list {
+    max-height: min(50dvh, 360px);
+  }
+
+  .mm-version-history-row {
+    flex-wrap: wrap;
+  }
+
+  .mm-version-history-row > .flex-1 {
+    flex-basis: 100%;
+  }
+
+  .mm-version-history-action {
+    flex: 1;
+    min-height: 40px;
+  }
+
+  .mm-canvas-breadcrumb,
+  .outline-breadcrumb {
+    min-height: 44px;
+  }
+
+  .mm-canvas-breadcrumb .ds-btn,
+  .outline-breadcrumb .ds-btn {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .outline-breadcrumb {
+    scrollbar-width: none;
+  }
+
+  .outline-breadcrumb::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (max-width: 359px) {
+  .mm-view-switcher-label {
+    display: none;
+  }
+
+  .mm-view-switcher-icon {
+    margin-right: 0;
+  }
+}
+
+@media (pointer: coarse) {
+  .mm-toolbar > div:first-child .ds-btn {
+    min-width: 40px;
+    min-height: 40px;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .mindmap-container .react-flow__controls-button {
+    width: 40px;
+    height: 40px;
+  }
+
+  .mindmap-container .react-flow__controls {
+    margin-bottom: max(
+      env(safe-area-inset-bottom, 0px),
+      var(--mobile-safe-area-bottom, 0px)
+    );
+  }
+
+  .mm-search-popover .ds-btn,
+  .mm-search-popover input {
+    min-height: 40px;
+  }
+
+  .mm-recite-status-action {
+    min-height: 44px;
+  }
 }

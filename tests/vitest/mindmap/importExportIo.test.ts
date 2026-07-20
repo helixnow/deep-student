@@ -1,8 +1,8 @@
 /**
  * W08 导入导出增强测试：
  * - Markdown 文件导入与粘贴解析对齐（B5）
- * - FreeMind .mm 导入
- * - XMind 导出（Zen content.json 最小合法包）与导入往返
+ * - .mm 大纲导入
+ * - .xmind 导出（content.json 最小合法包）与导入往返
  * - 子树 Markdown 导出契约
  * - importFromFile 扩展名路由（B11）与 detectFormat 增强
  */
@@ -32,20 +32,20 @@ vi.mock('i18next', () => {
 });
 
 import {
-  createXMindImportReport,
+  createXmindImportReport,
   detectFormat,
   importFromFile,
-  importFromFreeMind,
+  importFromMmOutline,
   importFromMarkdown,
-  importFromXMind,
+  importFromXmindZip,
   importMindMap,
 } from '@/features/mindmap/utils/importers';
 import {
-  buildXMindContentJson,
+  buildXmindContentJson,
   exportNodesToMarkdown,
   exportSubtreeToMarkdown,
   exportToMarkdown,
-  exportToXMind,
+  exportToXmindZip,
 } from '@/features/mindmap/utils/exporters';
 import { markdownListToNodes } from '@/features/mindmap/utils/pasteMarkdown';
 import type { MindMapDocument, MindMapNode } from '@/features/mindmap/types';
@@ -73,7 +73,7 @@ describe('importFromMarkdown (aligned with paste parser, B5)', () => {
     expect(document.root.children[0].text).toBe('child');
   });
 
-  it('parses indentation-only outlines (Mubu-style export)', () => {
+  it('parses indentation-only outlines', () => {
     const document = importFromMarkdown('Parent\n  Child\n    Deep');
     expect(document.root.text).toBe('Parent');
     expect(document.root.children[0].text).toBe('Child');
@@ -125,7 +125,7 @@ describe('importFromMarkdown (aligned with paste parser, B5)', () => {
   });
 });
 
-describe('importFromFreeMind', () => {
+describe('importFromMmOutline', () => {
   const SAMPLE = `<?xml version="1.0" encoding="UTF-8"?>
     <map version="1.0.1">
       <node ID="ID_root" TEXT="Biology">
@@ -142,7 +142,7 @@ describe('importFromFreeMind', () => {
     </map>`;
 
   it('imports text + note hierarchy with root promoted to id "root"', () => {
-    const document = importFromFreeMind(SAMPLE);
+    const document = importFromMmOutline(SAMPLE);
     expect(document.root.id).toBe('root');
     expect(document.root.text).toBe('Biology');
     expect(document.root.children.map((n) => n.text)).toEqual(['Cell', 'Waves']);
@@ -150,13 +150,13 @@ describe('importFromFreeMind', () => {
   });
 
   it('maps button_ok icon to completed', () => {
-    const document = importFromFreeMind(SAMPLE);
+    const document = importFromMmOutline(SAMPLE);
     expect(document.root.children[0].completed).toBe(true);
     expect(document.root.children[1].completed).toBeUndefined();
   });
 
   it('maps arrowlink to an association with remapped endpoints', () => {
-    const document = importFromFreeMind(SAMPLE);
+    const document = importFromMmOutline(SAMPLE);
     expect(document.associations).toHaveLength(1);
     expect(document.associations?.[0]).toMatchObject({
       source: 'ID_wave',
@@ -165,29 +165,29 @@ describe('importFromFreeMind', () => {
   });
 
   it('reads richcontent NODE body when TEXT attribute is missing', () => {
-    const document = importFromFreeMind(`<map version="1.0.1">
+    const document = importFromMmOutline(`<map version="1.0.1">
       <node><richcontent TYPE="NODE"><html><body><p>Rich  title</p></body></html></richcontent></node>
     </map>`);
     expect(document.root.text).toBe('Rich title');
   });
 
   it('synthesizes a root for multiple top-level nodes', () => {
-    const document = importFromFreeMind(
+    const document = importFromMmOutline(
       '<map version="1.0.1"><node TEXT="A"/><node TEXT="B"/></map>',
     );
     expect(document.root.id).toBe('root');
     expect(document.root.children.map((n) => n.text)).toEqual(['A', 'B']);
   });
 
-  it('rejects non-FreeMind XML and malformed input', () => {
-    expect(() => importFromFreeMind('<opml version="2.0"><body/></opml>'))
+  it('rejects non-.mm XML and malformed input', () => {
+    expect(() => importFromMmOutline('<opml version="2.0"><body/></opml>'))
       .toThrow('missing map element');
-    expect(() => importFromFreeMind('<map version="1.0.1"></map>'))
+    expect(() => importFromMmOutline('<map version="1.0.1"></map>'))
       .toThrow('no node elements found');
   });
 });
 
-describe('XMind export', () => {
+describe('.xmind export', () => {
   const source = doc(
     {
       id: 'root',
@@ -201,8 +201,8 @@ describe('XMind export', () => {
     [{ id: 'assoc_1', source: 'todo', target: 'done', label: 'blocks' }],
   );
 
-  it('builds a minimal valid Zen content.json', () => {
-    const [sheet] = buildXMindContentJson(source) as Array<Record<string, unknown>>;
+  it('builds a minimal valid content.json', () => {
+    const [sheet] = buildXmindContentJson(source) as Array<Record<string, unknown>>;
     expect(sheet.class).toBe('sheet');
     expect(sheet.title).toBe('Plan');
     const rootTopic = sheet.rootTopic as Record<string, unknown>;
@@ -219,16 +219,16 @@ describe('XMind export', () => {
   });
 
   it('produces a zip archive containing content.json + metadata + manifest', async () => {
-    const bytes = await exportToXMind(source);
+    const bytes = await exportToXmindZip(source);
     const zip = await JSZip.loadAsync(bytes);
     expect(zip.file('content.json')).toBeTruthy();
     expect(zip.file('metadata.json')).toBeTruthy();
     expect(zip.file('manifest.json')).toBeTruthy();
   });
 
-  it('round-trips through importFromXMind (titles, notes, completed, associations)', async () => {
-    const bytes = await exportToXMind(source);
-    const imported = await importFromXMind(bytes);
+  it('round-trips through .xmind import (titles, notes, completed, associations)', async () => {
+    const bytes = await exportToXmindZip(source);
+    const imported = await importFromXmindZip(bytes);
 
     expect(imported.root.text).toBe('Plan');
     expect(imported.root.note).toBe('root note');
@@ -240,7 +240,7 @@ describe('XMind export', () => {
     expect(imported.associations?.[0]).toMatchObject({ label: 'blocks' });
   });
 
-  it('maps node bgColor to XMind topic fill (svg:fill), other styles omitted', () => {
+  it('maps node bgColor to topic fill (svg:fill), other styles omitted', () => {
     const styled = doc({
       id: 'root',
       text: 'Styled',
@@ -254,7 +254,7 @@ describe('XMind export', () => {
         { id: 'c2', text: 'Plain', children: [] },
       ],
     });
-    const [sheet] = buildXMindContentJson(styled) as Array<Record<string, unknown>>;
+    const [sheet] = buildXmindContentJson(styled) as Array<Record<string, unknown>>;
     const rootTopic = sheet.rootTopic as Record<string, unknown>;
     const attached = (rootTopic.children as { attached: Array<Record<string, unknown>> }).attached;
     expect(attached[0].style).toEqual({ properties: { 'svg:fill': '#4FC3F7' } });
@@ -263,8 +263,8 @@ describe('XMind export', () => {
   });
 });
 
-describe('XMind import report (P3, dropped items)', () => {
-  it('counts dropped images and summaries from Zen content.json', async () => {
+describe('.xmind import report (P3, dropped items)', () => {
+  it('counts dropped images and summaries from content.json', async () => {
     const zip = new JSZip();
     zip.file('content.json', JSON.stringify([{
       rootTopic: {
@@ -282,8 +282,8 @@ describe('XMind import report (P3, dropped items)', () => {
     }]));
     const bytes = await zip.generateAsync({ type: 'uint8array' });
 
-    const report = createXMindImportReport();
-    const imported = await importFromXMind(bytes, report);
+    const report = createXmindImportReport();
+    const imported = await importFromXmindZip(bytes, report);
 
     expect(imported.root.text).toBe('Report');
     expect(report.droppedImages).toBe(2);
@@ -296,8 +296,8 @@ describe('XMind import report (P3, dropped items)', () => {
     zip.file('content.json', JSON.stringify([{ rootTopic: { id: 'r', title: 'Clean' } }]));
     const bytes = await zip.generateAsync({ type: 'uint8array' });
 
-    const report = createXMindImportReport();
-    await importFromXMind(bytes, report);
+    const report = createXmindImportReport();
+    await importFromXmindZip(bytes, report);
     expect(report).toEqual({ droppedImages: 0, droppedSummaries: 0 });
   });
 });
@@ -346,15 +346,15 @@ describe('subtree markdown export contract', () => {
 });
 
 describe('detectFormat / importMindMap routing', () => {
-  it('detects opml, freemind, json, markdown and zip magic', () => {
+  it('detects opml, mm, json, markdown and zip magic', () => {
     expect(detectFormat('<?xml version="1.0"?><opml version="2.0"></opml>')).toBe('opml');
-    expect(detectFormat('<map version="1.0.1"><node TEXT="a"/></map>')).toBe('freemind');
+    expect(detectFormat('<map version="1.0.1"><node TEXT="a"/></map>')).toBe('mm');
     expect(detectFormat('{"version":"1.0"}')).toBe('json');
     expect(detectFormat('- item')).toBe('markdown');
     expect(detectFormat('PK\u0003\u0004rest-of-zip')).toBe('xmind');
   });
 
-  it('importMindMap routes freemind and rejects string xmind', () => {
+  it('importMindMap routes mm and rejects string xmind', () => {
     const document = importMindMap('<map version="1.0.1"><node TEXT="a"/></map>');
     expect(document.root.text).toBe('a');
     expect(() => importMindMap('anything', 'xmind')).toThrow('binary data');
@@ -389,7 +389,7 @@ function makeFile(parts: Array<string | Uint8Array>, name: string): File {
 }
 
 describe('importFromFile routing (B11)', () => {
-  it('routes .mm files to the FreeMind importer', async () => {
+  it('routes .mm files to the mm outline importer', async () => {
     const file = makeFile(
       ['<map version="1.0.1"><node TEXT="FM Root"/></map>'],
       'notes.mm',
@@ -398,14 +398,14 @@ describe('importFromFile routing (B11)', () => {
     expect(document.root.text).toBe('FM Root');
   });
 
-  it('routes .xmind files to the binary XMind importer', async () => {
+  it('routes .xmind files to the binary .xmind importer', async () => {
     const zip = new JSZip();
-    zip.file('content.json', JSON.stringify([{ rootTopic: { id: 'r', title: 'From XMind' } }]));
+    zip.file('content.json', JSON.stringify([{ rootTopic: { id: 'r', title: 'From Zip' } }]));
     const bytes = await zip.generateAsync({ type: 'uint8array' });
     const file = makeFile([bytes], 'map.xmind');
 
     const document = await importFromFile(file);
-    expect(document.root.text).toBe('From XMind');
+    expect(document.root.text).toBe('From Zip');
   });
 
   it('sniffs zip magic for extensionless files instead of corrupting bytes via text()', async () => {

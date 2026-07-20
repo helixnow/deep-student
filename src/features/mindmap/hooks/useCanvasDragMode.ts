@@ -2,7 +2,7 @@
  * 画布交互偏好（全局、localStorage 持久化、跨实例实时同步）：
  *
  * - 空白拖拽行为：框选（select）或平移（pan）
- * - 滚轮/触控板语义：双指平移（pan，默认，对齐 XMind/MindNode/macOS 习惯）
+ * - 滚轮/触控板语义：双指平移（pan，默认，对齐常见导图软件与 macOS 习惯）
  *   或旧「滚轮直接缩放」（zoom）
  *
  * 实现：useSyncExternalStore + 模块级监听集合，多个画布实例（分屏/多标签）
@@ -90,7 +90,7 @@ export function useCanvasDragMode(): [CanvasDragMode, (mode: CanvasDragMode) => 
 
 /**
  * - pan（默认）：滚轮/双指滑动平移画布，pinch 或 Cmd/Ctrl+滚轮缩放
- *   （对齐 macOS 上 XMind / MindNode / Miro 的平台习惯）
+ *   （对齐 macOS 上常见画布应用的平台习惯）
  * - zoom（旧行为）：滚轮直接缩放画布，平移用空白拖拽 / Space / 中键
  */
 export type CanvasWheelMode = 'pan' | 'zoom';

@@ -1,9 +1,14 @@
 import React, { useEffect, useRef, useCallback, useLayoutEffect, useState } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { EyeSlash, Eye, TextB } from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
+import {
+  BACK_PRIORITY,
+  registerBackHandler,
+} from '@/app/navigation/androidBackCoordinator';
+import { useMindMapIsActive } from '../../MindMapActiveContext';
 
 export interface BlankActionPopupProps {
   x: number;
@@ -33,6 +38,8 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
   const { t } = useTranslation('mindmap');
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+  const [viewportRevision, setViewportRevision] = useState(0);
+  const isMindMapActive = useMindMapIsActive();
 
   useLayoutEffect(() => {
     const popup = ref.current;
@@ -40,12 +47,40 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
     const width = popup.offsetWidth;
     const height = popup.offsetHeight;
     const padding = 8;
-    const maxLeft = Math.max(padding, window.innerWidth - width - padding);
-    const maxTop = Math.max(padding, window.innerHeight - height - padding);
-    const left = Math.min(Math.max(x - width / 2, padding), maxLeft);
-    const top = Math.min(Math.max(y - 36, padding), maxTop);
+    const viewport = window.visualViewport;
+    const viewportLeft = viewport?.offsetLeft ?? 0;
+    const viewportTop = viewport?.offsetTop ?? 0;
+    const viewportWidth = viewport?.width ?? window.innerWidth;
+    const viewportHeight = viewport?.height ?? window.innerHeight;
+    const minLeft = viewportLeft + padding;
+    const minTop = viewportTop + padding;
+    const maxLeft = Math.max(minLeft, viewportLeft + viewportWidth - width - padding);
+    const maxTop = Math.max(minTop, viewportTop + viewportHeight - height - padding);
+    const left = Math.min(Math.max(x - width / 2, minLeft), maxLeft);
+    const top = Math.min(Math.max(y - 36, minTop), maxTop);
     setPosition((current) => current?.left === left && current.top === top ? current : { left, top });
-  }, [x, y, mode, isAlreadyBlanked, isBold, onToggleBold, t]);
+  }, [x, y, mode, isAlreadyBlanked, isBold, onToggleBold, t, viewportRevision]);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const update = () => setViewportRevision((value) => value + 1);
+    window.addEventListener('resize', update);
+    viewport?.addEventListener('resize', update);
+    viewport?.addEventListener('scroll', update);
+    return () => {
+      window.removeEventListener('resize', update);
+      viewport?.removeEventListener('resize', update);
+      viewport?.removeEventListener('scroll', update);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isMindMapActive) return;
+    return registerBackHandler(() => {
+      onClose();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isMindMapActive, onClose]);
 
   const handleClickOutside = useCallback((e: MouseEvent) => {
     if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -69,7 +104,7 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
   }, [handleClickOutside, handleKeyDown]);
 
   const btnClass =
-    '!px-2 !h-7 !rounded text-xs font-medium whitespace-nowrap text-[var(--mm-text-secondary)] hover:text-[var(--mm-text)] hover:bg-[var(--mm-bg-hover)]';
+    '!px-2 !h-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-3 !rounded text-xs font-medium whitespace-nowrap text-[var(--mm-text-secondary)] hover:text-[var(--mm-text)] hover:bg-[var(--mm-bg-hover)]';
 
   return createPortal(
     <div
@@ -86,7 +121,7 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
       onMouseDown={(e) => e.preventDefault()}
     >
       {mode === 'edit' && onToggleBold && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           className={`${btnClass} ${isBold ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]' : ''}`}
@@ -97,10 +132,10 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
         >
           <TextB size={12} />
           {t('contextMenu.bold')}
-        </NotionButton>
+        </DsButton>
       )}
       {isAlreadyBlanked ? (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           className={btnClass}
@@ -111,9 +146,9 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
         >
           <Eye size={12} />
           {t('recite.unblank')}
-        </NotionButton>
+        </DsButton>
       ) : (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           className={`${btnClass} bg-[var(--mm-warning-soft)] text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]`}
@@ -124,7 +159,7 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
         >
           <EyeSlash size={12} />
           {mode === 'edit' ? t('recite.markBlank') : t('recite.blank')}
-        </NotionButton>
+        </DsButton>
       )}
     </div>,
     document.body,

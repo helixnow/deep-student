@@ -243,7 +243,7 @@ export function useMindMapKeyboard(): void {
 
     /**
      * Cmd/Alt+↑/↓ 批量上移/下移：作用于整个选中集（无多选时只动焦点节点）。
-     * 选中集须同父才做块移动（非连续选中会被聚拢成块，与幕布一致）；
+     * 选中集须同父才做块移动（非连续选中会被聚拢成块）；
      * 跨父级多选时退化为仅移动焦点节点。
      */
     const moveFocusedOrSelection = (direction: 'up' | 'down') => {
@@ -290,7 +290,7 @@ export function useMindMapKeyboard(): void {
       return;
     }
 
-    // ── Alt+方向键（XMind 惯例，两种键位方案共用；C4） ──
+    // ── Alt+方向键（常见导图软件惯例，两种键位方案共用；C4） ──
     // Alt+↑/↓ 同级上移/下移；Alt+←/→ 反缩进/缩进（画布侧 outdent/indent 等价，
     // 大纲语义由 OutlineView 自行处理编辑态）
     if (!isMod && e.altKey && !e.shiftKey) {
@@ -377,7 +377,7 @@ export function useMindMapKeyboard(): void {
         case '[': {
           e.preventDefault();
           handled();
-          if (preferences.keymap === 'mubu') {
+          if (preferences.keymap === 'classic') {
             const parent = viewRootId ? findParentNode(root, viewRootId) : null;
             setViewRootId(parent && parent.id !== root.id ? parent.id : null);
             return;
@@ -395,7 +395,7 @@ export function useMindMapKeyboard(): void {
         case ']': {
           e.preventDefault();
           handled();
-          if (preferences.keymap === 'mubu') {
+          if (preferences.keymap === 'classic') {
             setViewRootId(focusedNodeId === root.id ? null : focusedNodeId);
             return;
           }
@@ -412,7 +412,7 @@ export function useMindMapKeyboard(): void {
         case 'Enter': {
           e.preventDefault();
           handled();
-          if (preferences.keymap === 'mubu' && !e.shiftKey) {
+          if (preferences.keymap === 'classic' && !e.shiftKey) {
             const node = findNodeById(root, focusedNodeId);
             if (node) updateNode(focusedNodeId, { completed: !node.completed });
             return;
@@ -512,7 +512,7 @@ export function useMindMapKeyboard(): void {
           outdentNodes(selection.length > 0 ? selection : [focusedNodeId]);
           return;
         }
-        // 多选时 Tab 批量缩进（幕布语义）；单选保持画布语义：添加子节点
+        // 多选时 Tab 批量缩进；单选保持画布语义：添加子节点
         if (selection.length > 1) {
           handled();
           indentNodes(selection);

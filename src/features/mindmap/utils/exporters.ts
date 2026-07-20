@@ -5,7 +5,7 @@
  * - OPML (Outline Processor Markup Language)
  * - Markdown (大纲格式，含子树导出)
  * - JSON (原生格式)
- * - XMind (Zen content.json 最小合法包，标题树 + 备注 + 任务 marker + 关联线)
+ * - .xmind（content.json 最小合法包，标题树 + 备注 + 任务 marker + 关联线）
  * - PNG 图片（使用 snapdom）
  * - SVG 矢量图（使用 snapdom）
  * - PDF（复用 snapdom PNG 管道 + 隐藏 iframe 系统打印，见 exportToImage format:'pdf'）
@@ -55,7 +55,7 @@ function nodeToOpmlOutline(node: MindMapNode, indent: number): string {
     attrs.push(`_note="${escapeXmlAttr(node.note)}"`);
   }
 
-  // 任务节点：_complete 与 Workflowy 的完成态属性兼容
+  // 任务节点：_complete 使用通用完成态属性
   if (node.completed !== undefined) {
     attrs.push(`_complete="${node.completed ? 'true' : 'false'}"`);
   }
@@ -213,51 +213,51 @@ export function exportToJsonCompact(doc: MindMapDocument): string {
 }
 
 // ============================================================================
-// XMind 导出（Zen content.json 最小合法包）
+// .xmind 导出（content.json 最小合法包）
 // ============================================================================
 
-interface XMindTopicJson {
+interface XmindTopicJson {
   id: string;
   title: string;
   notes?: { plain: { content: string } };
   markers?: Array<{ markerId: string }>;
   style?: { properties: Record<string, string> };
-  children?: { attached: XMindTopicJson[] };
+  children?: { attached: XmindTopicJson[] };
 }
 
-function nodeToXMindTopic(node: MindMapNode): XMindTopicJson {
-  const topic: XMindTopicJson = {
+function nodeToXmindTopic(node: MindMapNode): XmindTopicJson {
+  const topic: XmindTopicJson = {
     id: node.id,
     title: node.text,
   };
   if (node.note) {
     topic.notes = { plain: { content: node.note } };
   }
-  // completed → XMind 任务 marker（与导入侧 taskMarkerToCompleted 对称）
+  // completed → .xmind 任务 marker（与导入侧转换对称）
   if (node.completed !== undefined) {
     topic.markers = [{ markerId: node.completed ? 'task-done' : 'task-start' }];
   }
-  // 最小样式映射：bgColor → XMind Zen 主题填充色（svg:fill），
-  // 让分支配色在 XMind 中保留；其余样式（字体/字号等）仍不导出。
+  // 最小样式映射：bgColor → 导图包主题填充色（svg:fill），
+  // 让分支配色在导入目标中保留；其余样式（字体/字号等）仍不导出。
   if (node.style?.bgColor) {
     topic.style = { properties: { 'svg:fill': node.style.bgColor } };
   }
   const children = node.children || [];
   if (children.length > 0) {
-    topic.children = { attached: children.map(nodeToXMindTopic) };
+    topic.children = { attached: children.map(nodeToXmindTopic) };
   }
   return topic;
 }
 
 /**
- * 构建 XMind Zen content.json 结构（单 sheet）。
+ * 构建 .xmind content.json 结构（单 sheet）。
  *
- * 导出范围（与 importFromXMind 可无损往返的最小集合）：
+ * 导出范围（与 importFromXmindZip 可无损往返的最小集合）：
  * 标题树、纯文本备注、completed → task-done / task-start marker、
  * 关联线 → sheet 级 relationships、节点 bgColor → 主题填充色（svg:fill）。
  * 不导出：其余样式 / 主题、图标、挖空区间、资源引用（refs）、折叠状态。
  */
-export function buildXMindContentJson(doc: MindMapDocument, title?: string): unknown[] {
+export function buildXmindContentJson(doc: MindMapDocument, title?: string): unknown[] {
   const relationships = (doc.associations || []).map((assoc) => ({
     id: assoc.id,
     end1Id: assoc.source,
@@ -268,7 +268,7 @@ export function buildXMindContentJson(doc: MindMapDocument, title?: string): unk
     id: 'sheet-1',
     class: 'sheet',
     title: title || doc.root.text || 'MindMap',
-    rootTopic: nodeToXMindTopic(doc.root),
+    rootTopic: nodeToXmindTopic(doc.root),
     ...(relationships.length > 0 ? { relationships } : {}),
   }];
 }
@@ -276,11 +276,11 @@ export function buildXMindContentJson(doc: MindMapDocument, title?: string): unk
 /**
  * 导出为 .xmind 压缩包字节（zip 打包复用导入侧已有的 JSZip 依赖）。
  * 包含 content.json + metadata.json + manifest.json 的最小合法结构，
- * XMind Zen / XMind 2020+ 可直接打开。
+ * 兼容 .xmind 导图包。
  */
-export async function exportToXMind(doc: MindMapDocument, title?: string): Promise<Uint8Array> {
+export async function exportToXmindZip(doc: MindMapDocument, title?: string): Promise<Uint8Array> {
   const zip = new JSZip();
-  zip.file('content.json', JSON.stringify(buildXMindContentJson(doc, title)));
+  zip.file('content.json', JSON.stringify(buildXmindContentJson(doc, title)));
   zip.file('metadata.json', JSON.stringify({
     creator: { name: 'Deep Student', version: '1.0' },
   }));
@@ -293,12 +293,12 @@ export async function exportToXMind(doc: MindMapDocument, title?: string): Promi
 /**
  * 导出 .xmind 并弹出保存对话框。UI 只需传入文档与文件名（不含扩展名）。
  */
-export async function exportToXMindFile(
+export async function exportToXmindFile(
   doc: MindMapDocument,
   filename: string,
   title?: string,
 ): Promise<{ saved: boolean }> {
-  const data = await exportToXMind(doc, title);
+  const data = await exportToXmindZip(doc, title);
   const saveResult = await fileManager.saveBinaryFile({
     title: i18n.t('mindmap:export.dialogExportXmind'),
     defaultFileName: `${sanitizeFilename(filename)}.xmind`,

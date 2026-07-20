@@ -133,7 +133,7 @@ describe('moveNode (utils, B7 index correction)', () => {
   });
 });
 
-describe('outdentNode (utils, Workflowy adoption semantics)', () => {
+describe('outdentNode (utils, sibling adoption semantics)', () => {
   it('adopts following siblings as children of the promoted node', () => {
     const root = node('root', 'R', [
       node('p', 'P', [node('a', 'A'), node('b', 'B'), node('c', 'C')]),

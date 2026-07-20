@@ -22,7 +22,7 @@ import '@xyflow/react/dist/style.css';
 import '../../styles/mindmap.css';
 
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { WarningCircle, ArrowsOut, ArrowClockwise, MagnifyingGlassPlus, MagnifyingGlassMinus, Crosshair, GitFork } from '@phosphor-icons/react';
 import { dstu } from '@/dstu';
@@ -76,7 +76,8 @@ const LARGE_MAP_NODE_THRESHOLD = 10;
 
 /** 嵌入卡片角落控制按钮的统一外观（缩放/布局/打开等） */
 const EMBED_CONTROL_BUTTON_CLASS = cn(
-  'p-1.5 rounded-md',
+  'p-1.5 rounded-md [@media(pointer:coarse)]:min-w-10 [@media(pointer:coarse)]:min-h-10',
+  'inline-flex items-center justify-center',
   'bg-background/80 hover:bg-background',
   'border border-border/50 hover:border-border',
   'text-muted-foreground hover:text-foreground',
@@ -280,40 +281,40 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document }) => {
       {/* 缩放控制按钮 + 布局切换（tooltip 统一 CommonTooltip，禁用原生 title） */}
       <div className="absolute bottom-2 left-2 flex gap-1">
         <CommonTooltip content={isBothLayout ? t('embed.layoutSingle') : t('embed.layoutBoth')} position="top">
-          <NotionButton variant="ghost"
+          <DsButton variant="ghost"
             onClick={handleToggleLayout}
             className={EMBED_CONTROL_BUTTON_CLASS}
             aria-label={isBothLayout ? t('embed.layoutSingle') : t('embed.layoutBoth')}
           >
             <GitFork className={cn('w-3.5 h-3.5', isBothLayout && 'text-primary')} />
-          </NotionButton>
+          </DsButton>
         </CommonTooltip>
         <CommonTooltip content={t('embed.zoomIn')} position="top">
-          <NotionButton variant="ghost"
+          <DsButton variant="ghost"
             onClick={handleZoomIn}
             className={EMBED_CONTROL_BUTTON_CLASS}
             aria-label={t('embed.zoomIn')}
           >
             <MagnifyingGlassPlus size={14} />
-          </NotionButton>
+          </DsButton>
         </CommonTooltip>
         <CommonTooltip content={t('embed.zoomOut')} position="top">
-          <NotionButton variant="ghost"
+          <DsButton variant="ghost"
             onClick={handleZoomOut}
             className={EMBED_CONTROL_BUTTON_CLASS}
             aria-label={t('embed.zoomOut')}
           >
             <MagnifyingGlassMinus size={14} />
-          </NotionButton>
+          </DsButton>
         </CommonTooltip>
         <CommonTooltip content={t('embed.fitView')} position="top">
-          <NotionButton variant="ghost"
+          <DsButton variant="ghost"
             onClick={handleFitView}
             className={EMBED_CONTROL_BUTTON_CLASS}
             aria-label={t('embed.fitView')}
           >
             <Crosshair className="w-3.5 h-3.5" />
-          </NotionButton>
+          </DsButton>
         </CommonTooltip>
       </div>
     </div>
@@ -548,14 +549,14 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
           <WarningCircle size={20} />
           <span>{state.error}</span>
         </div>
-        <NotionButton
+        <DsButton
           variant="ghost"
-          className="notion-btn text-xs text-muted-foreground hover:text-foreground"
+          className="ds-btn text-xs text-muted-foreground hover:text-foreground"
           onClick={() => setReloadNonce((nonce) => nonce + 1)}
         >
           <ArrowClockwise size={13} />
           {t('shellV2.embed.retry')}
-        </NotionButton>
+        </DsButton>
       </div>
     );
   }
@@ -597,13 +598,13 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
       {showOpenButton && (
         <div className="absolute top-2 right-2">
           <CommonTooltip content={t('embed.openInNewWindow')} position="left">
-            <NotionButton variant="ghost"
+            <DsButton variant="ghost"
               onClick={handleOpen}
               className={EMBED_CONTROL_BUTTON_CLASS}
               aria-label={t('embed.openInNewWindow')}
             >
               <ArrowsOut size={16} />
-            </NotionButton>
+            </DsButton>
           </CommonTooltip>
         </div>
       )}

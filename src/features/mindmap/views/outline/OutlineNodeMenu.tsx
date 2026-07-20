@@ -37,7 +37,7 @@ import {
   AppMenuItem,
   AppMenuSeparator,
 } from '@/components/ui/app-menu';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { useMindMapStore } from '../../store';
 import type { MindMapNode } from '../../types';
@@ -108,12 +108,12 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
       }}
     >
       <AppMenuTrigger asChild>
-        <NotionButton variant="ghost"
+        <DsButton variant="ghost"
           className="action-btn"
           onClick={(e) => e.stopPropagation()}
         >
           <DotsThree size={16} />
-        </NotionButton>
+        </DsButton>
       </AppMenuTrigger>
       <AppMenuContent align="end" className="min-w-[180px]">
         <AppMenuItem
@@ -181,39 +181,39 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
         )}
         {/* 文本格式 B / I / U / S */}
         <div className="flex items-center gap-1 px-2 py-1">
-          <NotionButton variant="ghost"
+          <DsButton variant="ghost"
             className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.fontWeight === 'bold' && "bg-accent")}
             onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, fontWeight: node.style?.fontWeight === 'bold' ? undefined : 'bold' } }); }}
             title={t('contextMenu.bold')}
-          ><TextB size={16} /></NotionButton>
-          <NotionButton variant="ghost"
+          ><TextB size={16} /></DsButton>
+          <DsButton variant="ghost"
             className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.fontStyle === 'italic' && "bg-accent")}
             onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, fontStyle: node.style?.fontStyle === 'italic' ? undefined : 'italic' } }); }}
             title={t('contextMenu.italic')}
-          ><TextItalic size={16} /></NotionButton>
-          <NotionButton variant="ghost"
+          ><TextItalic size={16} /></DsButton>
+          <DsButton variant="ghost"
             className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.textDecoration === 'underline' && "bg-accent")}
             onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, textDecoration: node.style?.textDecoration === 'underline' ? undefined : 'underline' } }); }}
             title={t('contextMenu.underline')}
-          ><TextUnderline size={16} /></NotionButton>
-          <NotionButton variant="ghost"
+          ><TextUnderline size={16} /></DsButton>
+          <DsButton variant="ghost"
             className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.textDecoration === 'line-through' && "bg-accent")}
             onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, textDecoration: node.style?.textDecoration === 'line-through' ? undefined : 'line-through' } }); }}
             title={t('contextMenu.strikethrough')}
-          ><TextStrikethrough size={16} /></NotionButton>
+          ><TextStrikethrough size={16} /></DsButton>
           <div className="w-px h-4 bg-border mx-0.5" />
           {([['h1', TextHOne], ['h2', TextHTwo], ['h3', TextHThree]] as const).map(([level, Icon]) => (
-            <NotionButton variant="ghost" key={level}
+            <DsButton variant="ghost" key={level}
               className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.headingLevel === level && "bg-accent")}
               onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, headingLevel: node.style?.headingLevel === level ? undefined : level } }); }}
               title={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
-            ><Icon size={16} /></NotionButton>
+            ><Icon size={16} /></DsButton>
           ))}
-          <NotionButton variant="ghost"
+          <DsButton variant="ghost"
             className={cn("w-7 h-7 flex items-center justify-center rounded", !node.style?.headingLevel && "bg-accent")}
             onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, headingLevel: undefined } }); }}
             title={t('contextMenu.normalText')}
-          ><TextT size={16} /></NotionButton>
+          ><TextT size={16} /></DsButton>
         </div>
         <AppMenuSeparator />
         <div className="flex items-center gap-2 px-2 pt-1.5 pb-0.5 text-[13px] text-muted-foreground select-none">
@@ -222,7 +222,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
         </div>
         <div className="flex items-center gap-1 px-2 py-1.5">
           {QUICK_TEXT_COLORS.map(color => (
-            <NotionButton variant="ghost"
+            <DsButton variant="ghost"
               key={color}
               className={cn(
                 "w-[18px] h-[18px] rounded-full border-2 transition-transform hover:scale-125 flex-shrink-0",
@@ -235,7 +235,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
               }}
             />
           ))}
-          <NotionButton variant="ghost"
+          <DsButton variant="ghost"
             className="w-[18px] h-[18px] rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
             onClick={(e) => {
               e.stopPropagation();
@@ -243,7 +243,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
             }}
           >
             <X className="w-2.5 h-2.5" />
-          </NotionButton>
+          </DsButton>
         </div>
         <div className="flex items-center gap-2 px-2 pt-1.5 pb-0.5 text-[13px] text-muted-foreground select-none">
           <Highlighter size={16} className="flex-shrink-0" />
@@ -251,7 +251,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
         </div>
         <div className="flex items-center gap-1 px-2 py-1.5">
           {QUICK_BG_COLORS.map(color => (
-            <NotionButton variant="ghost"
+            <DsButton variant="ghost"
               key={color}
               className={cn(
                 "w-[18px] h-[18px] rounded-full border-2 transition-transform hover:scale-125 flex-shrink-0",
@@ -264,7 +264,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
               }}
             />
           ))}
-          <NotionButton variant="ghost"
+          <DsButton variant="ghost"
             className="w-[18px] h-[18px] rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
             onClick={(e) => {
               e.stopPropagation();
@@ -272,7 +272,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
             }}
           >
             <X className="w-2.5 h-2.5" />
-          </NotionButton>
+          </DsButton>
         </div>
         <AppMenuSeparator />
         <AppMenuItem
@@ -333,7 +333,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
                 >
                   {t('outlineV2.deleteConfirm', { defaultValue: '确认删除？' })}
                 </span>
-                <NotionButton
+                <DsButton
                   variant="danger"
                   size="sm"
                   className="gap-1"
@@ -345,15 +345,15 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
                 >
                   <Trash size={13} />
                   {t('outlineV2.confirmDelete', { defaultValue: '删除' })}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   ref={cancelDeleteRef}
                   variant="utility"
                   size="sm"
                   onClick={() => setConfirmingDelete(false)}
                 >
                   {t('outlineV2.cancel', { defaultValue: '取消' })}
-                </NotionButton>
+                </DsButton>
               </div>
             ) : (
               <AppMenuItem

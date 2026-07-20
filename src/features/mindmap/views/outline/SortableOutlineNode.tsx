@@ -7,7 +7,7 @@
  * - store 只做细粒度订阅（isFocused / reciteMode / 本节点 revealedBlanks），
  *   actions 走 useOutlineStoreActions 的稳定引用，避免每行 ~25 个 selector。
  *
- * 交互契约（对齐 Workflowy/幕布）：
+ * 交互契约（经典大纲编辑习惯）：
  * - 六点手柄专职拖拽；bullet 单击=选中聚焦，Mod+单击=聚焦缩放（zoom in）；
  * - Esc 第一次只退出编辑保留行焦点，再按 Esc 才清焦点；
  * - commit 保留用户首尾空格，仅纯空白视为空行；
@@ -22,7 +22,7 @@ import { motion } from 'framer-motion';
 import TextareaAutosize from 'react-textarea-autosize';
 import { DotsSixVertical, MagnifyingGlassPlus, Plus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { motionSafe } from '@/styles/motion-springs';
 import { useMindMapStore, useMindMapStoreApi } from '../../store';
 import type { MindMapDescriptionPreview, MindMapKeymap } from '../../utils/mindmapPreferences';
@@ -184,7 +184,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
   const [localNote, setLocalNote] = useState(node.note || '');
   const [isEditing, setIsEditing] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
-  /** Esc 后的「行聚焦但不编辑」态（Workflowy 两段式 Esc） */
+  /** Esc 后的「行聚焦但不编辑」态（两段式 Esc） */
   const [isEscaped, setIsEscaped] = useState(false);
   const localTextRef = useRef(localText);
   localTextRef.current = localText;
@@ -351,7 +351,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
   const commitText = useCallback((nextText?: string) => {
     // 用 ref：拆分后 blur 时闭包里的 localText 可能仍是拆分前全文
     const value = nextText ?? localTextRef.current ?? '';
-    // 仅纯空白按空行处理；用户显式输入的首尾空格保留（对齐 Workflowy）
+    // 仅纯空白按空行处理；用户显式输入的首尾空格保留
     const committed = value.trim() === '' ? '' : value;
     if (committed !== (node.text || '')) {
       updateNode(node.id, { text: committed });
@@ -472,11 +472,11 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
       }
     }
 
-    // DS: Mod+Shift+Enter opens description. Mubu: it creates a child.
+    // DS: Mod+Shift+Enter opens description. Classic: it creates a child.
     if (e.shiftKey && isMod && e.key === 'Enter') {
       e.preventDefault();
       clearOutlineGoalColumn();
-      if (keymap === 'mubu') {
+      if (keymap === 'classic') {
         commitText();
         const newId = addNode(node.id, 0);
         if (node.collapsed) toggleCollapse(node.id);
@@ -487,21 +487,21 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
       return;
     }
 
-    // Mubu: Shift+Enter opens description. DS: insert an internal newline.
+    // Classic: Shift+Enter opens description. DS: insert an internal newline.
     if (e.shiftKey && e.key === 'Enter') {
       clearOutlineGoalColumn();
-      if (keymap === 'mubu') {
+      if (keymap === 'classic') {
         e.preventDefault();
         setIsEditingNote(true);
       }
       return;
     }
 
-    // Mubu: Mod+Enter toggles completion. DS: add child.
+    // Classic: Mod+Enter toggles completion. DS: add child.
     if (isMod && e.key === 'Enter') {
       e.preventDefault();
       clearOutlineGoalColumn();
-      if (keymap === 'mubu') {
+      if (keymap === 'classic') {
         updateNode(node.id, { completed: !node.completed });
         return;
       }
@@ -542,7 +542,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
         return;
       }
 
-      // 行首（非根）：上方插入空同级，本行文本与子树原地不动（Workflowy 语义）。
+      // 行首（非根）：上方插入空同级，本行文本与子树原地不动（常见大纲编辑语义）。
       // 旧实现走 splitNode 把全文移入下方新节点，子树却留在原节点——
       // 表现为「子树挂在上方空行下」，层级被打断且光标行为不可预期。
       if (offset === 0 && !isRoot && parentId) {
@@ -686,13 +686,13 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
       return;
     }
 
-    // Mubu reserves Mod+[/] for zoom. Alt+[/] is the independent fold shortcut.
-    if (keymap === 'mubu' && isMod && e.key === '[') {
+    // Classic reserves Mod+[/] for zoom. Alt+[/] is the independent fold shortcut.
+    if (keymap === 'classic' && isMod && e.key === '[') {
       e.preventDefault();
       onZoomOut();
       return;
     }
-    if (keymap === 'mubu' && isMod && e.key === ']') {
+    if (keymap === 'classic' && isMod && e.key === ']') {
       e.preventDefault();
       onZoomIn(node.id);
       return;
@@ -827,7 +827,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
     if (e.key === 'Escape') {
       e.preventDefault();
       clearOutlineGoalColumn();
-      // 两段式 Esc（对齐 Workflowy）：第一次仅退出编辑、保留行焦点；
+      // 两段式 Esc：第一次仅退出编辑、保留行焦点；
       // isEscaped 同时挡住聚焦 effect 的自动回编辑，再按 Esc 才清焦点。
       setLocalText(node.text || '');
       localTextRef.current = node.text || '';
@@ -856,7 +856,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
   }, [isRoot, parentId, indexInParent, node, hasChildren, localText, addNode, setFocusedNodeId, indentNode, outdentNode, deleteNode, commitText, toggleCollapse, collapseAll, expandAll, collapseSubtree, expandSubtree, onNavigate, onZoomIn, onZoomOut, multiSelectBlocksEdit, onBatchIndent, onBatchOutdent, onBatchDelete, nextVisibleNodeId, prevVisibleNodeId, splitNode, mergeWithPrevious, mergeNextIntoCurrent, restoreCaretAfterMerge, storeApi, keymap, updateNode, clearOutlineGoalColumn, requestOutlineCaret, takeOutlineCaret, getOutlineGoalColumn, setOutlineGoalColumn, setOutlineGoalVisual]);
 
   /**
-   * 粘贴语义（E01 C0.2，对齐幕布/Workflowy）：
+   * 粘贴语义（E01 C0.2）：
    * - 结构化列表：光标处拆分当前行（选区被替换），森林以同级插到当前节点之后；
    * - 无结构多行文本：首行并入光标处，其余行按「每行一同级节点」粘贴；
    * - 单行普通文本：走 textarea 原生粘贴；
@@ -1066,7 +1066,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
               onClick={(e) => {
                 e.stopPropagation();
                 const rowEl = (e.currentTarget as HTMLElement).closest<HTMLElement>('[data-node-id]');
-                // ⌘/Ctrl+点击：整图折叠到本行所在层级（对标 Workflowy 的层级折叠）
+                // ⌘/Ctrl+点击：整图折叠到本行所在层级
                 if (e.metaKey || e.ctrlKey) {
                   const state = storeApi.getState();
                   const depth = getAncestors(state.document.root, node.id).length;
@@ -1396,7 +1396,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
       <div className="node-actions">
         {!isRoot && (
           <>
-            <NotionButton variant="ghost"
+            <DsButton variant="ghost"
               className="action-btn"
               onClick={(e) => {
                 e.stopPropagation();
@@ -1406,8 +1406,8 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
               title={t('actions.addChild')}
             >
               <Plus className="w-4 h-4" />
-            </NotionButton>
-            <NotionButton variant="ghost"
+            </DsButton>
+            <DsButton variant="ghost"
               className="action-btn"
               onClick={(e) => {
                 e.stopPropagation();
@@ -1416,7 +1416,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
               title={t('outline.enterFocusMode')}
             >
               <MagnifyingGlassPlus size={16} />
-            </NotionButton>
+            </DsButton>
             <OutlineNodeMenu
               node={node}
               isRoot={isRoot}

@@ -52,20 +52,20 @@ export interface OutlineShortcutLabels {
   paste: string;
 }
 
-/** 「⋯」菜单快捷键文案：随 keymap（deep-student / mubu）与平台变化 */
+/** 「⋯」菜单快捷键文案：随 keymap（deep-student / classic）与平台变化 */
 export function getOutlineShortcutLabels(keymap: MindMapKeymap): OutlineShortcutLabels {
   const mod = IS_MAC ? '⌘' : 'Ctrl+';
   const alt = IS_MAC ? '⌥' : 'Alt+';
   const shift = IS_MAC ? '⇧' : 'Shift+';
-  const isMubu = keymap === 'mubu';
+  const isClassic = keymap === 'classic';
   return {
-    addChild: isMubu ? `${shift}${mod}Enter` : `${mod}Enter`,
+    addChild: isClassic ? `${shift}${mod}Enter` : `${mod}Enter`,
     addSibling: 'Enter',
-    note: isMubu ? `${shift}Enter` : `${shift}${mod}Enter`,
-    toggleComplete: isMubu ? `${mod}Enter` : undefined,
-    // mubu 把 Mod+[/] 留给 zoom，折叠走 Alt+[/]
-    collapse: isMubu ? `${alt}[` : `${mod}[`,
-    expand: isMubu ? `${alt}]` : `${mod}]`,
+    note: isClassic ? `${shift}Enter` : `${shift}${mod}Enter`,
+    toggleComplete: isClassic ? `${mod}Enter` : undefined,
+    // 经典大纲键位把 Mod+[/] 留给缩放，折叠走 Alt+[/]
+    collapse: isClassic ? `${alt}[` : `${mod}[`,
+    expand: isClassic ? `${alt}]` : `${mod}]`,
     copy: `${mod}C`,
     cut: `${mod}X`,
     paste: `${mod}V`,

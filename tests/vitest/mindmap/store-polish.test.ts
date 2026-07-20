@@ -372,7 +372,7 @@ describe('mindmap store polish APIs', () => {
     );
   });
 
-  it('outdentNodes adopts following siblings as children (Workflowy semantics)', () => {
+  it('outdentNodes adopts following siblings as children', () => {
     const nested = createFlatDocument();
     const [a, b, c, d] = nested.root.children;
     nested.root.children = [

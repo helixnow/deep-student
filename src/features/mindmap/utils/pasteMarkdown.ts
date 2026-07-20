@@ -44,7 +44,7 @@ export function looksLikeMarkdownList(text: string): boolean {
   // 有序：要求每一行都是列表项（避免「1. 散文\n2. 散文\n续写」误判）
   if (ordered >= 2 && ordered === lines.length) return true;
 
-  // 幕布/纯文本导出常只有缩进，没有项目符号；要求至少一行顶格、一行缩进。
+  // 纯文本大纲常只有缩进，没有项目符号；要求至少一行顶格、一行缩进。
   const hasRootLine = lines.some((line) => /^\S/.test(line));
   const hasIndentedLine = lines.some((line) => /^\s{2,}\S/.test(line));
   if (bulletOrHeading === 0 && ordered === 0 && hasRootLine && hasIndentedLine) return true;
@@ -53,7 +53,7 @@ export function looksLikeMarkdownList(text: string): boolean {
 }
 
 /**
- * 从 Word/网页剪贴板 HTML 中提取标题与列表，转换成现有 Markdown 树解析器可读的文本。
+ * 从办公文档/网页剪贴板 HTML 中提取标题与列表，转换成现有 Markdown 树解析器可读的文本。
  * 返回 null 表示 HTML 不包含可识别的结构，调用方应保留普通行内粘贴。
  */
 export function htmlOutlineToMarkdown(html: string): string | null {
@@ -95,7 +95,7 @@ export function htmlOutlineToMarkdown(html: string): string | null {
       return;
     }
 
-    // Word 会把列表复制成带 mso-list/MsoListParagraph 的段落。
+    // 办公文档可能会把列表复制成带 mso-list/MsoListParagraph 的段落。
     if (element.tagName.toLowerCase() === 'p') {
       const className = element.getAttribute('class') ?? '';
       const style = element.getAttribute('style') ?? '';

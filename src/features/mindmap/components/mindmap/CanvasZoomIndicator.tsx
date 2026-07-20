@@ -8,7 +8,7 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useReactFlow, useStore } from '@xyflow/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { prefersReducedMotion } from '@/styles/motion-springs';
 
@@ -27,7 +27,7 @@ export const CanvasZoomIndicator: React.FC = () => {
       content={t('canvasV2.zoomResetTooltip', { defaultValue: '当前缩放；点击恢复 100%' })}
       position="top"
     >
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         className="mm-canvas-mode-button mm-canvas-zoom-indicator"
@@ -38,7 +38,7 @@ export const CanvasZoomIndicator: React.FC = () => {
         })}
       >
         <span>{zoomPercent}%</span>
-      </NotionButton>
+      </DsButton>
     </CommonTooltip>
   );
 };

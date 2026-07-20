@@ -136,7 +136,7 @@ export function indentNode(
 
 /**
  * 反缩进节点（变成父节点的下一个兄弟）。
- * 幕布/Workflowy 语义：原先跟在该节点后面的同级会被它收养为子节点，
+ * 反缩进语义：原先跟在该节点后面的同级会被它收养为子节点，
  * 与 store.outdentNodes 保持一致。
  */
 export function outdentNode(

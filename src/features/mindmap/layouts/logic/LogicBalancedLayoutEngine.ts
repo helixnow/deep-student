@@ -87,7 +87,7 @@ export class LogicBalancedLayoutEngine extends BaseLayoutEngine {
 
     // 贪心分配：将子树放到累计高度较小的一侧（含间距）
     // ★ P1 修复：高度相等时不再恒偏左——先比子树数量，再默认右侧
-    //   （对标 XMind：首条分支默认出现在右侧，等高兄弟左右交替）
+    //   （首条分支默认出现在右侧，等高兄弟左右交替）
     for (const item of sorted) {
       const placeRight =
         rightHeight < leftHeight ||

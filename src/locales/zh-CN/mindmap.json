@@ -61,11 +61,11 @@
     "redoDisabled": "没有可重做的操作"
   },
   "preferences": {
-    "mubuKeymap": "幕布兼容键位",
+    "classicKeymap": "经典大纲键位",
     "spatialNavigation": "画布方向键按空间邻接",
     "descriptionFirstLine": "描述只预览首行",
-    "mubuKeymapActive": "幕布兼容档：⌘Enter 完成，Shift+Enter 描述，⌘[/] 聚焦；Alt+[/] 折叠。",
-    "deepStudentKeymapActive": "Deep Student 默认档（非幕布键位）：⌘Enter 加子节点，Shift+Enter 换行；Alt+[/] 折叠。"
+    "classicKeymapActive": "经典大纲键位：⌘Enter 完成，Shift+Enter 描述，⌘[/] 聚焦；Alt+[/] 折叠。",
+    "deepStudentKeymapActive": "Deep Student 默认键位：⌘Enter 加子节点，Shift+Enter 换行；Alt+[/] 折叠。"
   },
   "export": {
     "title": "导出",
@@ -92,9 +92,9 @@
     "processing": "正在导出...",
     "exportJson": "导出 JSON",
     "exportSvg": "导出 SVG",
-    "exportXmind": "导出 XMind",
-    "dialogExportXmind": "导出 XMind",
-    "filterXmind": "XMind 文件",
+    "exportXmind": "导出 .xmind",
+    "dialogExportXmind": "导出 .xmind",
+    "filterXmind": ".xmind 思维导图包",
     "exportPdf": "导出 PDF",
     "pdfPrintHint": "将打开系统打印对话框，请选择「另存为 PDF」",
     "pdfPrintDegradeHint": "将打开系统打印对话框，请选择「另存为 PDF」。若打印对话框未弹出，当前系统可能不支持此功能，请改用 PNG/SVG 导出",
@@ -116,9 +116,9 @@
     "unsavedTitle": "导入将覆盖未保存修改",
     "unsavedConfirm": "继续导入",
     "unnamedTopic": "未命名主题",
-    "multiSheetNote": "合并自 {{count}} 个 XMind 画布：{{titles}}",
+    "multiSheetNote": "合并自 {{count}} 个 .xmind 画布：{{titles}}",
     "labelsNote": "标签：{{labels}}",
-    "markersNote": "XMind 标记：{{markers}}",
+    "markersNote": ".xmind 标记：{{markers}}",
     "saveAndImport": "保存并导入"
   },
   "presentation": {
@@ -262,8 +262,8 @@
     "defaultDark": "默认（暗色）",
     "minimalDark": "极简（暗色）",
     "colorfulDark": "彩色（暗色）",
-    "notionDark": "Notion 深色",
-    "notionLight": "Notion 浅色",
+    "cardDark": "卡片深色",
+    "cardLight": "卡片浅色",
     "minimalWhite": "极简白",
     "minimalBlack": "极简黑",
     "paper": "纸墨",
@@ -391,6 +391,7 @@
     "pickTarget": "点击目标节点",
     "editLabel": "编辑标签",
     "delete": "删除关联线",
+    "closeActions": "关闭",
     "labelPlaceholder": "标签",
     "doubleClickHint": "双击编辑"
   },
@@ -402,7 +403,8 @@
     "empty": "暂无资源",
     "loadFailed": "加载资源失败",
     "searchFailed": "搜索资源失败",
-    "unavailable": "资源已删除或不可用"
+    "unavailable": "资源已删除或不可用",
+    "remove": "移除资源“{{name}}”"
   },
   "node": {
     "unnamed": "未命名",
@@ -480,7 +482,7 @@
     },
     "export": {
       "group": "导出为…",
-      "xmindDone": "已导出 XMind 文件"
+      "xmindDone": "已导出 .xmind 文件"
     },
     "clipboard": {
       "copiedNodes": "已复制 {{count}} 个节点",

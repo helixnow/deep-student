@@ -2,10 +2,10 @@
  * 知识导图导入器
  *
  * 支持格式：
- * - XMind（Zen content.json / XMind 8 content.xml，zip 流式读 + 体积上限）
+ * - .xmind（content.json / content.xml，zip 流式读 + 体积上限）
  * - OPML (Outline Processor Markup Language)
  * - Markdown（大纲格式，与粘贴解析共用 pasteMarkdown 真源）
- * - FreeMind / Freeplane (.mm XML)
+ * - .mm 大纲文件（XML）
  * - JSON（原生格式）
  */
 
@@ -32,7 +32,7 @@ const XMIND_CONTENT_XML = 'content.xml';
 export const MAX_XMIND_ARCHIVE_BYTES = 16 * 1024 * 1024;
 export const MAX_XMIND_CONTENT_BYTES = 32 * 1024 * 1024;
 
-interface XMindTopicJson {
+interface XmindTopicJson {
   id?: string;
   title?: string;
   notes?: {
@@ -46,26 +46,26 @@ interface XMindTopicJson {
   /** 主题概要（导入时丢弃，仅计数用于导入报告） */
   summaries?: unknown[];
   children?: {
-    attached?: XMindTopicJson[];
-    summary?: XMindTopicJson[];
+    attached?: XmindTopicJson[];
+    summary?: XmindTopicJson[];
   };
 }
 
 /**
- * XMind 导入丢弃项统计（P3 导入报告）。
- * 传入 importFromXMind 可选参数收集静默丢弃的图片/概要数量，供 UI toast 展示。
+ * .xmind 导入丢弃项统计（P3 导入报告）。
+ * 传入 importFromXmindZip 可选参数收集静默丢弃的图片/概要数量，供 UI toast 展示。
  */
-export interface XMindImportReport {
+export interface XmindImportReport {
   droppedImages: number;
   droppedSummaries: number;
 }
 
-export function createXMindImportReport(): XMindImportReport {
+export function createXmindImportReport(): XmindImportReport {
   return { droppedImages: 0, droppedSummaries: 0 };
 }
 
-/** XMind Zen sheet 级关联线（自由连线，非父子边） */
-interface XMindRelationshipJson {
+/** .xmind sheet 级关联线（自由连线，非父子边） */
+interface XmindRelationshipJson {
   id?: string;
   end1Id?: string;
   end2Id?: string;
@@ -73,7 +73,7 @@ interface XMindRelationshipJson {
 }
 
 /**
- * XMind 任务进度 marker → completed。
+ * .xmind 任务进度 marker → completed。
  * task-done 视为已完成，其余 task-*（start/half/quarter 等中间进度）视为未完成任务。
  */
 function taskMarkerToCompleted(markerIds: string[]): boolean | undefined {
@@ -83,16 +83,16 @@ function taskMarkerToCompleted(markerIds: string[]): boolean | undefined {
 }
 
 /**
- * XMind 非任务元数据 → 可用字段的降级映射（B9）：
- * - `priority-N` marker → 正文前缀 `[PN] `（优先级在 XMind 中高可见，保留到标题）；
+ * .xmind 非任务元数据 → 可用字段的降级映射（B9）：
+ * - `priority-N` marker → 正文前缀 `[PN] `（优先级在源文件中高可见，保留到标题）；
  * - labels → 备注附注行「标签：…」；
- * - 其余非 task/priority marker（flag/star/smiley 等）→ 备注附注行「XMind 标记：…」。
+ * - 其余非 task/priority marker（flag/star/smiley 等）→ 备注附注行「.xmind 标记：…」。
  *
  * 明确不支持（导入时静默丢弃）：主题样式/结构样式、图片与附件、概要（summary）、
  * 外框（boundary）、超链接、录音备注、标注（callout）；detached 浮动主题为有意忽略
- * （见 importFromXMind 各转换器与既有测试）。
+ * （见 importFromXmindZip 各转换器与既有测试）。
  */
-function collectXMindExtras(
+function collectXmindExtras(
   markerIds: string[],
   labels: string[],
 ): { textPrefix: string; noteSuffixLines: string[] } {
@@ -137,7 +137,7 @@ function stripHtml(value: string | undefined): string | undefined {
   return parsed.body.textContent?.trim() || undefined;
 }
 
-function allocateXMindNodeId(
+function allocateXmindNodeId(
   requestedId: string | undefined,
   usedIds: Set<string>,
   forceRoot: boolean,
@@ -157,15 +157,15 @@ function allocateXMindNodeId(
 }
 
 function xmindJsonTopicToNode(
-  topic: XMindTopicJson,
+  topic: XmindTopicJson,
   depth: number,
   stats: { nodeCount: number },
   usedIds: Set<string>,
   idMap: Map<string, string>,
   forceRoot = false,
-  report?: XMindImportReport,
+  report?: XmindImportReport,
 ): MindMapNode {
-  claimImportedNode(stats, depth, 'XMind');
+  claimImportedNode(stats, depth, '.xmind');
   // 导入报告：图片与概要在本应用模型中不支持，静默丢弃但计数上报
   if (report) {
     if (topic.image) report.droppedImages += 1;
@@ -176,7 +176,7 @@ function xmindJsonTopicToNode(
   }
   const plainNote = topic.notes?.plain?.content?.trim();
   const htmlNote = stripHtml(topic.notes?.html?.content);
-  const assignedId = allocateXMindNodeId(topic.id, usedIds, forceRoot);
+  const assignedId = allocateXmindNodeId(topic.id, usedIds, forceRoot);
   // 记录 原始 topic id → 实际节点 id，供 relationships 端点重映射
   if (topic.id && !idMap.has(topic.id)) {
     idMap.set(topic.id, assignedId);
@@ -188,7 +188,7 @@ function xmindJsonTopicToNode(
   const labels = (topic.labels || []).filter(
     (label): label is string => typeof label === 'string' && label.trim().length > 0,
   );
-  const extras = collectXMindExtras(markerIds, labels);
+  const extras = collectXmindExtras(markerIds, labels);
   return {
     id: assignedId,
     text: extras.textPrefix + (topic.title?.trim() || i18n.t('mindmap:import.unnamedTopic')),
@@ -218,10 +218,10 @@ function xmindXmlTopicToNode(
   usedIds: Set<string>,
   idMap: Map<string, string>,
   forceRoot = false,
-  report?: XMindImportReport,
+  report?: XmindImportReport,
 ): MindMapNode {
-  claimImportedNode(stats, depth, 'XMind');
-  // 导入报告：XMind 8 的 <xhtml:img>（localName=img）与 <summaries><summary> 丢弃计数
+  claimImportedNode(stats, depth, '.xmind');
+  // 导入报告：XML 内容的 <xhtml:img>（localName=img）与 <summaries><summary> 丢弃计数
   if (report) {
     report.droppedImages += directChildrenByLocalName(topic, 'img').length;
     const summariesContainer = directChildrenByLocalName(topic, 'summaries')[0];
@@ -236,7 +236,7 @@ function xmindXmlTopicToNode(
       || firstDescendantByLocalName(notes, 'html')?.textContent?.trim()
       || undefined
     : undefined;
-  // XMind 8 marker：<marker-refs><marker-ref marker-id="task-done"/></marker-refs>
+  // XML marker：<marker-refs><marker-ref marker-id="task-done"/></marker-refs>
   const markerRefs = directChildrenByLocalName(topic, 'marker-refs')[0];
   const markerIds = markerRefs
     ? directChildrenByLocalName(markerRefs, 'marker-ref')
@@ -244,14 +244,14 @@ function xmindXmlTopicToNode(
       .filter((id): id is string => !!id)
     : [];
   const completed = taskMarkerToCompleted(markerIds);
-  // XMind 8 labels：<labels><label>…</label></labels>
+  // XML labels：<labels><label>…</label></labels>
   const labelsContainer = directChildrenByLocalName(topic, 'labels')[0];
   const labels = labelsContainer
     ? directChildrenByLocalName(labelsContainer, 'label')
       .map((label) => label.textContent?.trim())
       .filter((label): label is string => !!label)
     : [];
-  const extras = collectXMindExtras(markerIds, labels);
+  const extras = collectXmindExtras(markerIds, labels);
   const childrenContainer = directChildrenByLocalName(topic, 'children')[0];
   const topicsGroups = childrenContainer
     ? directChildrenByLocalName(childrenContainer, 'topics').filter(
@@ -260,7 +260,7 @@ function xmindXmlTopicToNode(
     : [];
   const childTopics = topicsGroups.flatMap((group) => directChildrenByLocalName(group, 'topic'));
   const originalId = topic.getAttribute('id') || undefined;
-  const assignedId = allocateXMindNodeId(originalId, usedIds, forceRoot);
+  const assignedId = allocateXmindNodeId(originalId, usedIds, forceRoot);
   if (originalId && !idMap.has(originalId)) {
     idMap.set(originalId, assignedId);
   }
@@ -275,9 +275,9 @@ function xmindXmlTopicToNode(
 }
 
 /**
- * 把 XMind 关联线端点重映射到导入后的节点 id，丢弃端点缺失/自指的连线。
+ * 把 .xmind 关联线端点重映射到导入后的节点 id，丢弃端点缺失/自指的连线。
  */
-function remapXMindRelationships(
+function remapXmindRelationships(
   relationships: Array<{ end1?: string; end2?: string; label?: string }>,
   idMap: Map<string, string>,
 ): MindMapAssociation[] {
@@ -297,7 +297,7 @@ function remapXMindRelationships(
   return associations;
 }
 
-function createXMindDocument(
+function createXmindDocument(
   root: MindMapNode,
   associations?: MindMapAssociation[],
 ): MindMapDocument {
@@ -325,24 +325,24 @@ function createMultiSheetRoot(children: MindMapNode[], sheetTitles: string[]): M
   };
 }
 
-interface XMindStreamHelper {
-  on(event: 'data', callback: (chunk: Uint8Array) => void): XMindStreamHelper;
-  on(event: 'end', callback: () => void): XMindStreamHelper;
-  on(event: 'error', callback: (error: Error) => void): XMindStreamHelper;
-  pause(): XMindStreamHelper;
-  resume(): XMindStreamHelper;
+interface XmindStreamHelper {
+  on(event: 'data', callback: (chunk: Uint8Array) => void): XmindStreamHelper;
+  on(event: 'end', callback: () => void): XmindStreamHelper;
+  on(event: 'error', callback: (error: Error) => void): XmindStreamHelper;
+  pause(): XmindStreamHelper;
+  resume(): XmindStreamHelper;
 }
 
-async function readXMindContent(entry: JSZip.JSZipObject): Promise<string> {
+async function readXmindContent(entry: JSZip.JSZipObject): Promise<string> {
   const advertisedSize = (entry as unknown as {
     _data?: { uncompressedSize?: number };
   })._data?.uncompressedSize;
   if (typeof advertisedSize === 'number' && advertisedSize > MAX_XMIND_CONTENT_BYTES) {
-    throw new Error(`XMind content exceeds maximum size (${MAX_XMIND_CONTENT_BYTES} bytes)`);
+    throw new Error(`.xmind content exceeds maximum size (${MAX_XMIND_CONTENT_BYTES} bytes)`);
   }
 
   const stream = (entry as unknown as {
-    internalStream(type: 'uint8array'): XMindStreamHelper;
+    internalStream(type: 'uint8array'): XmindStreamHelper;
   }).internalStream('uint8array');
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
@@ -356,7 +356,7 @@ async function readXMindContent(entry: JSZip.JSZipObject): Promise<string> {
         if (totalBytes > MAX_XMIND_CONTENT_BYTES) {
           settled = true;
           stream.pause();
-          reject(new Error(`XMind content exceeds maximum size (${MAX_XMIND_CONTENT_BYTES} bytes)`));
+          reject(new Error(`.xmind content exceeds maximum size (${MAX_XMIND_CONTENT_BYTES} bytes)`));
           return;
         }
         chunks.push(chunk);
@@ -383,31 +383,31 @@ async function readXMindContent(entry: JSZip.JSZipObject): Promise<string> {
 }
 
 /**
- * Import XMind Zen (content.json) and XMind 8 (content.xml) as the existing tree model.
+ * Import .xmind content.json and content.xml as the existing tree model.
  * 可选 report 参数收集被丢弃的图片/概要计数（导入报告，向后兼容）。
  */
-export async function importFromXMind(
+export async function importFromXmindZip(
   data: Uint8Array | ArrayBuffer,
-  report?: XMindImportReport,
+  report?: XmindImportReport,
 ): Promise<MindMapDocument> {
   if (data.byteLength > MAX_XMIND_ARCHIVE_BYTES) {
-    throw new Error(`XMind archive exceeds maximum size (${MAX_XMIND_ARCHIVE_BYTES} bytes)`);
+    throw new Error(`.xmind archive exceeds maximum size (${MAX_XMIND_ARCHIVE_BYTES} bytes)`);
   }
   const zip = await JSZip.loadAsync(data);
   const jsonEntry = zip.file(XMIND_CONTENT_JSON);
   if (jsonEntry) {
-    const raw = JSON.parse(await readXMindContent(jsonEntry)) as unknown;
+    const raw = JSON.parse(await readXmindContent(jsonEntry)) as unknown;
     const candidates = Array.isArray(raw) ? raw : [raw];
     const sheets = candidates.filter((candidate): candidate is {
       title?: string;
-      rootTopic: XMindTopicJson;
-      relationships?: XMindRelationshipJson[];
+      rootTopic: XmindTopicJson;
+      relationships?: XmindRelationshipJson[];
     } => {
       if (!candidate || typeof candidate !== 'object' || !('rootTopic' in candidate)) return false;
       const rootTopic = (candidate as { rootTopic?: unknown }).rootTopic;
       return !!rootTopic && typeof rootTopic === 'object';
     });
-    if (sheets.length === 0) throw new Error('Invalid XMind: missing root topic');
+    if (sheets.length === 0) throw new Error('Invalid .xmind archive: missing root topic');
     const stats = createImportStats();
     const usedIds = new Set<string>();
     const idMap = new Map<string, string>();
@@ -420,34 +420,34 @@ export async function importFromXMind(
       })));
     if (sheets.length === 1) {
       const root = xmindJsonTopicToNode(sheets[0].rootTopic, 0, stats, usedIds, idMap, true, report);
-      return createXMindDocument(root, remapXMindRelationships(rawRelationships, idMap));
+      return createXmindDocument(root, remapXmindRelationships(rawRelationships, idMap));
     }
-    claimImportedNode(stats, 0, 'XMind');
+    claimImportedNode(stats, 0, '.xmind');
     usedIds.add('root');
     const children = sheets.map((sheet) =>
       xmindJsonTopicToNode(sheet.rootTopic, 1, stats, usedIds, idMap, false, report));
     const sheetTitles = sheets.map((sheet) => sheet.title || sheet.rootTopic.title || '');
-    return createXMindDocument(
+    return createXmindDocument(
       createMultiSheetRoot(children, sheetTitles),
-      remapXMindRelationships(rawRelationships, idMap),
+      remapXmindRelationships(rawRelationships, idMap),
     );
   }
 
   const xmlEntry = zip.file(XMIND_CONTENT_XML);
   if (xmlEntry) {
-    const xml = new DOMParser().parseFromString(await readXMindContent(xmlEntry), 'text/xml');
+    const xml = new DOMParser().parseFromString(await readXmindContent(xmlEntry), 'text/xml');
     const parserError = xml.querySelector('parsererror');
-    if (parserError) throw new Error(`Invalid XMind XML: ${parserError.textContent}`);
+    if (parserError) throw new Error(`Invalid .xmind XML: ${parserError.textContent}`);
     const sheetElements = Array.from(xml.getElementsByTagName('*'))
       .filter((element) => element.localName === 'sheet');
     const rootTopics = sheetElements
       .map((sheet) => directChildrenByLocalName(sheet, 'topic')[0])
       .filter((topic): topic is Element => !!topic);
-    if (rootTopics.length === 0) throw new Error('Invalid XMind: missing root topic');
+    if (rootTopics.length === 0) throw new Error('Invalid .xmind archive: missing root topic');
     const stats = createImportStats();
     const usedIds = new Set<string>();
     const idMap = new Map<string, string>();
-    // XMind 8：<relationships><relationship end1=".." end2=".."><title>..</title></relationship>
+    // XML relationships：<relationships><relationship end1=".." end2=".."><title>..</title></relationship>
     const rawRelationships = sheetElements
       .flatMap((sheet) => directChildrenByLocalName(sheet, 'relationships'))
       .flatMap((container) => directChildrenByLocalName(container, 'relationship'))
@@ -458,9 +458,9 @@ export async function importFromXMind(
       }));
     if (rootTopics.length === 1) {
       const root = xmindXmlTopicToNode(rootTopics[0], 0, stats, usedIds, idMap, true, report);
-      return createXMindDocument(root, remapXMindRelationships(rawRelationships, idMap));
+      return createXmindDocument(root, remapXmindRelationships(rawRelationships, idMap));
     }
-    claimImportedNode(stats, 0, 'XMind');
+    claimImportedNode(stats, 0, '.xmind');
     usedIds.add('root');
     const children = rootTopics.map((topic) =>
       xmindXmlTopicToNode(topic, 1, stats, usedIds, idMap, false, report));
@@ -473,13 +473,13 @@ export async function importFromXMind(
           directChildrenByLocalName(sheet, 'topic')[0], 'title',
         )[0]?.textContent?.trim()
         || '');
-    return createXMindDocument(
+    return createXmindDocument(
       createMultiSheetRoot(children, sheetTitles),
-      remapXMindRelationships(rawRelationships, idMap),
+      remapXmindRelationships(rawRelationships, idMap),
     );
   }
 
-  throw new Error('Invalid XMind: content.json or content.xml not found');
+  throw new Error('Invalid .xmind archive: content.json or content.xml not found');
 }
 
 // ============================================================================
@@ -495,7 +495,7 @@ interface OpmlOutline {
 
 /**
  * 解析 OPML 完成态属性：
- * - _complete="true|false"（本应用导出 / Workflowy 风格）
+ * - _complete="true|false"（本应用导出的完成态属性）
  * - _status="checked"（OmniOutliner 等工具的勾选态）
  */
 function parseOpmlCompleted(element: Element): boolean | undefined {
@@ -528,7 +528,7 @@ function parseOpmlOutline(
 
   // 部分工具（如 OmniOutliner 导出）用 title 属性而非 text
   const text = element.getAttribute('text') || element.getAttribute('title') || '';
-  // Workflowy 等工具的注释属性为 _note；note 作为兼容兜底
+  // 常见大纲工具的注释属性为 _note；note 作为兼容兜底
   const note = element.getAttribute('_note') || element.getAttribute('note') || undefined;
   const completed = parseOpmlCompleted(element);
   const children: OpmlOutline[] = [];
@@ -624,7 +624,7 @@ export function importFromOpml(opmlContent: string): MindMapDocument {
  * 唯一解析真源，因此文件导入同样支持：
  * - `- * + •  ‣ ◦` 无序列表与 `1.` / `1)` 有序列表；
  * - `# 标题` 层级、GFM 任务项 `- [ ]` / `- [x]`；
- * - 幕布等工具导出的纯缩进大纲（无项目符号）；
+ * - 纯缩进大纲（无项目符号）；
  * - 多个顶级条目（森林）——合成虚拟根，而非旧行为的「首行强制为单根」。
  *
  * 深度（100）/节点数（10000）上限由 markdownListToNodes 内部守卫。
@@ -655,15 +655,15 @@ export function importFromMarkdown(markdown: string): MindMapDocument {
 }
 
 // ============================================================================
-// FreeMind (.mm) 导入
+// .mm 导入
 // ============================================================================
 
 /**
- * 提取 FreeMind 节点的 richcontent 文本。
+ * 提取 .mm 节点的 richcontent 文本。
  * - TYPE="NODE"：富文本正文（替代 TEXT 属性），折叠为单行；
  * - TYPE="NOTE"：备注，保留行结构（逐行 trim 后以 \n 连接）。
  */
-function freeMindRichContentText(
+function mmRichContentText(
   element: Element,
   type: 'NODE' | 'NOTE',
 ): string | undefined {
@@ -684,7 +684,7 @@ function freeMindRichContentText(
   return lines.length > 0 ? lines.join('\n') : undefined;
 }
 
-function freeMindNodeToNode(
+function mmNodeToNode(
   element: Element,
   depth: number,
   stats: { nodeCount: number },
@@ -693,21 +693,21 @@ function freeMindNodeToNode(
   arrows: Array<{ end1?: string; end2?: string; label?: string }>,
   forceRoot = false,
 ): MindMapNode {
-  claimImportedNode(stats, depth, 'FreeMind');
+  claimImportedNode(stats, depth, '.mm');
   const attrText = element.getAttribute('TEXT') ?? element.getAttribute('text');
   const text =
     attrText?.trim()
-    || freeMindRichContentText(element, 'NODE')
+    || mmRichContentText(element, 'NODE')
     || i18n.t('mindmap:import.unnamedTopic');
-  const note = freeMindRichContentText(element, 'NOTE');
+  const note = mmRichContentText(element, 'NOTE');
 
   const originalId = element.getAttribute('ID') || element.getAttribute('id') || undefined;
-  const assignedId = allocateXMindNodeId(originalId, usedIds, forceRoot);
+  const assignedId = allocateXmindNodeId(originalId, usedIds, forceRoot);
   // 源 ID → 实际节点 ID；无源 ID 时登记 assignedId 自映射，供 arrowlink 端点重映射
   const mapKey = originalId ?? assignedId;
   if (!idMap.has(mapKey)) idMap.set(mapKey, assignedId);
 
-  // FreeMind 完成态图标：button_ok → 已完成，button_cancel → 未完成任务
+  // .mm 完成态图标：button_ok → 已完成，button_cancel → 未完成任务
   const icons = directChildrenByLocalName(element, 'icon')
     .map((icon) => icon.getAttribute('BUILTIN'))
     .filter((id): id is string => !!id);
@@ -717,7 +717,7 @@ function freeMindNodeToNode(
       ? false
       : undefined;
 
-  // <arrowlink DESTINATION="…"/>：FreeMind 自由连线 → 关联线
+  // <arrowlink DESTINATION="…"/>：.mm 自由连线 → 关联线
   for (const arrow of directChildrenByLocalName(element, 'arrowlink')) {
     const destination = arrow.getAttribute('DESTINATION') || arrow.getAttribute('destination');
     if (destination) {
@@ -735,33 +735,33 @@ function freeMindNodeToNode(
     note,
     ...(completed !== undefined ? { completed } : {}),
     children: directChildrenByLocalName(element, 'node').map((child) =>
-      freeMindNodeToNode(child, depth + 1, stats, usedIds, idMap, arrows)),
+      mmNodeToNode(child, depth + 1, stats, usedIds, idMap, arrows)),
   };
 }
 
 /**
- * 从 FreeMind / Freeplane `.mm`（XML）导入：标题 + 备注层级、
+ * 从 `.mm`（XML）导入：标题 + 备注层级、
  * button_ok/button_cancel 图标 → 完成态、arrowlink → 关联线。
  * 不支持（静默丢弃）：云朵（cloud）、节点样式/颜色/字体、内嵌图片、
  * 属性（attribute）、hook 插件数据。
  */
-export function importFromFreeMind(xmlContent: string): MindMapDocument {
+export function importFromMmOutline(xmlContent: string): MindMapDocument {
   const doc = new DOMParser().parseFromString(xmlContent, 'text/xml');
   const parserError = doc.querySelector('parsererror');
   if (parserError) {
-    throw new Error(`Invalid FreeMind XML: ${parserError.textContent}`);
+    throw new Error(`Invalid .mm XML: ${parserError.textContent}`);
   }
 
   const mapElement = doc.documentElement?.localName?.toLowerCase() === 'map'
     ? doc.documentElement
     : null;
   if (!mapElement) {
-    throw new Error('Invalid FreeMind: missing map element');
+    throw new Error('Invalid .mm: missing map element');
   }
 
   const rootElements = directChildrenByLocalName(mapElement, 'node');
   if (rootElements.length === 0) {
-    throw new Error('Invalid FreeMind: no node elements found');
+    throw new Error('Invalid .mm: no node elements found');
   }
 
   const stats = createImportStats();
@@ -771,19 +771,19 @@ export function importFromFreeMind(xmlContent: string): MindMapDocument {
 
   let root: MindMapNode;
   if (rootElements.length === 1) {
-    root = freeMindNodeToNode(rootElements[0], 0, stats, usedIds, idMap, arrows, true);
+    root = mmNodeToNode(rootElements[0], 0, stats, usedIds, idMap, arrows, true);
   } else {
-    claimImportedNode(stats, 0, 'FreeMind');
+    claimImportedNode(stats, 0, '.mm');
     usedIds.add('root');
     root = {
       id: 'root',
       text: i18n.t('mindmap:import.importedMap'),
       children: rootElements.map((element) =>
-        freeMindNodeToNode(element, 1, stats, usedIds, idMap, arrows)),
+        mmNodeToNode(element, 1, stats, usedIds, idMap, arrows)),
     };
   }
 
-  const associations = remapXMindRelationships(arrows, idMap);
+  const associations = remapXmindRelationships(arrows, idMap);
   return {
     version: '1.0',
     root,
@@ -894,7 +894,7 @@ export function importFromJson(jsonContent: string): MindMapDocument {
 // 通用导入接口
 // ============================================================================
 
-export type ImportFormat = 'opml' | 'markdown' | 'json' | 'freemind' | 'xmind' | 'auto';
+export type ImportFormat = 'opml' | 'markdown' | 'json' | 'mm' | 'xmind' | 'auto';
 
 /** zip 包（.xmind）魔数：PK\x03\x04 */
 const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04] as const;
@@ -906,8 +906,8 @@ function looksLikeZip(bytes: Uint8Array): boolean {
 /**
  * 自动检测格式（基于文本内容）。
  * - zip 魔数被解码为文本时也能识别为 xmind（但二进制内容需走 importFromFile /
- *   importFromXMind 的字节路径，本函数只做提示性识别）；
- * - XML 按根元素区分 opml / freemind，无法识别时保持旧行为回退 opml。
+ *   importFromXmindZip 的字节路径，本函数只做提示性识别）；
+ * - XML 按根元素区分 opml / mm，无法识别时保持旧行为回退 opml。
  */
 export function detectFormat(content: string): Exclude<ImportFormat, 'auto'> {
   const trimmed = content.trim();
@@ -920,7 +920,7 @@ export function detectFormat(content: string): Exclude<ImportFormat, 'auto'> {
     // 只嗅探开头片段，避免对超大文件做整体正则
     const head = trimmed.slice(0, 2048);
     if (/<opml[\s>]/i.test(head)) return 'opml';
-    if (/<map[\s>]/i.test(head)) return 'freemind';
+    if (/<map[\s>]/i.test(head)) return 'mm';
     if (trimmed.startsWith('<?xml') || trimmed.startsWith('<opml')) return 'opml';
   }
 
@@ -933,7 +933,7 @@ export function detectFormat(content: string): Exclude<ImportFormat, 'auto'> {
 
 /**
  * 统一导入接口（文本内容）。
- * XMind 是 zip 二进制格式，无法从字符串导入——请使用 importFromFile 或 importFromXMind。
+ * .xmind 是 zip 二进制格式，无法从字符串导入——请使用 importFromFile 或 importFromXmindZip。
  */
 export function importMindMap(
   content: string,
@@ -948,10 +948,10 @@ export function importMindMap(
       return importFromMarkdown(content);
     case 'json':
       return importFromJson(content);
-    case 'freemind':
-      return importFromFreeMind(content);
+    case 'mm':
+      return importFromMmOutline(content);
     case 'xmind':
-      throw new Error('XMind import requires binary data; use importFromFile or importFromXMind');
+      throw new Error('.xmind import requires binary data; use importFromFile or importFromXmindZip');
     default:
       throw new Error(`Unsupported import format: ${actualFormat}`);
   }
@@ -959,21 +959,21 @@ export function importMindMap(
 
 /**
  * 从文件导入。
- * ★ B11 修复：扩展名路由补齐 .xmind（二进制 zip）与 .mm（FreeMind XML）；
+ * ★ B11 修复：扩展名路由补齐 .xmind（二进制 zip）与 .mm（XML）；
  * 无扩展名时按 zip 魔数嗅探（zip 内容按文本解码会损坏，必须走字节路径）。
  */
 export async function importFromFile(file: File): Promise<MindMapDocument> {
   const extension = file.name.split('.').pop()?.toLowerCase();
 
   if (extension === 'xmind') {
-    return importFromXMind(await file.arrayBuffer());
+    return importFromXmindZip(await file.arrayBuffer());
   }
 
   if (extension !== 'opml' && extension !== 'json' && extension !== 'md'
     && extension !== 'markdown' && extension !== 'mm' && extension !== 'txt') {
     const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
     if (looksLikeZip(head)) {
-      return importFromXMind(await file.arrayBuffer());
+      return importFromXmindZip(await file.arrayBuffer());
     }
   }
 
@@ -988,7 +988,7 @@ export async function importFromFile(file: File): Promise<MindMapDocument> {
     // .txt：纯缩进大纲，与 Markdown 共用 markdownListToNodes 解析（支持无项目符号的缩进层级）
     format = 'markdown';
   } else if (extension === 'mm') {
-    format = 'freemind';
+    format = 'mm';
   }
 
   return importMindMap(content, format);

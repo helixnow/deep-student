@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   findSpatialMindMapNeighbor,
   getMindMapPreferences,
-  setMindMapPreferences,
 } from '../mindmapPreferences';
 
 function rect(left: number, top: number, width = 40, height = 20): DOMRect {
@@ -20,14 +19,14 @@ describe('mindmap preferences', () => {
     });
   });
 
-  it('persists the Mubu keymap and UX toggles together', () => {
-    setMindMapPreferences({
+  it('migrates the legacy keymap and persists UX toggles together', () => {
+    localStorage.setItem('deep-student:mindmap-preferences:v1', JSON.stringify({
       keymap: 'mubu',
       canvasNavigation: 'spatial',
       descriptionPreview: 'first-line',
-    });
+    }));
     expect(getMindMapPreferences()).toEqual({
-      keymap: 'mubu',
+      keymap: 'classic',
       canvasNavigation: 'spatial',
       descriptionPreview: 'first-line',
     });
