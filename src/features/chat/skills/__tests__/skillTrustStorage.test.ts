@@ -6,7 +6,11 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
 }));
 
-import { getSkillTrustOverride, setSkillTrustOverride } from '../skillTrustStorage';
+import {
+  getSkillTrustOverride,
+  resolveEffectiveTrustStatus,
+  setSkillTrustOverride,
+} from '../skillTrustStorage';
 import type { SkillDefinition } from '../types';
 
 const skill: SkillDefinition = {
@@ -59,5 +63,16 @@ describe('backend-authoritative skill trust', () => {
       trusted: false,
     });
     expect(getSkillTrustOverride(skill.id)).toBe('untrusted');
+  });
+
+  it('fails closed when a baked trusted status no longer matches the fingerprint', async () => {
+    await setSkillTrustOverride(skill.id, 'trusted', skill);
+    const changed: SkillDefinition = {
+      ...skill,
+      trustStatus: 'trusted',
+      content: `${skill.content}\nChanged after approval`,
+    };
+
+    expect(resolveEffectiveTrustStatus(changed)).toBe('untrusted');
   });
 });

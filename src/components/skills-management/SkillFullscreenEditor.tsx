@@ -13,7 +13,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { EditorView } from '@codemirror/view';
 import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
 import { Input } from '../ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Label } from '../ui/shad/Label';
 import { Textarea } from '../ui/shad/Textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/shad/Tabs';
@@ -362,7 +362,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
               <h2 className="text-sm font-medium text-foreground/80 truncate">
                 {isEdit ? formData.name || skill?.id : t('skills:editor.new_skill')}
               </h2>
-              <NotionButton
+              <DsButton
                 type="button"
                 variant="ghost"
                 size="icon"
@@ -370,7 +370,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                 aria-label={t('common:actions.close')}
               >
                 <X size={18} />
-              </NotionButton>
+              </DsButton>
             </div>
             <div className="flex-1 min-h-0">
             <HorizontalResizable
@@ -511,22 +511,22 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                           {t('skills:editor.skill_type')}
                         </Label>
                         <div className="grid grid-cols-2 gap-2">
-                          <NotionButton
+                          <DsButton
                             type="button"
                             variant={formData.skillType === 'standalone' ? 'default' : 'ghost'}
                             onClick={() => updateField('skillType', 'standalone')}
                             className="w-full"
                           >
                             {t('skills:editor.skill_type_standalone')}
-                          </NotionButton>
-                          <NotionButton
+                          </DsButton>
+                          <DsButton
                             type="button"
                             variant={formData.skillType === 'composite' ? 'default' : 'ghost'}
                             onClick={() => updateField('skillType', 'composite')}
                             className="w-full"
                           >
                             {t('skills:editor.skill_type_composite')}
-                          </NotionButton>
+                          </DsButton>
                         </div>
                         <p className="text-[10px] text-muted-foreground/60">
                           {t('skills:editor.skill_type_hint')}
@@ -575,7 +575,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
 
                 {/* 左侧底部：操作按钮 */}
                 <div className="flex-none p-4 border-t border-border/20 flex items-center gap-2 bg-background relative z-10">
-                  <NotionButton
+                  <DsButton
                     type="button"
                     variant="ghost"
                     onClick={handleCloseRequest}
@@ -583,8 +583,8 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                     className="flex-1 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
                   >
                     {t('common:actions.cancel')}
-                  </NotionButton>
-                  <NotionButton
+                  </DsButton>
+                  <DsButton
                     type="submit"
                     disabled={isSaving}
                     className="flex-1 shadow-md hover:shadow-lg transition-colors"
@@ -592,7 +592,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                     {isSaving
                       ? t('common:actions.saving')
                       : t('common:actions.save')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               </motion.div>
               }

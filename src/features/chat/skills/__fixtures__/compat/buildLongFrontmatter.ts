@@ -1,12 +1,12 @@
 /**
- * Build SKILL.md fixtures that stress the 4096-byte frontmatter limit.
+ * Build SKILL.md fixtures that stress the bounded 64 KiB frontmatter limit.
  *
  * Padding uses an unknown `x-padding` key so description stays within the
  * ≤1024 validation limit while the raw frontmatter block approaches/exceeds
  * the parser's MAX_FRONTMATTER_LENGTH.
  */
 
-const MAX_FRONTMATTER_LENGTH = 4096;
+const MAX_FRONTMATTER_LENGTH = 64 * 1024;
 
 function buildFrontmatter(targetLength: number): string {
   const prefix = [

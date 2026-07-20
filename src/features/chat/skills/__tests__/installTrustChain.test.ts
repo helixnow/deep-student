@@ -7,9 +7,9 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 import {
-  clawhubDownloadAndScan,
+  skillMarketDownloadAndScan,
   installTapSkill,
-  type ClawHubDownloadScanResult,
+  type SkillMarketDownloadScanResult,
   type SkillPackageScanResult,
   updateSkillFromSource,
 } from '../api';
@@ -84,11 +84,11 @@ describe('install trust chain (scan risk + trust gate)', () => {
     expect(result).not.toHaveProperty('trust_status', 'trusted');
   });
 
-  it('clawhub download_and_scan (install=false) exposes scan risk for user confirmation', async () => {
-    const payload: ClawHubDownloadScanResult = {
+  it('skill_market download_and_scan (install=false) exposes scan risk for user confirmation', async () => {
+    const payload: SkillMarketDownloadScanResult = {
       slug: 'sonoscli',
       version: '1.0.0',
-      provenance: 'clawhub:sonoscli@1.0.0',
+      provenance: 'skill_market:sonoscli@1.0.0',
       tempZipPath: '/tmp/sonoscli.zip',
       sourceKind: 'zip',
       installed: false,
@@ -106,13 +106,13 @@ describe('install trust chain (scan risk + trust gate)', () => {
     };
     invokeMock.mockResolvedValueOnce(payload);
 
-    const result = await clawhubDownloadAndScan({
+    const result = await skillMarketDownloadAndScan({
       slug: 'sonoscli',
       version: '1.0.0',
       install: false,
     });
 
-    expect(invokeMock).toHaveBeenCalledWith('clawhub_download_and_scan', {
+    expect(invokeMock).toHaveBeenCalledWith('skill_market_download_and_scan', {
       slug: 'sonoscli',
       version: '1.0.0',
       install: false,
@@ -123,7 +123,7 @@ describe('install trust chain (scan risk + trust gate)', () => {
     expect(result.installed).toBe(false);
     expect(result.scan.risk_level).toBe('medium');
     expect(result.scan.risk_signals).toContain('executable_scripts');
-    expect(result.provenance).toBe('clawhub:sonoscli@1.0.0');
+    expect(result.provenance).toBe('skill_market:sonoscli@1.0.0');
   });
 
   it('untrusted skill cannot become trusted when backend rejects', async () => {

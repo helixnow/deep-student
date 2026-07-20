@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  classifyClawHubSearchError,
+  classifySkillMarketSearchError,
   formatSkillUpdateDrift,
   isOutdatedUpdateRow,
-  resolveClawHubSearchSuccess,
+  resolveSkillMarketSearchSuccess,
   selectAvailableSkillUpdates,
-} from '../clawhubUi';
+} from '../communitySkillsUi';
 import type { SkillUpdateCheckResult } from '../api';
 
 const sampleCard = {
@@ -18,23 +18,23 @@ const sampleCard = {
   stars: 0,
 };
 
-describe('ClawHub search UI state machine helpers', () => {
+describe('SkillMarket search UI state machine helpers', () => {
   it('classifies RATE_LIMITED separately from network errors', () => {
     expect(
-      classifyClawHubSearchError(
-        new Error('RATE_LIMITED: ClawHub rate limit exceeded (Retry-After=30)'),
+      classifySkillMarketSearchError(
+        new Error('RATE_LIMITED: SkillMarket rate limit exceeded (Retry-After=30)'),
       ),
     ).toBe('rate_limited');
-    expect(classifyClawHubSearchError('rate limit exceeded')).toBe('rate_limited');
-    expect(classifyClawHubSearchError(new Error('error sending request for url'))).toBe(
+    expect(classifySkillMarketSearchError('rate limit exceeded')).toBe('rate_limited');
+    expect(classifySkillMarketSearchError(new Error('error sending request for url'))).toBe(
       'network_error',
     );
-    expect(classifyClawHubSearchError(new Error('Failed to fetch'))).toBe('network_error');
+    expect(classifySkillMarketSearchError(new Error('Failed to fetch'))).toBe('network_error');
   });
 
   it('treats empty item lists as empty, not success', () => {
-    expect(resolveClawHubSearchSuccess([])).toBe('empty');
-    expect(resolveClawHubSearchSuccess([sampleCard])).toBe('success');
+    expect(resolveSkillMarketSearchSuccess([])).toBe('empty');
+    expect(resolveSkillMarketSearchSuccess([sampleCard])).toBe('success');
   });
 
   it('never marks error / rate-limit rows as outdated', () => {
@@ -42,8 +42,8 @@ describe('ClawHub search UI state machine helpers', () => {
       skillId: 'sonoscli',
       checkable: true,
       updateAvailable: true,
-      sourceKind: 'clawhub',
-      sourceSummary: 'clawhub:sonoscli@1.0.0',
+      sourceKind: 'skill_market',
+      sourceSummary: 'skill_market:sonoscli@1.0.0',
       currentSha256: 'abc123',
       remoteSha256: null,
       currentVersion: '1.0.0',
@@ -68,14 +68,14 @@ describe('ClawHub search UI state machine helpers', () => {
     expect(selectAvailableSkillUpdates([outdated, rateLimited, latest])).toEqual([outdated]);
   });
 
-  it('formats clawhub drift as full versions, url as sha prefix', () => {
+  it('formats skill_market drift as full versions, url as sha prefix', () => {
     expect(
       formatSkillUpdateDrift({
         skillId: 'sonoscli',
         checkable: true,
         updateAvailable: true,
-        sourceKind: 'clawhub',
-        sourceSummary: 'clawhub:sonoscli@1.0.0',
+        sourceKind: 'skill_market',
+        sourceSummary: 'skill_market:sonoscli@1.0.0',
         currentSha256: 'abc123',
         remoteSha256: null,
         currentVersion: '1.0.0',

@@ -67,7 +67,7 @@ const sampleScan = {
   risk_signals: [] as string[],
 };
 
-describe('SkillTapBrowser ClawHub tab', () => {
+describe('SkillTapBrowser SkillMarket tab', () => {
   beforeEach(() => {
     invokeMock.mockReset();
     vi.mocked(showGlobalNotification).mockClear();
@@ -76,7 +76,7 @@ describe('SkillTapBrowser ClawHub tab', () => {
 
   it('loads trending with nonSuspiciousOnly=true by default and shows verify badge', async () => {
     invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
-      if (cmd === 'clawhub_search') {
+      if (cmd === 'skill_market_search') {
         expect(args).toMatchObject({
           nonSuspiciousOnly: true,
           sort: 'trending',
@@ -88,33 +88,33 @@ describe('SkillTapBrowser ClawHub tab', () => {
 
     render(<SkillTapBrowser onClose={() => undefined} />);
 
-    fireEvent.click(screen.getByTestId('skill-tap-tab-clawhub'));
+    fireEvent.click(screen.getByTestId('skill-tap-tab-market'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('clawhub-card-sonoscli')).toBeInTheDocument();
+      expect(screen.getByTestId('skill-market-card-sonoscli')).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/skills:tap.clawhub.verify_ok/)).toBeInTheDocument();
+    expect(screen.getByText(/skills:tap.market.verify_ok/)).toBeInTheDocument();
     expect(invokeMock).toHaveBeenCalledWith(
-      'clawhub_search',
+      'skill_market_search',
       expect.objectContaining({ nonSuspiciousOnly: true }),
     );
   });
 
   it('runs verify → download+scan → confirm → install with expected invoke args', async () => {
     invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
-      if (cmd === 'clawhub_search') {
+      if (cmd === 'skill_market_search') {
         return { mode: 'list', items: [sampleCard] };
       }
-      if (cmd === 'clawhub_verify') {
+      if (cmd === 'skill_market_verify') {
         expect(args).toEqual({ slug: 'sonoscli', version: '1.0.0' });
         return sampleCard.verify;
       }
-      if (cmd === 'clawhub_download_and_scan') {
+      if (cmd === 'skill_market_download_and_scan') {
         return {
           slug: 'sonoscli',
           version: '1.0.0',
-          provenance: 'clawhub:sonoscli@1.0.0',
+          provenance: 'skill_market:sonoscli@1.0.0',
           tempZipPath: '/tmp/sonoscli.zip',
           sourceKind: 'zip',
           scan: sampleScan,
@@ -125,21 +125,21 @@ describe('SkillTapBrowser ClawHub tab', () => {
     });
 
     render(<SkillTapBrowser onClose={() => undefined} />);
-    fireEvent.click(screen.getByTestId('skill-tap-tab-clawhub'));
+    fireEvent.click(screen.getByTestId('skill-tap-tab-market'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('clawhub-install-sonoscli')).toBeInTheDocument();
+      expect(screen.getByTestId('skill-market-install-sonoscli')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByTestId('clawhub-install-sonoscli'));
+    fireEvent.click(screen.getByTestId('skill-market-install-sonoscli'));
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        'clawhub_verify',
+        'skill_market_verify',
         { slug: 'sonoscli', version: '1.0.0' },
       );
       expect(invokeMock).toHaveBeenCalledWith(
-        'clawhub_download_and_scan',
+        'skill_market_download_and_scan',
         expect.objectContaining({
           slug: 'sonoscli',
           version: '1.0.0',
@@ -156,7 +156,7 @@ describe('SkillTapBrowser ClawHub tab', () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        'clawhub_download_and_scan',
+        'skill_market_download_and_scan',
         expect.objectContaining({
           slug: 'sonoscli',
           version: '1.0.0',
@@ -172,99 +172,99 @@ describe('SkillTapBrowser ClawHub tab', () => {
 
   it('surfaces rate-limit errors from search as alert (not empty)', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'clawhub_search') {
-        throw new Error('RATE_LIMITED: ClawHub rate limit exceeded (Retry-After=30)');
+      if (cmd === 'skill_market_search') {
+        throw new Error('RATE_LIMITED: SkillMarket rate limit exceeded (Retry-After=30)');
       }
       throw new Error(`unexpected command ${cmd}`);
     });
 
     render(<SkillTapBrowser onClose={() => undefined} />);
-    fireEvent.click(screen.getByTestId('skill-tap-tab-clawhub'));
+    fireEvent.click(screen.getByTestId('skill-tap-tab-market'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('clawhub-rate-limited')).toHaveTextContent(
-        'skills:tap.clawhub.rate_limited',
+      expect(screen.getByTestId('skill-market-rate-limited')).toHaveTextContent(
+        'skills:tap.market.rate_limited',
       );
     });
-    const el = screen.getByTestId('clawhub-rate-limited');
+    const el = screen.getByTestId('skill-market-rate-limited');
     expect(el).toHaveAttribute('role', 'alert');
     expect(el).toHaveAttribute('aria-live', 'assertive');
-    expect(el).toHaveAttribute('data-clawhub-status', 'rate_limited');
-    expect(screen.queryByTestId('clawhub-empty')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('clawhub-results')).not.toBeInTheDocument();
+    expect(el).toHaveAttribute('data-skill-market-status', 'rate_limited');
+    expect(screen.queryByTestId('skill-market-empty')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('skill-market-results')).not.toBeInTheDocument();
   });
 
   it('shows empty as status (not alert) when search returns no items', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'clawhub_search') {
+      if (cmd === 'skill_market_search') {
         return { mode: 'list', items: [] };
       }
       throw new Error(`unexpected command ${cmd}`);
     });
 
     render(<SkillTapBrowser onClose={() => undefined} />);
-    fireEvent.click(screen.getByTestId('skill-tap-tab-clawhub'));
+    fireEvent.click(screen.getByTestId('skill-tap-tab-market'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('clawhub-empty')).toHaveTextContent('skills:tap.clawhub.empty');
+      expect(screen.getByTestId('skill-market-empty')).toHaveTextContent('skills:tap.market.empty');
     });
-    const empty = screen.getByTestId('clawhub-empty');
+    const empty = screen.getByTestId('skill-market-empty');
     expect(empty).toHaveAttribute('role', 'status');
     expect(empty).toHaveAttribute('aria-live', 'polite');
-    expect(screen.queryByTestId('clawhub-rate-limited')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('clawhub-network-error')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('skill-market-rate-limited')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('skill-market-network-error')).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('shows network errors as alert distinct from empty and rate-limit', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'clawhub_search') {
+      if (cmd === 'skill_market_search') {
         throw new Error('error sending request for url (http://127.0.0.1:9/): connection refused');
       }
       throw new Error(`unexpected command ${cmd}`);
     });
 
     render(<SkillTapBrowser onClose={() => undefined} />);
-    fireEvent.click(screen.getByTestId('skill-tap-tab-clawhub'));
+    fireEvent.click(screen.getByTestId('skill-tap-tab-market'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('clawhub-network-error')).toHaveTextContent(
-        'skills:tap.clawhub.network_error',
+      expect(screen.getByTestId('skill-market-network-error')).toHaveTextContent(
+        'skills:tap.market.network_error',
       );
     });
-    const el = screen.getByTestId('clawhub-network-error');
+    const el = screen.getByTestId('skill-market-network-error');
     expect(el).toHaveAttribute('role', 'alert');
-    expect(el).toHaveAttribute('data-clawhub-status', 'network_error');
-    expect(screen.queryByTestId('clawhub-empty')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('clawhub-rate-limited')).not.toBeInTheDocument();
+    expect(el).toHaveAttribute('data-skill-market-status', 'network_error');
+    expect(screen.queryByTestId('skill-market-empty')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('skill-market-rate-limited')).not.toBeInTheDocument();
   });
 
   it('success list uses results region and verify badge is not trust', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'clawhub_search') {
+      if (cmd === 'skill_market_search') {
         return { mode: 'list', items: [sampleCard] };
       }
       throw new Error(`unexpected command ${cmd}`);
     });
 
     render(<SkillTapBrowser onClose={() => undefined} />);
-    fireEvent.click(screen.getByTestId('skill-tap-tab-clawhub'));
+    fireEvent.click(screen.getByTestId('skill-tap-tab-market'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('clawhub-results')).toBeInTheDocument();
+      expect(screen.getByTestId('skill-market-results')).toBeInTheDocument();
     });
-    expect(screen.getByTestId('clawhub-card-sonoscli')).toHaveAttribute('role', 'listitem');
-    const badge = screen.getByTestId('clawhub-verify-badge');
+    expect(screen.getByTestId('skill-market-card-sonoscli')).toHaveAttribute('role', 'listitem');
+    const badge = screen.getByTestId('skill-market-verify-badge');
     expect(badge).toHaveAttribute('data-verify-kind', 'ok');
     expect(badge.getAttribute('aria-label') ?? '').toMatch(/verify_not_trust_hint/);
-    expect(screen.queryByTestId('clawhub-empty')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('skill-market-empty')).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('shows loading status while ClawHub search is in flight', async () => {
+  it('shows loading status while SkillMarket search is in flight', async () => {
     let resolveSearch: ((value: unknown) => void) | undefined;
     invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'clawhub_search') {
+      if (cmd === 'skill_market_search') {
         return new Promise((resolve) => {
           resolveSearch = resolve;
         });
@@ -273,25 +273,25 @@ describe('SkillTapBrowser ClawHub tab', () => {
     });
 
     render(<SkillTapBrowser onClose={() => undefined} />);
-    fireEvent.click(screen.getByTestId('skill-tap-tab-clawhub'));
+    fireEvent.click(screen.getByTestId('skill-tap-tab-market'));
 
-    expect(await screen.findByTestId('clawhub-loading')).toHaveAttribute('role', 'status');
-    expect(screen.getByTestId('clawhub-search-input')).toHaveAttribute(
+    expect(await screen.findByTestId('skill-market-loading')).toHaveAttribute('role', 'status');
+    expect(screen.getByTestId('skill-market-search-input')).toHaveAttribute(
       'aria-label',
-      'skills:tap.clawhub.search_placeholder',
+      'skills:tap.market.search_placeholder',
     );
 
     resolveSearch?.({ mode: 'list', items: [sampleCard] });
     await waitFor(() => {
-      expect(screen.queryByTestId('clawhub-loading')).not.toBeInTheDocument();
-      expect(screen.getByTestId('clawhub-card-sonoscli')).toBeInTheDocument();
+      expect(screen.queryByTestId('skill-market-loading')).not.toBeInTheDocument();
+      expect(screen.getByTestId('skill-market-card-sonoscli')).toBeInTheDocument();
     });
   });
 
   it('can disable nonSuspiciousOnly and re-search', async () => {
     const calls: Array<Record<string, unknown> | undefined> = [];
     invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
-      if (cmd === 'clawhub_search') {
+      if (cmd === 'skill_market_search') {
         calls.push(args);
         return { mode: 'list', items: [sampleCard] };
       }
@@ -299,11 +299,11 @@ describe('SkillTapBrowser ClawHub tab', () => {
     });
 
     render(<SkillTapBrowser onClose={() => undefined} />);
-    fireEvent.click(screen.getByTestId('skill-tap-tab-clawhub'));
+    fireEvent.click(screen.getByTestId('skill-tap-tab-market'));
 
     await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(1));
 
-    const checkbox = screen.getByTestId('clawhub-non-suspicious') as HTMLInputElement;
+    const checkbox = screen.getByTestId('skill-market-non-suspicious') as HTMLInputElement;
     expect(checkbox.checked).toBe(true);
     fireEvent.click(checkbox);
 
@@ -315,7 +315,7 @@ describe('SkillTapBrowser ClawHub tab', () => {
   it('ignores a stale search response after a newer query completes', async () => {
     let resolveInitial: ((value: unknown) => void) | undefined;
     invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
-      if (cmd !== 'clawhub_search') return {};
+      if (cmd !== 'skill_market_search') return {};
       if (!args?.q) {
         return new Promise((resolve) => {
           resolveInitial = resolve;
@@ -328,17 +328,17 @@ describe('SkillTapBrowser ClawHub tab', () => {
     });
 
     render(<SkillTapBrowser onClose={() => undefined} />);
-    fireEvent.click(screen.getByTestId('skill-tap-tab-clawhub'));
-    await screen.findByTestId('clawhub-loading');
+    fireEvent.click(screen.getByTestId('skill-tap-tab-market'));
+    await screen.findByTestId('skill-market-loading');
 
-    fireEvent.change(screen.getByTestId('clawhub-search-input'), { target: { value: 'new' } });
-    fireEvent.keyDown(screen.getByTestId('clawhub-search-input'), { key: 'Enter' });
-    await screen.findByTestId('clawhub-card-new-result');
+    fireEvent.change(screen.getByTestId('skill-market-search-input'), { target: { value: 'new' } });
+    fireEvent.keyDown(screen.getByTestId('skill-market-search-input'), { key: 'Enter' });
+    await screen.findByTestId('skill-market-card-new-result');
 
     resolveInitial?.({ mode: 'list', items: [sampleCard] });
     await waitFor(() => {
-      expect(screen.getByTestId('clawhub-card-new-result')).toBeInTheDocument();
-      expect(screen.queryByTestId('clawhub-card-sonoscli')).not.toBeInTheDocument();
+      expect(screen.getByTestId('skill-market-card-new-result')).toBeInTheDocument();
+      expect(screen.queryByTestId('skill-market-card-sonoscli')).not.toBeInTheDocument();
     });
   });
 });

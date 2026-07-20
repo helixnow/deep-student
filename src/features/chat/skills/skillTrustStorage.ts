@@ -17,7 +17,6 @@
 import type { SkillDefinition, SkillTrustStatus } from './types';
 import { invoke } from '@tauri-apps/api/core';
 import { getSkillTrustStatus } from './packageMetadata';
-import { skillRegistry } from './registry';
 
 const STORAGE_KEY = 'deep-student.skill-trust-overrides';
 
@@ -130,7 +129,9 @@ export async function setSkillTrustOverride(
   trust: SkillTrustOverride | null,
   skill?: SkillDefinition,
 ): Promise<SkillTrustState> {
-  const target = skill ?? skillRegistry.get(skillId);
+  // Dynamic lookup preserves the id-only UI API without a static
+  // registry <-> skillTrustStorage dependency cycle.
+  const target = skill ?? (await import('./registry')).skillRegistry.get(skillId);
   let backendState: SkillTrustState;
   if (trust === 'trusted') {
     const packageRoot = target?.packageRoot;
@@ -170,8 +171,16 @@ export async function setSkillTrustOverride(
 /** 结合路径默认与用户覆盖，得到最终 trustStatus。 */
 export function resolveEffectiveTrustStatus(skill: SkillDefinition): SkillTrustStatus {
   const entry = normalizeEntry(readMap()[skill.id]);
-  const defaultTrust =
-    skill.trustStatus ?? getSkillTrustStatus(skill.location, skill.sourcePath, skill.packageFiles);
+  // Recompute the immutable source default every time. `skill.trustStatus`
+  // may already contain a previously applied user override; using it as the
+  // fallback after a fingerprint mismatch would turn the intended revocation
+  // into a fail-open trusted result.
+  const defaultTrust = getSkillTrustStatus(
+    skill.location,
+    skill.sourcePath,
+    skill.packageFiles,
+  );
+  const declaredTrust = skill.trustStatus ?? defaultTrust;
 
   if (entry?.trust === 'untrusted') return 'untrusted';
 
@@ -207,7 +216,7 @@ export function resolveEffectiveTrustStatus(skill: SkillDefinition): SkillTrustS
     return defaultTrust;
   }
 
-  return defaultTrust;
+  return declaredTrust;
 }
 
 export function applyTrustOverride(skill: SkillDefinition): SkillDefinition {

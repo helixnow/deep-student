@@ -77,8 +77,9 @@ export interface UseSkillTrustReturn {
 export function useSkillTrust(): UseSkillTrustReturn {
   const revision = useWindowEventRevision(SKILL_TRUST_CHANGED_EVENT);
   const setTrust = useCallback(
-    (skillId: string, trust: SkillTrustOverride | null) =>
-      setSkillTrustOverride(skillId, trust),
+    async (skillId: string, trust: SkillTrustOverride | null) => {
+      await setSkillTrustOverride(skillId, trust);
+    },
     []
   );
   return { revision, setTrust };

@@ -10,6 +10,22 @@
 
 import type { SkillDefinition } from '../types';
 
+/**
+ * "知识库主动检索"系统提示词片段。
+ *
+ * 由加号菜单 → 知识库 → 主动检索开关（features: kbProactive）控制，
+ * 开启后追加到 system prompt，要求模型在回答前优先检索本地知识库，
+ * 弥补渐进披露架构下模型可能凭通用知识直接作答、跳过检索的问题。
+ */
+export const PROACTIVE_KB_SYSTEM_PROMPT = `## 知识库优先（用户已开启主动检索）
+
+用户已开启"知识库主动检索"开关，本会话中你必须更主动地使用本地知识库：
+
+1. 回答任何可能与用户学习资料（笔记、教材、题库/错题、翻译、文档、图片/PDF）相关的问题之前，先调用 \`builtin-unified_search\` 检索本地知识库；如果尚未获得该工具，先通过 \`load_skills\` 加载 \`knowledge-retrieval\` 技能组。
+2. 即使你认为凭已有知识足以回答，也应先检索一次，并把用户资料中检索到的内容作为首要依据，用 [知识库-N] 等格式标注引用。
+3. 仅当检索结果为空或明显不相关时，才基于通用知识回答，并向用户说明知识库中未找到相关内容。
+4. 无需询问用户是否需要检索，直接执行。`;
+
 export const knowledgeRetrievalSkill: SkillDefinition = {
   id: 'knowledge-retrieval',
   name: 'knowledge-retrieval',

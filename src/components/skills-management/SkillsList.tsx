@@ -8,7 +8,7 @@ import React, { type MutableRefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { Lightning, Pencil, Trash, Check, ArrowCounterClockwise, Download, Star, DotsThree, Copy } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -178,13 +178,13 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                     {getLocalizedSkillName(skill.id, skill.name, t)}
                   </h3>
                   {/* 收藏按钮 - hover 或已收藏时显示;触屏常显（触控目标经负 margin 扩大且不撑高行） */}
-                  <NotionButton variant="ghost" size="icon" iconOnly
+                  <DsButton variant="ghost" size="icon" iconOnly
                     onClick={(e) => { e.stopPropagation(); toggleFavorite(skill.id); }}
                     className={cn('!h-auto !w-auto !p-0 max-lg:!h-10 max-lg:!w-10 max-lg:-my-3 max-lg:-mx-1.5 flex-shrink-0 transition-opacity duration-200', isFavorite(skill.id) ? 'opacity-100 text-[color:hsl(var(--warning))]' : cn(isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100', 'text-muted-foreground/40 hover:text-[color:hsl(var(--warning))]'))}
                     aria-label="favorite"
                   >
                     <Star size={14} className={isFavorite(skill.id) ? 'fill-current' : ''} />
-                  </NotionButton>
+                  </DsButton>
                 </div>
                 
                 {/* 元信息行：版本与作者 */}
@@ -257,7 +257,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
               {/* 右下角操作按钮 */}
               <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                 {/* 停用/启用开关（即时生效，无确认框） */}
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   className="!h-auto !px-1.5 !py-1 max-lg:!h-11 max-lg:!px-2.5 text-[11px] text-muted-foreground/60 hover:text-foreground"
@@ -272,16 +272,16 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                   {isDisabledSkill
                     ? t('skills:package.enable')
                     : t('skills:package.disable')}
-                </NotionButton>
-                <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit')} aria-label="edit">
+                </DsButton>
+                <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit')} aria-label="edit">
                   <Pencil size={14} />
-                </NotionButton>
+                </DsButton>
 
                 <AppMenu>
                   <AppMenuTrigger asChild>
-                    <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" aria-label="more">
+                    <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" aria-label="more">
                       <DotsThree size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </AppMenuTrigger>
                   <AppMenuContent align="end" width={180}>
                     <AppMenuItem

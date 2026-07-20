@@ -2,7 +2,7 @@
  * Chat V2 - 技能 Bundles（组合）
  *
  * 把一组常一起使用的技能保存为命名组合，一键整组激活
- * （对标 Hermes 的 skill bundles / OpenClaw 的 multi-skill 叠加）。
+ * （支持保存与恢复多技能组合）。
  * 全部存于 localStorage，随导出/沉淀策略演进可迁移到 settings。
  */
 

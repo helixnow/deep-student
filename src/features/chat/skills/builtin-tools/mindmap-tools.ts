@@ -10,7 +10,7 @@ import type { SkillDefinition } from '../types';
 export const mindmapToolsSkill: SkillDefinition = {
   id: 'mindmap-tools',
   name: 'mindmap-tools',
-  description: '思维导图创建、编辑与文件导入能力。当用户明确要求创建思维导图、知识导图、脑图，或要求把上传的 XMind/OPML/FreeMind/MindManager/Markdown 等文件导入为思维导图时使用。',
+  description: '思维导图创建、编辑与文件导入能力。当用户明确要求创建思维导图、知识导图、脑图，或要求把上传的 .xmind/.opml/.mm/.mmap/Markdown 等文件导入为思维导图时使用。',
   version: '1.0.0',
   author: 'Deep Student',
   location: 'builtin',
@@ -641,7 +641,7 @@ export const mindmapToolsSkill: SkillDefinition = {
     {
       name: 'builtin-mindmap_import',
       description:
-        '把当前会话上传的思维导图附件导入为知识导图。支持格式：XMind（.xmind，Zen/XMind 8）、OPML（.opml）、FreeMind/Freeplane（.mm）、MindManager（.mmap）、Markdown 大纲（.md）、纯文本缩进大纲（.txt）、本应用 JSON（.json）。解析标题/备注/层级/关联线；样式与图片会被丢弃并在返回的 importStats 中报告。返回 mindmap id、versionId 与导入统计。',
+        '把当前会话上传的思维导图附件导入为知识导图。支持格式：.xmind（content.json / content.xml）、.opml、.mm、.mmap、Markdown 大纲（.md）、纯文本缩进大纲（.txt）、本应用 JSON（.json）。解析标题/备注/层级/关联线；样式与图片会被丢弃并在返回的 importStats 中报告。返回 mindmap id、versionId 与导入统计。',
       inputSchema: {
         type: 'object',
         properties: {

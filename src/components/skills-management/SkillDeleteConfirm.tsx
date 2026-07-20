@@ -5,7 +5,7 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Trash, Warning } from '@phosphor-icons/react';
-import { NotionAlertDialog } from '../ui/NotionDialog';
+import { DsAlertDialog } from '../ui/DsDialog';
 import { showGlobalNotification } from '../UnifiedNotification';
 import type { SkillDefinition } from '@/features/chat/skills/types';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
@@ -59,7 +59,7 @@ export const SkillDeleteConfirm: React.FC<SkillDeleteConfirmProps> = ({
   if (!skill) return null;
 
   return (
-    <NotionAlertDialog
+    <DsAlertDialog
       open={open}
       onOpenChange={onOpenChange}
       icon={<Warning size={20} className="text-destructive" />}
@@ -86,7 +86,7 @@ export const SkillDeleteConfirm: React.FC<SkillDeleteConfirmProps> = ({
           </p>
         )}
       </div>
-    </NotionAlertDialog>
+    </DsAlertDialog>
   );
 };
 

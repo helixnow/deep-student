@@ -3,7 +3,7 @@
  *
  * 与后端 mcp_manage_executor.rs 的解析约束对齐：
  * - 凭据红线：schema 不得出现 env 明文字段，env_required 只收变量名
- * - remove 必须携带 expected_transport（审批卡展示 + 执行期复核）
+ * - remove 必须携带 expected_transport + expected_entry_revision
  * - set_enabled 必填 server_id + enabled
  */
 
@@ -44,10 +44,14 @@ describe('self-service-tools MCP manage tool contracts', () => {
     expect(schema.properties.enabled.type).toBe('boolean');
   });
 
-  it('mcp_server_remove schema requires expected_transport for the approval card summary', () => {
+  it('mcp_server_remove schema binds transport and the reviewed entry revision', () => {
     const schema = getTool('builtin-mcp_server_remove').inputSchema as Record<string, any>;
     expect(schema.additionalProperties).toBe(false);
-    expect(schema.required).toEqual(['server_id', 'expected_transport']);
+    expect(schema.required).toEqual([
+      'server_id',
+      'expected_transport',
+      'expected_entry_revision',
+    ]);
     expect(schema.properties.expected_transport.enum).toEqual([
       'stdio',
       'sse',
@@ -55,6 +59,7 @@ describe('self-service-tools MCP manage tool contracts', () => {
       'websocket',
       'streamable_http',
     ]);
+    expect(schema.properties.expected_entry_revision.type).toBe('string');
   });
 
   it('skill content spells out the MCP manage discipline (single front door, no env values)', () => {
@@ -63,7 +68,14 @@ describe('self-service-tools MCP manage tool contracts', () => {
     expect(content).toContain('mcp_server_set_enabled');
     expect(content).toContain('mcp_server_remove');
     expect(content).toContain('expected_transport');
+    expect(content).toContain('expected_entry_revision');
     // 纪律：不得绕过正门直改 mcp.tools.list
     expect(content).toContain('mcp.tools.list');
+  });
+
+  it('custom_agent_remove binds deletion to the reviewed persona content', () => {
+    const schema = getTool('builtin-custom_agent_remove').inputSchema as Record<string, any>;
+    expect(schema.required).toEqual(['file_name', 'expected_content_sha256']);
+    expect(schema.properties.expected_content_sha256.type).toBe('string');
   });
 });

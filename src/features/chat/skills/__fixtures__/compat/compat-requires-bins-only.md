@@ -1,14 +1,12 @@
 ---
 name: ffmpeg-clip
 description: Cut and re-encode short video clips with ffmpeg when the user asks to trim a recording, export a highlight, or convert a clip for sharing.
-metadata:
-  openclaw:
-    requires:
-      bins:
-        - ffmpeg
-        - ffprobe
+requires:
+  bins:
+    - ffmpeg
+    - ffprobe
 version: 1.0.2
-author: openclaw-community
+author: community-author
 allowed-tools:
   - Bash
 ---

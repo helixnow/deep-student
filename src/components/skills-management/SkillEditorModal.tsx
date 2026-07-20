@@ -7,9 +7,9 @@
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionDialog } from '../ui/NotionDialog';
+import { DsDialog } from '../ui/DsDialog';
 import { Input } from '../ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Switch } from '../ui/shad/Switch';
 import { Label } from '../ui/shad/Label';
 import { Textarea } from '../ui/shad/Textarea';
@@ -378,7 +378,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
               ? t('skills:management.edit')
               : t('skills:management.create')}
           </h2>
-          <NotionButton
+          <DsButton
             type="button"
             variant="ghost"
             size="icon"
@@ -386,7 +386,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
  className="w-8 h-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
           >
             <X size={18} />
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 
@@ -565,22 +565,22 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                     {t('skills:editor.skill_type')}
                   </Label>
                   <div className="grid grid-cols-2 gap-2">
-                    <NotionButton
+                    <DsButton
                       type="button"
                       variant={formData.skillType === 'standalone' ? 'default' : 'ghost'}
                       onClick={() => updateField('skillType', 'standalone')}
                       className="w-full"
                     >
                       {t('skills:editor.skill_type_standalone')}
-                    </NotionButton>
-                    <NotionButton
+                    </DsButton>
+                    <DsButton
                       type="button"
                       variant={formData.skillType === 'composite' ? 'default' : 'ghost'}
                       onClick={() => updateField('skillType', 'composite')}
                       className="w-full"
                     >
                       {t('skills:editor.skill_type_composite')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                   <p className="text-[10px] text-muted-foreground/60">
                     {t('skills:editor.skill_type_hint')}
@@ -678,7 +678,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
             : '14px',
         }}
       >
-        <NotionButton
+        <DsButton
           type="button"
           variant="ghost"
           onClick={handleCancel}
@@ -686,8 +686,8 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
           className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
         >
           {t('common:actions.cancel')}
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           type="submit"
           disabled={isSaving}
           className="min-w-[100px] shadow-md hover:shadow-lg transition-colors"
@@ -695,7 +695,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
           {isSaving
             ? t('common:actions.saving')
             : t('common:actions.save')}
-        </NotionButton>
+        </DsButton>
       </div>
     </form>
   );
@@ -711,7 +711,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
 
   // 模态框模式：使用 Dialog 包裹
   return (
-    <NotionDialog
+    <DsDialog
       open={open}
       onOpenChange={handleModalOpenChange}
       closeOnOverlay={false}
@@ -720,7 +720,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
       className="p-0 overflow-hidden"
     >
       {formContent}
-    </NotionDialog>
+    </DsDialog>
   );
 };
 

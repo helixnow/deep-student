@@ -1,4 +1,4 @@
-/* SkillTapBrowser — tab strip + ClawHub badges */
+/* SkillTapBrowser — tab strip + SkillMarket badges */
 
 .skill-tap-tabs {
   display: flex;
@@ -48,7 +48,7 @@
   cursor: not-allowed;
 }
 
-.clawhub-verify-badge {
+.skill-market-verify-badge {
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -60,34 +60,34 @@
   flex-shrink: 0;
 }
 
-.clawhub-verify-badge--ok {
+.skill-market-verify-badge--ok {
   background: hsl(var(--success) / 0.14);
   color: hsl(var(--success));
 }
 
-.clawhub-verify-badge--fail {
+.skill-market-verify-badge--fail {
   background: hsl(var(--danger) / 0.14);
   color: hsl(var(--danger));
 }
 
-.clawhub-verify-badge--pending {
+.skill-market-verify-badge--pending {
   background: hsl(var(--warning) / 0.14);
   color: hsl(var(--warning));
 }
 
-.clawhub-verify-badge--unknown {
+.skill-market-verify-badge--unknown {
   background: hsl(var(--muted-foreground) / 0.14);
   color: hsl(var(--muted-foreground));
 }
 
-.clawhub-filter-row {
+.skill-market-filter-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
 
-.clawhub-filter-row label {
+.skill-market-filter-row label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -97,7 +97,7 @@
   user-select: none;
 }
 
-.clawhub-filter-row input[type='checkbox'] {
+.skill-market-filter-row input[type='checkbox'] {
   width: 13px;
   height: 13px;
   accent-color: hsl(var(--foreground));

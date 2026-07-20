@@ -29,8 +29,8 @@ const LOG_PREFIX = '[SkillParser]';
 /** Frontmatter 分隔符 */
 const FRONTMATTER_DELIMITER = '---';
 
-/** 最大 frontmatter 长度（防止解析过大的文件头） */
-const MAX_FRONTMATTER_LENGTH = 4096;
+/** 最大 frontmatter 长度（容纳合法 embeddedTools，同时限制 YAML 解析成本） */
+const MAX_FRONTMATTER_LENGTH = 64 * 1024;
 
 const KNOWN_FRONTMATTER_KEYS = new Set([
   'name',
@@ -74,27 +74,46 @@ const KNOWN_FRONTMATTER_KEYS = new Set([
  * @param content 文件完整内容
  * @returns [frontmatter, content] 或 null（无 frontmatter）
  */
-function splitFrontmatter(content: string): [string, string] | null {
+interface FrontmatterBounds {
+  start: number;
+  end: number;
+  contentStart: number;
+}
+
+function findFrontmatterBounds(content: string): { trimmed: string; bounds: FrontmatterBounds } | null {
   const trimmed = content.trimStart();
 
-  // 检查是否以 --- 开头
-  if (!trimmed.startsWith(FRONTMATTER_DELIMITER)) {
+  // Delimiters may have surrounding horizontal whitespace, but no other
+  // content. In particular, "---suffix" must never terminate frontmatter.
+  const opening = /^---[ \t]*(?:\r?\n|$)/.exec(trimmed);
+  if (!opening) {
     return null;
   }
 
-  // 找到第二个 ---
-  const firstDelimiterEnd = FRONTMATTER_DELIMITER.length;
-  const secondDelimiterStart = trimmed.indexOf(
-    `\n${FRONTMATTER_DELIMITER}`,
-    firstDelimiterEnd
-  );
-
-  if (secondDelimiterStart === -1) {
+  const closingPattern = /^---[ \t]*\r?$/gm;
+  closingPattern.lastIndex = opening[0].length;
+  const closing = closingPattern.exec(trimmed);
+  if (!closing) {
     return null;
   }
+
+  return {
+    trimmed,
+    bounds: {
+      start: opening[0].length,
+      end: closing.index,
+      contentStart: closingPattern.lastIndex,
+    },
+  };
+}
+
+function splitFrontmatter(content: string): [string, string] | null {
+  const located = findFrontmatterBounds(content);
+  if (!located) return null;
+  const { trimmed, bounds } = located;
 
   // 提取 frontmatter（不含分隔符）
-  const frontmatter = trimmed.slice(firstDelimiterEnd, secondDelimiterStart).trim();
+  const frontmatter = trimmed.slice(bounds.start, bounds.end).trim();
 
   // 检查长度限制 — 超出则拒绝解析
   if (frontmatter.length > MAX_FRONTMATTER_LENGTH) {
@@ -102,8 +121,7 @@ function splitFrontmatter(content: string): [string, string] | null {
   }
 
   // 提取内容（第二个 --- 之后）
-  const contentStart = secondDelimiterStart + FRONTMATTER_DELIMITER.length + 1;
-  const markdownContent = trimmed.slice(contentStart).trim();
+  const markdownContent = trimmed.slice(bounds.contentStart).trim();
 
   return [frontmatter, markdownContent];
 }
@@ -307,21 +325,6 @@ function parseEmbeddedTools(value: unknown, warnings: string[]): ToolSchema[] | 
   return tools.length > 0 ? tools : undefined;
 }
 
-function mergeUniqueStrings(...lists: Array<string[] | undefined>): string[] | undefined {
-  const merged: string[] = [];
-  const seen = new Set<string>();
-  for (const list of lists) {
-    if (!list) continue;
-    for (const item of list) {
-      if (!seen.has(item)) {
-        seen.add(item);
-        merged.push(item);
-      }
-    }
-  }
-  return merged.length > 0 ? merged : undefined;
-}
-
 function parseRequiresMap(value: unknown): SkillRequires | undefined {
   if (!value || typeof value !== 'object') {
     return undefined;
@@ -335,41 +338,16 @@ function parseRequiresMap(value: unknown): SkillRequires | undefined {
   return { bins, env };
 }
 
-function parseOpenClawRequiresFromMetadata(metadataValue: unknown): SkillRequires | undefined {
-  if (typeof metadataValue === 'string') {
-    const trimmed = metadataValue.trim();
-    if (!trimmed.startsWith('{')) {
-      return undefined;
-    }
-    try {
-      metadataValue = JSON.parse(trimmed) as unknown;
-    } catch {
-      return undefined;
-    }
-  }
-  if (!metadataValue || typeof metadataValue !== 'object') {
-    return undefined;
-  }
-  const metadata = metadataValue as Record<string, unknown>;
-  const openclaw = metadata.openclaw;
-  if (!openclaw || typeof openclaw !== 'object') {
-    return undefined;
-  }
-  return parseRequiresMap((openclaw as Record<string, unknown>).requires);
-}
-
 function parseRequiresField(
   requiresRaw: unknown,
-  metadataRaw: unknown,
+  metadataRaw?: unknown,
 ): SkillRequires | undefined {
   const topLevel = parseRequiresMap(requiresRaw);
-  const openclaw = parseOpenClawRequiresFromMetadata(metadataRaw);
-  const bins = mergeUniqueStrings(topLevel?.bins, openclaw?.bins);
-  const env = mergeUniqueStrings(topLevel?.env, openclaw?.env);
-  if (!bins && !env) {
-    return undefined;
-  }
-  return { bins, env };
+  if (topLevel) return topLevel;
+  if (!metadataRaw || typeof metadataRaw !== 'object') return undefined;
+  const openclaw = (metadataRaw as Record<string, unknown>).openclaw;
+  if (!openclaw || typeof openclaw !== 'object') return undefined;
+  return parseRequiresMap((openclaw as Record<string, unknown>).requires);
 }
 
 // ============================================================================
@@ -398,19 +376,15 @@ export function parseSkillFile(
 
   if (!split) {
     // 区分"无 frontmatter"和"frontmatter 过长"两种情况
-    const trimmed = content.trimStart();
-    if (trimmed.startsWith(FRONTMATTER_DELIMITER)) {
-      const firstEnd = FRONTMATTER_DELIMITER.length;
-      const secondStart = trimmed.indexOf(`\n${FRONTMATTER_DELIMITER}`, firstEnd);
-      if (secondStart !== -1) {
-        const fm = trimmed.slice(firstEnd, secondStart).trim();
-        if (fm.length > MAX_FRONTMATTER_LENGTH) {
-          return {
-            success: false,
-            error: i18n.t('skills:parser.frontmatterTooLong'),
-            warnings,
-          };
-        }
+    const located = findFrontmatterBounds(content);
+    if (located) {
+      const fm = located.trimmed.slice(located.bounds.start, located.bounds.end).trim();
+      if (fm.length > MAX_FRONTMATTER_LENGTH) {
+        return {
+          success: false,
+          error: i18n.t('skills:parser.frontmatterTooLong'),
+          warnings,
+        };
       }
     }
     return {

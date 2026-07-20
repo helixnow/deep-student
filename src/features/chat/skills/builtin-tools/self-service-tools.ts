@@ -66,7 +66,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
 3. **启停**：\`builtin-mcp_server_set_enabled\`（Medium，需确认）
    - 停用会断开前端连接但保留配置与已填密钥；启用前必须已填完 env（否则会被拒绝）
 4. **删除**：\`builtin-mcp_server_remove\`（High，**必须用户审批且不可 remember**，不可恢复）
-   - 必须携带 \`expected_transport\`（取自 self_inspect 的 mcp 段），审批卡与执行期都会复核；不一致会被拒绝，防止凭名字误删
+   - 必须携带 \`expected_transport\` 与 \`expected_entry_revision\`（均取自 self_inspect 的 mcp 段），审批卡与执行期都会复核；内容变化会被拒绝
    - 删除连同已填密钥与 provenance 一并清理——先向用户确认意图再调用
 
 ## 沉淀/修改技能（skill_workshop）
@@ -130,7 +130,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
 1. **查看**：\`builtin-custom_agent_list\`（只读）列出全部 persona；\`builtin-custom_agent_get\` 读取指定文件全文（修改前必读最新版）
 2. **提案**：\`builtin-custom_agent_propose\`（Medium）提交完整新内容（frontmatter 必含合法 \`name\`：小写字母/数字/连字符，不得与内建 default/worker/explorer 冲突；≤64KB）。返回 \`proposal_id\`、\`content_sha256\`、\`proposal_revision\` 与 \`change_summary\`（新旧字节数/首行标题）。附带 \`action: "list"\` 查 pending 提案、\`action: "reject"\` 拒绝提案
 3. **生效**：向用户展示 change_summary（用户要求时展示全文）后调用 \`builtin-custom_agent_apply\`（High，**必须用户审批且不可 remember**），原样携带 propose 返回的 \`proposal_id\`、\`file_name\`、\`content_sha256\`（作为 \`expected_content_sha256\`）、\`proposal_revision\`（作为 \`expected_proposal_revision\`）与 \`change_summary\`；不得自行重算。审批后提案或目标文件发生变化会 fail-closed 拒绝，需重新提案
-4. **删除**：\`builtin-custom_agent_remove\`（High，**必须用户审批且不可 remember**，不可撤销）；调用前先 get 确认内容，并把首行标题放进 \`title\` 参数供审批卡展示
+4. **删除**：\`builtin-custom_agent_remove\`（High，**必须用户审批且不可 remember**，不可撤销）；调用前先 get 确认内容，并原样传回 \`content_sha256\`（作为 \`expected_content_sha256\`），把首行标题放进 \`title\` 参数供审批卡展示
 5. **生效时机**：persona 目录每次 \`subagent_call\` 现扫，落盘后立即可用，无需重启
 
 ## 纪律
@@ -279,10 +279,10 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-mcp_server_remove',
       description:
-        '删除 MCP server 配置（High 审批，不可 remember，不可恢复；连同已填密钥与 provenance 一并清理）。必须携带 expected_transport（取自 self_inspect 的 mcp 段），与存储不一致会被拒绝，防止凭名字误删。先向用户确认意图再调用。',
+        '删除 MCP server 配置（High 审批，不可 remember，不可恢复；连同已填密钥与 provenance 一并清理）。必须携带 self_inspect 返回的 expected_transport 与 expected_entry_revision；配置变化后会 fail-closed。先向用户确认意图再调用。',
       inputSchema: {
         type: 'object',
-        required: ['server_id', 'expected_transport'],
+        required: ['server_id', 'expected_transport', 'expected_entry_revision'],
         additionalProperties: false,
         properties: {
           server_id: {
@@ -293,6 +293,10 @@ export const selfServiceToolsSkill: SkillDefinition = {
             type: 'string',
             enum: ['stdio', 'sse', 'http', 'websocket', 'streamable_http'],
             description: '必填：self_inspect 返回的该 server 当前 transport，用于审批卡展示与执行期复核',
+          },
+          expected_entry_revision: {
+            type: 'string',
+            description: '必填：self_inspect 返回的该 server 当前 entry_revision，必须原样传回',
           },
           reason: {
             type: 'string',
@@ -557,15 +561,19 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-custom_agent_remove',
       description:
-        '删除指定自定义子代理 persona 文件（High，必须用户审批且不可 remember，不可撤销）。调用前先 custom_agent_get 确认内容，并把首行标题放进 title 供审批卡展示。',
+        '删除指定自定义子代理 persona 文件（High，必须用户审批且不可 remember，不可撤销）。调用前先 custom_agent_get 确认内容，原样传回 content_sha256，并把首行标题放进 title 供审批卡展示。',
       inputSchema: {
         type: 'object',
-        required: ['file_name'],
+        required: ['file_name', 'expected_content_sha256'],
         additionalProperties: false,
         properties: {
           file_name: {
             type: 'string',
             description: '待删除的 persona 文件名（含 .md）',
+          },
+          expected_content_sha256: {
+            type: 'string',
+            description: '必须原样使用 custom_agent_get 返回的 content_sha256；内容变化后删除会 fail-closed',
           },
           title: {
             type: 'string',

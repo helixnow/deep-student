@@ -9,7 +9,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Lightning, ArrowClockwise, Check, User, Wrench, Star, CaretLeft, ShieldWarning, ShieldCheck, Terminal, Stack, Storefront, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
@@ -196,7 +196,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
     setSkillDisabledNow(skillId, true);
   }, [activeSkillIds, onToggleSkill, setSkillDisabledNow]);
 
-  // 轻量安装入口：跳转技能管理页（内含 GitHub 技能源 + ClawHub 市场浏览安装）
+  // 轻量安装入口：跳转技能管理页（内含 GitHub 技能源和社区市场浏览安装）
   const handleOpenSkillMarket = useCallback(() => {
     window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'skills-management' } }));
     onClose?.();
@@ -240,7 +240,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
 
   const headerActions = (
     <>
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="icon"
         iconOnly
@@ -249,9 +249,9 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
         title={t('skills:selector.installMore')}
       >
         <Storefront size={16} />
-      </NotionButton>
+      </DsButton>
       {onRefresh ? (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -262,7 +262,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
           className={cn(isRefreshing && 'animate-spin')}
         >
           <ArrowClockwise size={16} />
-        </NotionButton>
+        </DsButton>
       ) : null}
     </>
   );
@@ -300,7 +300,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
               key={bundle.id}
               className="group inline-flex items-center gap-1 rounded-full border border-[color:var(--composer-panel-control-border)] pl-2 pr-1 py-0.5 text-[11px]"
             >
-              {/* eslint-disable-next-line ds-components/no-native-button -- chip 内联小按钮，NotionButton 尺寸体系不适配 */}
+              {/* eslint-disable-next-line ds-components/no-native-button -- chip 内联小按钮，DsButton 尺寸体系不适配 */}
               <button
                 type="button"
                 onClick={() => void handleActivateBundle(bundle.skillIds)}
@@ -367,20 +367,27 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
         </div>
       )}
 
-      {/* 分栏布局：左侧技能列表 + 右侧详情面板（menu 变体仅列表） */}
-      <div className={cn('flex min-h-0 flex-1 gap-3 overflow-hidden', isMenuVariant && 'min-h-[240px]')}>
+      {/* 分栏布局：左侧技能列表 + 右侧详情面板（menu 变体仅列表，列表自带 max-h 自约束） */}
+      <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
         {/* 左侧：技能列表 */}
+        {/* menu 变体：max-h 直接压在滚动容器（含 OverlayScrollbars 宿主）上，
+            不依赖飞出层多级 max-h + flex 收缩链传递高度——百分比高度在 max-height
+            祖先下解析为 auto，链路断裂时列表会被外层 overflow-hidden 裁掉且无法滚动。
+            宿主级 max-h 是本仓库已验证的可靠模式（见 InputBarUI 附件列表）。
+            预算 = 飞出层外壳 min(520px,70vh) 减去搜索栏/底栏等 chrome（约 120px），
+            保证矮窗口下底栏（刷新/关闭）不会被外壳 overflow-hidden 裁掉。 */}
         <CustomScrollArea
           className={cn(
-            'h-full',
             isMenuVariant
-              ? 'w-full'
-              // 以解析后的 selectedSkill 判断：选中技能被删除/刷新掉时移动端回退到列表，避免死角
-              : isMobile
-                ? (selectedSkill ? 'hidden' : 'w-full')
-                : 'w-1/2'
+              ? 'w-full max-h-[max(96px,min(384px,calc(70vh-120px)))]'
+              : cn(
+                  'h-full',
+                  // 以解析后的 selectedSkill 判断：选中技能被删除/刷新掉时移动端回退到列表，避免死角
+                  isMobile ? (selectedSkill ? 'hidden' : 'w-full') : 'w-1/2'
+                )
           )}
-          viewportClassName="space-y-1 pr-1"
+          fullHeight={!isMenuVariant}
+          viewportClassName={cn('space-y-1 pr-1', isMenuVariant && 'max-h-[max(96px,min(384px,calc(70vh-120px)))]')}
         >
           {filteredSkills.length === 0 ? (
             <ComposerPanel.Empty
@@ -427,7 +434,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       ) : (
                         // 主操作统一为「启用（钉住会话）」复选框：工具加载态不再抢占该位置，
                         // 保证被工具加载的技能也能从列表一键钉住
-                        // eslint-disable-next-line ds-components/no-native-button -- 此处需精确控制 --button-primary-* token 的 16px 方块复选框，NotionButton 的 size/variant 体系不适配
+                        // eslint-disable-next-line ds-components/no-native-button -- 此处需精确控制 --button-primary-* token 的 16px 方块复选框，DsButton 的 size/variant 体系不适配
                         <button
                           type="button"
                           onClick={(e) => {
@@ -475,7 +482,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         ) : null
                       ) : (
                       <span className="flex shrink-0 items-center gap-1">
-                        <NotionButton
+                        <DsButton
                           variant="ghost"
                           size="icon"
                           iconOnly
@@ -502,7 +509,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                           )}
                         >
                           <Star size={12} weight={isFavorite(skill.id) ? 'fill' : 'regular'} />
-                        </NotionButton>
+                        </DsButton>
                         <span
                           className={cn(
                             'rounded px-1.5 py-0.5 text-2xs font-medium',
@@ -575,7 +582,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
           {selectedSkill ? (
             <>
               {isMobile && (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={() => setSelectedSkillId(null)}
@@ -583,7 +590,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 >
                   <CaretLeft size={14} />
                   <span>{t('common:actions.back')}</span>
-                </NotionButton>
+                </DsButton>
               )}
               <CustomScrollArea className="flex-1 min-h-0" viewportClassName="pr-1">
                 <div className="mb-2 flex items-start justify-between gap-2">
@@ -602,7 +609,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                           {t('skills:selector.disabled_badge')}
                         </span>
                       ) : null}
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="icon"
                         iconOnly
@@ -625,7 +632,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         }
                       >
                         <Star size={14} weight={isFavorite(selectedSkill.id) ? 'fill' : 'regular'} />
-                      </NotionButton>
+                      </DsButton>
                     </div>
                     <div className="mt-0.5 flex items-center gap-2">
                       {selectedSkill.version ? (
@@ -671,14 +678,14 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 {isSkillDisabledNow(selectedSkill.id) ? (
                   <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-muted px-2 py-1.5 text-[11px] text-muted-foreground">
                     <span>{t('skills:selector.disabled_hint')}</span>
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       onClick={() => handleEnableSkill(selectedSkill.id)}
                       className="!h-auto !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline"
                     >
                       {t('skills:selector.enable')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 ) : null}
 
@@ -695,14 +702,14 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         </div>
                         {canToggleTrust && (
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-[18px]">
-                            <NotionButton
+                            <DsButton
                               variant="ghost"
                               size="sm"
                               onClick={() => handleTrustOverride(selectedSkill.id, 'trusted')}
                               className="!h-auto !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline"
                             >
                               {t('skills:package.trust_enable')}
-                            </NotionButton>
+                            </DsButton>
                             <span className="text-2xs opacity-80">
                               {t('skills:package.trust_effect_trusted')}
                             </span>
@@ -718,7 +725,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         <span title={t('skills:package.trust_effect_trusted')}>
                           {t('skills:package.trust_trusted')}
                         </span>
-                        <NotionButton
+                        <DsButton
                           variant="ghost"
                           size="sm"
                           onClick={() => handleTrustOverride(selectedSkill.id, 'untrusted')}
@@ -726,7 +733,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                           className="!h-auto !px-1.5 !py-0.5 text-xs hover:underline"
                         >
                           {t('skills:package.trust_revoke')}
-                        </NotionButton>
+                        </DsButton>
                       </div>
                     );
                   }
@@ -785,7 +792,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                     {t('skills:selector.manage')}
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       onClick={() => toggleDefault(selectedSkill.id)}
@@ -801,9 +808,9 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       {isDefault(selectedSkill.id)
                         ? t('skills:default.removeDefault')
                         : t('skills:default.setDefault')}
-                    </NotionButton>
+                    </DsButton>
                     {isSkillDisabledNow(selectedSkill.id) ? (
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         onClick={() => handleEnableSkill(selectedSkill.id)}
@@ -811,9 +818,9 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         className="!h-auto !px-2 !py-1 text-xs text-primary"
                       >
                         {t('skills:selector.enable')}
-                      </NotionButton>
+                      </DsButton>
                     ) : (
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDisableSkill(selectedSkill.id)}
@@ -821,7 +828,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         className="!h-auto !px-2 !py-1 text-xs text-[color:var(--composer-panel-muted-foreground)] hover:text-destructive"
                       >
                         {t('skills:selector.disable')}
-                      </NotionButton>
+                      </DsButton>
                     )}
                   </div>
                 </div>
@@ -829,7 +836,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
 
               {/* 主操作只保留一个：启用（钉住会话）/取消；工具加载态支持一键钉住 */}
               <ComposerPanel.Footer divided className="!justify-stretch flex-col gap-2">
-                <NotionButton
+                <DsButton
                   variant={isSkillActive(selectedSkill.id) ? 'primary' : 'default'}
                   size="md"
                   onClick={() => handleToggleActivate(selectedSkill.id)}
@@ -856,7 +863,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       </span>
                     </>
                   )}
-                </NotionButton>
+                </DsButton>
               </ComposerPanel.Footer>
             </>
           ) : (
@@ -879,7 +886,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
         <ComposerPanel.Footer divided className="!justify-between gap-2">
           <span className="flex items-center gap-1">
             {onRefresh ? (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={handleRefresh}
@@ -888,9 +895,9 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
               >
                 <ArrowClockwise size={14} className={cn(isRefreshing && 'animate-spin')} />
                 <span>{t('skills:selector.refresh')}</span>
-              </NotionButton>
+              </DsButton>
             ) : null}
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={handleOpenSkillMarket}
@@ -898,12 +905,12 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
             >
               <Storefront size={14} />
               <span>{t('skills:selector.installMore')}</span>
-            </NotionButton>
+            </DsButton>
           </span>
           {onClose ? (
-            <NotionButton variant="ghost" size="sm" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" onClick={onClose}>
               {t('common:actions.close')}
-            </NotionButton>
+            </DsButton>
           ) : null}
         </ComposerPanel.Footer>
       ) : null}

@@ -7,33 +7,33 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 import {
-  buildClawhubUpdateCheckResult,
+  buildSkillMarketUpdateCheckResult,
   checkSkillUpdates,
-  isClawhubVersionOutdated,
-  selectOutdatedClawhubUpdates,
+  isSkillMarketVersionOutdated,
+  selectOutdatedSkillMarketUpdates,
   type SkillUpdateCheckResult,
 } from '../api';
 import {
   formatSkillUpdateDrift,
   selectAvailableSkillUpdates,
-} from '../clawhubUi';
+} from '../communitySkillsUi';
 
-describe('ClawHub update check', () => {
+describe('SkillMarket update check', () => {
   beforeEach(() => {
     invokeMock.mockReset();
   });
 
   it('marks outdated when remote version differs from installed', () => {
-    expect(isClawhubVersionOutdated('1.0.0', '1.1.0')).toBe(true);
-    expect(isClawhubVersionOutdated('1.1.0', '1.1.0')).toBe(false);
-    expect(isClawhubVersionOutdated('1.0.0', '')).toBe(false);
-    expect(isClawhubVersionOutdated('', '1.0.0')).toBe(true);
+    expect(isSkillMarketVersionOutdated('1.0.0', '1.1.0')).toBe(true);
+    expect(isSkillMarketVersionOutdated('1.1.0', '1.1.0')).toBe(false);
+    expect(isSkillMarketVersionOutdated('1.0.0', '')).toBe(false);
+    expect(isSkillMarketVersionOutdated('', '1.0.0')).toBe(true);
   });
 
-  it('buildClawhubUpdateCheckResult flags outdated from detail version', () => {
-    const result = buildClawhubUpdateCheckResult({
+  it('buildSkillMarketUpdateCheckResult flags outdated from detail version', () => {
+    const result = buildSkillMarketUpdateCheckResult({
       skillId: 'sonoscli',
-      sourceDetail: 'clawhub:sonoscli@1.0.0',
+      sourceDetail: 'skill_market:sonoscli@1.0.0',
       installedVersion: '1.0.0',
       remoteVersion: '1.2.0',
     });
@@ -41,7 +41,7 @@ describe('ClawHub update check', () => {
       skillId: 'sonoscli',
       checkable: true,
       updateAvailable: true,
-      sourceKind: 'clawhub',
+      sourceKind: 'skill_market',
       currentVersion: '1.0.0',
       remoteVersion: '1.2.0',
       remoteSha256: null,
@@ -49,10 +49,10 @@ describe('ClawHub update check', () => {
     });
   });
 
-  it('buildClawhubUpdateCheckResult keeps latest when versions match', () => {
-    const result = buildClawhubUpdateCheckResult({
+  it('buildSkillMarketUpdateCheckResult keeps latest when versions match', () => {
+    const result = buildSkillMarketUpdateCheckResult({
       skillId: 'sonoscli',
-      sourceDetail: 'clawhub:sonoscli@1.2.0',
+      sourceDetail: 'skill_market:sonoscli@1.2.0',
       installedVersion: '1.2.0',
       remoteVersion: '1.2.0',
     });
@@ -60,13 +60,13 @@ describe('ClawHub update check', () => {
     expect(result.checkable).toBe(true);
   });
 
-  it('checkSkillUpdates surfaces clawhub outdated entries from skill_check_updates', async () => {
-    const clawhubOutdated: SkillUpdateCheckResult = {
+  it('checkSkillUpdates surfaces skill_market outdated entries from skill_check_updates', async () => {
+    const skill_marketOutdated: SkillUpdateCheckResult = {
       skillId: 'sonoscli',
       checkable: true,
       updateAvailable: true,
-      sourceKind: 'clawhub',
-      sourceSummary: 'clawhub:sonoscli@1.0.0',
+      sourceKind: 'skill_market',
+      sourceSummary: 'skill_market:sonoscli@1.0.0',
       currentSha256: 'abc123',
       remoteSha256: null,
       currentVersion: '1.0.0',
@@ -85,32 +85,32 @@ describe('ClawHub update check', () => {
     };
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === 'skill_check_updates') {
-        return [clawhubOutdated, urlLatest];
+        return [skill_marketOutdated, urlLatest];
       }
       throw new Error(`unexpected invoke: ${cmd}`);
     });
 
     const results = await checkSkillUpdates();
     expect(invokeMock).toHaveBeenCalledWith('skill_check_updates', { skillIds: null });
-    expect(selectOutdatedClawhubUpdates(results)).toEqual([clawhubOutdated]);
-    expect(results.find((r) => r.sourceKind === 'clawhub')?.updateAvailable).toBe(true);
+    expect(selectOutdatedSkillMarketUpdates(results)).toEqual([skill_marketOutdated]);
+    expect(results.find((r) => r.sourceKind === 'skill_market')?.updateAvailable).toBe(true);
   });
 
-  it('does not treat clawhub error rows as outdated', () => {
-    const failed = buildClawhubUpdateCheckResult({
+  it('does not treat skill_market error rows as outdated', () => {
+    const failed = buildSkillMarketUpdateCheckResult({
       skillId: 'broken',
-      sourceDetail: 'clawhub:broken@1.0.0',
+      sourceDetail: 'skill_market:broken@1.0.0',
       installedVersion: '1.0.0',
       remoteVersion: null,
       error: 'RATE_LIMITED: …',
     });
     expect(failed.updateAvailable).toBe(false);
-    expect(selectOutdatedClawhubUpdates([failed])).toEqual([]);
+    expect(selectOutdatedSkillMarketUpdates([failed])).toEqual([]);
   });
 
-  it('maps clawhub_skill_detail version into update check (handoff of detail → outdated)', async () => {
+  it('maps skill_market_skill_detail version into update check (handoff of detail → outdated)', async () => {
     invokeMock.mockImplementation(async (cmd: string, args?: { slug?: string }) => {
-      if (cmd === 'clawhub_skill_detail') {
+      if (cmd === 'skill_market_skill_detail') {
         expect(args?.slug).toBe('sonoscli');
         return {
           slug: 'sonoscli',
@@ -127,17 +127,17 @@ describe('ClawHub update check', () => {
       throw new Error(`unexpected invoke: ${cmd}`);
     });
 
-    const { clawhubSkillDetail } = await import('../api');
-    const detail = await clawhubSkillDetail('sonoscli');
-    const check = buildClawhubUpdateCheckResult({
+    const { skillMarketSkillDetail } = await import('../api');
+    const detail = await skillMarketSkillDetail('sonoscli');
+    const check = buildSkillMarketUpdateCheckResult({
       skillId: 'sonoscli',
-      sourceDetail: 'clawhub:sonoscli@1.0.0',
+      sourceDetail: 'skill_market:sonoscli@1.0.0',
       installedVersion: '1.0.0',
       remoteVersion: detail.version,
     });
     expect(check.updateAvailable).toBe(true);
     expect(check.remoteVersion).toBe('1.3.0');
-    expect(selectOutdatedClawhubUpdates([check])).toHaveLength(1);
+    expect(selectOutdatedSkillMarketUpdates([check])).toHaveLength(1);
   });
 
   it('surfaces RATE_LIMITED from skill_check_updates without marking outdated', async () => {
@@ -145,26 +145,26 @@ describe('ClawHub update check', () => {
       skillId: 'sonoscli',
       checkable: true,
       updateAvailable: false,
-      sourceKind: 'clawhub',
-      sourceSummary: 'clawhub:sonoscli@1.0.0',
+      sourceKind: 'skill_market',
+      sourceSummary: 'skill_market:sonoscli@1.0.0',
       currentSha256: 'abc123',
       remoteSha256: null,
       currentVersion: '1.0.0',
       remoteVersion: null,
-      error: 'RATE_LIMITED: ClawHub rate limit exceeded (Retry-After=30)',
+      error: 'RATE_LIMITED: SkillMarket rate limit exceeded (Retry-After=30)',
     };
     invokeMock.mockResolvedValueOnce([rateLimited]);
 
     const results = await checkSkillUpdates(['sonoscli']);
     expect(results[0]?.error).toMatch(/^RATE_LIMITED:/);
-    expect(selectOutdatedClawhubUpdates(results)).toEqual([]);
+    expect(selectOutdatedSkillMarketUpdates(results)).toEqual([]);
     expect(selectAvailableSkillUpdates(results)).toEqual([]);
   });
 
-  it('outdated badge drift text uses versions for clawhub (not sha truncation)', () => {
-    const result = buildClawhubUpdateCheckResult({
+  it('outdated badge drift text uses versions for skill_market (not sha truncation)', () => {
+    const result = buildSkillMarketUpdateCheckResult({
       skillId: 'sonoscli',
-      sourceDetail: 'clawhub:sonoscli@1.0.0',
+      sourceDetail: 'skill_market:sonoscli@1.0.0',
       installedVersion: '1.0.0',
       remoteVersion: '2.0.0-beta.1',
     });

@@ -7,7 +7,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '../ui/shad/Input';
 import { Label } from '../ui/shad/Label';
 import { Textarea } from '../ui/shad/Textarea';
@@ -192,7 +192,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
             </span>
           )}
         </div>
-        <NotionButton
+        <DsButton
           type="button"
           variant="outline"
           size="sm"
@@ -202,7 +202,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
         >
           <Plus size={14} className="mr-1" />
           {t('skills:editor.add_tool')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       {tools.length === 0 ? (
@@ -255,7 +255,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                     <span className="text-xs text-muted-foreground">
                       {Object.keys(tool.inputSchema.properties).length} {t('skills:editor.params')}
                     </span>
-                    <NotionButton
+                    <DsButton
                       type="button"
                       variant="ghost"
                       size="icon"
@@ -267,7 +267,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
  className="w-6 h-6 max-lg:!h-10 max-lg:!w-10 max-lg:-my-2 text-muted-foreground hover:text-destructive"
                     >
                       <Trash size={12} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
 
@@ -311,7 +311,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                         <Label className="text-xs text-muted-foreground">
                           {t('skills:editor.input_params')}
                         </Label>
-                        <NotionButton
+                        <DsButton
                           type="button"
                           variant="ghost"
                           size="sm"
@@ -321,7 +321,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                         >
                           <Plus size={12} className="mr-1" />
                           {t('skills:editor.add_param')}
-                        </NotionButton>
+                        </DsButton>
                       </div>
 
                       {Object.keys(tool.inputSchema.properties).length === 0 ? (
@@ -370,7 +370,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                     <SelectItem value="object">object</SelectItem>
                                   </SelectContent>
                                 </Select>
-                                <NotionButton
+                                <DsButton
                                   type="button"
                                   variant={isRequired ? 'default' : 'outline'}
                                   size="sm"
@@ -380,8 +380,8 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                   title={isRequired ? t('skills:editor.required') : t('skills:editor.optional')}
                                 >
                                   {isRequired ? '*' : '?'}
-                                </NotionButton>
-                                <NotionButton
+                                </DsButton>
+                                <DsButton
                                   type="button"
                                   variant="ghost"
                                   size="icon"
@@ -390,7 +390,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                   className="h-7 w-7 max-lg:!h-9 max-lg:!w-9 text-muted-foreground hover:text-destructive"
                                 >
                                   <Trash size={12} />
-                                </NotionButton>
+                                </DsButton>
                               </div>
                             );
                           })}

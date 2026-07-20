@@ -61,22 +61,36 @@ function isTauriRuntime(): boolean {
  *
  * 背景：
  * - Tauri 打包后后端 cwd 不稳定，直接使用相对路径（如 ".skills"）行为不可预测
- * - 生产环境下默认将 project skills 映射到 appDataDir 下，保证稳定可写
+ * - project skills 只能绑定到用户明确配置的 workspace runtime root；appData
+ *   是应用数据目录，不是项目目录
  *
  * 约束：
  * - 开发环境保持旧行为（使用相对路径，便于在仓库根目录直接放置 .skills）
+ * - 生产环境未配置 workspace 时返回 undefined，调用方跳过 project 扫描
  */
-async function resolveDefaultProjectRootDir(): Promise<string | null> {
+async function resolveDefaultProjectRootDir(): Promise<string | null | undefined> {
   // 开发环境保持原语义：相对路径直接交给后端 cwd 处理
   if (import.meta.env.DEV) return null;
   if (!isTauriRuntime()) return null;
 
   try {
-    const { appDataDir } = await import('@tauri-apps/api/path');
-    return await appDataDir();
+    const roots = await invoke<Array<{
+      id: string;
+      path: string;
+      configured: boolean;
+    }>>('chat_v2_list_runtime_roots');
+    const workspace = roots.find((root) =>
+      root.id === 'workspace'
+      && root.configured
+      && typeof root.path === 'string'
+      && root.path.trim().length > 0
+    );
+    if (workspace) return workspace.path;
+    console.info(LOG_PREFIX, 'No configured workspace root; skipping project skill discovery');
+    return undefined;
   } catch (error: unknown) {
-    console.warn(LOG_PREFIX, 'Cannot get appDataDir as default projectRootDir, falling back to relative path:', error);
-    return null;
+    console.warn(LOG_PREFIX, 'Cannot resolve configured workspace root; skipping project skill discovery:', error);
+    return undefined;
   }
 }
 
@@ -149,8 +163,9 @@ async function loadPackageFiles(packageRoot: string): Promise<SkillPackageFile[]
 async function loadSkillsFromDirectory(
   dirPath: string,
   location: SkillLocation
-): Promise<SkillDefinition[]> {
+): Promise<{ skills: SkillDefinition[]; errors: number }> {
   const skills: SkillDefinition[] = [];
+  let errors = 0;
 
   try {
     // 调用后端列出目录
@@ -202,6 +217,7 @@ async function loadSkillsFromDirectory(
             );
           }
         } else {
+          errors++;
           console.warn(
             LOG_PREFIX,
             `解析 skill 失败: ${entry.name}`,
@@ -218,14 +234,14 @@ async function loadSkillsFromDirectory(
       }
     }
 
-    return skills;
+    return { skills, errors };
   } catch (error: unknown) {
     console.warn(
       LOG_PREFIX,
       `无法访问目录 ${dirPath}:`,
       error
     );
-    return [];
+    return { skills: [], errors: 0 };
   }
 }
 
@@ -301,10 +317,12 @@ export async function loadSkillsFromFileSystem(
   // 2. 加载全局 skills
   if (mergedConfig.globalPath) {
     try {
-      const globalSkills = await loadSkillsFromDirectory(
+      const globalResult = await loadSkillsFromDirectory(
         mergedConfig.globalPath,
         'global'
       );
+      const globalSkills = globalResult.skills;
+      stats.errors += globalResult.errors;
 
       for (const skill of globalSkills) {
         skillRegistry.register(applyEnableOverride(applyTrustOverride(skill)));
@@ -324,29 +342,33 @@ export async function loadSkillsFromFileSystem(
         : null;
       const effectiveProjectRootDir = mergedConfig.projectRootDir ?? defaultProjectRootDir;
 
-      const dirsToScan: string[] = [...PROJECT_SKILL_DIRS];
-      if (mergedConfig.projectPath && !dirsToScan.includes(mergedConfig.projectPath)) {
-        dirsToScan.push(mergedConfig.projectPath);
-      }
-
-      for (const relDir of dirsToScan) {
-        let projectSkillsPath = relDir;
-        if (
-          effectiveProjectRootDir
-          && !projectSkillsPath.startsWith('/')
-          && !projectSkillsPath.startsWith('~')
-        ) {
-          projectSkillsPath = `${effectiveProjectRootDir}/${relDir}`;
+      if (effectiveProjectRootDir !== undefined) {
+        const dirsToScan: string[] = [...PROJECT_SKILL_DIRS];
+        if (mergedConfig.projectPath && !dirsToScan.includes(mergedConfig.projectPath)) {
+          dirsToScan.push(mergedConfig.projectPath);
         }
 
-        const projectSkills = await loadSkillsFromDirectory(
-          projectSkillsPath,
-          'project',
-        );
+        for (const relDir of dirsToScan) {
+          let projectSkillsPath = relDir;
+          if (
+            effectiveProjectRootDir
+            && !projectSkillsPath.startsWith('/')
+            && !projectSkillsPath.startsWith('~')
+          ) {
+            projectSkillsPath = `${effectiveProjectRootDir}/${relDir}`;
+          }
 
-        for (const skill of projectSkills) {
-          skillRegistry.register(skill);
-          stats.project++;
+          const projectResult = await loadSkillsFromDirectory(
+            projectSkillsPath,
+            'project',
+          );
+          const projectSkills = projectResult.skills;
+          stats.errors += projectResult.errors;
+
+          for (const skill of projectSkills) {
+            skillRegistry.register(skill);
+            stats.project++;
+          }
         }
       }
     } catch (error: unknown) {

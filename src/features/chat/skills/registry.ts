@@ -18,6 +18,7 @@ import type {
 } from './types';
 import { SKILL_DEFAULT_PRIORITY } from './types';
 import { getRequiresGate, isSkillRequiresSatisfied } from './requiresGating';
+import { isSkillPromptVisible } from './runtimeAdmission';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import i18n from 'i18next';
 
@@ -280,9 +281,12 @@ class SkillRegistry {
    * @returns 格式化的元数据 prompt
    */
   generateMetadataPrompt(): string {
-    // 过滤掉禁用自动调用的 skills
+    // Model-facing metadata is restricted to trusted, enabled skills.
+    const promptVisibleIds = new Set(
+      this.getAll().filter(isSkillPromptVisible).map((skill) => skill.id)
+    );
     const autoInvokeSkills = this.getAllMetadata().filter(
-      (skill) => !skill.disableAutoInvoke
+      (skill) => promptVisibleIds.has(skill.id) && !skill.disableAutoInvoke
     );
 
     if (autoInvokeSkills.length === 0) {

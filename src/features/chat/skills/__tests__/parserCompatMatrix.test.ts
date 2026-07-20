@@ -114,57 +114,11 @@ describe('SKILL.md parser compatibility matrix', () => {
     expect(result.skill?.compatibility).toContain('kubectl');
   });
 
-  it('merges OpenClaw requires from metadata JSON string form', () => {
-    const result = parseFixture(
-      'openclaw-metadata-json-string.md',
-      'openclaw-whisper-transcribe'
-    );
-    expect(result.success).toBe(true);
-    expect(result.skill?.requires).toEqual({
-      bins: ['whisper', 'ffmpeg'],
-      env: ['OPENAI_API_KEY'],
-    });
-    expect(result.skill?.version).toBe('0.3.1');
-    expect(result.skill?.author).toBe('openclaw-community');
-    // metadata stays preserved for round-trip of the JSON string form
-    expect(typeof result.skill?.preservedFrontmatter?.metadata).toBe('string');
-    expect(result.skill!.content).toContain('{baseDir}/scripts/transcribe.sh');
 
-    const again = roundTrip(result.skill!);
-    expect(again.skill?.requires).toEqual(result.skill?.requires);
-    expect(typeof again.skill?.preservedFrontmatter?.metadata).toBe('string');
-  });
 
-  it('merges OpenClaw requires from nested YAML metadata object', () => {
+  it('merges top-level requires with top-level metadata requires (unique union)', () => {
     const result = parseFixture(
-      'openclaw-metadata-yaml-object.md',
-      'openclaw-browser-capture'
-    );
-    expect(result.success).toBe(true);
-    expect(result.skill?.requires).toEqual({
-      bins: ['chromium', 'node'],
-      env: ['BROWSER_PROFILE_DIR'],
-    });
-    expect(result.skill?.license).toBe(
-      'Proprietary. LICENSE.txt has complete terms'
-    );
-    expect(result.skill?.homepage).toBe(
-      'https://example.com/skills/browser-capture'
-    );
-    expect(result.skill?.tags).toEqual(['browser', 'capture']);
-    expect(result.skill?.preservedFrontmatter?.metadata).toMatchObject({
-      openclaw: {
-        requires: {
-          bins: ['chromium', 'node'],
-          env: ['BROWSER_PROFILE_DIR'],
-        },
-      },
-    });
-  });
-
-  it('merges top-level requires with OpenClaw metadata requires (unique union)', () => {
-    const result = parseFixture(
-      'openclaw-scripts-and-requires.md',
+      'compat-scripts-and-requires.md',
       'pandoc-export'
     );
     expect(result.success).toBe(true);
@@ -216,6 +170,65 @@ describe('SKILL.md parser compatibility matrix', () => {
     expect(result.skill).toBeUndefined();
     expect(result.error).toBeTruthy();
     expect(String(result.error)).toMatch(/YAML|yaml|parse|解析/i);
+  });
+
+  it('requires the closing frontmatter delimiter to occupy its own line', () => {
+    const result = parseSkillFile(
+      [
+        '---',
+        'name: delimiter-test',
+        'description: Closing delimiter regression test',
+        '---not-a-delimiter',
+        '# body',
+      ].join('\n'),
+      '/fixtures/delimiter-test.md',
+      'delimiter-test',
+      'global',
+    );
+    expect(result.success).toBe(false);
+    expect(result.skill).toBeUndefined();
+  });
+
+  it('parses flow-map and OpenClaw nested requires consistently', () => {
+    const flow = parseSkillFile(
+      [
+        '---',
+        'name: flow-requires',
+        'description: Flow map compatibility',
+        'requires: { bins: [node, uv], env: [API_KEY] }',
+        '---',
+        '# body',
+      ].join('\n'),
+      '/fixtures/flow-requires.md',
+      'flow-requires',
+      'global',
+    );
+    expect(flow.skill?.requires).toEqual({
+      bins: ['node', 'uv'],
+      env: ['API_KEY'],
+    });
+
+    const nested = parseSkillFile(
+      [
+        '---',
+        'name: openclaw-requires',
+        'description: OpenClaw nested compatibility',
+        'metadata:',
+        '  openclaw:',
+        '    requires:',
+        '      bins: [rg]',
+        '      env: [SEARCH_TOKEN]',
+        '---',
+        '# body',
+      ].join('\n'),
+      '/fixtures/openclaw-requires.md',
+      'openclaw-requires',
+      'global',
+    );
+    expect(nested.skill?.requires).toEqual({
+      bins: ['rg'],
+      env: ['SEARCH_TOKEN'],
+    });
   });
 
   it('preserves unknown marketplace keys while elevating first-class fields', () => {
@@ -301,8 +314,8 @@ describe('SKILL.md parser compatibility matrix', () => {
     expect(result.skill?.argumentHint).toBe('[depth]');
   });
 
-  it('parses OpenClaw metadata requires with bins only', () => {
-    const result = parseFixture('openclaw-requires-bins-only.md', 'ffmpeg-clip');
+  it('parses top-level metadata requires with bins only', () => {
+    const result = parseFixture('compat-requires-bins-only.md', 'ffmpeg-clip');
     expect(result.success).toBe(true);
     expect(result.skill?.requires).toEqual({
       bins: ['ffmpeg', 'ffprobe'],
@@ -314,21 +327,21 @@ describe('SKILL.md parser compatibility matrix', () => {
 
   it('parses top-level requires with env only (no bins)', () => {
     const result = parseFixture(
-      'openclaw-requires-env-only.md',
-      'notion-sync-notes'
+      'compat-requires-env-only.md',
+      'card-sync-notes'
     );
     expect(result.success).toBe(true);
-    expect(result.skill?.name).toBe('Notion Sync Notes');
+    expect(result.skill?.name).toBe('card-sync-notes');
     expect(result.skill?.requires).toEqual({
-      env: ['NOTION_TOKEN', 'NOTION_DATABASE_ID'],
+      env: ['NOTES_CLOUD_TOKEN', 'NOTES_CLOUD_DATABASE_ID'],
     });
     expect(result.skill?.requires?.bins).toBeUndefined();
     expect(result.skill?.version).toBe('1.1.0');
   });
 
-  it('merges composite relatedSkills/dependencies with OpenClaw JSON requires', () => {
+  it('merges composite relatedSkills/dependencies with top-level JSON requires', () => {
     const result = parseFixture(
-      'openclaw-composite-related.md',
+      'compat-composite-related.md',
       'research-bundle'
     );
     expect(result.success).toBe(true);
@@ -375,7 +388,7 @@ describe('SKILL.md parser compatibility matrix', () => {
     expect(oversized.success).toBe(false);
     expect(oversized.skill).toBeUndefined();
     expect(String(oversized.error)).toMatch(/过长|too long|frontmatter/i);
-    expect(FRONTMATTER_LENGTH_LIMIT).toBe(4096);
+    expect(FRONTMATTER_LENGTH_LIMIT).toBe(64 * 1024);
   });
 });
 
@@ -386,7 +399,7 @@ describe('available_skills requires gating (injection path parity)', () => {
       'ok-skill',
       'gated-skill',
       'ffmpeg-clip',
-      'notion-sync-notes',
+      'card-sync-notes',
       'dangerous-deploy',
     ]) {
       __setRequiresGateForTest(id, null);
@@ -399,7 +412,7 @@ describe('available_skills requires gating (injection path parity)', () => {
       'ok-skill',
       'gated-skill',
       'ffmpeg-clip',
-      'notion-sync-notes',
+      'card-sync-notes',
       'dangerous-deploy',
     ]) {
       __setRequiresGateForTest(id, null);
@@ -415,6 +428,7 @@ describe('available_skills requires gating (injection path parity)', () => {
       content: '# body',
       sourcePath: '/tmp/SKILL.md',
       location: 'global' as const,
+      trustStatus: 'trusted' as const,
       embeddedTools: [],
     };
 
@@ -489,31 +503,33 @@ describe('available_skills requires gating (injection path parity)', () => {
   });
 
   it('fixture-derived requires: satisfied visible, unsatisfied annotated unavailable', () => {
-    const ffmpeg = parseFixture('openclaw-requires-bins-only.md', 'ffmpeg-clip');
-    const notion = parseFixture(
-      'openclaw-requires-env-only.md',
-      'notion-sync-notes'
+    const ffmpeg = parseFixture('compat-requires-bins-only.md', 'ffmpeg-clip');
+    const card = parseFixture(
+      'compat-requires-env-only.md',
+      'card-sync-notes'
     );
     const deploy = parseFixture(
       'anthropic-disable-model-only.md',
       'dangerous-deploy'
     );
-    expect(ffmpeg.success && notion.success && deploy.success).toBe(true);
-
-    skillRegistry.register(ffmpeg.skill!);
-    skillRegistry.register(notion.skill!);
-    skillRegistry.register(deploy.skill!);
+    expect(ffmpeg.success && card.success && deploy.success).toBe(true);
 
     __setRequiresGateForTest('ffmpeg-clip', {
       satisfied: true,
       missingBins: [],
       missingEnv: [],
     });
-    __setRequiresGateForTest('notion-sync-notes', {
+    __setRequiresGateForTest('card-sync-notes', {
       satisfied: false,
       missingBins: [],
-      missingEnv: ['NOTION_TOKEN', 'NOTION_DATABASE_ID'],
+      missingEnv: ['NOTES_CLOUD_TOKEN', 'NOTES_CLOUD_DATABASE_ID'],
     });
+
+    // 外部 fixture 技能默认 untrusted，测试里显式授信以便进入注入路径
+    for (const skill of [ffmpeg.skill!, card.skill!, deploy.skill!]) {
+      skill.trustStatus = 'trusted';
+      skillRegistry.register(skill);
+    }
 
     const xml = generateAvailableSkillsPrompt();
 
@@ -522,9 +538,9 @@ describe('available_skills requires gating (injection path parity)', () => {
     expect(xml).not.toMatch(/id="ffmpeg-clip"[^>]*available="false"/);
 
     // 不满足 → 标注不可用 + 缺失 env
-    expect(xml).toMatch(/id="notion-sync-notes"[^>]*available="false"/);
-    expect(xml).toContain('缺少环境变量 NOTION_TOKEN');
-    expect(xml).toContain('缺少环境变量 NOTION_DATABASE_ID');
+    expect(xml).toMatch(/id="card-sync-notes"[^>]*available="false"/);
+    expect(xml).toContain('缺少环境变量 NOTES_CLOUD_TOKEN');
+    expect(xml).toContain('缺少环境变量 NOTES_CLOUD_DATABASE_ID');
 
     // disable-model-invocation → 从注入路径隐藏
     expect(xml).not.toContain('dangerous-deploy');

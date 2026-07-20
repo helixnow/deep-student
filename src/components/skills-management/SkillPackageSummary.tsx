@@ -12,7 +12,7 @@ import {
   Wrench,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { SkillDefinition, SkillPackageFile, SkillPackageSource, SkillTrustStatus } from '@/features/chat/skills/types';
 import { getSkillEmbeddedToolLabels, getSkillPermissionSummary } from '@/features/chat/skills/packageMetadata';
 import { resolveEffectiveTrustStatus, setSkillTrustOverride } from '@/features/chat/skills/skillTrustStorage';
@@ -194,7 +194,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
           {trustLabel(trust, t)}
         </Chip>
         {canToggleTrust && trust === 'untrusted' && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handleTrustToggle}
@@ -202,10 +202,10 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
             className="!h-auto !px-1.5 !py-0.5 max-lg:!h-9 max-lg:!px-2 text-[10px] text-primary hover:underline"
           >
             {t('skills:package.trust_enable')}
-          </NotionButton>
+          </DsButton>
         )}
         {canToggleTrust && trust === 'trusted' && source === 'external' && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handleTrustToggle}
@@ -213,7 +213,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
             className="!h-auto !px-1.5 !py-0.5 max-lg:!h-9 max-lg:!px-2 text-[10px] text-muted-foreground hover:underline"
           >
             {t('skills:package.trust_revoke')}
-          </NotionButton>
+          </DsButton>
         )}
         <Chip icon={<Wrench size={11} />}>
           {t('skills:package.permission_tools', {

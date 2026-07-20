@@ -27,7 +27,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
 import {
@@ -66,7 +66,7 @@ import {
 import {
   formatSkillUpdateDrift,
   selectAvailableSkillUpdates,
-} from '@/features/chat/skills/clawhubUi';
+} from '@/features/chat/skills/communitySkillsUi';
 import type { SkillDefinition, SkillLocation } from '@/features/chat/skills/types';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
 import {
@@ -1122,9 +1122,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         ? () => setScreenPosition('center')
         : () => setScreenPosition('left'),
     rightActions: !isEditorView ? (
-      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create')} aria-label={t('skills:management.create')}>
+      <DsButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create')} aria-label={t('skills:management.create')}>
         <Plus size={20} />
-      </NotionButton>
+      </DsButton>
     ) : undefined,
   }, [headerTitle, headerSubtitle, isEditorView, screenPosition, handleCreate, t]);
 
@@ -1270,7 +1270,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             {/* 新建按钮：移动端在应用顶栏，桌面端保留在此 */}
             {!isSmallScreen && (
               <>
-                <NotionButton
+                <DsButton
                   variant="shell"
                   size="sm"
                   onClick={handleCreate}
@@ -1278,14 +1278,14 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 >
                   <Plus size={14} className="mr-1.5" />
                   {t('skills:management.create')}
-                </NotionButton>
+                </DsButton>
                 <div className="w-px h-4 bg-border/40 mx-1.5" />
               </>
             )}
 
             {!isSmallScreen ? (
               <>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={() => void handleRefresh()}
@@ -1295,9 +1295,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 >
                   <ArrowCounterClockwise size={14} className={cn('mr-1', isLoading && 'animate-spin')} />
                   {t('skills:management.refresh')}
-                </NotionButton>
+                </DsButton>
 
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={() => setTapBrowserOpen((v) => !v)}
@@ -1309,9 +1309,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 >
                   <Storefront size={14} className="mr-1" />
                   {t('skills:tap.entry')}
-                </NotionButton>
+                </DsButton>
 
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={() => void handleCheckUpdates()}
@@ -1320,9 +1320,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 >
                   <CloudArrowDown size={14} className={cn('mr-1', updateChecking && 'animate-pulse')} />
                   {t('skills:management.check_updates')}
-                </NotionButton>
+                </DsButton>
 
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={handleImportZipClick}
@@ -1330,9 +1330,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 >
                   <Package size={14} className="mr-1" />
                   {t('skills:management.import_zip')}
-                </NotionButton>
+                </DsButton>
 
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={handleImportClick}
@@ -1340,9 +1340,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 >
                   <Upload size={14} className="mr-1" />
                   {t('skills:management.import')}
-                </NotionButton>
+                </DsButton>
 
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={handleExportAll}
@@ -1351,9 +1351,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 >
                   <Download size={14} className="mr-1" />
                   {t('skills:management.export_all_short')}
-                </NotionButton>
+                </DsButton>
 
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={() => void handleExportTap()}
@@ -1362,14 +1362,14 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 >
                   <UploadSimple size={14} className="mr-1" />
                   {t('skills:management.export_tap')}
-                </NotionButton>
+                </DsButton>
               </>
             ) : (
               /* 移动端：七个次级操作横排必溢出 → 收进「⋯」溢出菜单，
                  主操作（搜索/筛选在下一行，新建在应用顶栏）保持直达 */
               <AppMenu>
                 <AppMenuTrigger asChild>
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="icon"
                     iconOnly
@@ -1378,7 +1378,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                     title={t('common:more')}
                   >
                     <DotsThree size={22} weight="bold" />
-                  </NotionButton>
+                  </DsButton>
                 </AppMenuTrigger>
                 <AppMenuContent align="end" width={224}>
                   <AppMenuItem
@@ -1592,7 +1592,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           {t('skills:management.update_retrust_hint')}
         </p>
         <div className="flex items-center justify-end gap-2">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handleCancelUpdates}
@@ -1600,8 +1600,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             className="h-7 px-2.5 text-xs"
           >
             {t('common:actions.cancel')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="primary"
             size="sm"
             onClick={() => void handleConfirmUpdates()}
@@ -1609,7 +1609,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             className="h-7 px-2.5 text-xs"
           >
             {updating ? t('skills:management.update_applying') : t('skills:management.update_apply')}
-          </NotionButton>
+          </DsButton>
         </div>
       </InlineConfirmSection>
     );
@@ -1742,7 +1742,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         </div>
 
         <div className="flex items-center justify-end gap-2">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handleCancelZipInstall}
@@ -1750,8 +1750,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             className="h-7 px-2.5 text-xs"
           >
             {t('common:actions.cancel')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant={isHighRisk ? 'danger' : 'primary'}
             size="sm"
             onClick={() => void handleConfirmZipInstall()}
@@ -1763,7 +1763,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               : overwrite
                 ? t('skills:management.import_confirm_overwrite_install')
                 : t('skills:management.import_confirm_install')}
-          </NotionButton>
+          </DsButton>
         </div>
       </InlineConfirmSection>
     );
@@ -1805,7 +1805,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               )}
             </div>
             <div className="flex items-center justify-end gap-2">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={handleCancelInlineDelete}
@@ -1813,8 +1813,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 className="!h-9 px-3 text-xs"
               >
                 {t('common:actions.cancel')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="danger"
                 size="sm"
                 onClick={() => void handleInlineConfirmDelete()}
@@ -1822,7 +1822,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 className="!h-9 px-3 text-xs"
               >
                 {inlineDeleting ? t('common:actions.deleting') : t('common:actions.delete')}
-              </NotionButton>
+              </DsButton>
             </div>
           </InlineConfirmSection>
         )}
@@ -1840,22 +1840,22 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               {t('skills:management.import_overwrite_confirm', { name: pendingImport.skill.name })}
             </p>
             <div className="flex items-center justify-end gap-2">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={handleCancelOverwrite}
                 className="!h-9 px-3 text-xs"
               >
                 {t('common:actions.cancel')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="primary"
                 size="sm"
                 onClick={() => void handleConfirmOverwrite()}
                 className="!h-9 px-3 text-xs"
               >
                 {t('skills:management.import_overwrite')}
-              </NotionButton>
+              </DsButton>
             </div>
           </InlineConfirmSection>
         )}
@@ -1873,22 +1873,22 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               {t('skills:management.import_zip_overwrite_confirm', { name: pendingZipImport.name })}
             </p>
             <div className="flex items-center justify-end gap-2">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={handleCancelZipOverwrite}
                 className="!h-9 px-3 text-xs"
               >
                 {t('common:actions.cancel')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="primary"
                 size="sm"
                 onClick={() => void handleConfirmZipOverwrite()}
                 className="!h-9 px-3 text-xs"
               >
                 {t('skills:management.import_overwrite')}
-              </NotionButton>
+              </DsButton>
             </div>
           </InlineConfirmSection>
         )}

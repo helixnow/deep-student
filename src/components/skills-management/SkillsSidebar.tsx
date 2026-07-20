@@ -14,7 +14,7 @@ import {
   UnifiedSidebarFooter,
   useUnifiedSidebar,
 } from '@/components/ui/unified-sidebar';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Lightning, Globe, FolderOpen, Package, Pencil, Trash, Check } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { SkillDefinition, SkillLocation } from '@/features/chat/skills/types';
@@ -160,7 +160,7 @@ const SidebarContentComponent: React.FC<SidebarContentProps> = React.memo(({
             }
 
             return (
-              <NotionButton
+              <DsButton
                 key={tab.id}
                 variant="ghost" size="sm"
                 onClick={() => setLocationFilter(tab.id)}
@@ -179,7 +179,7 @@ const SidebarContentComponent: React.FC<SidebarContentProps> = React.memo(({
                 )}>
                   {count}
                 </span>
-              </NotionButton>
+              </DsButton>
             );
           })}
         </div>

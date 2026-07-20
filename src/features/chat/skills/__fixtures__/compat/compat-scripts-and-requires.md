@@ -5,16 +5,10 @@ requires:
   bins:
     - pandoc
     - python3
+    - soffice
   env:
     - PANDOC_REFERENCE_DOC
-metadata:
-  openclaw:
-    requires:
-      bins:
-        - pandoc
-        - soffice
-      env:
-        - HOME
+    - HOME
 version: 2.1.0
 skill-type: standalone
 allowed-tools:

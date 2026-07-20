@@ -2,7 +2,7 @@
  * Chat V2 - 技能 requires 加载期门控
  *
  * 安装期的 requires.bins/env 探测只发生一次；本模块在技能加载/刷新时
- * 重新探测本机环境（对标 OpenClaw 的 load-time gating / Hermes 的
+ * 重新探测本机环境（在加载前检查本机环境与
  * requires_toolsets），结果用于：
  *
  * - `<available_skills>` 元数据：不满足 requires 的技能不再推荐给 LLM，

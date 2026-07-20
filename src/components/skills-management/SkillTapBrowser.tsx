@@ -3,7 +3,7 @@
  *
  * 两个标签：
  * 1. GitHub：仓库链接 → catalog → 装前扫描 → 确认安装
- * 2. ClawHub：搜索/trending → verify → download+scan → 确认 → install
+ * 2. SkillMarket：搜索/trending → verify → download+scan → 确认 → install
  *
  * ★ 设计约束：本面板及装前确认均为页面内联展开，不使用模态框/遮罩。
  */
@@ -20,28 +20,28 @@ import {
   Storefront,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { skillRegistry, reloadSkills } from '@/features/chat/skills';
 import {
   fetchTapCatalog,
   installTapSkill,
-  clawhubSearch,
-  clawhubVerify,
-  clawhubDownloadAndScan,
+  skillMarketSearch,
+  skillMarketVerify,
+  skillMarketDownloadAndScan,
   type TapCatalog,
   type TapCatalogEntry,
   type SkillPackageScanResult,
-  type ClawHubSkillCard,
-  type ClawHubDownloadScanResult,
-  type ClawHubVerifyResult,
+  type SkillMarketSkillCard,
+  type SkillMarketDownloadScanResult,
+  type SkillMarketVerifyResult,
 } from '@/features/chat/skills/api';
 import {
-  classifyClawHubSearchError,
-  resolveClawHubSearchSuccess,
-  type ClawHubListUiStatus,
-} from '@/features/chat/skills/clawhubUi';
+  classifySkillMarketSearchError,
+  resolveSkillMarketSearchSuccess,
+  type SkillMarketListUiStatus,
+} from '@/features/chat/skills/communitySkillsUi';
 import './SkillTapBrowser.css';
 
 // ============================================================================
@@ -61,7 +61,7 @@ const RISK_BADGE_CLASSES: Record<string, string> = {
   high: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
 };
 
-type SourceTab = 'github' | 'clawhub';
+type SourceTab = 'github' | 'market';
 
 function loadRecentTaps(): string[] {
   try {
@@ -82,7 +82,7 @@ function saveRecentTap(url: string): void {
   }
 }
 
-function verifyBadgeKind(verify?: ClawHubVerifyResult | null): 'ok' | 'fail' | 'pending' | 'unknown' {
+function verifyBadgeKind(verify?: SkillMarketVerifyResult | null): 'ok' | 'fail' | 'pending' | 'unknown' {
   if (!verify) return 'unknown';
   if (verify.ok && (verify.decision === 'pass' || verify.securityPassed)) return 'ok';
   if (verify.decision === 'fail' || verify.securityStatus === 'malicious') return 'fail';
@@ -125,25 +125,25 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
   const [scanningSubdir, setScanningSubdir] = useState<string | null>(null);
   const [installedSubdirs, setInstalledSubdirs] = useState<Set<string>>(new Set());
 
-  // —— ClawHub state（empty / rate_limited / network_error / success 分通道）——
-  const [clawQuery, setClawQuery] = useState('');
-  const [clawStatus, setClawStatus] = useState<ClawHubListUiStatus>('idle');
-  const [clawErrorMessage, setClawErrorMessage] = useState<string | null>(null);
-  const [clawItems, setClawItems] = useState<ClawHubSkillCard[]>([]);
+  // —— SkillMarket state（empty / rate_limited / network_error / success 分通道）——
+  const [marketQuery, setMarketQuery] = useState('');
+  const [marketStatus, setMarketStatus] = useState<SkillMarketListUiStatus>('idle');
+  const [marketErrorMessage, setMarketErrorMessage] = useState<string | null>(null);
+  const [marketItems, setMarketItems] = useState<SkillMarketSkillCard[]>([]);
   const [nonSuspiciousOnly, setNonSuspiciousOnly] = useState(true);
-  const clawLoading = clawStatus === 'loading';
-  const [clawPending, setClawPending] = useState<{
-    card: ClawHubSkillCard;
-    result: ClawHubDownloadScanResult;
+  const marketLoading = marketStatus === 'loading';
+  const [marketPending, setMarketPending] = useState<{
+    card: SkillMarketSkillCard;
+    result: SkillMarketDownloadScanResult;
     overwrite: boolean;
   } | null>(null);
-  const [clawBusySlug, setClawBusySlug] = useState<string | null>(null);
-  const [clawInstalling, setClawInstalling] = useState(false);
-  const [clawInstalled, setClawInstalled] = useState<Set<string>>(new Set());
-  const clawRequestSeq = useRef(0);
+  const [marketBusySlug, setMarketBusySlug] = useState<string | null>(null);
+  const [marketInstalling, setMarketInstalling] = useState(false);
+  const [marketInstalled, setMarketInstalled] = useState<Set<string>>(new Set());
+  const marketRequestSeq = useRef(0);
 
   useEffect(() => () => {
-    clawRequestSeq.current += 1;
+    marketRequestSeq.current += 1;
   }, []);
 
   const handleBrowse = useCallback(async (targetUrl?: string) => {
@@ -233,74 +233,74 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
     return [...preset, ...recents];
   }, [recentTaps]);
 
-  // —— ClawHub ——
-  const loadClawHub = useCallback(async (query?: string) => {
-    const requestSeq = ++clawRequestSeq.current;
-    const q = (query ?? clawQuery).trim();
-    setClawStatus('loading');
-    setClawErrorMessage(null);
-    setClawPending(null);
+  // —— SkillMarket ——
+  const loadSkillMarket = useCallback(async (query?: string) => {
+    const requestSeq = ++marketRequestSeq.current;
+    const q = (query ?? marketQuery).trim();
+    setMarketStatus('loading');
+    setMarketErrorMessage(null);
+    setMarketPending(null);
     try {
-      const result = await clawhubSearch({
+      const result = await skillMarketSearch({
         q: q || undefined,
         limit: 24,
         nonSuspiciousOnly,
         sort: 'trending',
       });
-      if (requestSeq !== clawRequestSeq.current) return;
-      setClawItems(result.items);
-      setClawStatus(resolveClawHubSearchSuccess(result.items));
+      if (requestSeq !== marketRequestSeq.current) return;
+      setMarketItems(result.items);
+      setMarketStatus(resolveSkillMarketSearchSuccess(result.items));
     } catch (e) {
-      if (requestSeq !== clawRequestSeq.current) return;
-      setClawItems([]);
-      const kind = classifyClawHubSearchError(e);
-      setClawStatus(kind);
-      setClawErrorMessage(
+      if (requestSeq !== marketRequestSeq.current) return;
+      setMarketItems([]);
+      const kind = classifySkillMarketSearchError(e);
+      setMarketStatus(kind);
+      setMarketErrorMessage(
         kind === 'rate_limited'
-          ? t('skills:tap.clawhub.rate_limited')
-          : t('skills:tap.clawhub.network_error'),
+          ? t('skills:tap.market.rate_limited')
+          : t('skills:tap.market.network_error'),
       );
     }
-  }, [clawQuery, nonSuspiciousOnly, t]);
+  }, [marketQuery, nonSuspiciousOnly, t]);
 
   useEffect(() => {
     // 仅 idle 时自动拉取，避免 empty/error 被当成「未加载」反复请求
-    if (tab === 'clawhub' && clawStatus === 'idle') {
-      void loadClawHub('');
+    if (tab === 'market' && marketStatus === 'idle') {
+      void loadSkillMarket('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
   useEffect(() => {
-    if (tab !== 'clawhub') return;
+    if (tab !== 'market') return;
     // 切换 nonSuspiciousOnly 后刷新当前查询
-    void loadClawHub(clawQuery);
+    void loadSkillMarket(marketQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nonSuspiciousOnly]);
 
-  const handleClawInstallClick = useCallback(async (card: ClawHubSkillCard) => {
-    setClawBusySlug(card.slug);
-    setClawPending(null);
+  const handleMarketInstallClick = useCallback(async (card: SkillMarketSkillCard) => {
+    setMarketBusySlug(card.slug);
+    setMarketPending(null);
     try {
       // 1) verify
-      const verify = await clawhubVerify(card.slug, card.version || null);
+      const verify = await skillMarketVerify(card.slug, card.version || null);
       if (!verify.ok && verify.decision === 'fail') {
         showGlobalNotification(
           'error',
           verify.reasons.join('; ') || verify.securityStatus,
-          t('skills:tap.clawhub.verify_fail'),
+          t('skills:tap.market.verify_fail'),
         );
         // 仍允许用户看到失败徽章后自行决定；不自动中断扫描，但提示风险
       }
       // 2) download + scan
-      const result = await clawhubDownloadAndScan({
+      const result = await skillMarketDownloadAndScan({
         slug: card.slug,
         version: card.version || verify.version || null,
         install: false,
         overwrite: true,
       });
       const overwrite = Boolean(skillRegistry.get(result.scan.skill_id));
-      setClawPending({
+      setMarketPending({
         card: {
           ...card,
           version: result.version || card.version,
@@ -311,57 +311,57 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
         overwrite,
       });
     } catch (e) {
-      const kind = classifyClawHubSearchError(e);
+      const kind = classifySkillMarketSearchError(e);
       showGlobalNotification(
         'error',
         kind === 'rate_limited'
-          ? t('skills:tap.clawhub.rate_limited')
-          : t('skills:tap.clawhub.network_error'),
-        t('skills:tap.clawhub.scan_failed'),
+          ? t('skills:tap.market.rate_limited')
+          : t('skills:tap.market.network_error'),
+        t('skills:tap.market.scan_failed'),
       );
     } finally {
-      setClawBusySlug(null);
+      setMarketBusySlug(null);
     }
   }, [t]);
 
   const handleClawConfirmInstall = useCallback(async () => {
-    if (!clawPending) return;
-    setClawInstalling(true);
+    if (!marketPending) return;
+    setMarketInstalling(true);
     try {
-      const tempZipPath = clawPending.result.tempZipPath;
+      const tempZipPath = marketPending.result.tempZipPath;
       if (!tempZipPath) {
-        throw new Error('Confirmed ClawHub scan artifact is missing; scan again');
+        throw new Error('Confirmed SkillMarket scan artifact is missing; scan again');
       }
-      const result = await clawhubDownloadAndScan({
-        slug: clawPending.card.slug,
-        version: clawPending.result.version || clawPending.card.version || null,
+      const result = await skillMarketDownloadAndScan({
+        slug: marketPending.card.slug,
+        version: marketPending.result.version || marketPending.card.version || null,
         install: true,
-        overwrite: clawPending.overwrite,
-        expectedPackageSha256: clawPending.result.scan.package_sha256,
+        overwrite: marketPending.overwrite,
+        expectedPackageSha256: marketPending.result.scan.package_sha256,
         tempZipPath,
       });
       await reloadSkills();
-      setClawInstalled((prev) => new Set(prev).add(clawPending.card.slug));
+      setMarketInstalled((prev) => new Set(prev).add(marketPending.card.slug));
       // 市场 verify≠本地 trust：安装成功后明确提示默认未信任
       showGlobalNotification(
         'success',
         t('skills:tap.install_untrusted_hint'),
-        t('skills:tap.clawhub.install_success', { name: result.scan.skill_id }),
+        t('skills:tap.market.install_success', { name: result.scan.skill_id }),
       );
-      setClawPending(null);
+      setMarketPending(null);
     } catch (e) {
-      const kind = classifyClawHubSearchError(e);
+      const kind = classifySkillMarketSearchError(e);
       showGlobalNotification(
         'error',
         kind === 'rate_limited'
-          ? t('skills:tap.clawhub.rate_limited')
-          : t('skills:tap.clawhub.network_error'),
-        t('skills:tap.clawhub.install_failed'),
+          ? t('skills:tap.market.rate_limited')
+          : t('skills:tap.market.network_error'),
+        t('skills:tap.market.install_failed'),
       );
     } finally {
-      setClawInstalling(false);
+      setMarketInstalling(false);
     }
-  }, [clawPending, t]);
+  }, [marketPending, t]);
 
   const renderRiskConfirm = (
     scan: SkillPackageScanResult,
@@ -425,7 +425,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
         </div>
 
         <div className="flex items-center justify-end gap-2">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={onCancel}
@@ -433,8 +433,8 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
             className="h-7 px-2.5 text-xs"
           >
             {t('common:actions.cancel')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant={isHighRisk ? 'danger' : 'primary'}
             size="sm"
             onClick={onConfirm}
@@ -446,41 +446,41 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
               : overwrite
                 ? t('skills:management.import_confirm_overwrite_install')
                 : t('skills:management.import_confirm_install')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     );
   };
 
-  const renderVerifyBadge = (verify?: ClawHubVerifyResult | null) => {
+  const renderVerifyBadge = (verify?: SkillMarketVerifyResult | null) => {
     const kind = verifyBadgeKind(verify);
     const label =
       kind === 'ok'
-        ? t('skills:tap.clawhub.verify_ok')
+        ? t('skills:tap.market.verify_ok')
         : kind === 'fail'
-          ? t('skills:tap.clawhub.verify_fail')
+          ? t('skills:tap.market.verify_fail')
           : kind === 'pending'
-            ? t('skills:tap.clawhub.verify_pending')
-            : t('skills:tap.clawhub.verify_unknown');
+            ? t('skills:tap.market.verify_pending')
+            : t('skills:tap.market.verify_unknown');
     const security = verify?.securityStatus;
     const securityHint =
       security === 'clean'
-        ? t('skills:tap.clawhub.security_clean')
+        ? t('skills:tap.market.security_clean')
         : security === 'suspicious'
-          ? t('skills:tap.clawhub.security_suspicious')
+          ? t('skills:tap.market.security_suspicious')
           : security === 'malicious'
-            ? t('skills:tap.clawhub.security_malicious')
+            ? t('skills:tap.market.security_malicious')
             : undefined;
     // 市场审核徽章 ≠ 本地 trust；title 明确二者正交，避免「已通过」被读成「已信任」
-    const title = [securityHint, t('skills:tap.clawhub.verify_not_trust_hint')]
+    const title = [securityHint, t('skills:tap.market.verify_not_trust_hint')]
       .filter(Boolean)
       .join(' · ');
     return (
       <span
-        className={cn('clawhub-verify-badge', `clawhub-verify-badge--${kind}`)}
+        className={cn('skill-market-verify-badge', `skill-market-verify-badge--${kind}`)}
         title={title}
-        aria-label={`${label}. ${t('skills:tap.clawhub.verify_not_trust_hint')}`}
-        data-testid="clawhub-verify-badge"
+        aria-label={`${label}. ${t('skills:tap.market.verify_not_trust_hint')}`}
+        data-testid="skill-market-verify-badge"
         data-verify-kind={kind}
       >
         {label}
@@ -504,7 +504,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
             className="h-8 pl-8 pr-3 text-xs"
           />
         </div>
-        <NotionButton
+        <DsButton
           variant="primary"
           size="sm"
           onClick={() => void handleBrowse()}
@@ -512,7 +512,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
           className="h-8 px-3 text-xs"
         >
           {loading ? t('skills:tap.browsing') : t('skills:tap.browse')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       {!catalog && quickSources.length > 0 && (
@@ -571,7 +571,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
                         <span className="flex-shrink-0">{t('skills:tap.file_count', { count: entry.fileCount })}</span>
                       </div>
                     </div>
-                    <NotionButton
+                    <DsButton
                       variant={installed ? 'ghost' : 'shell'}
                       size="sm"
                       onClick={() => {
@@ -597,7 +597,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
                           {t('skills:tap.install')}
                         </>
                       )}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                   {isConfirming && pendingInstall && renderRiskConfirm(
                     pendingInstall.scan,
@@ -623,8 +623,8 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
     </div>
   );
 
-  const renderClawHubPanel = () => (
-    <div className="space-y-3 p-3" data-testid="clawhub-panel">
+  const renderSkillMarketPanel = () => (
+    <div className="space-y-3 p-3" data-testid="skill-market-panel">
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <MagnifyingGlass
@@ -633,91 +633,91 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
             aria-hidden="true"
           />
           <Input
-            value={clawQuery}
-            onChange={(e) => setClawQuery(e.target.value)}
+            value={marketQuery}
+            onChange={(e) => setMarketQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') void loadClawHub();
+              if (e.key === 'Enter') void loadSkillMarket();
             }}
-            placeholder={t('skills:tap.clawhub.search_placeholder')}
-            aria-label={t('skills:tap.clawhub.search_placeholder')}
+            placeholder={t('skills:tap.market.search_placeholder')}
+            aria-label={t('skills:tap.market.search_placeholder')}
             className="h-8 pl-8 pr-3 text-xs"
-            data-testid="clawhub-search-input"
+            data-testid="skill-market-search-input"
           />
         </div>
-        <NotionButton
+        <DsButton
           variant="primary"
           size="sm"
-          onClick={() => void loadClawHub()}
-          disabled={clawLoading}
+          onClick={() => void loadSkillMarket()}
+          disabled={marketLoading}
           className="h-8 px-3 text-xs"
-          data-testid="clawhub-search-btn"
-          aria-busy={clawLoading || undefined}
+          data-testid="skill-market-search-btn"
+          aria-busy={marketLoading || undefined}
         >
-          {clawLoading ? t('skills:tap.clawhub.searching') : t('skills:tap.clawhub.search')}
-        </NotionButton>
+          {marketLoading ? t('skills:tap.market.searching') : t('skills:tap.market.search')}
+        </DsButton>
       </div>
 
-      <div className="clawhub-filter-row">
+      <div className="skill-market-filter-row">
         <label>
           <input
             type="checkbox"
             checked={nonSuspiciousOnly}
             onChange={(e) => setNonSuspiciousOnly(e.target.checked)}
-            data-testid="clawhub-non-suspicious"
+            data-testid="skill-market-non-suspicious"
           />
-          {t('skills:tap.clawhub.non_suspicious_only')}
+          {t('skills:tap.market.non_suspicious_only')}
         </label>
         <span className="text-[10px] text-muted-foreground/60">
-          {t('skills:tap.clawhub.trending')}
+          {t('skills:tap.market.trending')}
         </span>
       </div>
 
-      {clawStatus === 'loading' && clawItems.length === 0 && (
+      {marketStatus === 'loading' && marketItems.length === 0 && (
         <div
           className="py-6 text-center text-xs text-muted-foreground"
           role="status"
           aria-live="polite"
-          data-testid="clawhub-loading"
+          data-testid="skill-market-loading"
         >
-          {t('skills:tap.clawhub.searching')}
+          {t('skills:tap.market.searching')}
         </div>
       )}
 
-      {clawStatus === 'empty' && (
+      {marketStatus === 'empty' && (
         <div
           className="py-6 text-center text-xs text-muted-foreground"
           role="status"
           aria-live="polite"
-          data-testid="clawhub-empty"
+          data-testid="skill-market-empty"
         >
-          {t('skills:tap.clawhub.empty')}
+          {t('skills:tap.market.empty')}
         </div>
       )}
 
-      {(clawStatus === 'rate_limited' || clawStatus === 'network_error') && clawErrorMessage && (
+      {(marketStatus === 'rate_limited' || marketStatus === 'network_error') && marketErrorMessage && (
         <p
           className="break-all text-xs leading-relaxed text-red-600 dark:text-red-400"
           role="alert"
           aria-live="assertive"
-          data-testid={clawStatus === 'rate_limited' ? 'clawhub-rate-limited' : 'clawhub-network-error'}
-          data-clawhub-status={clawStatus}
+          data-testid={marketStatus === 'rate_limited' ? 'skill-market-rate-limited' : 'skill-market-network-error'}
+          data-skill-market-status={marketStatus}
         >
-          {clawErrorMessage}
+          {marketErrorMessage}
         </p>
       )}
 
-      {clawStatus === 'success' && clawItems.length > 0 && (
-        <div className="space-y-1" role="list" data-testid="clawhub-results" aria-live="polite">
-          {clawItems.map((card) => {
-            const installed = clawInstalled.has(card.slug) || Boolean(skillRegistry.get(card.slug));
-            const isConfirming = clawPending?.card.slug === card.slug;
-            const busy = clawBusySlug === card.slug;
+      {marketStatus === 'success' && marketItems.length > 0 && (
+        <div className="space-y-1" role="list" data-testid="skill-market-results" aria-live="polite">
+          {marketItems.map((card) => {
+            const installed = marketInstalled.has(card.slug) || Boolean(skillRegistry.get(card.slug));
+            const isConfirming = marketPending?.card.slug === card.slug;
+            const busy = marketBusySlug === card.slug;
             return (
               <div
                 key={card.slug}
                 role="listitem"
                 className="rounded-md border border-border/40 px-3 py-2"
-                data-testid={`clawhub-card-${card.slug}`}
+                data-testid={`skill-market-card-${card.slug}`}
               >
                 <div className="flex items-start gap-3">
                   <Package size={16} className="mt-0.5 flex-shrink-0 text-muted-foreground/60" />
@@ -739,51 +739,51 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
                     )}
                     <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground/60">
                       {card.ownerHandle && (
-                        <span>{t('skills:tap.clawhub.owner', { handle: card.ownerHandle })}</span>
+                        <span>{t('skills:tap.market.owner', { handle: card.ownerHandle })}</span>
                       )}
-                      <span>{t('skills:tap.clawhub.downloads', { count: card.downloads })}</span>
+                      <span>{t('skills:tap.market.downloads', { count: card.downloads })}</span>
                     </div>
                   </div>
-                  <NotionButton
+                  <DsButton
                     variant={installed ? 'ghost' : 'shell'}
                     size="sm"
                     onClick={() => {
                       if (isConfirming) {
-                        setClawPending(null);
+                        setMarketPending(null);
                       } else {
-                        void handleClawInstallClick(card);
+                        void handleMarketInstallClick(card);
                       }
                     }}
-                    disabled={clawBusySlug !== null || clawInstalling}
+                    disabled={marketBusySlug !== null || marketInstalling}
                     className="h-7 flex-shrink-0 px-2.5 text-xs"
-                    data-testid={`clawhub-install-${card.slug}`}
+                    data-testid={`skill-market-install-${card.slug}`}
                   >
                     {busy ? (
-                      t('skills:tap.clawhub.scanning')
+                      t('skills:tap.market.scanning')
                     ) : installed ? (
                       <>
                         <CheckCircle size={13} className="mr-1 text-green-600 dark:text-green-400" />
-                        {t('skills:tap.clawhub.reinstall')}
+                        {t('skills:tap.market.reinstall')}
                       </>
                     ) : (
                       <>
                         <DownloadSimple size={13} className="mr-1" />
-                        {t('skills:tap.clawhub.install')}
+                        {t('skills:tap.market.install')}
                       </>
                     )}
-                  </NotionButton>
+                  </DsButton>
                 </div>
-                {isConfirming && clawPending && renderRiskConfirm(
-                  clawPending.result.scan,
-                  t('skills:tap.clawhub.install_confirm_source', {
-                    name: clawPending.result.scan.skill_id,
-                    slug: clawPending.card.slug,
-                    version: clawPending.result.version,
+                {isConfirming && marketPending && renderRiskConfirm(
+                  marketPending.result.scan,
+                  t('skills:tap.market.install_confirm_source', {
+                    name: marketPending.result.scan.skill_id,
+                    slug: marketPending.card.slug,
+                    version: marketPending.result.version,
                   }),
-                  () => setClawPending(null),
+                  () => setMarketPending(null),
                   () => void handleClawConfirmInstall(),
-                  clawInstalling,
-                  clawPending.overwrite,
+                  marketInstalling,
+                  marketPending.overwrite,
                 )}
               </div>
             );
@@ -792,7 +792,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
       )}
 
       <p className="text-[10px] leading-relaxed text-muted-foreground/70">
-        {t('skills:tap.clawhub.footer_hint')}
+        {t('skills:tap.market.footer_hint')}
       </p>
     </div>
   );
@@ -807,20 +807,20 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
       data-testid="skill-tap-browser"
     >
       <div className="flex items-center gap-2 border-b border-border/40 px-3 py-2.5">
-        {tab === 'clawhub' ? (
+        {tab === 'market' ? (
           <Storefront size={16} className="flex-shrink-0 text-muted-foreground" />
         ) : (
           <GithubLogo size={16} className="flex-shrink-0 text-muted-foreground" />
         )}
         <div className="min-w-0 flex-1">
           <div className="text-[13px] font-medium text-foreground">
-            {tab === 'clawhub' ? t('skills:tap.clawhub.title') : t('skills:tap.title')}
+            {tab === 'market' ? t('skills:tap.market.title') : t('skills:tap.title')}
           </div>
           <p className="truncate text-[11px] text-muted-foreground">
-            {tab === 'clawhub' ? t('skills:tap.clawhub.description') : t('skills:tap.description')}
+            {tab === 'market' ? t('skills:tap.market.description') : t('skills:tap.description')}
           </p>
         </div>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -829,7 +829,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
           className="h-7 w-7 flex-shrink-0 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
         >
           <X size={14} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       <div className="skill-tap-tabs" role="tablist" aria-label={t('skills:tap.title')}>
@@ -849,17 +849,17 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
         <button
           type="button"
           role="tab"
-          aria-selected={tab === 'clawhub'}
+          aria-selected={tab === 'market'}
           className="skill-tap-tab"
-          onClick={() => setTab('clawhub')}
-          data-testid="skill-tap-tab-clawhub"
+          onClick={() => setTab('market')}
+          data-testid="skill-tap-tab-market"
         >
           <Storefront size={13} />
-          {t('skills:tap.tab_clawhub')}
+          {t('skills:tap.tab_market')}
         </button>
       </div>
 
-      {tab === 'github' ? renderGithubPanel() : renderClawHubPanel()}
+      {tab === 'github' ? renderGithubPanel() : renderSkillMarketPanel()}
     </section>
   );
 };

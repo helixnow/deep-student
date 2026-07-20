@@ -1,8 +1,7 @@
 /**
  * Chat V2 - 技能斜杠命令解析
  *
- * 消息开头的 `/skill-id` 令牌被识别为显式技能激活命令（对标 OpenClaw 的
- * `/skill`、Codex 的 `$Skill`、Hermes 的多技能叠加）：
+ * 消息开头的 `/skill-id` 令牌被识别为显式技能激活命令（支持多个前置斜杠技能令牌叠加）：
  *
  * - 从首个令牌开始逐个匹配，遇到第一个非技能令牌即停止（`/tmp/x.pdf` 这类
  *   路径参数不会被吞掉）
@@ -13,7 +12,7 @@
 import { skillRegistry } from './registry';
 import { isSkillDisabled } from './skillEnableStorage';
 
-/** 一条消息最多叠加的技能数（对齐 Hermes 的 5 个上限） */
+/** 一条消息最多叠加的技能数（限制为五个以控制上下文大小） */
 export const MAX_SLASH_SKILLS = 5;
 
 /** 斜杠令牌格式：/ + 合法 skill id 字符 */

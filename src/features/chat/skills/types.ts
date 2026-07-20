@@ -193,7 +193,7 @@ export interface SkillMetadata {
    * 设为 true 时，skill 只能通过 /skill 命令或 UI 手动激活，
    * 不会出现在 <available_skills> 元数据中供 LLM 自动推荐。
    *
-   * Anthropic / Claude Code 的 `disable-model-invocation: true` 会映射到此字段；
+   * 外部 SKILL.md 格式的 `disable-model-invocation: true` 会映射到此字段；
    * 若两者同时存在，取更保守值（任一为 true → true）。
    */
   disableAutoInvoke?: boolean;

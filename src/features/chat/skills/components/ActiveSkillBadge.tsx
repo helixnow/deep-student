@@ -8,7 +8,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Lightning, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { skillRegistry, subscribeToSkillRegistry } from '../registry';
 import { getLocalizedSkillName } from '../utils';
 import type { SkillDefinition } from '../types';
@@ -103,9 +103,9 @@ const SingleBadge: React.FC<SingleBadgeProps> = ({
         {getLocalizedSkillName(skill.id, skill.name, t)}
       </span>
       {showCloseButton && onClose && (
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} disabled={disabled} className="!h-4 !w-4 !p-0 ml-0.5 hover:bg-foreground/10" aria-label={t('skills:deactivate')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} disabled={disabled} className="!h-4 !w-4 !p-0 ml-0.5 hover:bg-foreground/10" aria-label={t('skills:deactivate')}>
           <X size={iconSize - 2} />
-        </NotionButton>
+        </DsButton>
       )}
     </div>
   );
@@ -244,7 +244,7 @@ export const NoActiveSkillButton: React.FC<NoActiveSkillProps> = ({
   const iconSize = size === 'sm' ? 12 : 14;
 
   return (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="sm"
       onClick={onClick}
@@ -262,7 +262,7 @@ export const NoActiveSkillButton: React.FC<NoActiveSkillProps> = ({
       <span className="font-medium">
         {t('skills:selectSkill')}
       </span>
-    </NotionButton>
+    </DsButton>
   );
 };
 

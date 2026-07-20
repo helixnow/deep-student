@@ -59,7 +59,7 @@ export const workspaceToolsSkill: SkillDefinition = {
 
 ### 续跑与自定义代理
 
-- **续跑（resume）**：需要对**同一个**子代理追问或迭代时，不要新开子代理——再次调用 \`builtin-subagent_call\`，传 \`resume_agent_session_id\`（首次返回的 \`agent_session_id\`）并带上首次返回的 \`workspace_id\`。后端会把新 task 作为追问投给同一会话（保留其全部历史上下文），返回值 \`resumed: true\`。
+- **续跑（resume）**：需要对**同一个**子代理追问或迭代时，不要新开子代理——再次调用 \`builtin-subagent_call\`，传 \`resume_agent_session_id\`（首次返回的 \`agent_session_id\`）并带上首次返回的 \`workspace_id\`。续跑复用已持久化 profile，必须省略 \`profile\`、\`skill_id\`、\`model\`；后端会把新 task 作为追问投给同一会话（保留其全部历史上下文），返回值 \`resumed: true\`。
 - **自定义 profile**：用户可在 \`{appData}/workspaces/agents/\` 目录放置 markdown 文件定义自定义子代理档案，之后其 \`name\` 就能作为 \`profile\` 参数使用。最小示例：
 
 \`\`\`markdown
@@ -230,7 +230,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
             type: 'string',
             minLength: 1,
             description:
-              '可选。续跑：传入首次 subagent_call 返回的 agent_session_id，后端跳过创建、把本次 task 作为追问投给同一个子代理会话（保留其全部历史上下文），照常阻塞等待。使用时 workspace_id 必填（用首次返回的值）；返回值中 resumed=true。适合对同一子代理追问或迭代，而不是新开一个子代理',
+              '可选。续跑：传入首次 subagent_call 返回的 agent_session_id，后端跳过创建、复用已持久化 profile，把本次 task 作为追问投给同一个子代理会话。使用时 workspace_id 必填，并省略 profile、skill_id、model；返回值中 resumed=true',
           },
           skill_id: {
             type: 'string',

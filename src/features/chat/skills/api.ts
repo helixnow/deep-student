@@ -207,28 +207,28 @@ export async function exportSkillsAsTap(
 
 export interface SkillUpdateCheckResult {
   skillId: string;
-  /** 是否可远程复查（url / tap / clawhub 来源） */
+  /** 是否可远程复查（url / tap / skill_market 来源） */
   checkable: boolean;
-  /** 远程包与本地记录的 sha256 不同；clawhub 则为 version 不同 */
+  /** 远程包与本地记录的 sha256 不同；skill_market 则为 version 不同 */
   updateAvailable: boolean;
   sourceKind: string;
   sourceSummary: string;
   /** 本地记录的 package sha256（所有来源均为真实哈希） */
   currentSha256: string;
-  /** 远程 package sha256；clawhub 检查只比对 version、不下载包，为 null */
+  /** 远程 package sha256；skill_market 检查只比对 version、不下载包，为 null */
   remoteSha256: string | null;
-  /** 已安装版本（目前仅 clawhub 来源填充） */
+  /** 已安装版本（目前仅 skill_market 来源填充） */
   currentVersion?: string | null;
-  /** 远程 latest version（目前仅 clawhub 来源填充） */
+  /** 远程 latest version（目前仅 skill_market 来源填充） */
   remoteVersion?: string | null;
   error: string | null;
 }
 
 /**
- * ClawHub 版本比对（与后端 clawhub_version_outdated 对齐）。
+ * SkillMarket 版本比对（与后端 skill_market_version_outdated 对齐）。
  * 远程非空且与本地不同 → outdated。
  */
-export function isClawhubVersionOutdated(
+export function isSkillMarketVersionOutdated(
   installedVersion: string,
   remoteVersion: string | null | undefined,
 ): boolean {
@@ -238,9 +238,9 @@ export function isClawhubVersionOutdated(
 }
 
 /**
- * 由已安装 provenance + clawhub_skill_detail 结果构造更新检查条目（便于行为级单测）。
+ * 由已安装 provenance + skill_market_skill_detail 结果构造更新检查条目（便于行为级单测）。
  */
-export function buildClawhubUpdateCheckResult(params: {
+export function buildSkillMarketUpdateCheckResult(params: {
   skillId: string;
   sourceDetail: string;
   installedVersion: string;
@@ -256,7 +256,7 @@ export function buildClawhubUpdateCheckResult(params: {
       skillId: params.skillId,
       checkable: true,
       updateAvailable: false,
-      sourceKind: 'clawhub',
+      sourceKind: 'skill_market',
       sourceSummary: params.sourceDetail,
       currentSha256: params.packageSha256 ?? '',
       remoteSha256: null,
@@ -268,8 +268,8 @@ export function buildClawhubUpdateCheckResult(params: {
   return {
     skillId: params.skillId,
     checkable: true,
-    updateAvailable: isClawhubVersionOutdated(params.installedVersion, remote),
-    sourceKind: 'clawhub',
+    updateAvailable: isSkillMarketVersionOutdated(params.installedVersion, remote),
+    sourceKind: 'skill_market',
     sourceSummary: params.sourceDetail,
     currentSha256: params.packageSha256 ?? '',
     remoteSha256: null,
@@ -292,9 +292,9 @@ export interface SkillUpdateApplyResult {
 /**
  * 检查已安装技能的上游更新
  *
- * 覆盖有 provenance 的 url / tap / clawhub 技能：
+ * 覆盖有 provenance 的 url / tap / skill_market 技能：
  * - url/tap：比对 package sha256
- * - clawhub：经 clawhub_skill_detail 比对 version
+ * - skill_market：经 skill_market_skill_detail 比对 version
  *
  * 单个技能的检查失败记录在对应条目的 error 字段，不会使整个调用失败。
  */
@@ -305,14 +305,14 @@ export async function checkSkillUpdates(skillIds?: string[]): Promise<SkillUpdat
 }
 
 /**
- * 行为级辅助：对 mock 的 skill_check_updates 结果断言 clawhub outdated 标记。
+ * 行为级辅助：对 mock 的 skill_check_updates 结果断言 skill_market outdated 标记。
  * （供测试与 UI 预过滤复用；error / RATE_LIMITED 行一律排除）
  */
-export function selectOutdatedClawhubUpdates(
+export function selectOutdatedSkillMarketUpdates(
   results: SkillUpdateCheckResult[],
 ): SkillUpdateCheckResult[] {
   return results.filter(
-    (r) => r.sourceKind === 'clawhub' && r.checkable && r.updateAvailable && !r.error,
+    (r) => r.sourceKind === 'skill_market' && r.checkable && r.updateAvailable && !r.error,
   );
 }
 
@@ -326,10 +326,10 @@ export async function updateSkillFromSource(skillId: string): Promise<SkillUpdat
 }
 
 // ============================================================================
-// ClawHub 技能市场
+// SkillMarket 技能市场
 // ============================================================================
 
-export interface ClawHubVerifyResult {
+export interface SkillMarketVerifyResult {
   ok: boolean;
   decision: string;
   reasons: string[];
@@ -341,7 +341,7 @@ export interface ClawHubVerifyResult {
   publisherDisplayName: string;
 }
 
-export interface ClawHubSkillCard {
+export interface SkillMarketSkillCard {
   slug: string;
   displayName: string;
   summary: string;
@@ -349,15 +349,15 @@ export interface ClawHubSkillCard {
   downloads: number;
   ownerHandle: string;
   stars: number;
-  verify?: ClawHubVerifyResult | null;
+  verify?: SkillMarketVerifyResult | null;
 }
 
-export interface ClawHubSearchResponse {
+export interface SkillMarketSearchResponse {
   mode: string;
-  items: ClawHubSkillCard[];
+  items: SkillMarketSkillCard[];
 }
 
-export interface ClawHubSkillDetail {
+export interface SkillMarketSkillDetail {
   slug: string;
   displayName: string;
   summary: string;
@@ -369,10 +369,10 @@ export interface ClawHubSkillDetail {
   ownerDisplayName: string;
 }
 
-export interface ClawHubDownloadScanResult {
+export interface SkillMarketDownloadScanResult {
   slug: string;
   version: string;
-  /** clawhub:{slug}@{version} */
+  /** skill_market:{slug}@{version} */
   provenance: string;
   tempZipPath?: string | null;
   sourceKind: string;
@@ -381,16 +381,16 @@ export interface ClawHubDownloadScanResult {
 }
 
 /**
- * 搜索或浏览 ClawHub（q 为空时返回 trending/排序列表）。
+ * 搜索或浏览 SkillMarket（q 为空时返回 trending/排序列表）。
  * nonSuspiciousOnly 默认 true。
  */
-export async function clawhubSearch(params?: {
+export async function skillMarketSearch(params?: {
   q?: string;
   limit?: number;
   nonSuspiciousOnly?: boolean;
   sort?: 'trending' | 'downloads' | 'stars';
-}): Promise<ClawHubSearchResponse> {
-  return invoke<ClawHubSearchResponse>('clawhub_search', {
+}): Promise<SkillMarketSearchResponse> {
+  return invoke<SkillMarketSearchResponse>('skill_market_search', {
     q: params?.q ?? null,
     limit: params?.limit ?? null,
     nonSuspiciousOnly: params?.nonSuspiciousOnly ?? true,
@@ -398,32 +398,32 @@ export async function clawhubSearch(params?: {
   });
 }
 
-export async function clawhubSkillDetail(slug: string): Promise<ClawHubSkillDetail> {
-  return invoke<ClawHubSkillDetail>('clawhub_skill_detail', { slug });
+export async function skillMarketSkillDetail(slug: string): Promise<SkillMarketSkillDetail> {
+  return invoke<SkillMarketSkillDetail>('skill_market_skill_detail', { slug });
 }
 
-export async function clawhubVerify(
+export async function skillMarketVerify(
   slug: string,
   version?: string | null,
-): Promise<ClawHubVerifyResult> {
-  return invoke<ClawHubVerifyResult>('clawhub_verify', {
+): Promise<SkillMarketVerifyResult> {
+  return invoke<SkillMarketVerifyResult>('skill_market_verify', {
     slug,
     version: version ?? null,
   });
 }
 
 /**
- * 下载 ClawHub 技能并扫描（install=false）；确认后传 install=true 安装并写 provenance。
+ * 下载 SkillMarket 技能并扫描（install=false）；确认后传 install=true 安装并写 provenance。
  */
-export async function clawhubDownloadAndScan(params: {
+export async function skillMarketDownloadAndScan(params: {
   slug: string;
   version?: string | null;
   install?: boolean;
   overwrite?: boolean;
   expectedPackageSha256?: string | null;
   tempZipPath?: string | null;
-}): Promise<ClawHubDownloadScanResult> {
-  return invoke<ClawHubDownloadScanResult>('clawhub_download_and_scan', {
+}): Promise<SkillMarketDownloadScanResult> {
+  return invoke<SkillMarketDownloadScanResult>('skill_market_download_and_scan', {
     slug: params.slug,
     version: params.version ?? null,
     install: params.install ?? false,

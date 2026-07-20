@@ -10,7 +10,9 @@ dependencies:
 requires:
   bins:
     - rg
-metadata: '{"openclaw":{"requires":{"bins":["curl"],"env":["RESEARCH_CACHE_DIR"]}}}'
+    - curl
+  env:
+    - RESEARCH_CACHE_DIR
 version: 0.9.0
 license: MIT
 tags: [research, composite]
