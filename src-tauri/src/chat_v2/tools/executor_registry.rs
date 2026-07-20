@@ -14,6 +14,7 @@ use super::executor::{
 };
 use super::types::is_external_mcp_tool_name;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
+use serde::Serialize;
 use serde_json::{json, Value};
 
 // ============================================================================
@@ -175,6 +176,24 @@ fn registry_timeout_error(tool_name: &str, timeout_secs: u64) -> String {
 pub struct ToolExecutorRegistry {
     /// 已注册的执行器列表（按注册顺序）
     executors: Vec<Arc<dyn ToolExecutor>>,
+}
+
+/// Executor-declared risk facts for one concrete tool call.
+///
+/// This is intentionally derived from the registry instead of maintaining a
+/// parallel tool list for Settings. `base_sensitivity` is the concrete-call
+/// result used by the runtime before user policy overrides are applied.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolRiskSnapshot {
+    pub tool_name: String,
+    pub base_sensitivity: ToolSensitivity,
+    pub dynamic: bool,
+    /// A broad approval bypass cannot lower this call to `Low`; the runtime
+    /// still retains base/dynamic High as an approval lower bound in Relaxed.
+    pub protected: bool,
+    /// An approval for this call cannot be persisted or reused.
+    pub never_remember: bool,
 }
 
 impl ToolExecutorRegistry {
@@ -439,6 +458,34 @@ impl ToolExecutorRegistry {
             .map(|e| e.sensitivity_level_for_call(tool_name, arguments))
     }
 
+    /// Describe the runtime risk contract for one concrete call.
+    ///
+    /// Settings/query backends should call this method with the same arguments
+    /// that will be executed. The returned base sensitivity delegates to
+    /// `get_sensitivity_for_call`, so dynamic executors remain the single
+    /// runtime source of truth.
+    pub fn describe_risk_for_call(
+        &self,
+        tool_name: &str,
+        arguments: &Value,
+    ) -> Option<ToolRiskSnapshot> {
+        let executor = self.get_executor(tool_name)?;
+        let base_sensitivity = self.get_sensitivity_for_call(tool_name, arguments)?;
+        Some(ToolRiskSnapshot {
+            tool_name: tool_name.to_string(),
+            base_sensitivity,
+            dynamic: executor.has_dynamic_sensitivity(tool_name),
+            protected:
+                crate::chat_v2::approval_scope::ignores_broad_approval_bypass_for_args(
+                    tool_name, arguments,
+                ),
+            never_remember:
+                crate::chat_v2::approval_scope::never_remember_approval_for_args(
+                    tool_name, arguments,
+                ),
+        })
+    }
+
     /// 获取工具并发等级（2026-07 并行工具调用改造）
     ///
     /// 无匹配执行器时返回 `Serial`（保守兜底，与无执行器时走
@@ -505,6 +552,8 @@ mod tests {
         handles: Vec<String>,
     }
 
+    struct DynamicTestExecutor;
+
     #[async_trait]
     impl ToolExecutor for TestExecutor {
         fn can_handle(&self, tool_name: &str) -> bool {
@@ -528,6 +577,45 @@ mod tests {
 
         fn name(&self) -> &'static str {
             self.name
+        }
+    }
+
+    #[async_trait]
+    impl ToolExecutor for DynamicTestExecutor {
+        fn can_handle(&self, tool_name: &str) -> bool {
+            tool_name == "dynamic_tool"
+        }
+
+        async fn execute(
+            &self,
+            _call: &ToolCall,
+            _ctx: &ExecutionContext,
+        ) -> Result<ToolResultInfo, String> {
+            unreachable!("risk metadata tests do not execute tools")
+        }
+
+        fn sensitivity_level(&self, _tool_name: &str) -> ToolSensitivity {
+            ToolSensitivity::Medium
+        }
+
+        fn sensitivity_level_for_call(
+            &self,
+            _tool_name: &str,
+            arguments: &Value,
+        ) -> ToolSensitivity {
+            if arguments.get("destructive").and_then(Value::as_bool) == Some(true) {
+                ToolSensitivity::High
+            } else {
+                ToolSensitivity::Medium
+            }
+        }
+
+        fn has_dynamic_sensitivity(&self, _tool_name: &str) -> bool {
+            true
+        }
+
+        fn name(&self) -> &'static str {
+            "dynamic-test"
         }
     }
 
@@ -597,6 +685,45 @@ mod tests {
             registry.get_sensitivity_for_call("unknown_tool", &serde_json::json!({})),
             None
         );
+    }
+
+    #[test]
+    fn risk_snapshot_uses_concrete_call_ssot_and_exposes_policy_guards() {
+        let mut registry = ToolExecutorRegistry::new();
+        registry.register(Arc::new(DynamicTestExecutor));
+        registry.register(Arc::new(TestExecutor {
+            name: "protected-test",
+            handles: vec![
+                "builtin-workspace_file_delete".to_string(),
+                "builtin-qbank_delete_questions".to_string(),
+            ],
+        }));
+
+        let dynamic = registry
+            .describe_risk_for_call("dynamic_tool", &json!({"destructive": true}))
+            .expect("known dynamic tool");
+        assert_eq!(dynamic.base_sensitivity, ToolSensitivity::High);
+        assert!(dynamic.dynamic);
+        assert!(!dynamic.protected);
+        assert!(!dynamic.never_remember);
+
+        let workspace = registry
+            .describe_risk_for_call("builtin-workspace_file_delete", &json!({"path": "a.txt"}))
+            .expect("known workspace tool");
+        assert!(workspace.protected);
+        assert!(!workspace.never_remember);
+
+        let destructive = registry
+            .describe_risk_for_call(
+                "builtin-qbank_delete_questions",
+                &json!({"question_ids": ["q-1"]}),
+            )
+            .expect("known destructive domain tool");
+        assert!(destructive.protected);
+        assert!(destructive.never_remember);
+        assert!(registry
+            .describe_risk_for_call("unknown_tool", &json!({}))
+            .is_none());
     }
 
     #[test]

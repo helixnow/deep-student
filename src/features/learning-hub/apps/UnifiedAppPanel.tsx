@@ -73,6 +73,10 @@ export interface UnifiedAppPanelProps {
   onNodeLoaded?: (node: DstuNode) => void;
   /** 宿主已提供统一属性面板（如笔记工作台右侧栏）时，隐藏视图内嵌属性浮层入口 */
   propertiesPanelDisabled?: boolean;
+  /** 宿主已在侧边栏提供设置标签时，子应用将设置渲染为完整内容页并隐藏内部入口 */
+  externalSettingsNavigation?: boolean;
+  /** 外部设置标签当前是否选中（仅与 externalSettingsNavigation 配合使用） */
+  externalSettingsOpen?: boolean;
 }
 
 export interface ContentViewProps {
@@ -94,6 +98,10 @@ export interface ContentViewProps {
   hostWindowId?: string;
   /** 宿主已提供统一属性面板时为 true，视图应隐藏自带的属性浮层入口 */
   propertiesPanelDisabled?: boolean;
+  /** 宿主已提供设置标签时为 true，设置应作为完整内容页呈现 */
+  externalSettingsNavigation?: boolean;
+  /** 宿主设置标签的受控选中状态 */
+  externalSettingsOpen?: boolean;
 }
 
 // ============================================================================
@@ -157,6 +165,8 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   preferNodeType = false,
   onNodeLoaded,
   propertiesPanelDisabled = false,
+  externalSettingsNavigation = false,
+  externalSettingsOpen,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
 
@@ -284,8 +294,10 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       onSaveStateChange: handleSaveStateChange,
       hostWindowId,
       propertiesPanelDisabled,
+      externalSettingsNavigation,
+      externalSettingsOpen,
     };
-  }, [node, hasOnClose, handleClose, handleTitleChange, readOnly, isActive, focusOnActive, handleSaveStateChange, hostWindowId, propertiesPanelDisabled]);
+  }, [node, hasOnClose, handleClose, handleTitleChange, readOnly, isActive, focusOnActive, handleSaveStateChange, hostWindowId, propertiesPanelDisabled, externalSettingsNavigation, externalSettingsOpen]);
 
   // ★ 性能：memo 化视图元素。元素引用不变时 React 会直接跳过该子树的重渲染
   //（即使子组件未包 React.memo），使父级因 className/闭包变化引起的重渲染不再波及内容视图

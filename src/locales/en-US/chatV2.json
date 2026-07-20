@@ -50,6 +50,7 @@
     "copySuccessTitle": "Copy successful",
     "copyFailed": "Copy failed, please try again",
     "copyFailedTitle": "Copy Failed",
+    "errorWithDetail": "{{message}}: {{detail}}",
     "render": "Render",
     "run": "Run",
     "source": "Source",
@@ -75,6 +76,10 @@
   "common": {
     "close": "Close",
     "cancel": "Cancel",
+    "clearSearch": "Clear search",
+    "removeNamed": "Remove {{name}}",
+    "closeNamed": "Close {{name}}",
+    "retryNamed": "Retry {{name}}",
     "justNow": "Just now",
     "minutesAgo": "{{count}} min ago",
     "hoursAgo": "{{count}} hr ago",
@@ -131,6 +136,7 @@
       "exportMarkdownSuccess": "Markdown file exported",
       "exportMarkdownFailed": "Export failed",
       "noContentToExport": "No content to export",
+      "noteDefaultTitle": "Chat Note {{date}}",
       "branch": "Branch from here",
       "branchSuccess": "Branch session created",
       "branchFailed": "Branch failed"
@@ -160,6 +166,7 @@
     },
     "rawRequest": {
       "title": "API Request Body",
+      "titleWithModel": "API Request Body — {{model}}",
       "copy": "Copy",
       "copySuccess": "Request body copied",
       "copyFailed": "Copy failed",
@@ -338,13 +345,15 @@
     "resourceLibrary": "Resources",
     "plusMenu": {
       "trigger": "Add & session options",
+      "attachmentsCount": "Attachments ({{count}})",
+      "mcpServersCount": "MCP ({{count}})",
+      "mcpServerGeneratedName": "MCP Server #{{suffix}}",
       "addFile": "Add file",
       "mode": "Mode",
       "connectors": "Connectors",
       "openConnectors": "Manage connectors",
       "connectorsHint": "Choose MCP / external tool connections",
-      "modeDefaultDescription": "Default mode — run efficiently and finish the task.",
-      "approvalMemory": "Approval memory",
+      "modeDefaultDescription": "Craft follows the selected execution preset. Ask and Plan mode restrictions always take precedence.",
       "knowledgeBase": "Knowledge base",
       "kbProactive": "Proactive retrieval",
       "kbProactiveHint": "When on, the model is asked to search your notes, textbooks and other local materials before answering",
@@ -394,10 +403,13 @@
     "chip": {
       "ready": "Ready",
       "error": "Failed",
+      "pages": "{{count}} pages",
       "pages_one": "{{count}} page",
       "pages_other": "{{count}} pages",
       "truncated": "Will truncate",
-      "truncatedTitle": "File exceeds 100KB; only the first 100KB will be injected. Ask AI to use retrieval tools for the full content"
+      "truncatedTitle": "File exceeds 100KB; only the first 100KB will be injected. Ask AI to use retrieval tools for the full content",
+      "title": "{{name}} · {{status}}",
+      "titleTruncated": "{{name}} · {{status}} · {{truncation}}"
     },
     "slashCommand": {
       "title": "Skill commands",
@@ -425,12 +437,14 @@
       "skip": "Skip",
       "clearAll": "Clear all",
       "tooltipPrefix": "Failed: ",
+      "tooltip": "Failed: {{error}}",
       "unknown": "Unknown error"
     },
     "fullTooltip": "Queue is full, please wait"
   },
   "input": {
-    "attachmentUploadFailed": "Attachment upload failed, please retry"
+    "attachmentUploadFailed": "Attachment upload failed, please retry",
+    "attachmentUploadFailedDetail": "Attachment upload failed: {{detail}}"
   },
   "anki": {
     "loadingPanel": "Loading Anki Panel..."
@@ -536,6 +550,7 @@
       "summaryFailedSuffix_one": ", {{count}} failed",
       "summaryFailedSuffix_other": ", {{count}} failed",
       "summaryFailedSuffix": ", {{count}} failed",
+      "summaryWithFailures": "{{done}}/{{total}} completed, {{count}} failed",
       "downloading": "Downloading {{done}}/{{total}}"
     },
     "rag": {
@@ -619,6 +634,8 @@
       },
       "loadedSkills": "Loaded skills",
       "loadedTools": "Loaded tools",
+      "toolOutputImage": "Tool output image",
+      "moreRows": "{{count}} more rows",
       "viewSourceFile": "View Source File",
       "openRuntimeSettings": "Authorize runtime folders",
       "generatingArgs": "Generating arguments...",
@@ -742,7 +759,9 @@
         },
         "metrics": {
           "cards": "Cards",
-          "segments": "Segments"
+          "segments": "Segments",
+          "cardsValue": "Cards: {{count}}",
+          "segmentsValue": "Segments: {{completed}}/{{total}}"
         },
         "route": "route",
         "routeValues": {
@@ -858,6 +877,8 @@
         "dbSyncFailed": "Card change failed to sync to the card library; AI export/sync may not include it.",
         "exportCancelled": "Export cancelled",
         "exportSkippedErrors": "Exported {{exported}} cards, skipped {{skipped}} error cards.",
+        "exportSkippedErrorsWithNote": "Exported {{exported}} cards, skipped {{skipped}} error cards. {{note}}",
+        "apkgExportedWithNote": "APKG exported. {{note}}",
         "paused": "Generation paused",
         "resumed": "Generation resumed",
         "cancelled": "Generation cancelled",
@@ -1175,6 +1196,11 @@
     "searchPlaceholder": "Search sessions...",
     "switchingSession": "Switching session...",
     "deleteSessionFailed": "Failed to delete session",
+    "createSessionFailed": "Failed to create session. Please try again.",
+    "createAnalysisSessionFailed": "Failed to create analysis session. Please try again.",
+    "loadSessionsFailed": "Failed to load sessions. Refresh and try again.",
+    "loadMoreSessionsFailed": "Failed to load more sessions. Please try again.",
+    "exportSession": "Export session",
     "analysis_session_title": "Question Analysis",
     "selectSessionFirst": "Please select a session first",
     "loading": "Loading...",
@@ -1237,6 +1263,7 @@
     "sessionCost": "Session cost",
     "tokens": "tokens",
     "inputEstimate": "Estimated input token count",
+    "tokensValue": "{{count}} tokens",
     "source": {
       "api": "API Exact",
       "tiktoken": "Tiktoken Est.",
@@ -1307,6 +1334,7 @@
       "write": "Write"
     },
     "goAuthorize": "Authorize runtime folders",
+    "authorizationTitle": "{{label}} — {{action}}",
     "revealInFolder": "Reveal in file manager: {{path}}",
     "revealFailed": "Could not locate file",
     "reverted": "Reverted",
@@ -1438,6 +1466,7 @@
     },
     "todoList": {
       "tasksDone": "tasks done",
+      "progress": "{{done}} / {{total}} tasks done",
       "allDone": "All tasks completed",
       "inProgress": "In progress"
     }
@@ -1514,11 +1543,14 @@
     "confirm": "Confirm",
     "resolve_failed_single": "Failed to resolve resource \"{{name}}\"",
     "resolve_failed_multiple": "{{count}} resources failed to resolve",
+    "resolve_failed_single_with_detail": "Failed to resolve resource \"{{name}}\": {{error}}",
+    "resolve_failed_multiple_with_detail": "Failed to resolve {{count}} resources: {{names}}. {{error}}",
     "source_ids_empty": "sourceIds cannot be empty",
     "resource_deleted_or_moved": "Resource has been deleted or moved",
     "resolve_failed_skipped": "{{count}} resources failed to resolve, skipped",
     "unnamed_resource": "Unnamed resource",
-    "more_warnings": "; and {{count}} more warnings"
+    "more_warnings": "; and {{count}} more warnings",
+    "warningsSummary": "{{warnings}}; and {{count}} more warnings"
   },
   "variant": {
     "switcher": "Variant Switcher",
@@ -1539,8 +1571,10 @@
     "stopAll": "Stop All",
     "retrying": "Retrying",
     "retryFailed": "Retry failed",
+    "retryFailedWithDetail": "Retry failed: {{error}}",
     "deleted": "Deleted",
     "deleteFailed": "Delete failed",
+    "deleteFailedWithDetail": "Delete failed: {{error}}",
     "cancelFailed": "Cancel failed",
     "switchFailed": "Switch variant failed",
     "retryAll": "Retry All",
@@ -1572,9 +1606,13 @@
   },
   "browser": {
     "title": "Session Browser",
+    "titleWithCount": "Session Browser ({{count}})",
     "back": "Back",
     "refresh": "Refresh",
     "openBrowser": "Open Browser View",
+    "exportSession": "Export session",
+    "exportSuccess": "Exported {{messageCount}} messages to {{path}}",
+    "exportFailed": "Export failed: {{error}}",
     "allSessions": "All Sessions",
     "noResults": "No matching sessions found",
     "tryDifferentKeyword": "Try a different keyword",
@@ -1607,24 +1645,48 @@
     "addPlaceholder": "Add tag"
   },
   "authority": {
-    "segmentLabel": "Session authority mode",
     "modes": {
       "ask": "Ask",
       "plan": "Plan",
       "craft": "Craft"
     },
+    "modeSubtitles": {
+      "ask": "Read-only",
+      "plan": "Plan first"
+    },
     "hints": {
-      "ask": "Read-only: write tools are refused",
-      "plan": "Writes wait for plan confirmation",
-      "craft": "Follow normal tool approval policy"
+      "ask": "Ask is read-only and takes precedence: write tools are refused regardless of execution preset",
+      "plan": "Plan takes precedence: writes wait for plan confirmation regardless of execution preset",
+      "craft": "Run tools under the selected execution preset"
     },
     "permissionPreset": {
-      "label": "Approval preset",
-      "modes": { "cautious": "Cautious", "relaxed": "Relaxed" },
+      "label": "Craft execution preset",
+      "modes": {
+        "cautious": "Cautious",
+        "relaxed": "Relaxed",
+        "full_access": "Full access",
+        "danger_full_access": "Danger full access"
+      },
       "hints": {
         "cautious": "Confirm each Medium or High action. Dangerous approvals are never remembered.",
-        "relaxed": "Medium approvals may be remembered for this session and authorized roots only. High and irreversible actions still require confirmation every time."
-      }
+        "relaxed": "Low and Medium actions run silently; High actions still require approval.",
+        "full_access": "Ordinary tools run without approval. Local shell keeps runtime roots, the OS sandbox, and network boundaries; the shell guard may still deny or require confirmation. External MCP internals are not governed by the local shell guard.",
+        "danger_full_access": "Danger: ordinary tools run without approval and local-shell host file/network limits are removed. Recognized catastrophic commands are still denied and ambiguous commands may still require confirmation. External MCP internals are not governed by the local shell guard."
+      },
+      "shortHints": {
+        "cautious": "Confirm Medium and High actions",
+        "relaxed": "Run Low/Medium silently; approve High",
+        "full_access": "No tool approval; local boundaries remain",
+        "danger_full_access": "Unrestricted host files and network"
+      },
+      "modePriority": "This preset controls Craft only. Ask and Plan mode restrictions always take precedence.",
+      "fullAccessActive": "Full access on · click to downgrade",
+      "fullAccessDowngradeHint": "Restore per-item approval for high-risk actions (Relaxed)",
+      "dangerActive": "DANGER FULL ACCESS · click to downgrade",
+      "dangerDowngradeHint": "Immediately restore runtime roots, the OS sandbox, and network boundaries",
+      "dangerConfirmTitle": "Enable danger full access?",
+      "dangerConfirmDescription": "Ordinary tools and every external MCP will run without approval, and local shell will have no file or network sandbox. Recognized catastrophic commands are still denied, but dynamically generated scripts that cannot be classified may still damage the host; external MCP internals are also outside the local shell guard. Continue only if you explicitly accept these risks.",
+      "dangerConfirmAction": "Enable danger full access"
     },
     "switchToPlan": "Switch to Plan",
     "askBlocked": "Ask mode refused a write tool",
@@ -1649,12 +1711,8 @@
     "rejectDirectly": "Reject Directly",
     "rejectSend": "Send",
     "userReasonLabel": "User feedback",
-    "allowSession": "Allow for Session",
-    "allowScope": "Allow Scope",
     "runtimeRoot": "Runtime root",
     "runtimeCwd": "Working directory",
-    "alwaysAllow": "Always Allow",
-    "alwaysDeny": "Always Deny",
     "timeout": "Approval Timeout",
     "timedOutWaiting": "Timed out — auto-rejecting",
     "resolution": {
@@ -1677,6 +1735,8 @@
     },
     "expandArgs": "Show full arguments",
     "collapseArgs": "Collapse arguments",
+    "scopeExpand": "Details",
+    "scopeCollapse": "Hide details",
     "countdownPaused": "Paused",
     "aria": {
       "requested": "Tool {{tool}} is awaiting approval and will be rejected automatically in {{seconds}} seconds",
@@ -1688,6 +1748,41 @@
       "low": "Low Risk",
       "medium": "Medium Risk",
       "high": "High Risk"
+    },
+    "descriptions": {
+      "shell": "Will execute command: {{command}}",
+      "noteSet": "Will completely replace the contents of note {{noteId}}",
+      "noteReplace": "Will replace content matching \"{{search}}\" in the note",
+      "fileWrite": "Will write file: {{path}}",
+      "artifactWrite": "Will write session artifact: {{path}}",
+      "fileManagerCommit": "Will apply reviewed file plan {{plan}} in {{root}}",
+      "fileManagerRestore": "Will restore file from workspace trash: {{path}}",
+      "fileDelete": "Will delete file: {{path}}",
+      "browserOpen": "Will open in the built-in browser: {{url}}",
+      "browserNavigate": "Will navigate to: {{url}}",
+      "browserClick": "Will click webpage element: {{element}} (ref={{ref}})",
+      "browserFileUpload": "Will upload {{count}} authorized file(s) to: {{element}}",
+      "browserType": "Will type into webpage element: {{element}} (ref={{ref}}; content hidden)",
+      "browserOperation": "Will perform browser operation: {{tool}}",
+      "mediaTranscribe": "Will send authorized audio file {{file}} to the external ASR provider SiliconFlow and write the transcript to a task artifact",
+      "skillEnable": "Will enable skill: {{skillId}}",
+      "skillDisable": "Will disable skill: {{skillId}} (skill files are retained and can be re-enabled)",
+      "skillRemove": "Will delete skill package: {{skillId}} (cannot be undone; built-in skills are unaffected)",
+      "skillTrust": "Will trust skill {{skillId}} (trust is bound to the current package fingerprint)",
+      "skillTrustWithReason": "Will trust skill {{skillId}} (trust is bound to the current package fingerprint): {{reason}}",
+      "mcpUpdate": "Will update MCP server configuration: {{serverId}}",
+      "mcpUpdateWithFields": "Will update MCP server configuration: {{serverId}} (fields: {{fields}}; connection-tested automatically and rolled back on failure)",
+      "mcpEnable": "Will enable MCP server: {{serverId}}",
+      "mcpDisable": "Will disable MCP server: {{serverId}} (disconnects but retains configuration and saved credentials)",
+      "mcpRemove": "Will delete MCP server: {{serverId}} (transport: {{transport}}; saved credentials are also deleted; cannot be undone)",
+      "customAgentList": "Will view pending subagent persona proposals",
+      "customAgentReject": "Will reject subagent persona proposal: {{proposalId}}",
+      "customAgentPropose": "Will draft subagent persona proposal: {{fileName}} (saved to the pending area; a later approval is required before writing to agents/)",
+      "customAgentApply": "Will write custom subagent persona: workspaces/agents/{{fileName}}",
+      "customAgentApplyWithSummary": "Will write custom subagent persona {{fileName}}: {{summary}}",
+      "customAgentRemove": "Will delete custom subagent persona: {{fileName}} (cannot be undone)",
+      "customAgentRemoveWithTitle": "Will delete custom subagent persona: {{fileName}} ({{title}}; cannot be undone)",
+      "generic": "Will execute tool: {{tool}}"
     }
   },
   "skillInstall": {
@@ -1834,6 +1929,8 @@
     "defaultName": "Collaboration Task",
     "coordinator": "Coordinator",
     "workers": "Workers",
+    "workersCount": "Workers ({{count}})",
+    "messagesCount": "Messages ({{count}})",
     "viewFull": "View Full",
     "loadError": "Load failed",
     "refreshFailed": "Workspace sync failed: {{message}}",
@@ -1863,9 +1960,11 @@
     "status": {
       "noWorkspace": "No workspace",
       "agents": "Participants",
+      "agentsCount": "Participants ({{count}})",
       "noAgents": "No participants",
       "agentsDone": "done",
       "recentMessages": "Recent Messages",
+      "recentMessagesCount": "Recent Messages ({{count}})",
       "createdAt": "Created at",
       "historicalWorkspace": "Historical Workspace",
       "workspaceSwitched": "Workspace Switched",
@@ -2091,6 +2190,7 @@
     "locationGlobal": "global",
     "locationProject": "project",
     "locationBuiltin": "builtin",
+    "locationCount": "{{location}} {{count}}",
     "loadedSummary": "Loaded {{count}} skills ({{details}})"
   },
   "templateTool": {
@@ -2129,6 +2229,7 @@
     "ignore": "Ignore",
     "responded": "Answered",
     "submit": "Submit",
+    "send": "Send answer",
     "submitFailed": "Failed to submit response",
     "submitRetryHint": "Please choose or submit again."
   },

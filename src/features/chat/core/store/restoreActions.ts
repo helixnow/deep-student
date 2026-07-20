@@ -1,5 +1,5 @@
 import type { Block, BlockType, BlockStatus } from '../types/block';
-import type { Message } from '../types/message';
+import type { Message, ReplaySkillPayloadSnapshot } from '../types/message';
 import type {
   ChatStore,
   LoadSessionResponseType,
@@ -22,6 +22,11 @@ import {
   remapWorkbenchBlockType,
 } from '@/features/chat/utils/workbenchBlockRemap';
 import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
+import { resetTransientRuntimes } from './transientRuntimeRegistry';
+import {
+  browserToolsSkill,
+  builtinToolSkills,
+} from '../../skills/builtin-tools';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -50,6 +55,83 @@ function normalizeStringArray(value: unknown): string[] {
     : [];
 }
 
+const CURRENT_BUILTIN_TOOL_NAMES = new Set([
+  'load_skills',
+  ...[...builtinToolSkills, browserToolsSkill].flatMap((skill) =>
+    (skill.embeddedTools ?? []).map((tool) =>
+      tool.name.replace(/^builtin[-:]/, '').replace(/^mcp_/, ''),
+    ),
+  ),
+]);
+const CURRENT_BUILTIN_SKILL_IDS = new Set([
+  ...builtinToolSkills.map((skill) => skill.id),
+  browserToolsSkill.id,
+]);
+
+function normalizeHistoricalToolName(toolName: string): string {
+  return toolName
+    .replace(/^builtin[-:]/, '')
+    .replace(/^mcp_/, '')
+    .replace(/^mcp\.tools\./, '');
+}
+
+function getReplayRuntimeSnapshots(
+  message?: LoadSessionResponseType['messages'][number],
+): ReplaySkillPayloadSnapshot[] {
+  if (!message) return [];
+  const snapshots = [
+    message._meta?.skillRuntimeBefore,
+    message._meta?.skillRuntimeAfter,
+    ...(message.variants ?? []).flatMap((variant) => [
+      variant.meta?.skillRuntimeBefore,
+      variant.meta?.skillRuntimeAfter,
+    ]),
+  ];
+  return snapshots.filter((snapshot): snapshot is ReplaySkillPayloadSnapshot => !!snapshot);
+}
+
+/**
+ * Very old sessions persisted trusted local tools with the generic `mcp_`
+ * prefix. Remap only when replay metadata proves that the tool came from a
+ * local schema/built-in skill, and fail closed if any matching external schema
+ * carries a serverId. A matching name by itself is deliberately insufficient.
+ */
+function remapLegacyBuiltinToolName(
+  toolName: string | undefined,
+  message?: LoadSessionResponseType['messages'][number],
+): string | undefined {
+  if (!toolName?.startsWith('mcp_')) return toolName;
+
+  const shortName = normalizeHistoricalToolName(toolName);
+  if (!CURRENT_BUILTIN_TOOL_NAMES.has(shortName)) return toolName;
+
+  const snapshots = getReplayRuntimeSnapshots(message);
+  const hasExternalSource = snapshots.some((snapshot) =>
+    (snapshot.mcpToolSchemas ?? []).some((schema) =>
+      normalizeHistoricalToolName(schema.name) === shortName
+      && schema.serverId !== undefined,
+    ),
+  );
+  if (hasExternalSource) return toolName;
+
+  const hasTrustedLocalSchema = snapshots.some((snapshot) =>
+    (snapshot.mcpToolSchemas ?? []).some((schema) =>
+      normalizeHistoricalToolName(schema.name) === shortName
+      && schema.serverId === undefined,
+    ),
+  );
+  const hasBuiltinSkillEvidence = snapshots.some((snapshot) =>
+    Object.entries(snapshot.skillEmbeddedTools ?? {}).some(([skillId, tools]) =>
+      CURRENT_BUILTIN_SKILL_IDS.has(skillId)
+      && tools.some((tool) => normalizeHistoricalToolName(tool.name) === shortName),
+    ),
+  );
+
+  return hasTrustedLocalSchema || hasBuiltinSkillEvidence
+    ? `builtin-${shortName}`
+    : toolName;
+}
+
 /**
  * 后端块 → 前端 Block（restoreFromBackend / prependHistoryFromBackend 共用）
  *
@@ -57,9 +139,13 @@ function normalizeStringArray(value: unknown): string[] {
  * workbench_ops。DB 不存 toolCallId；桥侧 runId 现为 block.id，故 workbench 块用
  * id 回填 toolCallId，便于与 presence/账本候选对齐（账本本身不跨重启）。
  */
-function convertBackendBlock(blk: LoadSessionResponseType['blocks'][number]): Block {
-  const type = remapWorkbenchBlockType(blk.type, blk.toolName) as BlockType;
-  const isWorkbench = type === 'workbench_ops' || isWorkbenchToolName(blk.toolName);
+function convertBackendBlock(
+  blk: LoadSessionResponseType['blocks'][number],
+  message?: LoadSessionResponseType['messages'][number],
+): Block {
+  const toolName = remapLegacyBuiltinToolName(blk.toolName, message);
+  const type = remapWorkbenchBlockType(blk.type, toolName) as BlockType;
+  const isWorkbench = type === 'workbench_ops' || isWorkbenchToolName(toolName);
   if (isWorkbench) markWorkbenchBlockRestored(blk.id);
   return {
     id: blk.id,
@@ -67,7 +153,7 @@ function convertBackendBlock(blk: LoadSessionResponseType['blocks'][number]): Bl
     type,
     status: blk.status as BlockStatus,
     content: blk.content,
-    toolName: blk.toolName,
+    toolName,
     toolInput: blk.toolInput as Record<string, unknown> | undefined,
     toolOutput: blk.toolOutput,
     citations: blk.citations,
@@ -482,11 +568,14 @@ export function createRestoreActions(
           let blocksChanged = false;
           const messageMap = new Map(current.messageMap);
           const blocksMap = new Map(current.blocks);
+          const backendMessageById = new Map(
+            response.messages.map((message) => [message.id, message]),
+          );
           for (const blk of response.blocks) {
             if (blocksMap.has(blk.id)) continue;
             if (!retainedMessageIds.has(blk.messageId)) continue;
             if (baseline?.blockIds.has(blk.id)) continue;
-            blocksMap.set(blk.id, convertBackendBlock(blk));
+            blocksMap.set(blk.id, convertBackendBlock(blk, backendMessageById.get(blk.messageId)));
             blocksChanged = true;
           }
 
@@ -573,8 +662,9 @@ export function createRestoreActions(
           // 2. 转换块数据（先处理，后面可能需要添加从 sources 恢复的块）
           const tBlockMapStart = performance.now();
           const blocksMap = new Map<string, Block>();
+          const backendMessageById = new Map(messages.map((message) => [message.id, message]));
           for (const blk of blocks) {
-            blocksMap.set(blk.id, convertBackendBlock(blk));
+            blocksMap.set(blk.id, convertBackendBlock(blk, backendMessageById.get(blk.messageId)));
           }
           const tBlockMapEnd = performance.now();
           sessionSwitchPerf.mark('set_data_end', {
@@ -1041,7 +1131,13 @@ export function createRestoreActions(
               if (finalBlocksMap.has(backendBlock.id)) continue;
               if (!retainedMessageIds.has(backendBlock.messageId)) continue;
               if (baseline?.blockIds.has(backendBlock.id)) continue;
-              finalBlocksMap.set(backendBlock.id, convertBackendBlock(backendBlock));
+              finalBlocksMap.set(
+                backendBlock.id,
+                convertBackendBlock(
+                  backendBlock,
+                  backendMessageById.get(backendBlock.messageId),
+                ),
+              );
             }
 
             const availableBlockIds = new Set(finalBlocksMap.keys());
@@ -1086,6 +1182,12 @@ export function createRestoreActions(
 
           // 🔧 P1 内存泄漏修复：恢复会话会直接置空 attachments，先释放 blob: 预览 URL
           revokeAttachmentBlobUrls(getState().attachments);
+          const shouldResetTransientRuntimes =
+            session.id !== liveState.sessionId
+            || (!liveStateAdvanced && !liveState.pendingBlockingInteraction);
+          if (shouldResetTransientRuntimes) {
+            resetTransientRuntimes(getState().setPendingApproval);
+          }
 
           set({
             sessionId: session.id,
@@ -1102,7 +1204,12 @@ export function createRestoreActions(
             permissionPreset: (() => {
               const meta = session.metadata as Record<string, unknown> | null | undefined;
               const raw = meta?.permissionPreset ?? meta?.permission_preset;
-              return raw === 'relaxed' ? 'relaxed' : 'cautious';
+              return raw === 'cautious'
+                || raw === 'relaxed'
+                || raw === 'full_access'
+                || raw === 'danger_full_access'
+                ? raw
+                : 'relaxed';
             })(),
             authorityAskBlockedHint: false,
             sessionStatus: finalSessionStatus,
@@ -1124,6 +1231,12 @@ export function createRestoreActions(
             // 从安全解析的结果恢复（支持多选）
             activeSkillIds: restoredActiveSkillIds,
             skillStateJson: state?.skillStateJson ?? null,
+            ...(shouldResetTransientRuntimes
+              ? {
+                  pendingBlockingInteraction: null,
+                  pendingApprovalRequest: null,
+                }
+              : {}),
           });
 
           // 📊 细粒度打点：set 结束

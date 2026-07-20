@@ -10,7 +10,7 @@ import type { ChatSession } from '../types/session';
 import type { DropResult } from '@hello-pangea/dnd';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { showArchiveSessionToast } from '../utils/archiveSessionToast';
-import type { TFunction } from 'i18next';
+import i18n, { type TFunction } from 'i18next';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -357,7 +357,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     if (diffMins < 60) return t('common.minutesAgo', { count: diffMins } as any) as string;
     if (diffHours < 24) return t('common.hoursAgo', { count: diffHours } as any) as string;
     if (diffDays < 7) return t('common.daysAgo', { count: diffDays } as any) as string;
-    return date.toLocaleDateString();
+    return date.toLocaleDateString(i18n.resolvedLanguage ?? i18n.language);
   }, [t]);
 
   return {

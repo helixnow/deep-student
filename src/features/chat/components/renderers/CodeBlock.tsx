@@ -388,7 +388,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       console.error('[CodeBlock] Mermaid render failed:', errorMsg);
       setMermaidError(errorMsg);
       // 仍然设置一个错误提示的 SVG 内容，但保留切换到源码的能力
-      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${t('codeBlock.mermaidFailed')}: ${escapeHtml(errorMsg)}</span></div>`);
+      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${escapeHtml(t('codeBlock.errorWithDetail', { message: t('codeBlock.mermaidFailed'), detail: errorMsg }))}</span></div>`);
       setShowRendered(true);
     } finally {
       // 组件卸载后不更新状态
@@ -421,7 +421,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       console.error('[CodeBlock] HTML render failed:', errorMsg);
       setMermaidError(errorMsg);
       setHtmlPreviewContent(null);
-      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${t('codeBlock.htmlFailed')}: ${escapeHtml(errorMsg)}</span></div>`);
+      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${escapeHtml(t('codeBlock.errorWithDetail', { message: t('codeBlock.htmlFailed'), detail: errorMsg }))}</span></div>`);
       setShowRendered(true);
     }
   };
@@ -444,7 +444,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       const errorMsg = getErrorMessage(err);
       console.error('[CodeBlock] SVG render failed:', errorMsg);
       setMermaidError(errorMsg);
-      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${t('codeBlock.svgFailed')}: ${escapeHtml(errorMsg)}</span></div>`);
+      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${escapeHtml(t('codeBlock.errorWithDetail', { message: t('codeBlock.svgFailed'), detail: errorMsg }))}</span></div>`);
       setShowRendered(true);
     }
   };
@@ -474,7 +474,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       const errorMsg = getErrorMessage(err);
       console.error('[CodeBlock] XML render failed:', errorMsg);
       setMermaidError(errorMsg);
-      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${t('codeBlock.xmlFailed')}: ${escapeHtml(errorMsg)}</span></div>`);
+      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${escapeHtml(t('codeBlock.errorWithDetail', { message: t('codeBlock.xmlFailed'), detail: errorMsg }))}</span></div>`);
       setShowRendered(true);
     }
   };

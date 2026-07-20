@@ -216,12 +216,16 @@ interface MessageItemProps {
 }
 
 const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
+  const { i18n } = useTranslation('chatV2');
   const shortSenderId = message.senderSessionId.slice(-6);
   const shortTargetId = message.targetSessionId?.slice(-6);
-  const time = new Date(message.createdAt).toLocaleTimeString(undefined, {
+  const time = new Date(message.createdAt).toLocaleTimeString(
+    i18n.resolvedLanguage ?? i18n.language,
+    {
     hour: '2-digit',
     minute: '2-digit',
-  });
+    },
+  );
 
   // 截断消息内容
   const truncatedContent = message.content.length > 50
@@ -254,7 +258,8 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
   store,
 }) => {
   const status = block.status;
-  const { t } = useTranslation('chatV2');
+  const { t, i18n } = useTranslation('chatV2');
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const [isExpanded, setIsExpanded] = useState(true);
   const [showMessages, setShowMessages] = useState(false);
   const disclosureMotion = useDisclosureMotion();
@@ -381,7 +386,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
           {agents.length > 0 && (
             <div className="mt-2">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                {t('workspace.status.agents')} ({agents.length})
+                {t('workspace.status.agentsCount', { count: agents.length })}
               </div>
               <div className="space-y-0.5">
                 {agents.map((agent) => (
@@ -398,7 +403,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
             <div className="flex items-center gap-1 mt-2 text-2xs text-muted-foreground">
               <Clock size={12} />
               <span>
-                {t('workspace.status.createdAt')}: {new Date(snapshotCreatedAt).toLocaleString()}
+                {t('workspace.status.createdAt')}: {new Date(snapshotCreatedAt).toLocaleString(locale)}
               </span>
             </div>
           )}
@@ -495,7 +500,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
             {/* Agent 列表 */}
             <div className="px-3 pb-2">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                {t('workspace.status.agents')} ({agents.length})
+                {t('workspace.status.agentsCount', { count: agents.length })}
               </div>
               <div className="space-y-0.5">
                 {agents.length === 0 ? (
@@ -537,7 +542,9 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
                   <div className="flex items-center gap-1.5">
                     <Chat size={14} className="text-muted-foreground" />
                     <span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">
-                      {t('workspace.status.recentMessages')} ({recentMessages.length})
+                      {t('workspace.status.recentMessagesCount', {
+                        count: recentMessages.length,
+                      })}
                     </span>
                   </div>
                   {showMessages ? (
@@ -567,7 +574,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
               <div className="flex items-center gap-1 px-3 py-1.5 border-t border-border/50 text-2xs text-muted-foreground">
                 <Clock size={12} />
                 <span>
-                  {t('workspace.status.createdAt')}: {new Date(workspace.createdAt).toLocaleString()}
+                  {t('workspace.status.createdAt')}: {new Date(workspace.createdAt).toLocaleString(locale)}
                 </span>
               </div>
             )}

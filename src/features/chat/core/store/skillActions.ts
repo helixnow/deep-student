@@ -13,6 +13,7 @@ import i18n from 'i18next';
 import type { ChatStoreState, SetState, GetState } from './types';
 import { SKILL_INSTRUCTION_TYPE_ID } from '../../skills/types';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '../../skills/utils';
+import type { SkillRuntimeAdmission } from '../../skills/runtimeAdmission';
 
 // ============================================================================
 // 常量
@@ -97,6 +98,20 @@ function collectSkillClosure(
   return closure;
 }
 
+function localizeRuntimeAdmission(
+  admission: SkillRuntimeAdmission,
+  skillId: string,
+): string {
+  if (!admission.code) {
+    return admission.message ?? `Skill "${skillId}" cannot be activated`;
+  }
+  return i18n.t(`skills:errors.runtimeAdmission.${admission.code}`, {
+    skillId,
+    ...admission.params,
+    defaultValue: admission.message ?? `Skill "${skillId}" cannot be activated`,
+  });
+}
+
 // ============================================================================
 // Skill Actions 创建
 // ============================================================================
@@ -151,13 +166,16 @@ export function createSkillActions(
           return false;
         }
 
-        const { getSkillRuntimeAdmission } = await import('../../skills/runtimeAdmission');
-        const admission = getSkillRuntimeAdmission(skill);
+        const { getSkillRuntimeAdmissionWithDependencies } = await import('../../skills/runtimeAdmission');
+        const admission = getSkillRuntimeAdmissionWithDependencies(
+          skill,
+          (dependencyId) => skillRegistry.get(dependencyId),
+        );
         if (!admission.allowed) {
           console.warn(LOG_PREFIX, `Skill activation rejected: ${skillId}`, admission);
           try {
             const { showGlobalNotification } = await import('@/components/UnifiedNotification');
-            showGlobalNotification('warning', admission.message ?? `Skill "${skillId}" cannot be activated`);
+            showGlobalNotification('warning', localizeRuntimeAdmission(admission, skillId));
           } catch { /* notification optional */ }
           return false;
         }

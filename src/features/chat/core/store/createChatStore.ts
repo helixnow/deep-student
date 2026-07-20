@@ -47,6 +47,7 @@ import i18n from 'i18next';
 import { autoSave } from '../middleware/autoSave';
 import { chunkBuffer } from '../middleware/chunkBuffer';
 import { clearEventContext, clearBridgeState } from '../middleware/eventBridge';
+import { resetTransientRuntimes } from './transientRuntimeRegistry';
 import {
   createInitialState,
   createDefaultChatParams,
@@ -329,6 +330,7 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
         disposeRuntimeTimers: () => {
           queueActions.cancelDequeueBreather();
           messageActions.cancelLockWatchdog();
+          resetTransientRuntimes(getState().setPendingApproval);
         },
 
         // ========== 辅助方法 ==========

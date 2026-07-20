@@ -422,7 +422,7 @@ function resolveWorkspaceRequesterSessionId(
     return currentSessionId;
   }
 
-  throw new Error(i18n.t('chatV2:workspace.unableToResolveSessionId', 'Unable to resolve requester session ID for workspace command'));
+  throw new Error(i18n.t('chatV2:workspace.unableToResolveSessionId'));
 }
 
 // ============================================================

@@ -40,6 +40,7 @@ import {
 import { cn } from '@/lib/utils';
 import { fileManager, extractFileName } from '@/utils/fileManager';
 import { showGlobalNotification } from './UnifiedNotification';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import CsvFieldMapper, { FieldMapping } from './CsvFieldMapper';
 import { UnifiedDragDropZone, type FileTypeDefinition } from './shared/UnifiedDragDropZone';
 import { inferCsvFieldFromHeader } from '@/utils/csvHeaderAliases';
@@ -1091,6 +1092,15 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
     }
     onOpenChange(false);
   }, [isImporting, onOpenChange, t]);
+
+  // 📱 Android 返回键：覆盖层打开时返回键先关闭本面板（导入中沿用阻止关闭的警告逻辑）
+  useEffect(() => {
+    if (!open) return;
+    return registerBackHandler(() => {
+      handleClose();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [open, handleClose]);
 
   // 仅在打开时挂载流程：关闭即卸载，天然重置状态并清理后端任务/监听器
   if (!open) return null;

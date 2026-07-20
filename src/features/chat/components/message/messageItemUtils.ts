@@ -12,6 +12,7 @@
 
 import type { Block, TokenUsage } from '../../core/types';
 import { isTimelineBlockType } from '../ActivityTimeline';
+import i18n from 'i18next';
 
 // ============================================================================
 // Token 用量聚合
@@ -101,7 +102,9 @@ export function extractNoteTitle(content: string): string {
   if (headingMatch) return headingMatch[1].trim().slice(0, 100);
   const firstLine = content.split('\n')[0].replace(/<\/?[^>]+>/g, '').trim();
   if (firstLine.length > 0) return firstLine.slice(0, 60) + (firstLine.length > 60 ? '...' : '');
-  return `Chat Note ${new Date().toLocaleDateString()}`;
+  return i18n.t('chatV2:messageItem.actions.noteDefaultTitle', {
+    date: new Date().toLocaleDateString(i18n.resolvedLanguage ?? i18n.language),
+  });
 }
 
 // ============================================================================

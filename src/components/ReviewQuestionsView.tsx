@@ -607,7 +607,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
 
           {/* 右侧：批量操作 */}
           <div className="flex items-center gap-1.5">
-            <DsButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!px-2 !py-1 !h-auto text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
+            <DsButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!px-2 !py-1 !h-auto [@media(pointer:coarse)]:!min-h-[44px] text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
               {selectedIds.size === reviewQuestions.length ? t('review:questions.cancel') : t('review:questions.selectAll')}
             </DsButton>
             
@@ -624,7 +624,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
                   disabled={isOperating || !onResetProgress}
                   title={armedAction === 'reset' ? t('practice:questionBank.confirmResetDescDetail', { count: selectedIds.size }) : undefined}
                   className={cn(
-                    '!h-auto min-h-8 !px-2 !py-1 text-xs disabled:opacity-50',
+                    '!h-auto min-h-8 !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs disabled:opacity-50',
                     armedAction !== 'reset' && 'text-info hover:bg-info/10',
                   )}
                 >
@@ -643,7 +643,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
                   disabled={isOperating || !onDelete}
                   title={armedAction === 'delete' ? t('practice:questionBank.confirmDeleteDesc', { count: selectedIds.size }) : undefined}
                   className={cn(
-                    '!h-auto min-h-8 !px-2 !py-1 text-xs disabled:opacity-50',
+                    '!h-auto min-h-8 !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs disabled:opacity-50',
                     armedAction !== 'delete' && 'text-destructive hover:bg-destructive/10',
                   )}
                 >

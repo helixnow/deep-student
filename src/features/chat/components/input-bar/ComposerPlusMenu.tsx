@@ -41,11 +41,20 @@ import {
 } from '@/components/ui/app-menu/AppMenu';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { DsButton } from '@/components/ui/DsButton';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
+import type { PermissionPreset } from '../../core/types/store';
 
 export type ComposerAuthorityMode = 'ask' | 'plan' | 'craft';
-export type ComposerPermissionPreset = 'cautious' | 'relaxed';
+export type ComposerPermissionPreset = PermissionPreset;
+
+const PERMISSION_PRESETS: ComposerPermissionPreset[] = [
+  'cautious',
+  'relaxed',
+  'full_access',
+  'danger_full_access',
+];
 
 export interface ComposerPlusMenuProps {
   open: boolean;
@@ -107,7 +116,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   compactContextStatus = null,
   authorityMode = 'craft',
   onAuthorityModeChange,
-  permissionPreset = 'cautious',
+  permissionPreset = 'relaxed',
   onPermissionPresetChange,
   authorityAskBlockedHint = false,
   renderSkillPanel,
@@ -121,18 +130,16 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   onKnowledgeBaseProactiveChange,
 }) => {
   const { t } = useTranslation(['analysis', 'chatV2', 'skills', 'common']);
+  const [confirmDangerOpen, setConfirmDangerOpen] = React.useState(false);
 
   const modeDescription = useMemo(() => {
     switch (authorityMode) {
       case 'ask':
-        return t('chatV2:authority.hints.ask', '只读：写工具会被拒绝');
+        return t('chatV2:authority.hints.ask');
       case 'plan':
-        return t('chatV2:authority.hints.plan', '写操作先确认计划再执行');
+        return t('chatV2:authority.hints.plan');
       default:
-        return t(
-          'chatV2:inputBar.plusMenu.modeDefaultDescription',
-          '当前为默认模式，可高效执行并完成任务。',
-        );
+        return t('chatV2:inputBar.plusMenu.modeDefaultDescription');
     }
   }, [authorityMode, t]);
 
@@ -152,12 +159,24 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
     [onAuthorityModeChange],
   );
 
-  const handleRelaxedChange = useCallback(
-    (checked: boolean) => {
-      if (!onPermissionPresetChange) return;
-      void onPermissionPresetChange(checked ? 'relaxed' : 'cautious');
+  const applyPermissionPreset = useCallback(
+    (preset: ComposerPermissionPreset) => {
+      if (!onPermissionPresetChange || preset === permissionPreset) return;
+      void onPermissionPresetChange(preset);
     },
-    [onPermissionPresetChange],
+    [onPermissionPresetChange, permissionPreset],
+  );
+
+  const handlePermissionPresetSelect = useCallback(
+    (preset: ComposerPermissionPreset) => {
+      if (preset === permissionPreset) return;
+      if (preset === 'danger_full_access') {
+        setConfirmDangerOpen(true);
+        return;
+      }
+      applyPermissionPreset(preset);
+    },
+    [applyPermissionPreset, permissionPreset],
   );
 
   const handleKnowledgeBaseProactiveChange = useCallback(
@@ -235,8 +254,8 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
             <CommonTooltip
               content={
                 attachmentCount > 0
-                  ? `${t('analysis:input_bar.attachments.title')} (${attachmentCount})`
-                  : t('chatV2:inputBar.plusMenu.trigger', '添加与会话选项')
+                  ? t('chatV2:inputBar.plusMenu.attachmentsCount', { count: attachmentCount })
+                  : t('chatV2:inputBar.plusMenu.trigger')
               }
               position={tooltipPosition}
               disabled={tooltipDisabled || open}
@@ -251,7 +270,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                   'relative transition-colors disabled:opacity-60',
                   open && 'bg-[color:var(--button-secondary-surface)]',
                 )}
-                aria-label={t('chatV2:inputBar.plusMenu.trigger', '添加与会话选项')}
+                aria-label={t('chatV2:inputBar.plusMenu.trigger')}
                 aria-expanded={open}
               >
                 <Plus size={18} weight="bold" className={cn(open && 'rotate-45 transition-transform')} />
@@ -320,14 +339,14 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
               {showMode && (
                 <>
                   <AppMenuSeparator />
-                  <AppMenuGroup label={t('chatV2:inputBar.plusMenu.mode', '模式')} data-testid="plus-menu-mode-panel">
+                  <AppMenuGroup label={t('chatV2:inputBar.plusMenu.mode')} data-testid="plus-menu-mode-panel">
                     <AppMenuSwitchItem
                       className={mobileItemClass}
                       checked={authorityMode === 'plan'}
                       onCheckedChange={handlePlanChange}
                       data-testid="plus-menu-mode-plan"
                     >
-                      {t('chatV2:authority.modes.plan', '想一想')}
+                      {t('chatV2:authority.modes.plan')}
                     </AppMenuSwitchItem>
                     <AppMenuSwitchItem
                       className={mobileItemClass}
@@ -335,17 +354,26 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                       onCheckedChange={handleAskChange}
                       data-testid="plus-menu-mode-ask"
                     >
-                      {t('chatV2:authority.modes.ask', '问一问')}
+                      {t('chatV2:authority.modes.ask')}
                     </AppMenuSwitchItem>
-                    <AppMenuSwitchItem
-                      className={mobileItemClass}
-                      checked={permissionPreset === 'relaxed'}
-                      onCheckedChange={handleRelaxedChange}
-                      data-testid="plus-menu-permission-relaxed"
-                      title={t('chatV2:authority.permissionPreset.hints.relaxed')}
-                    >
-                      {t('chatV2:authority.permissionPreset.modes.relaxed', '放开')}
-                    </AppMenuSwitchItem>
+                    <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal px-2 py-1 text-[11px] leading-snug text-muted-foreground">
+                      {t('chatV2:authority.permissionPreset.modePriority')}
+                    </AppMenuLabel>
+                    {PERMISSION_PRESETS.map((preset) => (
+                      <AppMenuItem
+                        key={preset}
+                        className={cn(
+                          mobileItemClass,
+                          preset === 'danger_full_access' && 'text-destructive',
+                        )}
+                        onClick={() => handlePermissionPresetSelect(preset)}
+                        data-testid={`plus-menu-permission-${preset}`}
+                        title={t(`chatV2:authority.permissionPreset.hints.${preset}`)}
+                        suffix={permissionPreset === preset ? <Check className="h-4 w-4" /> : undefined}
+                      >
+                        {t(`chatV2:authority.permissionPreset.modes.${preset}`)}
+                      </AppMenuItem>
+                    ))}
                   </AppMenuGroup>
                 </>
               )}
@@ -355,7 +383,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                 <>
                   <AppMenuSeparator />
                   <AppMenuGroup
-                    label={t('chatV2:inputBar.plusMenu.knowledgeBase', '知识库')}
+                    label={t('chatV2:inputBar.plusMenu.knowledgeBase')}
                     data-testid="plus-menu-knowledge-base-panel"
                   >
                     <AppMenuSwitchItem
@@ -363,9 +391,9 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                       checked={knowledgeBaseProactive}
                       onCheckedChange={handleKnowledgeBaseProactiveChange}
                       data-testid="plus-menu-kb-proactive"
-                      title={t('chatV2:inputBar.plusMenu.kbProactiveHint', '开启后要求模型回答前优先检索你的笔记、教材等本地资料')}
+                      title={t('chatV2:inputBar.plusMenu.kbProactiveHint')}
                     >
-                      {t('chatV2:inputBar.plusMenu.kbProactive', '主动检索')}
+                      {t('chatV2:inputBar.plusMenu.kbProactive')}
                     </AppMenuSwitchItem>
                   </AppMenuGroup>
                 </>
@@ -392,7 +420,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                   data-testid="plus-menu-connectors"
                   suffix={connectorsBadge}
                 >
-                  {t('chatV2:inputBar.plusMenu.connectors', '连接器')}
+                  {t('chatV2:inputBar.plusMenu.connectors')}
                 </AppMenuItem>
               )}
             </>
@@ -403,7 +431,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                 icon={<Paperclip className="w-4 h-4" weight="bold" />}
                 data-testid="plus-menu-add-file"
               >
-                {t('chatV2:inputBar.plusMenu.addFile', '添加文件')}
+                {t('chatV2:inputBar.plusMenu.addFile')}
               </AppMenuSubTrigger>
               <AppMenuSubContent className="min-w-[180px]">
                 <AppMenuItem
@@ -449,7 +477,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                   icon={<Sparkle className="w-4 h-4" weight="bold" />}
                   data-testid="plus-menu-mode"
                 >
-                  {t('chatV2:inputBar.plusMenu.mode', '模式')}
+                  {t('chatV2:inputBar.plusMenu.mode')}
                 </AppMenuSubTrigger>
                 <AppMenuSubContent
                   className="w-[min(280px,calc(100vw-24px))]"
@@ -465,8 +493,10 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                     data-testid="plus-menu-mode-plan"
                   >
                     <span className="flex flex-col items-start gap-0.5">
-                      <span>{t('chatV2:authority.modes.plan', '想一想')}</span>
-                      <span className="text-2xs text-muted-foreground">Plan</span>
+                      <span>{t('chatV2:authority.modes.plan')}</span>
+                      <span className="text-2xs text-muted-foreground">
+                        {t('chatV2:authority.modeSubtitles.plan')}
+                      </span>
                     </span>
                   </AppMenuSwitchItem>
                   <AppMenuSwitchItem
@@ -475,24 +505,33 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                     data-testid="plus-menu-mode-ask"
                   >
                     <span className="flex flex-col items-start gap-0.5">
-                      <span>{t('chatV2:authority.modes.ask', '问一问')}</span>
-                      <span className="text-2xs text-muted-foreground">Ask</span>
-                    </span>
-                  </AppMenuSwitchItem>
-                  <AppMenuSeparator />
-                  <AppMenuSwitchItem
-                    checked={permissionPreset === 'relaxed'}
-                    onCheckedChange={handleRelaxedChange}
-                    data-testid="plus-menu-permission-relaxed"
-                    title={t('chatV2:authority.permissionPreset.hints.relaxed')}
-                  >
-                    <span className="flex flex-col items-start gap-0.5">
-                      <span>{t('chatV2:authority.permissionPreset.modes.relaxed', '放开')}</span>
+                      <span>{t('chatV2:authority.modes.ask')}</span>
                       <span className="text-2xs text-muted-foreground">
-                        {t('chatV2:inputBar.plusMenu.approvalMemory', '审批记忆')}
+                        {t('chatV2:authority.modeSubtitles.ask')}
                       </span>
                     </span>
                   </AppMenuSwitchItem>
+                  <AppMenuSeparator />
+                  <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal px-2 py-1 text-[11px] leading-snug text-muted-foreground">
+                    {t('chatV2:authority.permissionPreset.modePriority')}
+                  </AppMenuLabel>
+                  {PERMISSION_PRESETS.map((preset) => (
+                    <AppMenuItem
+                      key={preset}
+                      className={cn(preset === 'danger_full_access' && 'text-destructive')}
+                      onClick={() => handlePermissionPresetSelect(preset)}
+                      data-testid={`plus-menu-permission-${preset}`}
+                      title={t(`chatV2:authority.permissionPreset.hints.${preset}`)}
+                      suffix={permissionPreset === preset ? <Check className="h-4 w-4" /> : undefined}
+                    >
+                      <span className="flex flex-col items-start gap-0.5">
+                        <span>{t(`chatV2:authority.permissionPreset.modes.${preset}`)}</span>
+                        <span className="text-2xs text-muted-foreground">
+                          {t(`chatV2:authority.permissionPreset.shortHints.${preset}`)}
+                        </span>
+                      </span>
+                    </AppMenuItem>
+                  ))}
                 </AppMenuSubContent>
               </AppMenuSub>
             )}
@@ -505,7 +544,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className="truncate">
-                      {t('chatV2:inputBar.plusMenu.knowledgeBase', '知识库')}
+                      {t('chatV2:inputBar.plusMenu.knowledgeBase')}
                     </span>
                     {knowledgeBaseProactive && (
                       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
@@ -517,7 +556,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                   data-testid="plus-menu-knowledge-base-panel"
                 >
                   <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal text-[12px] leading-snug text-muted-foreground px-2 py-1.5">
-                    {t('chatV2:inputBar.plusMenu.kbProactiveHint', '开启后要求模型回答前优先检索你的笔记、教材等本地资料')}
+                    {t('chatV2:inputBar.plusMenu.kbProactiveHint')}
                   </AppMenuLabel>
                   <AppMenuSeparator />
                   <AppMenuSwitchItem
@@ -525,7 +564,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                     onCheckedChange={handleKnowledgeBaseProactiveChange}
                     data-testid="plus-menu-kb-proactive"
                   >
-                    {t('chatV2:inputBar.plusMenu.kbProactive', '主动检索')}
+                    {t('chatV2:inputBar.plusMenu.kbProactive')}
                   </AppMenuSwitchItem>
                 </AppMenuSubContent>
               </AppMenuSub>
@@ -562,7 +601,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className="truncate">
-                      {t('chatV2:inputBar.plusMenu.connectors', '连接器')}
+                      {t('chatV2:inputBar.plusMenu.connectors')}
                     </span>
                     {connectorsBadge}
                   </span>
@@ -573,13 +612,10 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                     onClick={handleOpenConnectors}
                     data-testid="plus-menu-open-connectors"
                   >
-                    {t('chatV2:inputBar.plusMenu.openConnectors', '管理连接器')}
+                    {t('chatV2:inputBar.plusMenu.openConnectors')}
                   </AppMenuItem>
                   <AppMenuFooter className="text-[11px] text-muted-foreground">
-                    {t(
-                      'chatV2:inputBar.plusMenu.connectorsHint',
-                      '选择 MCP / 外部工具连接',
-                    )}
+                    {t('chatV2:inputBar.plusMenu.connectorsHint')}
                   </AppMenuFooter>
                 </AppMenuSubContent>
               </AppMenuSub>
@@ -596,9 +632,43 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
           onClick={handleSwitchToPlan}
           data-testid="plus-menu-switch-to-plan"
         >
-          {t('chatV2:authority.switchToPlan', '切换到想一想')}
+          {t('chatV2:authority.switchToPlan')}
         </button>
       )}
+      {permissionPreset === 'full_access' && (
+        <button
+          type="button"
+          className="ml-1 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold text-warning"
+          onClick={() => applyPermissionPreset('relaxed')}
+          data-testid="full-access-active"
+          title={t('chatV2:authority.permissionPreset.fullAccessDowngradeHint')}
+        >
+          {t('chatV2:authority.permissionPreset.fullAccessActive')}
+        </button>
+      )}
+      {permissionPreset === 'danger_full_access' && (
+        <button
+          type="button"
+          className="ml-1 rounded bg-destructive px-1.5 py-0.5 text-[10px] font-semibold text-destructive-foreground shadow-sm"
+          onClick={() => applyPermissionPreset('relaxed')}
+          data-testid="danger-full-access-active"
+          title={t('chatV2:authority.permissionPreset.dangerDowngradeHint')}
+        >
+          {t('chatV2:authority.permissionPreset.dangerActive')}
+        </button>
+      )}
+      <DsAlertDialog
+        open={confirmDangerOpen}
+        onOpenChange={setConfirmDangerOpen}
+        title={t('chatV2:authority.permissionPreset.dangerConfirmTitle')}
+        description={t('chatV2:authority.permissionPreset.dangerConfirmDescription')}
+        confirmText={t('chatV2:authority.permissionPreset.dangerConfirmAction')}
+        confirmVariant="danger"
+        onConfirm={() => {
+          setConfirmDangerOpen(false);
+          applyPermissionPreset('danger_full_access');
+        }}
+      />
     </div>
   );
 });

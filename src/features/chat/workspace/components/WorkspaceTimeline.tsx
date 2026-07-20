@@ -60,7 +60,7 @@ export const WorkspaceTimeline: React.FC<WorkspaceTimelineProps> = ({
   if (sortedMessages.length === 0) {
     return (
       <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
-        {t('chatV2:workspace.noMessages', '暂无消息')}
+        {t('chatV2:workspace.noMessages')}
       </div>
     );
   }

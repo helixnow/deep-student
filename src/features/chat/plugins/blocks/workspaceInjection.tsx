@@ -70,7 +70,8 @@ const COLLAPSE_LINE_THRESHOLD = 6;
 // ============================================================================
 
 const WorkspaceInjectionBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block }) => {
-  const { t } = useTranslation('workspace');
+  const { t, i18n } = useTranslation('workspace');
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const [isExpanded, setIsExpanded] = useState(false);
 
   const output = (block.toolOutput ?? undefined) as WorkspaceInjectionOutput | undefined;
@@ -134,7 +135,7 @@ const WorkspaceInjectionBlockComponent: React.FC<BlockComponentProps> = React.me
         )}
         {injectedAt && (
           <span className="ml-auto text-2xs text-muted-foreground/70 flex-shrink-0">
-            {new Date(injectedAt).toLocaleTimeString()}
+            {new Date(injectedAt).toLocaleTimeString(locale)}
           </span>
         )}
       </div>

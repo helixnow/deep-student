@@ -247,7 +247,6 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
           <div className={cn('rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] leading-relaxed text-warning', !sidebarMode && 'md:col-span-2')}>
             {t('chat_host:advanced.deepseek_v4_sampling_notice', {
               effort: deepSeekV4ReasoningEffort,
-              defaultValue: 'DeepSeek V4 thinking mode ({{effort}}) ignores temperature, top_p, presence_penalty, and frequency_penalty. Turn thinking off to use sampling controls.',
             })}
           </div>
         )}

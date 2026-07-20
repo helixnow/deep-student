@@ -611,7 +611,8 @@
 /* Slash 菜单保持编辑器自管滚动，仅同步核心滚动条 token 与几何。 */
 .crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups {
   padding: 4px 8px 8px !important;
-  max-height: 280px !important;
+  /* 软键盘弹出时按键盘遮挡高度动态收缩（对齐 wikilink.css / mention.css 公式），上限仍为 280px */
+  max-height: min(280px, calc(100dvh - var(--mobile-toolbar-keyboard-offset, 0px) - 120px)) !important;
   overflow-x: hidden !important;
   overflow-y: auto !important;
   overscroll-behavior: contain;

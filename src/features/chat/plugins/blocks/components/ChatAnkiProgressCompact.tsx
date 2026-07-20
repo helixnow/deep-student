@@ -236,10 +236,13 @@ export const ChatAnkiProgressCompact: React.FC<{
 
   const metricsText = useMemo(() => {
     const parts: string[] = [];
-    parts.push(`${t('blocks.ankiCards.progress.metrics.cards')}: ${cardsGenerated}`);
+    parts.push(t('blocks.ankiCards.progress.metrics.cardsValue', { count: cardsGenerated }));
     if (typeof segTotal === 'number' && typeof segCompleted === 'number') {
       parts.push(
-        `${t('blocks.ankiCards.progress.metrics.segments')}: ${segCompleted}/${segTotal}`
+        t('blocks.ankiCards.progress.metrics.segmentsValue', {
+          completed: segCompleted,
+          total: segTotal,
+        })
       );
     }
     return parts.join('  ·  ');
@@ -399,15 +402,8 @@ export const ChatAnkiProgressCompact: React.FC<{
             data-testid="chatanki-progress-anki-connect"
             title={ankiConnect?.error ?? undefined}
           >
-            {t('blocks.ankiCards.progress.ankiConnect.label', { defaultValue: 'AnkiConnect' })}:{' '}
-            {t(ANKI_CONNECT_LABEL_KEYS[ankiConnectMeta.label], {
-              defaultValue:
-                ankiConnectMeta.label === 'connected'
-                  ? 'connected'
-                  : ankiConnectMeta.label === 'notConnected'
-                    ? 'not connected'
-                    : 'checking',
-            })}
+            {t('blocks.ankiCards.progress.ankiConnect.label')}:{' '}
+            {t(ANKI_CONNECT_LABEL_KEYS[ankiConnectMeta.label])}
           </Badge>
           {onRefreshAnkiConnect && ankiConnectMeta.state !== 'connected' && (
             <AnkiConnectRefreshButton
@@ -473,7 +469,7 @@ export const ChatAnkiProgressCompact: React.FC<{
           <span data-testid="chatanki-progress-metrics">{metricsText}</span>
           {route && (
             <Badge variant="outline" className="rounded-full px-2 py-0.5 text-xs" data-testid="chatanki-progress-route">
-              {t('blocks.ankiCards.progress.route', { defaultValue: 'route' })}: {routeLabel || route}
+              {t('blocks.ankiCards.progress.route')}: {routeLabel || route}
             </Badge>
           )}
         </div>

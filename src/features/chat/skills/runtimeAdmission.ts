@@ -20,6 +20,11 @@ export type SkillRuntimeAdmissionCode =
 export interface SkillRuntimeAdmission {
   allowed: boolean;
   code?: SkillRuntimeAdmissionCode;
+  /**
+   * Stable, locale-neutral interpolation values for user-facing clients.
+   * `message` remains an English technical diagnostic for logs/model paths.
+   */
+  params?: Record<string, string>;
   message?: string;
 }
 
@@ -43,6 +48,7 @@ export function getSkillRuntimeAdmission(skill: SkillDefinition): SkillRuntimeAd
     return {
       allowed: false,
       code: 'untrusted',
+      params: { skillId: skill.id },
       message: `Skill "${skill.id}" is untrusted and cannot be loaded`,
     };
   }
@@ -51,6 +57,7 @@ export function getSkillRuntimeAdmission(skill: SkillDefinition): SkillRuntimeAd
     return {
       allowed: false,
       code: 'disabled',
+      params: { skillId: skill.id },
       message: `Skill "${skill.id}" is disabled and cannot be loaded`,
     };
   }
@@ -60,6 +67,11 @@ export function getSkillRuntimeAdmission(skill: SkillDefinition): SkillRuntimeAd
     return {
       allowed: false,
       code: 'requires_unsatisfied',
+      params: {
+        skillId: skill.id,
+        missingBins: gate.missingBins.join(', ') || '-',
+        missingEnv: gate.missingEnv.join(', ') || '-',
+      },
       message: `Skill "${skill.id}" cannot be loaded: ${formatMissingRequires(skill.id)}`,
     };
   }
@@ -84,6 +96,11 @@ export function getSkillRuntimeAdmissionWithDependencies(
     return {
       allowed: false,
       code: 'dependency_unavailable',
+      params: {
+        skillId: skill.id,
+        dependencyId: skill.id,
+        reason: 'circular',
+      },
       message: `Skill "${skill.id}" cannot be loaded because its dependency graph is circular`,
     };
   }
@@ -94,6 +111,11 @@ export function getSkillRuntimeAdmissionWithDependencies(
       return {
         allowed: false,
         code: 'dependency_unavailable',
+        params: {
+          skillId: skill.id,
+          dependencyId,
+          reason: 'missing',
+        },
         message: `Skill "${skill.id}" cannot be loaded because dependency "${dependencyId}" is missing`,
       };
     }
@@ -106,6 +128,11 @@ export function getSkillRuntimeAdmissionWithDependencies(
       return {
         allowed: false,
         code: 'dependency_unavailable',
+        params: {
+          skillId: skill.id,
+          dependencyId,
+          reason: dependencyAdmission.code ?? 'unavailable',
+        },
         message: `Skill "${skill.id}" cannot be loaded because dependency "${dependencyId}" is unavailable: ${dependencyAdmission.message}`,
       };
     }

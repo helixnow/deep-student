@@ -266,7 +266,7 @@ const IndexStatusSkeleton: React.FC = () => (
     <div className="flex items-center gap-5 px-4 lg:px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.08]">
       <Skeleton className="h-20 w-20 shrink-0 rounded-full" />
       <div className="flex-1 min-w-0 grid gap-3">
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-14 rounded-xl" />
           ))}
@@ -276,7 +276,7 @@ const IndexStatusSkeleton: React.FC = () => (
           <Skeleton className="h-7 w-24 rounded-full" />
         </div>
       </div>
-      <div className="flex flex-col gap-2 shrink-0 min-w-[148px]">
+      <div className="hidden sm:flex flex-col gap-2 shrink-0 sm:min-w-[148px]">
         <Skeleton className="h-8 rounded-lg" />
         <Skeleton className="h-8 rounded-lg" />
       </div>
@@ -1333,7 +1333,7 @@ export const IndexStatusView: React.FC = () => {
         size="sm"
         onClick={onClick}
         className={cn(
-          '!h-7 !rounded-full !px-2.5 !py-0 text-[11px] font-medium gap-1.5 border border-transparent',
+          '!h-7 [@media(pointer:coarse)]:!h-11 !rounded-full !px-2.5 !py-0 text-[11px] font-medium gap-1.5 border border-transparent',
           'transition-[background-color,box-shadow,border-color] duration-150',
           config.bgColor,
           config.color,
@@ -1476,7 +1476,7 @@ export const IndexStatusView: React.FC = () => {
           </div>
 
           {/* 操作按钮 - 简洁风格 */}
-          <div className="flex-shrink-0 w-8 flex justify-end" onClick={(e) => e.stopPropagation()}>
+          <div className="flex-shrink-0 w-8 [@media(pointer:coarse)]:w-11 flex justify-end" onClick={(e) => e.stopPropagation()}>
             {needsReindex && (
               <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleReindex(resource.resourceId)} disabled={isReindexing} className="opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 hover:text-primary hover:bg-primary/10" title={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')} aria-label={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')}>
                 {isReindexing ? (

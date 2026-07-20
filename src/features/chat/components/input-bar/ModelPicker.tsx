@@ -440,9 +440,10 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
             />
             {isDefault && (
               <CommonTooltip content={systemBadgeTooltip} position="top">
+                {/* 移动端也常显（原 hidden sm:inline-flex 在 <640 隐藏，用户看不到系统默认标记；对齐 ModelPanel 的修复） */}
                 <Badge
                   variant="outline"
-                  className="hidden h-[18px] px-1.5 py-0 text-2xs font-medium shrink-0 border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)] text-[color:var(--menu-shell-muted-foreground)] cursor-help sm:inline-flex"
+                  className="inline-flex h-[18px] px-1.5 py-0 text-2xs font-medium shrink-0 border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)] text-[color:var(--menu-shell-muted-foreground)] cursor-help"
                 >
                   {systemBadge}
                 </Badge>
@@ -731,6 +732,8 @@ const CompareToggle: React.FC<CompareToggleProps> = ({ checked, onChange, label,
       onClick={() => onChange(!checked)}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-[999px] border px-2 py-1 text-2xs font-medium transition-colors',
+        // 📱 触控目标：coarse 指针下放大到 ≥44px 高 + 12px 字号（视觉 pill 随之变高，桌面不受影响）
+        '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:text-[12px]',
         checked
           ? 'border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_84%,var(--menu-shell-row-hover)_16%)] text-[color:var(--menu-shell-foreground)]'
           : 'border-[color:var(--menu-shell-border)] bg-transparent text-[color:var(--menu-shell-muted-foreground)] hover:bg-[color:var(--menu-shell-row-hover)]',

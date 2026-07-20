@@ -75,7 +75,7 @@
 
   [data-mobile-unified-drawer]
     [data-mobile-drawer-page]
-    [data-overlayscrollbars='host'] {
+    [data-overlayscrollbars~='host'] {
     flex: 0 0 auto !important;
     height: auto !important;
     max-height: none !important;

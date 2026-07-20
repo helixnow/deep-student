@@ -20,5 +20,5 @@ export function normalizeStreamTerminalError(error: unknown): string {
       STREAM_LOAD_FAILED_FALLBACK,
     );
   }
-  return i18n.t(STREAM_LOAD_FAILED_KEY, { defaultValue: STREAM_LOAD_FAILED_FALLBACK });
+  return i18n.t(STREAM_LOAD_FAILED_KEY);
 }

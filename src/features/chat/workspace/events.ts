@@ -492,7 +492,7 @@ async function handleWorkerReady(
     console.log(`[Workspace Events] [T+${(performance.now() - startTime).toFixed(1)}ms] Adapter setup done for agent: ${agent_session_id}, isReady: ${adapterEntry.isReady}`);
     
     if (!adapterEntry.isReady) {
-      throw new Error(i18n.t('chatV2:workspace.adapterSetupFailed', { agent: agent_session_id, defaultValue: `Adapter setup failed for agent: ${agent_session_id}` }));
+      throw new Error(i18n.t('chatV2:workspace.adapterSetupFailed', { agent: agent_session_id }));
     }
     
     // 🔧 P20 补充修复：串行等待事件监听器就绪
@@ -582,7 +582,6 @@ async function handleWorkerReady(
       i18n.t('chatV2:workspace.workerStartFailed', {
         name: skillName,
         error: errorMsg,
-        defaultValue: `Worker "${skillName}" 启动失败: ${errorMsg}`,
       })
     );
     
@@ -858,7 +857,6 @@ export async function initWorkspaceEventListeners(): Promise<void> {
         'info',
         i18n.t('chatV2:workspace.coordinatorAwakened', {
           agent: awakened_by.slice(-8),
-          defaultValue: `主代理已被子代理 ${awakened_by.slice(-8)} 唤醒，继续执行中...`,
         })
       );
     }
@@ -987,7 +985,6 @@ export async function initWorkspaceEventListeners(): Promise<void> {
           'error',
           i18n.t('chatV2:workspace.subagentRetryExhausted', {
             agent: agent_session_id.slice(-8),
-            defaultValue: `子代理 ${agent_session_id.slice(-8)} 多次重试后仍未产出结果`,
           })
         );
       } else {
@@ -995,7 +992,6 @@ export async function initWorkspaceEventListeners(): Promise<void> {
           'warning',
           i18n.t('chatV2:workspace.subagentRetry', {
             agent: agent_session_id.slice(-8),
-            defaultValue: `子代理 ${agent_session_id.slice(-8)} 未发送结果，正在重新触发...`,
           })
         );
       }

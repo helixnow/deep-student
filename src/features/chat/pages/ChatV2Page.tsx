@@ -326,8 +326,8 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     const now = new Date().toISOString();
     return staleGroupIds.map((groupId, index) => ({
       id: groupId,
-      name: t('browser.staleTopic', { defaultValue: 'Needs repair' }),
-      description: t('browser.staleTopicDescription', { defaultValue: 'Sessions whose original topic is no longer available.' }),
+      name: t('browser.staleTopic'),
+      description: t('browser.staleTopicDescription'),
       icon: 'Folder',
       color: 'muted',
       defaultSkillIds: [],
@@ -1009,7 +1009,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub', '在学习中心打开')} title={t('page.openInLearningHub', '在学习中心打开')} className="!h-7 !w-7">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub')} title={t('page.openInLearningHub')} className="!h-7 !w-7">
               <ArrowSquareOut size={14} className="text-muted-foreground" />
             </DsButton>
             <DsButton variant="ghost" size="icon" iconOnly onClick={handleClose} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
@@ -1360,7 +1360,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
           }}
         >
           <CommonTooltip
-            content={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench', '收起沙箱工作台') : t('page.expandSandboxWorkbench', '展开沙箱工作台')}
+            content={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench') : t('page.expandSandboxWorkbench')}
             position="bottom"
           >
             <DsButton
@@ -1374,8 +1374,8 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
                   ? '!h-8 !w-8 translate-x-0 rounded-[var(--shell-nav-row-radius)] border-foreground/10 bg-foreground/[0.04] text-foreground'
                   : '!h-8 !w-8 translate-x-0 rounded-[var(--shell-nav-row-radius)] text-muted-foreground'
               )}
-              aria-label={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench', '收起沙箱工作台') : t('page.expandSandboxWorkbench', '展开沙箱工作台')}
-              title={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench', '收起沙箱工作台') : t('page.expandSandboxWorkbench', '展开沙箱工作台')}
+              aria-label={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench') : t('page.expandSandboxWorkbench')}
+              title={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench') : t('page.expandSandboxWorkbench')}
             >
               <span className="relative block h-[18px] w-[18px]">
                 <span

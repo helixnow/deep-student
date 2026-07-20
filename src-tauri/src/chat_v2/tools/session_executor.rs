@@ -2316,6 +2316,10 @@ impl ToolExecutor for SessionToolExecutor {
         }
     }
 
+    fn has_dynamic_sensitivity(&self, tool_name: &str) -> bool {
+        strip_tool_namespace(tool_name) == "session_batch_ops"
+    }
+
     fn concurrency_class(&self, tool_name: &str) -> ToolConcurrency {
         match strip_tool_namespace(tool_name) {
             // 只读子集：查询/搜索/统计/标签列表/分组列表，可并行 + 自动重试
@@ -2441,6 +2445,8 @@ mod tests {
             executor.sensitivity_level("builtin-session_batch_ops"),
             ToolSensitivity::Medium
         );
+        assert!(executor.has_dynamic_sensitivity("builtin-session_batch_ops"));
+        assert!(!executor.has_dynamic_sensitivity("builtin-session_archive"));
         assert_eq!(
             executor.sensitivity_level("session_batch_move"),
             ToolSensitivity::Medium

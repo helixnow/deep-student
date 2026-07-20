@@ -534,7 +534,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
   const hasDue = dueReviews.length > 0;
 
   return (
-    <div className={cn('space-y-5', className)}>
+    <div className={cn('space-y-5 p-4', className)}>
       {/* 头部标题和刷新按钮 */}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
@@ -550,7 +550,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             variant="ghost"
             size="sm"
             onClick={onViewCalendar}
-            className="!h-auto !px-2.5 !py-1.5 gap-1.5 text-xs text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
+            className="!h-auto !px-2.5 !py-1.5 [@media(pointer:coarse)]:!min-h-[44px] gap-1.5 text-xs text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
           >
             <Calendar size={14} />
             {t('review:calendar.title')}
@@ -561,7 +561,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             onClick={handleRefresh}
             disabled={isRefreshing}
             aria-label={t('common:refresh', 'Refresh')}
-            className="h-8 w-8 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
+            className="h-8 w-8 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!min-w-[44px] text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
           >
             <ArrowClockwise
               className={cn('h-4 w-4', isRefreshing && 'animate-spin')}

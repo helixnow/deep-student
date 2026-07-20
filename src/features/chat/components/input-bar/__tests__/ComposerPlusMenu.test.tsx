@@ -29,6 +29,80 @@ describe('ComposerPlusMenu', () => {
     });
   });
 
+  it('shows all Craft presets and confirms danger full access before persisting', async () => {
+    const onPermissionPresetChange = vi.fn();
+    render(
+      <ComposerPlusMenu
+        open
+        onOpenChange={() => undefined}
+        attachmentCount={0}
+        iconButtonClass=""
+        onAddAttachment={() => undefined}
+        onOpenResourceLibrary={() => undefined}
+        sessionId="sess_1"
+        authorityMode="craft"
+        onAuthorityModeChange={() => undefined}
+        permissionPreset="relaxed"
+        onPermissionPresetChange={onPermissionPresetChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('plus-menu-mode'));
+    expect(await screen.findByTestId('plus-menu-permission-full_access')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('plus-menu-permission-danger_full_access'));
+    expect(onPermissionPresetChange).not.toHaveBeenCalled();
+
+    const confirmButton = screen.getAllByRole('button').find((button) => (
+      /enable danger full access|确认开启危险完全访问|dangerConfirmAction/i
+        .test(button.textContent ?? '')
+    ));
+    expect(confirmButton).toBeDefined();
+    fireEvent.click(confirmButton!);
+    await waitFor(() => {
+      expect(onPermissionPresetChange).toHaveBeenCalledWith('danger_full_access');
+    });
+  });
+
+  it('shows persistent downgrade pills while elevated presets are active', () => {
+    const onPermissionPresetChange = vi.fn();
+    const { rerender } = render(
+      <ComposerPlusMenu
+        open={false}
+        onOpenChange={() => undefined}
+        attachmentCount={0}
+        iconButtonClass=""
+        onAddAttachment={() => undefined}
+        onOpenResourceLibrary={() => undefined}
+        sessionId="sess_1"
+        authorityMode="craft"
+        onAuthorityModeChange={() => undefined}
+        permissionPreset="full_access"
+        onPermissionPresetChange={onPermissionPresetChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('full-access-active'));
+    expect(onPermissionPresetChange).toHaveBeenCalledWith('relaxed');
+
+    rerender(
+      <ComposerPlusMenu
+        open={false}
+        onOpenChange={() => undefined}
+        attachmentCount={0}
+        iconButtonClass=""
+        onAddAttachment={() => undefined}
+        onOpenResourceLibrary={() => undefined}
+        sessionId="sess_1"
+        authorityMode="craft"
+        onAuthorityModeChange={() => undefined}
+        permissionPreset="danger_full_access"
+        onPermissionPresetChange={onPermissionPresetChange}
+      />,
+    );
+    expect(screen.getByTestId('danger-full-access-active')).toBeInTheDocument();
+    expect(screen.queryByTestId('full-access-active')).not.toBeInTheDocument();
+  });
+
   it('embeds skill panel under skills submenu and keeps test id for the entry', async () => {
     render(
       <ComposerPlusMenu

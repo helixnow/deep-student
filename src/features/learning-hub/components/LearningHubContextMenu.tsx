@@ -853,6 +853,14 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
     }
   };
 
+  // 触屏贴底面板顶部展示完整名称（列表内长文件名被截断时的完整查看入口）
+  const targetTitle =
+    target.type === 'folder'
+      ? target.folder.folder.title
+      : target.type === 'resource'
+        ? target.resource.title
+        : null;
+
   return createPortal(
     <div
       ref={menuRef}
@@ -890,6 +898,11 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
     >
       {isTouchPrimary && (
         <div aria-hidden className="mx-auto my-2 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/25" />
+      )}
+      {isTouchPrimary && targetTitle && (
+        <div className="mb-1 border-b border-border/40 px-3 pb-2 text-xs font-medium text-muted-foreground break-all">
+          {targetTitle}
+        </div>
       )}
       {renderMenuContent()}
     </div>,

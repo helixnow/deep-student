@@ -77,16 +77,27 @@
   }
 }
 
+/* 主行：「+」固定左端 + 右侧分组横滚（「+」不再随滚动滑出屏幕） */
+.mobile-editor-toolbar__main-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 0 4px 6px;
+}
+
 .mobile-editor-toolbar__scroller {
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 2px;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  padding: 4px 6px;
+  padding: 0 6px 0 0;
   overscroll-behavior-x: contain;
   /* 横向滚动边缘渐隐，提示可滑 */
   -webkit-mask-image: linear-gradient(

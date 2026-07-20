@@ -453,7 +453,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                     </span>
                     {item.checkIn && (
                       <span
-                        className="max-w-full truncate px-0.5 text-[9px] leading-none text-muted-foreground sm:text-[10px]"
+                        className="max-w-full truncate px-0.5 text-[10px] leading-none text-muted-foreground"
                         title={t('daily.questionsCount', { count: item.checkIn.question_count })}
                       >
                         {t('daily.questionsCount', { count: item.checkIn.question_count })}

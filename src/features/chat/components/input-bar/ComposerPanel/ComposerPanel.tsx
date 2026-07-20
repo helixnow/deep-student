@@ -21,6 +21,7 @@
  *   阻碍。这里只共享视觉骨架。
  */
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   CaretDown,
   CaretRight,
@@ -86,9 +87,11 @@ const Header: React.FC<ComposerPanelHeaderProps> = ({
   count,
   actions,
   onClose,
-  closeAriaLabel = 'Close',
+  closeAriaLabel,
   className,
 }) => {
+  const { t } = useTranslation('chatV2');
+  const resolvedCloseAriaLabel = closeAriaLabel ?? t('common.close');
   const showCount = typeof count === 'number' && count > 0;
   return (
     <div
@@ -138,8 +141,8 @@ const Header: React.FC<ComposerPanelHeaderProps> = ({
               size="icon"
               iconOnly
               onClick={onClose}
-              aria-label={closeAriaLabel}
-              title={closeAriaLabel}
+              aria-label={resolvedCloseAriaLabel}
+              title={resolvedCloseAriaLabel}
             >
               <X size={16} />
             </DsButton>
@@ -160,6 +163,7 @@ export interface ComposerPanelSearchProps {
   placeholder?: string;
   disabled?: boolean;
   ariaLabel?: string;
+  clearAriaLabel?: string;
   className?: string;
   inputClassName?: string;
   /** 末尾插入的自定义节点（如 fuzzy 切换） */
@@ -172,10 +176,12 @@ const Search: React.FC<ComposerPanelSearchProps> = ({
   placeholder,
   disabled,
   ariaLabel,
+  clearAriaLabel,
   className,
   inputClassName,
   endAdornment,
 }) => {
+  const { t } = useTranslation('chatV2');
   const showClear = !!value && !disabled;
   return (
     <div className={cn('relative shrink-0', className)}>
@@ -209,7 +215,7 @@ const Search: React.FC<ComposerPanelSearchProps> = ({
               size="icon"
               iconOnly
               onClick={() => onChange('')}
-              aria-label="Clear search"
+              aria-label={clearAriaLabel ?? t('common.clearSearch')}
               className="!h-5 !w-5 relative after:absolute after:-inset-3 after:content-['']"
             >
               <X size={12} />
@@ -435,6 +441,8 @@ const Row = React.forwardRef<HTMLButtonElement, ComposerPanelRowProps>(
         className={cn(
           'group relative flex w-full items-start gap-2 text-left transition-colors outline-none',
           'rounded-[var(--menu-shell-row-radius)] border border-transparent',
+          // 📱 coarse 指针触控保底：行高不低于 44px（桌面 fine 指针不受影响）
+          '[@media(pointer:coarse)]:min-h-11',
           density === 'cozy'
             ? 'px-[var(--menu-shell-row-padding-x)] py-[var(--menu-shell-row-padding-y)]'
             : 'px-2 py-1.5',

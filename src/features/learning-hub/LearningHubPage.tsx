@@ -1212,7 +1212,7 @@ export const LearningHubPage: React.FC = () => {
                     setTabs={setTabs}
                     activeTabId={activeTabId}
                     onSwitch={switchTab}
-                    onClose={closeTab}
+                    onClose={closeTabWithSplit}
                     onTogglePin={togglePinTab}
                     onCloseOthers={closeOtherTabs}
                     onCloseRight={closeTabsToRight}
@@ -1221,7 +1221,7 @@ export const LearningHubPage: React.FC = () => {
                     <TabPanelContainer
                       tabs={tabs}
                       activeTabId={activeTabId}
-                      onClose={closeTab}
+                      onClose={closeTabWithSplit}
                       onTitleChange={updateTabTitle}
                       tabReloadKeys={tabReloadKeys}
                       className="h-full"

@@ -425,7 +425,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => setExpandedCharts(!expandedCharts)}
-              className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
+              className="!h-auto !px-2.5 !py-1.5 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
               aria-expanded={expandedCharts}
             >
               <ChartBar size={14} />

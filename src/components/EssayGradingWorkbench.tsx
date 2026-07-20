@@ -108,9 +108,18 @@ interface EssayGradingWorkbenchProps {
   dstuMode: EssayDstuModeConfig;
   /** ★ A6-29 标签页：当前是否为活跃标签页；非活跃实例不响应全局快捷键 */
   isActive?: boolean;
+  /** OS 应用宿主已提供侧边栏设置入口；设置作为完整内容页显示 */
+  externalSettingsNavigation?: boolean;
+  /** OS 宿主设置标签的受控选中状态 */
+  externalSettingsOpen?: boolean;
 }
 
-export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ dstuMode, isActive }) => {
+export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
+  dstuMode,
+  isActive,
+  externalSettingsNavigation = false,
+  externalSettingsOpen,
+}) => {
   const { t } = useTranslation(['essay_grading', 'common']);
 
   // 流式批改管线
@@ -139,7 +148,11 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
   const [gradeLevel, setGradeLevelRaw] = useState(initialSession?.gradeLevel || 'high_school');
   const [customPrompt, setCustomPrompt] = useState(initialSession?.customPrompt ?? '');
   // 设置面板显隐的单一来源（所有断点共用；essay:openSettings 事件 toggle 它）
-  const [showPromptEditor, setShowPromptEditor] = useState(false);
+  // 外部设置标签可能早于懒加载工作台被点击；直接以宿主状态初始化，
+  // 避免挂载后再双向 effect 同步造成 settingsVisibility 真假振荡。
+  const [showPromptEditor, setShowPromptEditor] = useState(
+    () => externalSettingsNavigation && externalSettingsOpen === true,
+  );
   const lastGradedInputRef = useRef<string>('');
   // ★ 上一轮已批改内容的完整快照（正文 + 题目 + 图片），用于"未修改不允许新轮次"判定
   const lastGradedSnapshotRef = useRef<string>('');
@@ -185,6 +198,9 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
 
   // ★ 图片存储状态（保存原图用于预览和多模态批改）
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
+  // 同步镜像：供稳定引用的回调（如单图 OCR 重试）读取最新图片列表
+  const uploadedImagesRef = useRef(uploadedImages);
+  uploadedImagesRef.current = uploadedImages;
   // ★ 题目元数据状态（作文题目/要求/参考材料）
   const [topicText, setTopicText] = useState('');
   const [topicImages, setTopicImages] = useState<UploadedImage[]>([]);
@@ -227,11 +243,11 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
   useEffect(() => {
     const handleToggleSettings = (evt: Event) => {
       // ★ 标签页：检查 targetResourceId 是否匹配（无 targetResourceId 时兼容旧调用）
-      const detail = (evt as CustomEvent<{ targetResourceId?: string }>).detail;
+      const detail = (evt as CustomEvent<{ targetResourceId?: string; open?: boolean }>).detail;
       if (detail?.targetResourceId && dstuMode.resourceId && detail.targetResourceId !== dstuMode.resourceId) {
         return;
       }
-      setShowPromptEditor(prev => !prev);
+      setShowPromptEditor(prev => typeof detail?.open === 'boolean' ? detail.open : !prev);
     };
     window.addEventListener('essay:openSettings', handleToggleSettings);
     return () => {
@@ -593,6 +609,11 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
     const imageFiles = files.filter(file => 
       file.name.toLowerCase().match(/\.(png|jpg|jpeg|webp)$/)
     );
+    // ★ 全部被过滤（如 HEIC）时明确提示，不再静默丢弃
+    if (imageFiles.length === 0) {
+      showGlobalNotification('warning', t('essay_grading:toast.unsupported_image_format'));
+      return;
+    }
 
     // 限制总图片数（已入列 + 读取中 + 新上传），基于同步可读的 ref 判定以避免并发拖拽竞态
     const remainingSlots = OCR_MAX_FILES - activeImageIdsRef.current.size - pendingImageReadsRef.current;
@@ -759,12 +780,76 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
     setUploadedImages(prev => prev.filter(img => img.id !== imageId));
   }, []);
 
+  // ★ OCR 失败图片的单图手动重试（点按失败缩略图触发；只针对 error/timeout 终态）
+  const handleRetryImageOcr = useCallback((imageId: string) => {
+    const img = uploadedImagesRef.current.find(i => i.id === imageId);
+    if (!img || (img.ocrStatus !== 'error' && img.ocrStatus !== 'timeout')) return;
+    if (!activeImageIdsRef.current.has(imageId)) return;
+
+    const version = ++ocrVersionRef.current;
+    setUploadedImages(prev =>
+      prev.map(p => p.id === imageId
+        ? { ...p, ocrStatus: 'processing' as OcrStatus, ocrError: undefined, ocrVersion: version }
+        : p
+      )
+    );
+    showGlobalNotification('info', t('essay_grading:toast.ocr_retrying_image', { fileName: img.fileName }));
+
+    ocrExtractText({ imageBase64: img.dataUrl })
+      .then(text => {
+        if (!activeImageIdsRef.current.has(imageId)) return;
+        setUploadedImages(prev => {
+          const existing = prev.find(p => p.id === imageId);
+          if (!existing || existing.ocrVersion !== version) return prev; // stale
+          return prev.map(p =>
+            p.id === imageId ? { ...p, ocrText: text, ocrStatus: 'done' as OcrStatus } : p
+          );
+        });
+        if (text.trim()) {
+          // 与批量 OCR 回填同口径：受作文字符上限约束
+          const prevChars = Array.from(inputTextRef.current ?? '').length;
+          if (prevChars + Array.from(text).length + 2 > ESSAY_MAX_CHARS) {
+            showGlobalNotification('warning', t('essay_grading:char_limit.truncated', { max: ESSAY_MAX_CHARS.toLocaleString() }));
+          }
+          setInputText(prev => {
+            const merged = prev ? `${prev}\n\n${text}` : text;
+            const chars = Array.from(merged);
+            return chars.length > ESSAY_MAX_CHARS ? chars.slice(0, ESSAY_MAX_CHARS).join('') : merged;
+          });
+        }
+      })
+      .catch((err: unknown) => {
+        if (!activeImageIdsRef.current.has(imageId)) return;
+        const msg = getErrorMessage(err);
+        const isTimeout = msg === 'OCR_TIMEOUT';
+        setUploadedImages(prev => {
+          const existing = prev.find(p => p.id === imageId);
+          if (!existing || existing.ocrVersion !== version) return prev;
+          return prev.map(p =>
+            p.id === imageId
+              ? { ...p, ocrStatus: (isTimeout ? 'timeout' : 'error') as OcrStatus, ocrError: msg }
+              : p
+          );
+        });
+        if (isTimeout) {
+          showGlobalNotification('warning', t('essay_grading:toast.ocr_timeout', { fileName: img.fileName }));
+        } else {
+          showGlobalNotification('error', t('essay_grading:toast.ocr_failed', { error: msg }));
+        }
+      });
+  }, [t]);
+
   // ★ 题目参考材料图片上传处理
   const handleTopicFilesDropped = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
     const imageFiles = files.filter(file =>
       file.name.toLowerCase().match(/\.(png|jpg|jpeg|webp)$/)
     );
+    // ★ 全部被过滤（如 HEIC）时明确提示，不再静默丢弃
+    if (imageFiles.length === 0) {
+      showGlobalNotification('warning', t('essay_grading:toast.unsupported_image_format'));
+      return;
+    }
     const remainingSlots = OCR_MAX_FILES - topicImages.length;
     if (remainingSlots <= 0) {
       showGlobalNotification('warning', t('essay_grading:toast.max_images_reached', { max: OCR_MAX_FILES }));
@@ -1253,6 +1338,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
           currentRound={currentRoundNumber}
           uploadedImages={uploadedImages}
           onRemoveImage={handleRemoveImage}
+          onRetryImageOcr={handleRetryImageOcr}
           topicText={topicText}
           setTopicText={setTopicText}
           topicImages={topicImages}
@@ -1260,6 +1346,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
           onRemoveTopicImage={handleRemoveTopicImage}
           onModesChange={loadModes}
           onApplySuggestion={handleApplySuggestion}
+          settingsAsPage={externalSettingsNavigation}
           roundNavigation={totalRounds > 0 ? {
             currentIndex: currentRoundIndex,
             total: totalRounds,

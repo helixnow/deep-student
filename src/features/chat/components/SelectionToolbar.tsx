@@ -325,7 +325,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
       <ToolbarButton
         onClick={handleMakeCards}
         icon={<Cards size={touchTarget ? 16 : 14} />}
-        label={t('selectionToolbar.makeCards', '制卡')}
+        label={t('selectionToolbar.makeCards')}
         disabled={!onMakeCards}
         touchTarget={touchTarget}
       />

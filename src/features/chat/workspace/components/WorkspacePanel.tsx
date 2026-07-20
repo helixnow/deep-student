@@ -72,7 +72,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
       return;
     }
     if (!currentAgentId) {
-      useWorkspaceStore.getState().setError(t('chatV2:workspace.missingSession', '缺少当前会话，无法同步工作区'));
+      useWorkspaceStore.getState().setError(t('chatV2:workspace.missingSession'));
       return;
     }
     setIsRefreshing(true);
@@ -82,7 +82,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
       if (!opts?.silent) {
         showGlobalNotification(
           'success',
-          t('chatV2:workspace.refreshSuccess', '工作区已同步')
+          t('chatV2:workspace.refreshSuccess')
         );
       }
     } catch (e: unknown) {
@@ -93,7 +93,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
         showGlobalNotification(
           'error',
           msg,
-          t('chatV2:workspace.refreshFailed', '刷新失败')
+          t('chatV2:workspace.refreshFailed')
         );
       }
     } finally {
@@ -144,7 +144,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
       <div className="flex flex-col items-center justify-center h-full gap-3">
         <CircleNotch size={24} className="text-primary animate-spin" />
         <span className="text-sm text-muted-foreground">
-          {t('chatV2:workspace.loading', '正在恢复工作区...')}
+          {t('chatV2:workspace.loading')}
         </span>
       </div>
     );
@@ -156,7 +156,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
       <div className="flex flex-col items-center justify-center h-full gap-3 p-4">
         <WarningCircle size={24} className="text-destructive" />
         <span className="text-sm text-destructive text-center">
-          {t('chatV2:workspace.restoreError', '工作区恢复失败')}
+          {t('chatV2:workspace.restoreError')}
         </span>
         <p className="text-xs text-muted-foreground text-center max-w-[200px]">
           {error}
@@ -168,7 +168,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
           className="mt-2"
         >
           <ArrowClockwise size={12} className="mr-1" />
-          {t('chatV2:workspace.retry', '重试')}
+          {t('chatV2:workspace.retry')}
         </DsButton>
       </div>
     );
@@ -177,7 +177,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
   if (!workspace) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        {t('chatV2:workspace.noActive', '无活跃工作区')}
+        {t('chatV2:workspace.noActive')}
       </div>
     );
   }
@@ -199,7 +199,6 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
       t('chatV2:workspace.summary.finished', {
         done: workerFinished,
         total: workerTotal,
-        defaultValue: '{{done}}/{{total}} 已完成',
       })
     );
     // 全部结束时不显示运行中段
@@ -207,7 +206,6 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
       workerSummarySegments.push(
         t('chatV2:workspace.summary.running', {
           count: workerRunning,
-          defaultValue: '{{count}} 运行中',
         })
       );
     }
@@ -215,7 +213,6 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
       workerSummarySegments.push(
         t('chatV2:workspace.summary.failed', {
           count: workerFailed,
-          defaultValue: '{{count}} 失败',
         })
       );
     }
@@ -223,7 +220,6 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
       workerSummarySegments.push(
         t('chatV2:workspace.summary.cancelled', {
           count: workerCancelled,
-          defaultValue: '{{count}} 已取消',
         })
       );
     }
@@ -235,7 +231,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <h3 className="font-medium text-sm">
-              {t('chatV2:workspace.title', '工作区')}
+              {t('chatV2:workspace.title')}
             </h3>
             <p className="text-xs text-muted-foreground truncate">
               {workspace.name || workspace.id.slice(-12)}
@@ -245,7 +241,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
             {!isOnline && (
               <span className="inline-flex items-center gap-1 text-xs text-warning">
                 <WifiSlash size={12} />
-                {t('chatV2:workspace.offlineTag', '离线')}
+                {t('chatV2:workspace.offlineTag')}
               </span>
             )}
             <DsButton
@@ -260,7 +256,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
               ) : (
                 <ArrowClockwise size={12} className="mr-1" />
               )}
-              {t('chatV2:workspace.refresh', '同步')}
+              {t('chatV2:workspace.refresh')}
             </DsButton>
           </div>
         </div>
@@ -276,7 +272,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
       {coordinatorAgents.length > 0 && (
         <div className="p-3 border-b">
           <h4 className="text-xs font-medium text-muted-foreground mb-2">
-            {t('chatV2:workspace.coordinator', '协调者')}
+            {t('chatV2:workspace.coordinator')}
           </h4>
           <div className="flex flex-col gap-1">
             {coordinatorAgents.map((agent) => (
@@ -297,7 +293,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
       <div className="p-3 border-b">
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-medium text-muted-foreground">
-            {t('chatV2:workspace.workers', 'Worker')} ({workerAgents.length})
+            {t('chatV2:workspace.workersCount', { count: workerAgents.length })}
           </h4>
           <DsButton
             variant="ghost"
@@ -313,7 +309,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
                 showCreateAgent && 'rotate-45'
               )}
             />
-            {t('chatV2:workspace.addAgent', '添加')}
+            {t('chatV2:workspace.addAgent')}
           </DsButton>
         </div>
         {/* 内联展开的创建 Worker 卡片（原 CreateAgentDialog 模态框） */}
@@ -348,7 +344,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
             {workerAgents.length === 0 && !showCreateAgent && (
               <div className="rounded-[var(--chat-radius-sm,8px)] border border-dashed border-border/70 px-3 py-4 text-center">
                 <p className="text-xs text-muted-foreground">
-                  {t('chatV2:workspace.noWorkers', '暂无 Worker')}
+                  {t('chatV2:workspace.noWorkers')}
                 </p>
                 <DsButton
                   variant="ghost"
@@ -357,7 +353,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
                   onClick={() => setShowCreateAgent(true)}
                 >
                   <Plus size={12} className="mr-1" />
-                  {t('chatV2:workspace.addAgent', '添加')}
+                  {t('chatV2:workspace.addAgent')}
                 </DsButton>
               </div>
             )}
@@ -369,7 +365,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
       <div className="flex-1 min-h-0 flex flex-col">
         <div className="p-3 pb-1 shrink-0">
           <h4 className="text-xs font-medium text-muted-foreground">
-            {t('chatV2:workspace.messages', '消息')} ({filteredMessages.length})
+            {t('chatV2:workspace.messagesCount', { count: filteredMessages.length })}
           </h4>
         </div>
         <div className="flex-1 min-h-0">

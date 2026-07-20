@@ -153,6 +153,8 @@
     "ocr_timeout": "图片「{{fileName}}」OCR 识别超时，已跳过",
     "suggestions_in_result": "改进建议已包含在批改结果中",
     "max_images_reached": "已达到图片上限（最多 {{max}} 张）",
+    "unsupported_image_format": "不支持的图片格式，请使用 PNG / JPG / WebP",
+    "ocr_retrying_image": "正在重新识别「{{fileName}}」...",
     "save_failed": "保存失败：{{error}}",
     "cleared": "已清空输入与批改结果",
     "clear_blocked_grading": "批改进行中，无法清空",
@@ -331,7 +333,9 @@
     "per_image_failed": "第 {{index}} 张图片识别失败"
   },
   "images": {
-    "essay_images": "作文原图 ({{count}})"
+    "essay_images": "作文原图 ({{count}})",
+    "ocr_error_detail": "「{{fileName}}」识别失败：{{error}}",
+    "tap_to_retry": "点按查看错误并重试识别"
   },
   "workbench": {
     "settings": {
@@ -400,6 +404,8 @@
     "confirm_reset": "确认重置？",
     "confirm_delete": "确认删除？",
     "drag_reorder": "拖拽排序",
+    "move_dimension_up": "上移",
+    "move_dimension_down": "下移",
     "remove_dimension": "删除维度",
     "prompt_saved_short": "已保存",
     "validation": {

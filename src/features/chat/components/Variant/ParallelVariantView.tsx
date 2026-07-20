@@ -17,6 +17,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import './ParallelVariantView.css';
 import {
   Copy,
@@ -328,9 +329,10 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
           ? 'border-primary/50 shadow-sm'
           : 'border-border hover:border-border/80',
         isStreaming && 'border-primary/30',
-        // 移动端：固定宽度 + snap 对齐；桌面端：flex-1 自适应填满容器
+        // 移动端：固定宽度 + snap 对齐 + 高度上限（长内容由内部 CustomScrollArea 滚动，
+        // 避免卡片撑满整页把横向 snap 滚动淹没）；桌面端：flex-1 自适应填满容器
         isMobile
-          ? 'w-[85vw] min-w-[280px] max-w-[320px] shrink-0 snap-start'
+          ? 'w-[85vw] min-w-[280px] max-w-[320px] max-h-[60vh] shrink-0 snap-start'
           : 'flex-1 min-w-[200px]'
       )}
       data-variant-index={variantIndex}
@@ -602,7 +604,8 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
   timestamp,
   usage,
 }) => {
-  const { t } = useTranslation('chatV2');
+  const { t, i18n } = useTranslation('chatV2');
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const [isRetryingAll, setIsRetryingAll] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -673,6 +676,10 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
     }
   }, [onBranchSession, isBranching, isLocked]);
 
+  // ≥768 触屏平板无 hover：coarse 指针下操作栏常显，否则消息级操作不可达
+  // （与 MessageItem footer 的 coarse 指针契约一致）
+  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
+
   // 如果没有任何操作可用，不显示操作栏
   if (!onRetryAll && !onDeleteMessage && !onCopy && !onBranchSession && !onSaveAsNote && !onExportMarkdown) {
     return null;
@@ -681,7 +688,9 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
   const hasOverflowActions = Boolean(onSaveAsNote || onExportMarkdown);
 
   return (
-    <div className="mt-3 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity max-w-thread mx-auto">
+    <div className={isCoarsePointer
+      ? 'mt-3 max-w-thread mx-auto'
+      : 'mt-3 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity max-w-thread mx-auto'}>
       <div className="flex items-center gap-1">
         {/* 复制按钮 */}
         {onCopy && (
@@ -759,9 +768,9 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
         {timestamp && (
           <span
             className="ml-1 select-none text-2xs text-muted-foreground/70"
-            title={new Date(timestamp).toLocaleString()}
+            title={new Date(timestamp).toLocaleString(locale)}
           >
-            {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {new Date(timestamp).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
           </span>
         )}
         {usage && <TokenUsageDisplay usage={usage} compact />}
@@ -906,7 +915,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
             </button>
 
             {/* 指示器圆点（★ 低-10：加大间距 + 扩横向命中区，圆点更易点中） */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               {variants.map((variant, index) => {
                 const isActive = variant.id === activeVariantId;
                 return (
@@ -924,8 +933,8 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
                     className={cn(
                       '!rounded-full flex-shrink-0 !p-0',
                       // P1-9: 圆点视觉 10px，用透明伪元素扩大命中区（纵向 ≥40px；
-                      // ★ 低-10：gap 提到 12px 后横向可外扩到 ±6px 而不压相邻点）
-                      'relative after:absolute after:content-[\'\'] after:-inset-x-1.5 after:-inset-y-4',
+                      // ★ 低-10：gap 提到 16px 后横向可外扩到 ±8px 而不压相邻点，横向命中约 26px）
+                      'relative after:absolute after:content-[\'\'] after:-inset-x-2 after:-inset-y-4',
                       isActive
                         ? 'variant-indicator-dot-active bg-primary'
                         : 'variant-indicator-dot bg-muted-foreground/30 hover:bg-muted-foreground/50'

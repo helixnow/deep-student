@@ -14,7 +14,7 @@ export const ThinkingIndicator: React.FC<{ className?: string }> = ({ className 
   const { t } = useTranslation('chatV2');
   const ariaLabel = t('messageList.waiting');
   // 文案不带省略号：末尾的三点由 chat-wait-dots 呼吸动画承担
-  const label = t('messageList.waitingLabel', { defaultValue: ariaLabel });
+  const label = t('messageList.waitingLabel');
   return (
     <div className={`thinking-indicator ${className ?? ''}`} role="status" aria-label={ariaLabel}>
       <span className="chat-wait-text">

@@ -14,7 +14,7 @@ vi.mock('../components/ChatErrorBoundary', () => ({
   ChatErrorBoundary: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 
-function SidebarHarness() {
+function SidebarHarness({ unifiedMobileDrawer = false }: { unifiedMobileDrawer?: boolean }) {
   const groups: SessionGroup[] = [
     {
       id: 'group-1',
@@ -67,14 +67,19 @@ function SidebarHarness() {
     currentSessionId: groupedSession.id,
     hasMoreSessions: false,
     isLoadingMore: false,
-    t: ((_: string, fallback?: string) => (typeof fallback === 'string' ? fallback : '')) as any,
+    t: ((key: string, fallback?: string) => {
+      if (key === 'page.newChat') return '新对话';
+      if (key === 'browser.allSessions') return '所有对话';
+      if (key === 'sidebar:mobile_drawer.section_chat') return '会话';
+      return typeof fallback === 'string' ? fallback : '';
+    }) as any,
     resetDeleteConfirmation: vi.fn(),
     createSession: vi.fn(async () => undefined),
     loadMoreSessions: vi.fn(async () => undefined),
     renderSessionItem: (session: ChatSession) => <div key={session.id}>{session.title}</div>,
   });
 
-  return <>{renderSessionSidebarContent()}</>;
+  return <>{renderSessionSidebarContent({ unifiedMobileDrawer })}</>;
 }
 
 function EmptyTopicsSidebarHarness() {
@@ -117,6 +122,19 @@ function EmptyTopicsSidebarHarness() {
 }
 
 describe('useSessionSidebarContent', () => {
+  it('removes new-chat and all-session entries from the unified mobile drawer only', () => {
+    const { rerender } = render(<SidebarHarness />);
+
+    expect(screen.getByRole('button', { name: '新对话' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '所有对话' })).toBeInTheDocument();
+
+    rerender(<SidebarHarness unifiedMobileDrawer />);
+
+    expect(screen.queryByRole('button', { name: '新对话' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '所有对话' })).not.toBeInTheDocument();
+    expect(screen.queryByText('会话')).not.toBeInTheDocument();
+  });
+
   it('separates topic groups, flat recents, and the ungrouped folder on mobile', () => {
     render(<SidebarHarness />);
 

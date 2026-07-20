@@ -65,7 +65,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
   // 根据视图模式配置顶栏
   const headerTitle = useMemo(() => {
     if (viewMode === 'browser') {
-      return `${t('browser.title')} (${sessionCount})`;
+      return t('browser.titleWithCount', { count: sessionCount });
     }
     return currentSession?.title || t('page.newChat');
   }, [viewMode, currentSession?.title, t, sessionCount]);
@@ -138,8 +138,8 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     }
   ) : (groupEditorOpen && viewMode !== 'browser') ? {
     title: groupEditorMode === 'edit'
-      ? t('page.editGroup', '编辑分组')
-      : t('page.createGroup', '新建分组'),
+      ? t('page.editGroup')
+      : t('page.createGroup'),
     showBackArrow: true,
     onMenuClick: closeGroupEditor,
   } : {

@@ -114,7 +114,7 @@ export function createMessageActions(
         ): Promise<void> => {
           const state = getState();
           if (!state.canSend()) {
-            throw new Error(i18n.t('chatV2:store.cannotSendWhileStreaming', 'Cannot send while streaming'));
+            throw new Error(i18n.t('chatV2:store.cannotSendWhileStreaming'));
           }
 
           // 🔒 审计修复: 立即设置 sending 状态，防止 canSend() 通过后的异步窗口内双重发送
@@ -231,7 +231,7 @@ export function createMessageActions(
         deleteMessage: async (messageId: string): Promise<void> => {
           const state = getState();
           if (!state.canDelete(messageId)) {
-            throw new Error(i18n.t('chatV2:store.cannotDeleteLocked', 'Cannot delete locked message'));
+            throw new Error(i18n.t('chatV2:store.cannotDeleteLocked'));
           }
 
           // 🆕 P1-1: 检查操作锁
@@ -300,7 +300,7 @@ export function createMessageActions(
         editMessage: (messageId: string, content: string): void => {
           const state = getState();
           if (!state.canEdit(messageId)) {
-            throw new Error(i18n.t('chatV2:store.cannotEditLocked', 'Cannot edit locked message'));
+            throw new Error(i18n.t('chatV2:store.cannotEditLocked'));
           }
 
           const message = state.messageMap.get(messageId);
@@ -357,7 +357,7 @@ export function createMessageActions(
           }, canEditResult ? 'info' : 'warning', { messageId });
 
           if (!canEditResult) {
-            throw new Error(i18n.t('chatV2:store.cannotEditLocked', 'Cannot edit locked message'));
+            throw new Error(i18n.t('chatV2:store.cannotEditLocked'));
           }
 
           // 🆕 P1-1: 检查操作锁
@@ -376,10 +376,10 @@ export function createMessageActions(
           // 验证消息存在且是用户消息
           const message = state.messageMap.get(messageId);
           if (!message) {
-            throw new Error(i18n.t('chatV2:store.messageNotFound', 'Message not found'));
+            throw new Error(i18n.t('chatV2:store.messageNotFound'));
           }
           if (message.role !== 'user') {
-            throw new Error(i18n.t('chatV2:store.canOnlyEditUser', 'Can only edit user messages'));
+            throw new Error(i18n.t('chatV2:store.canOnlyEditUser'));
           }
 
           // 🔧 P0修复：调用模式插件的 onSendMessage 钩子
@@ -752,7 +752,7 @@ export function createMessageActions(
           }, canEditResult ? 'info' : 'warning', { messageId });
 
           if (!canEditResult) {
-            throw new Error(i18n.t('chatV2:store.cannotRetryLocked', 'Cannot retry locked message'));
+            throw new Error(i18n.t('chatV2:store.cannotRetryLocked'));
           }
 
           // 🆕 P1-1: 检查操作锁
@@ -771,10 +771,10 @@ export function createMessageActions(
           // 验证消息存在且是助手消息
           const message = state.messageMap.get(messageId);
           if (!message) {
-            throw new Error(i18n.t('chatV2:store.messageNotFound', 'Message not found'));
+            throw new Error(i18n.t('chatV2:store.messageNotFound'));
           }
           if (message.role !== 'assistant') {
-            throw new Error(i18n.t('chatV2:store.canOnlyRetryAssistant', 'Can only retry assistant messages'));
+            throw new Error(i18n.t('chatV2:store.canOnlyRetryAssistant'));
           }
 
           // 🔧 P0修复：调用模式插件的 onSendMessage 钩子

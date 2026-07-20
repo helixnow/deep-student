@@ -28,6 +28,12 @@ describe('sessionActions authority mode', () => {
     invokeMock.mockResolvedValue({ id: 'sess_1' });
   });
 
+  it('defaults new Craft sessions to the relaxed preset', () => {
+    const state = createInitialState('sess_default');
+    expect(state.authorityMode).toBe('craft');
+    expect(state.permissionPreset).toBe('relaxed');
+  });
+
   it('setAuthorityMode invokes backend once and updates local state', async () => {
     let state = createInitialState('sess_1') as ChatStoreState;
 
@@ -119,5 +125,24 @@ describe('sessionActions authority mode', () => {
     expect(state.sessionMetadata).toMatchObject({
       permissionPreset: 'relaxed', permission_preset: 'relaxed',
     });
+  });
+
+  it('persists the fixed full-access preset strings unchanged', async () => {
+    let state = createInitialState('sess_1') as ChatStoreState;
+    const set = (partial: Partial<ChatStoreState> | ((s: ChatStoreState) => Partial<ChatStoreState>)) => {
+      state = { ...state, ...(typeof partial === 'function' ? partial(state) : partial) };
+    };
+    const actions = createSessionActions(set as never, () => state as never, () => {});
+
+    await actions.setPermissionPreset('full_access');
+    await actions.setPermissionPreset('danger_full_access');
+
+    expect(invokeMock).toHaveBeenNthCalledWith(1, 'chat_v2_set_permission_preset', {
+      sessionId: 'sess_1', preset: 'full_access',
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(2, 'chat_v2_set_permission_preset', {
+      sessionId: 'sess_1', preset: 'danger_full_access',
+    });
+    expect(state.permissionPreset).toBe('danger_full_access');
   });
 });

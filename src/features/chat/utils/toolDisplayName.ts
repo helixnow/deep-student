@@ -71,7 +71,7 @@ const ZH_TOKEN_MAP: Record<string, string> = {
   preview: '预览',
   parse: '解析',
   check: '检查',
-  review: '回顾',
+  review: '复习',
   summarize: '总结',
   translate: '翻译',
   explain: '讲解',
@@ -204,7 +204,50 @@ const ZH_TOKEN_MAP: Record<string, string> = {
   cancel: '取消',
   now: '立即',
   job: '任务',
+  market: '市场',
+  detail: '详情',
+  connector: '连接器',
+  registry: '注册表',
+  operation: '操作',
+  commit: '提交',
+  confirm: '确认',
+  draft: '草案',
+  manager: '管理',
+  lineage: '数据血缘',
+  forget: '清除',
+  media: '媒体',
+  capabilities: '能力',
+  transcribe: '转写',
+  office: 'Office',
+  fidelity: '保真度',
+  screenshot: '截图',
+  downloads: '下载',
+  audit: '审计',
+  role: '角色',
+  validate: '校验',
+  task: '任务',
+  verify: '验证',
+  and: '并',
 };
+
+export interface ToolDisplayNameOptions {
+  /**
+   * `external` 禁止命中内置工具词条，避免第三方 MCP/技能工具与内置短名碰撞。
+   * `auto` 根据 mcp_ / mcp.tools. 前缀识别外部 MCP 工具。
+   */
+  source?: 'auto' | 'builtin' | 'external';
+  /** 外部工具的来源显示名（如 MCP 服务器名或技能名）。 */
+  providerName?: string;
+}
+
+/** 从工具参数中读取运行时注入的外部提供方标识。 */
+export function getExternalToolProviderName(
+  args: Record<string, unknown> | undefined,
+): string | undefined {
+  if (!args) return undefined;
+  const value = args._serverId ?? args.serverId ?? args.server_id;
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
 
 /**
  * 将工具注册名（如 tools.template_fork）转换为可读名称（如 Tools / Template Fork）。
@@ -214,7 +257,8 @@ export function humanizeToolName(toolName: string): string {
 
   const normalized = toolName
     .replace(/^builtin[-:]/, '')
-    .replace(/^mcp_/, '');
+    .replace(/^mcp_/, '')
+    .replace(/^mcp\.tools\./, '');
 
   const segments = normalized
     .split(/[.:/]/)
@@ -243,7 +287,8 @@ export function humanizeToolNameZh(toolName: string): string {
 
   const normalized = toolName
     .replace(/^builtin[-:]/, '')
-    .replace(/^mcp_/, '');
+    .replace(/^mcp_/, '')
+    .replace(/^mcp\.tools\./, '');
 
   const segments = normalized
     .split(/[.:/]/)
@@ -260,13 +305,20 @@ export function humanizeToolNameZh(toolName: string): string {
       .map((word) => word.trim())
       .filter(Boolean);
 
-    const translated = words
+    const translatedWords = words
       .map((word) => {
         const lower = word.toLowerCase();
         return ZH_TOKEN_MAP[lower] ?? word;
       })
-      .filter(Boolean)
-      .join('');
+      .filter(Boolean);
+
+    // 中文词根紧凑拼接；只要一侧仍含 ASCII，就保留空格，避免“技能market搜索”。
+    const translated = translatedWords.reduce((result, word, index) => {
+      if (!result) return word;
+      const previousWord = translatedWords[index - 1] ?? '';
+      const needsSpace = /[A-Za-z0-9]/.test(previousWord) || /[A-Za-z0-9]/.test(word);
+      return `${result}${needsSpace ? ' ' : ''}${word}`;
+    }, '');
 
     return translated || segment;
   });
@@ -301,10 +353,31 @@ function isChineseLocale(t: TranslateFn): boolean {
   return lang.toLowerCase().startsWith('zh');
 }
 
+function isExternalToolName(toolName: string): boolean {
+  return toolName.startsWith('mcp_') || toolName.startsWith('mcp.tools.');
+}
+
+function getExternalToolDisplayName(
+  toolName: string,
+  options: ToolDisplayNameOptions,
+): string {
+  const providerName = options.providerName?.trim() || 'MCP';
+  return `${providerName} · ${humanizeToolName(toolName)}`;
+}
+
 /**
- * 统一解析工具可读名称：优先 i18n，其次对注册名做可读化转换。
+ * 统一解析工具可读名称：外部工具保留来源，内置工具优先 i18n，其次可读化注册名。
  */
-export function getReadableToolName(toolName: string, t: TranslateFn): string {
+export function getReadableToolName(
+  toolName: string,
+  t: TranslateFn,
+  options: ToolDisplayNameOptions = {},
+): string {
+  const source = options.source ?? 'auto';
+  if (source === 'external' || (source === 'auto' && isExternalToolName(toolName))) {
+    return getExternalToolDisplayName(toolName, options);
+  }
+
   const displayNameKey = resolveToolDisplayNameKey(toolName);
   if (displayNameKey) {
     const translated = t(displayNameKey, { ns: 'mcp', defaultValue: '' });

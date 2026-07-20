@@ -308,7 +308,18 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                     : 'border-[color:var(--input-shell-border)] hover:border-[color:var(--button-plain-border)]',
                   disabled && 'pointer-events-none opacity-60'
                 )}
-                title={`${attachment.name} · ${statusTitle}${truncationLikely ? ` · ${t('chatV2:inputBar.chip.truncatedTitle')}` : ''}`}
+                title={
+                  truncationLikely
+                    ? t('chatV2:inputBar.chip.titleTruncated', {
+                        name: attachment.name,
+                        status: statusTitle,
+                        truncation: t('chatV2:inputBar.chip.truncatedTitle'),
+                      })
+                    : t('chatV2:inputBar.chip.title', {
+                        name: attachment.name,
+                        status: statusTitle,
+                      })
+                }
               >
                 {/* 图标区域：上传/处理中显示进度环；hover 时变为 X 删除按钮 */}
                 <span
@@ -339,8 +350,8 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                         event.stopPropagation();
                         onRemove(attachment.id);
                       }}
-                      aria-label={`${t('analysis:input_bar.attachments.remove')} ${attachment.name}`}
-                      title={`${t('analysis:input_bar.attachments.remove')} ${attachment.name}`}
+                      aria-label={t('chatV2:common.removeNamed', { name: attachment.name })}
+                      title={t('chatV2:common.removeNamed', { name: attachment.name })}
                       // ★ L5 修复：命中区只向左/上/下外扩（保持 ~44px 高），不再向右
                       // 延伸压住文件名区域，避免"点 chip 开预览"被误判为删除
                       className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity duration-150 group-hover/attachment-chip:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none [@media(pointer:coarse)]:opacity-100 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-left-3 [@media(pointer:coarse)]:after:-top-3 [@media(pointer:coarse)]:after:-bottom-3 [@media(pointer:coarse)]:after:right-0 [@media(pointer:coarse)]:after:content-['']"
@@ -405,7 +416,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                     event.stopPropagation();
                     onRetry(attachment);
                   }}
-                  aria-label={`${t('common:retry')} ${attachment.name}`}
+                  aria-label={t('chatV2:common.retryNamed', { name: attachment.name })}
                   title={t('common:retry')}
                   className="relative ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-destructive/40 text-destructive transition-colors hover:bg-destructive/10 motion-reduce:transition-none [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
                 >

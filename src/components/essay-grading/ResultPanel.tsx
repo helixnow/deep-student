@@ -266,7 +266,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
 
         {/* Floating Status Bar - 简洁风格（流式中字数已在顶栏显示，避免重复） */}
         {gradingResult && !isGrading && (
-          <div className="absolute bottom-3 right-4 flex items-center pointer-events-none opacity-0 group-hover/target:opacity-100 transition-opacity duration-200 motion-reduce:transition-none">
+          <div className="absolute bottom-3 right-4 flex items-center pointer-events-none opacity-0 group-hover/target:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-200 motion-reduce:transition-none">
             <span className="text-xs text-muted-foreground/50 tabular-nums">
               {charCount} {t('essay_grading:stats.characters')}
             </span>

@@ -617,7 +617,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   sessionId,
   authorityMode = 'craft',
   onAuthorityModeChange,
-  permissionPreset = 'cautious',
+  permissionPreset = 'relaxed',
   onPermissionPresetChange,
   authorityAskBlockedHint = false,
   knowledgeBaseProactive = false,
@@ -1134,7 +1134,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           onUpdateAttachment(attachmentId, {
             status: 'error',
             previewUrl: blobPreviewUrl,
-            error: `${t('chatV2:input.attachmentUploadFailed')}${errorDetail ? ` (${errorDetail})` : ''}`,
+            error: errorDetail
+              ? t('chatV2:input.attachmentUploadFailedDetail', { detail: errorDetail })
+              : t('chatV2:input.attachmentUploadFailed'),
             uploadProgress: undefined,
             uploadStage: undefined,
           });
@@ -1377,24 +1379,27 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const resolvedThinkingTriggerLabel = selectedThinkingDepthOption
     ? resolveThinkingDepthLabel(selectedThinkingDepthOption)
     : compactThinkingStateLabel;
-  const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle', '模型');
-  const chooseRuntimeModelLabel = t('chatV2:inputBar.chooseRuntimeModel', '选择模型');
-  const runtimeModelSearchPlaceholder = t('chatV2:modelPicker.searchPlaceholder', '搜索名称或模型 ID...');
-  const runtimeCompareModeLabel = t('chatV2:inputBar.runtimeModelCompareMode', '进入多选模式...');
-  const fallbackRuntimeProviderLabel = t('chatV2:inputBar.runtimeModelOtherProvider', '其他');
+  const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle');
+  const chooseRuntimeModelLabel = t('chatV2:inputBar.chooseRuntimeModel');
+  const runtimeModelSearchPlaceholder = t('chatV2:modelPicker.searchPlaceholder');
+  const runtimeCompareModeLabel = t('chatV2:inputBar.runtimeModelCompareMode');
+  const fallbackRuntimeProviderLabel = t('chatV2:inputBar.runtimeModelOtherProvider');
   const runtimeModelAccessibleCurrent = runtimeModelLabel
     ? runtimeModelProviderLabel
       ? `${runtimeModelProviderLabel} / ${runtimeModelLabel}`
       : runtimeModelLabel
     : undefined;
   const runtimeModelSwitchLabel = runtimeModelAccessibleCurrent
-    ? t('chatV2:inputBar.runtimeModelSwitchCurrent', '{{label}}，当前：{{current}}', {
+    ? t('chatV2:inputBar.runtimeModelSwitchCurrent', {
         label: chooseRuntimeModelLabel,
         current: runtimeModelAccessibleCurrent,
       })
     : chooseRuntimeModelLabel;
   const runtimeModelSwitchTitle = runtimeModelAccessibleCurrent
-    ? `${chooseRuntimeModelLabel}: ${runtimeModelAccessibleCurrent}`
+    ? t('chatV2:inputBar.runtimeModelSwitchCurrent', {
+        label: chooseRuntimeModelLabel,
+        current: runtimeModelAccessibleCurrent,
+      })
     : chooseRuntimeModelLabel;
   const thinkingRuntimeTitle = [
     runtimeModelAccessibleCurrent ? `${runtimeModelTitle}: ${runtimeModelAccessibleCurrent}` : undefined,
@@ -2582,7 +2587,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         <div className="mb-2 flex items-center justify-between gap-1">
           <div className="flex min-w-0 items-center gap-2 text-sm text-foreground">
             <Paperclip size={16} weight="bold" className="shrink-0" />
-            <span className="truncate">{t('analysis:input_bar.attachments.title')} ({attachments.length})</span>
+            <span className="truncate">
+              {t('chatV2:inputBar.plusMenu.attachmentsCount', { count: attachments.length })}
+            </span>
           </div>
           <div className="flex shrink-0 items-center">
             <DsButton
@@ -2651,7 +2658,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-foreground">
             <Paperclip size={16} weight="bold" />
-            <span>{t('analysis:input_bar.attachments.title')} ({attachments.length})</span>
+            <span>{t('chatV2:inputBar.plusMenu.attachmentsCount', { count: attachments.length })}</span>
           </div>
           <div className="flex items-center gap-2">
             <DsButton variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
@@ -3365,7 +3372,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               }}
               readOnly={isStreaming && !queueEnabled}
               rows={1}
-              className="w-full resize-none border-0 bg-transparent py-1 text-md leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70 focus:ring-0 overflow-hidden"
+              className="w-full resize-none border-0 bg-transparent py-1 text-md leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70 focus:ring-0 overflow-hidden [@media(pointer:coarse)]:text-[16px]"
               style={{
                 minHeight: '40px',
                 background: 'transparent',
@@ -3376,7 +3383,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           <div
             ref={ghostRef}
             aria-hidden="true"
-            className="invisible absolute top-0 left-0 -z-50 overflow-hidden whitespace-pre-wrap break-words"
+            className="invisible absolute top-0 left-0 -z-50 overflow-hidden whitespace-pre-wrap break-words text-md leading-relaxed [@media(pointer:coarse)]:text-[16px]"
             style={{
               minHeight: '40px',
               lineHeight: '24px',
@@ -3534,10 +3541,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                         title={thinkingRuntimeTitle}
                         aria-label={
                           thinkingUnsupported
-                            ? t('chatV2:inputBar.thinkingUnsupported', '不支持推理')
+                            ? t('chatV2:inputBar.thinkingUnsupported')
                             : hasThinkingDepthMenu
-                            ? t('chatV2:inputBar.thinkingDepthMenu', '选择推理深度')
-                            : t('chatV2:inputBar.thinking', '推理模式')
+                            ? t('chatV2:inputBar.thinkingDepthMenu')
+                            : t('chatV2:inputBar.thinking')
                         }
                       >
                         {runtimeModelIconId ? (
@@ -3557,9 +3564,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                     </AppMenuTrigger>
                     <AppMenuContent align="end" width={hasRuntimeModelMenu ? 232 : 176}>
                       {hasThinkingUnsupportedMenu ? (
-                        <AppMenuGroup label={t('chatV2:inputBar.thinking', '推理模式')}>
+                        <AppMenuGroup label={t('chatV2:inputBar.thinking')}>
                           <AppMenuItem disabled>
-                            {t('chatV2:inputBar.thinkingUnsupportedDescription', '该模型不支持推理')}
+                            {t('chatV2:inputBar.thinkingUnsupportedDescription')}
                           </AppMenuItem>
                         </AppMenuGroup>
                       ) : hasThinkingDepthMenu ? (
@@ -3570,16 +3577,16 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                               value={thinkingDepthValue}
                               enabled={!!enableThinking}
                               onChange={(next) => onSetThinkingDepth(next)}
-                              offLabel={t('chatV2:inputBar.thinkingOff', '关闭')}
-                              efficientLabel={t('chatV2:inputBar.thinkingDepthEfficient', '更高效')}
-                              smartLabel={t('chatV2:inputBar.thinkingDepthSmart', '更智能')}
+                              offLabel={t('chatV2:inputBar.thinkingOff')}
+                              efficientLabel={t('chatV2:inputBar.thinkingDepthEfficient')}
+                              smartLabel={t('chatV2:inputBar.thinkingDepthSmart')}
                               resolveOptionLabel={resolveThinkingDepthLabel}
-                              ariaLabel={t('chatV2:inputBar.thinkingDepthMenu', '选择推理深度')}
+                              ariaLabel={t('chatV2:inputBar.thinkingDepthMenu')}
                             />
                           </AppMenuGroup>
                         ) : (
                           // 不可关闭推理的模型：滑块必带"关闭"档，退回菜单列表以保留 thinkingCanDisable 语义
-                          <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle', '推理强度')}>
+                          <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle')}>
                             {thinkingDepthOptions.map((option) => (
                               <AppMenuItem
                                 key={option.value}
@@ -3592,13 +3599,13 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                           </AppMenuGroup>
                         )
                       ) : hasThinkingToggleMenu ? (
-                        <AppMenuGroup label={t('chatV2:inputBar.thinking', '推理模式')}>
+                        <AppMenuGroup label={t('chatV2:inputBar.thinking')}>
                           <AppMenuItem checked={!!enableThinking} onClick={handleTurnThinkingOn}>
-                            {t('chatV2:inputBar.thinkingOn', '开启')}
+                            {t('chatV2:inputBar.thinkingOn')}
                           </AppMenuItem>
                           {thinkingCanDisable && (
                             <AppMenuItem checked={!enableThinking} onClick={handleTurnThinkingOff}>
-                              {t('chatV2:inputBar.thinkingOff', '关闭')}
+                              {t('chatV2:inputBar.thinkingOff')}
                             </AppMenuItem>
                           )}
                         </AppMenuGroup>
@@ -3686,7 +3693,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                                     ))
                                   ) : (
                                     <AppMenuItem disabled>
-                                      {t('chatV2:inputBar.runtimeModelNoResults', '未找到匹配模型')}
+                                      {t('chatV2:inputBar.runtimeModelNoResults')}
                                     </AppMenuItem>
                                   )}
                                 </CustomScrollArea>
@@ -3741,8 +3748,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                         coarseHitAreaXlClass,
                         thinkingUnsupported ? 'opacity-55' : enableThinking ? 'opacity-90' : 'opacity-65 hover:opacity-90'
                       )}
-                      title={thinkingStateLabel ?? t('chatV2:inputBar.thinking', '推理模式')}
-                      aria-label={thinkingStateLabel ?? t('chatV2:inputBar.thinking', '推理模式')}
+                      title={thinkingStateLabel ?? t('chatV2:inputBar.thinking')}
+                      aria-label={thinkingStateLabel ?? t('chatV2:inputBar.thinking')}
                       aria-pressed={enableThinking && !thinkingUnsupported}
                     >
                       <Lightning size={15} weight={enableThinking && !thinkingUnsupported ? "fill" : "bold"} className="shrink-0" />

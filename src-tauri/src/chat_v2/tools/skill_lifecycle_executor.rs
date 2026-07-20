@@ -659,6 +659,10 @@ impl ToolExecutor for SkillLifecycleExecutor {
         self.sensitivity_level(tool_name)
     }
 
+    fn has_dynamic_sensitivity(&self, tool_name: &str) -> bool {
+        Self::strip_namespace(tool_name) == tool_names::SKILL_TRUST_REQUEST
+    }
+
     fn name(&self) -> &'static str {
         "SkillLifecycleExecutor"
     }
@@ -697,6 +701,8 @@ mod tests {
     #[test]
     fn trust_request_inspect_is_low_but_grant_and_unknown_stay_high() {
         let executor = SkillLifecycleExecutor::new();
+        assert!(executor.has_dynamic_sensitivity("builtin-skill_trust_request"));
+        assert!(!executor.has_dynamic_sensitivity("builtin-skill_remove"));
         assert_eq!(
             executor.sensitivity_level_for_call(
                 "builtin-skill_trust_request",

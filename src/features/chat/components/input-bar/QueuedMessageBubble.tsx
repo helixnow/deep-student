@@ -24,7 +24,9 @@ export const QueuedMessageBubble: React.FC<Props> = React.memo(({
 }) => {
   const { t } = useTranslation('chatV2');
   const failed = item.status === 'failed';
-  const tooltip = failed ? `${t('chatV2:queue.error.tooltipPrefix')}${item.error ?? ''}` : undefined;
+  const tooltip = failed
+    ? t('chatV2:queue.error.tooltip', { error: item.error ?? '' })
+    : undefined;
 
   return (
     <div

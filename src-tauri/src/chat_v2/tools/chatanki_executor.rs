@@ -1578,10 +1578,8 @@ impl ToolExecutor for ChatAnkiToolExecutor {
             // 批量写工具：单次可影响 ≤100 张卡（含批量删除），定级 Medium。
             | "chatanki_batch_update_cards"
             | "chatanki_delete_cards" => ToolSensitivity::Medium,
-            // ★ 2026-02-09: chatanki_export/chatanki_sync 降为 Low
-            // 理由：制卡是创建性操作（生成新卡片），非破坏性，不应打断制卡体验流
-            // 2026-05-16 (Audit C-02): chatanki_export/sync 提升为 Medium
-            // 理由：export/sync 会将完整用户答题数据发送到外部(Anki)，存在数据泄露风险
+            // export/sync can send complete card data outside the local card
+            // generation flow, so both use the Medium data-egress baseline.
             "chatanki_export" | "chatanki_sync" | "chatanki_import_apkg" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
         }
@@ -14476,6 +14474,11 @@ mod tests {
         assert_eq!(
             executor.sensitivity_level("builtin-chatanki_import_apkg"),
             ToolSensitivity::Medium
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-chatanki_export"),
+            ToolSensitivity::Medium,
+            "all card export paths share the same data-egress baseline"
         );
     }
 

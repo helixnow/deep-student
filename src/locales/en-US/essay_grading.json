@@ -153,6 +153,8 @@
     "ocr_timeout": "Image \"{{fileName}}\" OCR timed out, skipped",
     "suggestions_in_result": "Improvement suggestions are included in the grading result",
     "max_images_reached": "Image limit reached (max {{max}} images)",
+    "unsupported_image_format": "Unsupported image format, please use PNG / JPG / WebP",
+    "ocr_retrying_image": "Re-running OCR for \"{{fileName}}\"...",
     "save_failed": "Save failed: {{error}}",
     "cleared": "Input and result cleared",
     "clear_blocked_grading": "Cannot clear while grading is in progress",
@@ -331,7 +333,9 @@
     "per_image_failed": "Image {{index}} recognition failed"
   },
   "images": {
-    "essay_images": "Essay images ({{count}})"
+    "essay_images": "Essay images ({{count}})",
+    "ocr_error_detail": "OCR failed for \"{{fileName}}\": {{error}}",
+    "tap_to_retry": "Tap to view error and retry OCR"
   },
   "workbench": {
     "settings": {
@@ -400,6 +404,8 @@
     "confirm_reset": "Confirm reset?",
     "confirm_delete": "Confirm delete?",
     "drag_reorder": "Drag to reorder",
+    "move_dimension_up": "Move up",
+    "move_dimension_down": "Move down",
     "remove_dimension": "Remove dimension",
     "prompt_saved_short": "Saved",
     "validation": {

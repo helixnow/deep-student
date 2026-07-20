@@ -126,7 +126,9 @@ export const ContextUsagePopover: React.FC<ContextUsagePopoverProps> = ({
             />
             <UsageRow
               label={t('chatV2:contextUsagePopover.limit')}
-              value={`${formatContextTokenAmount(usage.limitTokens)} ${t('chatV2:tokenUsage.tokens')}`}
+              value={t('chatV2:tokenUsage.tokensValue', {
+                count: formatContextTokenAmount(usage.limitTokens),
+              })}
             />
           </div>
           {usage.usedPercent >= 75 && (

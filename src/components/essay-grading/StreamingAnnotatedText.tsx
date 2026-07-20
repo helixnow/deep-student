@@ -446,7 +446,7 @@ const MarkerDetailCard: React.FC<{
                 aria-label={t('essay_grading:result_ui.annotation_prev')}
                 onClick={nav.onPrev}
                 disabled={nav.total <= 1}
-                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9"
               >
                 <CaretLeft size={11} />
               </DsButton>
@@ -457,7 +457,7 @@ const MarkerDetailCard: React.FC<{
                 aria-label={t('essay_grading:result_ui.annotation_next')}
                 onClick={nav.onNext}
                 disabled={nav.total <= 1}
-                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9"
               >
                 <CaretRight size={11} />
               </DsButton>
@@ -467,7 +467,7 @@ const MarkerDetailCard: React.FC<{
                 iconOnly
                 aria-label={t('essay_grading:result_ui.annotation_close')}
                 onClick={nav.onClose}
-                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9"
               >
                 <X size={11} />
               </DsButton>

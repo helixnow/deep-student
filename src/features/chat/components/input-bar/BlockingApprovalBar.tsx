@@ -13,9 +13,14 @@ import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
 import { cn } from '@/lib/utils';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
+import {
+  getExternalToolProviderName,
+  getReadableToolName,
+} from '@/features/chat/utils/toolDisplayName';
+import { getLocalizedApprovalDescription } from '@/features/chat/utils/approvalDescription';
 import type { BlockingInteraction } from '../../core/types/store';
 import type { PlaygroundToolApprovalInteraction } from '../../dev/playground/blockingRuntime';
 
@@ -58,6 +63,10 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
   const [isArgsExpanded, setIsArgsExpanded] = useState(false);
   const [isReasonOpen, setIsReasonOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  // 📱 触屏设备：runtime scope 徽章墙可堆 10+ 行，把审批按钮推出视口，
+  // coarse 指针下默认折叠为一行摘要（rootId + 命令 + 风险 flags）+「详情」展开
+  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
+  const [isScopeExpanded, setIsScopeExpanded] = useState(false);
   // a11y：倒计时暂停（WCAG 2.2.1 Timing Adjustable）——
   // hover 暂停服务鼠标用户；键盘交互暂停服务键盘/屏幕阅读器用户（焦点离开审批栏后恢复）
   const [hoverPaused, setHoverPaused] = useState(false);
@@ -95,14 +104,21 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
     skillApprovalScope?.kind === 'skill_install' || skillApprovalScope?.kind === 'skill_lifecycle'
       ? (skillApprovalScope.declaredRiskLevel ?? skillApprovalScope.riskLevel)
       : skillApprovalScope?.riskLevel;
-  const rememberDisabled = Boolean(interaction.runtimeScope?.rememberDisabled)
-    || interaction.permissionPreset !== 'relaxed'
-    || interaction.sensitivity !== 'medium';
-
   // 工具显示名称
   const displayToolName = useMemo(
-    () => getReadableToolName(interaction.toolName, t),
-    [interaction.toolName, t]
+    () => getReadableToolName(interaction.toolName, t, {
+      providerName: getExternalToolProviderName(interaction.arguments),
+    }),
+    [interaction.toolName, interaction.arguments, t]
+  );
+  const localizedDescription = useMemo(
+    () => getLocalizedApprovalDescription(
+      interaction.toolName,
+      interaction.arguments,
+      interaction.description,
+      t,
+    ),
+    [interaction.toolName, interaction.arguments, interaction.description, t],
   );
 
   // 参数 JSON 预览
@@ -130,6 +146,9 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
     ? `bind:${shellScope.rootBinding.slice(0, HASH_PREVIEW_LENGTH)}`
     : null;
   const isExternalMcpExecution = shellScope?.executionLocation?.startsWith('external') ?? false;
+  // 📱 coarse 折叠态只保留一行核心摘要（rootId + 命令 + 风险 flags），
+  // 其余 scope 徽章由「详情」按钮展开；fine 指针（桌面）恒为 true，布局零影响
+  const showScopeDetails = !isCoarsePointer || isScopeExpanded;
 
   // 新请求到达时重置状态
   useEffect(() => {
@@ -140,6 +159,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
     setRejectReason('');
     setHoverPaused(false);
     setInteractPaused(false);
+    setIsScopeExpanded(false);
     respondingRef.current = false;
   }, [interaction.toolCallId, interaction.timeoutSeconds]);
 
@@ -148,7 +168,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
   // 显式传参而非读 state，避免倒计时自动拒绝把输入到一半的文本发出去。
   const handleResponse = useCallback(
     async (
-      decision: 'approve' | 'allow_session' | 'reject' | 'always_allow' | 'always_deny',
+      decision: 'approve' | 'reject',
       customReason?: string
     ) => {
       if (respondingRef.current || hasResponded || isResponding || isResolved) return;
@@ -156,9 +176,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
       respondingRef.current = true;
       setIsResponding(true);
       try {
-        const approved = decision === 'approve' || decision === 'allow_session' || decision === 'always_allow';
-        const remember = decision === 'always_allow' || decision === 'always_deny';
-        const rememberSession = decision === 'allow_session';
+        const approved = decision === 'approve';
         const trimmedReason = customReason?.trim();
         // 'user_rejected' 为无理由拒绝的哨兵值，后端据此保持笼统文案（向后兼容）
         const reason = approved ? undefined : (trimmedReason || 'user_rejected');
@@ -166,7 +184,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
         if ('respond' in interaction && typeof interaction.respond === 'function') {
           await interaction.respond({
             approved,
-            remember,
+            remember: false,
             reason,
           });
         } else {
@@ -176,8 +194,8 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             toolName: interaction.toolName,
             approved,
             reason: reason ?? null,
-            remember,
-            rememberSession, // 🆕 三档分级：本会话允许该工具
+            remember: false,
+            rememberSession: false,
             arguments: interaction.arguments,
           });
         }
@@ -365,6 +383,10 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
         )}
       </div>
 
+      <p className="text-xs leading-relaxed text-foreground/90">
+        {localizedDescription}
+      </p>
+
       {/* Row 2: Runtime scope 摘要（内联 chip，不新增审批面板） */}
       {shellScope && (
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -374,12 +396,12 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             </span>
           ) : (
             <>
-              {shellScope.executionLocation && (
+              {showScopeDetails && shellScope.executionLocation && (
                 <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
                   {shellScope.executionLocation}
                 </span>
               )}
-              {shellScope.sandboxEnforced !== undefined && (
+              {showScopeDetails && shellScope.sandboxEnforced !== undefined && (
                 <span
                   className={cn(
                     'rounded px-1.5 py-0.5 font-mono',
@@ -394,7 +416,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
               <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={shellScope.rootPath ?? shellScope.toolSource}>
                 {shellScope.rootId}
               </span>
-              {shellScope.rootPath && (
+              {showScopeDetails && shellScope.rootPath && (
                 <span
                   className="max-w-[18rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono"
                   title={shellScope.rootPath}
@@ -402,19 +424,21 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
                   {shellScope.rootPath}
                 </span>
               )}
-              {shellScope.rootAccess && (
+              {showScopeDetails && shellScope.rootAccess && (
                 <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
                   {shellScope.rootAccess}
                 </span>
               )}
-              {shellScope.rootSessionScoped !== undefined && (
+              {showScopeDetails && shellScope.rootSessionScoped !== undefined && (
                 <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
                   {shellScope.rootSessionScoped ? 'session-root' : 'persistent-root'}
                 </span>
               )}
-              <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={shellScope.cwd}>
-                {shellScope.cwd}
-              </span>
+              {showScopeDetails && (
+                <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={shellScope.cwd}>
+                  {shellScope.cwd}
+                </span>
+              )}
             </>
           )}
           <span className="max-w-[14rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono" title={shellScope.commandPrefix}>
@@ -425,17 +449,17 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
               {flag}
             </span>
           ))}
-          {!isExternalMcpExecution && shellScope.sandboxBackend && (
+          {showScopeDetails && !isExternalMcpExecution && shellScope.sandboxBackend && (
             <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
               sandbox:{shellScope.sandboxBackend}
             </span>
           )}
-          {!isExternalMcpExecution && shellScope.shellKind && (
+          {showScopeDetails && !isExternalMcpExecution && shellScope.shellKind && (
             <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
               shell:{shellScope.shellKind}
             </span>
           )}
-          {!isExternalMcpExecution && shellScope.outputEncoding && (
+          {showScopeDetails && !isExternalMcpExecution && shellScope.outputEncoding && (
             <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
               encoding:{shellScope.outputEncoding}
             </span>
@@ -450,7 +474,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
               parent-env
             </span>
           )}
-          {!isExternalMcpExecution && shellScope.inheritedEnvKeys && (
+          {showScopeDetails && !isExternalMcpExecution && shellScope.inheritedEnvKeys && (
             <span
               className="max-w-[18rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono"
               title={shellScope.inheritedEnvKeys.join(', ') || 'none'}
@@ -459,7 +483,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
               {shellScope.inheritedEnvKeys.length > 0 ? ` [${shellScope.inheritedEnvKeys.join(', ')}]` : ''}
             </span>
           )}
-          {!isExternalMcpExecution && shellScope.explicitEnvKeys && (
+          {showScopeDetails && !isExternalMcpExecution && shellScope.explicitEnvKeys && (
             <span
               className="max-w-[18rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono"
               title={shellScope.explicitEnvKeys.join(', ') || 'none'}
@@ -468,12 +492,12 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
               {shellScope.explicitEnvKeys.length > 0 ? ` [${shellScope.explicitEnvKeys.join(', ')}]` : ''}
             </span>
           )}
-          {!isExternalMcpExecution && rootBindingLabel && (
+          {showScopeDetails && !isExternalMcpExecution && rootBindingLabel && (
             <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={shellScope.rootBinding}>
               {rootBindingLabel}
             </span>
           )}
-          {!isExternalMcpExecution && shellScope.readableRoots?.map((path) => (
+          {showScopeDetails && !isExternalMcpExecution && shellScope.readableRoots?.map((path) => (
             <span
               key={path}
               className="max-w-[18rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono"
@@ -482,6 +506,27 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
               read:{path}
             </span>
           ))}
+          {isCoarsePointer && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsScopeExpanded((prev) => !prev)}
+              aria-expanded={isScopeExpanded}
+              className="flex items-center gap-0.5 text-[11px] text-primary"
+            >
+              {isScopeExpanded ? (
+                <>
+                  <CaretUp size={10} />
+                  {t('approval.scopeCollapse')}
+                </>
+              ) : (
+                <>
+                  <CaretDown size={10} />
+                  {t('approval.scopeExpand')}
+                </>
+              )}
+            </DsButton>
+          )}
         </div>
       )}
 
@@ -585,21 +630,6 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             {t('approval.reject')}
           </DsButton>
 
-          {/* 🆕 本会话允许该工具 */}
-          {!rememberDisabled && (
-            <DsButton
-              variant="outline"
-              size="sm"
-              onClick={() => handleResponse('allow_session')}
-              disabled={disabled}
-              className="text-success hover:text-success/80"
-            >
-              {shellScope
-                ? t('approval.allowScope')
-                : t('approval.allowSession')}
-            </DsButton>
-          )}
-
           {/* 批准 */}
           <DsButton
             size="sm"
@@ -616,7 +646,9 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
 
       {/* Row 4: 拒绝理由输入（内联展开，非模态） */}
       {isReasonOpen && !disabled && (
-        <div className="flex items-center gap-1.5">
+        // 📱 flex-wrap + 输入框 coarse 最小宽度：360px 窄屏下两个按钮下沉第二行，
+        // 不再挤压输入框；桌面 fine 指针 min-w-0 可收缩，保持单行不变
+        <div className="flex flex-wrap items-center gap-1.5">
           <ChatCircleText size={14} className="shrink-0 text-muted-foreground" />
           <input
             type="text"
@@ -636,7 +668,9 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             className={cn(
               'flex-1 min-w-0 px-2 py-1 text-xs rounded-md border border-border/50',
               'bg-background placeholder:text-muted-foreground/50',
-              'focus:outline-none focus:ring-1 focus:ring-[color:var(--input-shell-focus)]'
+              'focus:outline-none focus:ring-1 focus:ring-[color:var(--input-shell-focus)]',
+              // 📱 16px 防 iOS 聚焦放大；最小宽度保证窄屏下按钮换行而非挤压输入框
+              '[@media(pointer:coarse)]:text-[16px] [@media(pointer:coarse)]:min-w-[12rem]'
             )}
           />
           <DsButton

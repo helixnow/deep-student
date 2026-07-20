@@ -172,7 +172,7 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
       <div className="flex flex-wrap items-center gap-2">
         <Warning size={16} className="shrink-0 text-warning" weight="fill" aria-hidden="true" />
         <span id={titleId} className="text-sm font-medium truncate">
-          {t('authority.planGate.title', '确认执行计划')}
+          {t('authority.planGate.title')}
         </span>
         <div
           id={countdownId}
@@ -186,12 +186,10 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
         >
           <Clock size={14} aria-hidden="true" />
           {timedOut ? (
-            <span>{t('authority.planGate.timedOut', '已超时，自动拒绝')}</span>
+            <span>{t('authority.planGate.timedOut')}</span>
           ) : (
             <span className="tabular-nums">
-              {t('authority.planGate.countdown', '{{seconds}} 秒后自动拒绝', {
-                seconds: remaining,
-              })}
+              {t('authority.planGate.countdown', { seconds: remaining })}
             </span>
           )}
         </div>
@@ -203,10 +201,10 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
           id={descId}
           className="m-0 text-xs text-muted-foreground whitespace-pre-wrap break-words"
         >
-          {request.summary || t('authority.planGate.fallbackSummary', '模型准备执行写操作')}
+          {request.summary || t('authority.planGate.fallbackSummary')}
         </p>
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span className="shrink-0">{t('authority.planGate.tool', '工具')}</span>
+          <span className="shrink-0">{t('authority.planGate.tool')}</span>
           <code className="max-w-[16rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono">
             {request.toolName}
           </code>
@@ -238,12 +236,12 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
               {isArgsExpanded ? (
                 <>
                   <CaretUp size={10} />
-                  {t('approval.collapseArgs', '收起')}
+                  {t('approval.collapseArgs')}
                 </>
               ) : (
                 <>
                   <CaretDown size={10} />
-                  {t('approval.expandArgs', '展开')}
+                  {t('approval.expandArgs')}
                 </>
               )}
             </DsButton>
@@ -259,17 +257,17 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
           size="sm"
           disabled={busy || timedOut}
           onClick={() => void respond(false)}
-          aria-label={t('authority.planGate.reject', '拒绝')}
+          aria-label={t('authority.planGate.reject')}
           className="text-destructive hover:text-destructive/80"
         >
           <XCircle size={14} className="mr-1" aria-hidden="true" />
-          {t('authority.planGate.reject', '拒绝')}
+          {t('authority.planGate.reject')}
         </DsButton>
         <DsButton
           size="sm"
           disabled={busy || timedOut}
           onClick={() => void respond(true)}
-          aria-label={t('authority.planGate.approve', '确认执行')}
+          aria-label={t('authority.planGate.approve')}
           className="bg-success text-success-foreground"
         >
           {busy && !timedOut ? (
@@ -277,7 +275,7 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
           ) : (
             <CheckCircle size={14} className="mr-1" aria-hidden="true" />
           )}
-          {t('authority.planGate.approve', '确认执行')}
+          {t('authority.planGate.approve')}
         </DsButton>
       </div>
     </div>

@@ -19,7 +19,9 @@ import {
   FloppyDisk,
   GearSix,
   X,
+  CaretDown,
   CaretRight,
+  CaretUp,
   Plus,
   Trash,
   Copy,
@@ -545,7 +547,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
       </div>
 
       {/* 内容区 */}
-      <CustomScrollArea className="flex-1" viewportClassName="pb-4">
+      <CustomScrollArea className="flex-1" viewportClassName="pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]">
         <div className="divide-y divide-border/30">
 
           {/* ====== 1. 评分标准：批阅模式 + 文体 + 学段（高频，一屏尽览） ====== */}
@@ -889,12 +891,39 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                                 style={{ maxWidth: '3.5rem' }}
                               />
                             </div>
+                            {/* 触屏无法使用 HTML5 DnD 拖拽排序，coarse 指针下提供上/下移按钮替代 */}
+                            <div className="hidden flex-shrink-0 items-center [@media(pointer:coarse)]:flex">
+                              <DsButton
+                                variant="ghost"
+                                size="icon"
+                                iconOnly
+                                onClick={() => handleReorderDimension(index, index - 1)}
+                                disabled={index === 0}
+                                className="!h-9 !w-8 text-muted-foreground/50 hover:text-foreground disabled:opacity-30"
+                                aria-label={t('essay_grading:settings_panel.move_dimension_up')}
+                                title={t('essay_grading:settings_panel.move_dimension_up')}
+                              >
+                                <CaretUp size={13} />
+                              </DsButton>
+                              <DsButton
+                                variant="ghost"
+                                size="icon"
+                                iconOnly
+                                onClick={() => handleReorderDimension(index, index + 1)}
+                                disabled={index === formData.score_dimensions.length - 1}
+                                className="!h-9 !w-8 text-muted-foreground/50 hover:text-foreground disabled:opacity-30"
+                                aria-label={t('essay_grading:settings_panel.move_dimension_down')}
+                                title={t('essay_grading:settings_panel.move_dimension_down')}
+                              >
+                                <CaretDown size={13} />
+                              </DsButton>
+                            </div>
                             <DsButton
                               variant="ghost"
                               size="icon"
                               iconOnly
                               onClick={() => handleRemoveDimension(index)}
-                              className="!h-6 !w-6 flex-shrink-0 text-muted-foreground/30 opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70"
+                              className="!h-6 !w-6 flex-shrink-0 text-muted-foreground/30 opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9"
                               aria-label={t('essay_grading:settings_panel.remove_dimension')}
                               title={t('essay_grading:settings_panel.remove_dimension')}
                             >

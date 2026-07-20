@@ -95,6 +95,8 @@ interface InputPanelProps {
   // ★ 图片预览
   uploadedImages?: UploadedImage[];
   onRemoveImage?: (imageId: string) => void;
+  /** OCR 失败图片的单图重试（点按失败缩略图触发） */
+  onRetryImageOcr?: (imageId: string) => void;
   // ★ 题目元数据
   topicText?: string;
   setTopicText?: (text: string) => void;
@@ -166,20 +168,20 @@ const OcrStatusBadge: React.FC<{ img: UploadedImage }> = ({ img }) => {
         aria-label={t('essay_grading:ocr_status.retrying')}
       >
         <CircleNotch size={13} className="text-amber-300 animate-spin motion-reduce:animate-none" />
-        <span className="text-[8px] text-amber-300 mt-0.5 leading-none">{t('essay_grading:ocr_status.retrying')}</span>
+        <span className="text-[10px] text-amber-300 mt-0.5 leading-none">{t('essay_grading:ocr_status.retrying')}</span>
       </div>
     );
   }
   if (img.ocrStatus === 'timeout') {
     return (
-      <div className="absolute bottom-0 left-0 right-0 bg-amber-500/85 text-[8px] text-white text-center leading-tight rounded-b-md px-0.5">
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-amber-500/85 text-[10px] text-white text-center leading-tight rounded-b-md px-0.5">
         {t('essay_grading:ocr_status.timeout')}
       </div>
     );
   }
   if (img.ocrStatus === 'error') {
     return (
-      <div className="absolute bottom-0 left-0 right-0 bg-destructive/85 text-destructive-foreground text-[8px] text-center leading-tight rounded-b-md px-0.5">
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-destructive/85 text-destructive-foreground text-[10px] text-center leading-tight rounded-b-md px-0.5">
         {t('essay_grading:ocr_status.error')}
       </div>
     );
@@ -220,6 +222,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
   roundNavigation,
   uploadedImages,
   onRemoveImage,
+  onRetryImageOcr,
   topicText,
   setTopicText,
   topicImages,
@@ -315,6 +318,18 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
     onFilesDropped(named);
   }, [isGrading, onFilesDropped]);
 
+  // ── OCR 失败缩略图点按：toast 展示错误详情（title 悬浮在触屏不可用）+ 触发单图重试 ──
+  const handleFailedThumbClick = useCallback((img: UploadedImage) => {
+    showGlobalNotification(
+      'error',
+      t('essay_grading:images.ocr_error_detail', {
+        fileName: img.fileName,
+        error: img.ocrError || t('essay_grading:ocr_status.error'),
+      })
+    );
+    onRetryImageOcr?.(img.id);
+  }, [t, onRetryImageOcr]);
+
   // ── 空状态引导：示例作文一键填入（题目 + 正文），便于新用户零门槛体验批改 ──
   const handleFillSample = useCallback(() => {
     if (isGrading) return;
@@ -364,7 +379,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
   return (
     <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 transition-all duration-200 border-b lg:border-b-0 lg:border-r border-border/40 relative group/source">
       {/* Toolbar - 简洁风格简洁布局 */}
-      <div className="flex h-[41px] items-center gap-1 border-b border-border/30 px-2 sm:gap-1.5 sm:px-4">
+      {/* min-h 而非固定高：DsButton 移动端默认 44px，固定 41px 会被撑破溢出 */}
+      <div className="flex min-h-[41px] items-center gap-1 border-b border-border/30 px-2 py-0.5 sm:gap-1.5 sm:px-4">
         {/* 左侧：模式选择 - 保持固定宽度 */}
         {modes.length > 0 && (
           <div className="min-w-0 max-w-[50%] sm:max-w-none sm:shrink-0">
@@ -500,14 +516,15 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             {t('essay_grading:images.essay_images', { count: uploadedImages.length })}
           </span>
           <div className="flex items-center gap-1.5">
-            {uploadedImages.map((img) => (
-              <div key={img.id} className="relative group/thumb shrink-0">
+            {uploadedImages.map((img) => {
+              const isFailed = img.ocrStatus === 'error' || img.ocrStatus === 'timeout';
+              const thumbnail = (
                 <img
                   src={img.dataUrl}
                   alt={img.fileName}
                   className={cn(
                     "w-11 h-11 object-cover rounded-md border transition-colors duration-150",
-                    img.ocrStatus === 'error' || img.ocrStatus === 'timeout'
+                    isFailed
                       ? "border-destructive/60 opacity-75"
                       : img.ocrStatus === 'done'
                         ? "border-primary/40"
@@ -515,19 +532,37 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   )}
                   title={img.ocrError ? `${img.fileName} — ${img.ocrError}` : img.fileName}
                 />
-                <OcrStatusBadge img={img} />
-                {!isGrading && onRemoveImage && (
-                  <button
-                    type="button"
-                    onClick={() => onRemoveImage(img.id)}
-                    className={cn(COARSE_HIT_BADGE, "w-4 h-4 absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover/thumb:opacity-100 focus-visible:opacity-100 transition-opacity duration-150 motion-reduce:transition-none")}
-                    aria-label={t('common:delete')}
-                  >
-                    <X size={10} />
-                  </button>
-                )}
-              </div>
-            ))}
+              );
+              return (
+                <div key={img.id} className="relative group/thumb shrink-0">
+                  {/* 失败图可点按：toast 展示错误详情 + 单图重试（title 悬浮触屏不可用） */}
+                  {isFailed && !isGrading ? (
+                    <button
+                      type="button"
+                      onClick={() => handleFailedThumbClick(img)}
+                      className="block rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-destructive/60"
+                      aria-label={t('essay_grading:images.tap_to_retry')}
+                      title={t('essay_grading:images.tap_to_retry')}
+                    >
+                      {thumbnail}
+                    </button>
+                  ) : (
+                    thumbnail
+                  )}
+                  <OcrStatusBadge img={img} />
+                  {!isGrading && onRemoveImage && (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveImage(img.id)}
+                      className={cn(COARSE_HIT_BADGE, "w-4 h-4 absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-100 [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover/thumb:opacity-100 focus-visible:!opacity-100 transition-opacity duration-150 motion-reduce:transition-none")}
+                      aria-label={t('common:delete')}
+                    >
+                      <X size={10} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -578,7 +613,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                     value={topicText ?? ''}
                     onChange={(e) => setTopicText(e.target.value)}
                     placeholder={t('essay_grading:topic.placeholder')}
-                    className="w-full min-h-[72px] max-h-[144px] resize-y text-sm leading-relaxed !border-border/35 !bg-background/80 focus:!ring-1 focus:!ring-primary/20"
+                    className="w-full min-h-[72px] max-h-[144px] resize-y text-sm leading-relaxed !border-border/35 !bg-background/80 focus:!ring-1 focus:!ring-primary/20 [@media(pointer:coarse)]:text-base"
                     disabled={isGrading}
                   />
                   {/* 题目参考图片 */}
@@ -595,7 +630,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                           <button
                             type="button"
                             onClick={() => onRemoveTopicImage(img.id)}
-                            className={cn(COARSE_HIT_BADGE, "w-4 h-4 absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover/thumb:opacity-100 focus-visible:opacity-100 transition-opacity duration-150 motion-reduce:transition-none")}
+                            className={cn(COARSE_HIT_BADGE, "w-4 h-4 absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-100 [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover/thumb:opacity-100 focus-visible:!opacity-100 transition-opacity duration-150 motion-reduce:transition-none")}
                             aria-label={t('common:delete')}
                           >
                             <X size={10} />
@@ -715,7 +750,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             onPaste={handlePaste}
             placeholder={showEmptyState ? '' : t('essay_grading:input_section.placeholder')}
             className={cn(
-              "flex-1 !min-h-0 w-full resize-none overflow-y-auto px-5 py-5 text-[15px] leading-[1.8] !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/15 placeholder:text-muted-foreground/40 [scrollbar-color:var(--scrollbar-thumb)_var(--scrollbar-track)] transition-opacity duration-200 motion-reduce:transition-none",
+              "flex-1 !min-h-0 w-full resize-none overflow-y-auto px-5 py-5 text-[15px] [@media(pointer:coarse)]:text-base leading-[1.8] !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/15 placeholder:text-muted-foreground/40 [scrollbar-color:var(--scrollbar-thumb)_var(--scrollbar-track)] transition-opacity duration-200 motion-reduce:transition-none",
               isGrading && "opacity-80 cursor-default"
             )}
           />

@@ -254,6 +254,18 @@
   outline-offset: 1px;
 }
 
+/* 触屏基线（原 ResourceAppWorkspace / FilesAppWindow 的重复覆盖上移共享）：
+   hover 展开在 coarse 指针上不可达，把手直接放大到 44px 命中区，
+   取消内缩位移与半透明 */
+@media (pointer: coarse) {
+  .wb-sys-drawer-handle {
+    width: 44px;
+    height: 64px;
+    transform: translateY(-50%);
+    opacity: 1;
+  }
+}
+
 /* ---- 遮罩 ---- */
 
 .wb-sys-scrim {

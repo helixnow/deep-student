@@ -46,7 +46,8 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
   onViewFullSession,
   agentMap,
 }) => {
-  const { t } = useTranslation(['chatV2', 'skills']);
+  const { t, i18n } = useTranslation(['chatV2', 'skills']);
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const shortSenderId = message.senderSessionId.slice(-8);
   const shortTargetId = message.targetSessionId?.slice(-8);
   const senderInfo = agentMap?.get(message.senderSessionId);
@@ -206,7 +207,7 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
       </div>
       <div className="text-sm whitespace-pre-wrap break-words">{message.content}</div>
       <div className="text-xs text-muted-foreground">
-        {new Date(message.createdAt).toLocaleTimeString()}
+        {new Date(message.createdAt).toLocaleTimeString(locale)}
       </div>
 
       {/* 🆕 P1 修复: 子代理任务消息嵌套显示子代理聊天视图（复用 ChatContainer） */}

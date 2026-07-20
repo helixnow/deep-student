@@ -88,7 +88,6 @@ export async function createSessionWithDefaults(options: CreateSessionWithDefaul
       showGlobalNotification(
         'warning',
         i18n.t('skills:errors.defaultActivationFailed', {
-          defaultValue: '以下默认技能无法激活: {{skills}}，请前往技能管理页面检查',
           skills: failedSkills.join(', '),
         })
       );

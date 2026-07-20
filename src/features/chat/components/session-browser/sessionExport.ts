@@ -36,7 +36,7 @@ export async function exportSessionToFile(options: ExportSessionToFileOptions): 
     const baseName = sanitizeFileName(options.title ?? '') || options.sessionId;
 
     const result = await fileManager.saveTextFile({
-      title: i18n.t('chatV2:browser.exportSession', '导出会话'),
+      title: i18n.t('chatV2:browser.exportSession'),
       defaultFileName: `${baseName}.${extension}`,
       filters: [
         extension === 'json'
@@ -50,7 +50,6 @@ export async function exportSessionToFile(options: ExportSessionToFileOptions): 
     showGlobalNotification(
       'success',
       i18n.t('chatV2:browser.exportSuccess', {
-        defaultValue: '已导出 {{messageCount}} 条消息到 {{path}}',
         messageCount: response.messageCount,
         path: result.path ?? '',
       })
@@ -59,7 +58,6 @@ export async function exportSessionToFile(options: ExportSessionToFileOptions): 
     showGlobalNotification(
       'error',
       i18n.t('chatV2:browser.exportFailed', {
-        defaultValue: '导出失败：{{error}}',
         error: getErrorMessage(error),
       })
     );

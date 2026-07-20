@@ -122,8 +122,8 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
     <div 
       className={cn(
         "relative -mr-px flex items-center gap-1.5 px-3 border-t text-sm h-10 shrink-0 overflow-hidden",
-        // 📱 触屏：底部工具栏贴屏幕底，留出手势导航安全区
-        "[@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:pb-[var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px))]",
+        // 📱 触屏：底部工具栏贴屏幕底，留出手势导航安全区；多选态按钮多时允许换行避免横向溢出
+        "[@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-wrap [@media(pointer:coarse)]:pb-[var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px))]",
         "bg-[color:var(--shell-toolbar-surface,var(--background))]",
         className
       )}
@@ -131,7 +131,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
       {/* 左侧：项目计数 + 视图切换 - 允许在窄屏下收缩 */}
       <div className="flex items-center gap-2 min-w-0 shrink">
         {/* 项目计数（data-agent-entity：ACR 搜索/导航后 flash 锚点） */}
-        <span data-agent-entity="files:results" className="rounded-md text-xs text-muted-foreground whitespace-nowrap">
+        <span data-agent-entity="files:results" className="rounded-md text-xs text-muted-foreground truncate min-w-0">
           {selectedCount > 0
             ? t('finder.statusBar.selectedOfTotal', {
                 selected: selectedCount,
@@ -227,9 +227,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
               <Square size={16} />
             )}
           </DsButton>
-          <span className="whitespace-nowrap text-xs truncate text-muted-foreground">
-            {t('finder.multiSelect.selected', { count: selectedCount })}
-          </span>
+          {/* 计数已由左侧 selectedOfTotal 文案展示，这里不再重复渲染 */}
         </div>
       )}
 

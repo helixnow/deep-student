@@ -3,7 +3,7 @@ import type { AttachmentMeta } from '../types/message';
 import type { ContextRef } from '../../resources/types';
 import type { EditMessageResult, RetryMessageResult, BranchSessionResult } from '../../adapters/types';
 import { invoke } from '@tauri-apps/api/core';
-import type { AuthorityMode, ChatStore, BlockingInteraction } from '../types';
+import type { AuthorityMode, ChatStore, BlockingInteraction, PermissionPreset } from '../types';
 import { COMPOSER_PANEL_KEYS, type ChatParams, type PanelStates } from '../types/common';
 import type { ChatStoreState, SetState, GetState } from './types';
 import { createDefaultChatParams, createDefaultPanelStates } from './types';
@@ -14,6 +14,7 @@ import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore'
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { eventRegistry, type EventHandler } from '../../registry/eventRegistry';
 import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
+import { resetTransientRuntimes } from './transientRuntimeRegistry';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -374,7 +375,7 @@ export function createSessionActions(
           });
         },
 
-        setPermissionPreset: async (preset: 'cautious' | 'relaxed'): Promise<void> => {
+        setPermissionPreset: async (preset: PermissionPreset): Promise<void> => {
           const sessionId = getState().sessionId;
           if (!sessionId) return;
           await invoke('chat_v2_set_permission_preset', { sessionId, preset });
@@ -426,6 +427,7 @@ export function createSessionActions(
           const presetModeState = getState().modeState;
 
           ensurePlanGateEventHandlerRegistered();
+          resetTransientRuntimes(getState().setPendingApproval);
 
           // 🔧 P1 内存泄漏修复：重置前释放未发送附件的 blob: 预览 URL
           revokeAttachmentBlobUrls(getState().attachments);
@@ -449,8 +451,10 @@ export function createSessionActions(
             attachments: [],
             panelStates: createDefaultPanelStates(),
             authorityMode: 'craft',
-            permissionPreset: 'cautious',
+            permissionPreset: 'relaxed',
             authorityAskBlockedHint: false,
+            pendingBlockingInteraction: null,
+            pendingApprovalRequest: null,
           });
 
           // 调用模式插件初始化，传递 initConfig
@@ -613,7 +617,7 @@ export function createSessionActions(
           }
 
           // Fallback：发送"继续"消息（创建新轮次）
-          await getState().sendMessage(i18n.t('chatV2:store.continueMessage', { defaultValue: 'continue' }));
+          await getState().sendMessage(i18n.t('chatV2:store.continueMessage'));
         },
 
         // ========== 🆕 P0 分支模型：会话分支 ==========

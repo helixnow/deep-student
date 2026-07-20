@@ -460,17 +460,27 @@ impl AuthorityMode {
     }
 }
 
-/// Session-only approval behavior preset. Neither preset grants filesystem
-/// access; runtime roots remain the sole authority boundary.
+/// Session-only Craft approval behavior preset.
+///
+/// Ask and Plan keep their authority semantics and do not inherit these
+/// bypasses. `FullAccess` keeps the local-shell runtime-root, hard-sandbox and
+/// network boundaries; only `DangerFullAccess` may select the explicit
+/// unsandboxed local-shell backend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
 pub enum PermissionPreset {
     /// Prompt for every Medium/High operation and never remember approvals.
-    #[default]
+    #[serde(rename = "cautious")]
     Cautious,
-    /// Medium approvals may be remembered for this session only. High and
-    /// irreversible operations still require confirmation every time.
+    /// Low/Medium execute automatically. Base/dynamic High and Unknown prompt.
+    #[default]
+    #[serde(rename = "relaxed")]
     Relaxed,
+    /// Tool approval bypass; local shell remains fully sandboxed.
+    #[serde(rename = "full_access")]
+    FullAccess,
+    /// Tool approval bypass plus the explicit unsandboxed local-shell backend.
+    #[serde(rename = "danger_full_access")]
+    DangerFullAccess,
 }
 
 impl PermissionPreset {
@@ -478,6 +488,8 @@ impl PermissionPreset {
         match self {
             Self::Cautious => "cautious",
             Self::Relaxed => "relaxed",
+            Self::FullAccess => "full_access",
+            Self::DangerFullAccess => "danger_full_access",
         }
     }
 
@@ -485,6 +497,8 @@ impl PermissionPreset {
         match raw.trim().to_ascii_lowercase().as_str() {
             "cautious" => Some(Self::Cautious),
             "relaxed" => Some(Self::Relaxed),
+            "full_access" => Some(Self::FullAccess),
+            "danger_full_access" => Some(Self::DangerFullAccess),
             _ => None,
         }
     }
@@ -590,7 +604,7 @@ impl SessionAuthorityState {
     pub fn craft_default() -> Self {
         Self {
             authority_mode: AuthorityMode::Craft,
-            permission_preset: PermissionPreset::Cautious,
+            permission_preset: PermissionPreset::Relaxed,
             plan: None,
         }
     }

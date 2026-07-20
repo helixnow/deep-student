@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 use tokio::sync::oneshot;
 
 use crate::chat_v2::tools::ToolSensitivity;
-use crate::chat_v2::types::{AuthorityMode, SessionAuthorityState};
+use crate::chat_v2::types::{AuthorityMode, PermissionPreset, SessionAuthorityState};
 
 /// Meta tools treated as read even if an executor reports Medium/High.
 pub const META_TOOL_WHITELIST: &[&str] = &[
@@ -54,6 +54,42 @@ pub fn is_write_tool(tool_name: &str, effective_sensitivity: Option<ToolSensitiv
     match effective_sensitivity {
         Some(ToolSensitivity::Low) => false,
         Some(ToolSensitivity::Medium) | Some(ToolSensitivity::High) | None => true,
+    }
+}
+
+/// Whether the ApprovalManager must run for this call.
+///
+/// Presets apply only in Craft. In particular, Plan approval is not converted
+/// into Full Access merely because stale metadata also contains a full-access
+/// preset. `base_sensitivity` is retained as a lower bound in Relaxed so a user
+/// rule cannot downgrade a statically High tool; `effective_sensitivity`
+/// catches argument-aware/dynamic High. Unknown is always approval-required
+/// outside the two explicit full-access presets.
+pub fn requires_tool_approval(
+    state: &SessionAuthorityState,
+    base_sensitivity: Option<ToolSensitivity>,
+    effective_sensitivity: Option<ToolSensitivity>,
+    immutable_command_guard_asks: bool,
+    external_mcp: bool,
+) -> bool {
+    if immutable_command_guard_asks && !external_mcp {
+        return true;
+    }
+    if state.authority_mode != AuthorityMode::Craft {
+        return effective_sensitivity != Some(ToolSensitivity::Low);
+    }
+    match state.permission_preset {
+        PermissionPreset::Cautious => {
+            base_sensitivity != Some(ToolSensitivity::Low)
+                || effective_sensitivity != Some(ToolSensitivity::Low)
+        }
+        PermissionPreset::Relaxed => {
+            base_sensitivity.is_none()
+                || effective_sensitivity.is_none()
+                || base_sensitivity == Some(ToolSensitivity::High)
+                || effective_sensitivity == Some(ToolSensitivity::High)
+        }
+        PermissionPreset::FullAccess | PermissionPreset::DangerFullAccess => false,
     }
 }
 
@@ -280,6 +316,109 @@ mod tests {
             Utc::now(),
         );
         assert_eq!(decision, AuthorityGateDecision::Allow);
+    }
+
+    #[test]
+    fn craft_presets_apply_exact_approval_matrix() {
+        let mut state = SessionAuthorityState::craft_default();
+        assert_eq!(state.permission_preset, PermissionPreset::Relaxed);
+        assert!(!requires_tool_approval(
+            &state,
+            Some(ToolSensitivity::Medium),
+            Some(ToolSensitivity::Medium),
+            false,
+            false,
+        ));
+        assert!(requires_tool_approval(
+            &state,
+            Some(ToolSensitivity::High),
+            Some(ToolSensitivity::Low),
+            false,
+            false,
+        ));
+        assert!(requires_tool_approval(
+            &state,
+            Some(ToolSensitivity::Low),
+            Some(ToolSensitivity::High),
+            false,
+            false,
+        ));
+        assert!(requires_tool_approval(&state, None, None, false, false));
+
+        state.permission_preset = PermissionPreset::Cautious;
+        assert!(requires_tool_approval(
+            &state,
+            Some(ToolSensitivity::Medium),
+            Some(ToolSensitivity::Medium),
+            false,
+            false,
+        ));
+        state.permission_preset = PermissionPreset::FullAccess;
+        assert!(!requires_tool_approval(
+            &state,
+            Some(ToolSensitivity::High),
+            Some(ToolSensitivity::High),
+            false,
+            false,
+        ));
+        assert!(requires_tool_approval(
+            &state,
+            Some(ToolSensitivity::High),
+            Some(ToolSensitivity::High),
+            true,
+            false,
+        ));
+        assert!(!requires_tool_approval(
+            &state,
+            Some(ToolSensitivity::High),
+            Some(ToolSensitivity::High),
+            true,
+            true,
+        ));
+    }
+
+    #[test]
+    fn permission_preset_wire_names_are_stable() {
+        for (preset, expected) in [
+            (PermissionPreset::Cautious, "\"cautious\""),
+            (PermissionPreset::Relaxed, "\"relaxed\""),
+            (PermissionPreset::FullAccess, "\"full_access\""),
+            (
+                PermissionPreset::DangerFullAccess,
+                "\"danger_full_access\"",
+            ),
+        ] {
+            assert_eq!(serde_json::to_string(&preset).unwrap(), expected);
+            assert_eq!(
+                PermissionPreset::parse(expected.trim_matches('"')),
+                Some(preset)
+            );
+        }
+    }
+
+    #[test]
+    fn ask_and_plan_ignore_full_access_presets() {
+        for mode in [AuthorityMode::Ask, AuthorityMode::Plan] {
+            let state = SessionAuthorityState {
+                authority_mode: mode,
+                permission_preset: PermissionPreset::DangerFullAccess,
+                plan: None,
+            };
+            assert!(requires_tool_approval(
+                &state,
+                Some(ToolSensitivity::High),
+                Some(ToolSensitivity::High),
+                false,
+                false,
+            ));
+            assert!(requires_tool_approval(
+                &state,
+                Some(ToolSensitivity::Low),
+                Some(ToolSensitivity::Low),
+                true,
+                false,
+            ));
+        }
     }
 
     #[test]

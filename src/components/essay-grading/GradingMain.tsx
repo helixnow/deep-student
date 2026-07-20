@@ -47,6 +47,8 @@ interface GradingMainProps {
   // Image Props
   uploadedImages: UploadedImage[];
   onRemoveImage: (imageId: string) => void;
+  /** OCR 失败图片的单图重试（点按失败缩略图触发） */
+  onRetryImageOcr?: (imageId: string) => void;
   // Topic Metadata Props
   topicText: string;
   setTopicText: (text: string) => void;
@@ -74,6 +76,8 @@ interface GradingMainProps {
 
   // 模式管理
   onModesChange?: () => void;
+  /** OS 宿主提供外部设置标签时，设置在所有窗口宽度下都替换完整主区 */
+  settingsAsPage?: boolean;
   roundNavigation?: {
     currentIndex: number;
     total: number;
@@ -126,6 +130,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   inputTextStats,
   uploadedImages,
   onRemoveImage,
+  onRetryImageOcr,
   topicText,
   setTopicText,
   topicImages,
@@ -142,6 +147,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   onApplySuggestion,
   currentRound,
   onModesChange,
+  settingsAsPage = false,
   roundNavigation,
 }) => {
   // 容器级断点：工作台可能运行在 workbench 窗口里（窗口远窄于视口），
@@ -150,6 +156,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   const { t } = useTranslation(['essay_grading']);
   const { ref: layoutRef, sizeClass } = useWbSysSize();
   const isSmallScreen = sizeClass === 'compact';
+  const useSettingsPage = settingsAsPage || !isSmallScreen;
 
   // 左右 / 上下分栏：与翻译工作台同一口径——非小屏默认左右，仅当主区
   // 实测窄于阈值时退回上下。此前要求容器 ≥880(wide) 才左右，
@@ -186,12 +193,12 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   // 移动端设置区展开时注册 Android 返回键（返回 = 收起内联设置区块）。
   // 桌面端设置是独立整页视图（标签页语义），不属于 overlay，不劫持返回键。
   useEffect(() => {
-    if (!isSmallScreen || !showPromptEditor) return;
+    if (useSettingsPage || !showPromptEditor) return;
     return registerBackHandler(() => {
       setShowPromptEditor(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [isSmallScreen, showPromptEditor, setShowPromptEditor]);
+  }, [useSettingsPage, showPromptEditor, setShowPromptEditor]);
 
   // ========== 共享面板（各断点复用同一份 props，状态源唯一：showPromptEditor） ==========
   const inputPanel = (
@@ -226,9 +233,10 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       textStats={inputTextStats}
       currentRound={currentRound}
       roundNavigation={roundNavigation}
-      onOpenSettings={() => setShowPromptEditor(!showPromptEditor)}
+      onOpenSettings={settingsAsPage ? undefined : () => setShowPromptEditor(!showPromptEditor)}
       uploadedImages={uploadedImages}
       onRemoveImage={onRemoveImage}
+      onRetryImageOcr={onRetryImageOcr}
       topicText={topicText}
       setTopicText={setTopicText}
       topicImages={topicImages}
@@ -286,12 +294,12 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       className={cn(
         'shrink-0 overflow-hidden bg-background',
         'transition-[height,visibility] duration-[var(--panel-open-dur,250ms)] ease-[var(--panel-ease,ease-out)] motion-reduce:transition-none',
-        showPromptEditor ? 'visible h-[min(60vh,420px)] border-b border-border/40' : 'invisible h-0',
+        showPromptEditor ? 'visible h-[min(60dvh,420px)] border-b border-border/40' : 'invisible h-0',
       )}
       aria-hidden={!showPromptEditor}
     >
       {/* 内层固定高度：高度过渡期间内容不回流 */}
-      <div className="h-[min(60vh,420px)]">{settingsPanel}</div>
+      <div className="h-[min(60dvh,420px)]">{settingsPanel}</div>
     </div>
   );
 
@@ -316,10 +324,10 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   // 非小屏：设置打开时整页视图替换主分栏（主分栏保持挂载）。
   return (
     <div ref={layoutRef} className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
-      {isSmallScreen && mobileSettingsSection}
-      {!isSmallScreen && desktopSettingsPage}
+      {!useSettingsPage && mobileSettingsSection}
+      {useSettingsPage && desktopSettingsPage}
 
-      <div className={cn('flex flex-1 min-h-0', !isSmallScreen && showPromptEditor && 'hidden')}>
+      <div className={cn('flex flex-1 min-h-0', useSettingsPage && showPromptEditor && 'hidden')}>
         <div ref={mainAreaRef} className="flex-1 min-w-0 h-full">
           {isSplit ? (
             <HorizontalResizable

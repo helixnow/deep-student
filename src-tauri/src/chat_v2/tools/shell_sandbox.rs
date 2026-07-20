@@ -110,6 +110,11 @@ pub trait SandboxBackend: Send + Sync {
 }
 
 pub struct PlatformSandboxBackend;
+/// Explicit backend used only by the backend-authorized
+/// `danger_full_access` Craft preset. It removes filesystem/network sandbox
+/// boundaries but intentionally retains process-group isolation, resource
+/// limits, bounded output, timeout/cancellation cleanup and env filtering.
+pub struct UnsandboxedShellBackend;
 
 impl Default for PlatformSandboxBackend {
     fn default() -> Self {
@@ -118,6 +123,12 @@ impl Default for PlatformSandboxBackend {
 }
 
 impl PlatformSandboxBackend {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl UnsandboxedShellBackend {
     pub fn new() -> Self {
         Self
     }
@@ -168,6 +179,94 @@ fn isolate_process_group(command: &mut Command) {
 
 #[cfg(not(unix))]
 fn isolate_process_group(_command: &mut Command) {}
+
+#[cfg(unix)]
+impl SandboxBackend for UnsandboxedShellBackend {
+    fn capability(&self) -> SandboxCapability {
+        match std::fs::metadata("/bin/sh") {
+            Ok(metadata) if metadata.is_file() => SandboxCapability::Available,
+            Ok(_) => SandboxCapability::Unavailable {
+                reason: "/bin/sh is not a regular file".to_string(),
+            },
+            Err(error) => SandboxCapability::Unavailable {
+                reason: format!("/bin/sh is unavailable: {error}"),
+            },
+        }
+    }
+
+    fn command(
+        &self,
+        shell_command: &str,
+        cwd: &Path,
+        _policy: &SandboxPolicy,
+    ) -> Result<Command, String> {
+        if let SandboxCapability::Unavailable { reason } = self.capability() {
+            return Err(format!(
+                "Danger Full Access shell backend is unavailable: {reason}"
+            ));
+        }
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", shell_command]);
+        configure_stdio(&mut command, cwd);
+        isolate_process_group(&mut command);
+        Ok(command)
+    }
+
+    fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport {
+        SandboxEffectReport {
+            backend: "danger_unsandboxed",
+            shell_kind: "posix_sh",
+            output_encoding: "utf-8",
+            enforced: false,
+            network_enforced: false,
+            process_group_isolated: true,
+            cpu_time_limit_seconds: Some(SANDBOX_CPU_TIME_LIMIT_SECS),
+            file_size_limit_bytes: Some(SANDBOX_FILE_SIZE_LIMIT_BYTES),
+            active_process_limit: Some(SANDBOX_PROCESS_LIMIT),
+            readable_roots: policy.readable_roots.len(),
+            writable_roots: policy.writable_roots.len(),
+            protected_read_roots: policy.protected_read_roots.len(),
+            protected_write_roots: policy.protected_write_roots.len(),
+        }
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+impl SandboxBackend for UnsandboxedShellBackend {
+    fn capability(&self) -> SandboxCapability {
+        SandboxCapability::Unavailable {
+            reason: "No danger-full-access shell backend is implemented for this platform"
+                .to_string(),
+        }
+    }
+
+    fn command(
+        &self,
+        _shell_command: &str,
+        _cwd: &Path,
+        _policy: &SandboxPolicy,
+    ) -> Result<Command, String> {
+        Err("Danger Full Access shell backend is unavailable".to_string())
+    }
+
+    fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport {
+        SandboxEffectReport {
+            backend: "danger_unavailable",
+            shell_kind: "unavailable",
+            output_encoding: "unknown",
+            enforced: false,
+            network_enforced: false,
+            process_group_isolated: false,
+            cpu_time_limit_seconds: None,
+            file_size_limit_bytes: None,
+            active_process_limit: None,
+            readable_roots: policy.readable_roots.len(),
+            writable_roots: policy.writable_roots.len(),
+            protected_read_roots: policy.protected_read_roots.len(),
+            protected_write_roots: policy.protected_write_roots.len(),
+        }
+    }
+}
 
 #[cfg(target_os = "macos")]
 mod macos {
@@ -1097,5 +1196,35 @@ mod tests {
 
         backend.cleanup_command_resources(&command);
         assert!(!profile_path.exists());
+    }
+
+    #[test]
+    fn danger_backend_is_explicit_unsandboxed_posix_shell_with_limits() {
+        let temp = tempfile::tempdir().unwrap();
+        let policy = SandboxPolicy {
+            readable_roots: vec![],
+            writable_roots: vec![],
+            protected_read_roots: vec![],
+            protected_write_roots: vec![],
+            allow_network: true,
+        };
+        let backend = UnsandboxedShellBackend::new();
+        let command = backend
+            .command("printf ok", temp.path(), &policy)
+            .expect("danger backend command");
+        assert_eq!(command.as_std().get_program(), OsStr::new("/bin/sh"));
+        assert_eq!(
+            command.as_std().get_args().collect::<Vec<_>>(),
+            vec![OsStr::new("-c"), OsStr::new("printf ok")]
+        );
+        let report = backend.effect_report(&policy);
+        assert_eq!(report.backend, "danger_unsandboxed");
+        assert!(!report.enforced);
+        assert!(!report.network_enforced);
+        assert!(report.process_group_isolated);
+        assert_eq!(
+            report.cpu_time_limit_seconds,
+            Some(SANDBOX_CPU_TIME_LIMIT_SECS)
+        );
     }
 }

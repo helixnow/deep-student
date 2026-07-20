@@ -31,6 +31,10 @@ const slashMenuScrollbarSource = readFileSync(
   resolve(srcRoot, 'components/crepe/hooks/useSlashMenuCustomScrollbar.ts'),
   'utf-8',
 );
+const codeMirrorScrollbarSource = readFileSync(
+  resolve(srcRoot, 'components/skills-management/CodeMirrorScrollOverlay.tsx'),
+  'utf-8',
+);
 const skillsListSource = readFileSync(
   resolve(srcRoot, 'components/skills-management/SkillsManagementPage.tsx'),
   'utf-8',
@@ -206,21 +210,27 @@ describe('unified scroll primitive contract', () => {
       /<CustomScrollArea[\s\S]{0,160}className="flex-1 min-h-0"[\s\S]{0,160}viewportRef=\{listViewportRef\}/,
     );
     expect(customScrollAreaSource).toContain('import { ScrollArea } from "./ui/scroll-area";');
-    expect(scrollAreaSource).toContain('<OverlayScrollbarsComponent');
+    expect(scrollAreaSource).toContain('useOverlayScrollbars');
+    expect(scrollAreaSource).toContain('elements: { viewport }');
+    expect(scrollAreaSource).toContain('ref={setOverlayViewportRef}');
     expect(scrollAreaSource).toContain('theme,');
     expect(scrollAreaSource).toContain('dragScroll: true');
     expect(scrollAreaSource).toContain('clickScroll: true');
-    expect(scrollAreaSource).toContain('flowDirectionStyles: () => ({})');
+    expect(scrollAreaSource).toContain('flowDirectionStyles: (viewport) =>');
+    expect(scrollAreaSource).toContain('direction === "rtl" ? { direction } : {}');
     expect(scrollAreaSource).toContain('refreshScrollTimelineHandleGeometry');
     expect(scrollAreaSource).toContain('effect.setKeyframes(effect.getKeyframes())');
-    expect(scrollAreaSource).toContain('scroll: (_instance, event) =>');
-    expect(nativeScrollbarSource).toContain('var(--scroll-area-track-top, 0)');
-    expect(nativeScrollbarSource).toContain('var(--scroll-area-track-bottom, 0)');
-    expect(responsiveUtilitiesSource).toContain("[data-overlayscrollbars='host']");
+    expect(nativeScrollbarSource).toContain('var(--scroll-area-track-top)');
+    expect(nativeScrollbarSource).toContain('var(--scroll-area-track-bottom)');
+    expect(responsiveUtilitiesSource).toContain("[data-overlayscrollbars~='host']");
     expect(responsiveUtilitiesSource).toContain('[data-overlayscrollbars-viewport]');
     expect(responsiveUtilitiesSource).not.toContain('.os-viewport');
     expect(slashMenuScrollbarSource).toContain('contentObserver.observe(menuGroups');
     expect(slashMenuScrollbarSource).toContain('Math.min(rawOffset, maxOffset)');
+    expect(slashMenuScrollbarSource).toContain('wheelTarget = Math.max(0, Math.min(wheelTarget, maxScrollTop))');
+    expect(codeMirrorScrollbarSource).toContain('let scrollFrame = 0');
+    expect(codeMirrorScrollbarSource).toContain('let metricsFrame = 0');
+    expect(codeMirrorScrollbarSource).toContain('if (isDraggingRef.current) return');
   });
 
   it('keeps iOS on the native momentum-scrolling fallback', () => {

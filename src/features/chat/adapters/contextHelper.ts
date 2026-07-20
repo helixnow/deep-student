@@ -1126,9 +1126,16 @@ export async function resolveVfsRefs(
     const MAX_DISPLAY_WARNINGS = 3;
     const displayWarnings = uniqueWarnings.slice(0, MAX_DISPLAY_WARNINGS);
     const remaining = uniqueWarnings.length - displayWarnings.length;
+    const formattedWarnings = new Intl.ListFormat(
+      i18n.resolvedLanguage ?? i18n.language,
+      { style: 'long', type: 'conjunction' }
+    ).format(displayWarnings);
     const message = remaining > 0
-      ? displayWarnings.join('；') + i18n.t('chatV2:context.more_warnings', { count: remaining })
-      : displayWarnings.join('；');
+      ? i18n.t('chatV2:context.warningsSummary', {
+          warnings: formattedWarnings,
+          count: remaining,
+        })
+      : formattedWarnings;
     showGlobalNotification('warning', message);
   }
 

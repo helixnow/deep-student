@@ -159,7 +159,7 @@ const FilterChip: React.FC<{ label: string; onRemove: () => void }> = ({ label, 
         size="icon"
         iconOnly
         onClick={onRemove}
-        className="!h-4 !w-4 !p-0 [@media(pointer:coarse)]:!h-7 [@media(pointer:coarse)]:!w-7 text-primary/70 hover:text-primary hover:bg-primary/10"
+        className="relative !h-4 !w-4 !p-0 [@media(pointer:coarse)]:!h-7 [@media(pointer:coarse)]:!w-7 [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-2 text-primary/70 hover:text-primary hover:bg-primary/10"
         aria-label={t('exam.library.removeFilter', { label })}
         title={t('exam.library.removeFilter', { label })}
       >
@@ -1440,7 +1440,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               variant="ghost"
               size="sm"
               onClick={clearFilters}
-              className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
             >
               {t('learningHub:exam.library.clearAllFilters')}
             </DsButton>

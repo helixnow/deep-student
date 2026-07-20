@@ -30,7 +30,25 @@ const ALL_NS = [
 ];
 
 const FALLBACK_NS = ALL_NS.filter((namespace) => namespace !== 'common');
-const LOADED_LOCALES: Set<SupportedLanguage> = new Set();
+
+type DeferredLocaleState = {
+  loadedNamespaces: Set<string>;
+  inFlight: Promise<void> | null;
+};
+
+const DEFERRED_LOCALE_STATES = new Map<SupportedLanguage, DeferredLocaleState>();
+
+function getDeferredLocaleState(lang: SupportedLanguage): DeferredLocaleState {
+  const existing = DEFERRED_LOCALE_STATES.get(lang);
+  if (existing) return existing;
+
+  const created: DeferredLocaleState = {
+    loadedNamespaces: new Set(),
+    inFlight: null,
+  };
+  DEFERRED_LOCALE_STATES.set(lang, created);
+  return created;
+}
 
 // 已同步加载的核心命名空间（延迟加载时跳过）
 const CORE_NS = new Set(['common', 'sidebar']);
@@ -79,6 +97,7 @@ if (!i18n.isInitialized) {
 
       react: {
         useSuspense: false,
+        bindI18nStore: 'added',
       },
 
       returnObjects: true,
@@ -91,12 +110,14 @@ if (!i18n.isInitialized) {
  * 使用 import.meta.glob 生成的懒加载器，并行请求 JSON chunk
  * addResourceBundle 会触发 react-i18next 的 'added' 事件，自动刷新使用对应 ns 的组件
  */
-async function loadDeferredNamespaces(lang: string) {
+async function loadDeferredNamespaces(lang: string): Promise<void> {
   const resolvedLang = normalizeSupportedLanguage(lang);
-  const prefix = `./locales/${resolvedLang}/`;
-  if (LOADED_LOCALES.has(resolvedLang)) return;
-  LOADED_LOCALES.add(resolvedLang);
+  const state = getDeferredLocaleState(resolvedLang);
 
+  // 同一语言只保留一个并发加载批次；批次结束后，失败的 namespace 可由下次请求重试。
+  if (state.inFlight) return state.inFlight;
+
+  const prefix = `./locales/${resolvedLang}/`;
   const tasks: Promise<void>[] = [];
 
   for (const [path, loader] of Object.entries(localeModules)) {
@@ -104,39 +125,61 @@ async function loadDeferredNamespaces(lang: string) {
     // ./locales/zh-CN/settings.json -> settings
     const ns = path.slice(prefix.length).replace(/\.json$/, '');
     if (CORE_NS.has(ns)) continue;
+    if (state.loadedNamespaces.has(ns)) continue;
 
     tasks.push(
-      (loader() as Promise<{ default?: Record<string, unknown> }>)
-        .then((mod) => {
-          i18n.addResourceBundle(resolvedLang, ns, mod.default ?? mod, true, true);
-        })
-        .catch(() => {
-          // 单个命名空间加载失败不影响其他（如 graph.json 可能不存在）
-        })
+      (async () => {
+        const mod = await (loader() as Promise<{ default?: Record<string, unknown> }>);
+        i18n.addResourceBundle(resolvedLang, ns, mod.default ?? mod, true, true);
+        // 仅在资源真正写入 store 后置为成功；失败项保持未加载，允许后续重试。
+        state.loadedNamespaces.add(ns);
+      })()
     );
   }
 
-  await Promise.allSettled(tasks);
+  const batch = Promise.allSettled(tasks).then(() => undefined);
+  state.inFlight = batch;
+
+  try {
+    await batch;
+  } finally {
+    if (state.inFlight === batch) {
+      state.inFlight = null;
+    }
+  }
 }
 
-// 立即开始加载延迟命名空间（不阻塞 i18n 导出和首帧渲染）
-(async () => {
-  // 优先加载当前语言，让 UI 文案尽快就位
-  const currentLang = normalizeSupportedLanguage(i18n.language);
-  const otherLang = currentLang === 'zh-CN' ? 'en-US' : 'zh-CN';
-
-  await loadDeferredNamespaces(currentLang);
-  // 后台加载另一种语言（供 fallback 和语言切换使用）
-  loadDeferredNamespaces(otherLang).catch(() => {});
-
-  i18n.on('languageChanged', (newLang) => {
-    const normalized = normalizeSupportedLanguage(newLang);
-    if (newLang !== normalized) {
-      i18n.changeLanguage(normalized);
-      return;
-    }
-    void loadDeferredNamespaces(normalized);
+function requestDeferredNamespaces(lang: string): void {
+  void loadDeferredNamespaces(lang).catch(() => {
+    // 批次级异常也不阻塞 UI；状态已在 finally 中释放，后续语言事件仍可重试。
   });
-})();
+}
+
+// 必须在首个异步加载开始前监听，避免用户在启动加载期间切换语言时漏掉事件。
+i18n.on('languageChanged', (newLang) => {
+  const normalized = normalizeSupportedLanguage(newLang);
+  requestDeferredNamespaces(normalized);
+
+  if (newLang !== normalized) {
+    void i18n.changeLanguage(normalized).catch(() => {});
+  }
+});
+
+// 立即开始加载延迟命名空间（不阻塞 i18n 导出和首帧渲染）
+void (async () => {
+  // 优先加载启动时的当前语言，让 UI 文案尽快就位。
+  const initialLang = normalizeSupportedLanguage(i18n.language);
+  await loadDeferredNamespaces(initialLang);
+
+  // 加载期间语言可能已切换；等待当前活动语言就绪，并复用 languageChanged 启动的批次。
+  const activeLang = normalizeSupportedLanguage(i18n.language);
+  await loadDeferredNamespaces(activeLang);
+
+  // 后台加载另一种语言（供 fallback 和后续语言切换使用）。
+  const otherLang = activeLang === 'zh-CN' ? 'en-US' : 'zh-CN';
+  requestDeferredNamespaces(otherLang);
+})().catch(() => {
+  // 保持首帧非阻塞；后续 languageChanged 仍会发起可重试加载。
+});
 
 export default i18n;

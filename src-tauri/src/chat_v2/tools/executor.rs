@@ -24,7 +24,10 @@ use tokio_util::sync::CancellationToken;
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::event_types;
 use crate::chat_v2::events::ChatV2EventEmitter;
-use crate::chat_v2::types::{block_status, McpToolSchema, MessageBlock, ToolCall, ToolResultInfo};
+use crate::chat_v2::types::{
+    block_status, AuthorityMode, McpToolSchema, MessageBlock, PermissionPreset, ToolCall,
+    ToolResultInfo,
+};
 use crate::database::Database;
 use crate::notes_manager::NotesManager;
 use crate::tools::ToolRegistry;
@@ -263,6 +266,12 @@ pub struct ExecutionContext {
     /// 🆕 取消令牌：用于工具执行取消机制
     /// 工具执行器可以检查此令牌以响应取消请求
     pub cancellation_token: Option<CancellationToken>,
+    /// Backend-only evidence for a single-use immutable shell-guard approval.
+    /// This is never populated from model-controlled tool arguments.
+    pub shell_guard_approved: bool,
+    /// Authority/preset admitted by tool_loop immediately before executor
+    /// dispatch. Local shell compares these with a fresh metadata read.
+    pub shell_authority_admission: Option<(AuthorityMode, PermissionPreset)>,
     /// 🆕 RAG Top-K 设置（从 UI chatParams 传递）
     pub rag_top_k: Option<u32>,
     /// 🆕 RAG 启用重排序设置（从 UI chatParams 传递）
@@ -314,6 +323,8 @@ impl ExecutionContext {
             skill_package_roots: None,
             execution_allowed_tools: None,
             cancellation_token: None,
+            shell_guard_approved: false,
+            shell_authority_admission: None,
             rag_top_k: None,
             rag_enable_reranking: None,
             pdf_processing_service: None,
@@ -351,6 +362,20 @@ impl ExecutionContext {
         self
     }
 
+    pub fn with_shell_guard_approved(mut self, approved: bool) -> Self {
+        self.shell_guard_approved = approved;
+        self
+    }
+
+    pub fn with_shell_authority_admission(
+        mut self,
+        authority_mode: AuthorityMode,
+        permission_preset: PermissionPreset,
+    ) -> Self {
+        self.shell_authority_admission = Some((authority_mode, permission_preset));
+        self
+    }
+
     /// 🆕 派生一个替换了取消令牌的上下文副本（其余字段全部共享/克隆）。
     ///
     /// 供 `ToolExecutorRegistry::execute` 为每次执行绑定 scoped child token：
@@ -385,6 +410,8 @@ impl ExecutionContext {
             skill_package_roots: self.skill_package_roots.clone(),
             execution_allowed_tools: self.execution_allowed_tools.clone(),
             cancellation_token: Some(token),
+            shell_guard_approved: self.shell_guard_approved,
+            shell_authority_admission: self.shell_authority_admission,
             rag_top_k: self.rag_top_k,
             rag_enable_reranking: self.rag_enable_reranking,
             pdf_processing_service: self.pdf_processing_service.clone(),
@@ -874,6 +901,14 @@ pub trait ToolExecutor: Send + Sync {
     /// existing executors retain their name-based behavior by default.
     fn sensitivity_level_for_call(&self, tool_name: &str, _arguments: &Value) -> ToolSensitivity {
         self.sensitivity_level(tool_name)
+    }
+
+    /// Whether this executor can change sensitivity based on call arguments.
+    ///
+    /// Risk-description consumers use this metadata to distinguish a stable
+    /// name-level classification from one that must be resolved for each call.
+    fn has_dynamic_sensitivity(&self, _tool_name: &str) -> bool {
+        false
     }
 
     /// 获取工具并发等级（2026-07 并行工具调用改造）

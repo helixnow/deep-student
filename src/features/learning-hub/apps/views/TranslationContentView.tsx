@@ -255,6 +255,8 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
   node,
   onClose,
   isActive,
+  externalSettingsNavigation,
+  externalSettingsOpen,
 }) => {
   const { t } = useTranslation(['translation', 'common', 'learningHub']);
 
@@ -563,7 +565,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background">
       {/* 保存失败内联错误条：保留 dirty 的同时提供就地重试 */}
-      {saveState.status === 'error' && (
+      {!externalSettingsOpen && saveState.status === 'error' && (
         <div
           className="flex items-center gap-2 px-3 py-2 border-b border-destructive/20 bg-destructive/10 ui-slide-in-top"
           role="alert"
@@ -601,7 +603,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
       )}
 
       {/* 新建空翻译引导条 */}
-      {showEmptyHint && (
+      {!externalSettingsOpen && showEmptyHint && (
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/50 bg-muted/20 ui-slide-in-top">
           <Info size={14} className="text-info shrink-0" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
@@ -629,13 +631,15 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
               key={node.id}
               onBack={onClose}
               isActive={isActive}
+              externalSettingsNavigation={externalSettingsNavigation}
+              externalSettingsOpen={externalSettingsOpen}
               dstuMode={dstuMode}
             />
           </Suspense>
         </WorkbenchErrorBoundary>
 
         {/* 保存状态内联徽标（保存中 / 已保存），纯状态展示不拦截交互 */}
-        {(saveState.status === 'saving' || saveState.status === 'saved') && (
+        {!externalSettingsOpen && (saveState.status === 'saving' || saveState.status === 'saved') && (
           <div
             className="pointer-events-none absolute bottom-4 right-4 z-10"
             role="status"

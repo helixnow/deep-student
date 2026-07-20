@@ -51,6 +51,8 @@ interface TranslationMainProps {
   setIsAutoTranslate: (val: boolean) => void;
   isSyncScroll: boolean;
   setIsSyncScroll: (val: boolean) => void;
+  /** OS 宿主提供外部设置标签时，设置替换完整主区且隐藏内部齿轮入口 */
+  settingsAsPage?: boolean;
 
   // Actions
   onSwapLanguages: () => void;
@@ -150,6 +152,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   setIsAutoTranslate,
   isSyncScroll,
   setIsSyncScroll,
+  settingsAsPage = false,
   onSwapLanguages,
   onFilesDropped,
   onSavePrompt,
@@ -167,6 +170,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
 }) => {
   const { t } = useTranslation(['translation', 'common']);
   const { isSmallScreen } = useBreakpoint();
+  const useSettingsPage = settingsAsPage || !isSmallScreen;
 
   const sourceCharCount = sourceText.length;
   const targetCharCount = translatedText.length;
@@ -206,12 +210,12 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
 
   // ========== 移动端：设置区展开时注册 Android 返回键（返回 = 收起设置） ==========
   useEffect(() => {
-    if (!isSmallScreen || !showPromptEditor) return;
+    if (useSettingsPage || !showPromptEditor) return;
     return registerBackHandler(() => {
       setShowPromptEditor(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [isSmallScreen, showPromptEditor, setShowPromptEditor]);
+  }, [useSettingsPage, showPromptEditor, setShowPromptEditor]);
 
   // ========== 同步滚动 ==========
   // 通过根容器捕获阶段监听 scroll，按 [data-translation-scroll="source"|"target"]
@@ -395,26 +399,28 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           </Label>
         </div>
 
-        <div className="hidden lg:block w-px h-4 bg-border" />
+        {!settingsAsPage && <div className="hidden lg:block w-px h-4 bg-border" />}
 
-        <CommonTooltip content={t('translation:prompt_editor.title')}>
-          <DsButton
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowPromptEditor(!showPromptEditor)}
-            aria-label={t('translation:prompt_editor.title')}
-            aria-expanded={showPromptEditor}
-            className={cn(
-              COARSE_HIT,
-              'h-8 w-8 shrink-0',
-              showPromptEditor
-                ? 'text-primary bg-primary/10'
-                : 'text-muted-foreground/60 hover:text-foreground'
-            )}
-          >
-            <GearSix size={16} />
-          </DsButton>
-        </CommonTooltip>
+        {!settingsAsPage && (
+          <CommonTooltip content={t('translation:prompt_editor.title')}>
+            <DsButton
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowPromptEditor(!showPromptEditor)}
+              aria-label={t('translation:prompt_editor.title')}
+              aria-expanded={showPromptEditor}
+              className={cn(
+                COARSE_HIT,
+                'h-8 w-8 shrink-0',
+                showPromptEditor
+                  ? 'text-primary bg-primary/10'
+                  : 'text-muted-foreground/60 hover:text-foreground'
+              )}
+            >
+              <GearSix size={16} />
+            </DsButton>
+          </CommonTooltip>
+        )}
       </div>
     </div>
   );
@@ -469,11 +475,11 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
       className={cn(
         'shrink-0 overflow-hidden bg-background',
         'transition-[height,visibility] duration-[var(--panel-open-dur)] ease-[var(--panel-ease)] motion-reduce:transition-none',
-        showPromptEditor ? 'visible h-[min(60vh,420px)] border-b' : 'invisible h-0'
+        showPromptEditor ? 'visible h-[min(60dvh,420px)] border-b' : 'invisible h-0'
       )}
       aria-hidden={!showPromptEditor}
     >
-      <div className="h-[min(60vh,420px)]">
+      <div className="h-[min(60dvh,420px)]">
         <PromptPanel
           customPrompt={customPrompt}
           setCustomPrompt={setCustomPrompt}
@@ -532,35 +538,40 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
 
   return (
     <div ref={rootRef} className="flex h-full flex-col overflow-hidden bg-background">
-      {toolbar}
+      {/* OS/桌面设置标签：替换整个工作台内容，正常工具栏与双栏保持挂载但不可见 */}
+      {useSettingsPage && desktopSettingsPage}
 
-      {/* 移动端：设置区内联展开在工具栏下方，推挤内容而非遮挡 */}
-      {isSmallScreen && mobileSettingsSection}
+      <div className={cn(
+        'flex flex-1 min-h-0 flex-col',
+        useSettingsPage && showPromptEditor && 'hidden',
+      )}>
+        {toolbar}
 
-      {/* 桌面端：设置打开时整页视图替换双栏区（双栏保持挂载） */}
-      {!isSmallScreen && desktopSettingsPage}
+        {/* 移动端独立使用时，设置区仍以内联方式推挤内容 */}
+        {!useSettingsPage && mobileSettingsSection}
 
-      <div className={cn('flex-1 min-h-0 flex', !isSmallScreen && showPromptEditor && 'hidden')}>
-        <div ref={mainAreaRef} className="flex-1 min-w-0 h-full">
-          {effectiveStacked ? (
-            <VerticalResizable
-              initial={0.4}
-              minTop={0.2}
-              minBottom={0.3}
-              className="bg-background"
-              top={sourcePanelNode}
-              bottom={targetPanelNode}
-            />
-          ) : (
-            <HorizontalResizable
-              initial={0.5}
-              minLeft={0.3}
-              minRight={0.3}
-              className="bg-background"
-              left={sourcePanelNode}
-              right={targetPanelNode}
-            />
-          )}
+        <div className="flex-1 min-h-0 flex">
+          <div ref={mainAreaRef} className="flex-1 min-w-0 h-full">
+            {effectiveStacked ? (
+              <VerticalResizable
+                initial={0.4}
+                minTop={0.2}
+                minBottom={0.3}
+                className="bg-background"
+                top={sourcePanelNode}
+                bottom={targetPanelNode}
+              />
+            ) : (
+              <HorizontalResizable
+                initial={0.5}
+                minLeft={0.3}
+                minRight={0.3}
+                className="bg-background"
+                left={sourcePanelNode}
+                right={targetPanelNode}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

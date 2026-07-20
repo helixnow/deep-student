@@ -300,7 +300,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
         <CommonTooltip content={option.reason} delay={150} maxWidth={280}>
           <button
             type="button"
-            aria-label={t('askUser.optionReasonLabel', { defaultValue: 'Why this option' })}
+            aria-label={t('askUser.optionReasonLabel')}
             className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--text-primary)]"
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
@@ -524,7 +524,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
               onClick={handleCustomSubmit}
               disabled={isResponding || !customInput.trim()}
               iconOnly
-              aria-label="send"
+              aria-label={t('askUser.send')}
             >
               <PaperPlaneRight size={14} />
             </DsButton>

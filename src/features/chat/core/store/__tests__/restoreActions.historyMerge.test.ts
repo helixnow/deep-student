@@ -33,7 +33,71 @@ function response(
   };
 }
 
+function restoreLegacyToolName(
+  toolName: string,
+  runtime?: NonNullable<NonNullable<LoadSessionResponseType['messages'][number]['_meta']>['skillRuntimeAfter']>,
+): string | undefined {
+  const restoredMessage = backendMessage('m1', 100, ['b1']);
+  if (runtime) {
+    restoredMessage._meta = { skillRuntimeAfter: runtime };
+  }
+  let state = {
+    sessionId: 'sess_test',
+    isDataLoaded: true,
+    messageMap: new Map<string, Message>(),
+    messageOrder: [],
+    blocks: new Map(),
+  } as unknown as ChatStoreState;
+  const set: SetState = (partial) => {
+    const patch = typeof partial === 'function' ? partial(state) : partial;
+    state = { ...state, ...patch } as ChatStoreState;
+  };
+  const actions = createRestoreActions(set, () => state as ReturnType<GetState>);
+
+  actions.prependHistoryFromBackend(response(
+    [restoredMessage],
+    [{
+      id: 'b1',
+      messageId: 'm1',
+      type: 'mcp_tool',
+      status: 'success',
+      toolName,
+    }],
+  ));
+
+  return state.blocks.get('b1')?.toolName;
+}
+
 describe('mergeHistoryMessageOrder', () => {
+  it('remaps legacy mcp_ builtins only with trusted local replay evidence', () => {
+    expect(restoreLegacyToolName('mcp_web_search', {
+      mcpToolSchemas: [{ name: 'web_search' }],
+    })).toBe('builtin-web_search');
+
+    expect(restoreLegacyToolName('mcp_web_search')).toBe('mcp_web_search');
+  });
+
+  it('does not remap a real external MCP tool that collides with a builtin', () => {
+    expect(restoreLegacyToolName('mcp_web_search', {
+      mcpToolSchemas: [{ name: 'web_search', serverId: 'external-search' }],
+    })).toBe('mcp_web_search');
+
+    expect(restoreLegacyToolName('mcp_web_search', {
+      mcpToolSchemas: [
+        { name: 'web_search' },
+        { name: 'web_search', serverId: 'external-search' },
+      ],
+    })).toBe('mcp_web_search');
+  });
+
+  it('accepts a known builtin skill snapshot as legacy provenance', () => {
+    expect(restoreLegacyToolName('mcp_web_search', {
+      skillEmbeddedTools: {
+        'knowledge-retrieval': [{ name: 'mcp_web_search' }],
+      },
+    })).toBe('builtin-web_search');
+  });
+
   it('uses timestamps inside backend anchors instead of prepending every missing message', () => {
     const current = new Map([
       ['local_early', message('local_early', 50)],

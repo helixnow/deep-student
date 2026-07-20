@@ -12,6 +12,7 @@ import type {
   PanelStates,
   ChatStore,
   BlockingInteraction,
+  PermissionPreset,
 } from '../types/store';
 import { createDefaultChatParams, createDefaultPanelStates } from '../types/common';
 import type { ContextRef } from '../../context/types';
@@ -156,7 +157,7 @@ export interface ChatStoreState extends StoreCallbacks {
 
   /** Ask / Plan / Craft */
   authorityMode: 'ask' | 'plan' | 'craft';
-  permissionPreset: 'cautious' | 'relaxed';
+  permissionPreset: PermissionPreset;
 
   /** Ask write-blocked CTA */
   authorityAskBlockedHint: boolean;
@@ -292,7 +293,7 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     groupId: null,
     sessionMetadata: null,
     authorityMode: 'craft',
-    permissionPreset: 'cautious',
+    permissionPreset: 'relaxed',
     authorityAskBlockedHint: false,
     sessionStatus: 'idle',
     isDataLoaded: false, // 🔧 性能优化：新会话尚未加载数据

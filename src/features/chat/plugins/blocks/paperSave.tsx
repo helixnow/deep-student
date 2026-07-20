@@ -390,10 +390,20 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
             </span>
             <span className="text-xs text-muted-foreground">
               {isComplete
-                ? `${t('blocks.paperSave.summaryDone', { done: doneCount, total: totalCount, count: totalCount })}${errorCount > 0 ? t('blocks.paperSave.summaryFailedSuffix', { count: errorCount }) : ''}`
+                ? errorCount > 0
+                  ? t('blocks.paperSave.summaryWithFailures', {
+                      done: doneCount,
+                      total: totalCount,
+                      count: errorCount,
+                    })
+                  : t('blocks.paperSave.summaryDone', { done: doneCount, total: totalCount, count: totalCount })
                 : isError
                   ? (totalCount > 0
-                    ? `${t('blocks.paperSave.summaryDone', { done: doneCount, total: totalCount, count: totalCount })}${t('blocks.paperSave.summaryFailedSuffix', { count: errorCount })}`
+                    ? t('blocks.paperSave.summaryWithFailures', {
+                        done: doneCount,
+                        total: totalCount,
+                        count: errorCount,
+                      })
                     : t('blocks.paperSave.downloadFailed'))
                   : t('blocks.paperSave.downloading', { done: doneCount, total: totalCount })}
             </span>

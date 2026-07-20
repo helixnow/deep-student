@@ -5,6 +5,7 @@
 
 import React, { useEffect, useMemo } from 'react';
 import DOMPurify from 'dompurify';
+import { cn } from '@/lib/utils';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
 import { containsLatex, renderLatexToHtml } from '@/features/mindmap/utils/renderLatex';
 
@@ -37,7 +38,16 @@ export const LatexText: React.FC<LatexTextProps> = ({ content, text, className }
     return <span className={className}>{src}</span>;
   }
 
-  return <div className={className} dangerouslySetInnerHTML={{ __html: html }} />;
+  // 含 display 公式时提供横向滚动，避免长公式在窄屏撑破布局
+  // （只在组件内解决，不依赖全局样式；overflow-x:auto 同时兼容滑动面板手势的让位判断）
+  const hasDisplayMath = html.includes('katex-display');
+
+  return (
+    <div
+      className={cn(className, hasDisplayMath && 'max-w-full overflow-x-auto')}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 };
 
 export default LatexText;

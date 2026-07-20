@@ -43,9 +43,9 @@ export interface VideoPlayerProps {
   onError: () => void;
 }
 
-/** 视频悬浮控制条上的图标按钮统一样式（白色系 overlay） */
+/** 视频悬浮控制条上的图标按钮统一样式（白色系 overlay；触屏 ≥44px 触控目标） */
 const overlayButtonClass =
-  'h-8 w-8 text-white hover:bg-[var(--overlay-control-hover)] hover:text-white';
+  'h-8 w-8 text-white hover:bg-[var(--overlay-control-hover)] hover:text-white [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11';
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   src,
@@ -123,6 +123,31 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       setShowControls(false);
     }
   }, [isPlaying, rateMenuOpen, clearHideTimer]);
+
+  // 触屏轻触语义与鼠标点击不同：控制条隐藏时首次轻触只唤出控制条，
+  // 可见时轻触才切换播放；双击全屏仅保留给鼠标（触屏双击易误触）。
+  // 可见性在 pointerdown 时快照：轻触在 click 前会派发合成 mousemove
+  // 把控制条提前唤出，click 时读实时 state 会误判为"已可见"。
+  const lastPointerTypeRef = useRef<string>('mouse');
+  const controlsVisibleAtPointerDownRef = useRef(true);
+
+  const handleVideoPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLVideoElement>) => {
+      lastPointerTypeRef.current = event.pointerType || 'mouse';
+      controlsVisibleAtPointerDownRef.current = showControls || !isPlaying;
+    },
+    [showControls, isPlaying],
+  );
+
+  const handleVideoClick = useCallback(() => {
+    if (lastPointerTypeRef.current !== 'mouse' && !controlsVisibleAtPointerDownRef.current) {
+      // 仅唤出控制条（并重新调度自动隐藏），不切换播放
+      scheduleHideControls();
+      return;
+    }
+    // 播放/暂停状态变化后的控制条显隐由 isPlaying effect 统一调度
+    togglePlay();
+  }, [scheduleHideControls, togglePlay]);
 
   const toggleFullscreen = useCallback(async () => {
     const container = containerRef.current;
@@ -218,8 +243,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         src={src}
         preload="metadata"
         className="absolute inset-0 h-full w-full object-contain"
-        onClick={togglePlay}
-        onDoubleClick={() => void toggleFullscreen()}
+        onPointerDown={handleVideoPointerDown}
+        onClick={handleVideoClick}
+        onDoubleClick={() => {
+          // 触屏禁用双击全屏（与单击唤出控制条/播放切换冲突且易误触）
+          if (lastPointerTypeRef.current !== 'mouse') return;
+          void toggleFullscreen();
+        }}
       />
 
       {/* 顶部信息条：文件名 +（可选）兼容性提示 */}
@@ -257,10 +287,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </button>
       )}
 
-      {/* 底部悬浮控制条 */}
+      {/* 底部悬浮控制条（全屏/刘海屏下避让底部手势安全区） */}
       <div
         className={cn(
-          'absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 via-black/35 to-transparent px-4 pb-3 pt-10',
+          'absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 via-black/35 to-transparent px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-10',
           'transition-opacity duration-150 motion-reduce:transition-none',
           controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
@@ -355,7 +385,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             >
               <VolumeIcon size={16} aria-hidden="true" />
             </DsButton>
-            <div className="w-0 overflow-hidden transition-all duration-150 group-hover/volume:w-20 motion-reduce:transition-none">
+            {/* 触屏无 hover 无法展开滑杆，直接隐藏（对齐 AudioPlayer）；
+                保留静音钮，音量走系统控制 */}
+            <div className="w-0 overflow-hidden transition-all duration-150 group-hover/volume:w-20 motion-reduce:transition-none [@media(pointer:coarse)]:hidden">
               <Slider
                 value={[muted ? 0 : volume]}
                 max={1}

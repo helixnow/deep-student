@@ -284,16 +284,16 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
   // ========== 响应式环境检测（<640 内联子屏 / coarse 触控） ==========
   // 断点设计意图：<640 为「内联子屏」形态；640-767 保留压缩桌面形态
-  // （App shell 移动切换点是 768）。查询用 not (min-width:640px) 与
-  // useMobileScreen 同源，避免小数视口宽度（如 639.5px）下与 CSS 断点判定不一致。
+  // （App shell 移动切换点是 768）。查询用 (max-width: 639.98px)，与本文件
+  // CSS 断点完全同式（此前的 not (min-width) 为 MQ4 语法，旧 WebView 不支持）。
   const [isSmallViewport, setIsSmallViewport] = useState<boolean>(() =>
-    typeof window !== 'undefined' && window.matchMedia('not (min-width: 640px)').matches
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 639.98px)').matches
   );
   const [isCoarsePointer, setIsCoarsePointer] = useState<boolean>(() =>
     typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
   );
   useEffect(() => {
-    const smallMq = window.matchMedia('not (min-width: 640px)');
+    const smallMq = window.matchMedia('(max-width: 639.98px)');
     const coarseMq = window.matchMedia('(pointer: coarse)');
     const onSmallChange = () => setIsSmallViewport(smallMq.matches);
     const onCoarseChange = () => setIsCoarsePointer(coarseMq.matches);
@@ -367,6 +367,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const [pageInputValue, setPageInputValue] = useState<string>('');
   const [containerWidth, setContainerWidth] = useState<number>(600);
   const [containerHeight, setContainerHeight] = useState<number>(800);
+  // 内容视口完整宽度（未扣 padding），供移动端缩略图网格列宽计算
+  const [viewportFullWidth, setViewportFullWidth] = useState<number>(648);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   // 加载进度（0-100；无 total 信息时为 null，仅显示 spinner）
   const [loadProgress, setLoadProgress] = useState<number | null>(null);
@@ -413,6 +415,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const [highlightMenuPos, setHighlightMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [pendingHighlight, setPendingHighlight] = useState<{ text: string; pageIndex: number; rects: { x: number; y: number; width: number; height: number }[] } | null>(null);
   const [showHighlightList, setShowHighlightList] = useState<boolean>(false);
+  // 触屏点击页面内高亮块后弹出的轻量操作条（title tooltip 在触屏不可达）
+  const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
   
   // 书签状态
   const [bookmarks, setBookmarks] = useState<Bookmark[]>(externalBookmarks ?? []);
@@ -456,14 +460,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   }, []);
 
   // 工具栏响应式：ResizeObserver 检测宽度，窄时切换紧凑模式
-  // ★ 2026-07-08（移动端审计 D-3）：触屏设备按钮放大到 40px（pointer: coarse CSS），
-  // 完整工具栏约需 700px，520 阈值会在 520–700px 区间溢出，触屏取更高阈值。
+  // ★ 2026-07-08（移动端审计 D-3）：触屏设备按钮放大到 44px（pointer: coarse CSS），
+  // 完整工具栏（左中右全量按钮）最宽约 800px，触屏取更高阈值避免溢出。
+  // 阈值响应 isCoarsePointer state：外接鼠标/触屏热插拔时重新求值。
   useEffect(() => {
     const el = toolbarRef.current;
     if (!el) return;
-    const isCoarsePointer =
-      typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
-    const threshold = isCoarsePointer ? 700 : 520;
+    const threshold = isCoarsePointer ? 800 : 520;
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const w = entry.contentRect.width;
@@ -472,7 +475,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [isCoarsePointer]);
 
   // 点击外部关闭"更多"菜单
   useEffect(() => {
@@ -577,17 +580,25 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   }, [onRegisterCommands, flashAgentFocusPage]);
 
   // 监听容器尺寸
+  // ★ 移动端审计：不再写死 -48/-32（视口 padding 在 ≤640 收窄为 8px，
+  // 固定扣减在 360px 屏浪费 32px 正文宽度），改读 computed padding。
   useEffect(() => {
     const container = pageContainerRef.current;
     if (!container) return;
 
     const updateSize = () => {
-      const width = container.clientWidth - 48;
+      const styles = window.getComputedStyle(container);
+      const padX =
+        (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0);
+      const padY =
+        (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
+      const fullWidth = container.clientWidth;
+      setViewportFullWidth((prev) => (fullWidth > 0 ? fullWidth : prev));
+      const width = fullWidth - padX;
       if (width > 0) {
         setContainerWidth(width);
       }
-      // 视口 padding 上下各 16px；fit page 模式据此计算可用高度
-      const height = container.clientHeight - 32;
+      const height = container.clientHeight - padY;
       if (height > 0) {
         setContainerHeight(height);
       }
@@ -1074,12 +1085,16 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 仅在有浮层打开时注册；桌面端不触发 handleAndroidBack，无行为变化。
   useEffect(() => {
     const hasOverlay =
-      showHighlightMenu || showMoreMenu || showZoomMenu ||
+      showHighlightMenu || activeHighlightId !== null || showMoreMenu || showZoomMenu ||
       showBookmarkList || showHighlightList || sidebarMode !== 'none' || showSearch;
     if (!hasOverlay) return;
     return registerBackHandler(() => {
       if (showHighlightMenu) {
         setShowHighlightMenu(false);
+        return true;
+      }
+      if (activeHighlightId !== null) {
+        setActiveHighlightId(null);
         return true;
       }
       if (showMoreMenu) {
@@ -1110,6 +1125,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     }, BACK_PRIORITY.overlay);
   }, [
     showHighlightMenu,
+    activeHighlightId,
     showMoreMenu,
     showZoomMenu,
     showBookmarkList,
@@ -1235,7 +1251,31 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 删除高亮
   const removeHighlight = useCallback((id: string) => {
     setHighlights(prev => prev.filter(h => h.id !== id));
+    setActiveHighlightId(prev => (prev === id ? null : prev));
   }, []);
+
+  const activeHighlight = useMemo(
+    () => (activeHighlightId ? highlights.find(h => h.id === activeHighlightId) ?? null : null),
+    [activeHighlightId, highlights]
+  );
+
+  // 点按其他区域关闭高亮操作条（操作条自身与高亮块内不关闭）
+  useEffect(() => {
+    if (!activeHighlightId) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (target?.closest('.ds-pdf__highlight-bar, .ds-pdf__highlight-rect')) return;
+      setActiveHighlightId(null);
+    };
+    const timer = window.setTimeout(
+      () => document.addEventListener('pointerdown', handlePointerDown),
+      100
+    );
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [activeHighlightId]);
 
   // ========== 书签操作函数 ==========
   
@@ -2431,10 +2471,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
   // ≤640：缩略图改为全宽 3 列网格（内联子屏），单元宽度按 viewer 宽度均分
   const thumbnailColumns = isSmallViewport ? 3 : 1;
-  // containerWidth 为内容视口宽 - 48；内联子屏占满 viewer，
+  // 内联子屏占满 viewer（≈ 内容视口完整宽度），
   // 减去面板左右 padding(16×2) 与列间距(8×2) 后三等分
   const effectiveThumbnailWidth = isSmallViewport
-    ? Math.max(72, Math.floor((containerWidth + 48 - 32 - 16) / 3))
+    ? Math.max(72, Math.floor((viewportFullWidth - 32 - 16) / 3))
     : thumbnailWidth;
   const thumbnailRowHeight = Math.ceil(effectiveThumbnailWidth * 1.414) + 40; // 加上页码高度
   const thumbnailRowCount = sidebarMode === 'thumbnails'
@@ -2576,6 +2616,11 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                       }
                 }
                 title={hl.text}
+                // 触屏 hover tooltip 不可达：点按高亮块弹出底部轻量操作条
+                onClick={isCoarsePointer ? (e) => {
+                  e.stopPropagation();
+                  setActiveHighlightId(prev => (prev === hl.id ? null : hl.id));
+                } : undefined}
               />
             ))}
           </div>
@@ -2613,6 +2658,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     getPageHighlights,
     handlePageLoadSuccess,
     handleTogglePageSelect,
+    isCoarsePointer,
     maxSelections,
     pageWidth,
     renderDpr,
@@ -2691,10 +2737,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           />
           {searchResults.length > 0 && (
             <span className="ds-search-info">
-              {t('pdf:toolbar.result_count', {
-                current: currentSearchIndex + 1,
-                total: searchResults.length
-              })}
+              {isSmallViewport
+                ? `${currentSearchIndex + 1}/${searchResults.length}`
+                : t('pdf:toolbar.result_count', {
+                    current: currentSearchIndex + 1,
+                    total: searchResults.length
+                  })}
             </span>
           )}
           {searchQuery && searchResults.length === 0 && !isSearching && (
@@ -2749,6 +2797,39 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               setShowHighlightMenu(false);
               window.getSelection()?.removeAllRanges();
             }}
+            aria-label={t('pdf:a11y.close')}
+          >
+            <X size={16} />
+          </DsButton>
+        </div>
+      )}
+
+      {/* 触屏点按页面内高亮块后的轻量操作条（复用底部选色条样式） */}
+      {activeHighlight && !showHighlightMenu && (
+        <div className="ds-pdf__highlight-bar ui-rise-in" role="toolbar" aria-label={t('pdf:toolbar.highlights')}>
+          <span
+            className="ds-highlight-color"
+            style={{ backgroundColor: activeHighlight.color, cursor: 'default' }}
+            aria-hidden="true"
+          />
+          <span className="ds-pdf__highlight-bar-text">{activeHighlight.text}</span>
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            className="ds-btn ds-btn-sm"
+            onClick={() => removeHighlight(activeHighlight.id)}
+            title={t('pdf:toolbar.delete_highlight')}
+            aria-label={t('pdf:a11y.delete')}
+          >
+            <Trash size={16} />
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            className="ds-btn ds-btn-sm"
+            onClick={() => setActiveHighlightId(null)}
             aria-label={t('pdf:a11y.close')}
           >
             <X size={16} />
@@ -3157,7 +3238,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               value={pageInputValue || currentPage}
               onChange={(e) => setPageInputValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handlePageInputSubmit()}
-              onBlur={handlePageInputSubmit}
+              // 失焦不提交：未经 Enter 确认的输入还原显示为当前页，
+              // 避免误触（点击空白处收起键盘）触发意外跳页
+              onBlur={() => setPageInputValue('')}
               onFocus={(e) => {
                 setPageInputValue(String(currentPage));
                 const input = e.target as HTMLInputElement;

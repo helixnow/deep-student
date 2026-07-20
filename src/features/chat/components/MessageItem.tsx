@@ -151,7 +151,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   // 📊 细粒度打点：MessageItem render
   sessionSwitchPerf.mark('mi_render', { messageId });
   
-  const { t } = useTranslation('chatV2');
+  const { t, i18n } = useTranslation('chatV2');
+  const locale = i18n.resolvedLanguage ?? i18n.language;
 
   // 🆕 开发者选项：是否显示请求体 + 过滤级别
   const showRawRequest = useDevShowRawRequest();
@@ -420,8 +421,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     if (headingMatch) return headingMatch[1].trim().slice(0, 100);
     const firstLine = content.split('\n')[0].replace(/<\/?[^>]+>/g, '').trim();
     if (firstLine.length > 0) return firstLine.slice(0, 60) + (firstLine.length > 60 ? '...' : '');
-    return `Chat Note ${new Date().toLocaleDateString()}`;
-  }, []);
+    return t('messageItem.actions.noteDefaultTitle', {
+      date: new Date().toLocaleDateString(locale),
+    });
+  }, [locale, t]);
 
   // 复制消息内容
   // 默认只复制 content 块（向后兼容）；当 content 为空时，回退包含 thinking / tool 结果
@@ -1249,7 +1252,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     {message.timestamp && (
                       <span
                         className="text-2xs leading-none text-muted-foreground/45 flex items-center whitespace-nowrap"
-                        title={new Date(message.timestamp).toLocaleString()}
+                        title={new Date(message.timestamp).toLocaleString(locale)}
                       >
                         {formatMessageTime(message.timestamp)}
                       </span>
@@ -1349,7 +1352,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     {message.timestamp && (
                       <span
                         className="text-[11px] text-muted-foreground/50 flex items-center ml-1 whitespace-nowrap shrink-0"
-                        title={new Date(message.timestamp).toLocaleString()}
+                        title={new Date(message.timestamp).toLocaleString(locale)}
                       >
                         {formatMessageTime(message.timestamp)}
                       </span>
@@ -1384,7 +1387,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     {isUser && message.timestamp && (
                       <span
                         className="text-2xs leading-none text-muted-foreground/45 flex items-center"
-                        title={new Date(message.timestamp).toLocaleString()}
+                        title={new Date(message.timestamp).toLocaleString(locale)}
                       >
                         {formatMessageTime(message.timestamp)}
                       </span>

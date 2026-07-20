@@ -40,7 +40,10 @@ import {
 import { TodoListBlock } from './todoList';
 import { PaperSaveBlock } from './paperSave';
 import type { Block } from '../../core/types/block';
-import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
+import {
+  getExternalToolProviderName,
+  getReadableToolName,
+} from '@/features/chat/utils/toolDisplayName';
 import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { TextShimmer } from '../../components/ui/TextShimmer';
 import { PulseDot } from '@/components/ui/PulseDot';
@@ -74,6 +77,7 @@ interface McpToolBlock {
 
 interface ToolHeaderProps {
   name: string;
+  toolInput?: Record<string, unknown>;
   status: string;
   duration?: number;
   isStreaming?: boolean;
@@ -82,6 +86,7 @@ interface ToolHeaderProps {
 
 const ToolHeader: React.FC<ToolHeaderProps> = ({
   name,
+  toolInput,
   status,
   duration,
   isStreaming,
@@ -91,8 +96,10 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
 
   // 获取工具的国际化显示名称
   const displayName = useMemo(
-    () => getReadableToolName(name, t),
-    [name, t]
+    () => getReadableToolName(name, t, {
+      providerName: getExternalToolProviderName(toolInput),
+    }),
+    [name, toolInput, t]
   );
 
   // 状态图标和颜色：成功/失败终态均有明确图标，进行中由 shimmer 文案表达
@@ -659,6 +666,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
       {/* 头部 */}
       <ToolHeader
         name={toolName}
+        toolInput={toolInput}
         status={block.status}
         duration={duration}
         isStreaming={isStreaming}

@@ -2963,9 +2963,51 @@ impl ChatV2Pipeline {
             ));
         }
 
-        // Command-list denies apply before any remembered approval and to both
-        // backend-owned and external MCP shell implementations. Allow is only
-        // effective for the dedicated local executor after its safety gate.
+        let is_local_shell =
+            crate::chat_v2::approval_scope::is_local_shell_execute_tool(
+                &tool_call.name,
+                &tool_call.arguments,
+            );
+        let is_external_mcp =
+            crate::chat_v2::tool_approval_policy::is_external_mcp_call(
+                &tool_call.name,
+                &tool_call.arguments,
+            );
+        // The immutable catastrophe guard applies to the backend-owned local
+        // shell before user rules or any preset bypass. External MCP execution
+        // is remote/uncontrolled and is explicitly not claimed to be protected
+        // by this local command parser.
+        let immutable_command_guard = if is_local_shell {
+            // The pipeline checkpoint does not know the runtime cwd/roots yet
+            // (the executor re-checks with full context before spawn), but
+            // HOME is always protected and cheap to resolve here.
+            let guard_roots: Vec<std::path::PathBuf> =
+                dirs::home_dir().into_iter().collect();
+            tool_call
+                .arguments
+                .get("command")
+                .and_then(Value::as_str)
+                .map(|command| {
+                    crate::chat_v2::approval_scope::immutable_shell_command_guard(
+                        command,
+                        None,
+                        &guard_roots,
+                    )
+                })
+        } else {
+            None
+        };
+        if immutable_command_guard.as_ref().is_some_and(|decision| {
+            decision.effect
+                == crate::chat_v2::approval_scope::ShellCommandGuardEffect::Deny
+        }) {
+            return Ok(build_preflight_blocked_result(
+                "终端命令被不可覆盖的灾难命令守卫拒绝".to_string(),
+            ));
+        }
+
+        // User command-list denies apply before remembered approval. Its Allow
+        // remains advisory and cannot override the immutable guard above.
         let shell_command_decision =
             if crate::chat_v2::approval_scope::is_shell_runtime_tool_for_args(
                 &tool_call.name,
@@ -2984,10 +3026,7 @@ impl ChatV2Pipeline {
                         crate::chat_v2::shell_command_policy::enforce_for_call(
                             raw_policy.as_deref(),
                             command,
-                            crate::chat_v2::approval_scope::is_local_shell_execute_tool(
-                                &tool_call.name,
-                                &tool_call.arguments,
-                            ),
+                            is_local_shell,
                         )
                     })
             } else {
@@ -3174,6 +3213,19 @@ impl ChatV2Pipeline {
             }
         }
 
+        let immutable_guard_asks = immutable_command_guard.as_ref().is_some_and(|decision| {
+            decision.effect == crate::chat_v2::approval_scope::ShellCommandGuardEffect::Ask
+        });
+        let approval_required =
+            super::authority_mode::requires_tool_approval(
+                &authority_state,
+                sensitivity,
+                effective_sensitivity,
+                immutable_guard_asks,
+                is_external_mcp,
+            );
+        let mut approval_requirement_satisfied = false;
+
         // trusted automation: begin —— 预授权旁路（无人值守定时任务）。
         // 安全判定全部集中在 headless::is_trusted_automation_preauthorized：仅当
         // 会话安装了 TrustedAutomationSessionGuard（headless runner 显式安装的
@@ -3182,13 +3234,14 @@ impl ChatV2Pipeline {
         // 证据）时才返回 true；任何校验不满足或异常一律 false → 走下方原有
         // ApprovalManager 人工审批路径（fail-closed）。普通交互会话无 profile，
         // 恒为 false，此段对非自动化路径零行为变化。
-        let trusted_automation_preauthorized =
-            crate::chat_v2::headless::is_trusted_automation_preauthorized(
+        let trusted_automation_preauthorized = !immutable_guard_asks
+            && crate::chat_v2::headless::is_trusted_automation_preauthorized(
                 session_id,
                 &tool_call.name,
                 &tool_call.arguments,
             );
-        if trusted_automation_preauthorized && approval_manager_required(effective_sensitivity) {
+        if trusted_automation_preauthorized && approval_required {
+            approval_requirement_satisfied = true;
             log::info!(
                 "[ChatV2::pipeline] trusted_automation_preauthorized: skipping ApprovalManager for tool '{}' (session={}, tool_call_id={}, sensitivity={:?})",
                 tool_call.name,
@@ -3199,7 +3252,7 @@ impl ChatV2Pipeline {
         }
         // trusted automation: end（下一行条件中的 !trusted_automation_preauthorized
         // 是本次改造对既有审批判定的唯一侵入点）
-        if approval_manager_required(effective_sensitivity) && !trusted_automation_preauthorized {
+        if approval_required && !trusted_automation_preauthorized {
             let Some(approval_manager) = &self.approval_manager else {
                 log::error!(
                     "[ChatV2::pipeline] Refusing {:?} tool '{}' because ApprovalManager is unavailable",
@@ -3224,13 +3277,17 @@ impl ChatV2Pipeline {
                 &tool_call.name,
                 &approval_arguments,
             );
-            let can_use_session_remember = authority_state.permission_preset
+            let can_use_session_remember = !immutable_guard_asks
+                && authority_state.authority_mode
+                    == crate::chat_v2::types::AuthorityMode::Craft
+                && authority_state.permission_preset
                 == crate::chat_v2::types::PermissionPreset::Relaxed
+                && sensitivity == Some(ToolSensitivity::Medium)
                 && effective_sensitivity == Some(ToolSensitivity::Medium)
                 && !irreversible;
 
-            // Both presets are session-only. Persistent/global remembers are
-            // deliberately ignored; relaxed may reuse only Medium approvals.
+            // Presets are session-only. Persistent/global remembers are
+            // deliberately ignored; Craft/relaxed may reuse only Medium approvals.
             let remembered = can_use_session_remember
                 .then(|| {
                     approval_manager.check_session_remembered(
@@ -3255,9 +3312,28 @@ impl ChatV2Pipeline {
                     ));
                 }
                 // 用户之前选择了"始终允许"，继续执行
+                approval_requirement_satisfied = true;
             } else {
                 // 需要请求用户审批
-                let actual_sensitivity = effective_sensitivity.unwrap_or(ToolSensitivity::Medium);
+                let actual_sensitivity = if immutable_guard_asks
+                    || sensitivity == Some(ToolSensitivity::High)
+                    || effective_sensitivity == Some(ToolSensitivity::High)
+                {
+                    ToolSensitivity::High
+                } else {
+                    effective_sensitivity
+                        .or(sensitivity)
+                        .unwrap_or(ToolSensitivity::Medium)
+                };
+                let approval_preset = if authority_state.authority_mode
+                    == crate::chat_v2::types::AuthorityMode::Craft
+                {
+                    authority_state.permission_preset
+                } else {
+                    // Presets are Craft-only. Plan approvals remain
+                    // single-use and cannot seed a later Craft remember.
+                    crate::chat_v2::types::PermissionPreset::Cautious
+                };
                 let approval_outcome = self
                     .request_tool_approval(
                         tool_call,
@@ -3267,7 +3343,7 @@ impl ChatV2Pipeline {
                         message_id,
                         block_id,
                         &actual_sensitivity,
-                        authority_state.permission_preset,
+                        approval_preset,
                         approval_manager,
                         cancellation_token.as_ref(),
                     )
@@ -3276,6 +3352,7 @@ impl ChatV2Pipeline {
                 match approval_outcome {
                     ApprovalOutcome::Approved => {
                         // 用户同意，继续执行
+                        approval_requirement_satisfied = true;
                     }
                     ApprovalOutcome::Rejected { reason } => {
                         let message = match reason {
@@ -3304,7 +3381,6 @@ impl ChatV2Pipeline {
                 }
             }
         }
-
         if let Some(expected_binding) = expected_runtime_binding.as_deref() {
             let rebound = match self.resolve_local_shell_approval_arguments(
                 tool_call,
@@ -3372,6 +3448,19 @@ impl ChatV2Pipeline {
                 ));
             }
         };
+        let current_approval_required =
+            super::authority_mode::requires_tool_approval(
+                &current_authority,
+                sensitivity,
+                effective_sensitivity,
+                immutable_guard_asks,
+                is_external_mcp,
+            );
+        if current_approval_required && !approval_requirement_satisfied {
+            return Ok(build_preflight_blocked_result(
+                "会话审批策略在执行前发生变化，当前调用需要重新审批".to_string(),
+            ));
+        }
         match super::authority_mode::evaluate_authority_gate(
             &current_authority,
             &tool_call.name,
@@ -3444,6 +3533,11 @@ impl ChatV2Pipeline {
         .with_event_meta(skill_state_version, round_id.map(|s| s.to_string()))
         .with_execution_allowed_tools(execution_allowed_tools.clone())
         .with_skill_package_roots(skill_package_roots.clone())
+        .with_shell_guard_approved(immutable_guard_asks && approval_requirement_satisfied)
+        .with_shell_authority_admission(
+            current_authority.authority_mode,
+            current_authority.permission_preset,
+        )
         .with_feature_flags(memory_enabled, rag_enabled, web_search_enabled);
 
         ctx.emitter.register_block_event_meta(
@@ -3486,6 +3580,39 @@ impl ChatV2Pipeline {
             // 工具输出（JSON 对象时）补写 trusted_automation_preauthorized=true，
             // 供事后审计区分"用户点了允许"与"profile 预授权放行"。
             Ok(mut result) => {
+                if is_external_mcp
+                    && current_authority.authority_mode
+                        == crate::chat_v2::types::AuthorityMode::Craft
+                    && matches!(
+                        current_authority.permission_preset,
+                        crate::chat_v2::types::PermissionPreset::FullAccess
+                            | crate::chat_v2::types::PermissionPreset::DangerFullAccess
+                    )
+                {
+                    // Audit contract: remote MCP implementations are outside
+                    // the local shell sandbox, runtime-root enforcement and
+                    // immutable command-guard guarantee.
+                    log::info!(
+                        "[ChatV2::audit] external_mcp=true approval_bypassed=true permission_preset={} local_shell_sandbox_guaranteed=false runtime_roots_guaranteed=false command_guard_guaranteed=false session={} tool_call_id={} tool={} success={}",
+                        current_authority.permission_preset.as_str(),
+                        session_id,
+                        tool_call.id,
+                        tool_call.name,
+                        result.success
+                    );
+                    if let Some(output) = result.output.as_object_mut() {
+                        output.insert(
+                            "external_mcp_security_boundary".to_string(),
+                            json!({
+                                "approval_bypassed": true,
+                                "permission_preset": current_authority.permission_preset.as_str(),
+                                "local_shell_sandbox_guaranteed": false,
+                                "runtime_roots_guaranteed": false,
+                                "command_guard_guaranteed": false,
+                            }),
+                        );
+                    }
+                }
                 if trusted_automation_preauthorized {
                     if let Some(output) = result.output.as_object_mut() {
                         output

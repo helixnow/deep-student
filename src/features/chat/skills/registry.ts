@@ -361,7 +361,7 @@ ${skillList}
   generateSummary(): string {
     const count = this.skills.size;
     if (count === 0) {
-      return i18n.t('chatV2:skills.noSkillsLoaded', { defaultValue: 'No skills loaded' });
+      return i18n.t('chatV2:skills.noSkillsLoaded');
     }
 
     const locations = {
@@ -371,14 +371,22 @@ ${skillList}
     };
 
     const parts: string[] = [];
-    if (locations.global > 0) parts.push(`${i18n.t('chatV2:skills.locationGlobal', { defaultValue: 'global' })} ${locations.global}`);
-    if (locations.project > 0) parts.push(`${i18n.t('chatV2:skills.locationProject', { defaultValue: 'project' })} ${locations.project}`);
-    if (locations.builtin > 0) parts.push(`${i18n.t('chatV2:skills.locationBuiltin', { defaultValue: 'builtin' })} ${locations.builtin}`);
+    if (locations.global > 0) parts.push(i18n.t('chatV2:skills.locationCount', {
+      location: i18n.t('chatV2:skills.locationGlobal'),
+      count: locations.global,
+    }));
+    if (locations.project > 0) parts.push(i18n.t('chatV2:skills.locationCount', {
+      location: i18n.t('chatV2:skills.locationProject'),
+      count: locations.project,
+    }));
+    if (locations.builtin > 0) parts.push(i18n.t('chatV2:skills.locationCount', {
+      location: i18n.t('chatV2:skills.locationBuiltin'),
+      count: locations.builtin,
+    }));
 
     return i18n.t('chatV2:skills.loadedSummary', {
       count,
       details: parts.join(', '),
-      defaultValue: `Loaded ${count} skills (${parts.join(', ')})`,
     });
   }
 

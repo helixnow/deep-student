@@ -44,6 +44,8 @@ import {
   CircleNotch,
   Download,
   Upload,
+  Gauge,
+  Tag,
   Warning,
   ClockCounterClockwise,
 } from '@phosphor-icons/react';
@@ -495,7 +497,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 size="icon"
                 iconOnly
                 onClick={handleSearchClear}
-                className="!absolute !right-1.5 !top-1/2 !-translate-y-1/2 !h-5 !w-5 !p-0 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                className="!absolute !right-1.5 !top-1/2 !-translate-y-1/2 !h-5 !w-5 !p-0 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3"
                 aria-label={t('learningHub:exam.library.clearSearch')}
                 title={t('learningHub:exam.library.clearSearch')}
               >
@@ -534,7 +536,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             {/* 状态筛选 */}
             <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-muted/30">
               {(['all', 'new', 'in_progress', 'mastered', 'review'] as const).map((status) => (
-                <DsButton key={status} variant="ghost" size="sm" onClick={() => handleFilterChange('status', status === 'all' ? undefined : [status as QuestionStatus])} className={cn('ui-state-colors !h-auto !px-2 !py-1 text-xs', (status === 'all' && !filters.status) || filters.status?.[0] === status ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}>
+                <DsButton key={status} variant="ghost" size="sm" onClick={() => handleFilterChange('status', status === 'all' ? undefined : [status as QuestionStatus])} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs', (status === 'all' && !filters.status) || filters.status?.[0] === status ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}>
                   {status === 'all' ? t('practice:questionBank.all') : t(statusLabelKeys[status])}
                 </DsButton>
               ))}
@@ -543,7 +545,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             {/* 难度筛选 */}
             <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-muted/30">
               {(['all', 'easy', 'medium', 'hard', 'very_hard'] as const).map((diff) => (
-                <DsButton key={diff} variant="ghost" size="sm" onClick={() => handleFilterChange('difficulty', diff === 'all' ? undefined : [diff as Difficulty])} className={cn('ui-state-colors !h-auto !px-2 !py-1 text-xs', (diff === 'all' && !filters.difficulty) || filters.difficulty?.[0] === diff ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}>
+                <DsButton key={diff} variant="ghost" size="sm" onClick={() => handleFilterChange('difficulty', diff === 'all' ? undefined : [diff as Difficulty])} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs', (diff === 'all' && !filters.difficulty) || filters.difficulty?.[0] === diff ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}>
                   {diff === 'all' ? t('practice:questionBank.all') : t(difficultyLabelKeys[diff])}
                 </DsButton>
               ))}
@@ -555,7 +557,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => handleFilterChange('questionType', undefined)}
-                className={cn('ui-state-colors !h-auto !px-2 !py-1 text-xs', !filters.questionType ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}
+                className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs', !filters.questionType ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}
               >
                 {t('learningHub:exam.library.typeFilterLabel')}
               </DsButton>
@@ -568,7 +570,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                     'questionType',
                     filters.questionType?.[0] === type ? undefined : [type as QuestionType]
                   )}
-                  className={cn('ui-state-colors !h-auto !px-2 !py-1 text-xs', filters.questionType?.[0] === type ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}
+                  className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs', filters.questionType?.[0] === type ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground')}
                   aria-pressed={filters.questionType?.[0] === type}
                 >
                   {t(getQuestionTypeMeta(type).labelKey)}
@@ -1111,8 +1113,10 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   batchPanel === 'difficulty' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
                 )}
                 aria-expanded={batchPanel === 'difficulty'}
+                title={t('learningHub:exam.library.batchSetDifficulty')}
               >
-                {t('learningHub:exam.library.batchSetDifficulty')}
+                <Gauge size={14} />
+                <span className="hidden sm:inline">{t('learningHub:exam.library.batchSetDifficulty')}</span>
               </DsButton>
             )}
             {onBatchUpdateTags && (
@@ -1126,18 +1130,20 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   batchPanel === 'tags' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
                 )}
                 aria-expanded={batchPanel === 'tags'}
+                title={t('learningHub:exam.library.batchEditTags')}
               >
-                {t('learningHub:exam.library.batchEditTags')}
+                <Tag size={14} />
+                <span className="hidden sm:inline">{t('learningHub:exam.library.batchEditTags')}</span>
               </DsButton>
             )}
             {(onBatchUpdateDifficulty || onBatchUpdateTags) && <div className="w-px h-3 bg-border/60 mx-1" />}
-            <DsButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('reset')} disabled={!canReset || actionLoading === 'reset'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-primary hover:bg-primary/10">
+            <DsButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('reset')} disabled={!canReset || actionLoading === 'reset'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-primary hover:bg-primary/10" title={t('practice:questionBank.reset')}>
               <ArrowCounterClockwise className={cn('w-3 h-3', actionLoading === 'reset' && 'animate-spin')} />
-              {t('practice:questionBank.reset')}
+              <span className="hidden sm:inline">{t('practice:questionBank.reset')}</span>
             </DsButton>
-            <DsButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('delete')} disabled={!canDelete || actionLoading === 'delete'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-destructive hover:bg-destructive/10">
+            <DsButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('delete')} disabled={!canDelete || actionLoading === 'delete'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-destructive hover:bg-destructive/10" title={t('common:delete')}>
               <Trash size={12} />
-              {t('common:delete')}
+              <span className="hidden sm:inline">{t('common:delete')}</span>
             </DsButton>
             <div className="w-px h-3 bg-border/60 mx-1" />
             <DsButton
@@ -1145,9 +1151,10 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               size="sm"
               onClick={() => { setSelectedIds(new Set()); onSelect?.([]); lastSelectedIndexRef.current = null; setBatchPanel(null); }}
               className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              title={t('common:cancel')}
             >
               <X size={12} />
-              {t('common:cancel')}
+              <span className="hidden sm:inline">{t('common:cancel')}</span>
             </DsButton>
           </div>
         </div>
@@ -1163,7 +1170,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             <DsButton
               variant="outline"
               iconOnly size="sm"
-              className="w-8 h-8"
+              className="w-8 h-8 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!min-w-[44px]"
               disabled={pagination.page <= 1}
               onClick={() => pagination.onPageChange(pagination.page - 1)}
               aria-label={t('common:prev')}
@@ -1176,7 +1183,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             <DsButton
               variant="outline"
               iconOnly size="sm"
-              className="w-8 h-8"
+              className="w-8 h-8 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!min-w-[44px]"
               disabled={pagination.page >= totalPages}
               onClick={() => pagination.onPageChange(pagination.page + 1)}
               aria-label={t('common:next')}

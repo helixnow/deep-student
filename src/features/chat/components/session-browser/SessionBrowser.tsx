@@ -170,7 +170,7 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({
   onAddTag,
   onRemoveTag,
 }) => {
-  const { t } = useTranslation(['chatV2', 'common']);
+  const { t, i18n } = useTranslation(['chatV2', 'common']);
   const fallbackTitle = t('page.untitled');
   const sessionTitle = getSessionTitleText(session.title, fallbackTitle);
   // 🚀 性能：按 session 引用缓存任务摘要，避免每次渲染重新解析 metadata
@@ -202,15 +202,16 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffDays = Math.floor(diffMs / 86400000);
+    const locale = i18n.resolvedLanguage ?? i18n.language;
 
     if (diffDays === 0) {
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
     } else if (diffDays < 7) {
         return t('common.daysAgo', { count: diffDays });
     } else {
-        return date.toLocaleDateString();
+        return date.toLocaleDateString(locale);
     }
-  }, [t]);
+  }, [i18n.language, i18n.resolvedLanguage, t]);
 
   const handleCardClick = useCallback(() => {
     if (!isEditing) {
@@ -305,7 +306,7 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({
           <DsButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} aria-label={t('page.renameSession')} title={t('page.renameSession')} className={isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7'}>
             <PencilSimple size={isTouchPrimary ? 16 : 14} />
           </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleExportClick} disabled={exporting} aria-label={t('browser.exportSession', '导出会话')} title={t('browser.exportSession', '导出会话')} className={isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7'}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleExportClick} disabled={exporting} aria-label={t('browser.exportSession')} title={t('browser.exportSession')} className={isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7'}>
             {exporting ? <CircleNotch size={isTouchPrimary ? 16 : 14} className="animate-spin" /> : <DownloadSimple size={isTouchPrimary ? 16 : 14} />}
           </DsButton>
           <DsButton variant="ghost" size="icon" iconOnly onClick={handleDeleteClick} className={cn(isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7', confirmingDelete ? 'text-danger bg-danger/10' : 'hover:text-danger hover:bg-danger/10')} aria-label={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')} title={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')}>

@@ -350,7 +350,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                             size="icon"
                                             onClick={() => onRateTranslation(rating)}
                                             aria-label={t('translation:panel_ux.rate_star', { count: rating })}
-                                            className="h-7 w-7 p-1.5 hover:bg-[var(--interactive-hover)] rounded-full"
+                                            className="h-7 w-7 p-1.5 hover:bg-[var(--interactive-hover)] rounded-full [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
                                         >
                                             <Star
                                                 weight={translationQuality && rating <= translationQuality ? 'fill' : 'regular'}

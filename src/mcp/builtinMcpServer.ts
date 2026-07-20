@@ -205,20 +205,15 @@ export function getBuiltinToolSchemas(availableSearchEngines?: string[]): Array<
  * 获取工具的 displayNameKey
  *
  * 🔧 2026-01-20: 动态生成 i18n 键，格式为 mcp.tools.{toolName}
- * 🔧 2026-01-21: 扩展支持 mcp_ 前缀（由 Pipeline 添加）
+ * 🔒 2026-07: `mcp_` / `mcp.tools.` 是外部 MCP 来源标记，不得命中内置词条；
+ * 否则第三方同名工具会被误显示为内置工具。
  *
- * @param toolName 工具名称（如 builtin-web_search 或 mcp_load_skills）
+ * @param toolName 内置工具名称（如 builtin-web_search）
  * @returns i18n 翻译键，如果不是内置工具则返回 undefined
  */
 export function getToolDisplayNameKey(toolName: string): string | undefined {
-  // 支持 builtin- 前缀
   if (toolName.startsWith(BUILTIN_NAMESPACE)) {
     const shortName = toolName.replace(BUILTIN_NAMESPACE, '');
-    return `tools.${shortName}`;
-  }
-  // 支持 mcp_ 前缀（由 Pipeline 添加）
-  if (toolName.startsWith('mcp_')) {
-    const shortName = toolName.replace('mcp_', '');
     return `tools.${shortName}`;
   }
   return undefined;
@@ -228,7 +223,7 @@ export function getToolDisplayNameKey(toolName: string): string | undefined {
  * 检查工具是否有国际化显示名称
  */
 export function hasToolDisplayName(toolName: string): boolean {
-  return toolName.startsWith(BUILTIN_NAMESPACE) || toolName.startsWith('mcp_');
+  return toolName.startsWith(BUILTIN_NAMESPACE);
 }
 
 // ============================================================================

@@ -85,7 +85,8 @@ async function readOccSafeNoteSnapshot(path: string) {
  */
 const NoteEditorSkeleton: React.FC<{ label: string }> = ({ label }) => (
   <div className="flex-1 min-h-0 overflow-hidden" role="status" aria-label={label}>
-    <div className="flex h-9 items-center border-b border-border px-5 sm:px-12">
+    {/* 📱 <768：真实编辑器头部为 44px（min-h-11），骨架同高避免加载完成时跳动 */}
+    <div className="flex h-9 max-[767.98px]:h-11 items-center border-b border-border px-5 sm:px-12">
       <Skeleton className="h-7 w-7" />
       <div className="ml-auto flex gap-1">
         <Skeleton className="h-7 w-7" />
@@ -931,6 +932,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             windowingState={editorWindowingState}
             onRequestLoadMore={handleRequestLoadMore}
             onRetryLoadMore={handleRetryLoadMore}
+            // 📱 移动子屏打开时隐藏 body 级底部编辑工具条，避免遮挡子屏且误改正文（对齐 NotesHome 用法）
+            suppressMobileToolbar={isSmallScreen && mobilePanelOpen}
             headerActions={propertiesPanelDisabled ? undefined : (
               <CommonTooltip content={t('notes:contextPanel.title')} position="bottom">
                 <DsButton

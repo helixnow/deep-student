@@ -338,7 +338,7 @@ export function RawRequestPreview({ rawRequests, rawRequest, copyFilterConfig }:
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
           </svg>
           {isBackendLlm
-            ? `${t('messageItem.rawRequest.title')} — ${current.model}`
+            ? t('messageItem.rawRequest.titleWithModel', { model: current.model })
             : t('messageItem.rawRequest.title')}
           {current.logFilePath && (
             <span className="text-2xs px-1.5 py-0.5 rounded bg-success/10 text-success">{t('messageItem.rawRequest.persisted')}</span>

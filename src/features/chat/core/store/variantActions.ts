@@ -422,7 +422,9 @@ export function createVariantActions(
         } catch (error: unknown) {
           const errorMsg = getErrorMessage(error);
           console.error('[VariantActions] deleteVariant failed:', errorMsg);
-          showGlobalNotification('error', i18n.t('chatV2:variant.deleteFailed') + ': ' + errorMsg);
+          showGlobalNotification('error', i18n.t('chatV2:variant.deleteFailedWithDetail', {
+            error: errorMsg,
+          }));
           throw error;
         }
       }
@@ -518,7 +520,9 @@ export function createVariantActions(
             };
           });
 
-          showGlobalNotification('error', i18n.t('chatV2:variant.retryFailed') + ': ' + errorMsg);
+          showGlobalNotification('error', i18n.t('chatV2:variant.retryFailedWithDetail', {
+            error: errorMsg,
+          }));
           throw error;
         }
       }

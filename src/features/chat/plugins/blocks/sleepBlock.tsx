@@ -258,7 +258,8 @@ const TERMINAL_AGENT_STATUSES: ReadonlySet<AgentStatus> = new Set([
 ]);
 
 const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, store }) => {
-  const { t } = useTranslation(['chatV2', 'workspace']);
+  const { t, i18n } = useTranslation(['chatV2', 'workspace']);
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const [isExpanded, setIsExpanded] = useState(true);
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
   const [isWaking, setIsWaking] = useState(false);
@@ -399,7 +400,7 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
     } catch (error: unknown) {
       console.error('[SleepBlock] Manual wake failed:', error);
       const msg = error instanceof Error ? error.message : String(error);
-      showGlobalNotification('error', t('sleep.wakeFailed', { msg, defaultValue: 'Wake failed: {{msg}}' }));
+      showGlobalNotification('error', t('sleep.wakeFailed', { msg }));
     } finally {
       setIsWaking(false);
     }
@@ -596,12 +597,12 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
               </>
             )}
             {createdAt && (
-              <span>{new Date(createdAt).toLocaleTimeString()}</span>
+              <span>{new Date(createdAt).toLocaleTimeString(locale)}</span>
             )}
             {awakenedAt && (
               <>
                 <span>→</span>
-                <span>{new Date(awakenedAt).toLocaleTimeString()}</span>
+                <span>{new Date(awakenedAt).toLocaleTimeString(locale)}</span>
               </>
             )}
             {sleepId && <span className="font-mono ml-auto">{sleepId.slice(-12)}</span>}

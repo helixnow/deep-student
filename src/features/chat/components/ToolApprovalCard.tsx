@@ -24,8 +24,12 @@ import { Badge } from '@/components/ui/shad/Badge';
 import { cn } from '@/lib/utils';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
-import type { ShellRuntimeApprovalScope } from '@/features/chat/core/types/store';
+import {
+  getExternalToolProviderName,
+  getReadableToolName,
+} from '@/features/chat/utils/toolDisplayName';
+import { getLocalizedApprovalDescription } from '@/features/chat/utils/approvalDescription';
+import type { PermissionPreset, ShellRuntimeApprovalScope } from '@/features/chat/core/types/store';
 
 // ============================================================================
 // 类型定义
@@ -36,7 +40,7 @@ export interface ApprovalRequestData {
   toolName: string;
   arguments: Record<string, unknown>;
   sensitivity: 'low' | 'medium' | 'high';
-  permissionPreset?: 'cautious' | 'relaxed';
+  permissionPreset?: PermissionPreset;
   description: string;
   timeoutSeconds: number;
   resolvedStatus?: 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
@@ -126,8 +130,19 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
 
   // 获取工具的国际化显示名称
   const displayToolName = useMemo(
-    () => getReadableToolName(request.toolName, t),
-    [request.toolName, t]
+    () => getReadableToolName(request.toolName, t, {
+      providerName: getExternalToolProviderName(request.arguments),
+    }),
+    [request.toolName, request.arguments, t]
+  );
+  const localizedDescription = useMemo(
+    () => getLocalizedApprovalDescription(
+      request.toolName,
+      request.arguments,
+      request.description,
+      t,
+    ),
+    [request.toolName, request.arguments, request.description, t],
   );
 
   const shellScope = request.runtimeScope?.kind === 'shell' ? request.runtimeScope : null;
@@ -160,7 +175,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
   }, [request.toolCallId, request.timeoutSeconds]);
 
   const handleResponse = useCallback(
-    async (approved: boolean, reason?: string, remember: boolean = false, rememberSession: boolean = false) => {
+    async (approved: boolean, reason?: string) => {
       if (respondingRef.current || hasResponded || isResponding || isResolved || isTimedOutLocally) return;
 
       respondingRef.current = true;
@@ -169,11 +184,11 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
         await invoke('chat_v2_tool_approval_respond', {
           sessionId,
           toolCallId: request.toolCallId,
-          toolName: request.toolName, // 🆕 用于"记住选择"功能
+          toolName: request.toolName,
           approved,
           reason: reason ?? null,
-          remember,
-          rememberSession, // 🆕 三档分级：本会话允许该工具
+          remember: false,
+          rememberSession: false,
           arguments: request.arguments,
         });
         setHasResponded(true);
@@ -339,7 +354,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
           <span className="text-sm font-medium text-muted-foreground">
             {t('approval.description')}:
           </span>
-          <p className="mt-1 text-sm">{request.description}</p>
+          <p className="mt-1 text-sm">{localizedDescription}</p>
         </div>
 
         {shellScope && (
@@ -414,19 +429,6 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               <X size={16} className="mr-1" />
               {t('approval.reject')}
             </DsButton>
-
-            {/* 🆕 三档分级中间档：本会话允许该工具（重复任务不再反复弹卡） */}
-            {request.permissionPreset === 'relaxed' && request.sensitivity === 'medium' && (
-              <DsButton
-                variant="outline"
-                size="sm"
-                onClick={() => handleResponse(true, undefined, false, true)}
-                disabled={isResponding || isTimedOutLocally}
-                className="text-success hover:text-success/80"
-              >
-                {t('approval.allowSession')}
-              </DsButton>
-            )}
 
             {/* 批准按钮（仅此次） */}
             <DsButton

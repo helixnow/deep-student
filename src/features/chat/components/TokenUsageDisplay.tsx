@@ -74,7 +74,8 @@ function getSourceBadgeClass(source: TokenUsage['source']): string {
  */
 export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
   ({ usage, isVariant = false, compact = false, className }) => {
-    const { t } = useTranslation('chatV2');
+    const { t, i18n } = useTranslation('chatV2');
+    const locale = i18n.resolvedLanguage ?? i18n.language;
 
     // 没有 token 数据时不渲染
     if (!usage || usage.totalTokens === 0) {
@@ -103,7 +104,7 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
               <span className="w-2 h-2 rounded-full bg-primary"></span>
               {t('tokenUsage.prompt')}
             </span>
-            <span className="font-mono tabular-nums text-foreground">{usage.promptTokens.toLocaleString()}</span>
+            <span className="font-mono tabular-nums text-foreground">{usage.promptTokens.toLocaleString(locale)}</span>
           </div>
 
           {/* 输出 */}
@@ -112,7 +113,7 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
               <span className="w-2 h-2 rounded-full bg-info"></span>
               {t('tokenUsage.completion')}
             </span>
-            <span className="font-mono tabular-nums text-foreground">{usage.completionTokens.toLocaleString()}</span>
+            <span className="font-mono tabular-nums text-foreground">{usage.completionTokens.toLocaleString(locale)}</span>
           </div>
 
           {/* 推理 (Optional) */}
@@ -122,7 +123,7 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
                 <span className="w-2 h-2 rounded-full bg-primary/40"></span>
                 {t('tokenUsage.reasoning')}
               </span>
-              <span className="font-mono tabular-nums text-foreground">{usage.reasoningTokens.toLocaleString()}</span>
+              <span className="font-mono tabular-nums text-foreground">{usage.reasoningTokens.toLocaleString(locale)}</span>
             </div>
           )}
 
@@ -134,7 +135,7 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
                 {t('tokenUsage.cached')}
               </span>
               <span className="font-mono tabular-nums text-foreground">
-                {usage.cachedTokens.toLocaleString()}
+                {usage.cachedTokens.toLocaleString(locale)}
                 {usage.promptTokens > 0 && (
                   <span className="text-muted-foreground">
                     {' '}({((usage.cachedTokens / usage.promptTokens) * 100).toFixed(1)}%)
@@ -152,7 +153,7 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
              <span className="text-foreground font-medium">
                {t('tokenUsage.total')}
              </span>
-             <span className="font-mono tabular-nums font-bold text-foreground">{usage.totalTokens.toLocaleString()}</span>
+             <span className="font-mono tabular-nums font-bold text-foreground">{usage.totalTokens.toLocaleString(locale)}</span>
           </div>
         </div>
 
@@ -161,7 +162,7 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
           <div className="mt-2.5 pt-2 border-t border-border flex items-center justify-between text-xs">
              <span className="text-muted-foreground">{t('tokenUsage.contextWindow')}</span>
              <span className="font-mono tabular-nums font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded">
-               {usage.lastRoundPromptTokens.toLocaleString()}
+               {usage.lastRoundPromptTokens.toLocaleString(locale)}
              </span>
           </div>
         )}

@@ -48,17 +48,18 @@ use windows_sys::Win32::System::Threading::{
     SetEvent, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW,
     CREATE_SUSPENDED, EVENT_MODIFY_STATE, EXTENDED_STARTUPINFO_PRESENT, INFINITE,
     PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTF_USESTDHANDLES,
-    STARTUPINFOEXW,
+    STARTUPINFOEXW, STARTUPINFOW,
 };
 
 use super::{
     configure_stdio, platform_sandbox_contract, PlatformSandboxBackend, SandboxBackend,
-    SandboxCapability, SandboxEffectReport, SandboxPolicy,
+    SandboxCapability, SandboxEffectReport, SandboxPolicy, UnsandboxedShellBackend,
 };
 
 const HELPER_ARG: &str = "--deep-student-shell-sandbox-helper";
 const PAYLOAD_PREFIX: &str = "deep-student-shell-sandbox-";
 const PROFILE_PREFIX: &str = "DeepStudent.LocalShell.";
+const UNSANDBOXED_PROFILE_PREFIX: &str = "DeepStudent.DangerShell.";
 const MAX_PAYLOAD_BYTES: u64 = 1024 * 1024;
 const MAX_POLICY_ROOTS: usize = 128;
 const ACTIVE_PROCESS_LIMIT: u32 = 128;
@@ -256,7 +257,8 @@ fn validate_payload(payload: &mut WindowsSandboxPayload) -> Result<(), String> {
     if payload.command.is_empty() || payload.command.contains('\0') {
         return Err("Sandbox command is empty or contains NUL".to_string());
     }
-    if !payload.profile_name.starts_with(PROFILE_PREFIX)
+    if !(payload.profile_name.starts_with(PROFILE_PREFIX)
+        || payload.profile_name.starts_with(UNSANDBOXED_PROFILE_PREFIX))
         || payload.profile_name.len() > 96
         || !payload
             .profile_name
@@ -471,6 +473,74 @@ impl SandboxBackend for PlatformSandboxBackend {
             output_encoding: contract.output_encoding,
             enforced: matches!(self.capability(), SandboxCapability::Available),
             network_enforced: true,
+            process_group_isolated: true,
+            cpu_time_limit_seconds: Some(PROCESS_CPU_TIME_LIMIT_SECS as u64),
+            file_size_limit_bytes: None,
+            active_process_limit: Some(ACTIVE_PROCESS_LIMIT),
+            readable_roots: policy.readable_roots.len(),
+            writable_roots: policy.writable_roots.len(),
+            protected_read_roots: policy.protected_read_roots.len(),
+            protected_write_roots: policy.protected_write_roots.len(),
+        }
+    }
+}
+
+impl SandboxBackend for UnsandboxedShellBackend {
+    fn capability(&self) -> SandboxCapability {
+        match (std::env::current_exe(), trusted_powershell_path()) {
+            (Ok(helper), Ok(_)) if helper.is_file() => SandboxCapability::Available,
+            (Ok(_), Ok(_)) => SandboxCapability::Unavailable {
+                reason: "The current executable is not a regular file".to_string(),
+            },
+            (Err(error), _) => SandboxCapability::Unavailable {
+                reason: format!("Cannot locate the Windows Job Object helper: {error}"),
+            },
+            (_, Err(reason)) => SandboxCapability::Unavailable { reason },
+        }
+    }
+
+    fn command(
+        &self,
+        shell_command: &str,
+        cwd: &Path,
+        policy: &SandboxPolicy,
+    ) -> Result<Command, String> {
+        if let SandboxCapability::Unavailable { reason } = self.capability() {
+            return Err(format!(
+                "Danger Full Access shell backend is unavailable: {reason}"
+            ));
+        }
+        let payload = WindowsSandboxPayload {
+            command: shell_command.to_string(),
+            cwd: cwd.to_path_buf(),
+            policy: policy.clone(),
+            profile_name: format!(
+                "{UNSANDBOXED_PROFILE_PREFIX}{}",
+                Uuid::new_v4().simple()
+            ),
+        };
+        let executable = std::env::current_exe()
+            .map_err(|error| format!("Cannot locate the Windows Job Object helper: {error}"))?;
+        let payload_path = write_payload(&payload)?;
+        let mut command = Command::new(executable);
+        command.arg(HELPER_ARG).arg(payload_path);
+        configure_stdio(&mut command, cwd);
+        Ok(command)
+    }
+
+    fn cleanup_command_resources(&self, command: &Command) {
+        if let Some(path) = payload_path_from_command(command) {
+            cleanup_payload_file(&path);
+        }
+    }
+
+    fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport {
+        SandboxEffectReport {
+            backend: "danger_unsandboxed_job",
+            shell_kind: "windows_powershell",
+            output_encoding: "utf-8",
+            enforced: false,
+            network_enforced: false,
             process_group_isolated: true,
             cpu_time_limit_seconds: Some(PROCESS_CPU_TIME_LIMIT_SECS as u64),
             file_size_limit_bytes: None,
@@ -758,6 +828,15 @@ fn run_payload(
     cancellation_event: Option<HANDLE>,
 ) -> Result<i32, String> {
     validate_payload(&mut payload)?;
+    if payload
+        .profile_name
+        .starts_with(UNSANDBOXED_PROFILE_PREFIX)
+    {
+        if is_cancelled(cancellation_event) {
+            return Ok(124);
+        }
+        return run_unsandboxed_job_process(&payload, cancellation_event);
+    }
     let Some(_acl_guard) = acquire_acl_mutex(cancellation_event)? else {
         return Ok(124);
     };
@@ -782,6 +861,105 @@ fn run_payload(
     };
     revoke_policy(&changed_paths, profile.sid);
     result
+}
+
+fn run_unsandboxed_job_process(
+    payload: &WindowsSandboxPayload,
+    cancellation_event: Option<HANDLE>,
+) -> Result<i32, String> {
+    let job = create_job()?;
+    let mut startup: STARTUPINFOW = unsafe { zeroed() };
+    startup.cb = size_of::<STARTUPINFOW>() as u32;
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+    startup.hStdOutput = unsafe { GetStdHandle(STD_OUTPUT_HANDLE) };
+    startup.hStdError = unsafe { GetStdHandle(STD_ERROR_HANDLE) };
+
+    let (application, mut command_line) = command_line(&payload.command)?;
+    let cwd = wide_os(payload.cwd.as_os_str());
+    let mut process_info: PROCESS_INFORMATION = unsafe { zeroed() };
+    let created = unsafe {
+        CreateProcessW(
+            application.as_ptr(),
+            command_line.as_mut_ptr(),
+            null(),
+            null(),
+            1 as BOOL,
+            CREATE_SUSPENDED | CREATE_NO_WINDOW,
+            null(),
+            cwd.as_ptr(),
+            &startup,
+            &mut process_info,
+        )
+    };
+    if created == 0 {
+        return Err(last_error(
+            "Failed to create the Danger Full Access PowerShell process",
+        ));
+    }
+    let process = OwnedHandle::new(
+        process_info.hProcess,
+        "Invalid Danger Full Access process handle",
+    )?;
+    let thread_handle = match OwnedHandle::new(
+        process_info.hThread,
+        "Invalid Danger Full Access thread handle",
+    ) {
+        Ok(handle) => handle,
+        Err(error) => {
+            unsafe {
+                TerminateProcess(process.0, 126);
+            }
+            return Err(error);
+        }
+    };
+    if unsafe { AssignProcessToJobObject(job.0, process.0) } == 0 {
+        unsafe {
+            TerminateProcess(process.0, 126);
+        }
+        return Err(last_error(
+            "Failed to assign Danger Full Access PowerShell to its Job Object",
+        ));
+    }
+    if is_cancelled(cancellation_event) {
+        return Ok(124);
+    }
+    if unsafe { ResumeThread(thread_handle.0) } == u32::MAX {
+        return Err(last_error(
+            "Failed to resume Danger Full Access PowerShell",
+        ));
+    }
+    loop {
+        match unsafe { WaitForSingleObject(process.0, 100) } {
+            WAIT_OBJECT_0 => break,
+            WAIT_TIMEOUT if is_cancelled(cancellation_event) => {
+                if unsafe { TerminateJobObject(job.0, 124) } == 0 {
+                    return Err(last_error(
+                        "Failed to terminate the cancelled Danger Full Access Job Object",
+                    ));
+                }
+                if unsafe { WaitForSingleObject(process.0, INFINITE) } != WAIT_OBJECT_0 {
+                    return Err(last_error(
+                        "Failed while waiting for cancelled Danger Full Access PowerShell",
+                    ));
+                }
+                break;
+            }
+            WAIT_TIMEOUT => continue,
+            _ => {
+                return Err(last_error(
+                    "Failed while waiting for Danger Full Access PowerShell",
+                ));
+            }
+        }
+    }
+    let mut exit_code = 0u32;
+    if unsafe { GetExitCodeProcess(process.0, &mut exit_code) } == 0 {
+        return Err(last_error(
+            "Failed to obtain Danger Full Access PowerShell exit code",
+        ));
+    }
+    Ok(exit_code as i32)
 }
 
 fn run_appcontainer_process(

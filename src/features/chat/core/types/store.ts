@@ -339,7 +339,11 @@ export type BlockingInteraction =
   | PlanGateBlockingInteraction;
 
 export type AuthorityMode = 'ask' | 'plan' | 'craft';
-export type PermissionPreset = 'cautious' | 'relaxed';
+export type PermissionPreset =
+  | 'cautious'
+  | 'relaxed'
+  | 'full_access'
+  | 'danger_full_access';
 
 // ============================================================================
 // ChatStore 类型定义

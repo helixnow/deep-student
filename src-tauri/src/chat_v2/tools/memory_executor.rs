@@ -2131,7 +2131,10 @@ impl ToolExecutor for MemoryToolExecutor {
             | "memory_write_smart"
             | "memory_write_batch"
             | "memory_update_by_id" => ToolSensitivity::Medium,
-            "memory_delete" => ToolSensitivity::Medium, // 删除操作需要更高敏感度
+            // Memory deletion uses VFS soft-delete and remains recoverable via
+            // the VFS trash/restore path. There is no Agent restore tool, and
+            // cleaned incoming relation tags are not recreated automatically.
+            "memory_delete" => ToolSensitivity::Medium,
             // 学习者画像随每次会话注入 system prompt，读写均为 Medium
             "learner_profile_get" | "learner_profile_update" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
@@ -2197,6 +2200,15 @@ mod tests {
         assert_eq!(
             executor.concurrency_class("builtin-memory_export_all"),
             ToolConcurrency::ReadOnly
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-memory_delete"),
+            ToolSensitivity::Medium,
+            "memory_delete is a recoverable VFS soft-delete, not a purge"
+        );
+        assert_eq!(
+            executor.concurrency_class("builtin-memory_delete"),
+            ToolConcurrency::Serial
         );
     }
 

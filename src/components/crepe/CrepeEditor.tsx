@@ -1505,6 +1505,26 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           debugLog.error('[CrepeEditor] insertTable failed:', e);
         }
       },
+
+      // 📱 触屏无 hover 块句柄：在当前选区顶层块处打开块操作菜单
+      // （复用块句柄的 setBlockMenu 渲染路径；渲染后 useLayoutEffect 会按实测尺寸钳入视口）
+      openBlockMenuAtSelection: () => {
+        const view = viewRef.current;
+        if (!view || view.isDestroyed) return;
+        try {
+          const { $from } = view.state.selection;
+          const pos = $from.depth > 0 ? $from.before(1) : $from.pos;
+          const coords = view.coordsAtPos(Math.min(pos + 1, view.state.doc.content.size));
+          setBlockMenu({
+            pos,
+            x: coords.left,
+            y: Math.max(8, coords.bottom + 6),
+            doc: view.state.doc,
+          });
+        } catch (e) {
+          debugLog.error('[CrepeEditor] openBlockMenuAtSelection failed:', e);
+        }
+      },
     };
   }, []);
 

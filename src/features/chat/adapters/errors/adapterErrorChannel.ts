@@ -135,7 +135,7 @@ export function reportAdapterError(options: ReportAdapterErrorOptions): AdapterE
     const action =
       options.retryable && options.retry
         ? {
-            label: i18n.t('chatV2:error.retry', { defaultValue: 'Retry' }),
+            label: i18n.t('chatV2:error.retry'),
             onClick: () => {
               void Promise.resolve(options.retry?.()).catch((err) => {
                 debugLog.error(LOG_PREFIX, 'retry action failed', getErrorMessage(err));

@@ -161,9 +161,19 @@ interface TranslateWorkbenchProps {
   dstuMode: TranslateWorkbenchDstuMode;
   /** ★ A6-28 标签页：当前是否为活跃标签页；非活跃实例不响应全局快捷键 */
   isActive?: boolean;
+  /** OS 应用宿主已提供侧边栏设置入口；设置作为完整内容页显示 */
+  externalSettingsNavigation?: boolean;
+  /** OS 宿主设置标签的受控选中状态 */
+  externalSettingsOpen?: boolean;
 }
 
-export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, dstuMode, isActive }) => {
+export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
+  onBack,
+  dstuMode,
+  isActive,
+  externalSettingsNavigation = false,
+  externalSettingsOpen,
+}) => {
   const { t } = useTranslation(['translation', 'common']);
 
   // DSTU 会话数据
@@ -193,7 +203,12 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   const [srcLang, setSrcLang] = useState(initialSession?.srcLang || prefs.srcLang || 'auto');
   const [tgtLang, setTgtLang] = useState(initialSession?.tgtLang || prefs.tgtLang || 'zh-CN');
   const [customPrompt, setCustomPrompt] = useState('');
-  const [showPromptEditor, setShowPromptEditor] = useState(false);
+  // 外部设置标签可能早于懒加载工作台被点击；直接以宿主状态初始化，
+  // 避免挂载后再双向 effect 同步造成 settingsVisibility 真假振荡。
+  const [showPromptEditor, setShowPromptEditor] = useState(
+    () => externalSettingsNavigation && externalSettingsOpen === true,
+  );
+  const isExternalSettingsPageOpen = externalSettingsNavigation && showPromptEditor;
   const [formality, setFormality] = useState<'formal' | 'casual' | 'auto'>(
     initialSession?.formality || prefs.formality || 'auto'
   );
@@ -249,11 +264,11 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   useEffect(() => {
     const handleToggleSettings = (evt: Event) => {
       // ★ 标签页：检查 targetResourceId 是否匹配（无 targetResourceId 时兼容旧调用）
-      const detail = (evt as CustomEvent<{ targetResourceId?: string }>).detail;
+      const detail = (evt as CustomEvent<{ targetResourceId?: string; open?: boolean }>).detail;
       if (detail?.targetResourceId && dstuMode.resourceId && detail.targetResourceId !== dstuMode.resourceId) {
         return;
       }
-      setShowPromptEditor(prev => !prev);
+      setShowPromptEditor(prev => typeof detail?.open === 'boolean' ? detail.open : !prev);
     };
     window.addEventListener('translation:openSettings', handleToggleSettings);
     return () => {
@@ -945,7 +960,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
         <MacTopSafeDragZone className="translate-top-safe-drag-zone" />
 
         {/* 离线状态提示 */}
-        {!isOnline && (
+        {!isExternalSettingsPageOpen && !isOnline && (
           <div className="flex items-center gap-2 px-4 py-2 bg-warning/10 border-b border-warning/20 text-warning ui-drop-in">
             <WifiSlash size={16} className="shrink-0" />
             <span className="text-sm">{t('translation:errors.offline')}</span>
@@ -953,7 +968,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
         )}
 
         {/* 翻译错误提示（内联错误条 + 重试） */}
-        {translationError && !isTranslating && (
+        {!isExternalSettingsPageOpen && translationError && !isTranslating && (
           <div className="flex items-center justify-between gap-2 px-4 py-2 bg-destructive/10 border-b border-destructive/20 ui-drop-in">
             <div className="flex items-center gap-2 text-destructive min-w-0">
               <WarningCircle size={16} className="shrink-0" />
@@ -973,7 +988,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
         )}
 
         {/* 取消翻译后的部分结果提示（内联信息条） */}
-        {isPartialResult && !isTranslating && !translationError && (
+        {!isExternalSettingsPageOpen && isPartialResult && !isTranslating && !translationError && (
           <div className="flex items-center justify-between gap-2 px-4 py-2 bg-info/10 border-b border-info/20 ui-drop-in">
             <div className="flex items-center gap-2 text-info min-w-0">
               <Info size={16} className="shrink-0" />
@@ -1034,6 +1049,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               setIsAutoTranslate={setIsAutoTranslate}
               isSyncScroll={isSyncScroll}
               setIsSyncScroll={setIsSyncScroll}
+              settingsAsPage={externalSettingsNavigation}
               onSwapLanguages={handleSwapLanguages}
               onFilesDropped={handleFilesDropped}
               onSavePrompt={handleSavePrompt}
@@ -1052,26 +1068,28 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
         </div>
 
         {/* 底部状态条：检测语言回显 + 快捷键提示（桌面） */}
-        <div className="hidden md:flex items-center justify-between gap-3 px-4 py-1 border-t border-border/50 text-xs text-muted-foreground select-none shrink-0">
-          <div className="flex items-center gap-1.5 min-w-0">
-            {srcLang === 'auto' && detectedLangName && (
-              <span className="flex items-center gap-1.5 truncate">
-                <Translate size={12} className="shrink-0" />
-                {t('translation:workbench_ui.detected_language', { language: detectedLangName })}
-              </span>
-            )}
+        {!isExternalSettingsPageOpen && (
+          <div className="hidden md:flex items-center justify-between gap-3 px-4 py-1 border-t border-border/50 text-xs text-muted-foreground select-none shrink-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              {srcLang === 'auto' && detectedLangName && (
+                <span className="flex items-center gap-1.5 truncate">
+                  <Translate size={12} className="shrink-0" />
+                  {t('translation:workbench_ui.detected_language', { language: detectedLangName })}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              {shortcutHints.filter((hint) => hint.visible).map((hint) => (
+                <span key={hint.combo} className="flex items-center gap-1">
+                  <kbd className="rounded-sm border border-border/60 bg-muted/40 px-1 leading-tight font-sans">
+                    {hint.combo}
+                  </kbd>
+                  {hint.label}
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
-            {shortcutHints.filter((hint) => hint.visible).map((hint) => (
-              <span key={hint.combo} className="flex items-center gap-1">
-                <kbd className="rounded-sm border border-border/60 bg-muted/40 px-1 leading-tight font-sans">
-                  {hint.combo}
-                </kbd>
-                {hint.label}
-              </span>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
   );
 };

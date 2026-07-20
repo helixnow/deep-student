@@ -191,6 +191,8 @@ export function buildMobileEditorCommands(
     insertLink: () => editor?.insertLink(),
     insertCodeBlock: () => editor?.insertCodeBlock(),
     insertTable: () => editor?.insertTable(),
+    // 📱 触屏无 hover 块句柄：当前块操作菜单入口（Turn into / 复制 / 删除等）
+    openBlockActions: () => editor?.openBlockMenuAtSelection?.(),
     // 查找入口：仅宿主接线后暴露，保持未接线宿主的按钮隐藏行为
     ...(extras?.openFind ? { openFind: extras.openFind } : {}),
   };

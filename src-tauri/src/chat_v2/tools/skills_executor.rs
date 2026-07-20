@@ -85,6 +85,14 @@ where
 }
 
 /// load_skills 输出结果
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+struct LoadedToolOutput {
+    /// 工具注册名
+    name: String,
+    /// 提供该工具的技能 ID；前端据此可靠区分内置与第三方技能来源
+    skill_id: String,
+}
+
 #[derive(Debug, Serialize)]
 struct LoadSkillsOutput {
     /// 状态
@@ -93,6 +101,8 @@ struct LoadSkillsOutput {
     loaded_skill_ids: Vec<String>,
     /// 本次加载后可用的工具名称
     loaded_tool_names: Vec<String>,
+    /// 保留工具与技能来源关系的结构化列表
+    loaded_tools: Vec<LoadedToolOutput>,
     /// 本次因运行时准入被拒绝的技能及原因
     rejected_skills: HashMap<String, String>,
     /// Skill 状态版本
@@ -236,7 +246,7 @@ impl ToolExecutor for SkillsExecutor {
 
                 let mut session_loaded_skill_ids = loaded_skills.clone();
                 let mut skill_state_version = 0_u64;
-                let mut loaded_tool_names: Vec<String> = loaded_skills
+                let mut loaded_tools: Vec<LoadedToolOutput> = loaded_skills
                     .iter()
                     .flat_map(|skill_id| {
                         ctx.skill_embedded_tools
@@ -244,8 +254,21 @@ impl ToolExecutor for SkillsExecutor {
                             .and_then(|map| map.get(skill_id))
                             .into_iter()
                             .flatten()
-                            .map(|tool| tool.name.clone())
+                            .map(move |tool| LoadedToolOutput {
+                                name: tool.name.clone(),
+                                skill_id: skill_id.clone(),
+                            })
                     })
+                    .collect();
+                loaded_tools.sort_by(|left, right| {
+                    left.skill_id
+                        .cmp(&right.skill_id)
+                        .then_with(|| left.name.cmp(&right.name))
+                });
+                loaded_tools.dedup();
+                let mut loaded_tool_names: Vec<String> = loaded_tools
+                    .iter()
+                    .map(|tool| tool.name.clone())
                     .collect();
                 loaded_tool_names.sort();
                 loaded_tool_names.dedup();
@@ -441,6 +464,7 @@ impl ToolExecutor for SkillsExecutor {
                     },
                     loaded_skill_ids: session_loaded_skill_ids,
                     loaded_tool_names,
+                    loaded_tools,
                     rejected_skills,
                     skill_state_version,
                     message,

@@ -105,6 +105,11 @@ export function useSlashMenuCustomScrollbar({
           restoreNativeSmooth();
           return;
         }
+        const maxScrollTop = Math.max(
+          0,
+          menuGroups.scrollHeight - menuGroups.clientHeight,
+        );
+        wheelTarget = Math.max(0, Math.min(wheelTarget, maxScrollTop));
         const current = menuGroups.scrollTop;
         const delta = wheelTarget - current;
         if (Math.abs(delta) <= WHEEL_SETTLE_EPSILON) {
@@ -256,9 +261,9 @@ export function useSlashMenuCustomScrollbar({
       updateThumb();
 
       const cleanup = () => {
-        clearHideTimer();
         stopDragging();
         stopWheelAnimation();
+        clearHideTimer();
         menuGroups.style.scrollBehavior = '';
         resizeObserver.disconnect();
         contentObserver.disconnect();

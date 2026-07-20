@@ -12,6 +12,8 @@ import { CheckCircle, FileJs, FileText, Table, Image as ImageIcon, Copy, Check }
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
+import { builtinToolSkills } from '@/features/chat/skills/builtin-tools';
 
 // ============================================================================
 // 类型定义
@@ -29,8 +31,14 @@ type OutputType = 'json' | 'text' | 'table' | 'image' | 'unknown';
 interface LoadSkillsSummaryData {
   loadedSkillIds: string[];
   loadedToolNames: string[];
+  loadedTools: Array<{
+    name: string;
+    skillId: string;
+  }>;
   message?: string;
 }
+
+const BUILTIN_TOOL_SKILL_IDS = new Set(builtinToolSkills.map((skill) => skill.id));
 
 function unwrapLoadSkillsPayload(output: unknown): Record<string, unknown> | null {
   if (!output || typeof output !== 'object' || Array.isArray(output)) {
@@ -113,15 +121,31 @@ function extractLoadSkillsSummary(output: unknown): LoadSkillsSummaryData | null
   const loadedToolNames = Array.isArray(data.loaded_tool_names)
     ? data.loaded_tool_names.filter((item): item is string => typeof item === 'string' && item.length > 0)
     : [];
+  const loadedTools = Array.isArray(data.loaded_tools)
+    ? data.loaded_tools.flatMap((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+        const record = item as Record<string, unknown>;
+        const name = typeof record.name === 'string' ? record.name.trim() : '';
+        const skillIdValue = record.skill_id ?? record.skillId;
+        const skillId = typeof skillIdValue === 'string' ? skillIdValue.trim() : '';
+        return name && skillId ? [{ name, skillId }] : [];
+      })
+    : [];
   const message = typeof data.message === 'string' ? data.message : undefined;
 
-  if (loadedSkillIds.length === 0 && loadedToolNames.length === 0 && !message) {
+  if (
+    loadedSkillIds.length === 0
+    && loadedToolNames.length === 0
+    && loadedTools.length === 0
+    && !message
+  ) {
     return null;
   }
 
   return {
     loadedSkillIds,
     loadedToolNames,
+    loadedTools,
     message,
   };
 }
@@ -191,7 +215,7 @@ const TextOutput: React.FC<{ text: string }> = ({ text }) => {
           size="sm"
           onClick={() => setExpanded((prev) => !prev)}
           aria-expanded={expanded}
-          className="mt-1 !h-auto !px-1.5 !py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+          className="mt-1 !h-auto !px-1.5 !py-0.5 text-[11px] text-muted-foreground hover:text-foreground relative after:absolute after:-inset-y-2.5 after:inset-x-0 after:content-['']"
         >
           {expanded
             ? t('blocks.mcpTool.collapseLongOutput')
@@ -206,6 +230,7 @@ const TextOutput: React.FC<{ text: string }> = ({ text }) => {
  * 表格输出渲染
  */
 const TableOutput: React.FC<{ data: Record<string, unknown>[] }> = ({ data }) => {
+  const { t } = useTranslation('chatV2');
   if (data.length === 0) return null;
 
   const columns = Object.keys(data[0]);
@@ -253,7 +278,7 @@ const TableOutput: React.FC<{ data: Record<string, unknown>[] }> = ({ data }) =>
       </table>
       {hasMore && (
         <div className="text-xs text-muted-foreground text-center py-2">
-          ... and {data.length - maxRows} more rows
+          {t('blocks.mcpTool.moreRows', { count: data.length - maxRows })}
         </div>
       )}
     </CustomScrollArea>
@@ -264,6 +289,7 @@ const TableOutput: React.FC<{ data: Record<string, unknown>[] }> = ({ data }) =>
  * 图片输出渲染
  */
 const ImageOutput: React.FC<{ output: unknown }> = ({ output }) => {
+  const { t } = useTranslation('chatV2');
   const imageUrl = useMemo(() => {
     if (typeof output === 'string') {
       return output;
@@ -281,7 +307,7 @@ const ImageOutput: React.FC<{ output: unknown }> = ({ output }) => {
     <div className="flex justify-center">
       <img
         src={imageUrl}
-        alt="Tool output"
+        alt={t('blocks.mcpTool.toolOutputImage')}
         className="max-w-full max-h-60 rounded object-contain"
         loading="lazy"
       />
@@ -290,9 +316,12 @@ const ImageOutput: React.FC<{ output: unknown }> = ({ output }) => {
 };
 
 const LoadSkillsSummary: React.FC<{ data: LoadSkillsSummaryData }> = ({ data }) => {
-  const { t } = useTranslation(['chatV2', 'skills']);
+  const { t } = useTranslation(['chatV2', 'skills', 'mcp']);
+  const structuredToolNames = new Set(data.loadedTools.map((tool) => tool.name));
+  const legacyToolNames = data.loadedToolNames.filter((name) => !structuredToolNames.has(name));
+  const hasLoadedTools = data.loadedTools.length > 0 || legacyToolNames.length > 0;
 
-  if (data.loadedSkillIds.length === 0 && data.loadedToolNames.length === 0 && !data.message) {
+  if (data.loadedSkillIds.length === 0 && !hasLoadedTools && !data.message) {
     return null;
   }
 
@@ -301,7 +330,7 @@ const LoadSkillsSummary: React.FC<{ data: LoadSkillsSummaryData }> = ({ data }) 
       {data.loadedSkillIds.length > 0 && (
         <div>
           <div className="text-xs font-medium text-foreground/80 mb-1.5">
-            {t('blocks.mcpTool.loadedSkills', { ns: 'chatV2', defaultValue: 'Loaded skills' })}
+            {t('blocks.mcpTool.loadedSkills', { ns: 'chatV2' })}
           </div>
           <div className="flex flex-wrap gap-1.5">
             {data.loadedSkillIds.map((skillId) => {
@@ -322,19 +351,34 @@ const LoadSkillsSummary: React.FC<{ data: LoadSkillsSummaryData }> = ({ data }) 
         </div>
       )}
 
-      {data.loadedToolNames.length > 0 && (
+      {hasLoadedTools && (
         <div>
           <div className="text-xs font-medium text-foreground/80 mb-1.5">
-            {t('blocks.mcpTool.loadedTools', { ns: 'chatV2', defaultValue: 'Loaded tools' })}
+            {t('blocks.mcpTool.loadedTools', { ns: 'chatV2' })}
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {data.loadedToolNames.map((toolName) => (
-              <code
-                key={toolName}
-                className="inline-flex items-center rounded-md border border-border/40 bg-background/60 px-1.5 py-0.5 text-[11px] text-muted-foreground"
+            {data.loadedTools.map(({ name, skillId }) => (
+              <span
+                key={`${skillId}:${name}`}
+                title={`${skillId}: ${name}`}
+                className="inline-flex items-center rounded-full border border-border/50 bg-background/70 px-2 py-0.5 text-xs text-foreground"
               >
-                {toolName}
-              </code>
+                {getReadableToolName(name, t, BUILTIN_TOOL_SKILL_IDS.has(skillId)
+                  ? { source: 'builtin' }
+                  : { source: 'external', providerName: skillId })}
+              </span>
+            ))}
+            {legacyToolNames.map((toolName) => (
+              <span
+                key={`legacy:${toolName}`}
+                title={toolName}
+                className="inline-flex items-center rounded-full border border-border/50 bg-background/70 px-2 py-0.5 text-xs text-foreground"
+              >
+                {getReadableToolName(toolName, t, {
+                  source: 'external',
+                  providerName: t('labels.skill', { ns: 'mcp' }),
+                })}
+              </span>
             ))}
           </div>
         </div>
@@ -424,7 +468,7 @@ export const ToolOutputView: React.FC<ToolOutputViewProps> = ({
             size="icon"
             iconOnly
             onClick={handleCopy}
-            className="!h-5 !w-5 ml-auto text-muted-foreground hover:text-foreground"
+            className="!h-5 !w-5 ml-auto text-muted-foreground hover:text-foreground relative after:absolute after:-inset-3 after:content-['']"
             aria-label={t('blocks.mcpTool.copyOutput')}
             title={t('blocks.mcpTool.copyOutput')}
           >

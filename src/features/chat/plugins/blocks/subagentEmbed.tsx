@@ -203,7 +203,8 @@ function parseDispatchedFromContent(content: string | undefined): DispatchedProg
 // ============================================================================
 
 const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block }) => {
-  const { t } = useTranslation(['chatV2', 'workspace']);
+  const { t, i18n } = useTranslation(['chatV2', 'workspace']);
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isFullHeight, setIsFullHeight] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -807,13 +808,13 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         {createdAt && (
           <div className="flex items-center gap-1">
             <Clock size={12} />
-            <span>{new Date(createdAt).toLocaleTimeString()}</span>
+            <span>{new Date(createdAt).toLocaleTimeString(locale)}</span>
           </div>
         )}
         {completedAt && (
           <div className="flex items-center gap-1">
             <CheckCircle size={12} className="text-success" />
-            <span>{new Date(completedAt).toLocaleTimeString()}</span>
+            <span>{new Date(completedAt).toLocaleTimeString(locale)}</span>
           </div>
         )}
         <span className="font-mono">{sessionId.slice(-12)}</span>

@@ -234,7 +234,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
         className={cn(
           // Tahoe Finder tab strip: one continuous row with a single active capsule.
           // 触屏 pr-12：为常显的「更多 + 关闭」两个入口留出空间
-          'group/tab relative flex items-center gap-1.5 pl-2.5 pr-1.5 hover:pr-7 h-[30px] [@media(pointer:coarse)]:h-[36px] [@media(pointer:coarse)]:pr-12 rounded-lg cursor-default select-none my-[3px]',
+          'group/tab relative flex items-center gap-1.5 pl-2.5 pr-1.5 hover:pr-7 h-[30px] [@media(pointer:coarse)]:h-[38px] [@media(pointer:coarse)]:pr-12 rounded-lg cursor-default select-none my-[3px]',
           'text-[13px] leading-none whitespace-nowrap min-w-0 max-w-[200px] shrink-0 border-r border-border/40 last:border-r-0',
           'transition-[background-color,color,opacity] duration-150',
           isActive
@@ -276,7 +276,8 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
             className={cn(
               'absolute right-6 top-1/2 -translate-y-1/2 rounded-md bg-inherit p-[3px] opacity-60',
               'hover:bg-[var(--foreground)]/10 active:bg-[var(--foreground)]/15',
-              'before:absolute before:-inset-[8px] before:content-[""]',
+              // 热区只向左/上/下扩展，右侧到自身边缘为止，避免与右侧关闭按钮热区重叠
+              'before:absolute before:-inset-y-[8px] before:-left-[8px] before:right-0 before:content-[""]',
             )}
           >
             <DotsThree size={14} weight="bold" />
@@ -293,7 +294,9 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
             'absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-inherit p-[3px] transition-opacity duration-100',
             'opacity-0 group-hover/tab:opacity-100 [@media(pointer:coarse)]:opacity-60',
             'hover:bg-[var(--foreground)]/10 active:bg-[var(--foreground)]/15',
-            'before:absolute before:-inset-[5px] before:content-[""] [@media(pointer:coarse)]:before:-inset-[10px]',
+            // 触屏热区只向右/上/下扩展，左侧到自身边缘为止，避免与「更多」按钮热区重叠
+            'before:absolute before:-inset-[5px] before:content-[""]',
+            '[@media(pointer:coarse)]:before:-inset-y-[10px] [@media(pointer:coarse)]:before:-right-[10px] [@media(pointer:coarse)]:before:left-0',
           )}
         >
           <X size={12} />
@@ -540,7 +543,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           tabIndex={-1}
           aria-hidden="true"
           onClick={() => scroll('left')}
-          className="sticky left-0 z-10 flex w-8 shrink-0 items-center justify-center bg-[color:var(--shell-toolbar-surface,var(--background))] transition-colors hover:bg-[var(--interactive-hover)]"
+          className="sticky left-0 z-10 flex w-8 [@media(pointer:coarse)]:w-11 shrink-0 items-center justify-center bg-[color:var(--shell-toolbar-surface,var(--background))] transition-colors hover:bg-[var(--interactive-hover)]"
           style={{ borderRight: '1px solid color-mix(in srgb, var(--foreground) 6%, transparent)' }}
         >
           <CaretLeft size={16} className="opacity-45" />
@@ -594,7 +597,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           tabIndex={-1}
           aria-hidden="true"
           onClick={() => scroll('right')}
-          className="sticky right-0 z-10 flex w-8 shrink-0 items-center justify-center bg-[color:var(--shell-toolbar-surface,var(--background))] transition-colors hover:bg-[var(--interactive-hover)]"
+          className="sticky right-0 z-10 flex w-8 [@media(pointer:coarse)]:w-11 shrink-0 items-center justify-center bg-[color:var(--shell-toolbar-surface,var(--background))] transition-colors hover:bg-[var(--interactive-hover)]"
           style={{ borderLeft: '1px solid color-mix(in srgb, var(--foreground) 6%, transparent)' }}
         >
           <CaretRight size={16} className="opacity-45" />

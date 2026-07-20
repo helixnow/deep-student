@@ -115,20 +115,60 @@
 }
 
 /* Per-surface track insets supplied by the unified ScrollArea wrapper. */
-[data-slot="scroll-area"][data-native-scrollbars="false"]
-  > [data-overlayscrollbars="host"]
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-top]
   > .os-scrollbar-vertical {
-  top: var(--scroll-area-track-top, 0);
-  right: var(--scroll-area-track-right, 0);
-  bottom: var(--scroll-area-track-bottom, 0);
+  top: var(--scroll-area-track-top);
 }
 
-[data-slot="scroll-area"][data-native-scrollbars="false"]
-  > [data-overlayscrollbars="host"]
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-bottom]
+  > .os-scrollbar-vertical {
+  bottom: calc(var(--scroll-area-track-bottom) + var(--os-size));
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-bottom]
+  > .os-scrollbar-vertical.os-scrollbar-cornerless {
+  bottom: var(--scroll-area-track-bottom);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-right]
+  > .os-scrollbar-vertical {
+  right: var(--scroll-area-track-right);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-right]
+  > .os-scrollbar-vertical.os-scrollbar-rtl {
+  right: auto;
+  left: var(--scroll-area-track-right);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-left]
+  > .os-scrollbar-vertical.os-scrollbar-rtl {
+  left: var(--scroll-area-track-left);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-bottom]
   > .os-scrollbar-horizontal {
-  right: var(--scroll-area-track-right, 0);
-  bottom: var(--scroll-area-track-bottom, 0);
-  left: var(--scroll-area-track-left, 0);
+  bottom: var(--scroll-area-track-bottom);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-right]
+  > .os-scrollbar-horizontal {
+  right: var(--scroll-area-track-right);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-right]
+  > .os-scrollbar-horizontal:not(.os-scrollbar-rtl):not(.os-scrollbar-cornerless) {
+  right: calc(var(--scroll-area-track-right) + var(--os-size));
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-left]
+  > .os-scrollbar-horizontal {
+  left: var(--scroll-area-track-left);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-left]
+  > .os-scrollbar-horizontal.os-scrollbar-rtl:not(.os-scrollbar-cornerless) {
+  left: calc(var(--scroll-area-track-left) + var(--os-size));
 }
 
 /* ---------------------------------------------------------------- */

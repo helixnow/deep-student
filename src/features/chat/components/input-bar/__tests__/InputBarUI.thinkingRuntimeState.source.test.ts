@@ -40,9 +40,9 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(menuGroup).toContain('options={thinkingDepthOptions}');
     expect(menuGroup).toContain('value={thinkingDepthValue}');
     expect(menuGroup).toContain('enabled={!!enableThinking}');
-    expect(menuGroup).toContain("offLabel={t('chatV2:inputBar.thinkingOff', '关闭')}");
-    expect(menuGroup).toContain("efficientLabel={t('chatV2:inputBar.thinkingDepthEfficient', '更高效')}");
-    expect(menuGroup).toContain("smartLabel={t('chatV2:inputBar.thinkingDepthSmart', '更智能')}");
+    expect(menuGroup).toContain("offLabel={t('chatV2:inputBar.thinkingOff')}");
+    expect(menuGroup).toContain("efficientLabel={t('chatV2:inputBar.thinkingDepthEfficient')}");
+    expect(menuGroup).toContain("smartLabel={t('chatV2:inputBar.thinkingDepthSmart')}");
   });
 
   it('keeps a menu-item fallback without an off action for forced-thinking models', () => {
@@ -56,7 +56,7 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(fallbackStart).toBeGreaterThan(-1);
     const fallback = menuGroup.slice(fallbackStart);
     expect(fallback).not.toContain('<AppMenuSeparator />');
-    expect(fallback).not.toContain("t('chatV2:inputBar.thinkingOff', '关闭')");
+    expect(fallback).not.toContain("t('chatV2:inputBar.thinkingOff')");
   });
 
   it('anchors the reasoning menu to the stable right edge while depth labels change', () => {
@@ -93,7 +93,7 @@ describe('InputBarUI thinking runtime state visibility', () => {
 
     expect(menuBranchStart).toBeGreaterThan(-1);
     expect(menuBranchEnd).toBeGreaterThan(menuBranchStart);
-    expect(inputBarSource).toContain("t('chatV2:inputBar.runtimeModelTitle', '模型')");
+    expect(inputBarSource).toContain("t('chatV2:inputBar.runtimeModelTitle')");
     expect(inputBarSource).toContain('onOpenRuntimeModelPanel');
     expect(menuBranch).toContain('<AppMenuGroup label={runtimeModelTitle}>');
     expect(menuBranch).toContain('runtimeModelOptions.length > 0 ? (');
@@ -104,7 +104,7 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(menuBranch).toContain('groupedRuntimeModelOptions.map');
     expect(menuBranch).toContain("handleOpenRuntimeModelPanel('compare')");
     expect(menuBranch).toContain('<AppMenuItem');
-    expect(inputBarSource).toContain("t('chatV2:inputBar.chooseRuntimeModel', '选择模型')");
+    expect(inputBarSource).toContain("t('chatV2:inputBar.chooseRuntimeModel')");
     expect(menuBranch).toContain('onSelectRuntimeModel?.(model.id)');
     expect(menuBranch).toContain('runtimeCurrentModelId');
   });

@@ -41,7 +41,8 @@ interface SubagentRetryOutput {
 const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   block,
 }) => {
-  const { t } = useTranslation(['chatV2', 'workspace']);
+  const { t, i18n } = useTranslation(['chatV2', 'workspace']);
+  const locale = i18n.resolvedLanguage ?? i18n.language;
 
   const input = block.toolInput as unknown as SubagentRetryInput | undefined;
   const output = block.toolOutput as unknown as SubagentRetryOutput | undefined;
@@ -159,7 +160,7 @@ const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
 
           {output?.timestamp && (
             <p className="text-xs text-muted-foreground/70 mt-1">
-              {new Date(output.timestamp).toLocaleString()}
+              {new Date(output.timestamp).toLocaleString(locale)}
             </p>
           )}
         </div>

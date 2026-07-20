@@ -40,19 +40,23 @@ export const HorizontalResizable: React.FC<HorizontalResizableProps> = ({
       pendingX = null;
       setRatio(Math.min(1 - minRight, Math.max(minLeft, r)));
     };
-    const onMove = (e: MouseEvent) => {
-      pendingX = e.clientX;
+    const onMove = (e: MouseEvent | TouchEvent) => {
+      pendingX = 'touches' in e ? e.touches[0].clientX : e.clientX;
       if (rafId === 0) rafId = requestAnimationFrame(applyPending);
       e.preventDefault();
     };
     const onUp = () => setDragging(false);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onUp);
     return () => {
       if (rafId !== 0) cancelAnimationFrame(rafId);
       pendingX = null;
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
     };
   }, [dragging, minLeft, minRight]);
 
@@ -65,7 +69,8 @@ export const HorizontalResizable: React.FC<HorizontalResizableProps> = ({
         role="separator"
         aria-orientation="vertical"
         onMouseDown={() => setDragging(true)}
-        className={`w-1.5 cursor-col-resize flex items-center justify-center shrink-0 bg-border ${dragging ? 'bg-primary' : 'hover:bg-primary/30'} transition-colors`}
+        onTouchStart={() => setDragging(true)}
+        className={`w-1.5 cursor-col-resize flex items-center justify-center shrink-0 bg-border ${dragging ? 'bg-primary' : 'hover:bg-primary/30'} transition-colors [@media(pointer:coarse)]:relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-y-0 [@media(pointer:coarse)]:after:-inset-x-2.5 [@media(pointer:coarse)]:after:content-['']`}
         title={t('resizable.dragToResizeWidth')}
       >
         <DotsSixVertical size={12} className="text-muted-foreground/50" />

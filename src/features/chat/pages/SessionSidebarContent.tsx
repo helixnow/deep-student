@@ -368,7 +368,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                   variant="ghost"
                   size="icon"
                   iconOnly
-                  className="relative !h-5 !w-5 !p-0 after:absolute after:-inset-2.5 after:content-['']"
+                  // 命中区扩到 44px 高；右侧只外扩 4px，避免盖住折叠箭头区域造成误触
+                  className="relative !h-5 !w-5 !p-0 after:absolute after:-inset-y-3 after:-left-3 after:-right-1 after:content-['']"
                   aria-label={createSessionLabel}
                   title={createSessionLabel}
                   onClick={(event) => {
@@ -442,11 +443,11 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         {group && pendingArchiveGroupId === group.id && (
           <div
             role="alertdialog"
-            aria-label={t('page.archiveGroupTitle', '归档分组')}
+            aria-label={t('page.archiveGroupTitle')}
             className="mx-1 flex items-center gap-2 rounded-2xl border border-warning/40 bg-warning/10 px-3 py-2"
           >
             <span className="min-w-0 flex-1 text-ui leading-4 text-foreground/90">
-              {t('page.archiveGroupConfirmInline', { name: group.name, defaultValue: '归档「{{name}}」？其中的会话不会被删除' })}
+              {t('page.archiveGroupConfirmInline', { name: group.name })}
             </span>
             <div className="flex shrink-0 items-center gap-1">
               {/* 破坏性操作确认按钮：移动/平板保持较大触控目标，桌面 lg 起紧凑 */}
@@ -459,14 +460,14 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                   onArchiveGroup(group);
                 }}
               >
-                {t('page.archiveGroupConfirm', '确认归档')}
+                {t('page.archiveGroupConfirm')}
               </DsButton>
               <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
                 className="!h-9 !w-9 lg:!h-7 lg:!w-7"
-                aria-label={t('common:cancel', '取消')}
+                aria-label={t('common:cancel')}
                 onClick={clearArchiveConfirm}
               >
                 <X size={13} />
@@ -540,7 +541,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     if (isSearching && !hasAnySearchResult) {
       return (
         <div className="px-3 py-6 text-center text-ui text-muted-foreground">
-          {t('browser.noResults', '未找到匹配的会话')}
+          {t('browser.noResults')}
         </div>
       );
     }
@@ -549,7 +550,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       <div className={cn('space-y-3', unified ? 'pb-0' : 'pb-2 pt-1')}>
         {pinnedSessions.length > 0 && (
           <section className="space-y-0.5">
-            <div className="space-y-0.5" role="list" aria-label={t('page.pinnedSessions', '置顶会话')}>
+            <div className="space-y-0.5" role="list" aria-label={t('page.pinnedSessions')}>
               <AnimatePresence initial={false} mode="popLayout">
                 {pinnedSessions.map(renderAnimatedSessionRow)}
               </AnimatePresence>
@@ -557,10 +558,10 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           </section>
         )}
 
-        <section className="space-y-0.5" aria-label={t('page.studySessions', '课题')}>
+        <section className="space-y-0.5" aria-label={t('page.studySessions')}>
           <div className="flex items-center justify-between gap-2 pr-0.5">
             <div className="min-w-0 flex-1">
-              {renderSectionLabel(t('page.studySessions', '课题'), unified)}
+              {renderSectionLabel(t('page.studySessions'), unified)}
             </div>
             <DsButton
               variant="ghost"
@@ -589,7 +590,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               )
             ) : !isSearching ? (
               <div className="px-3 py-2 text-ui text-muted-foreground opacity-80">
-                {t('page.studySessionsEmpty', '暂无课题')}
+                {t('page.studySessionsEmpty')}
               </div>
             ) : null}
           </div>
@@ -597,8 +598,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
 
         {/* 「最近」：跨分组扁平最近会话（排除置顶），与下方「未分组」折叠区分离 */}
         {recentFlatSessions.length > 0 && (
-          <section className="space-y-0.5" aria-label={t('page.recentSessions', '最近')}>
-            {renderSectionLabel(t('page.recentSessions', '最近'), unified)}
+          <section className="space-y-0.5" aria-label={t('page.recentSessions')}>
+            {renderSectionLabel(t('page.recentSessions'), unified)}
             <div className="space-y-0.5" role="list">
               <AnimatePresence initial={false} mode="popLayout">
                 {recentFlatSessions.map(renderAnimatedSessionRow)}
@@ -608,11 +609,11 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         )}
 
         {ungroupedNonPinned.length > 0 && (
-          <section className="space-y-0.5" aria-label={t('page.ungrouped', '未分组')}>
+          <section className="space-y-0.5" aria-label={t('page.ungrouped')}>
             <div className="space-y-0.5">
               {renderFolderRow(
                 'ungrouped',
-                t('page.ungrouped', '未分组'),
+                t('page.ungrouped'),
                 ungroupedNonPinned,
                 activeGroupId === 'ungrouped',
                 unified,
@@ -672,10 +673,12 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             handleSearchChange('');
           }
         }}
-        placeholder={t('page.searchPlaceholder', '搜索会话...')}
-        aria-label={t('page.searchPlaceholder', '搜索会话...')}
+        placeholder={t('page.searchPlaceholder')}
+        aria-label={t('page.searchPlaceholder')}
         className={cn(
           'h-9 min-h-0 w-full rounded-2xl border-transparent bg-[color:var(--interactive-hover)] pl-8 pr-8 text-[14px]',
+          // 📱 coarse 指针下 16px 防 iOS 聚焦自动放大
+          '[@media(pointer:coarse)]:text-[16px]',
           'text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted)]',
           'transition-colors duration-150 focus:border-primary/40 focus:bg-background'
         )}
@@ -685,8 +688,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           variant="ghost"
           size="icon"
           iconOnly
-          className="absolute right-2 top-1/2 !h-6 !w-6 -translate-y-1/2"
-          aria-label={t('page.clearSearch', '清除搜索')}
+          className="absolute right-2 top-1/2 !h-6 !w-6 -translate-y-1/2 after:absolute after:-inset-2.5 after:content-['']"
+          aria-label={t('page.clearSearch')}
           onClick={() => handleSearchChange('')}
         >
           <X size={12} />
@@ -698,15 +701,12 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   const buildSessionSidebarBody = (unified: boolean) => {
     const body = (
       <div className="space-y-3 pb-1 pt-1">
-        {unified && (
-          <span className={mobileDrawerSectionLabelClassName}>
-            {t('sidebar:mobile_drawer.section_chat')}
-          </span>
+        {!unified && (
+          <nav aria-label={t('page.primaryNavigation')} className="space-y-0.5">
+            {renderPrimaryItem('new-chat', t('page.newChat'), ChatCenteredText, !currentSessionId, handleCreateSession, false)}
+            {renderPrimaryItem('session-browser', t('browser.allSessions'), SquaresFour, viewMode === 'browser', handleOpenBrowser, false)}
+          </nav>
         )}
-        <nav aria-label={t('page.primaryNavigation')} className="space-y-0.5">
-          {renderPrimaryItem('new-chat', t('page.newChat'), ChatCenteredText, !currentSessionId, handleCreateSession, unified)}
-          {renderPrimaryItem('session-browser', t('browser.allSessions'), SquaresFour, viewMode === 'browser', handleOpenBrowser, unified)}
-        </nav>
         {!isInitialLoading && renderSearchInput()}
         {renderStudySidebarContent(unified)}
       </div>

@@ -561,6 +561,13 @@ impl ToolExecutor for TextbookPdfToolExecutor {
         }
     }
 
+    fn has_dynamic_sensitivity(&self, tool_name: &str) -> bool {
+        matches!(
+            strip_tool_namespace(tool_name),
+            BOOKMARKS_TOOL | HIGHLIGHTS_TOOL
+        )
+    }
+
     fn concurrency_class(&self, tool_name: &str) -> ToolConcurrency {
         match strip_tool_namespace(tool_name) {
             PDF_PAGE_IMAGE_TOOL => ToolConcurrency::ReadOnly,
@@ -1375,6 +1382,9 @@ mod tests {
             executor.sensitivity_level("builtin-textbook_highlights"),
             ToolSensitivity::Medium
         );
+        assert!(executor.has_dynamic_sensitivity("builtin-textbook_bookmarks"));
+        assert!(executor.has_dynamic_sensitivity("builtin-textbook_highlights"));
+        assert!(!executor.has_dynamic_sensitivity("builtin-pdf_page_image"));
         assert_eq!(
             executor.sensitivity_level_for_call(
                 "builtin-textbook_bookmarks",

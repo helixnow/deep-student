@@ -37,7 +37,10 @@ import { RETRIEVAL_BLOCK_TYPES } from './types';
 import { TodoListPanel, type TodoStep, type TodoListOutput } from '../../plugins/blocks/todoList';
 import { NoteToolPreview, isNoteTool, type NoteToolPreviewProps } from './NoteToolPreview';
 import { isTemplateVisualOutput, TemplateToolOutput } from '../../plugins/blocks/components';
-import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
+import {
+  getExternalToolProviderName,
+  getReadableToolName,
+} from '@/features/chat/utils/toolDisplayName';
 import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { TextShimmer } from '../ui/TextShimmer';
 import { CompletionCard, extractCompletionData, isAttemptCompletionTool } from '../CompletionCard';
@@ -892,8 +895,10 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
 
   // 获取工具的国际化显示名称
   const displayToolName = useMemo(
-    () => getReadableToolName(node.toolName || '', t),
-    [node.toolName, t]
+    () => getReadableToolName(node.toolName || '', t, {
+      providerName: getExternalToolProviderName(node.toolInput),
+    }),
+    [node.toolName, node.toolInput, t]
   );
 
   // 计算执行时间

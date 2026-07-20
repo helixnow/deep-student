@@ -66,6 +66,10 @@ describe('progressive disclosure defaults', () => {
         status: 'success',
         loaded_skill_ids: ['legacy-load-test-skill'],
         loaded_tool_names: ['builtin-legacy_test_tool'],
+        loaded_tools: [{
+          name: 'builtin-legacy_test_tool',
+          skill_id: 'legacy-load-test-skill',
+        }],
       },
     });
   });

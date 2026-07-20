@@ -150,7 +150,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       requestChatInputFocus(session.id);
     } catch (error) {
       console.error('[ChatV2Page] Failed to create session:', getErrorMessage(error));
-      showGlobalNotification('error', t('page.createSessionFailed', '创建会话失败，请稍后重试'));
+      showGlobalNotification('error', t('page.createSessionFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -235,7 +235,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       console.log('[ChatV2Page] Created analysis session:', session.id, 'with', images.length, 'images');
     } catch (error) {
       console.error('[ChatV2Page] Failed to create analysis session:', getErrorMessage(error));
-      showGlobalNotification('error', t('page.createAnalysisSessionFailed', '创建分析会话失败，请稍后重试'));
+      showGlobalNotification('error', t('page.createAnalysisSessionFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -300,7 +300,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       setCurrentSessionId(sessionToSelect);
     } catch (error) {
       console.error('[ChatV2Page] Failed to load sessions:', getErrorMessage(error));
-      showGlobalNotification('error', t('page.loadSessionsFailed', '加载会话失败，请刷新后重试'));
+      showGlobalNotification('error', t('page.loadSessionsFailed'));
     } finally {
       setIsInitialLoading(false);
     }
@@ -334,7 +334,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       setHasMoreSessions(result.length >= PAGE_SIZE);
     } catch (error) {
       console.error('[ChatV2Page] Failed to load more sessions:', getErrorMessage(error));
-      showGlobalNotification('warning', t('page.loadMoreSessionsFailed', '加载更多会话失败，请重试'));
+      showGlobalNotification('warning', t('page.loadMoreSessionsFailed'));
     } finally {
       setIsLoadingMore(false);
     }
@@ -389,7 +389,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
         }
       } catch (error) {
         console.error('[ChatV2Page] Failed to delete session:', getErrorMessage(error));
-        showGlobalNotification('error', t('page.deleteSessionFailed', '删除会话失败，请稍后重试'));
+        showGlobalNotification('error', t('page.deleteSessionFailed'));
       }
     },
     // 不再依赖 currentSessionId 和 sessions，使用 ref 和函数式更新

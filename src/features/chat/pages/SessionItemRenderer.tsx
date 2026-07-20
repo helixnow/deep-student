@@ -321,8 +321,8 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
     const sessionTitle = getSessionTitleText(session.title, t('page.untitled'));
     const pinned = !!session.metadata?.pinned;
     const groupLabel = session.groupId
-      ? (groupNameById.get(session.groupId) ?? t('page.ungrouped', '未分组'))
-      : t('page.ungrouped', '未分组');
+      ? (groupNameById.get(session.groupId) ?? t('page.ungrouped'))
+      : t('page.ungrouped');
     const isSessionStreaming = streamingSessionIdSet.has(session.id);
     const hasBlockingInteraction = blockingSessionIdSet.has(session.id);
     const hasUnreadAssistantReply = unreadSessionIdSet.has(session.id);
@@ -341,10 +341,10 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
             className: 'items-center gap-2 border-destructive/30 bg-destructive/5',
           })}
           role="alertdialog"
-          aria-label={t('page.deleteSessionConfirm', '永久删除该会话？此操作不可恢复')}
+          aria-label={t('page.deleteSessionConfirm')}
         >
           <span className="min-w-0 flex-1 truncate text-ui leading-4 text-destructive">
-            {t('page.deleteSessionConfirm', '永久删除该会话？此操作不可恢复')}
+            {t('page.deleteSessionConfirm')}
           </span>
           {/* 破坏性操作确认按钮：移动/平板保持较大触控目标，桌面 lg 起紧凑 */}
           <div className="flex shrink-0 items-center gap-1">
@@ -519,7 +519,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
         <div className="ml-2 flex min-h-6 shrink-0 items-center justify-end gap-1 transition-opacity duration-150 opacity-100">
           {/* 后台状态优先于时间戳：流式 > 等待继续 > 未读 */}
           {isSessionStreaming ? (
-            <span data-testid="mobile-sidebar-streaming-indicator" className="inline-flex h-4 w-4 items-center justify-center" aria-label={t('messageList.waiting', '正在思考...')}>
+            <span data-testid="mobile-sidebar-streaming-indicator" className="inline-flex h-4 w-4 items-center justify-center" aria-label={t('messageList.waiting')}>
               <CircleNotch size={14} className="animate-spin text-muted-foreground" aria-hidden="true" />
             </span>
           ) : hasBlockingInteraction ? (
@@ -527,7 +527,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               data-testid="mobile-sidebar-blocking-indicator"
               className="inline-flex min-h-5 items-center rounded-full border border-foreground/15 bg-foreground/[0.06] px-1.5 text-2xs font-medium leading-none text-foreground/80"
             >
-              {t('tool_limit.continue', '继续执行')}
+              {t('tool_limit.continue')}
             </span>
           ) : hasUnreadAssistantReply ? (
             <span data-testid="mobile-sidebar-unread-indicator" className="inline-flex h-4 w-4 items-center justify-center" aria-hidden="true">
@@ -546,7 +546,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               // 视觉 36px、命中区 44px（before 伪元素外扩，满足移动端触控目标）
               className="relative !h-9 !w-9 !p-1.5 before:absolute before:-inset-1 before:content-['']"
               onClick={openSessionMenuFromButton}
-              aria-label={t('page.sessionActions', '会话操作')}
+              aria-label={t('page.sessionActions')}
             >
               <DotsThree size={18} className="text-muted-foreground/70" />
             </DsButton>
@@ -572,7 +572,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
             {moveTargetGroups.length > 0 && (
               <AppMenuSub>
                 <AppMenuSubTrigger icon={<FolderSimple size={16} />}>
-                  {t('page.moveToGroup', '移动到分组')}
+                  {t('page.moveToGroup')}
                 </AppMenuSubTrigger>
                 <AppMenuSubContent>
                   {moveTargetGroups.map((group) => (
@@ -599,14 +599,14 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
                       }
                     }}
                   >
-                    {t('page.ungrouped', '未分组')}
+                    {t('page.ungrouped')}
                   </AppMenuItem>
                 </AppMenuSubContent>
               </AppMenuSub>
             )}
             <AppMenuSub>
               <AppMenuSubTrigger icon={<Export size={16} />}>
-                {t('page.exportSession', '导出会话')}
+                {t('page.exportSession')}
               </AppMenuSubTrigger>
               <AppMenuSubContent>
                 <AppMenuItem

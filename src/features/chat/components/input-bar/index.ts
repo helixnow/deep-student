@@ -24,8 +24,6 @@
 // V2 组件
 export { InputBarV2 } from './InputBarV2';
 export { InputBarUI } from './InputBarUI';
-export { AuthorityModeSegment } from './AuthorityModeSegment';
-export type { AuthorityMode, AuthorityModeSegmentProps } from './AuthorityModeSegment';
 export { ComposerPlusMenu } from './ComposerPlusMenu';
 export type { ComposerPlusMenuProps } from './ComposerPlusMenu';
 export { ComposerInlinePanel } from './ComposerInlinePanel';

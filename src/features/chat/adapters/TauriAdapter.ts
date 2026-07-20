@@ -2380,7 +2380,7 @@ export class ChatV2TauriAdapter {
               level: 'user',
               sessionId: this.sessionId,
               message: streamError,
-              title: i18n.t('chatV2:error.streamInterrupted', { defaultValue: 'Stream interrupted' }),
+              title: i18n.t('chatV2:error.streamInterrupted'),
               cause: payload.error,
               retryable: false,
               storeApi: this.getErrorStoreApi(),
@@ -2441,10 +2441,8 @@ export class ChatV2TauriAdapter {
             code: 'session_save_failed',
             level: 'user',
             sessionId: this.sessionId,
-            message: i18n.t('chatV2:error.saveFailedDesc', {
-              defaultValue: 'Failed to save session, will retry automatically',
-            }),
-            title: i18n.t('chatV2:error.saveFailed', { defaultValue: 'Save failed' }),
+            message: i18n.t('chatV2:error.saveFailedDesc'),
+            title: i18n.t('chatV2:error.saveFailed'),
             cause: payload.error,
             retryable: true,
             retry: () => this.saveSession(),
@@ -2478,9 +2476,8 @@ export class ChatV2TauriAdapter {
             'warning',
             i18n.t('chatV2:compaction.autoFailed', {
               reason: reasonText,
-              defaultValue: `自动压缩失败，较早的历史可能被截断（${reasonText}）`,
             }),
-            i18n.t('chatV2:compaction.autoFailedTitle', { defaultValue: '自动压缩失败' }),
+            i18n.t('chatV2:compaction.autoFailedTitle'),
           );
           break;
         }
@@ -2495,9 +2492,8 @@ export class ChatV2TauriAdapter {
             'info',
             i18n.t('chatV2:compaction.contextTrimmed', {
               count: decision.droppedMessages,
-              defaultValue: `上下文已满，最早的 ${decision.droppedMessages} 条消息未参与本轮对话`,
             }),
-            i18n.t('chatV2:compaction.contextTrimmedTitle', { defaultValue: '上下文已满' }),
+            i18n.t('chatV2:compaction.contextTrimmedTitle'),
             { borderTone: 'neutral' },
           );
           break;

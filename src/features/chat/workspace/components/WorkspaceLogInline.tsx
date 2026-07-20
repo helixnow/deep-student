@@ -100,18 +100,21 @@ interface LogMessageItemProps {
 }
 
 const LogMessageItem: React.FC<LogMessageItemProps> = ({ message, agents }) => {
-  const { t } = useTranslation(['chatV2', 'skills']);
+  const { t, i18n } = useTranslation(['chatV2', 'skills']);
   const senderInfo = agents.get(message.senderSessionId);
   const targetInfo = message.targetSessionId ? agents.get(message.targetSessionId) : null;
 
   const shortSenderId = message.senderSessionId.slice(-6);
   const shortTargetId = message.targetSessionId?.slice(-6);
 
-  const time = new Date(message.createdAt).toLocaleTimeString(undefined, {
+  const time = new Date(message.createdAt).toLocaleTimeString(
+    i18n.resolvedLanguage ?? i18n.language,
+    {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-  });
+    },
+  );
 
   const getSenderName = () => {
     if (!senderInfo) return shortSenderId;
@@ -192,7 +195,8 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
   maxMessages = 20,
   store,
 }) => {
-  const { t } = useTranslation('chatV2');
+  const { t, i18n } = useTranslation('chatV2');
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
   const [debugCopied, setDebugCopied] = useState(false);
@@ -242,7 +246,7 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
 
     const logText = sortedMessages
       .map((msg) => {
-        const time = new Date(msg.createdAt).toLocaleString();
+        const time = new Date(msg.createdAt).toLocaleString(locale);
         const sender = msg.senderSessionId.slice(-6);
         const target = msg.targetSessionId ? ` → ${msg.targetSessionId.slice(-6)}` : '';
         return `[${time}] [${msg.messageType}] ${sender}${target}\n${msg.content}`;

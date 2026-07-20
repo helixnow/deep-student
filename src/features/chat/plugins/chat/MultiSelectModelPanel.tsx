@@ -534,7 +534,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder={t('chat_host:model_panel.search_placeholder')}
-          className="w-full pl-7 pr-2 text-xs"
+          className="w-full pl-7 pr-2 text-xs [@media(pointer:coarse)]:text-[16px]"
           disabled={disabled}
         />
       </div>

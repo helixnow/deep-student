@@ -11,7 +11,8 @@
 import type { EventHandler } from '../../registry/eventRegistry';
 import { eventRegistry } from '../../registry/eventRegistry';
 import type { ChatStore } from '../../core/types';
-import type { RuntimeApprovalScope } from '../../core/types/store';
+import type { PermissionPreset, RuntimeApprovalScope } from '../../core/types/store';
+import { registerTransientRuntime } from '../../core/store/transientRuntimeRegistry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import i18n from 'i18next';
 // 🆕 2026-02-17: 工具调用生命周期追踪
@@ -51,9 +52,13 @@ interface ApprovalRequestPayload {
   toolName: string;
   arguments: Record<string, unknown>;
   sensitivity: 'low' | 'medium' | 'high';
-  permissionPreset?: 'cautious' | 'relaxed';
+  permissionPreset?: PermissionPreset;
   description: string;
   timeoutSeconds: number;
+  resolvedStatus?: ApprovalResolutionStatus;
+  status?: string;
+  expired?: boolean;
+  expiresAt?: number | string;
   // shell / skill_install / skill_workshop / skill_lifecycle 等 scope 联合类型
   runtimeScope?: RuntimeApprovalScope;
 }
@@ -71,6 +76,7 @@ const APPROVAL_RESOLUTION_DISPLAY_MS = 1000;
 interface ApprovalRuntimeState {
   queue: ApprovalRequestPayload[];
   resolutionTimer: ReturnType<typeof setTimeout> | null;
+  terminalToolCallIds: Set<string>;
 }
 
 /**
@@ -91,10 +97,23 @@ function getApprovalRuntime(store: ChatStore): ApprovalRuntimeState {
     runtime = {
       queue: [],
       resolutionTimer: null,
+      terminalToolCallIds: new Set(),
     };
     approvalRuntimeByStore.set(storeIdentity, runtime);
+    registerTransientRuntime(storeIdentity, 'tool-approval-queue', () => {
+      if (runtime?.resolutionTimer) {
+        clearTimeout(runtime.resolutionTimer);
+      }
+      runtime?.queue.splice(0);
+      runtime?.terminalToolCallIds.clear();
+      approvalRuntimeByStore.delete(storeIdentity);
+    });
   }
   return runtime;
+}
+
+function getExistingApprovalRuntime(store: ChatStore): ApprovalRuntimeState | null {
+  return approvalRuntimeByStore.get(store.setPendingApproval) ?? null;
 }
 
 function toStoreApproval(request: ApprovalRequestPayload) {
@@ -103,7 +122,7 @@ function toStoreApproval(request: ApprovalRequestPayload) {
     toolName: request.toolName,
     arguments: request.arguments || {},
     sensitivity: request.sensitivity || 'medium',
-    permissionPreset: request.permissionPreset ?? 'cautious',
+    permissionPreset: request.permissionPreset ?? 'relaxed',
     description: request.description || '',
     timeoutSeconds: request.timeoutSeconds || 30,
     runtimeScope: request.runtimeScope,
@@ -131,6 +150,43 @@ function extractToolCallId(blockId?: string): string | null {
   return null;
 }
 
+function isTerminalApprovalRequest(request: ApprovalRequestPayload): boolean {
+  if (request.expired === true || request.resolvedStatus) return true;
+  const status = request.status?.toLowerCase();
+  if (status && ['approved', 'rejected', 'timeout', 'expired', 'error', 'completed', 'cancelled'].includes(status)) {
+    return true;
+  }
+  if (request.expiresAt !== undefined) {
+    const numericExpiresAt = typeof request.expiresAt === 'number'
+      ? request.expiresAt
+      : Date.parse(request.expiresAt);
+    const expiresAt = numericExpiresAt > 0 && numericExpiresAt < 1_000_000_000_000
+      ? numericExpiresAt * 1000
+      : numericExpiresAt;
+    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) return true;
+  }
+  return false;
+}
+
+function isDuplicateApproval(
+  store: ChatStore,
+  runtime: ApprovalRuntimeState,
+  toolCallId: string,
+): boolean {
+  if (!toolCallId) return false;
+  const pending = store.pendingBlockingInteraction;
+  return runtime.terminalToolCallIds.has(toolCallId)
+    || (pending?.kind === 'tool_approval' && pending.toolCallId === toolCallId)
+    || runtime.queue.some((item) => item.toolCallId === toolCallId);
+}
+
+function removeQueuedApproval(runtime: ApprovalRuntimeState, toolCallId: string): boolean {
+  const index = runtime.queue.findIndex((item) => item.toolCallId === toolCallId);
+  if (index < 0) return false;
+  runtime.queue.splice(index, 1);
+  return true;
+}
+
 function shouldResolveApproval(store: ChatStore, toolCallId?: string | null) {
   const pending = store.pendingBlockingInteraction;
   if (!pending) return false;
@@ -142,6 +198,9 @@ function shouldResolveApproval(store: ChatStore, toolCallId?: string | null) {
 
 function scheduleAdvanceQueue(store: ChatStore) {
   const runtime = getApprovalRuntime(store);
+  const expectedToolCallId = store.pendingBlockingInteraction?.kind === 'tool_approval'
+    ? store.pendingBlockingInteraction.toolCallId
+    : null;
   if (runtime.resolutionTimer) {
     clearTimeout(runtime.resolutionTimer);
   }
@@ -149,8 +208,24 @@ function scheduleAdvanceQueue(store: ChatStore) {
   const timer = setTimeout(() => {
     if (runtime.resolutionTimer !== timer) return;
     runtime.resolutionTimer = null;
+    const pending = store.pendingBlockingInteraction;
+    if (
+      expectedToolCallId
+      && (
+        pending?.kind !== 'tool_approval'
+        || pending.toolCallId !== expectedToolCallId
+      )
+    ) {
+      return;
+    }
     store.clearPendingApproval();
-    const next = runtime.queue.shift();
+    let next = runtime.queue.shift();
+    while (next && (
+      runtime.terminalToolCallIds.has(next.toolCallId)
+      || isTerminalApprovalRequest(next)
+    )) {
+      next = runtime.queue.shift();
+    }
     if (next) {
       const normalized = toStoreApproval(next);
       focusChatWindowForApproval(store, normalized.sensitivity);
@@ -213,6 +288,18 @@ export const approvalEventHandler: EventHandler = {
    */
   onStart: (store: ChatStore, _messageId: string, payload: Record<string, unknown>): string => {
     const request = payload as unknown as ApprovalRequestPayload;
+    const blockId = `approval_${request.toolCallId}`;
+    const runtime = getApprovalRuntime(store);
+
+    if (isTerminalApprovalRequest(request)) {
+      if (request.toolCallId) runtime.terminalToolCallIds.add(request.toolCallId);
+      console.log('[ApprovalEventHandler] Ignored terminal approval request:', request.toolCallId);
+      return blockId;
+    }
+    if (isDuplicateApproval(store, runtime, request.toolCallId)) {
+      console.log('[ApprovalEventHandler] Ignored duplicate approval request:', request.toolCallId);
+      return blockId;
+    }
     
     console.log('[ApprovalEventHandler] Received approval request:', {
       toolName: request.toolName,
@@ -236,7 +323,6 @@ export const approvalEventHandler: EventHandler = {
 
     // 已有待审批请求时进入队列，避免覆盖
     if (store.pendingBlockingInteraction) {
-      const runtime = getApprovalRuntime(store);
       runtime.queue.push(request);
       console.log('[ApprovalEventHandler] Queued approval request:', request.toolCallId, 'queueSize=', runtime.queue.length);
     } else {
@@ -244,7 +330,7 @@ export const approvalEventHandler: EventHandler = {
     }
 
     // 返回一个虚拟的 blockId（审批事件不创建块）
-    return `approval_${request.toolCallId}`;
+    return blockId;
   },
 
   /**
@@ -256,6 +342,12 @@ export const approvalEventHandler: EventHandler = {
     console.log('[ApprovalEventHandler] Approval completed, processing next request if exists');
     const result = _result as ApprovalResultPayload | undefined;
     const toolCallId = result?.toolCallId ?? extractToolCallId(_blockId);
+    const runtime = getExistingApprovalRuntime(store);
+    if (!runtime) return;
+    if (toolCallId) {
+      runtime.terminalToolCallIds.add(toolCallId);
+      removeQueuedApproval(runtime, toolCallId);
+    }
     // 🆕 2026-02-17: 生命周期追踪
     if (toolCallId) trackEnd(toolCallId, true);
     if (!shouldResolveApproval(store, toolCallId)) {
@@ -283,6 +375,12 @@ export const approvalEventHandler: EventHandler = {
   onError: (store: ChatStore, _blockId: string, error: string): void => {
     console.log('[ApprovalEventHandler] Approval error:', error);
     const toolCallId = extractToolCallId(_blockId);
+    const runtime = getExistingApprovalRuntime(store);
+    if (!runtime) return;
+    if (toolCallId) {
+      runtime.terminalToolCallIds.add(toolCallId);
+      removeQueuedApproval(runtime, toolCallId);
+    }
     // 🆕 2026-02-17: 生命周期追踪
     if (toolCallId) trackEnd(toolCallId, false);
     if (!shouldResolveApproval(store, toolCallId)) {

@@ -134,6 +134,8 @@ export const MediaScrubber: React.FC<MediaScrubberProps> = ({
       tabIndex={seekable ? 0 : -1}
       className={cn(
         'group/scrubber relative flex h-4 w-full touch-none select-none items-center outline-none',
+        // 触屏命中区扩到 ≥44px（视觉轨道仍是细线，透明区域承担命中）
+        '[@media(pointer:coarse)]:min-h-11',
         'rounded-full focus-visible:ring-2 focus-visible:ring-ring/40',
         seekable ? 'cursor-pointer' : 'cursor-default opacity-50',
         className,
@@ -169,12 +171,13 @@ export const MediaScrubber: React.FC<MediaScrubberProps> = ({
           style={{ width: `${playedPct}%` }}
         />
       </div>
-      {/* Thumb：默认隐藏，hover/拖拽/聚焦时淡入 */}
+      {/* Thumb：默认隐藏，hover/拖拽/聚焦时淡入；触屏无 hover → 常显作为可拖提示 */}
       <div
         className={cn(
           'pointer-events-none absolute h-3 w-3 -translate-x-1/2 rounded-full',
           'opacity-0 transition-opacity duration-150 motion-reduce:transition-none',
           'group-hover/scrubber:opacity-100 group-focus-visible/scrubber:opacity-100',
+          seekable && '[@media(pointer:coarse)]:opacity-100',
           isDragging && 'opacity-100',
           overlay ? 'bg-white' : 'bg-primary',
         )}

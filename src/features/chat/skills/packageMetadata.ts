@@ -99,10 +99,16 @@ export function enrichSkillPackageMetadata(
   };
 }
 
-/** 返回 embeddedTools 的人类可读名称列表（走 mcp.tools.* 国际化）。 */
+/** 返回 embeddedTools 的人类可读名称；内置工具走 i18n，外部技能保留来源以避免撞名。 */
 export function getSkillEmbeddedToolLabels(skill: SkillDefinition, limit = 12): string[] {
   const tools = skill.embeddedTools ?? [];
-  return tools.slice(0, limit).map((tool) => getReadableToolName(tool.name, t));
+  return tools.slice(0, limit).map((tool) => getReadableToolName(
+    tool.name,
+    t,
+    skill.isBuiltin
+      ? { source: 'builtin' }
+      : { source: 'external', providerName: skill.name },
+  ));
 }
 
 export interface SkillPermissionSummary {

@@ -38,6 +38,7 @@ import {
   TextHThree,
   TextT,
   Highlighter,
+  Smiley,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
@@ -47,6 +48,7 @@ import { useMindMapStore } from '../../store';
 import { findNodeById, findParentNode } from '../../utils/node/find';
 import { QUICK_TEXT_COLORS, QUICK_BG_COLORS } from '../../constants';
 import { ColorPalette } from './CanvasContextMenu';
+import { EmojiPicker } from '../shared/EmojiPicker';
 
 export type MobileToolbarPanel = 'style' | 'more' | null;
 
@@ -195,6 +197,12 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
     [onPanelChange],
   );
 
+  // 触屏表情入口：「更多」面板内联展开 emoji 面板（对齐 CanvasContextMenu 的添加图标）
+  const [showIconPanel, setShowIconPanel] = useState(false);
+  useEffect(() => {
+    setShowIconPanel(false);
+  }, [nodeId, panel]);
+
   if (!node) return null;
 
   return (
@@ -225,6 +233,22 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
               icon={<MagnifyingGlassPlus size={18} />}
               label={t('outline.enterFocusMode')}
               onClick={closePanelThen(() => onFocusBranch?.(nodeId))}
+            />
+          )}
+          <PanelRow
+            icon={node.style?.icon
+              ? <span className="text-sm leading-none">{node.style.icon}</span>
+              : <Smiley size={18} />}
+            label={t('contextMenu.addIcon', { defaultValue: '添加图标' })}
+            active={showIconPanel}
+            onClick={() => setShowIconPanel(v => !v)}
+          />
+          {showIconPanel && (
+            <EmojiPicker
+              value={node.style?.icon}
+              onChange={(emoji) => updateNode(nodeId, { style: { ...node.style, icon: emoji } })}
+              onClose={() => setShowIconPanel(false)}
+              className="!w-full !max-w-none !border-0 !bg-transparent !shadow-none !rounded-none px-1.5 pb-1"
             />
           )}
           <PanelRow

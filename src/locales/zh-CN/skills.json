@@ -163,7 +163,13 @@
     "loadFailed": "加载技能失败",
     "defaultActivationFailed": "以下默认技能无法激活: {{skills}}，请前往技能管理页面检查",
     "skillNotFoundNotification": "技能 \"{{id}}\" 未找到",
-    "activateFailedRetry": "激活技能 \"{{name}}\" 失败，请重试"
+    "activateFailedRetry": "激活技能 \"{{name}}\" 失败，请重试",
+    "runtimeAdmission": {
+      "untrusted": "技能“{{skillId}}”尚未信任，请先在技能管理中信任后再激活。",
+      "disabled": "技能“{{skillId}}”已停用，请先在技能管理中启用后再激活。",
+      "requires_unsatisfied": "技能“{{skillId}}”缺少运行时依赖（命令：{{missingBins}}；环境变量：{{missingEnv}}）。",
+      "dependency_unavailable": "技能“{{skillId}}”无法激活，因为依赖技能“{{dependencyId}}”不可用。"
+    }
   },
 
   "command": {

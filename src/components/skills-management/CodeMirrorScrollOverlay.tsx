@@ -34,6 +34,7 @@ export function CodeMirrorScrollOverlay({ containerRef }: CodeMirrorScrollOverla
   }, []);
 
   const scheduleHide = useCallback(() => {
+    if (isDraggingRef.current) return;
     clearHideTimer();
     hideTimerRef.current = window.setTimeout(() => {
       setTrackActive(false);
@@ -81,7 +82,8 @@ export function CodeMirrorScrollOverlay({ containerRef }: CodeMirrorScrollOverla
       }
     }, 100);
 
-    let frame = 0;
+    let scrollFrame = 0;
+    let metricsFrame = 0;
     let cleanupFn: (() => void) | null = null;
 
     function setup(scroller: HTMLElement) {
@@ -89,8 +91,9 @@ export function CodeMirrorScrollOverlay({ containerRef }: CodeMirrorScrollOverla
 
       const handleScroll = () => {
         clearHideTimer();
-        if (frame) cancelAnimationFrame(frame);
-        frame = requestAnimationFrame(() => {
+        if (scrollFrame) cancelAnimationFrame(scrollFrame);
+        scrollFrame = requestAnimationFrame(() => {
+          scrollFrame = 0;
           updateThumb(scroller, true);
           scheduleHide();
         });
@@ -99,14 +102,20 @@ export function CodeMirrorScrollOverlay({ containerRef }: CodeMirrorScrollOverla
       scroller.addEventListener('scroll', handleScroll, { passive: true });
 
       const ro = new ResizeObserver(() => {
-        if (frame) cancelAnimationFrame(frame);
-        frame = requestAnimationFrame(() => updateThumb(scroller, false));
+        if (metricsFrame) cancelAnimationFrame(metricsFrame);
+        metricsFrame = requestAnimationFrame(() => {
+          metricsFrame = 0;
+          updateThumb(scroller, false);
+        });
       });
       ro.observe(scroller);
 
       const mo = new MutationObserver(() => {
-        if (frame) cancelAnimationFrame(frame);
-        frame = requestAnimationFrame(() => updateThumb(scroller, false));
+        if (metricsFrame) cancelAnimationFrame(metricsFrame);
+        metricsFrame = requestAnimationFrame(() => {
+          metricsFrame = 0;
+          updateThumb(scroller, false);
+        });
       });
       mo.observe(scroller, { childList: true, subtree: true });
 
@@ -114,7 +123,8 @@ export function CodeMirrorScrollOverlay({ containerRef }: CodeMirrorScrollOverla
         scroller.removeEventListener('scroll', handleScroll);
         ro.disconnect();
         mo.disconnect();
-        if (frame) cancelAnimationFrame(frame);
+        if (scrollFrame) cancelAnimationFrame(scrollFrame);
+        if (metricsFrame) cancelAnimationFrame(metricsFrame);
       };
     }
 

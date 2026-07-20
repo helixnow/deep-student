@@ -286,8 +286,8 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
               className="inline-flex items-center gap-0.5 text-xs text-muted-foreground tabular-nums"
               title={
                 status === 'running'
-                  ? t('chatV2:workspace.elapsed.runningHint', { defaultValue: '运行耗时（实时）' })
-                  : t('chatV2:workspace.elapsed.finalHint', { defaultValue: '总耗时（近似）' })
+                  ? t('chatV2:workspace.elapsed.runningHint')
+                  : t('chatV2:workspace.elapsed.finalHint')
               }
             >
               <Timer size={12} />
@@ -358,9 +358,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
         <div className="flex items-start gap-1.5 px-2.5 py-1.5 border-t border-destructive/25 bg-destructive/10">
           <WarningCircle size={13} className="text-destructive flex-shrink-0 mt-px" />
           <span className="text-xs text-destructive">
-            {t('chatV2:workspace.failedHint', {
-              defaultValue: '该代理执行失败。展开下方会话输出或点击"查看完整会话"了解失败原因。',
-            })}
+            {t('chatV2:workspace.failedHint')}
           </span>
         </div>
       )}

@@ -675,6 +675,14 @@
   box-shadow: none;
 }
 
+/* 📱 触屏：16px 字号防 iOS 聚焦缩放，高度对齐 44px 触控目标 */
+@media (pointer: coarse) {
+  .mm-search-input {
+    height: 40px;
+    font-size: 16px;
+  }
+}
+
 .mm-search-mode,
 .mm-search-results,
 .mm-search-navigation {
@@ -1445,7 +1453,7 @@
   text-align: left;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .mm-toolbar {
     height: 44px;
     padding: 0 6px;
@@ -2318,7 +2326,7 @@
   ) !important;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .mm-mobile-subview .mm-structure-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;

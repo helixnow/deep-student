@@ -34,6 +34,7 @@ import {
   Table,
   DotsThreeOutline,
   MagnifyingGlass,
+  SquaresFour,
   ArrowCounterClockwise,
   ArrowClockwise,
 } from '@phosphor-icons/react';
@@ -67,6 +68,11 @@ export type MobileEditorToolbarCommands = {
    * setIsFindReplaceOpen(true) 等现有开面板机制接线；未注入时按钮不渲染。
    */
   openFind?: () => void;
+  /**
+   * 可选：打开当前选区所属块的块操作菜单（Turn into / 复制 / 删除等）。
+   * 触屏无 hover 块句柄，此入口为块操作的移动端替代；未注入时按钮不渲染。
+   */
+  openBlockActions?: () => void;
 };
 
 /** 可选激活态；宿主可按选区 marks/节点透传，未传则不亮 */
@@ -299,18 +305,29 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
         },
       ],
     },
-    // 查找入口：仅在宿主接线 openFind 后展示（打开编辑器内查找替换面板）
-    ...(commands.openFind
+    // 工具入口：块操作（触屏替代 hover 块句柄）/ 查找，均按宿主是否接线渲染
+    ...(commands.openFind || commands.openBlockActions
       ? [{
           id: 'tools',
           items: [
-            {
-              id: 'find',
-              labelKey: 'notes:mobileToolbar.find',
-              defaultLabel: '查找',
-              icon: <MagnifyingGlass size={ICON_SIZE} weight={ICON_WEIGHT} aria-hidden />,
-              onAction: () => commands.openFind?.(),
-            },
+            ...(commands.openBlockActions
+              ? [{
+                  id: 'blockActions',
+                  labelKey: 'notes:mobileToolbar.blockActions',
+                  defaultLabel: '块操作',
+                  icon: <SquaresFour size={ICON_SIZE} weight={ICON_WEIGHT} aria-hidden />,
+                  onAction: () => commands.openBlockActions?.(),
+                }]
+              : []),
+            ...(commands.openFind
+              ? [{
+                  id: 'find',
+                  labelKey: 'notes:mobileToolbar.find',
+                  defaultLabel: '查找',
+                  icon: <MagnifyingGlass size={ICON_SIZE} weight={ICON_WEIGHT} aria-hidden />,
+                  onAction: () => commands.openFind?.(),
+                }]
+              : []),
           ],
         }]
       : []),
@@ -446,7 +463,8 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
           }))}
         </div>
       )}
-      <div className="mobile-editor-toolbar__scroller scrollbar-none" data-testid="mobile-editor-toolbar-scroller">
+      {/* 「+」固定在工具条左端（不随横滚滑出），其余分组在右侧横滚 */}
+      <div className="mobile-editor-toolbar__main-row">
         <button
           type="button"
           className="mobile-editor-toolbar__btn"
@@ -460,17 +478,19 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
         >
           <Plus size={ICON_SIZE} weight={ICON_WEIGHT} aria-hidden />
         </button>
-        {groups.map((group) => (
-          <React.Fragment key={group.id}>
-            <span
-              className="mobile-editor-toolbar__sep"
-              role="separator"
-              aria-hidden="true"
-              data-testid="mobile-editor-toolbar-sep"
-            />
-            {group.items.map((item) => renderButton(item))}
-          </React.Fragment>
-        ))}
+        <div className="mobile-editor-toolbar__scroller scrollbar-none" data-testid="mobile-editor-toolbar-scroller">
+          {groups.map((group) => (
+            <React.Fragment key={group.id}>
+              <span
+                className="mobile-editor-toolbar__sep"
+                role="separator"
+                aria-hidden="true"
+                data-testid="mobile-editor-toolbar-sep"
+              />
+              {group.items.map((item) => renderButton(item))}
+            </React.Fragment>
+          ))}
+        </div>
       </div>
     </div>,
     document.body,

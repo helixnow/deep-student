@@ -75,7 +75,7 @@ const FeatureChip: React.FC<FeatureChipProps> = ({ feature, disabled }) => {
       </span>
       <span className="truncate max-w-[120px]">{feature.label}</span>
       {/* ★ M5：16px 关闭按钮触屏命中区用伪元素扩到 ≥44px（chip 本体不可点，重叠无害） */}
-      <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); feature.onClose(); }} disabled={disabled} className="!w-4 !h-4 !p-0 hover:bg-foreground/10 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']" aria-label={`${t('common:actions.close')} ${feature.label}`}>
+      <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); feature.onClose(); }} disabled={disabled} className="!w-4 !h-4 !p-0 hover:bg-foreground/10 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']" aria-label={t('chatV2:common.closeNamed', { name: feature.label })}>
         <X size={10} weight="bold" />
       </DsButton>
     </div>
@@ -194,7 +194,7 @@ export function useActiveFeatureChips(options: UseActiveFeatureChipsOptions): Ac
       id: 'mcp',
       label: mcpServerCount === 1 
         ? t('analysis:input_bar.mcp.title')
-        : `${t('analysis:input_bar.mcp.title')} (${mcpServerCount})`,
+        : t('chatV2:inputBar.plusMenu.mcpServersCount', { count: mcpServerCount }),
       icon: <Wrench size={14} weight="bold" />,
       onClose: options.onToggleMcp,
       color: 'orange',

@@ -92,7 +92,7 @@ export async function generateCardsFromSelection(
   if (validated.ok === false) {
     const message =
       validated.reason === 'empty'
-        ? t('selectionToolbar.makeCardsEmpty', '请先选中要制卡的文本')
+        ? t('selectionToolbar.makeCardsEmpty')
         : t(
             'selectionToolbar.makeCardsTooShort',
             '选中文本太短，请至少选择 {{count}} 个字符',
@@ -113,7 +113,7 @@ export async function generateCardsFromSelection(
 
     const result = await ChatV2AnkiAdapter.generateCards(content, {
       maxCards,
-      deckName: t('selectionToolbar.makeCardsDeckName', '划词制卡'),
+      deckName: t('selectionToolbar.makeCardsDeckName'),
       customRequirements: t(
         'selectionToolbar.makeCardsRequirements',
         '根据用户划选的片段生成高质量记忆卡片，优先覆盖选中内容中的关键概念与事实。'
@@ -121,7 +121,7 @@ export async function generateCardsFromSelection(
     });
 
     if (!result.ok) {
-      const error = result.error || t('selectionToolbar.makeCardsFailed', '制卡启动失败');
+      const error = result.error || t('selectionToolbar.makeCardsFailed');
       showGlobalNotification('error', error);
       return { ok: false, reason: 'generate_failed', error };
     }
@@ -132,11 +132,11 @@ export async function generateCardsFromSelection(
 
     showGlobalNotification(
       'success',
-      t('selectionToolbar.makeCardsStarted', '已开始制卡，可在任务台查看进度'),
+      t('selectionToolbar.makeCardsStarted'),
       undefined,
       {
         action: {
-          label: t('selectionToolbar.openTaskDashboard', '打开任务台'),
+          label: t('selectionToolbar.openTaskDashboard'),
           onClick: navigateToTaskDashboard,
         },
         borderTone: 'neutral',
@@ -145,7 +145,7 @@ export async function generateCardsFromSelection(
 
     return { ok: true, documentId: result.documentId };
   } catch (error: unknown) {
-    const message = getErrorMessage(error) || t('selectionToolbar.makeCardsFailed', '制卡启动失败');
+    const message = getErrorMessage(error) || t('selectionToolbar.makeCardsFailed');
     showGlobalNotification('error', message);
     return { ok: false, reason: 'generate_failed', error: message };
   }

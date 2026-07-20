@@ -567,7 +567,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 {canEditTags ? (
                                     <button
                                         type="button"
-                                        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-primary/60 transition-colors duration-150 hover:bg-primary/15 hover:text-primary [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6"
+                                        className="relative inline-flex h-4 w-4 items-center justify-center rounded-full text-primary/60 transition-colors duration-150 hover:bg-primary/15 hover:text-primary [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']"
                                         onClick={() => handleRemoveTag(tag)}
                                         disabled={isSavingTags}
                                         aria-label={t('notes:header.remove_tag')}
@@ -621,7 +621,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 aria-autocomplete="list"
                                 aria-invalid={tagError ? true : undefined}
                                 aria-describedby={tagError ? tagErrorId : undefined}
-                                className="h-6 w-32 rounded-full border border-border/60 bg-transparent px-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[hsl(var(--ring))] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-40"
+                                className="h-6 w-32 rounded-full border border-border/60 bg-transparent px-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[hsl(var(--ring))] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-40 [@media(pointer:coarse)]:text-base"
                             />
                             {(isLoadingTagSuggestions || tagSuggestions.length > 0) && (
                                 <CustomScrollArea

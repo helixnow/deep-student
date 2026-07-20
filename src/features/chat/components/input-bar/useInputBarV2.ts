@@ -141,8 +141,8 @@ export function useInputBarV2(
         showGlobalNotification(
           'warning',
           !queueEnabled
-            ? i18n.t('chatV2:inputBar.sendGuard.streaming', '正在回复中，请等待完成或点击停止')
-            : i18n.t('chatV2:queue.fullTooltip', '队列已满，请稍候')
+            ? i18n.t('chatV2:inputBar.sendGuard.streaming')
+            : i18n.t('chatV2:queue.fullTooltip')
         );
         return;
       }
@@ -150,7 +150,7 @@ export function useInputBarV2(
       console.warn('[useInputBarV2] Cannot send: guard check failed');
       showGlobalNotification(
         'warning',
-        i18n.t('chatV2:inputBar.sendGuard.notReady', '当前会话暂时无法发送，请稍后再试')
+        i18n.t('chatV2:inputBar.sendGuard.notReady')
       );
       return;
     }
@@ -159,7 +159,7 @@ export function useInputBarV2(
 
     const readiness = await resolveChatReadiness();
     if (!readiness.ok) {
-      showGlobalNotification('warning', readiness.message || i18n.t('chatV2:readiness.not_ready', '当前会话尚未就绪'));
+      showGlobalNotification('warning', readiness.message || i18n.t('chatV2:readiness.not_ready'));
       if (readiness.cta === 'OPEN_SETTINGS_MODELS') {
         triggerOpenSettingsModels();
       }
@@ -260,7 +260,7 @@ export function useInputBarV2(
       const modeLabels = missingModes.map((mode) => i18n.t(`chatV2:injectMode.${mediaTypeKey}.${mode}`, {
         defaultValue: mode,
       }));
-      return modeLabels.join(i18n.t('chatV2:inputBar.modeSeparator', { defaultValue: '、' }));
+      return modeLabels.join(i18n.t('chatV2:inputBar.modeSeparator'));
     };
 
     // 源附件的注入选择不随 TM/MM 切换而改写。Rust context compiler 会为每个
@@ -274,7 +274,7 @@ export function useInputBarV2(
       console.warn('[useInputBarV2] Cannot send: attachments still uploading');
       showGlobalNotification(
         'warning',
-        i18n.t('chatV2:inputBar.attachmentsUploading', '附件上传中，请稍候')
+        i18n.t('chatV2:inputBar.attachmentsUploading')
       );
       return;
     }
@@ -301,7 +301,6 @@ export function useInputBarV2(
         i18n.t('chatV2:inputBar.attachmentNotReady', {
           name: blockingModeAttachment.name,
           modes: missingLabel || missingModes.join(', '),
-          defaultValue: `附件未就绪：${blockingModeAttachment.name}`,
         })
       );
       return;
@@ -310,14 +309,13 @@ export function useInputBarV2(
     // ★ P2：error 附件不再静默剔除——发送前明确列出被排除的文件名
     const errorAttachments = effectiveAttachments.filter((a) => a.status === 'error');
     if (errorAttachments.length > 0) {
-      const separator = i18n.t('chatV2:inputBar.modeSeparator', { defaultValue: '、' });
+      const separator = i18n.t('chatV2:inputBar.modeSeparator');
       const names = errorAttachments.map((a) => a.name).join(separator);
       showGlobalNotification(
         'warning',
         i18n.t('chatV2:inputBar.errorAttachmentsExcluded', {
           count: errorAttachments.length,
           names,
-          defaultValue: `${errorAttachments.length} 个失败附件未随消息发送：${names}`,
         })
       );
     }

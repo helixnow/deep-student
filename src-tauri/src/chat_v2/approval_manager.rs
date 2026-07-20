@@ -40,7 +40,10 @@ pub struct ApprovalRequest {
     /// 敏感等级
     pub sensitivity: String,
     pub permission_preset: crate::chat_v2::types::PermissionPreset,
-    /// 人类可读描述
+    /// 兼容旧前端的人类可读描述。
+    ///
+    /// 当前协议不向 Rust 传递 UI locale；新版前端按 tool_name + arguments
+    /// 本地化展示，本字段仅在翻译资源缺失或旧客户端中回退使用。
     pub description: String,
     /// 超时时间（秒）
     pub timeout_seconds: u32,
@@ -899,7 +902,10 @@ impl ApprovalManager {
             .len()
     }
 
-    /// 生成人类可读的工具描述
+    /// 生成旧客户端兼容描述。
+    ///
+    /// 不在这里猜测全局语言：Chat V2 请求协议没有携带 UI locale。新版前端
+    /// 使用结构化 tool_name + arguments 生成本地化文案，并保留本返回值作 fallback。
     pub fn generate_description(tool_name: &str, arguments: &Value) -> String {
         if approval_scope::is_shell_runtime_tool_for_args(tool_name, arguments) {
             let command = arguments

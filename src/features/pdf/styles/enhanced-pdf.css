@@ -213,6 +213,9 @@
   border: 1px solid hsl(var(--border));
   box-shadow: 0 4px 16px hsl(var(--ring) / 0.12);
   z-index: 200;
+  /* 横屏矮视口下菜单项超出可视高度时内部滚动（对齐缩放菜单做法） */
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
 }
 
 .ds-more-dropdown--up {
@@ -431,6 +434,8 @@
 
 .ds-search-input {
   flex: 1;
+  /* 允许在窄屏被压缩，避免命中计数/按钮把搜索栏挤出横向溢出 */
+  min-width: 0;
   height: 32px;
   padding: 0 12px;
   border-radius: 8px;
@@ -809,7 +814,7 @@
 }
 
 .ds-highlight-meta {
-  font-size: 10px;
+  font-size: 11px;
   color: hsl(var(--muted-foreground));
   margin-top: 4px;
 }
@@ -1503,14 +1508,8 @@
   color: hsl(var(--destructive));
 }
 
-/* 移动端响应式（≤640 书签列表已改为全屏内联子屏，浮动面板规则不再需要） */
-@media (max-width: 639.98px) {
-  .ds-bookmark-count {
-    font-size: 9px;
-    min-width: 14px;
-    height: 14px;
-  }
-}
+/* ≤640 书签列表已改为全屏内联子屏，浮动面板规则不再需要；
+   徽章不再额外缩小（9px 不可读，保持基础 10px 下限） */
 
 /* ============================================================================
    移动端（<768，与 App shell isSmallScreen 对齐）
@@ -1519,12 +1518,14 @@
 
 @media (max-width: 767.98px) {
   /* 浮动面板（640–767.98 区间仍使用）：收窄并贴边；
-     底部避让已由基础规则从 --ds-pdf-toolbar-h / safe-area 派生 */
-  .ds-pdf__highlights-panel {
+     底部避让已由基础规则从 --ds-pdf-toolbar-h / safe-area 派生；
+     dvh 跟随移动端动态视口（地址栏/键盘收放） */
+  .ds-pdf__highlights-panel,
+  .ds-pdf__bookmarks-panel {
     right: 8px;
     width: calc(100vw - 16px);
     max-width: 320px;
-    max-height: 50vh;
+    max-height: 50dvh;
   }
 
   /* 目录/缩略图侧栏：640–767.98 区间加宽（≤640 已改为全屏内联子屏）。
@@ -1546,15 +1547,15 @@
    ============================================================================ */
 
 @media (pointer: coarse) {
-  /* 工具栏按钮 26px → 40px 触控目标（375px 宽度下核心控件单行仍可容纳） */
+  /* 工具栏按钮 26px → 44px 触控目标（窄屏溢出由下方横向滚动兜底） */
   .ds-btn {
-    min-width: 40px;
-    height: 40px;
+    min-width: 44px;
+    height: 44px;
   }
 
   .ds-btn-sm {
-    min-width: 36px;
-    height: 36px;
+    min-width: 40px;
+    height: 40px;
   }
 
   /* 底栏高度变量提升到根：工具栏自身与浮层避让共用同一来源 */
@@ -1567,9 +1568,17 @@
     height: 6px;
   }
 
+  /* 细进度条命中区向上扩到约 44px（向下少扩，避免遮住底栏按钮顶部） */
+  .ds-pdf__progress-bar::before {
+    top: -18px;
+    bottom: -4px;
+  }
+
   .ds-input {
-    width: 46px;
-    height: 34px;
+    width: 50px;
+    height: 40px;
+    /* iOS 聚焦输入框 <16px 会触发页面自动放大 */
+    font-size: 16px;
   }
 
   .ds-zoom-option,
@@ -1589,11 +1598,11 @@
     height: 32px;
   }
 
-  /* hover-only 操作在触屏上永远不可见 → 常显 */
+  /* hover-only 操作在触屏上永远不可见 → 常显（行内按钮 ≥40px） */
   .ds-highlight-delete {
     opacity: 1;
-    width: 28px;
-    height: 28px;
+    width: 40px;
+    height: 40px;
   }
 
   .ds-bookmark-actions {
@@ -1601,13 +1610,63 @@
   }
 
   .ds-bookmark-action-btn {
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
   }
 
   /* 「选择此页」按钮依赖 hover 显现，触屏常显 */
   .ds-pdf__page-overlay {
     opacity: 1;
+  }
+}
+
+/* ============================================================================
+   触屏窄宽（360–480）底部工具栏溢出兜底
+   核心控件（缩放/页码）在 44px 触控目标下合计约 400px，360px 屏必然溢出。
+   同 app.css .modern-viewer-toolbar 的 N-6 方案：横向滚动 + 首尾 auto margin
+   （空间充足时等分居中，溢出时退化为可完整滚动到达两端）。
+   ============================================================================ */
+
+@media (pointer: coarse) and (max-width: 479.98px) {
+  .ds-pdf__toolbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .ds-pdf__toolbar > :first-child {
+    margin-left: auto;
+  }
+
+  .ds-pdf__toolbar > :last-child {
+    margin-right: auto;
+  }
+
+  /* 滚动容器内中间组不再收缩，交给横向滚动 */
+  .ds-pdf__toolbar-center {
+    flex-shrink: 0;
+  }
+
+  /* 上拉菜单改以 .ds-pdf-viewer 为定位基准：
+     否则作为横向滚动容器的后代会被 overflow 裁切。
+     （包含块在滚动容器之外的 absolute 后代不受其 overflow 裁切） */
+  .ds-pdf__toolbar-more,
+  .ds-zoom-menu {
+    position: static;
+  }
+
+  .ds-more-dropdown--up,
+  .ds-zoom-dropdown--up {
+    bottom: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 4px);
+    margin-bottom: 0;
+  }
+
+  .ds-more-dropdown--up {
+    right: 8px;
+  }
+
+  .ds-zoom-dropdown--up {
+    left: 50%;
+    transform: translateX(-50%);
   }
 }
 
@@ -1784,6 +1843,17 @@
   color: hsl(var(--muted-foreground));
   margin-right: 2px;
   white-space: nowrap;
+}
+
+/* 高亮操作条中的原文摘录（单行截断） */
+.ds-pdf__highlight-bar-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: hsl(var(--foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ds-pdf__highlight-bar .ds-highlight-color {

@@ -1667,7 +1667,13 @@ impl ToolExecutor for TemplateDesignerExecutor {
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         match strip_tool_namespace(tool_name) {
-            "template_delete" | "template_set_default" => ToolSensitivity::Medium,
+            // A custom template is physically deleted. Built-in templates are
+            // only deactivated, but approval happens before the DB lookup, so
+            // the mixed operation must fail closed at the irreversible level.
+            "template_delete" => ToolSensitivity::High,
+            "template_create" | "template_fork" | "template_update" | "template_set_default" => {
+                ToolSensitivity::Medium
+            }
             _ => ToolSensitivity::Low,
         }
     }
@@ -2003,19 +2009,19 @@ mod tests {
         );
         assert_eq!(
             executor.sensitivity_level("builtin-template_create"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
         );
         assert_eq!(
             executor.sensitivity_level("builtin-template_update"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
         );
         assert_eq!(
             executor.sensitivity_level("builtin-template_fork"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
         );
         assert_eq!(
             executor.sensitivity_level("builtin-template_delete"),
-            ToolSensitivity::Medium
+            ToolSensitivity::High
         );
         assert_eq!(
             executor.sensitivity_level("builtin-template_set_default"),

@@ -52,6 +52,8 @@ const EssayContentView: React.FC<ContentViewProps> = ({
   node,
   onClose,
   isActive,
+  externalSettingsNavigation,
+  externalSettingsOpen,
 }) => {
   const { t } = useTranslation(['essay_grading', 'common', 'learningHub']);
 
@@ -263,6 +265,8 @@ const EssayContentView: React.FC<ContentViewProps> = ({
           key={node.id}
           onBack={onClose}
           isActive={isActive}
+          externalSettingsNavigation={externalSettingsNavigation}
+          externalSettingsOpen={externalSettingsOpen}
           dstuMode={dstuMode}
         />
       </Suspense>

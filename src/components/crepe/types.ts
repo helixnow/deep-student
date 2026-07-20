@@ -192,6 +192,12 @@ export interface CrepeEditorApi {
   
   /** 插入表格 */
   insertTable: () => void;
+
+  /**
+   * 📱 在当前选区所属顶层块打开块操作菜单（Turn into / 复制 / 删除等）。
+   * 触屏无 hover 块句柄，由移动端工具条的「块操作」入口调用；可选以兼容旧实现。
+   */
+  openBlockMenuAtSelection?: () => void;
 }
 
 /**

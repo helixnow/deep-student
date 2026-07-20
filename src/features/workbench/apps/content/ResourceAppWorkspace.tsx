@@ -75,7 +75,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
   selectedIdRef.current = selectedId;
 
   const isExam = type === 'exam';
-  // 作文/翻译：设置以独立标签页进入（侧边栏入口 + 工作台整页视图），不再侧滑
+  // 作文/翻译：设置由 OS 应用侧边栏进入，并替换主区成为完整内容页
   const hasSettingsEntry = type === 'essay' || type === 'translation';
   const [settingsOpen, setSettingsOpen] = useState(false);
   const title = t(`workbench:apps.${type}`);
@@ -145,9 +145,19 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
     return () => unwatch();
   }, [loadItems]);
 
+  const setSettingsView = useCallback((open: boolean, resourceId = selectedIdRef.current) => {
+    if (!hasSettingsEntry || !resourceId) return;
+    setSettingsOpen(open);
+    window.dispatchEvent(new CustomEvent(`${type}:openSettings`, {
+      detail: { targetResourceId: resourceId, open },
+    }));
+    if (open && sizeClass === 'compact') setSidebarOpen(false);
+  }, [hasSettingsEntry, sizeClass, type]);
+
   const commitResourceSelection = useCallback((resourceId: string | null) => {
     selectedIdRef.current = resourceId;
     setSelectedId(resourceId);
+    setSettingsOpen(false);
     if (resourceId && sizeClass === 'compact') setSidebarOpen(false);
   }, [sizeClass]);
 
@@ -172,7 +182,10 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
 
   const selectResource = useCallback((resourceId: string | null, itemsAfter?: DstuNode[]): boolean => {
     const current = selectedIdRef.current;
-    if (resourceId === current) return true;
+    if (resourceId === current) {
+      if (settingsOpen) setSettingsView(false, current);
+      return true;
+    }
     const confirmation = getLeaveConfirmation();
     if (confirmation) {
       setPendingNavigation({ kind: 'select', resourceId, confirmation, itemsAfter });
@@ -181,10 +194,12 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
     if (itemsAfter) setItems(itemsAfter);
     commitResourceSelection(resourceId);
     return true;
-  }, [commitResourceSelection, getLeaveConfirmation]);
+  }, [commitResourceSelection, getLeaveConfirmation, settingsOpen, setSettingsView]);
 
   useEffect(() => {
-    if (initialResourceId) selectResource(initialResourceId);
+    if (initialResourceId && initialResourceId !== selectedIdRef.current) {
+      selectResource(initialResourceId);
+    }
   }, [initialResourceId, selectResource]);
 
   useEffect(() => {
@@ -211,21 +226,10 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
     return () => window.removeEventListener(eventName, handler);
   }, [hasSettingsEntry, type]);
 
-  // 切换/取消选中资源时复位设置态（新挂载的工作台默认关闭设置页）
-  useEffect(() => {
-    setSettingsOpen(false);
-  }, [selectedId]);
-
-  // 点击侧边栏"设置"标签：toggle 当前会话工作台的设置整页视图
-  const toggleSettings = useCallback(() => {
-    const resourceId = selectedIdRef.current;
-    if (!resourceId) return;
-    window.dispatchEvent(new CustomEvent(`${type}:openSettings`, {
-      detail: { targetResourceId: resourceId },
-    }));
-    // 紧凑窗：设置显示在主区/工作台内，收起抽屉让位
-    if (sizeClass === 'compact') setSidebarOpen(false);
-  }, [type, sizeClass]);
+  const selectLibraryView = useCallback((view: LibraryView) => {
+    setLibraryView(view);
+    if (settingsOpen) setSettingsView(false);
+  }, [settingsOpen, setSettingsView]);
 
   const createResourceNow = useCallback(async () => {
     if (creating) return;
@@ -413,35 +417,20 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
 
         <nav className="wb-resource-workspace-nav" aria-label={title} data-wb-drawer-stay>
           <WorkbenchSidebarRow
-            isActive={libraryView === 'all'}
-            onClick={() => setLibraryView('all')}
+            isActive={!settingsOpen && libraryView === 'all'}
+            onClick={() => selectLibraryView('all')}
             leftSlot={<Rows size={14} />}
             rightSlot={<small>{items.length}</small>}
           >
             <WorkbenchSidebarRowLabel>{t('workbench:resourceHome.all')}</WorkbenchSidebarRowLabel>
           </WorkbenchSidebarRow>
           <WorkbenchSidebarRow
-            isActive={libraryView === 'recent'}
-            onClick={() => setLibraryView('recent')}
+            isActive={!settingsOpen && libraryView === 'recent'}
+            onClick={() => selectLibraryView('recent')}
             leftSlot={<ClockCounterClockwise size={14} />}
           >
             <WorkbenchSidebarRowLabel>{t('workbench:resourceHome.recent')}</WorkbenchSidebarRowLabel>
           </WorkbenchSidebarRow>
-          {hasSettingsEntry && (
-            <WorkbenchSidebarRow
-              isActive={settingsOpen}
-              onClick={toggleSettings}
-              disabled={!selectedItem}
-              title={selectedItem ? undefined : t('workbench:resourceHome.settingsNeedSelection')}
-              leftSlot={<GearSix size={14} />}
-            >
-              <WorkbenchSidebarRowLabel>
-                {type === 'translation'
-                  ? t('workbench:resourceHome.translationSettings')
-                  : t('workbench:resourceHome.essaySettings')}
-              </WorkbenchSidebarRowLabel>
-            </WorkbenchSidebarRow>
-          )}
         </nav>
 
         <CustomScrollArea
@@ -482,9 +471,9 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             <WorkbenchSidebarRow
               key={item.id}
               rowType="thread"
-              isActive={selectedId === item.id}
+              isActive={!settingsOpen && selectedId === item.id}
               role="option"
-              aria-selected={selectedId === item.id}
+              aria-selected={!settingsOpen && selectedId === item.id}
               onClick={() => selectResource(item.id)}
               leftSlot={<ResourceIcon size={15} weight="duotone" />}
             >
@@ -492,6 +481,24 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             </WorkbenchSidebarRow>
           ))}
         </CustomScrollArea>
+
+        {hasSettingsEntry && (
+          <div className="wb-resource-workspace-settings" data-wb-drawer-stay>
+            <WorkbenchSidebarRow
+              isActive={settingsOpen}
+              onClick={() => setSettingsView(true)}
+              disabled={!selectedItem}
+              title={selectedItem ? undefined : t('workbench:resourceHome.settingsNeedSelection')}
+              leftSlot={<GearSix size={14} />}
+            >
+              <WorkbenchSidebarRowLabel>
+                {type === 'translation'
+                  ? t('workbench:resourceHome.translationSettings')
+                  : t('workbench:resourceHome.essaySettings')}
+              </WorkbenchSidebarRowLabel>
+            </WorkbenchSidebarRow>
+          </div>
+        )}
 
         <footer className="wb-resource-workspace-sidebar-footer" data-wb-drawer-stay>
           <span>{t('workbench:resourceHome.itemCount', { count: visibleItems.length })}</span>
@@ -521,6 +528,8 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             onTitleChange={handleResourceTitle}
             onClose={() => selectResource(null)}
             className="h-full"
+            externalSettingsNavigation={hasSettingsEntry}
+            externalSettingsOpen={settingsOpen}
           />
         ) : (
           <div className="wb-resource-workspace-empty">

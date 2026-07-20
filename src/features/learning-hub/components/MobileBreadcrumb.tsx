@@ -153,7 +153,17 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
             {rootTitle}
           </DsButton>
           <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
-          <span className="text-muted-foreground">…</span>
+          {/* 折叠层级入口：点击回到上一级（被折叠的最近层级），对齐 FinderToolbar 的 … 按钮 */}
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={() => onNavigate?.(breadcrumbs.length - 2)}
+            className={cn('!h-auto !p-0 text-muted-foreground hover:text-primary', CRUMB_TOUCH_HIT_CLASS)}
+            title={breadcrumbs[breadcrumbs.length - 2]?.name}
+            aria-label={breadcrumbs[breadcrumbs.length - 2]?.name || '…'}
+          >
+            …
+          </DsButton>
           <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
           <span className="truncate max-w-[140px]">{currentFolder.name}</span>
         </div>

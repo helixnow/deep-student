@@ -398,7 +398,7 @@ function ShortcutCard({
             onChange={e => setEditName(e.target.value)}
             onKeyDown={handleKeyDown}
             onFocus={e => e.target.select()}
-            className="h-6 w-24 text-xs text-center px-1 [@media(pointer:coarse)]:h-11"
+            className="h-6 w-24 text-xs text-center px-1 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:!text-[16px]"
             autoFocus
           />
           <DsButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={commitOrCancel} aria-label={t('confirm')}>

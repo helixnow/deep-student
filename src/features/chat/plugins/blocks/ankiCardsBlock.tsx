@@ -1016,7 +1016,6 @@ const ActionButtons: React.FC<{
           t('blocks.ankiCards.action.savedCountWithHint', { count: result.savedCount }),
           t('blocks.ankiCards.action.skippedDiagnosticDetail', {
             count: result.skippedErrorCards,
-            defaultValue: 'Skipped {{count}} diagnostic cards',
           }),
         );
       } else {
@@ -1065,9 +1064,15 @@ const ActionButtons: React.FC<{
       setExportStatus('success');
       const exportNote = t('blocks.ankiCards.action.exportNewCardsNote');
       if (result.skippedErrorCards && result.skippedErrorCards > 0) {
-        showGlobalNotification('warning', `${t('blocks.ankiCards.action.exportSkippedErrors', { exported: cards.length - result.skippedErrorCards, skipped: result.skippedErrorCards })} ${exportNote}`, result.filePath);
+        showGlobalNotification('warning', t('blocks.ankiCards.action.exportSkippedErrorsWithNote', {
+          exported: cards.length - result.skippedErrorCards,
+          skipped: result.skippedErrorCards,
+          note: exportNote,
+        }), result.filePath);
       } else {
-        showGlobalNotification('success', `${t('blocks.ankiCards.action.apkgExportedWithHint')} ${exportNote}`, result.filePath);
+        showGlobalNotification('success', t('blocks.ankiCards.action.apkgExportedWithNote', {
+          note: exportNote,
+        }), result.filePath);
       }
       try {
         window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
@@ -2446,7 +2451,9 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       );
       showGlobalNotification(
         'success',
-        `${t('blocks.ankiCards.action.apkgExportedWithHint')} ${t('blocks.ankiCards.action.exportNewCardsNote')}`,
+        t('blocks.ankiCards.action.apkgExportedWithNote', {
+          note: t('blocks.ankiCards.action.exportNewCardsNote'),
+        }),
         result.filePath,
       );
     } catch (error: unknown) {
@@ -2510,7 +2517,9 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       );
       showGlobalNotification(
         'success',
-        `${t('blocks.ankiCards.action.apkgExportedWithHint')} ${t('blocks.ankiCards.action.exportNewCardsNote')}`,
+        t('blocks.ankiCards.action.apkgExportedWithNote', {
+          note: t('blocks.ankiCards.action.exportNewCardsNote'),
+        }),
         result.filePath,
       );
     } catch (error: unknown) {

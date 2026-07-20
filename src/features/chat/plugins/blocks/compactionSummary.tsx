@@ -89,7 +89,8 @@ function readCompactionMetadata(value: unknown): CompactionMetadata {
 }
 
 const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ block, store }) => {
-  const { t } = useTranslation('chatV2');
+  const { t, i18n } = useTranslation('chatV2');
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const [isExpanded, setIsExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isUndoing, setIsUndoing] = useState(false);
@@ -238,8 +239,8 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
               {metadata.tokensBefore !== undefined && metadata.tokensAfter !== undefined && (
                 <span className="rounded bg-muted/60 px-2 py-1 tabular-nums">
                   {t('blocks.compactionSummary.tokenChange', {
-                    before: metadata.tokensBefore.toLocaleString(),
-                    after: metadata.tokensAfter.toLocaleString(),
+                    before: metadata.tokensBefore.toLocaleString(locale),
+                    after: metadata.tokensAfter.toLocaleString(locale),
                   })}
                 </span>
               )}

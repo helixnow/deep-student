@@ -1393,7 +1393,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                           alt={fileInfo.file.name}
                           className="w-full h-full object-cover"
 />
-                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="absolute top-1 right-1 !w-6 !h-6 !rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100" aria-label="remove">
+                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="absolute top-1 right-1 !w-6 !h-6 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10 !rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100" aria-label="remove">
                           <X size={12} />
                         </DsButton>
                       </div>

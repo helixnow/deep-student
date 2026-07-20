@@ -152,7 +152,9 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
     if (id.startsWith('mcp_')) {
       const suffix = id.substring(4);
       if (/^\d+$/.test(suffix)) {
-        return `MCP ${t('analysis:input_bar.mcp.server')} #${suffix.slice(-4)}`;
+        return t('chatV2:inputBar.plusMenu.mcpServerGeneratedName', {
+          suffix: suffix.slice(-4),
+        });
       }
       return suffix;
     }
@@ -174,7 +176,9 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
 
     const displayTools = server.tools.slice(0, 3).map((tool) => {
       const fullName = isBuiltin ? `${BUILTIN_NAMESPACE}${tool.name}` : tool.name;
-      return getReadableToolName(fullName, t);
+      return getReadableToolName(fullName, t, isBuiltin
+        ? { source: 'builtin' }
+        : { source: 'external', providerName: displayName });
     });
     const remainingCount = server.tools.length - 3;
 

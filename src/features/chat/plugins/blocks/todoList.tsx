@@ -196,7 +196,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
   const getCollapsedSummary = () => {
     if (isInitTool || isGetTool) {
       // 初始化或获取：显示进度
-      return `${doneCount} / ${totalCount} ${t('timeline.todoList.tasksDone', 'tasks done')}`;
+      return t('timeline.todoList.progress', { done: doneCount, total: totalCount });
     }
     if (changedStep) {
       // 更新：显示变更的步骤
@@ -206,7 +206,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
         : '○';
       return `${statusText} ${changedStep.description}`;
     }
-    return `${doneCount} / ${totalCount} ${t('timeline.todoList.tasksDone', 'tasks done')}`;
+    return t('timeline.todoList.progress', { done: doneCount, total: totalCount });
   };
 
   return (

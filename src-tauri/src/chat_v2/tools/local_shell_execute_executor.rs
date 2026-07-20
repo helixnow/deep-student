@@ -17,23 +17,27 @@ use tokio_util::sync::CancellationToken;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::approval_scope::{
-    analyze_shell_command, normalized_shell_runtime_location_with_default,
-    redact_shell_command_for_display, redact_tool_arguments_for_display,
-    validate_shell_path_operands_within_root,
+    analyze_shell_command, immutable_shell_command_guard,
+    normalized_shell_runtime_location_with_default, redact_shell_command_for_display,
+    redact_tool_arguments_for_display, validate_shell_path_operands_within_root,
+    ShellCommandGuardEffect,
 };
+use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::runtime_roots::{
     explicit_runtime_root_id_from_args, normalize_runtime_relative_path,
     resolve_effective_runtime_root_id_for_session, revalidate_runtime_root, runtime_root_by_id,
     runtime_roots_for_session, skill_package_runtime_root, temp_root, RuntimeRoot,
     RuntimeRootAccess, RuntimeRootKind,
 };
-use crate::chat_v2::types::{ToolCall, ToolResultInfo};
+use crate::chat_v2::types::{
+    AuthorityMode, PermissionPreset, SessionAuthorityState, ToolCall, ToolResultInfo,
+};
 use crate::chat_v2::workspace_change_set::{self, ExternalFileSnapshot, ExternalFileState};
 use crate::commands::AppState;
 
 use super::shell_sandbox::{
     cleanup_finished_process_group, terminate_process_group, PlatformSandboxBackend,
-    SandboxBackend, SandboxPolicy,
+    SandboxBackend, SandboxCapability, SandboxPolicy, UnsandboxedShellBackend,
 };
 
 pub mod tool_names {
@@ -98,6 +102,12 @@ struct FileSnapshot {
     files: BTreeMap<String, FileSnapshotEntry>,
     skipped: usize,
     truncated: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShellSecurityMode {
+    Sandboxed,
+    DangerUnsandboxed,
 }
 
 impl Default for LocalShellExecuteExecutor {
@@ -408,10 +418,20 @@ impl LocalShellExecuteExecutor {
     }
 
     fn network_policy_json(allow_network: bool, network_capable: bool) -> Value {
+        Self::network_policy_json_for_mode(allow_network, allow_network, network_capable, true)
+    }
+
+    fn network_policy_json_for_mode(
+        requested_allow_network: bool,
+        effective_allow_network: bool,
+        network_capable: bool,
+        enforced: bool,
+    ) -> Value {
         json!({
-            "allow_network": allow_network,
+            "requested_allow_network": requested_allow_network,
+            "allow_network": effective_allow_network,
             "network_capable_command": network_capable,
-            "enforced": true,
+            "enforced": enforced,
             "heuristic": false,
         })
     }
@@ -421,6 +441,46 @@ impl LocalShellExecuteExecutor {
         let normalized = analyze_shell_command(command).trimmed;
         let hash = hex::encode(Sha256::digest(normalized.as_bytes()));
         (display, hash, redacted)
+    }
+
+    fn authoritative_shell_authority(
+        ctx: &ExecutionContext,
+    ) -> Result<SessionAuthorityState, String> {
+        let db = ctx
+            .chat_v2_db
+            .as_ref()
+            .ok_or_else(|| "Chat V2 database is unavailable for shell authority lookup".to_string())?;
+        ChatV2Repo::get_session_authority_state(db, &ctx.session_id)
+            .map_err(|error| format!("Failed to read authoritative shell permission preset: {error}"))
+    }
+
+    fn shell_security_mode(state: &SessionAuthorityState) -> ShellSecurityMode {
+        if state.authority_mode == AuthorityMode::Craft
+            && state.permission_preset == PermissionPreset::DangerFullAccess
+        {
+            ShellSecurityMode::DangerUnsandboxed
+        } else {
+            ShellSecurityMode::Sandboxed
+        }
+    }
+
+    fn shell_security_fingerprint(
+        command_hash: &str,
+        state: &SessionAuthorityState,
+        mode: ShellSecurityMode,
+    ) -> String {
+        let mode_label = match mode {
+            ShellSecurityMode::Sandboxed => "sandboxed",
+            ShellSecurityMode::DangerUnsandboxed => "danger_unsandboxed",
+        };
+        let payload = format!(
+            "deep-student-shell-security-v1\0{}\0{}\0{}\0{}",
+            command_hash,
+            state.authority_mode.as_str(),
+            state.permission_preset.as_str(),
+            mode_label
+        );
+        hex::encode(Sha256::digest(payload.as_bytes()))
     }
 
     fn push_canonical_unique(paths: &mut Vec<PathBuf>, path: &Path) -> Result<(), String> {
@@ -1335,6 +1395,26 @@ impl LocalShellExecuteExecutor {
         if command.len() > 8192 {
             return Err("command is too long for local shell execution".to_string());
         }
+        // The model cannot select this mode through tool arguments. It is read
+        // only from persisted backend session metadata and checked again at the
+        // final spawn boundary below.
+        let shell_authority = Self::authoritative_shell_authority(ctx)?;
+        let expected_authority = ctx.shell_authority_admission.ok_or_else(|| {
+            "Local shell is missing backend authority admission evidence".to_string()
+        })?;
+        if expected_authority
+            != (
+                shell_authority.authority_mode,
+                shell_authority.permission_preset,
+            )
+        {
+            return Err(
+                "Session authority or permission preset changed before local shell execution"
+                    .to_string(),
+            );
+        }
+        let security_mode = Self::shell_security_mode(&shell_authority);
+        let danger_unsandboxed = security_mode == ShellSecurityMode::DangerUnsandboxed;
         let state = ctx.window_ref().state::<AppState>();
         let raw_command_policy = state
             .database
@@ -1403,13 +1483,19 @@ impl LocalShellExecuteExecutor {
             .or_else(|| args.get("trackFileChanges"))
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
-        let allow_network = args
+        let requested_allow_network = args
             .get("allow_network")
             .or_else(|| args.get("allowNetwork"))
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let allow_network = danger_unsandboxed || requested_allow_network;
         let network_capable = Self::looks_network_capable(&command);
-        let network_policy = Self::network_policy_json(allow_network, network_capable);
+        let network_policy = Self::network_policy_json_for_mode(
+            requested_allow_network,
+            allow_network,
+            network_capable,
+            !danger_unsandboxed,
+        );
 
         let skill_root_id_input = args
             .get("skill_root_id")
@@ -1425,8 +1511,11 @@ impl LocalShellExecuteExecutor {
         };
         root.path = validated_root_path;
         let cwd_abs = Self::resolve_cwd(&root, &cwd_relative)?;
-        Self::ensure_root_writable_for_command(&root, &cwd_abs, &command)?;
-        if root.kind == RuntimeRootKind::Workspace
+        if !danger_unsandboxed {
+            Self::ensure_root_writable_for_command(&root, &cwd_abs, &command)?;
+        }
+        if !danger_unsandboxed
+            && root.kind == RuntimeRootKind::Workspace
             && root.access == RuntimeRootAccess::ReadWrite
             && Self::command_appears_write_capable(&command)
             && !track_file_changes
@@ -1445,16 +1534,48 @@ impl LocalShellExecuteExecutor {
         let analysis = analyze_shell_command(&command);
         let env_plan = Self::build_env_plan(args)?;
         let env_policy = Self::env_policy_json(&env_plan, skill_dir_injection.as_ref());
-        let sandbox_policy = Self::build_sandbox_policy(
-            ctx,
-            &root,
-            &cwd_abs,
-            skill_dir_injection.as_ref(),
-            &env_plan,
-            allow_network,
-        )?;
-        let sandbox_backend = PlatformSandboxBackend::new();
+        let sandbox_policy = if danger_unsandboxed {
+            SandboxPolicy {
+                readable_roots: Vec::new(),
+                writable_roots: Vec::new(),
+                protected_read_roots: Vec::new(),
+                protected_write_roots: Vec::new(),
+                allow_network: true,
+            }
+        } else {
+            Self::build_sandbox_policy(
+                ctx,
+                &root,
+                &cwd_abs,
+                skill_dir_injection.as_ref(),
+                &env_plan,
+                allow_network,
+            )?
+        };
+        let sandbox_backend: Box<dyn SandboxBackend> = if danger_unsandboxed {
+            Box::new(UnsandboxedShellBackend::new())
+        } else {
+            Box::new(PlatformSandboxBackend::new())
+        };
+        // Full Access is not an implicit fallback to an unsandboxed process.
+        // The platform backend must be available or command construction fails
+        // closed. Danger Full Access reaches the separate backend only through
+        // the authoritative metadata branch above.
+        if shell_authority.authority_mode == AuthorityMode::Craft
+            && shell_authority.permission_preset == PermissionPreset::FullAccess
+        {
+            if let SandboxCapability::Unavailable { reason } = sandbox_backend.capability() {
+                return Err(format!(
+                    "Full Access requires the platform local-shell sandbox; refusing execution: {reason}"
+                ));
+            }
+        }
         let sandbox_effect_report = sandbox_backend.effect_report(&sandbox_policy);
+        let shell_security_fingerprint = Self::shell_security_fingerprint(
+            &command_hash,
+            &shell_authority,
+            security_mode,
+        );
         let capture_workspace_change_set = track_file_changes
             && root.kind == RuntimeRootKind::Workspace
             && root.access == RuntimeRootAccess::ReadWrite
@@ -1476,6 +1597,65 @@ impl LocalShellExecuteExecutor {
 
         if ctx.is_cancelled() {
             return Err("Tool execution cancelled before local shell spawn".to_string());
+        }
+
+        // Final TOCTOU check immediately before command construction/spawn.
+        // Any authority/preset transition invalidates this execution rather
+        // than silently upgrading or downgrading its sandbox.
+        let current_authority = Self::authoritative_shell_authority(ctx)?;
+        if current_authority.authority_mode != shell_authority.authority_mode
+            || current_authority.permission_preset != shell_authority.permission_preset
+        {
+            return Err(
+                "Session authority or permission preset changed before shell spawn; retry required"
+                    .to_string(),
+            );
+        }
+        let mut guard_roots = runtime_roots_for_session(
+            ctx.window_ref().app_handle(),
+            &state.database,
+            &ctx.session_id,
+            true,
+        )?
+        .into_iter()
+        .map(|runtime_root| runtime_root.path)
+        .collect::<Vec<_>>();
+        if let Some(home) = dirs::home_dir() {
+            guard_roots.push(home);
+        }
+        let immutable_guard =
+            immutable_shell_command_guard(&command, Some(&cwd_abs), &guard_roots);
+        match immutable_guard.effect {
+            ShellCommandGuardEffect::Deny => {
+                return Err(format!(
+                    "Command denied by immutable catastrophe guard: {}",
+                    immutable_guard.reason
+                ));
+            }
+            ShellCommandGuardEffect::Ask if !ctx.shell_guard_approved => {
+                return Err(format!(
+                    "Command requires a fresh immutable-guard approval before spawn: {}",
+                    immutable_guard.reason
+                ));
+            }
+            ShellCommandGuardEffect::Allow | ShellCommandGuardEffect::Ask => {}
+        }
+        let current_raw_policy = state
+            .database
+            .get_setting(crate::chat_v2::shell_command_policy::SETTING_KEY)
+            .ok()
+            .flatten();
+        let current_command_policy = crate::chat_v2::shell_command_policy::enforce_for_call(
+            current_raw_policy.as_deref(),
+            &command,
+            true,
+        );
+        if current_command_policy.effective_effect
+            == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
+        {
+            return Err(
+                "Command is denied by terminal command rules at the final spawn check".to_string(),
+            );
         }
 
         let start = Instant::now();
@@ -1663,6 +1843,15 @@ impl LocalShellExecuteExecutor {
             "command_hash": command_hash,
             "command_redacted": command_redacted,
             "command_prefix": analysis.command_prefix,
+            "shell_security_fingerprint": shell_security_fingerprint,
+            "authority_mode": shell_authority.authority_mode.as_str(),
+            "permission_preset": shell_authority.permission_preset.as_str(),
+            "shell_security_mode": match security_mode {
+                ShellSecurityMode::Sandboxed => "sandboxed",
+                ShellSecurityMode::DangerUnsandboxed => "danger_unsandboxed",
+            },
+            "runtime_roots_enforced": !danger_unsandboxed,
+            "immutable_command_guard": immutable_guard,
             "root": Self::root_json(&root),
             "root_id": root.id,
             "skill_root_id": skill_dir_injection.as_ref().map(|injection| injection.root_id.clone()),
@@ -1835,6 +2024,49 @@ mod tests {
             hex::encode(Sha256::digest(
                 analyze_shell_command(command).trimmed.as_bytes()
             ))
+        );
+    }
+
+    #[test]
+    fn only_craft_danger_selects_unsandboxed_backend_and_changes_fingerprint() {
+        let full = SessionAuthorityState {
+            authority_mode: AuthorityMode::Craft,
+            permission_preset: PermissionPreset::FullAccess,
+            plan: None,
+        };
+        let danger = SessionAuthorityState {
+            authority_mode: AuthorityMode::Craft,
+            permission_preset: PermissionPreset::DangerFullAccess,
+            plan: None,
+        };
+        let plan_danger = SessionAuthorityState {
+            authority_mode: AuthorityMode::Plan,
+            permission_preset: PermissionPreset::DangerFullAccess,
+            plan: None,
+        };
+        assert_eq!(
+            LocalShellExecuteExecutor::shell_security_mode(&full),
+            ShellSecurityMode::Sandboxed
+        );
+        assert_eq!(
+            LocalShellExecuteExecutor::shell_security_mode(&danger),
+            ShellSecurityMode::DangerUnsandboxed
+        );
+        assert_eq!(
+            LocalShellExecuteExecutor::shell_security_mode(&plan_danger),
+            ShellSecurityMode::Sandboxed
+        );
+        assert_ne!(
+            LocalShellExecuteExecutor::shell_security_fingerprint(
+                "command-hash",
+                &full,
+                ShellSecurityMode::Sandboxed,
+            ),
+            LocalShellExecuteExecutor::shell_security_fingerprint(
+                "command-hash",
+                &danger,
+                ShellSecurityMode::DangerUnsandboxed,
+            )
         );
     }
 
@@ -2334,6 +2566,26 @@ mod tests {
         assert_eq!(audit.get("enforced").and_then(|v| v.as_bool()), Some(true));
         assert_eq!(
             audit.get("heuristic").and_then(|v| v.as_bool()),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn danger_network_audit_marks_boundary_as_unenforced() {
+        let audit =
+            LocalShellExecuteExecutor::network_policy_json_for_mode(false, true, true, false);
+        assert_eq!(
+            audit
+                .get("requested_allow_network")
+                .and_then(|value| value.as_bool()),
+            Some(false)
+        );
+        assert_eq!(
+            audit.get("allow_network").and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            audit.get("enforced").and_then(|value| value.as_bool()),
             Some(false)
         );
     }

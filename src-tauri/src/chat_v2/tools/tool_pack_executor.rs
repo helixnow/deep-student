@@ -111,6 +111,10 @@ fn create_sub_context(
         skill_package_roots: parent.skill_package_roots.clone(),
         execution_allowed_tools: parent.execution_allowed_tools.clone(),
         cancellation_token: Some(token),
+        // Guard approval is bound to one concrete top-level command and must
+        // never be inherited by a packed sub-call.
+        shell_guard_approved: false,
+        shell_authority_admission: parent.shell_authority_admission,
         rag_top_k: parent.rag_top_k,
         rag_enable_reranking: parent.rag_enable_reranking,
         pdf_processing_service: parent.pdf_processing_service.clone(),

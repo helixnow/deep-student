@@ -17,6 +17,22 @@ use super::tools::ToolSensitivity;
 
 pub const GLOBAL_BYPASS_KEY: &str = "tool_approval.global_bypass";
 
+/// Source-aware external MCP predicate used by approval bypass auditing.
+/// External MCP execution is not covered by the local shell sandbox or the
+/// immutable local command guard, even when its advertised tool accepts a
+/// field named `command`.
+pub fn is_external_mcp_call(tool_name: &str, arguments: &Value) -> bool {
+    if tool_name.starts_with("mcp_") || tool_name.starts_with("mcp.tools.") {
+        return true;
+    }
+    !tool_name.starts_with("builtin-")
+        && !tool_name.starts_with("builtin:")
+        && arguments
+            .get("_serverId")
+            .and_then(Value::as_str)
+            .is_some_and(|server_id| !server_id.trim().is_empty())
+}
+
 /// Return the stable source identifier used by grouped approval rules.
 ///
 /// External MCP calls carry `_serverId` after the pipeline reverse-map. Builtin
@@ -159,6 +175,15 @@ mod tests {
         );
         assert_eq!(tool_approval_domain("builtin-note_read"), "note");
         assert_eq!(tool_approval_domain("mcp_qbank_search"), "qbank");
+        assert!(is_external_mcp_call("mcp_search", &json!({})));
+        assert!(is_external_mcp_call(
+            "search",
+            &json!({"_serverId":"docs"})
+        ));
+        assert!(!is_external_mcp_call(
+            "builtin-search",
+            &json!({"_serverId":"spoofed"})
+        ));
     }
 
     #[test]

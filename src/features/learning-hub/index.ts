@@ -45,8 +45,5 @@ export {
   LEARNING_HUB_NAV_STATE_CHANGED,
 } from './LearningHubNavigationContext';
 
-// ★ 文档28 Prompt 8: 路径面包屑组件
-export { PathBreadcrumb, type PathBreadcrumbProps } from './components';
-
 // 真实路径导航类型
 export type { RealPathBreadcrumbItem } from './types/navigation';

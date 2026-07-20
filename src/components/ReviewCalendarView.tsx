@@ -270,7 +270,7 @@ const CalendarCell: React.FC<CalendarCellProps> = ({
       onClick={onClick}
       aria-pressed={isSelected}
       className={cn(
-        // 单元格随七列网格收缩；DsButton 的粗指针伪元素继续提供扩展点击区
+        // 单元格随七列网格收缩，min-h-9 兜底触控高度（aspect-square 下实际接近方形命中区）
         '!p-0.5 sm:!p-1 !h-auto !rounded-md aspect-square relative min-h-9 min-w-0 sm:min-h-10',
         'ui-state-colors border transition-[background-color,border-color,box-shadow] duration-150 ease-standard motion-reduce:transition-none',
         getHeatmapColor(count),
@@ -300,7 +300,7 @@ const CalendarCell: React.FC<CalendarCellProps> = ({
       {count > 0 && (
         <span
           className={cn(
-            'absolute bottom-1 right-1 text-[9px] font-semibold tabular-nums',
+            'absolute bottom-1 right-1 text-[10px] font-semibold tabular-nums',
             dense ? 'text-primary-foreground' : 'text-primary'
           )}
         >
@@ -311,7 +311,7 @@ const CalendarCell: React.FC<CalendarCellProps> = ({
       {dueCount > 0 && (
         <span
           className={cn(
-            'absolute bottom-1 left-1 inline-flex items-center gap-0.5 text-[9px] font-semibold tabular-nums',
+            'absolute bottom-1 left-1 inline-flex items-center gap-0.5 text-[10px] font-semibold tabular-nums',
             dense ? 'text-primary-foreground/85' : 'text-warning'
           )}
         >
@@ -708,7 +708,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
             size="sm"
             onClick={goToPrevMonth}
             aria-label={t('review:calendar.prevMonth')}
-            className="h-8 w-8 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
+            className="h-8 w-8 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!min-w-[44px] text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
           >
             <CaretLeft size={16} />
           </DsButton>
@@ -720,7 +720,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
               variant="ghost"
               size="sm"
               onClick={goToToday}
-              className="!h-auto !px-2 !py-1 rounded-md border border-border/50 text-[11px] text-muted-foreground hover:border-border hover:bg-[var(--interactive-hover)] hover:text-foreground"
+              className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 rounded-md border border-border/50 text-[11px] text-muted-foreground hover:border-border hover:bg-[var(--interactive-hover)] hover:text-foreground"
             >
               {t('review:calendar.today')}
             </DsButton>
@@ -731,7 +731,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
             size="sm"
             onClick={goToNextMonth}
             aria-label={t('review:calendar.nextMonth')}
-            className="h-8 w-8 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
+            className="h-8 w-8 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!min-w-[44px] text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
           >
             <CaretRight size={16} />
           </DsButton>

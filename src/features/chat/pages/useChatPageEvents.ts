@@ -68,7 +68,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
           notesContext.openCanvasWithNote(noteId);
         } catch (error) {
           console.error('[ChatV2Page] Failed to open note in canvas:', error);
-          showGlobalNotification('error', t('page.openNoteFailed', '打开笔记失败'));
+          showGlobalNotification('error', t('page.openNoteFailed'));
         }
       } else {
         // 方案2: 备选 - 发送全局事件请求导航到 Learning Hub

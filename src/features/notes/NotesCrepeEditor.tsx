@@ -9,7 +9,7 @@
  * - Find & Replace
  */
 
-import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank } from '@phosphor-icons/react';
 import { COMMAND_EVENTS } from '@/command-palette';
@@ -91,6 +91,33 @@ const MAX_NOTE_CONTENT_BYTES = 1024 * 1024;
 
 /** 字数统计：非空白字符数（中文场景下与用户"字数"心智一致） */
 const countNoteChars = (markdown: string): number => markdown.replace(/\s/g, '').length;
+
+// ── 移动端底部工具条单实例门控 ──
+// 多个可见编辑器实例（分屏/多面板）各自 portal 一条 fixed 工具条到 body，
+// 会互相覆写 :root 上的 --mobile-toolbar-* 变量且命令指向非用户正在编辑的实例。
+// 以"最近交互（focusin/pointerdown）"的实例为唯一持有者，只渲染一条。
+let mobileToolbarOwnerId: string | null = null;
+const mobileToolbarOwnerListeners = new Set<() => void>();
+const notifyMobileToolbarOwnerChange = () => {
+  mobileToolbarOwnerListeners.forEach((fn) => fn());
+};
+const claimMobileToolbarOwner = (id: string) => {
+  if (mobileToolbarOwnerId === id) return;
+  mobileToolbarOwnerId = id;
+  notifyMobileToolbarOwnerChange();
+};
+const releaseMobileToolbarOwner = (id: string) => {
+  if (mobileToolbarOwnerId !== id) return;
+  mobileToolbarOwnerId = null;
+  notifyMobileToolbarOwnerChange();
+};
+const subscribeMobileToolbarOwner = (fn: () => void) => {
+  mobileToolbarOwnerListeners.add(fn);
+  return () => {
+    mobileToolbarOwnerListeners.delete(fn);
+  };
+};
+const getMobileToolbarOwner = () => mobileToolbarOwnerId;
 
 type PendingSavePayload = {
   noteId: string;
@@ -359,11 +386,40 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const isCoarsePointer = useMediaQuery('(pointer: coarse)');
   const isSmallScreen = useIsMobile();
   const isTouchEditingSurface = isSmallScreen || isCoarsePointer;
-  const showMobileToolbar = isTouchEditingSurface && !effectiveReadOnly && !!editorApi && !suppressMobileToolbar;
+  const wantsMobileToolbar = isTouchEditingSurface && !effectiveReadOnly && !!editorApi && !suppressMobileToolbar;
+  // 单实例门控：多个可见编辑器只让最近交互的实例渲染 body 级工具条
+  const mobileToolbarInstanceId = useId();
+  const mobileToolbarOwner = useSyncExternalStore(subscribeMobileToolbarOwner, getMobileToolbarOwner);
+  useEffect(() => {
+    if (!wantsMobileToolbar) return undefined;
+    return () => releaseMobileToolbarOwner(mobileToolbarInstanceId);
+  }, [wantsMobileToolbar, mobileToolbarInstanceId]);
+  useEffect(() => {
+    // 无持有者时（首挂载 / 前持有者卸载或退出编辑态）由可用实例认领
+    if (wantsMobileToolbar && mobileToolbarOwner === null) {
+      claimMobileToolbarOwner(mobileToolbarInstanceId);
+    }
+  }, [wantsMobileToolbar, mobileToolbarOwner, mobileToolbarInstanceId]);
+  const showMobileToolbar = wantsMobileToolbar && mobileToolbarOwner === mobileToolbarInstanceId;
   const [mobileActiveStates, setMobileActiveStates] = useState<MobileEditorToolbarActiveStates>({});
 
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
+  const notesShellRef = useRef<HTMLDivElement>(null);
+
+  // 用户在本实例内交互（聚焦/触点）时抢占工具条持有权
+  useEffect(() => {
+    if (!wantsMobileToolbar) return undefined;
+    const shell = notesShellRef.current;
+    if (!shell) return undefined;
+    const claim = () => claimMobileToolbarOwner(mobileToolbarInstanceId);
+    shell.addEventListener('focusin', claim);
+    shell.addEventListener('pointerdown', claim);
+    return () => {
+      shell.removeEventListener('focusin', claim);
+      shell.removeEventListener('pointerdown', claim);
+    };
+  }, [wantsMobileToolbar, mobileToolbarInstanceId]);
 
   const mobileCommands = buildMobileEditorCommands(editorApi, {
     // P0-4：图片上传归档到当前笔记资产目录
@@ -1700,6 +1756,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   return (
     <ErrorBoundary name="NotesEditor">
     <div
+      ref={notesShellRef}
       className={cn("notes-crepe-shell flex-1 min-h-0 flex flex-col bg-background relative", className)}
       // display:none（宿主样式）在 chrome 淡出完成后才生效，保证 200ms 沉浸过渡可见
       data-focus-mode={focusMode && focusChromePhase === 'hidden' ? 'true' : 'false'}
@@ -1769,7 +1826,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               variant="ghost"
               size="sm"
               className={cn(
-                'h-6 px-2 text-xs',
+                'h-6 px-2 text-xs [@media(pointer:coarse)]:min-h-11',
                 conflictDiffOpen
                   ? 'bg-[var(--interactive-hover)] text-foreground'
                   : 'text-muted-foreground hover:text-foreground',
@@ -1786,7 +1843,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              className="h-6 px-2 text-xs"
+              className="h-6 px-2 text-xs [@media(pointer:coarse)]:min-h-11"
               onClick={() => resolveConflict('mine', conflictAction)}
             >
               {t('notes:editor.conflict_restore_mine')}
@@ -1794,7 +1851,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+              className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11"
               onClick={() => resolveConflict('remote', conflictAction)}
             >
               {t('notes:editor.conflict_keep_remote', 'Keep remote')}
@@ -2031,7 +2088,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11"
                   onClick={() => { void rollbackCheckpoint(); }}
                 >
                   <ArrowCounterClockwise size={12} className="mr-1" />
@@ -2040,7 +2097,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 <DsButton
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                  className="h-6 w-6 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                   onClick={dismissCheckpoint}
                   aria-label={t('notes:aiCheckpoint.keep')}
                 >

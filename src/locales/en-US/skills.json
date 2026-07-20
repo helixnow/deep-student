@@ -163,7 +163,13 @@
     "loadFailed": "Failed to load skill",
     "defaultActivationFailed": "The following default skills failed to activate: {{skills}}. Please check the skills management page.",
     "skillNotFoundNotification": "Skill \"{{id}}\" not found",
-    "activateFailedRetry": "Failed to activate skill \"{{name}}\", please retry"
+    "activateFailedRetry": "Failed to activate skill \"{{name}}\", please retry",
+    "runtimeAdmission": {
+      "untrusted": "Skill \"{{skillId}}\" is not trusted. Trust it in Skills management before activating it.",
+      "disabled": "Skill \"{{skillId}}\" is disabled. Enable it in Skills management before activating it.",
+      "requires_unsatisfied": "Skill \"{{skillId}}\" is missing runtime requirements (commands: {{missingBins}}; environment variables: {{missingEnv}}).",
+      "dependency_unavailable": "Skill \"{{skillId}}\" cannot be activated because dependency \"{{dependencyId}}\" is unavailable."
+    }
   },
 
   "command": {

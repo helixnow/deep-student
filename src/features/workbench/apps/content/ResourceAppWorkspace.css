@@ -115,6 +115,13 @@
   box-shadow: inset 0 0 0 2px hsl(var(--ring) / 32%);
 }
 
+.wb-resource-workspace-settings {
+  display: grid;
+  padding: 5px 6px;
+  flex: 0 0 auto;
+  border-top: 1px solid hsl(var(--border) / 70%);
+}
+
 .wb-resource-workspace-sidebar-footer {
   display: flex;
   height: 22px;
@@ -210,13 +217,7 @@
 /* Touch-primary windows preserve the compact visual density while exposing
    standard 44px hit targets for every resource-list action. */
 @media (pointer: coarse) {
-  .wb-resource-workspace .wb-sys-drawer-handle {
-    width: 44px;
-    height: 64px;
-    transform: translateY(-50%);
-    opacity: 1;
-  }
-
+  /* 抽屉把手的 44px 触控基线已上移到 SystemWindowShared.css（.wb-sys-drawer-handle） */
   .wb-resource-workspace-sidebar-title {
     height: auto;
     min-height: 52px;

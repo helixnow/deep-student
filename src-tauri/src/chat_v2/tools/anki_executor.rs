@@ -114,10 +114,13 @@ impl ToolExecutor for AnkiToolExecutor {
         self.execute_frontend_bridge(call, ctx, start_time).await
     }
 
-    fn sensitivity_level(&self, _tool_name: &str) -> ToolSensitivity {
-        // ★ 2026-02-09: anki_export_cards 降为 Low
-        // 理由：导出卡片是创建性操作，与 chatanki_export 同理，不应打断制卡体验流
-        ToolSensitivity::Low
+    fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
+        match Self::strip_prefix(tool_name) {
+            // Export crosses the local card-generation boundary and follows
+            // the same data-egress policy as chatanki_export.
+            "anki_export_cards" => ToolSensitivity::Medium,
+            _ => ToolSensitivity::Low,
+        }
     }
 
     fn name(&self) -> &'static str {
@@ -467,6 +470,10 @@ mod tests {
         assert_eq!(
             executor.sensitivity_level("builtin-anki_generate_cards"),
             ToolSensitivity::Low
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-anki_export_cards"),
+            ToolSensitivity::Medium
         );
     }
 

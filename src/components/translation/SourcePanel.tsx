@@ -33,6 +33,10 @@ const isCoarsePointer = () =>
     typeof window.matchMedia === 'function' &&
     window.matchMedia('(pointer: coarse)').matches;
 
+/** 触屏命中区扩展：小图标钮扩到 ≥44px，视觉不变（与 TranslationMain.COARSE_HIT 同款范式） */
+const COARSE_HIT =
+    "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']";
+
 /**
  * 原文输入面板
  *
@@ -171,7 +175,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 variant="ghost"
                 size="sm"
                 onClick={confirmClear}
-                className="h-6 px-1.5 text-destructive hover:bg-destructive/15 font-medium"
+                className="h-6 px-1.5 text-destructive hover:bg-destructive/15 font-medium [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:px-3"
             >
                 {t('translation:actions.clear')}
             </DsButton>
@@ -179,7 +183,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 variant="ghost"
                 size="icon"
                 onClick={dismissClearConfirm}
-                className="h-6 w-6 text-destructive/70 hover:text-destructive"
+                className="h-6 w-6 text-destructive/70 hover:text-destructive [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
                 aria-label={t('common:cancel')}
             >
                 <X size={12} />
@@ -192,7 +196,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 size="icon"
                 onClick={requestClear}
                 disabled={!sourceText}
-                className="h-7 w-7 text-muted-foreground/60 hover:text-destructive"
+                className={cn(COARSE_HIT, "h-7 w-7 text-muted-foreground/60 hover:text-destructive [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9")}
                 aria-label={t('translation:actions.clear')}
             >
                 <Trash size={14} />

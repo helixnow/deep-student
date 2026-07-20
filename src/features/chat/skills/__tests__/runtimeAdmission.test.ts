@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  getSkillRuntimeAdmission,
   getSkillRuntimeAdmissionWithDependencies,
 } from '../runtimeAdmission';
+import { __setRequiresGateForTest } from '../requiresGating';
 import { setSkillDisabled } from '../skillEnableStorage';
 import type { SkillDefinition } from '../types';
 
@@ -23,6 +25,38 @@ function builtinSkill(id: string, dependencies: string[] = []): SkillDefinition 
 describe('skill dependency runtime admission', () => {
   afterEach(() => {
     setSkillDisabled('dependency', false);
+    __setRequiresGateForTest('requires-skill', null);
+  });
+
+  it('returns locale-neutral params with technical diagnostics', () => {
+    const untrusted = {
+      ...builtinSkill('external-skill'),
+      location: 'external',
+      trustStatus: 'untrusted',
+    } as SkillDefinition;
+    expect(getSkillRuntimeAdmission(untrusted)).toMatchObject({
+      allowed: false,
+      code: 'untrusted',
+      params: { skillId: 'external-skill' },
+    });
+
+    const requiresSkill = builtinSkill('requires-skill');
+    __setRequiresGateForTest(requiresSkill.id, {
+      satisfied: false,
+      missingBins: ['python'],
+      missingEnv: ['API_TOKEN'],
+    });
+    const admission = getSkillRuntimeAdmission(requiresSkill);
+    expect(admission).toMatchObject({
+      allowed: false,
+      code: 'requires_unsatisfied',
+      params: {
+        skillId: 'requires-skill',
+        missingBins: 'python',
+        missingEnv: 'API_TOKEN',
+      },
+    });
+    expect(admission.message).toContain('missing command python');
   });
 
   it('rejects a parent when a dependency is disabled', () => {
@@ -41,6 +75,11 @@ describe('skill dependency runtime admission', () => {
 
     expect(admission.allowed).toBe(false);
     expect(admission.code).toBe('dependency_unavailable');
+    expect(admission.params).toMatchObject({
+      skillId: 'parent',
+      dependencyId: 'dependency',
+      reason: 'disabled',
+    });
     expect(admission.message).toContain('disabled');
   });
 

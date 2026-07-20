@@ -5,7 +5,7 @@
  */
 
 import type { StoreApi } from 'zustand';
-import type { ChatStore } from '../../core/types/store';
+import type { ChatStore, PermissionPreset } from '../../core/types/store';
 import type { AttachmentMeta, PanelStates } from '../../core/types/common';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import type { ContextRef } from '../../resources/types';
@@ -344,8 +344,8 @@ export interface InputBarUIProps {
   /** Ask / Plan / Craft */
   authorityMode?: 'ask' | 'plan' | 'craft';
   onAuthorityModeChange?: (mode: 'ask' | 'plan' | 'craft') => void | Promise<void>;
-  permissionPreset?: 'cautious' | 'relaxed';
-  onPermissionPresetChange?: (preset: 'cautious' | 'relaxed') => void | Promise<void>;
+  permissionPreset?: PermissionPreset;
+  onPermissionPresetChange?: (preset: PermissionPreset) => void | Promise<void>;
   authorityAskBlockedHint?: boolean;
 
   /** 知识库主动检索开关（加号菜单 → 知识库） */

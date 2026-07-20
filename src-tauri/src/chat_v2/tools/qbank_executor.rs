@@ -4895,6 +4895,13 @@ impl ToolExecutor for QBankExecutor {
             | "qbank_reset_progress"
             | "qbank_export"
             | "qbank_ai_grade" => ToolSensitivity::Medium,
+            // These calls only read questions and build in-memory/tool-result
+            // handoffs or score summaries. They do not persist practice state,
+            // answers, variants, or score cards in the question bank.
+            "qbank_start_timed_practice"
+            | "qbank_generate_mock_exam"
+            | "qbank_submit_mock_exam"
+            | "qbank_generate_variant" => ToolSensitivity::Low,
             _ => ToolSensitivity::Low,
         }
     }
@@ -5176,6 +5183,18 @@ mod occ_contract_tests {
             executor.sensitivity_level("builtin-qbank_search_questions"),
             ToolSensitivity::Low
         );
+        for tool in [
+            "qbank_start_timed_practice",
+            "qbank_generate_mock_exam",
+            "qbank_submit_mock_exam",
+            "qbank_generate_variant",
+        ] {
+            assert_eq!(
+                executor.sensitivity_level(&format!("builtin-{tool}")),
+                ToolSensitivity::Low,
+                "{tool} is a read-only/in-memory handoff and must not be mistaken for a persisted mutation"
+            );
+        }
     }
 
     #[test]

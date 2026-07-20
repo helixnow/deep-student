@@ -483,6 +483,7 @@ export function handleLoadSkillsToolCall(
         status: 'error',
         loaded_skill_ids: [],
         loaded_tool_names: [],
+        loaded_tools: [],
         skill_state_version: 0,
         message: '请指定要加载的技能 ID 列表',
       },
@@ -492,8 +493,17 @@ export function handleLoadSkillsToolCall(
   const { loaded, alreadyLoaded, notFound, rejected } = loadSkillsToSession(sessionId, skillIds);
   const sessionLoadedSkills = getLoadedSkills(sessionId);
   const loadedSkillIds = sessionLoadedSkills.map(skill => skill.id);
+  const loadedTools = Array.from(new Map(
+    sessionLoadedSkills
+      .flatMap(skill =>
+        skill.tools
+          .filter(tool => tool.name)
+          .map(tool => ({ name: tool.name, skill_id: skill.id }))
+      )
+      .map(tool => [`${tool.skill_id}\u0000${tool.name}`, tool]),
+  ).values());
   const loadedToolNames = Array.from(new Set(
-    sessionLoadedSkills.flatMap(skill => skill.tools.map(tool => tool.name).filter(Boolean))
+    loadedTools.map(tool => tool.name)
   ));
 
   const messageParts: string[] = [];
@@ -520,6 +530,7 @@ export function handleLoadSkillsToolCall(
         : 'success',
       loaded_skill_ids: loadedSkillIds,
       loaded_tool_names: loadedToolNames,
+      loaded_tools: loadedTools,
       rejected_skills: rejected,
       skill_state_version: 0,
       message: messageParts.join(' '),

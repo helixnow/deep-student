@@ -25,6 +25,26 @@ vi.mock('@/components/UnifiedNotification', () => ({
 }));
 
 describe('BlockingApprovalBar runtime scope', () => {
+  it('offers only one-shot actions when a stale relaxed Medium approval is rendered', () => {
+    const interaction: ToolApprovalBlockingInteraction = {
+      kind: 'tool_approval',
+      toolCallId: 'call-relaxed-medium',
+      toolName: 'builtin-test',
+      arguments: {},
+      sensitivity: 'medium',
+      permissionPreset: 'relaxed',
+      description: 'stale approval',
+      timeoutSeconds: 30,
+    };
+
+    render(<BlockingApprovalBar interaction={interaction} sessionId="sess-relaxed" />);
+
+    expect(screen.getByRole('button', { name: 'approval.approve' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'approval.reject' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'approval.allowSession' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'approval.alwaysAllow' })).not.toBeInTheDocument();
+  });
+
   it('renders shell approval scope inline inside the existing approval bar', () => {
     const interaction: ToolApprovalBlockingInteraction = {
       kind: 'tool_approval',

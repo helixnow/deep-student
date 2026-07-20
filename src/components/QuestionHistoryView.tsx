@@ -383,7 +383,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
       onClick={() => setFilter(value)}
       className={cn(
         'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium',
-        'border ui-state-colors cursor-pointer',
+        '[@media(pointer:coarse)]:min-h-9 border ui-state-colors cursor-pointer',
         filter === value
           ? 'bg-primary/10 border-primary/40 text-primary'
           : 'bg-muted/40 border-border/60 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'

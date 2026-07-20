@@ -150,7 +150,9 @@ export function createVariantStoreActions(
             } catch (error) {
               const errorMsg = getErrorMessage(error);
               console.error('[ChatStore] deleteVariant failed:', errorMsg);
-              showGlobalNotification('error', i18n.t('chatV2:variant.deleteFailed') + ': ' + errorMsg);
+              showGlobalNotification('error', i18n.t('chatV2:variant.deleteFailedWithDetail', {
+                error: errorMsg,
+              }));
               throw error;
             }
           }
@@ -266,7 +268,9 @@ export function createVariantStoreActions(
 
               // 后端调用失败时，恢复到 idle
               set({ sessionStatus: 'idle', currentStreamingMessageId: null, activeBlockIds: new Set() });
-              showGlobalNotification('error', i18n.t('chatV2:variant.retryFailed') + ': ' + errorMsg);
+              showGlobalNotification('error', i18n.t('chatV2:variant.retryFailedWithDetail', {
+                error: errorMsg,
+              }));
               throw error;
             } finally {
               // 🔧 P1修复：统一使用 finally 释放操作锁，确保任何情况下都能正确释放
@@ -444,7 +448,9 @@ export function createVariantStoreActions(
             }));
 
             set({ sessionStatus: 'idle', currentStreamingMessageId: null, activeBlockIds: new Set() });
-            showGlobalNotification('error', i18n.t('chatV2:variant.retryFailed') + ': ' + errorMsg);
+            showGlobalNotification('error', i18n.t('chatV2:variant.retryFailedWithDetail', {
+              error: errorMsg,
+            }));
             throw error;
           } finally {
             set({ messageOperationLock: null });

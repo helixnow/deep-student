@@ -1271,6 +1271,10 @@ impl ToolExecutor for AutomationExecutor {
         self.sensitivity_level(tool_name)
     }
 
+    fn has_dynamic_sensitivity(&self, tool_name: &str) -> bool {
+        Self::strip_namespace(tool_name) == tool_names::AUTOMATION_UPDATE
+    }
+
     fn name(&self) -> &'static str {
         "AutomationExecutor"
     }
@@ -1728,6 +1732,8 @@ mod tests {
     #[test]
     fn update_with_trusted_profile_escalates_to_high_sensitivity() {
         let executor = AutomationExecutor::new();
+        assert!(executor.has_dynamic_sensitivity("builtin-automation_update"));
+        assert!(!executor.has_dynamic_sensitivity("builtin-automation_run_now"));
         // 携带非 null trusted_profile 的 update = 扩权操作，必须 High 审批
         assert_eq!(
             executor.sensitivity_level_for_call(

@@ -89,14 +89,7 @@
   }
 }
 
-@media (pointer: coarse) {
-  .wb-files-host .wb-sys-drawer-handle {
-    width: 44px;
-    height: 64px;
-    transform: translateY(-50%);
-    opacity: 1;
-  }
-}
+/* 抽屉把手的 44px 触控基线已上移到 SystemWindowShared.css（.wb-sys-drawer-handle） */
 
 /* 网格选中：图标盒垫一层主题色浅底（macOS 双层高亮：图标底 + 名称药丸） */
 .wb-files-host [data-finder-item][class][aria-selected='true'] div.h-12.rounded-lg {

@@ -1870,7 +1870,7 @@ pub async fn chat_v2_set_permission_preset(
 ) -> Result<ChatSession, String> {
     let parsed = crate::chat_v2::types::PermissionPreset::parse(&preset).ok_or_else(|| {
         String::from(ChatV2Error::Validation(format!(
-            "Invalid permission preset '{}'. Valid presets: cautious, relaxed",
+            "Invalid permission preset '{}'. Valid presets: cautious, relaxed, full_access, danger_full_access",
             preset
         )))
     })?;

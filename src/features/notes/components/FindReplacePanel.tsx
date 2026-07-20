@@ -34,6 +34,9 @@ export interface FindReplacePanelProps {
 /** 退场过渡时长，与 --dropdown-close-dur（150ms）对齐；含少量缓冲防止过早卸载 */
 const EXIT_FALLBACK_MS = 180;
 
+/** 📱 触屏：24px 图标按钮放大到 ≥44px 触控目标（面板为 flex 布局，输入框 min-w-0 自动收缩） */
+const COARSE_ICON_BTN = '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11';
+
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -341,7 +344,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            className="h-6 w-6 p-0"
+            className={cn('h-6 w-6 p-0', COARSE_ICON_BTN)}
             onClick={() => setIsReplaceMode(!isReplaceMode)}
             title={isReplaceMode
               ? t('notes:findReplace.hideReplace')
@@ -369,6 +372,8 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             ref={findInputRef}
             className={cn(
               'h-7 text-xs pl-7 bg-transparent border-none focus-visible:ring-1',
+              // 📱 coarse：16px 字号防 iOS 聚焦缩放，高度对齐 44px 触控目标
+              '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-base',
               findText && (matchCount === 0 || regexInvalid) &&
                 'focus-visible:ring-[hsl(var(--destructive)/0.45)]',
             )}
@@ -386,7 +391,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
         {(findText || replaceFeedback) && (
           <span
             className={cn(
-              'flex-shrink-0 whitespace-nowrap px-1 text-[10px] tabular-nums',
+              'flex-shrink-0 whitespace-nowrap px-1 text-[10px] tabular-nums [@media(pointer:coarse)]:text-xs',
               replaceFeedback
                 ? 'text-[hsl(var(--success))]'
                 : matchCount > 0
@@ -417,7 +422,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            className={cn('h-6 w-6 p-0 text-[10px] font-semibold', caseSensitive && 'bg-[var(--interactive-selected)] text-foreground')}
+            className={cn('h-6 w-6 p-0 text-[10px] font-semibold', COARSE_ICON_BTN, caseSensitive && 'bg-[var(--interactive-selected)] text-foreground')}
             onClick={() => setCaseSensitive((v) => !v)}
             title={t('notes:editor.case_sensitive')}
             aria-label={t('notes:editor.case_sensitive')}
@@ -428,7 +433,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            className={cn('h-6 w-6 p-0 text-[10px] font-semibold', wholeWord && 'bg-[var(--interactive-selected)] text-foreground')}
+            className={cn('h-6 w-6 p-0 text-[10px] font-semibold', COARSE_ICON_BTN, wholeWord && 'bg-[var(--interactive-selected)] text-foreground')}
             onClick={() => setWholeWord((v) => !v)}
             title={t('notes:editor.whole_word')}
             aria-label={t('notes:editor.whole_word')}
@@ -441,6 +446,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             size="sm"
             className={cn(
               'h-6 w-6 p-0 font-mono text-[10px] font-semibold tracking-tight',
+              COARSE_ICON_BTN,
               useRegex && 'bg-[var(--interactive-selected)] text-foreground',
             )}
             onClick={() => setUseRegex((v) => !v)}
@@ -454,7 +460,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            className="h-6 w-6 p-0"
+            className={cn('h-6 w-6 p-0', COARSE_ICON_BTN)}
             onClick={() => navigate(-1)}
             disabled={matchCount === 0}
             title={t('notes:findReplace.prev')}
@@ -465,7 +471,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            className="h-6 w-6 p-0"
+            className={cn('h-6 w-6 p-0', COARSE_ICON_BTN)}
             onClick={() => navigate(1)}
             disabled={matchCount === 0}
             title={t('notes:findReplace.next')}
@@ -477,7 +483,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+            className={cn('h-6 w-6 p-0 text-muted-foreground hover:text-foreground', COARSE_ICON_BTN)}
             onClick={requestClose}
             aria-label={t('common:close')}
           >
@@ -491,7 +497,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
           <div className="w-6 flex-shrink-0" /> {/* Spacer to align with input above */}
           <div className="relative flex w-full min-w-0 max-w-[320px] items-center">
             <Input
-              className="h-7 text-xs pl-2 bg-transparent border-none focus-visible:ring-1"
+              className="h-7 text-xs pl-2 bg-transparent border-none focus-visible:ring-1 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-base"
               placeholder={t('notes:findReplace.replacePlaceholder')}
               aria-label={replaceLabel}
               value={replaceText}
@@ -503,7 +509,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             <DsButton
               variant="secondary"
               size="sm"
-              className="h-6 text-[10px] px-2 ui-press"
+              className="h-6 text-[10px] px-2 ui-press [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-xs"
               disabled={replaceDisabled}
               onClick={handleReplaceCurrent}
             >
@@ -512,7 +518,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             <DsButton
               variant="secondary"
               size="sm"
-              className="h-6 text-[10px] px-2 ui-press"
+              className="h-6 text-[10px] px-2 ui-press [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-xs"
               disabled={replaceDisabled}
               onClick={handleReplaceAll}
             >
