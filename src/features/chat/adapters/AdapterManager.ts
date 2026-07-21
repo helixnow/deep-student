@@ -22,6 +22,7 @@ import { readBlockingInteraction } from '../core/types/queue';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { isSubagentSessionId } from '../core/subagentSession';
 
 // ============================================================================
 // 日志前缀
@@ -43,10 +44,6 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
  * re-acquire（getOrCreate）时取消定时器。主会话适配器不受影响。
  */
 export const SUBAGENT_IDLE_EVICT_MS = 10 * 60 * 1000;
-
-function isSubagentSession(sessionId: string): boolean {
-  return sessionId.startsWith('agent_') || sessionId.startsWith('subagent_');
-}
 
 // ============================================================================
 // 适配器状态
@@ -455,7 +452,7 @@ export class AdapterManagerImpl {
     entry.refCount = entry.activeLeases.size;
     console.log(LOG_PREFIX, `Released adapter: ${sessionId}, refCount: ${entry.refCount}`);
 
-    if (entry.refCount === 0 && isSubagentSession(sessionId)) {
+    if (entry.refCount === 0 && isSubagentSessionId(sessionId)) {
       this.scheduleSubagentIdleEviction(sessionId);
     }
     return true;

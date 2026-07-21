@@ -37,6 +37,8 @@ import {
 import type { BlockComponentProps } from '../../registry/blockRegistry';
 import { blockRegistry } from '../../registry/blockRegistry';
 import { ChatContainer } from '../../components/ChatContainer';
+import { MarkdownRenderer } from '../../components/renderers';
+import { sanitizeDanglingMarkdown } from '../../components/renderers/sanitizeDanglingMarkdown';
 import { cn } from '@/utils/cn';
 import {
   DsDialog,
@@ -205,7 +207,8 @@ function parseDispatchedFromContent(content: string | undefined): DispatchedProg
 const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block }) => {
   const { t, i18n } = useTranslation(['chatV2', 'workspace']);
   const locale = i18n.resolvedLanguage ?? i18n.language;
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  // 默认折叠：子代理时间线按需展开（展开后必须完整，见终态重同步逻辑）
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const [isFullHeight, setIsFullHeight] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -352,6 +355,46 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     return 'ended';
   }, [storeStatus, streamHint, outputStatus, topLevelError, block.status]);
 
+  // 🆕 时间线完整性：运行中加载到的是"中途快照"（thinking 未落库、早期流式事件
+  // 可能在监听器挂上前丢失）。到达终态后，后端 save_results 已把完整的
+  // thinking/工具时间线持久化，这里强制重新 loadSession 一次纠正 Store，
+  // 保证展开后思维链/工具调用/时间线完整可见。
+  const isTerminal = TERMINAL_STATUSES.has(status as AgentStatus);
+  const timelineResyncedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!sessionId || !isTerminal) return;
+    // 折叠且未打开完整视图时不加载；展开时再触发（key 未标记，仍会执行）
+    if (isCollapsed && !isFullViewOpen) return;
+    const key = `${sessionId}:${status}`;
+    if (timelineResyncedKeyRef.current === key) return;
+    timelineResyncedKeyRef.current = key;
+
+    let cancelled = false;
+    let completed = false;
+    addSubagentEventLog('preheat_start', sessionId, 'SubagentEmbed terminal timeline resync');
+    void preheatSubagentSession(sessionId, () => cancelled, undefined, { forceReload: true })
+      .then(() => {
+        completed = true;
+        if (!cancelled) {
+          addSubagentEventLog('preheat_done', sessionId, 'SubagentEmbed terminal timeline resync completed');
+        }
+      })
+      .catch((error: unknown) => {
+        if (timelineResyncedKeyRef.current === key) {
+          timelineResyncedKeyRef.current = null;
+        }
+        console.error(`[SubagentEmbed] [RESYNC] Failed to resync session timeline: ${sessionId}`, error);
+        addSubagentEventLog('error', sessionId, 'SubagentEmbed terminal timeline resync failed', getErrorMessage(error));
+      });
+    return () => {
+      cancelled = true;
+      // 展开/关闭切换打断了未完成的重载：清除标记，下次可见时重试
+      if (!completed && timelineResyncedKeyRef.current === key) {
+        timelineResyncedKeyRef.current = null;
+      }
+    };
+  }, [sessionId, status, isTerminal, isCollapsed, isFullViewOpen]);
+
   // 🆕 运行中已用时长：起点用 block.startedAt（createChatStore 创建块时写入的毫秒时间戳，
   // 持久化恢复路径也会带回）；历史脏数据缺失时回退组件首次挂载时刻
   const mountedAtRef = useRef<number>(Date.now());
@@ -380,6 +423,12 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   }, [storeCompletion, finalOutputFromTool]);
   // 只有在展示的是被截断的 toolOutput.output 时才标注"（已截断）"
   const showTruncatedTag = outputTruncated && displayOutput === finalOutputFromTool;
+
+  // 🆕 最终结果按 markdown 渲染；截断文本可能有未闭合标记，先做半截闭合预处理
+  const sanitizedDisplayOutput = useMemo(() => {
+    if (!displayOutput) return undefined;
+    return sanitizeDanglingMarkdown(displayOutput).text;
+  }, [displayOutput]);
 
   // 🆕 契约 C8：终态 token 计数（store 的 completion envelope 优先，回退 toolOutput.token_usage）
   const tokenUsageTotal = useMemo(() => {
@@ -773,8 +822,8 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
             </span>
           </div>
           <CustomScrollArea fullHeight={false} className="max-h-40" viewportClassName="max-h-40">
-            <div className="text-xs whitespace-pre-wrap break-words">
-              {displayOutput}
+            <div className="prose prose-sm dark:prose-invert max-w-none text-xs break-words">
+              <MarkdownRenderer content={sanitizedDisplayOutput ?? displayOutput} />
             </div>
           </CustomScrollArea>
         </div>

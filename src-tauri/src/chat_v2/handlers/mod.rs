@@ -21,6 +21,31 @@
 //! ## 资源操作
 //! 资源相关操作已迁移至 VFS 模块（vfs_* 命令），不再使用旧的 resource_* 命令。
 
+use crate::chat_v2::database::ChatV2Database;
+use crate::chat_v2::error::{ChatV2Error, ChatV2Result};
+use crate::chat_v2::repo::ChatV2Repo;
+
+/// 子代理会话由 workspace 运行时驱动；普通聊天写入口不得修改其历史或启动新流。
+pub(crate) fn ensure_session_writable(db: &ChatV2Database, session_id: &str) -> ChatV2Result<()> {
+    let Some(session) = ChatV2Repo::get_session_v2(db, session_id)? else {
+        return Ok(());
+    };
+    let metadata_marks_subagent = session
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("is_subagent"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+
+    if session.mode == "subagent" || metadata_marks_subagent {
+        return Err(ChatV2Error::Validation(
+            "Subagent sessions are read-only; use the workspace runtime to communicate with them."
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
 pub mod approval_handlers;
 pub mod ask_user_handlers; // 🆕 用户提问命令处理器
 pub mod block_actions;
@@ -75,7 +100,7 @@ pub use search_handlers::{
 };
 pub use send_message::{
     chat_v2_cancel_stream, chat_v2_continue_message, chat_v2_edit_and_resend,
-    chat_v2_retry_message, chat_v2_send_message,
+    chat_v2_retry_message, chat_v2_send_message, chat_v2_wake_session,
 };
 pub use variant_handlers::{
     chat_v2_cancel_variant, chat_v2_delete_variant, chat_v2_retry_variant, chat_v2_retry_variants,

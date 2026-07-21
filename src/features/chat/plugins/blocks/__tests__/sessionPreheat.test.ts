@@ -76,6 +76,24 @@ describe('subagent session preheat', () => {
     expect(adapterManager.release).toHaveBeenCalledOnce();
   });
 
+  it('skips load when data is already loaded', async () => {
+    const { dependencies, loadSession } = createDependencies({ loaded: true });
+
+    await preheatSubagentSession('agent_test', () => false, dependencies);
+
+    expect(loadSession).not.toHaveBeenCalled();
+  });
+
+  it('forceReload bypasses the isDataLoaded gate for terminal-state resync', async () => {
+    const { dependencies, adapterManager, loadSession, lease } = createDependencies({ loaded: true });
+
+    await preheatSubagentSession('agent_test', () => false, dependencies, { forceReload: true });
+
+    expect(loadSession).toHaveBeenCalledWith('agent_test');
+    expect(adapterManager.release).toHaveBeenCalledOnce();
+    expect(adapterManager.release).toHaveBeenCalledWith('agent_test', lease);
+  });
+
   it('keeps collapsed subagent embeds out of the preheat path', () => {
     expect(shouldPreheatSubagentSession('agent_test', true)).toBe(false);
     expect(shouldPreheatSubagentSession('agent_test', false)).toBe(true);

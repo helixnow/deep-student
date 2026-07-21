@@ -40,6 +40,10 @@ struct AgentCompletionEnvelope {
     kind: String,
     workspace_id: String,
     agent_session_id: String,
+    /// 派发该子代理的主代理（coordinator）会话 ID。
+    /// 前端据此在主代理空闲时唤醒它处理完成结果（异步派发场景）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parent_session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     task_id: Option<String>,
     run_id: String,
@@ -1472,8 +1476,8 @@ pub async fn run_workspace_agent_backend(
                     },
                     "query_type": {
                         "type": "string",
-                        "enum": ["agents", "messages", "documents", "context", "all"],
-                        "description": "查询类型"
+                        "enum": ["agents", "messages", "documents", "context", "tasks", "all"],
+                        "description": "查询类型（tasks=后台子代理任务状态）"
                     }
                 },
                 "required": ["workspace_id"]
@@ -1533,8 +1537,7 @@ pub async fn run_workspace_agent_backend(
             // 🆕 执行层 fail-closed：白名单外的调用在审批/执行前被直接拦截
             execution_allowed_tools: Some(worker_allowed_tools),
             active_skill_ids: (!profile_skill_ids.is_empty()).then_some(profile_skill_ids),
-            skill_contents: (!profile_skill_contents.is_empty())
-                .then_some(profile_skill_contents),
+            skill_contents: (!profile_skill_contents.is_empty()).then_some(profile_skill_contents),
             stream_generation: Some(stream_generation),
             ..Default::default()
         }),
@@ -1635,6 +1638,7 @@ pub async fn run_workspace_agent_backend(
                         kind: "agent_completion".to_string(),
                         workspace_id: workspace_id_clone.clone(),
                         agent_session_id: session_id_for_cleanup.clone(),
+                        parent_session_id: parent_session_id_for_task.clone(),
                         task_id,
                         run_id: assistant_message_id_for_task.clone(),
                         correlation_id,
@@ -1744,6 +1748,7 @@ pub async fn run_workspace_agent_backend(
                     kind: "agent_completion".to_string(),
                     workspace_id: workspace_id_clone.clone(),
                     agent_session_id: session_id_for_cleanup.clone(),
+                    parent_session_id: parent_session_id_for_task.clone(),
                     task_id: current_task.as_ref().map(|task| task.id.clone()),
                     run_id: assistant_message_id_for_task.clone(),
                     correlation_id: original_message_ids.first().cloned(),
@@ -1796,6 +1801,7 @@ pub async fn run_workspace_agent_backend(
                     kind: "agent_completion".to_string(),
                     workspace_id: workspace_id_clone.clone(),
                     agent_session_id: session_id_for_cleanup.clone(),
+                    parent_session_id: parent_session_id_for_task.clone(),
                     task_id: current_task.as_ref().map(|task| task.id.clone()),
                     run_id: assistant_message_id_for_task.clone(),
                     correlation_id: original_message_ids.first().cloned(),
@@ -2351,8 +2357,7 @@ pub async fn workspace_save_agent_profile_file(
     }
     let agents_dir = coordinator.custom_agents_dir();
     let path = CustomAgentExecutor::resolve_persona_path(&agents_dir, &file_name)?;
-    let _file_guard =
-        crate::chat_v2::workspace::custom_agents::lock_custom_agent_files()?;
+    let _file_guard = crate::chat_v2::workspace::custom_agents::lock_custom_agent_files()?;
     if !overwrite && path.exists() {
         return Err("PROFILE_FILE_EXISTS".to_string());
     }
@@ -2380,8 +2385,7 @@ pub async fn workspace_delete_agent_profile_file(
 
     let agents_dir = coordinator.custom_agents_dir();
     let path = CustomAgentExecutor::resolve_persona_path(&agents_dir, &file_name)?;
-    let _file_guard =
-        crate::chat_v2::workspace::custom_agents::lock_custom_agent_files()?;
+    let _file_guard = crate::chat_v2::workspace::custom_agents::lock_custom_agent_files()?;
     if !path.exists() {
         return Err("PROFILE_FILE_NOT_FOUND".to_string());
     }
@@ -2404,6 +2408,7 @@ mod runtime_completion_tests {
             kind: "agent_completion".to_string(),
             workspace_id: "ws_test".to_string(),
             agent_session_id: "agent_test".to_string(),
+            parent_session_id: Some("sess_parent".to_string()),
             task_id: Some("task_test".to_string()),
             run_id: "msg_run".to_string(),
             correlation_id: Some("wsmsg_task".to_string()),
@@ -2423,6 +2428,7 @@ mod runtime_completion_tests {
         assert_eq!(value["type"], "agent_completion");
         assert_eq!(value["workspace_id"], "ws_test");
         assert_eq!(value["agent_session_id"], "agent_test");
+        assert_eq!(value["parent_session_id"], "sess_parent");
         assert_eq!(value["task_id"], "task_test");
         assert_eq!(value["run_id"], "msg_run");
         assert_eq!(value["correlation_id"], "wsmsg_task");
@@ -2441,6 +2447,7 @@ mod runtime_completion_tests {
             kind: "agent_completion".to_string(),
             workspace_id: "ws_test".to_string(),
             agent_session_id: "agent_test".to_string(),
+            parent_session_id: None,
             task_id: None,
             run_id: "msg_run".to_string(),
             correlation_id: None,
@@ -2457,6 +2464,7 @@ mod runtime_completion_tests {
         assert!(value.get("final_output").is_none());
         assert!(value.get("task_id").is_none());
         assert!(value.get("correlation_id").is_none());
+        assert!(value.get("parent_session_id").is_none());
         // usage 读不到时整个键省略
         assert!(value.get("token_usage").is_none());
     }

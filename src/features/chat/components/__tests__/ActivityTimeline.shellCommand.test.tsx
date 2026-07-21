@@ -24,7 +24,10 @@ vi.mock('@/features/chat/components/ui/TextShimmer', () => ({
 }));
 
 import { ActivityTimeline } from '../ActivityTimeline';
-import { getShellCommandDescriptor } from '../ActivityTimeline/ShellCommandTimelineView';
+import {
+  getShellCommandDescriptor,
+  shellCommandPlaceholder,
+} from '../ActivityTimeline/ShellCommandTimelineView';
 
 function createShellBlock(overrides: Partial<Block> = {}): Block {
   return {
@@ -142,5 +145,67 @@ describe('ActivityTimeline shell command nodes', () => {
     expect(screen.getAllByText('timeline.shell.blocked')).toHaveLength(1);
     expect(screen.getAllByText('uname -s')).toHaveLength(1);
     expect(screen.queryByText('workspace is not configured')).not.toBeInTheDocument();
+  });
+});
+
+describe('shellCommandPlaceholder', () => {
+  const t = (key: string, options?: Record<string, unknown>) =>
+    String(options?.defaultValue ?? key);
+
+  it('returns command when present', () => {
+    expect(
+      shellCommandPlaceholder(
+        {
+          kind: 'preflight',
+          verbKey: 'checking',
+          tone: 'running',
+          command: 'uname -s',
+          reasons: [],
+        },
+        t,
+      ),
+    ).toBe('uname -s');
+  });
+
+  it('shows preparing copy while checking or running without command', () => {
+    expect(
+      shellCommandPlaceholder(
+        {
+          kind: 'preflight',
+          verbKey: 'checking',
+          tone: 'running',
+          command: '',
+          reasons: [],
+        },
+        t,
+      ),
+    ).toBe('参数生成中…');
+    expect(
+      shellCommandPlaceholder(
+        {
+          kind: 'execute',
+          verbKey: 'running',
+          tone: 'running',
+          command: '',
+          reasons: [],
+        },
+        t,
+      ),
+    ).toBe('参数生成中…');
+  });
+
+  it('shows interrupted copy when failed without command', () => {
+    expect(
+      shellCommandPlaceholder(
+        {
+          kind: 'execute',
+          verbKey: 'failed',
+          tone: 'error',
+          command: '',
+          reasons: [],
+        },
+        t,
+      ),
+    ).toBe('命令已中断（未收到参数）');
   });
 });

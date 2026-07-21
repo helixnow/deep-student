@@ -141,13 +141,35 @@ impl LLMManager {
         let embedding_model_id = match embedding_model_id_opt {
             Some(id) => id,
             None => {
-                // 尝试从 VFS 维度表中找到唯一一个有模型绑定的文本维度
-                info!("[RAG] No default embedding dimension set, attempting auto-detect...");
-                self.auto_detect_embedding_model_id().await.ok_or_else(|| {
-                    AppError::configuration(
-                        "未配置默认嵌入维度。请在「模型分配 > 嵌入维度管理」中设置默认维度。",
-                    )
-                })?
+                // 兼容模型分配里的 embedding 槽：若已配置则回写维度默认键，消除双轨不一致。
+                if let Ok(assignments) = self.get_model_assignments().await {
+                    if let Some(id) = assignments.embedding_model_config_id {
+                        info!(
+                            "[RAG] Falling back to model_assignments.embedding_model_config_id={}",
+                            id
+                        );
+                        let _ = self
+                            .db
+                            .save_setting("embedding.default_text_model_config_id", &id);
+                        id
+                    } else {
+                        info!(
+                            "[RAG] No default embedding dimension set, attempting auto-detect..."
+                        );
+                        self.auto_detect_embedding_model_id().await.ok_or_else(|| {
+                            AppError::configuration(
+                                "未配置默认嵌入维度。请在「模型分配 > 嵌入维度管理」中设置默认维度。",
+                            )
+                        })?
+                    }
+                } else {
+                    info!("[RAG] No default embedding dimension set, attempting auto-detect...");
+                    self.auto_detect_embedding_model_id().await.ok_or_else(|| {
+                        AppError::configuration(
+                            "未配置默认嵌入维度。请在「模型分配 > 嵌入维度管理」中设置默认维度。",
+                        )
+                    })?
+                }
             }
         };
 
@@ -201,7 +223,8 @@ impl LLMManager {
                     .save_setting("embedding.default_text_model_config_id", &config.id);
                 return Some(config.id.clone());
             } else if embedding_configs.len() > 1 {
-                info!(
+                // Debug only: VfsIndexWorker polls every few seconds; INFO here floods logs.
+                debug!(
                     "[RAG] Found {} embedding models, cannot auto-select. User must configure default.",
                     embedding_configs.len()
                 );

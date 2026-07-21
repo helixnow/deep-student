@@ -1431,7 +1431,9 @@
       "failed": "运行失败",
       "pending": "等待运行",
       "preflight": "Shell 检查",
-      "commandUnavailable": "命令内容不可用"
+      "commandUnavailable": "命令内容不可用",
+      "commandPreparing": "参数生成中…",
+      "commandInterrupted": "命令已中断（未收到参数）"
     },
     "noteTool": {
       "read": "读取笔记",
@@ -2036,6 +2038,7 @@
     "subagentRetryFailed": "子代理重试失败",
     "subagentRetryResolved": "子代理已重新发送结果",
     "subagentRetryTitle": "子代理重试",
+    "subagentWakeNotice": "后台子代理 {{agent}} 已完成，唤醒主代理处理结果",
     "warning": {
       "inbox_full_rejected": "子代理 {{agent}} 收件箱已满，新消息被拒绝，请等待其完成后重试",
       "run_agent_conflict_requeue_failed": "子代理 {{agent}} 正在运行，部分任务消息未能重新入队，请等待完成后手动重试",
@@ -2109,6 +2112,9 @@
     "collapse": "收缩",
     "expand": "展开",
     "viewFull": "查看完整会话"
+  },
+  "subagentSession": {
+    "readOnlyNotice": "子代理会话（只读）· 由主代理触发，消息不可编辑或重发"
   },
   "debug": {
     "copyDebugInfo": "复制调试信息",

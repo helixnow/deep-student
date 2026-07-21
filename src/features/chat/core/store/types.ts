@@ -58,6 +58,9 @@ export interface StoreCallbacks {
     assistantMessageId: string
   ) => Promise<void>) | null;
 
+  /** 系统唤醒回调：只创建助手消息，唤醒内容不写入用户历史 */
+  _wakeSessionCallback?: ((content: string, assistantMessageId: string) => Promise<void>) | null;
+
   /** 
    * 重试消息回调 
    * 🆕 P1 状态同步修复: 返回 RetryMessageResult 用于前端状态同步
@@ -322,6 +325,7 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     panelStates: createDefaultPanelStates(),
     // 🔧 P1修复：Callback 初始值
     _sendCallback: null,
+    _wakeSessionCallback: null,
     _retryCallback: null,
     _deleteCallback: null,
     _editAndResendCallback: null,

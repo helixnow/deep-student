@@ -10,6 +10,7 @@ use tauri::{AppHandle, State};
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::events::{event_phase, event_types, next_session_sequence_id};
+use crate::chat_v2::handlers::ensure_session_writable;
 use crate::chat_v2::handlers::manage_session::rebuild_session_skill_state_from_surviving_history;
 use crate::chat_v2::pipeline::ChatV2Pipeline;
 use crate::chat_v2::repo::ChatV2Repo;
@@ -57,6 +58,7 @@ pub async fn chat_v2_compact_session(
     chat_v2_state: State<'_, Arc<ChatV2State>>,
     chat_v2_db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<CompactSessionResponse, String> {
+    ensure_session_writable(&chat_v2_db, &session_id).map_err(String::from)?;
     if model_config_id.trim().is_empty() {
         return Err(ChatV2Error::Validation("modelConfigId is required".to_string()).into());
     }
@@ -111,6 +113,7 @@ pub async fn chat_v2_undo_compaction(
     db: State<'_, Arc<ChatV2Database>>,
     chat_v2_state: State<'_, Arc<ChatV2State>>,
 ) -> Result<UndoCompactionResponse, String> {
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
     let registration = chat_v2_state
         .try_register_stream_owned(&session_id)
         .map_err(|_| {
@@ -193,6 +196,7 @@ pub async fn chat_v2_delete_message(
         session_id,
         message_id
     );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
 
     // 🔒 P0 修复（2026-01-10）：检查会话是否有活跃流
     // 防止流式中删除消息导致 Pipeline save_results() 写入已删除消息失败
@@ -460,6 +464,8 @@ pub async fn chat_v2_update_block_content(
             ))
         })?;
 
+    ensure_session_writable(&db, &message.session_id).map_err(String::from)?;
+
     if chat_v2_state.has_active_stream(&message.session_id) {
         return Err(ChatV2Error::Other(
             "Cannot update block content while session is streaming. Please wait for completion or cancel first.".to_string()
@@ -514,6 +520,7 @@ pub async fn chat_v2_update_block_tool_output(
     let message = ChatV2Repo::get_message_with_conn(&conn, &block.message_id)
         .map_err(String::from)?
         .ok_or_else(|| String::from(ChatV2Error::MessageNotFound(block.message_id.clone())))?;
+    ensure_session_writable(&db, &message.session_id).map_err(String::from)?;
     block.tool_output = Some(tool_output);
     let tx = conn
         .transaction()

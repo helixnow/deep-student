@@ -17,6 +17,10 @@ import type {
   TokenUsage,
 } from './types';
 import { isLegacyFrontendWorkerStartEnabled } from './runtimeMode';
+import {
+  SubagentIdleWakeController,
+  type ParentWakeStore,
+} from './subagentIdleWake';
 // 🆕 P25: 导入子代理事件日志函数
 import { addSubagentEventLog } from '../debug/exportSessionDebug';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -117,6 +121,8 @@ export interface WorkspaceWorkerReadyEvent {
 export interface WorkspaceAgentCompletionEvent {
   workspace_id: string;
   agent_session_id: string;
+  /** 派发该子代理的主代理会话 ID（异步唤醒用） */
+  parent_session_id?: string;
   task_id?: string;
   run_id?: string;
   correlation_id?: string;
@@ -206,6 +212,83 @@ interface SubagentRetryBlockRecord {
 }
 
 const pendingSubagentRetryBlocks = new Map<string, SubagentRetryBlockRecord>();
+
+// ============================================================
+// 异步子代理完成 → 唤醒空闲主代理
+// ============================================================
+
+/** 唤醒消息里结果摘要的最大长度（完整结果可经 workspace_query/会话查看） */
+const WAKE_SUMMARY_MAX_CHARS = 2000;
+
+/**
+ * Completion wakes are retained while the parent is busy or not loaded, then
+ * delivered serially once its store becomes idle. This intentionally can emit
+ * a redundant notice after wait=true; the notice tells the coordinator to
+ * ignore it when the tool return value was already handled.
+ */
+const completionWakeController = new SubagentIdleWakeController({
+  resolveParentStore: async (parentSessionId) => {
+    const { sessionManager } = await import('../core/session/sessionManager');
+    return sessionManager.peek?.(parentSessionId) as ParentWakeStore | undefined;
+  },
+  sendWake: async (payload, parentStore) => {
+    const parentSessionId = payload.parent_session_id;
+    if (!parentSessionId) return false;
+    const state = parentStore.getState();
+    if (state.sessionStatus !== 'idle' || state.currentStreamingMessageId) return false;
+
+    const typedStore = parentStore as unknown as Parameters<typeof adapterManager.getOrCreate>[1];
+    const acquisition = await adapterManager.getOrCreate(parentSessionId, typedStore);
+    try {
+      await adapterManager.waitForListenersReady(parentSessionId);
+      const latest = parentStore.getState() as typeof state & {
+        wakeSession(content: string): Promise<void>;
+      };
+      if (latest.sessionStatus !== 'idle' || latest.currentStreamingMessageId) return false;
+
+      const summarySource = payload.final_output || payload.error || '';
+      const summary = summarySource.length > WAKE_SUMMARY_MAX_CHARS
+        ? `${summarySource.slice(0, WAKE_SUMMARY_MAX_CHARS)}…（已截断）`
+        : summarySource;
+      const content = [
+        `[子代理完成通知] agent=${payload.agent_session_id} status=${payload.status}`,
+        summary ? `结果摘要：\n${summary}` : '（子代理未产出文本摘要）',
+        '请基于该结果继续处理原任务。若该子代理结果已在上一回合工具返回值中处理过，无需重复处理。',
+        '若还有其他后台子代理未完成，可用 workspace_query(query_type="tasks") 查询状态，不要重复派发相同任务。',
+      ].join('\n\n');
+
+      console.log(
+        `[Workspace Events] [SUBAGENT_WAKE] Waking idle parent ${parentSessionId} for agent ${payload.agent_session_id} (status=${payload.status})`,
+      );
+      addSubagentEventLog(
+        'coord_wake',
+        payload.agent_session_id,
+        `idle-parent wake: parent=${parentSessionId}, status=${payload.status}`,
+        undefined,
+        payload.workspace_id,
+      );
+      showGlobalNotification(
+        'info',
+        i18n.t('chatV2:workspace.subagentWakeNotice', {
+          agent: payload.agent_session_id.slice(-8),
+          defaultValue: '后台子代理已完成，唤醒主代理处理结果',
+        }),
+      );
+      await latest.wakeSession(content);
+      return true;
+    } finally {
+      adapterManager.release(parentSessionId, acquisition.lease);
+    }
+  },
+  onParentUnavailable: (parentSessionId) => {
+    console.log(
+      `[Workspace Events] [SUBAGENT_WAKE] Parent session ${parentSessionId} not loaded; retaining pending wake`,
+    );
+  },
+  onError: (error) => {
+    console.error('[Workspace Events] [SUBAGENT_WAKE] Wake failed:', error);
+  },
+});
 
 /**
  * 内存 Map 丢失后的回退（监听器重建/应用重启后会话重新加载的场景）：
@@ -716,6 +799,7 @@ export async function initWorkspaceEventListeners(): Promise<void> {
       const completion: AgentCompletionEnvelope = {
         workspaceId: payload.workspace_id,
         agentSessionId: payload.agent_session_id,
+        parentSessionId: payload.parent_session_id,
         taskId: payload.task_id,
         runId: payload.run_id,
         correlationId: payload.correlation_id,
@@ -750,6 +834,9 @@ export async function initWorkspaceEventListeners(): Promise<void> {
         payload.error,
         payload.workspace_id,
       );
+      // Completion wakes remain queued until the parent becomes idle, so a
+      // busy parent cannot consume the dedup key and lose this completion.
+      completionWakeController.enqueue(payload);
     }
   );
 
@@ -788,6 +875,7 @@ export async function initWorkspaceEventListeners(): Promise<void> {
       if (currentWorkspaceId === workspace_id) {
         store.reset();
       }
+      completionWakeController.clearWorkspace(workspace_id);
       for (const [sessionId, record] of workerAdapterLeases) {
         if (
           record.workspaceId === workspace_id
@@ -1057,6 +1145,7 @@ export async function cleanupWorkspaceEventListeners(): Promise<void> {
   workerStartAttempts.clear();
   // 🔧 P34 修复：清空已处理唤醒事件 Set
   processedAwakenedEvents.clear();
+  completionWakeController.dispose();
   // 🔧 清空待终结的 subagent_retry 块登记（新一代监听器重新登记）
   pendingSubagentRetryBlocks.clear();
   console.log('[Workspace Events] Event listeners cleaned up');

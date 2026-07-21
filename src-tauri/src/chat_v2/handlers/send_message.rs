@@ -10,6 +10,7 @@ use tauri::{Emitter, State, Window};
 
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
+use crate::chat_v2::handlers::ensure_session_writable;
 use crate::chat_v2::kill_switch::{admit_or_block, KILL_SWITCH_BLOCKED_MESSAGE};
 use crate::chat_v2::pipeline::ChatV2Pipeline;
 use crate::chat_v2::repo::ChatV2Repo;
@@ -261,6 +262,29 @@ fn apply_replay_mode_overrides(mut options: SendOptions) -> SendOptions {
     options
 }
 
+fn build_wake_request(
+    session_id: String,
+    content: String,
+    assistant_message_id: Option<String>,
+    options: Option<SendOptions>,
+) -> SendMessageRequest {
+    let mut options = options.unwrap_or_default();
+    // Wake content is ephemeral input for this turn. It must never create the
+    // synthetic user-history entry that ordinary sends persist.
+    options.skip_user_message_save = Some(true);
+
+    SendMessageRequest {
+        session_id,
+        content,
+        options: Some(apply_replay_mode_overrides(options)),
+        user_message_id: None,
+        assistant_message_id,
+        user_context_refs: None,
+        path_map: None,
+        workspace_id: None,
+    }
+}
+
 /// 🆕 Headless 基建（2026-07）：可被 headless runner 复用的内部执行路径。
 ///
 /// 封装「StreamGuard 保护 + Pipeline::execute」的公共序列，调用方负责：
@@ -432,6 +456,7 @@ pub(crate) fn apply_original_skill_snapshot_overrides(
 pub async fn chat_v2_send_message(
     request: SendMessageRequest,
     window: Window,
+    db: State<'_, Arc<ChatV2Database>>,
     chat_v2_state: State<'_, Arc<ChatV2State>>,
     pipeline: State<'_, Arc<ChatV2Pipeline>>,
     llm_manager: State<'_, Arc<LLMManager>>,
@@ -492,6 +517,7 @@ pub async fn chat_v2_send_message(
         ))
         .into());
     }
+    ensure_session_writable(&db, &request.session_id).map_err(String::from)?;
 
     // ★ 2025-12-10 统一改造：验证请求（附件现在通过 user_context_refs 传递）
     let has_content = !request.content.trim().is_empty();
@@ -603,6 +629,112 @@ pub async fn chat_v2_send_message(
     Ok(assistant_message_id)
 }
 
+/// 以不持久化用户消息的内部回合唤醒会话。
+///
+/// 唤醒内容仍作为当前回合的 user content 输入 Pipeline，但聊天历史中仅保存
+/// 本轮生成的 assistant 消息，避免显示伪造的用户气泡。
+#[tauri::command]
+pub async fn chat_v2_wake_session(
+    session_id: String,
+    content: String,
+    assistant_message_id: Option<String>,
+    options: Option<SendOptions>,
+    window: Window,
+    db: State<'_, Arc<ChatV2Database>>,
+    chat_v2_state: State<'_, Arc<ChatV2State>>,
+    pipeline: State<'_, Arc<ChatV2Pipeline>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<String, String> {
+    log::info!(
+        "[ChatV2::handlers] chat_v2_wake_session: session_id={}, content_len={}",
+        session_id,
+        content.len()
+    );
+
+    if !session_id.starts_with("sess_")
+        && !session_id.starts_with("agent_")
+        && !session_id.starts_with("subagent_")
+    {
+        return Err(
+            ChatV2Error::Validation(format!("Invalid session ID format: {}", session_id)).into(),
+        );
+    }
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
+
+    if content.trim().is_empty() {
+        return Err(ChatV2Error::Validation("Wake content cannot be empty".to_string()).into());
+    }
+
+    if let Err(error) = admit_or_block(chat_v2_state.inner()) {
+        return Err(ChatV2Error::Other(error).into());
+    }
+
+    let assistant_message_id = assistant_message_id.unwrap_or_else(ChatMessage::generate_id);
+    let request = build_wake_request(
+        session_id,
+        content,
+        Some(assistant_message_id.clone()),
+        options,
+    );
+    let model_id = request.options.as_ref().and_then(|o| o.model_id.as_deref());
+    let is_multimodal_model = is_model_multimodal(&llm_manager, model_id).await;
+    let request_audit_payload =
+        build_backend_request_audit_payload(&request, model_id, is_multimodal_model);
+    if let Err(e) = window.emit("chat_v2_request_audit", &request_audit_payload) {
+        log::warn!(
+            "[ChatV2::handlers] Failed to emit chat_v2_request_audit event: {}",
+            e
+        );
+    }
+
+    let stream_registration = match chat_v2_state.try_register_stream_owned(&request.session_id) {
+        Ok(registration) => registration,
+        Err(()) => {
+            if chat_v2_state.kill_switch.is_tripped() {
+                return Err(ChatV2Error::Other(KILL_SWITCH_BLOCKED_MESSAGE.to_string()).into());
+            }
+            return Err(ChatV2Error::Other(
+                "Session has an active stream. Please wait for completion or cancel first."
+                    .to_string(),
+            )
+            .into());
+        }
+    };
+
+    let wake_session_id = request.session_id.clone();
+    let window_clone = window.clone();
+    let pipeline_clone = pipeline.inner().clone();
+    let chat_v2_state_clone = chat_v2_state.inner().clone();
+    chat_v2_state.spawn_tracked(async move {
+        match run_send_message_pipeline_owned(
+            pipeline_clone,
+            chat_v2_state_clone,
+            window_clone,
+            request,
+            stream_registration,
+        )
+        .await
+        {
+            Ok(returned_msg_id) => log::info!(
+                "[ChatV2::handlers] Wake pipeline completed: session_id={}, assistant_message_id={}",
+                wake_session_id,
+                returned_msg_id
+            ),
+            Err(ChatV2Error::Cancelled) => log::info!(
+                "[ChatV2::handlers] Wake pipeline cancelled: session_id={}",
+                wake_session_id
+            ),
+            Err(e) => log::error!(
+                "[ChatV2::handlers] Wake pipeline error: session_id={}, error={}",
+                wake_session_id,
+                e
+            ),
+        }
+    });
+
+    Ok(assistant_message_id)
+}
+
 /// 取消正在进行的流式生成
 ///
 /// 触发取消信号，流水线会在各阶段检查并停止处理。
@@ -681,6 +813,7 @@ pub async fn chat_v2_retry_message(
         session_id,
         message_id
     );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
 
     // 从数据库加载原消息
     let original_message = ChatV2Repo::get_message_v2(&db, &message_id)
@@ -1027,6 +1160,7 @@ pub async fn chat_v2_edit_and_resend(
         message_id,
         new_content.len()
     );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
 
     // 验证内容
     if new_content.trim().is_empty() {
@@ -1749,6 +1883,7 @@ pub async fn chat_v2_continue_message(
         message_id,
         variant_id
     );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
 
     // 加载持久化的 TodoList (活跃流检查由 try_register_stream 原子完成)
     let todo_info = load_persisted_todo_list(&db, &session_id).map_err(|e| {
@@ -1972,6 +2107,23 @@ mod tests {
         assert!(id1.starts_with("msg_"));
         assert!(id2.starts_with("msg_"));
         assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn build_wake_request_forces_ephemeral_user_content() {
+        let request = build_wake_request(
+            "sess_wake".to_string(),
+            "[子代理完成通知] done".to_string(),
+            Some("msg_wake".to_string()),
+            Some(SendOptions {
+                skip_user_message_save: Some(false),
+                ..Default::default()
+            }),
+        );
+
+        assert_eq!(request.options.unwrap().skip_user_message_save, Some(true));
+        assert_eq!(request.assistant_message_id.as_deref(), Some("msg_wake"));
+        assert!(request.user_context_refs.is_none());
     }
 
     #[test]

@@ -1121,20 +1121,17 @@ mod tests {
             ("research".to_string(), "research body".to_string()),
             ("other".to_string(), "other body".to_string()),
         ]);
-        let snapshot = build_profile_skill_snapshot(
-            &["research".to_string()],
-            Some(&available),
-        )
-        .unwrap();
+        let snapshot =
+            build_profile_skill_snapshot(&["research".to_string()], Some(&available)).unwrap();
         assert_eq!(snapshot.len(), 1);
-        assert_eq!(snapshot.get("research").map(String::as_str), Some("research body"));
+        assert_eq!(
+            snapshot.get("research").map(String::as_str),
+            Some("research body")
+        );
         assert!(!snapshot.contains_key("other"));
 
-        let error = build_profile_skill_snapshot(
-            &["missing".to_string()],
-            Some(&available),
-        )
-        .unwrap_err();
+        let error =
+            build_profile_skill_snapshot(&["missing".to_string()], Some(&available)).unwrap_err();
         assert!(error.contains("silently ignore"));
     }
 

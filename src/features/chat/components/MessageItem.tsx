@@ -31,6 +31,7 @@ import { ActivityTimelineWithStore, isTimelineBlockType } from './ActivityTimeli
 
 import type { ChatStore, Block } from '../core/types';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
+import { isStoreSubagentSession } from '../core/subagentSession';
 import { getModelDisplayName, formatMessageTime } from '@/utils/formatUtils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -195,20 +196,30 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   // 🔧 P1修复：同时检查 sending/streaming/aborting 状态，与 Store 守卫保持一致
   const isLocked = sessionStatus === 'sending' || sessionStatus === 'streaming' || sessionStatus === 'aborting' || hasActiveBlock;
 
+  // 子代理会话只读：触发指令等消息可看不可改（编辑/重发会绕过 workspace 运行时）
+  const storeSessionId = useStore(store, (s) => s.sessionId);
+  const storeMode = useStore(store, (s) => s.mode);
+  const storeSessionMetadata = useStore(store, (s) => s.sessionMetadata);
+  const isReadOnlySession = isStoreSubagentSession({
+    sessionId: storeSessionId,
+    mode: storeMode,
+    sessionMetadata: storeSessionMetadata,
+  });
+
   // 派生状态：是否可以编辑/删除
   // 注意：这里使用本地派生状态而非调用 store.canEdit/canDelete
   // 因为需要额外检查 message.role === 'user'，且 Hook 规则不允许条件调用
   const canEdit = useMemo(() => {
     if (!message) return false;
-    if (isLocked) return false;
+    if (isLocked || isReadOnlySession) return false;
     return message.role === 'user'; // 只有用户消息可编辑
-  }, [message, isLocked]);
+  }, [message, isLocked, isReadOnlySession]);
 
   const canDelete = useMemo(() => {
     if (!message) return false;
-    if (isLocked) return false;
+    if (isLocked || isReadOnlySession) return false;
     return true; // 非锁定状态下可删除
-  }, [message, isLocked]);
+  }, [message, isLocked, isReadOnlySession]);
 
   // 判断是否是用户消息
   const isUser = message?.role === 'user';
@@ -295,8 +306,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   // 选中文本后的操作回调：发送消息
   const handleSelectionSendMessage = useCallback((content: string) => {
+    if (isReadOnlySession) return;
     store.getState().sendMessage(content);
-  }, [store]);
+  }, [isReadOnlySession, store]);
 
   // 选中文本后的操作回调：解释（打开 popover）
   const handleSelectionExplain = useCallback((text: string) => {
@@ -470,7 +482,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   }, [multiCopied, handleCopy]);
 
   const handleRetryAllVariantsInline = useCallback(async () => {
-    if (!retryAllVariants || isLocked || isRetryingAllVariants) return;
+    if (!retryAllVariants || isReadOnlySession || isLocked || isRetryingAllVariants) return;
     setIsRetryingAllVariants(true);
     try {
       await retryAllVariants();
@@ -479,7 +491,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     } finally {
       setIsRetryingAllVariants(false);
     }
-  }, [retryAllVariants, isLocked, isRetryingAllVariants]);
+  }, [retryAllVariants, isReadOnlySession, isLocked, isRetryingAllVariants]);
 
   const handleDeleteMultiMessageInline = useCallback(async () => {
     if (!canDelete || isDeletingMultiMessage) return;
@@ -501,6 +513,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   // 真正执行重试（确认后 / 无后续消息时直接调用）
   const performRetry = useCallback(async () => {
+    if (isReadOnlySession) return;
     setRetryConfirmCount(null);
     try {
       await store.getState().retryMessage(messageId);
@@ -515,14 +528,14 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       console.error('[MessageItem] Retry failed:', error);
       showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.retryFailed'));
     }
-  }, [messageId, store, t]);
+  }, [isReadOnlySession, messageId, store, t]);
 
   // 重试入口：有后续消息将被删除时先展开内联确认条，否则直接重试
   const handleRetry = useCallback(async () => {
-    if (!message || isLocked) {
+    if (!message || isReadOnlySession || isLocked) {
       logChatV2('message', 'ui', 'handleRetry_blocked', {
         messageId,
-        reason: !message ? 'message=null' : 'isLocked=true',
+        reason: !message ? 'message=null' : isReadOnlySession ? 'readOnlySession=true' : 'isLocked=true',
         isLocked,
       }, 'warning', { messageId });
       return;
@@ -539,7 +552,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     }
 
     await performRetry();
-  }, [message, messageId, isLocked, store, performRetry]);
+  }, [message, messageId, isReadOnlySession, isLocked, store, performRetry]);
 
   const handleRetryConfirmCancel = useCallback(() => {
     logChatV2('message', 'ui', 'handleRetry_cancelled_by_user', {
@@ -555,18 +568,18 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   }, [isLocked]);
 
   const handleRetryFromFailureBar = useCallback(async () => {
-    if (isRetryingFailure || isLocked) return;
+    if (isReadOnlySession || isRetryingFailure || isLocked) return;
     setIsRetryingFailure(true);
     try {
       await handleRetry();
     } finally {
       setIsRetryingFailure(false);
     }
-  }, [handleRetry, isLocked, isRetryingFailure]);
+  }, [handleRetry, isReadOnlySession, isLocked, isRetryingFailure]);
 
   // 重新发送用户消息
   const handleResend = useCallback(async () => {
-    if (!message || isLocked) return;
+    if (!message || isLocked || isReadOnlySession) return;
     const blocks = getDisplayBlocks();
     const contentBlock = blocks.find((b) => b.type === 'content');
     const currentContent = contentBlock?.content || '';
@@ -582,7 +595,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       console.error('[MessageItem] Resend failed:', error);
       showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.resendFailed'));
     }
-  }, [message, messageId, isLocked, getDisplayBlocks, store, t]);
+  }, [message, messageId, isLocked, isReadOnlySession, getDisplayBlocks, store, t]);
 
   // 编辑状态
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
@@ -723,7 +736,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   // 🔧 P0 修复：继续执行——优先调用后端 continue_message（同消息内继续），失败时 fallback 到 sendMessage
   const handleContinue = useCallback(async () => {
-    if (isLocked) {
+    if (isReadOnlySession || isLocked) {
       // 使用 getState() 获取实时状态用于日志，避免将 sessionStatus/hasActiveBlock 加入依赖数组
       const s = store.getState();
       console.warn('[MessageItem] handleContinue blocked: isLocked=true', {
@@ -739,7 +752,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       console.error('[MessageItem] Continue failed:', error);
       showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.continueFailed'));
     }
-  }, [isLocked, store, messageId, activeVariant?.id, t]);
+  }, [isReadOnlySession, isLocked, store, messageId, activeVariant?.id, t]);
 
   // 🆕 保存为 VFS 笔记
   const handleSaveAsNote = useCallback(async () => {
@@ -766,7 +779,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   // 🆕 会话分支：从此消息处创建新会话
   const isBranchingRef = useRef(false);
   const handleBranch = useCallback(async () => {
-    if (isBranchingRef.current || isLocked || !message) return;
+    if (isBranchingRef.current || isReadOnlySession || isLocked || !message) return;
     isBranchingRef.current = true;
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -787,7 +800,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     } finally {
       isBranchingRef.current = false;
     }
-  }, [isLocked, message, store, messageId, t]);
+  }, [isReadOnlySession, isLocked, message, store, messageId, t]);
 
   // 🆕 导出为 Markdown 文件（入口：MessageActions 更多菜单）
   const handleExportMarkdown = useCallback(async () => {
@@ -861,15 +874,15 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
             messageId={messageId}
             variants={variants}
             activeVariantId={activeVariant?.id}
-            onSwitchVariant={switchVariant}
-            onCancelVariant={cancelVariant}
-            onRetryVariant={retryVariant}
-            onDeleteVariant={deleteVariant}
-            onRetryAllVariants={retryAllVariants}
-            onDeleteMessage={handleDelete}
+            onSwitchVariant={isReadOnlySession ? undefined : switchVariant}
+            onCancelVariant={isReadOnlySession ? undefined : cancelVariant}
+            onRetryVariant={isReadOnlySession ? undefined : retryVariant}
+            onDeleteVariant={isReadOnlySession ? undefined : deleteVariant}
+            onRetryAllVariants={isReadOnlySession ? undefined : retryAllVariants}
+            onDeleteMessage={isReadOnlySession ? undefined : handleDelete}
             onCopy={handleCopy}
             isLocked={isLocked}
-            onBranchSession={handleBranch}
+            onBranchSession={isReadOnlySession ? undefined : handleBranch}
             onSaveAsNote={handleSaveAsNote}
             onExportMarkdown={handleExportMarkdown}
             messageTimestamp={message?.timestamp}
@@ -904,16 +917,16 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     messageId={messageId}
                     variants={variants}
                     activeVariantId={activeVariant?.id}
-                    onSwitchVariant={switchVariant}
-                    onCancelVariant={cancelVariant}
-                    onRetryVariant={retryVariant}
-                    onDeleteVariant={deleteVariant}
-                    onRetryAllVariants={retryAllVariants}
-                    onDeleteMessage={handleDelete}
+                    onSwitchVariant={isReadOnlySession ? undefined : switchVariant}
+                    onCancelVariant={isReadOnlySession ? undefined : cancelVariant}
+                    onRetryVariant={isReadOnlySession ? undefined : retryVariant}
+                    onDeleteVariant={isReadOnlySession ? undefined : deleteVariant}
+                    onRetryAllVariants={isReadOnlySession ? undefined : retryAllVariants}
+                    onDeleteMessage={isReadOnlySession ? undefined : handleDelete}
                     onCopy={handleCopy}
                     isLocked={isLocked}
-                    onContinue={handleContinue}
-                    onBranchSession={handleBranch}
+                    onContinue={isReadOnlySession ? undefined : handleContinue}
+                    onBranchSession={isReadOnlySession ? undefined : handleBranch}
                     onSaveAsNote={handleSaveAsNote}
                     onExportMarkdown={handleExportMarkdown}
                     messageTimestamp={message?.timestamp}
@@ -1173,7 +1186,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
             </div>
           )}
 
-          {showActions && !isInlineEditing && !isWaitingForContent && hasZeroOutputFailure && (
+          {showActions && !isReadOnlySession && !isInlineEditing && !isWaitingForContent && hasZeroOutputFailure && (
             <div className="mt-2">
               <div
                 className={cn(
@@ -1191,7 +1204,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={handleRetryFromFailureBar}
-                  disabled={isLocked || isRetryingFailure}
+                  disabled={isReadOnlySession || isLocked || isRetryingFailure}
                   className="text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                 >
                   <ArrowCounterClockwise className={cn('w-4 h-4', isRetryingFailure && 'animate-spin')} />
@@ -1222,7 +1235,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={performRetry}
-                  disabled={isLocked}
+                  disabled={isReadOnlySession || isLocked}
                   className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                 >
                   <ArrowCounterClockwise className="w-3.5 h-3.5" />
@@ -1271,7 +1284,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           store.getState().setModelRetryTarget(messageId);
                           store.getState().setPanelState('model', true);
                         }}
-                        disabled={isLocked}
+                        disabled={isReadOnlySession || isLocked}
                         className={cn(
                           '!h-auto !px-1.5 !py-0.5 mr-1',
                           'text-[11px] text-muted-foreground/70',
@@ -1292,13 +1305,13 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         alwaysExpanded={showAssistantFooterAlways}
                         anchorCopyToEnd={isUser}
                         onCopy={handleCopy}
-                        onRetry={!isUser && !isMultiVariant ? handleRetry : undefined}
-                        onResend={isUser ? handleResend : undefined}
-                        onEdit={isUser ? handleEdit : undefined}
+                        onRetry={!isUser && !isMultiVariant && !isReadOnlySession ? handleRetry : undefined}
+                        onResend={isUser && !isReadOnlySession ? handleResend : undefined}
+                        onEdit={isUser && !isReadOnlySession ? handleEdit : undefined}
                         onDelete={handleDelete}
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
                         onExportMarkdown={!isUser ? handleExportMarkdown : undefined}
-                        onBranchSession={handleBranch}
+                        onBranchSession={isReadOnlySession ? undefined : handleBranch}
                       />
                     )}
                     {!isUser && isMultiVariant && (
@@ -1318,7 +1331,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           size="icon"
                           iconOnly
                           onClick={handleBranch}
-                          disabled={isLocked}
+                          disabled={isReadOnlySession || isLocked}
                           aria-label={t('messageItem.actions.branch')}
                           title={t('messageItem.actions.branch')}
                         >
@@ -1329,7 +1342,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           size="icon"
                           iconOnly
                           onClick={handleRetryAllVariantsInline}
-                          disabled={isLocked || isRetryingAllVariants}
+                          disabled={isReadOnlySession || isLocked || isRetryingAllVariants}
                           aria-label={t('variant.retryAll')}
                           title={t('variant.retryAll')}
                         >
@@ -1372,13 +1385,13 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         canDelete={canDelete}
                         alwaysExpanded={showAssistantFooterAlways}
                         onCopy={handleCopy}
-                        onRetry={!isUser && !isMultiVariant ? handleRetry : undefined}
-                        onResend={isUser ? handleResend : undefined}
-                        onEdit={isUser ? handleEdit : undefined}
+                        onRetry={!isUser && !isMultiVariant && !isReadOnlySession ? handleRetry : undefined}
+                        onResend={isUser && !isReadOnlySession ? handleResend : undefined}
+                        onEdit={isUser && !isReadOnlySession ? handleEdit : undefined}
                         onDelete={handleDelete}
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
                         onExportMarkdown={!isUser ? handleExportMarkdown : undefined}
-                        onBranchSession={handleBranch}
+                        onBranchSession={isReadOnlySession ? undefined : handleBranch}
                         compactMobile
                         tokenUsage={!isUser ? (hasMultipleVariants ? aggregatedUsage : singleVariantUsage) : undefined}
                       />
@@ -1429,8 +1442,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
               canEdit={canEdit}
               canDelete={canDelete}
               onCopy={handleCopy}
-              onEdit={isUser ? handleEdit : undefined}
-              onRetry={!isUser ? handleRetry : undefined}
+              onEdit={isUser && !isReadOnlySession ? handleEdit : undefined}
+              onRetry={!isUser && !isReadOnlySession ? handleRetry : undefined}
               onDelete={handleDelete}
               onClose={closeTouchBar}
             />
@@ -1448,7 +1461,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
         isVisible={textSelection.isVisible && !translationPopoverState.isVisible && !explainPopoverState.isVisible}
         containerRef={messageRootRef}
         onClear={textSelection.clear}
-        onSendMessage={handleSelectionSendMessage}
+        onSendMessage={isReadOnlySession ? undefined : handleSelectionSendMessage}
         onExplain={handleSelectionExplain}
         onTranslate={handleSelectionTranslate}
         onAddToChat={handleSelectionAddToChat}

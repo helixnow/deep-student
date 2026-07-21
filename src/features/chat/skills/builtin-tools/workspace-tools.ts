@@ -54,8 +54,9 @@ export const workspaceToolsSkill: SkillDefinition = {
 按场景选择路径，不要混用：
 
 1. **单个委托任务（最常见）**：直接调用 \`builtin-subagent_call\`（默认 wait=true 阻塞等待）。不需要预先 workspace_create，也不需要 coordinator_sleep——子代理的最终输出就在工具返回值的 \`output\` 字段里。
-2. **并行 fan-out 多任务**：多次调用 \`builtin-subagent_call\` 并显式传 \`wait: false\` 立即拿到各自的 ids，全部派发完后调用**一次** \`builtin-coordinator_sleep\` 统一等待结果。
-3. **多代理长期协作 / 共享文档**：走 workspace 三件套高级路径（workspace_create → workspace_create_agent → workspace_query/send，配合 coordinator_sleep）。
+2. **并行 fan-out 且本回合要汇总结果**：多次调用 \`builtin-subagent_call\` 并显式传 \`wait: false\` 立即拿到各自的 ids，全部派发完后调用**一次** \`builtin-coordinator_sleep\` 统一等待；唤醒后继续在本回合汇总各子代理结果。
+3. **后台异步（自己还有活 / 或干完就结束）**：以 \`wait: false\` 派发子代理后**继续做你自己的工作**（或干完就结束本回合），**不要**调用 \`coordinator_sleep\`——每当一个后台子代理完成，系统会以内部唤醒回合把完成摘要注入模型（聊天界面不出现伪用户消息）；模型会收到以 \`[子代理完成通知]\` 开头的唤醒内容。多个后台子代理各自完成时会各唤醒一次。期间可用 \`builtin-workspace_query\`（query_type="tasks"）查询后台任务状态与结果摘要。被唤醒后先消化该结果，再视需要检查其余任务，不要重复派发相同任务。
+4. **多代理长期协作 / 共享文档**：走 workspace 三件套高级路径（workspace_create → workspace_create_agent → workspace_query/send，配合 coordinator_sleep）。
 
 ### 续跑与自定义代理
 
@@ -82,7 +83,8 @@ frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内�
 - **builtin-workspace_query**: 查询工作区信息
 
 ### 等待子代理
-- **builtin-coordinator_sleep**: 等待以 wait=false 派发的子代理完成；默认（wait=true）的 subagent_call 阻塞直接返回结果，不需要再 sleep
+- **builtin-coordinator_sleep**（决策树第 2 条）：并行 fan-out 且**本回合要汇总结果**时使用——全部以 wait=false 派发完成后调用**一次**，睡眠期间 pipeline 挂起，子代理完成后自动唤醒继续汇总。默认（wait=true）的 subagent_call 阻塞直接返回结果，不需要 sleep
+- **后台异步（决策树第 3 条）**：派发后你还有自己的活，或干完就结束回合——**不要 sleep**；子代理完成后系统会通过内部唤醒回合注入以 \`[子代理完成通知]\` 开头的内容，聊天界面不会出现伪用户消息。期间用 \`workspace_query(query_type="tasks")\` 查询后台任务状态
 
 ### Workspace 三件套与编排边界
 
@@ -249,7 +251,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
             type: 'boolean',
             default: true,
             description:
-              '可选，默认 true：阻塞等待子代理完成（内部预算 750s），返回值直接携带 output；超预算返回 status:"running" 与各项 ids。设为 false 立即返回 ids（并行 fan-out 场景），之后用 coordinator_sleep 统一等待',
+              '可选，默认 true：阻塞等待子代理完成（内部预算 750s），返回值直接携带 output；超预算返回 status:"running" 与各项 ids。设为 false 立即返回 ids（后台异步/并行 fan-out 场景）：若要原地等待用 coordinator_sleep；若自己还有活要干就继续干，期间可用 workspace_query(query_type="tasks") 查状态，干完直接结束回合——子代理完成后系统会自动唤醒你',
           },
         },
         required: ['task'],
@@ -283,8 +285,8 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           workspace_id: { type: 'string', description: '【必填】工作区 ID' },
           query_type: {
             type: 'string',
-            enum: ['agents', 'messages', 'documents', 'context', 'all'],
-            description: '查询类型',
+            enum: ['agents', 'messages', 'documents', 'context', 'tasks', 'all'],
+            description: '查询类型；tasks=后台子代理任务状态（wait=false 派发后轮询用，含 status/result_summary）',
           },
           limit: { type: 'integer', description: '返回结果数量限制，默认 50', default: 50, minimum: 1, maximum: 200 },
         },

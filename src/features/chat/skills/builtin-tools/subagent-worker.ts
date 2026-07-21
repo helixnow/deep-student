@@ -98,8 +98,8 @@ export const subagentWorkerSkill: SkillDefinition = {
           workspace_id: { type: 'string', description: '【必填】工作区 ID' },
           query_type: {
             type: 'string',
-            enum: ['agents', 'messages', 'documents', 'context', 'all'],
-            description: '查询类型',
+            enum: ['agents', 'messages', 'documents', 'context', 'tasks', 'all'],
+            description: '查询类型；tasks=后台子代理任务状态（Worker 通常不需要，但后端支持）',
           },
         },
         required: ['workspace_id'],

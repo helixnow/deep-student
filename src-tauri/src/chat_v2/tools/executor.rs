@@ -678,6 +678,22 @@ impl ExecutionContext {
         )
         .map_err(|e| e.to_string())?;
 
+        // 🆕 把块 ID 追加进消息的 block_ids_json（尚未引用时）：
+        // 前端严格按消息 blockIds 渲染，运行中的会话快照（如子代理嵌入视图的
+        // loadSession）若读到"孤儿工具块"将不可见。单条 UPDATE 原子完成
+        // "不存在才追加"，并行工具不会互相覆盖；末轮 save_results 会以
+        // 最终交替顺序整体覆盖本字段。
+        conn.execute(
+            r#"
+            UPDATE chat_v2_messages
+            SET block_ids_json = json_insert(block_ids_json, '$[#]', ?1)
+            WHERE id = ?2
+              AND ?1 NOT IN (SELECT value FROM json_each(block_ids_json))
+            "#,
+            rusqlite::params![block.id, block.message_id],
+        )
+        .map_err(|e| e.to_string())?;
+
         log::debug!(
             "[ExecutionContext] Tool block saved: block_id={}, tool={}",
             block_id,

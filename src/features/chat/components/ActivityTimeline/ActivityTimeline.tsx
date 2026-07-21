@@ -47,6 +47,7 @@ import { CompletionCard, extractCompletionData, isAttemptCompletionTool } from '
 import {
   getShellCommandDescriptor,
   isShellTimelineTool,
+  shellCommandPlaceholder,
   shellCommandVerb,
   ShellCommandTimelineView,
 } from './ShellCommandTimelineView';
@@ -996,8 +997,11 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
               <span className={cn('shrink-0 font-medium', statusColor)}>
                 {shellCommandVerb(shellDescriptor, t)}
               </span>
-              <code className="min-w-0 truncate font-mono text-xs text-foreground" title={shellDescriptor.command}>
-                {shellDescriptor.command || t('timeline.shell.commandUnavailable', {ns: 'chatV2'})}
+              <code
+                className="min-w-0 truncate font-mono text-xs text-foreground"
+                title={shellCommandPlaceholder(shellDescriptor, t)}
+              >
+                {shellCommandPlaceholder(shellDescriptor, t)}
               </code>
             </span>
           ) : (

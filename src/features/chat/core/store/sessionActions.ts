@@ -15,6 +15,7 @@ import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { eventRegistry, type EventHandler } from '../../registry/eventRegistry';
 import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
 import { resetTransientRuntimes } from './transientRuntimeRegistry';
+import { isStoreSubagentSession } from '../subagentSession';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -563,6 +564,16 @@ export function createSessionActions(
           );
         },
 
+        setWakeSessionCallback: (
+          callback: ((content: string, assistantMessageId: string) => Promise<void>) | null
+        ): void => {
+          set({ _wakeSessionCallback: callback } as Partial<ChatStoreState>);
+          console.log(
+            '[ChatStore] WakeSession callback',
+            callback ? 'set' : 'cleared'
+          );
+        },
+
         setAbortCallback: (
           callback: (() => Promise<void>) | null
         ): void => {
@@ -585,6 +596,10 @@ export function createSessionActions(
         },
 
         continueMessage: async (messageId: string, variantId?: string): Promise<void> => {
+          if (isStoreSubagentSession(getState())) {
+            console.warn('[ChatStore] continueMessage blocked for read-only subagent session:', messageId);
+            return;
+          }
           const continueCallback = (getState() as ChatStoreState & ChatStore & {
             _continueMessageCallback?: ((messageId: string, variantId?: string) => Promise<void>) | null
           })._continueMessageCallback;

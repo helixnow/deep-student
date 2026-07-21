@@ -37,6 +37,7 @@ import { modeRegistry } from '../registry';
 import { useWorkspaceRestore } from '../workspace/hooks';
 import { AgentTaskPanel } from './AgentTaskPanel';
 import { groupCache } from '../core/store/groupCache';
+import { isStoreSubagentSession } from '../core/subagentSession';
 // ★ 图谱模块已废弃 - GraphSelectDialog 已移除
 // import { GraphSelectDialog } from '@/components/graph-manager/GraphSelectDialog';
 // 🆕 工具审批卡片（文档 29 P1-3）- 已移至 InputBarV2 内部渲染
@@ -176,6 +177,18 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     ? targetStore
     : (lastRenderableRef.current?.store ?? targetStore);
 
+  // 子代理会话只读：按当前展示的 store 判定。切换到未加载会话时仍展示旧
+  // store，不能用目标 prop sessionId 提前隐藏其输入栏或错误显示只读提示。
+  const displayedSessionId = useStore(store, (s) => s.sessionId);
+  const displayedMode = useStore(store, (s) => s.mode);
+  const displayedSessionMetadata = useStore(store, (s) => s.sessionMetadata);
+  const isSubagentSession = isStoreSubagentSession({
+    sessionId: displayedSessionId,
+    mode: displayedMode,
+    sessionMetadata: displayedSessionMetadata,
+  });
+  const effectiveShowInputBar = showInputBar && !isSubagentSession;
+
   const messageCount = useStore(store, (s) => s.messageOrder.length);
   const sessionGroupId = useStore(store, (s) => s.groupId);
   const resolvedEmptyStateGroupName = emptyStateGroupName ?? (
@@ -209,7 +222,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   // 此处不再订阅 pendingBlockingInteraction，避免整个容器随之重渲染
 
   // 🔧 P1修复：使用响应式订阅获取模式，而非直接调用 getState()
-  const mode = useStore(store, (s) => s.mode);
+  const mode = displayedMode;
   // 使用 getResolved 获取合并了继承链的完整插件
   const modePlugin = useMemo(() => modeRegistry.getResolved(mode), [mode]);
 
@@ -255,10 +268,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     );
   }
 
-  const shouldUseEmptyComposerLayout = showInputBar && (forceEmptyPreview || messageCount === 0);
+  const shouldUseEmptyComposerLayout = effectiveShowInputBar && (forceEmptyPreview || messageCount === 0);
   const shouldUseDesktopEmptyComposerLayout = shouldUseEmptyComposerLayout && !isMobile;
   const shouldAutoFocusMobileEmptyComposer = shouldUseEmptyComposerLayout && isMobile;
-  const shouldShowDisclaimer = showInputBar && messageCount > 0;
+  const shouldShowDisclaimer = effectiveShowInputBar && messageCount > 0;
 
   const renderMessageList = ({
     className: messageListSlotClassName,
@@ -322,7 +335,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     className?: string,
     motionState: 'empty' | 'docked' = 'docked',
     autoFocusOnMount = false
-  ) => showInputBar ? (
+  ) => effectiveShowInputBar ? (
     <div
       className={cn(
         'chat-composer-motion-frame',
@@ -342,6 +355,14 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
           autoFocus={autoFocusOnMount}
         />
       </div>
+    </div>
+  ) : isSubagentSession && showInputBar ? (
+    // 子代理会话打开为整页时：以只读提示替代输入栏
+    <div className="flex-shrink-0 px-4 py-2 text-center">
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/60 select-none">
+        <Info size={12} className="h-3 w-3" />
+        {t('chatV2:subagentSession.readOnlyNotice')}
+      </span>
     </div>
   ) : null;
 

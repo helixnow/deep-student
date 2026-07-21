@@ -386,6 +386,53 @@ impl SubagentTaskManager {
         Ok(result)
     }
 
+    /// 列出最近的任务（不限状态，按创建时间倒序）
+    ///
+    /// 供 `workspace_query(query_type="tasks")` 使用：主代理异步派发
+    /// （`subagent_call` wait=false）后据此轮询子代理任务状态与结果摘要。
+    pub fn list_recent_tasks(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<SubagentTaskData>, SubagentTaskError> {
+        let conn = self
+            .db
+            .get_connection()
+            .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, workspace_id, agent_session_id, skill_id, initial_task, \
+             status, created_at, started_at, completed_at, result_summary \
+             FROM subagent_task ORDER BY created_at DESC LIMIT ?1",
+            )
+            .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
+
+        let tasks = stmt
+            .query_map([limit as i64], |row| {
+                Ok(SubagentTaskData {
+                    id: row.get(0)?,
+                    workspace_id: row.get(1)?,
+                    agent_session_id: row.get(2)?,
+                    skill_id: row.get(3)?,
+                    initial_task: row.get(4)?,
+                    status: Self::parse_status(&row.get::<_, String>(5)?),
+                    created_at: parse_db_utc_datetime(row.get::<_, String>(6)?, "created_at")?,
+                    started_at: row
+                        .get::<_, Option<String>>(7)?
+                        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                        .map(|dt| dt.with_timezone(&Utc)),
+                    completed_at: row
+                        .get::<_, Option<String>>(8)?
+                        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                        .map(|dt| dt.with_timezone(&Utc)),
+                    result_summary: row.get(9)?,
+                })
+            })
+            .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
+
+        Ok(tasks.flatten().collect())
+    }
+
     /// 获取代理的当前任务
     pub fn get_agent_task(
         &self,

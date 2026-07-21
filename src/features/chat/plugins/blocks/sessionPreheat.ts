@@ -25,6 +25,15 @@ export function shouldPreheatSubagentSession(
   return !!sessionId && !isCollapsed;
 }
 
+export interface SessionPreheatOptions {
+  /**
+   * 子代理运行中首次加载到的是"中途快照"（thinking 块未落库、工具块未挂到
+   * 消息 block_ids）。终态后必须绕过 isDataLoaded 门槛强制重新加载，
+   * 用数据库里完整持久化的时间线纠正 Store。
+   */
+  forceReload?: boolean;
+}
+
 /**
  * Temporarily acquire an adapter long enough to finish setup and initial load.
  * The rendered ChatContainer owns its own lease; this speculative lease is
@@ -35,6 +44,7 @@ export async function preheatSubagentSession(
   sessionId: string,
   isCancelled: () => boolean,
   dependencies?: SessionPreheatDependencies,
+  options?: SessionPreheatOptions,
 ): Promise<void> {
   const deps = dependencies ?? await loadDefaultDependencies();
   if (isCancelled()) return;
@@ -44,7 +54,7 @@ export async function preheatSubagentSession(
   try {
     if (isCancelled()) return;
     const state = store.getState();
-    if (!state.isDataLoaded) {
+    if (!state.isDataLoaded || options?.forceReload) {
       await state.loadSession(sessionId);
     }
   } finally {

@@ -1431,7 +1431,9 @@
       "failed": "Command failed",
       "pending": "Pending",
       "preflight": "Shell check",
-      "commandUnavailable": "Command unavailable"
+      "commandUnavailable": "Command unavailable",
+      "commandPreparing": "Generating parameters…",
+      "commandInterrupted": "Command interrupted (no parameters received)"
     },
     "noteTool": {
       "read": "Read Note",
@@ -2036,6 +2038,7 @@
     "subagentRetryFailed": "Subagent retry failed",
     "subagentRetryResolved": "Subagent has resent the result",
     "subagentRetryTitle": "Subagent Retry",
+    "subagentWakeNotice": "Background subagent {{agent}} finished; waking main agent to process the result",
     "warning": {
       "inbox_full_rejected": "Agent {{agent}} inbox is full; new messages were rejected. Wait for it to finish and retry.",
       "run_agent_conflict_requeue_failed": "Agent {{agent}} is already running and some task messages could not be re-queued. Wait for completion, then retry manually.",
@@ -2109,6 +2112,9 @@
     "collapse": "Collapse",
     "expand": "Expand",
     "viewFull": "View Full Session"
+  },
+  "subagentSession": {
+    "readOnlyNotice": "Subagent session (read-only) · Triggered by the main agent; messages cannot be edited or resent"
   },
   "debug": {
     "copyDebugInfo": "Copy Debug Info",

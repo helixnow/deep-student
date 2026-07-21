@@ -21,6 +21,7 @@ use tracing::{debug, info, warn};
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::{ChatV2Error, ChatV2Result};
 use crate::chat_v2::events::session_event_type;
+use crate::chat_v2::handlers::ensure_session_writable;
 use crate::chat_v2::handlers::send_message::apply_original_skill_snapshot_overrides;
 use crate::chat_v2::pipeline::{ChatV2Pipeline, VariantRetrySpec};
 use crate::chat_v2::repo::ChatV2Repo;
@@ -160,6 +161,7 @@ pub async fn chat_v2_switch_variant(
         "[ChatV2::VariantHandler] switch_variant: session_id={}, message_id={}, variant_id={}",
         session_id, message_id, variant_id
     );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
 
     switch_variant_impl(&db, &session_id, &message_id, &variant_id)
         .await
@@ -231,6 +233,7 @@ pub async fn chat_v2_delete_variant(
         "[ChatV2::VariantHandler] delete_variant: session_id={}, message_id={}, variant_id={}",
         session_id, message_id, variant_id
     );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
 
     delete_variant_impl(&db, &window, &session_id, &message_id, &variant_id)
         .await
@@ -412,6 +415,7 @@ pub async fn chat_v2_retry_variant(
         "[ChatV2::VariantHandler] retry_variant: session_id={}, message_id={}, variant_id={}, model_override={:?}",
         session_id, message_id, variant_id, model_override
     );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
 
     retry_variant_impl(
         &db,
@@ -455,6 +459,7 @@ pub async fn chat_v2_retry_variants(
         message_id,
         variant_ids.len()
     );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
 
     retry_variants_impl(
         &db,

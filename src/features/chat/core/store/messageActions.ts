@@ -15,6 +15,7 @@ import { batchUpdate, updateSingleBlock } from './immerHelpers';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { generateId, showOperationLockNotification, OPERATION_LOCK_TIMEOUT_MS, IS_VITEST } from './createChatStore';
 import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
+import { isStoreSubagentSession } from '../subagentSession';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -70,6 +71,10 @@ export function createMessageActions(
           content: string,
           attachments?: AttachmentMeta[]
         ): Promise<void> => {
+          if (isStoreSubagentSession(getState())) {
+            console.warn('[ChatStore] sendMessage blocked for read-only subagent session');
+            return;
+          }
           // 🔧 严重修复：通过回调调用后端
           // 获取发送回调（由 TauriAdapter 注入）
           const sendCallback = (getState() as ChatStoreState & ChatStore & {
@@ -106,6 +111,66 @@ export function createMessageActions(
           }
         },
 
+        wakeSession: async (content: string): Promise<void> => {
+          const state = getState();
+          if (isStoreSubagentSession(state)) {
+            console.warn('[ChatStore] wakeSession blocked for read-only subagent session');
+            return;
+          }
+          if (!state.canSend()) {
+            throw new Error(i18n.t('chatV2:store.cannotSendWhileStreaming'));
+          }
+          if (!content.trim()) {
+            throw new Error('Wake content cannot be empty');
+          }
+
+          const assistantMessageId = generateId('msg');
+          const assistantMessage = {
+            id: assistantMessageId,
+            role: 'assistant' as const,
+            blockIds: [] as string[],
+            timestamp: Date.now(),
+            _meta: {
+              modelId: state.chatParams.modelDisplayName || state.chatParams.modelId,
+              modelDisplayName: state.chatParams.modelDisplayName,
+              chatParams: { ...state.chatParams },
+            },
+          };
+          const wakeCallback = (state as ChatStoreState & ChatStore)._wakeSessionCallback;
+
+          set((s) => ({
+            sessionStatus: 'streaming',
+            messageMap: new Map(s.messageMap).set(assistantMessageId, assistantMessage),
+            messageOrder: [...s.messageOrder, assistantMessageId],
+            currentStreamingMessageId: assistantMessageId,
+          }));
+
+          try {
+            if (!wakeCallback) {
+              if (!IS_VITEST) {
+                console.warn(
+                  '[ChatStore] wakeSession: No callback set. Use setWakeSessionCallback() to inject backend logic.'
+                );
+              }
+              throw new Error('Wake session callback is not set');
+            }
+            await wakeCallback(content, assistantMessageId);
+          } catch (error) {
+            set((s) => {
+              const messageMap = new Map(s.messageMap);
+              messageMap.delete(assistantMessageId);
+              return {
+                sessionStatus: 'idle',
+                currentStreamingMessageId: null,
+                messageMap,
+                messageOrder: s.messageOrder.filter((id) => id !== assistantMessageId),
+                activeBlockIds: new Set(),
+              };
+            });
+            throw error;
+          }
+        },
+
         sendMessageWithIds: async (
           content: string,
           attachments: AttachmentMeta[] | undefined,
@@ -113,6 +178,10 @@ export function createMessageActions(
           assistantMessageId: string
         ): Promise<void> => {
           const state = getState();
+          if (isStoreSubagentSession(state)) {
+            console.warn('[ChatStore] sendMessageWithIds blocked for read-only subagent session');
+            return;
+          }
           if (!state.canSend()) {
             throw new Error(i18n.t('chatV2:store.cannotSendWhileStreaming'));
           }
@@ -230,6 +299,10 @@ export function createMessageActions(
 
         deleteMessage: async (messageId: string): Promise<void> => {
           const state = getState();
+          if (isStoreSubagentSession(state)) {
+            console.warn('[ChatStore] deleteMessage blocked for read-only subagent session:', messageId);
+            return;
+          }
           if (!state.canDelete(messageId)) {
             throw new Error(i18n.t('chatV2:store.cannotDeleteLocked'));
           }
@@ -299,6 +372,10 @@ export function createMessageActions(
 
         editMessage: (messageId: string, content: string): void => {
           const state = getState();
+          if (isStoreSubagentSession(state)) {
+            console.warn('[ChatStore] editMessage blocked for read-only subagent session:', messageId);
+            return;
+          }
           if (!state.canEdit(messageId)) {
             throw new Error(i18n.t('chatV2:store.cannotEditLocked'));
           }
@@ -346,6 +423,10 @@ export function createMessageActions(
           }, 'info', { messageId });
 
           const state = getState();
+          if (isStoreSubagentSession(state)) {
+            console.warn('[ChatStore] editAndResend blocked for read-only subagent session:', messageId);
+            return;
+          }
 
           // 🔧 调试日志：记录 canEdit 检查
           const canEditResult = state.canEdit(messageId);
@@ -741,6 +822,10 @@ export function createMessageActions(
           }, 'info', { messageId });
 
           const state = getState();
+          if (isStoreSubagentSession(state)) {
+            console.warn('[ChatStore] retryMessage blocked for read-only subagent session:', messageId);
+            return;
+          }
 
           // 🔧 调试日志：记录 canEdit 检查
           const canEditResult = state.canEdit(messageId);

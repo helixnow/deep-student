@@ -816,6 +816,9 @@ export class ChatV2TauriAdapter {
       this.store.setSendCallback((content, attachments, userMessageId, assistantMessageId) =>
         this.executeSendMessage(content, attachments, userMessageId, assistantMessageId)
       );
+      this.store.setWakeSessionCallback((content, assistantMessageId) =>
+        this.executeWakeSession(content, assistantMessageId)
+      );
       this.store.setAbortCallback(() => this.executeAbort());
       // 🔧 P0 修复：注入 continueMessage 回调，让 store.continueMessage 调用后端 chat_v2_continue_message
       this.store.setContinueMessageCallback((messageId, variantId) =>
@@ -1079,6 +1082,12 @@ export class ChatV2TauriAdapter {
       this.store.setSendCallback(null);
     } catch (error) {
       console.error(LOG_PREFIX, 'Error clearing send callback:', getErrorMessage(error));
+    }
+
+    try {
+      this.store.setWakeSessionCallback(null);
+    } catch (error) {
+      console.error(LOG_PREFIX, 'Error clearing wakeSession callback:', getErrorMessage(error));
     }
 
     // 清除中断回调
@@ -2822,6 +2831,56 @@ export class ChatV2TauriAdapter {
         error,
         'chatV2:error.sendFailed',
         'Send failed',
+      ));
+      throw error;
+    }
+  }
+
+  /**
+   * 执行系统唤醒（内部方法，供 callback 使用）。
+   *
+   * 唤醒内容仍进入 Pipeline 的 user content，但后端强制跳过用户消息持久化；
+   * 本地 store 已仅创建 assistant 占位，以避免出现伪用户气泡。
+   */
+  private async executeWakeSession(
+    content: string,
+    assistantMessageId: string,
+  ): Promise<void> {
+    console.log(LOG_PREFIX, 'Executing wake session:', {
+      content: content.substring(0, 50),
+      assistantMessageId,
+    });
+
+    try {
+      this.beginStreamExpectation(assistantMessageId);
+      resetBridgeState(this.sessionId);
+
+      const state = this.getCurrentState();
+      const activeModelId = state.chatParams.model2OverrideId || state.chatParams.modelId;
+      await this.ensureModelMetadataReady(activeModelId);
+      const options = this.buildSendOptions({ state, pendingContextRefs: [] });
+      await this.applyRuntimeModelSelection(options);
+
+      const returnedAssistantMessageId = await invoke<string>('chat_v2_wake_session', {
+        sessionId: this.sessionId,
+        content,
+        assistantMessageId,
+        options,
+      });
+      if (returnedAssistantMessageId && returnedAssistantMessageId !== assistantMessageId) {
+        this.setStreamExpectationMessageId(returnedAssistantMessageId);
+        this.store.setCurrentStreamingMessage(returnedAssistantMessageId);
+      }
+    } catch (error) {
+      this.clearStreamExpectation(assistantMessageId);
+      const errorMsg = getErrorMessage(error);
+      console.error(LOG_PREFIX, 'Execute wake session failed:', errorMsg);
+      this.store.updateMessageMeta(assistantMessageId, { terminalError: errorMsg });
+      this.store.completeStream('error');
+      showGlobalNotification('error', formatUserFacingError(
+        error,
+        'chatV2:error.sendFailed',
+        'Wake failed',
       ));
       throw error;
     }

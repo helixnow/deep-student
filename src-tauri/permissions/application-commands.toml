@@ -119,6 +119,7 @@ commands.allow = [
   "chat_v2_search_content",
   "chat_v2_search_sessions",
   "chat_v2_send_message",
+  "chat_v2_wake_session",
   "chat_v2_stage_context_attachments",
   "chat_v2_session_message_count",
   "chat_v2_set_authority_mode",

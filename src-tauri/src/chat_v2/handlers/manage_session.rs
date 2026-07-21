@@ -10,6 +10,7 @@ use tauri::{AppHandle, State};
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::events::clear_session_sequence_counter;
+use crate::chat_v2::handlers::ensure_session_writable;
 use crate::chat_v2::pipeline::authority_mode::{global_plan_gate_manager, PlanGateResponse};
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::runtime_roots::{cleanup_session_runtime_roots, ensure_session_runtime_roots};
@@ -597,6 +598,7 @@ pub async fn chat_v2_branch_session(
         ))
         .into());
     }
+    ensure_session_writable(&db, &source_session_id).map_err(String::from)?;
 
     // 2. 在事务中执行分支
     let (new_session, resource_ids) =

@@ -133,6 +133,21 @@ export function shellCommandVerb(
   });
 }
 
+/** Placeholder when command text is not yet / no longer available. */
+export function shellCommandPlaceholder(
+  descriptor: ShellCommandDescriptor,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  if (descriptor.command) return descriptor.command;
+  if (descriptor.verbKey === 'checking' || descriptor.verbKey === 'running') {
+    return t('timeline.shell.commandPreparing', { defaultValue: '参数生成中…' });
+  }
+  if (descriptor.verbKey === 'failed') {
+    return t('timeline.shell.commandInterrupted', { defaultValue: '命令已中断（未收到参数）' });
+  }
+  return t('timeline.shell.commandUnavailable', { defaultValue: '命令内容不可用' });
+}
+
 interface ShellCommandTimelineViewProps extends ShellCommandDescriptorInput {
   className?: string;
 }
@@ -170,7 +185,7 @@ export const ShellCommandTimelineView: React.FC<ShellCommandTimelineViewProps> =
       <div className="flex items-start gap-2 px-3 py-2.5">
         <span className="shrink-0 select-none font-mono text-xs text-primary">$</span>
         <code className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs text-foreground">
-          {descriptor.command || t('timeline.shell.commandUnavailable')}
+          {shellCommandPlaceholder(descriptor, t)}
         </code>
       </div>
 

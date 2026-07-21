@@ -951,6 +951,18 @@ export interface ChatStore {
   ): void;
 
   /**
+   * 注入系统唤醒逻辑。唤醒内容只供本轮模型消费，不创建用户历史消息。
+   */
+  setWakeSessionCallback(
+    callback: ((content: string, assistantMessageId: string) => Promise<void>) | null
+  ): void;
+
+  /**
+   * 启动一个由系统事件触发的 ephemeral 用户回合。
+   */
+  wakeSession(content: string): Promise<void>;
+
+  /**
    * 设置中断流式回调函数
    * 由 TauriAdapter 调用，注入实际的后端取消逻辑
    * @param callback 中断回调

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { subagentWorkerSkill } from '../builtin-tools/subagent-worker';
 import { workspaceToolsSkill } from '../builtin-tools/workspace-tools';
+
+const WORKSPACE_QUERY_TYPES = ['agents', 'messages', 'documents', 'context', 'tasks', 'all'] as const;
 
 const MUTATION_TOOLS = [
   'builtin-workspace_file_write',
@@ -116,6 +119,60 @@ describe('workspace mutation tool contracts', () => {
     );
     expect(sleep?.description).toContain('wait=false');
     expect(sleep?.description).not.toContain('【必需】');
+  });
+
+  it('keeps fan-out sleep and background auto-wake guidance distinct in the decision tree', () => {
+    const content = workspaceToolsSkill.content;
+
+    // 第 2 条：并行 fan-out 本回合汇总 → coordinator_sleep
+    expect(content).toMatch(/并行 fan-out 且本回合要汇总结果/);
+    expect(content).toMatch(/2\.\s+\*\*并行 fan-out 且本回合要汇总结果\*\*[\s\S]*?coordinator_sleep/);
+
+    // 第 3 条：后台异步 → 不要 sleep + 自动唤醒
+    expect(content).toMatch(/后台异步（自己还有活/);
+    expect(content).toMatch(/3\.\s+\*\*后台异步[\s\S]*?不要[\s\S]*?coordinator_sleep/);
+    expect(content).toContain('内部唤醒回合');
+    expect(content).toContain('聊天界面不出现伪用户消息');
+    expect(content).toContain('[子代理完成通知]');
+
+    // 「等待子代理」小节：不要 sleep 明确限定在第 3 条
+    expect(content).toMatch(/后台异步（决策树第 3 条）[\s\S]*?不要 sleep/);
+    expect(content).toMatch(/coordinator_sleep\*\*（决策树第 2 条）/);
+  });
+
+  it('documents background dispatch with tasks polling and auto-wake', () => {
+    // 后台异步派发：查询任务状态 + 空闲自动唤醒（每完成一个唤一次）
+    expect(workspaceToolsSkill.content).toContain('后台异步');
+    expect(workspaceToolsSkill.content).toContain('query_type="tasks"');
+    expect(workspaceToolsSkill.content).toContain('内部唤醒回合');
+    expect(workspaceToolsSkill.content).toContain('[子代理完成通知]');
+
+    const query = workspaceToolsSkill.embeddedTools.find(
+      (item) => item.name === 'builtin-workspace_query',
+    );
+    const schema = query?.inputSchema as {
+      properties?: { query_type?: { enum?: string[] } };
+    };
+    expect(schema.properties?.query_type?.enum).toEqual([...WORKSPACE_QUERY_TYPES]);
+
+    const subagent = workspaceToolsSkill.embeddedTools.find(
+      (item) => item.name === 'builtin-subagent_call',
+    );
+    const subagentSchema = subagent?.inputSchema as {
+      properties?: { wait?: { description?: string } };
+    };
+    expect(subagentSchema.properties?.wait?.description).toContain('自动唤醒');
+  });
+
+  it('aligns subagent-worker workspace_query query_type with workspace-tools', () => {
+    const query = subagentWorkerSkill.embeddedTools.find(
+      (item) => item.name === 'builtin-workspace_query',
+    );
+    const schema = query?.inputSchema as {
+      properties?: { query_type?: { enum?: string[]; description?: string } };
+    };
+    expect(schema.properties?.query_type?.enum).toEqual([...WORKSPACE_QUERY_TYPES]);
+    expect(schema.properties?.query_type?.description).toContain('tasks');
   });
 
   it('defaults parent environment inheritance to deny', () => {

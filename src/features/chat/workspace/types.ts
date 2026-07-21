@@ -58,6 +58,8 @@ export interface TokenUsage {
 export interface AgentCompletionEnvelope {
   workspaceId: WorkspaceId;
   agentSessionId: AgentId;
+  /** 派发该子代理的主代理会话 ID（异步唤醒用） */
+  parentSessionId?: string;
   taskId?: string;
   runId?: string;
   correlationId?: string;

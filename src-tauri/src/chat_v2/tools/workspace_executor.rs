@@ -541,11 +541,35 @@ impl WorkspaceToolExecutor {
             }))
         };
 
+        // 子代理任务状态：主代理异步派发（subagent_call wait=false）后
+        // 用它查询后台子代理的运行状态与结果摘要。
+        let serialize_tasks = || -> Result<Value, String> {
+            let task_manager = self.coordinator.get_task_manager(workspace_id)?;
+            let tasks = task_manager
+                .list_recent_tasks(limit)
+                .map_err(|e| e.to_string())?;
+            Ok(json!({
+                "tasks": tasks.iter().map(|t| json!({
+                    "task_id": t.id,
+                    "agent_session_id": t.agent_session_id,
+                    "status": serde_json::to_string(&t.status).unwrap_or_default().trim_matches('"'),
+                    "initial_task": t.initial_task.as_deref().map(|s| {
+                        s.chars().take(300).collect::<String>()
+                    }),
+                    "result_summary": t.result_summary,
+                    "created_at": t.created_at.to_rfc3339(),
+                    "started_at": t.started_at.map(|dt| dt.to_rfc3339()),
+                    "completed_at": t.completed_at.map(|dt| dt.to_rfc3339()),
+                })).collect::<Vec<_>>()
+            }))
+        };
+
         match query_type {
             "agents" => serialize_agents(),
             "messages" => serialize_messages(),
             "documents" => serialize_documents(),
             "context" => serialize_context(),
+            "tasks" => serialize_tasks(),
             "all" => {
                 let mut merged = serde_json::Map::new();
                 for section in [
@@ -553,6 +577,7 @@ impl WorkspaceToolExecutor {
                     serialize_messages()?,
                     serialize_documents()?,
                     serialize_context()?,
+                    serialize_tasks()?,
                 ] {
                     if let Value::Object(obj) = section {
                         merged.extend(obj);
@@ -878,8 +903,8 @@ pub fn get_workspace_tool_schemas() -> Vec<Value> {
                     },
                     "query_type": {
                         "type": "string",
-                        "enum": ["agents", "messages", "documents", "context", "all"],
-                        "description": "Type of query (default: agents)"
+                        "enum": ["agents", "messages", "documents", "context", "tasks", "all"],
+                        "description": "Type of query (default: agents). Use 'tasks' to poll background subagent task status/result after subagent_call with wait=false."
                     },
                     "limit": {
                         "type": "integer",

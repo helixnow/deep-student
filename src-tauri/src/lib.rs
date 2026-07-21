@@ -1852,6 +1852,7 @@ pub fn run() {
             // Chat V2 - 新版聊天后端命令
             // =================================================
             ,crate::chat_v2::handlers::send_message::chat_v2_send_message
+            ,crate::chat_v2::handlers::send_message::chat_v2_wake_session
             ,crate::chat_v2::handlers::send_message::chat_v2_cancel_stream
             ,crate::chat_v2::handlers::send_message::chat_v2_retry_message
             ,crate::chat_v2::handlers::send_message::chat_v2_edit_and_resend
@@ -2629,6 +2630,7 @@ fn start_vfs_index_worker(
 ) {
     crate::background_tasks::spawn(async move {
         let mut last_run: Option<std::time::Instant> = None;
+        let mut last_embedding_unconfigured_log: Option<std::time::Instant> = None;
         loop {
             if crate::background_tasks::BACKGROUND_TASKS.is_closed() {
                 break;
@@ -2674,6 +2676,7 @@ fn start_vfs_index_worker(
             // changes are picked up by a later tick without exhausting retry_count.
             let text_embedding_configured = llm_manager.get_embedding_model_config().await.is_ok();
             if text_embedding_configured {
+                last_embedding_unconfigured_log = None;
                 match full.process_pending_batch(config.batch_size).await {
                     Ok((success, failed)) if success > 0 || failed > 0 => tracing::info!(
                         "[VfsIndexWorker] text batch completed: success={}, failed={}",
@@ -2685,9 +2688,20 @@ fn start_vfs_index_worker(
                         tracing::warn!("[VfsIndexWorker] text batch failed: {}", error)
                     }
                 }
-            } else if let Err(error) = full.drain_lance_orphan_queue(200).await {
-                // Deletion compensation itself does not require an embedding provider.
-                tracing::warn!("[VfsIndexWorker] Orphan cleanup failed: {}", error);
+            } else {
+                // Throttle: default interval is 5s; do not warn on every tick.
+                let should_log = last_embedding_unconfigured_log
+                    .is_none_or(|last| last.elapsed() >= std::time::Duration::from_secs(300));
+                if should_log {
+                    tracing::warn!(
+                        "[VfsIndexWorker] Text embedding model not configured; skipping text indexing batch. Set default in 嵌入维度管理 (or model_assignments.embedding_model_config_id)."
+                    );
+                    last_embedding_unconfigured_log = Some(std::time::Instant::now());
+                }
+                if let Err(error) = full.drain_lance_orphan_queue(200).await {
+                    // Deletion compensation itself does not require an embedding provider.
+                    tracing::warn!("[VfsIndexWorker] Orphan cleanup failed: {}", error);
+                }
             }
 
             if llm_manager.is_multimodal_rag_configured().await {
