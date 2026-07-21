@@ -142,10 +142,12 @@ fn resolve_cors_origin(request: &tauri::http::Request<Vec<u8>>) -> String {
 /// 兼容桌面与移动端 WebView 来源：
 /// - tauri://localhost（桌面自定义协议）
 /// - http(s)://tauri.localhost（Windows / Android）
-/// - http(s)://localhost（开发态，可带端口）
+/// - http(s)://localhost 与 http(s)://127.0.0.1（开发态，可带端口）
 ///
 /// ★ 2026-06-12（代理 3 审阅 A2）：localhost 改为精确匹配 host（允许带端口），
 /// 避免 `http://localhost.evil.com` 这类前缀域名通过校验。
+/// ★ 2026-07-21：补充 127.0.0.1 —— ui:lab 等开发工具用 127.0.0.1 起 dev server，
+/// 此前 CORS 回显固定为 tauri://localhost，导致 pdf.js 拿到 status 0 无法加载。
 fn is_allowed_origin(origin: &str) -> bool {
     origin == "tauri://localhost"
         || origin == "http://tauri.localhost"
@@ -154,6 +156,10 @@ fn is_allowed_origin(origin: &str) -> bool {
         || origin == "https://localhost"
         || origin.starts_with("http://localhost:")
         || origin.starts_with("https://localhost:")
+        || origin == "http://127.0.0.1"
+        || origin == "https://127.0.0.1"
+        || origin.starts_with("http://127.0.0.1:")
+        || origin.starts_with("https://127.0.0.1:")
 }
 
 fn with_cors_headers(
@@ -600,10 +606,14 @@ mod tests {
         assert!(is_allowed_origin("http://localhost"));
         assert!(is_allowed_origin("http://localhost:1420"));
         assert!(is_allowed_origin("https://localhost:8080"));
+        assert!(is_allowed_origin("http://127.0.0.1"));
+        assert!(is_allowed_origin("http://127.0.0.1:1422"));
+        assert!(is_allowed_origin("https://127.0.0.1:8080"));
         // 前缀域名攻击：不能匹配
         assert!(!is_allowed_origin("http://localhost.evil.com"));
         assert!(!is_allowed_origin("https://localhost.evil.com:443"));
         assert!(!is_allowed_origin("http://evil.com"));
+        assert!(!is_allowed_origin("http://127.0.0.1.evil.com"));
     }
 
     #[test]

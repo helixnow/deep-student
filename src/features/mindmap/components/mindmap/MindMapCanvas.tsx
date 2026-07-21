@@ -302,6 +302,27 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     pane: boolean;
   }>({ isOpen: false, position: { x: 0, y: 0 }, nodeId: null, associationId: null, pane: false });
 
+  // 📱 P1 修复：右键/长按菜单是 fixed 定位（z-index 9050），宿主 tab 被保活隐藏
+  // 或三屏滑动移出视口后菜单会脱离画布残留在屏幕上拦截点击。
+  // 宿主失活或容器离开视口时立即关闭。
+  useEffect(() => {
+    if (!contextMenu.isOpen) return undefined;
+    if (!isCanvasActive) {
+      setContextMenu(prev => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+      return undefined;
+    }
+    const container = canvasContainerRef.current;
+    if (!container) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      if (entry && !entry.isIntersecting) {
+        setContextMenu(prev => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+      }
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [contextMenu.isOpen, isCanvasActive]);
+
   const [resourcePickerNodeId, setResourcePickerNodeId] = useState<string | null>(null);
   /** 右键「添加关联线」后的连线模式：源节点 id */
   const [associatingFromId, setAssociatingFromId] = useState<string | null>(null);

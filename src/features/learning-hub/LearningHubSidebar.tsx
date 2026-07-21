@@ -575,6 +575,9 @@ export function LearningHubSidebar({
   // Load items when path changes
   // ★ 使用 debouncedSearchQuery 触发搜索，避免快速输入导致频繁 API 调用
   // ★ LH-HOST：sessionActive===false 时跳过（非活跃宿主不抢刷新）
+  // ★ 2026-07-21：同路径因窗口焦点恢复（sessionActive false→true）时走静默刷新；
+  //   store 侧若列表等价会跳过 items 写入，避免关闭预览后整表闪烁重绘。
+  const lastLoadSignatureRef = useRef<string | null>(null);
   useEffect(() => {
     if (mode === 'canvas' || sessionActive === false) return;
 
@@ -585,12 +588,26 @@ export function LearningHubSidebar({
         return;
       }
 
+      const signature = [
+        currentPath.viewKind,
+        currentPath.folderId ?? '',
+        currentPath.typeFilter ?? '',
+        debouncedSearchQuery,
+      ].join('\0');
+      const silent = lastLoadSignatureRef.current === signature;
+
       const start = Date.now();
-      pageLifecycleTracker.log('learning-hub-sidebar', 'LearningHubSidebar', 'data_load', `path: ${currentPathDisplay}`);
+      pageLifecycleTracker.log(
+        'learning-hub-sidebar',
+        'LearningHubSidebar',
+        'data_load',
+        `path: ${currentPathDisplay}${silent ? ' (silent)' : ''}`,
+      );
 
       try {
-        await finderRefresh();
+        await finderRefresh(silent ? { silent: true } : undefined);
         if (!isCancelled && isMountedRef.current) {
+          lastLoadSignatureRef.current = signature;
           pageLifecycleTracker.log(
             'learning-hub-sidebar',
             'LearningHubSidebar',

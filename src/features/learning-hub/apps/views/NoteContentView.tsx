@@ -932,8 +932,9 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             windowingState={editorWindowingState}
             onRequestLoadMore={handleRequestLoadMore}
             onRetryLoadMore={handleRetryLoadMore}
-            // 📱 移动子屏打开时隐藏 body 级底部编辑工具条，避免遮挡子屏且误改正文（对齐 NotesHome 用法）
-            suppressMobileToolbar={isSmallScreen && mobilePanelOpen}
+            // 📱 移动子屏打开时隐藏 body 级底部编辑工具条，避免遮挡子屏且误改正文（对齐 NotesHome 用法）；
+            // tab 不活跃时同样抑制（P0 泄漏修复的同步兜底，编辑器内部另有壳层可见性观察器异步兜底）
+            suppressMobileToolbar={(isSmallScreen && mobilePanelOpen) || !isActive}
             headerActions={propertiesPanelDisabled ? undefined : (
               <CommonTooltip content={t('notes:contextPanel.title')} position="bottom">
                 <DsButton

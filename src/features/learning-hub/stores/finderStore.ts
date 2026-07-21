@@ -85,6 +85,38 @@ export function sortItems(items: DstuNode[], sortBy: SortBy, sortOrder: SortOrde
 }
 
 /**
+ * 比较两次列表结果是否在 UI 上等价。
+ * 用于静默刷新：无差异时跳过 `set({ items })`，避免无效重渲染。
+ */
+export function areFinderItemsEquivalent(a: DstuNode[], b: DstuNode[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+
+  for (let i = 0; i < a.length; i++) {
+    const left = a[i];
+    const right = b[i];
+    if (
+      left.id !== right.id ||
+      left.path !== right.path ||
+      left.name !== right.name ||
+      left.type !== right.type ||
+      left.size !== right.size ||
+      left.createdAt !== right.createdAt ||
+      left.updatedAt !== right.updatedAt ||
+      left.childCount !== right.childCount ||
+      left.previewType !== right.previewType ||
+      left.resourceHash !== right.resourceHash ||
+      left.sourceId !== right.sourceId ||
+      Boolean(left.metadata?.isFavorite) !== Boolean(right.metadata?.isFavorite)
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * ★ 2025-12-27 修复：从后端获取面包屑数据（包含真实 ID 链）
  *
  * 使用后端 dstu_folder_get_breadcrumbs API，返回从根到当前文件夹的完整路径，
@@ -246,12 +278,13 @@ interface FinderState {
   /** 设置搜索 */
   setSearchQuery: (query: string) => void;
   /** 执行搜索 */
-  executeSearch: () => Promise<void>;
+  executeSearch: (opts?: { silent?: boolean }) => Promise<void>;
   
   /**
    * 刷新当前目录
    * @param opts.silent 静默刷新（stale-while-revalidate）：保留当前列表展示，
-   *                    数据到达后原地替换，不显示 loading 骨架、不打断浏览/选择
+   *                    数据到达后若与现有列表等价则跳过写入，否则原地替换；
+   *                    不显示 loading 骨架、不打断浏览/选择
    */
   refresh: (opts?: { silent?: boolean }) => Promise<void>;
   /** 查询指定路径的内容，不改变全局路径或列表状态。 */
@@ -596,9 +629,10 @@ export const useFinderStore = create<FinderState>()(
         searchMeta: query.trim() ? get().searchMeta : null,
       }),
       
-      executeSearch: async () => {
+      executeSearch: async (opts) => {
         const { searchQuery, getDstuListOptions, currentPath } = get();
         const options = getDstuListOptions();
+        const silent = opts?.silent === true;
 
         // 如果搜索关键词为空，不执行搜索
         if (!searchQuery.trim()) {
@@ -608,7 +642,11 @@ export const useFinderStore = create<FinderState>()(
 
         // ★ 生成新的请求 ID，取消之前的请求
         const requestId = get()._currentRequestId + 1;
-        set({ isSearching: true, isLoading: true, error: null, searchMeta: null, _currentRequestId: requestId });
+        if (silent) {
+          set({ isSearching: true, error: null, searchMeta: null, _currentRequestId: requestId });
+        } else {
+          set({ isSearching: true, isLoading: true, error: null, searchMeta: null, _currentRequestId: requestId });
+        }
 
         // 根据当前路径状态选择搜索方式
         let result;
@@ -690,23 +728,50 @@ export const useFinderStore = create<FinderState>()(
         }
 
         if (result.ok) {
-          const { selectedIds, lastSelectedId } = get();
-          const pruned = pruneSelectionAgainstItems(selectedIds, result.value, lastSelectedId, {
-            preserveLastSelectedIfWasSelected: true,
-          });
+          const { selectedIds, lastSelectedId, items: previousItems } = get();
           const truncated = currentPath.viewKind === 'trash'
             ? resultsTruncated
             : isResultTruncated(result.value.length, effectiveLimit);
+          const searchMeta = { truncated, limit: effectiveLimit };
+
+          // 列表无差异时尽量跳过写入；仅同步 searchMeta / loading 收尾
+          if (areFinderItemsEquivalent(previousItems, result.value)) {
+            const prevMeta = get().searchMeta;
+            const metaUnchanged =
+              prevMeta?.truncated === searchMeta.truncated &&
+              prevMeta?.limit === searchMeta.limit;
+            if (get().isLoading || !metaUnchanged) {
+              set({
+                isSearching: true,
+                isLoading: false,
+                searchMeta,
+              });
+            }
+            return;
+          }
+
+          const pruned = pruneSelectionAgainstItems(selectedIds, result.value, lastSelectedId, {
+            preserveLastSelectedIfWasSelected: true,
+          });
           set({
             items: result.value,
             isSearching: true,
             isLoading: false,
             selectedIds: pruned.selectedIds,
             lastSelectedId: pruned.lastSelectedId,
-            searchMeta: { truncated, limit: effectiveLimit },
+            searchMeta,
           });
         } else {
           reportError(result.error, '搜索资源');
+          if (silent) {
+            set({
+              error: result.error.message,
+              isSearching: true,
+              isLoading: false,
+              searchMeta: null,
+            });
+            return;
+          }
           const { selectedIds, lastSelectedId } = get();
           const pruned = pruneSelectionAgainstItems(selectedIds, [], lastSelectedId, {
             preserveLastSelectedIfWasSelected: true,
@@ -777,7 +842,7 @@ export const useFinderStore = create<FinderState>()(
       refresh: async (opts) => {
         const { searchQuery, executeSearch, loadItems } = get();
         if (searchQuery.trim()) {
-          await executeSearch();
+          await executeSearch(opts);
           return;
         }
         await loadItems(opts);
@@ -787,6 +852,7 @@ export const useFinderStore = create<FinderState>()(
         // ★ 2026-06-12（审阅问题 FE-S1）：silent 模式实现 stale-while-revalidate。
         // 文件变更事件触发的后台刷新不再显示 loading 骨架屏，
         // 保留当前列表直至新数据到达后原地替换，避免打断用户浏览。
+        // ★ 2026-07-21：结果与现有列表等价时跳过 items 写入，避免无效重渲染。
         const silent = opts?.silent === true;
         // ★ 生成新的请求 ID，取消之前的请求
         const requestId = get()._currentRequestId + 1;
@@ -830,8 +896,16 @@ export const useFinderStore = create<FinderState>()(
         }
 
         // 应用前端排序
-        const { sortBy, sortOrder, selectedIds, lastSelectedId } = get();
+        const { sortBy, sortOrder, selectedIds, lastSelectedId, items: previousItems } = get();
         items = sortItems(items, sortBy, sortOrder);
+
+        // 列表无差异时跳过 items 写入；仅在仍显示 loading 时收尾
+        if (areFinderItemsEquivalent(previousItems, items)) {
+          if (get().isLoading) {
+            set({ isLoading: false });
+          }
+          return;
+        }
 
         const pruned = pruneSelectionAgainstItems(selectedIds, items, lastSelectedId, {
           preserveLastSelectedIfWasSelected: true,

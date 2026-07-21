@@ -1105,7 +1105,10 @@ main {
 .modern-viewer-toolbar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  /* N-6 补丁：居中改由首尾子元素的 auto margin 承担（见下）。
+     justify-content:center 在内容溢出滚动容器时会把两端都推出裁剪区
+     （左端不可滚达，实测 400px 宽下首个按钮被裁 4px），flex-start 无此问题 */
+  justify-content: flex-start;
   gap: 2px;
   height: 36px;
   padding: 0 8px;

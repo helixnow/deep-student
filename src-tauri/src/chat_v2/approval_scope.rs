@@ -27,6 +27,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use super::runtime_roots::RuntimeRootApprovalBinding;
+use super::tools::ToolSensitivity;
 
 const ROOT_PATH_FIELD: &str = "_runtimeRootPath";
 const ROOT_ACCESS_FIELD: &str = "_runtimeRootAccess";
@@ -2440,6 +2441,149 @@ fn guard_view_requires_approval(
         return Some("destructive_database_statement");
     }
     None
+}
+
+fn git_readonly_subcommand(args: &[String]) -> bool {
+    let mut index = 0usize;
+    while index < args.len() {
+        let arg = guard_token_lower(&args[index]);
+        let takes_value = matches!(
+            arg.as_str(),
+            "-c" | "-C"
+                | "--git-dir"
+                | "--work-tree"
+                | "--namespace"
+                | "--config-env"
+                | "--super-prefix"
+        );
+        if takes_value {
+            index = index.saturating_add(2);
+            continue;
+        }
+        if arg.starts_with("-c")
+            || arg.starts_with("--git-dir=")
+            || arg.starts_with("--work-tree=")
+            || arg.starts_with("--namespace=")
+            || arg.starts_with("--config-env=")
+            || arg.starts_with("--super-prefix=")
+            || (arg.starts_with('-') && arg != "--")
+        {
+            index = index.saturating_add(1);
+            continue;
+        }
+        if arg == "--" {
+            index = index.saturating_add(1);
+            continue;
+        }
+        // Intentionally omit branch/tag/remote: those verbs also create or
+        // mutate refs. Prefer fail-closed High over silent Medium writes.
+        return matches!(
+            arg.as_str(),
+            "status"
+                | "log"
+                | "show"
+                | "diff"
+                | "blame"
+                | "grep"
+                | "ls-files"
+                | "ls-tree"
+                | "cat-file"
+                | "rev-parse"
+                | "describe"
+                | "shortlog"
+                | "whatchanged"
+                | "version"
+                | "help"
+        );
+    }
+    false
+}
+
+fn shell_executable_is_readonly_family(view: &PolicyCommandView<'_>) -> bool {
+    let args = &view.words[view.effective_index.saturating_add(1)..];
+    match view.executable.as_str() {
+        "ls" | "dir"
+        | "cat"
+        | "head"
+        | "tail"
+        | "wc"
+        | "stat"
+        | "which"
+        | "where"
+        | "where.exe"
+        | "whoami"
+        | "id"
+        | "uname"
+        | "realpath"
+        | "readlink"
+        | "pwd"
+        | "echo"
+        | "printf"
+        | "date"
+        | "true"
+        | "false"
+        | "basename"
+        | "dirname"
+        | "file"
+        | "strings"
+        | "nl"
+        | "tree"
+        | "du"
+        | "df"
+        | "env"
+        | "printenv"
+        | "type"
+        | "grep"
+        | "egrep"
+        | "fgrep"
+        | "rg"
+        | "ag"
+        | "get-childitem"
+        | "gci"
+        | "get-content"
+        | "gc"
+        | "get-item"
+        | "gi"
+        | "get-location"
+        | "gl"
+        | "select-string"
+        | "write-output"
+        | "get-process"
+        | "gps" => true,
+        "git" => git_readonly_subcommand(args),
+        _ => false,
+    }
+}
+
+/// Resolve the tool-approval sensitivity for a concrete local shell command.
+///
+/// Known pure read-only families (`ls`/`cat`/`rg`/`git status` …) are Medium so
+/// Craft+Relaxed can run them without a prompt. Writes, network, pipes,
+/// script runners, unknown executables, and guard Ask/Deny stay High.
+pub fn shell_command_tool_sensitivity(command: &str) -> ToolSensitivity {
+    let analysis = analyze_shell_command(command);
+    if analysis.trimmed.is_empty()
+        || analysis.write_capable
+        || analysis.network_capable
+        || analysis.has_shell_operators
+        || analysis.uses_script_runner
+    {
+        return ToolSensitivity::High;
+    }
+    if immutable_shell_command_guard(&analysis.trimmed, None, &[]).effect
+        != ShellCommandGuardEffect::Allow
+    {
+        return ToolSensitivity::High;
+    }
+    let segments = lex_shell_command_segments(&analysis.trimmed);
+    let Some(view) = segments.first().and_then(|words| policy_command_view(words)) else {
+        return ToolSensitivity::High;
+    };
+    if shell_executable_is_readonly_family(&view) {
+        ToolSensitivity::Medium
+    } else {
+        ToolSensitivity::High
+    }
 }
 
 /// Classify a shell command using parsed command views rather than a bare
@@ -4901,6 +5045,58 @@ mod tests {
             assert_eq!(
                 immutable_shell_command_guard(command, None, &[]).effect,
                 ShellCommandGuardEffect::Allow,
+                "{command}"
+            );
+        }
+    }
+
+    #[test]
+    fn shell_command_sensitivity_downgrades_pure_readonly_to_medium() {
+        for command in [
+            "git status --short",
+            "git -C src status",
+            "rg TODO src",
+            "printf ready",
+            "ls -la",
+            "cat README.md",
+            "grep -c TODO src/main.rs",
+            "Get-ChildItem -Recurse src",
+            "pwd",
+            "whoami",
+            "echo hello",
+            "du -sh .",
+        ] {
+            assert_eq!(
+                shell_command_tool_sensitivity(command),
+                ToolSensitivity::Medium,
+                "{command}"
+            );
+        }
+    }
+
+    #[test]
+    fn shell_command_sensitivity_keeps_effectful_or_ambiguous_commands_high() {
+        for command in [
+            "rm -rf target/debug",
+            "mkdir build",
+            "git checkout main",
+            "git branch feature",
+            "git push origin main",
+            "curl https://example.com",
+            "echo hi > out.txt",
+            "ls | cat",
+            "python -c 'print(1)'",
+            "cargo test --lib",
+            "gcc -c main.c -o main.o",
+            "tar -cf out.tar src",
+            "sh -c 'echo hi'",
+            "sudo ls",
+            "git push --force origin main",
+            "",
+        ] {
+            assert_eq!(
+                shell_command_tool_sensitivity(command),
+                ToolSensitivity::High,
                 "{command}"
             );
         }

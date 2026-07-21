@@ -17,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::approval_scope::{
-    analyze_shell_command, immutable_shell_command_guard,
+    analyze_shell_command, immutable_shell_command_guard, shell_command_tool_sensitivity,
     normalized_shell_runtime_location_with_default, redact_shell_command_for_display,
     redact_tool_arguments_for_display, validate_shell_path_operands_within_root,
     ShellCommandGuardEffect,
@@ -1959,7 +1959,21 @@ impl ToolExecutor for LocalShellExecuteExecutor {
     }
 
     fn sensitivity_level(&self, _tool_name: &str) -> ToolSensitivity {
+        // Name-level default stays High (fail-closed) when callers have no args.
+        // Concrete calls resolve through sensitivity_level_for_call.
         ToolSensitivity::High
+    }
+
+    fn sensitivity_level_for_call(&self, _tool_name: &str, arguments: &Value) -> ToolSensitivity {
+        arguments
+            .get("command")
+            .and_then(Value::as_str)
+            .map(shell_command_tool_sensitivity)
+            .unwrap_or(ToolSensitivity::High)
+    }
+
+    fn has_dynamic_sensitivity(&self, _tool_name: &str) -> bool {
+        true
     }
 
     fn manages_cancellation(&self, _tool_name: &str) -> bool {

@@ -1311,17 +1311,20 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     >
         <CustomScrollArea
           className="min-h-0 flex-1 w-full max-w-full"
-          viewportClassName={cn(
-            mobilePageMode
-              ? "px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4"
-              : "px-5 pb-6 pt-4 md:px-5 md:pb-7 md:pt-5 lg:px-8",
-            effectiveMobilePanelMode && !mobilePageMode && "px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]"
-          )}
+          // OverlayScrollbars 会把 viewport 的 padding 强制写成 0，水平内边距必须放在内层。
           trackOffsetTop={16}
           trackOffsetBottom={16}
           trackOffsetRight={0}
           style={{ textAlign: 'left' }}
         >
+          <div
+            className={cn(
+              mobilePageMode
+                ? 'px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4'
+                : 'px-5 pb-6 pt-4 md:px-5 md:pb-7 md:pt-5 lg:px-8',
+              effectiveMobilePanelMode && !mobilePageMode && 'px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]',
+            )}
+          >
           {/* key 按 tab：切换时重挂载并播放入场动画（与桌面壳层视图切换同款观感） */}
           <div key={activeTab} className="desktop-shell-content-enter mx-auto w-full max-w-[72rem]">
             <div className="space-y-6">
@@ -1693,6 +1696,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         {/* 关于页面 */}
         {activeTab === 'about' && <AboutTab />}
             </div>
+          </div>
           </div>
         </CustomScrollArea>
     </div>
