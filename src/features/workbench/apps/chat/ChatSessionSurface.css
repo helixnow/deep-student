@@ -159,8 +159,22 @@
 }
 
 .wb-chat-surface[data-wb-render-paused] .chat-composer-motion-frame > div,
-.wb-chat-surface[data-wb-render-paused] .wb-chat-sandbox-expand {
+.wb-chat-surface[data-wb-render-paused] .wb-chat-sandbox-expand,
+.wb-chat-surface[data-wb-render-paused] .unified-input-docked {
   transition: none !important;
+}
+
+/* 输入区常驻容器的 padding/background 过渡与流式动画在拖/缩期间让位
+ * （CDP trace：拖窗期间该容器每帧一次 Animation 失效） */
+:root[data-wb-dragging] .unified-input-docked,
+:root[data-wb-settling] .unified-input-docked {
+  transition: none !important;
+}
+.wb-chat-surface[data-wb-render-paused] .chat-shimmer::after,
+.wb-chat-surface[data-wb-render-paused] .chat-wait-dots > i,
+:root[data-wb-dragging] .chat-shimmer::after,
+:root[data-wb-dragging] .chat-wait-dots > i {
+  animation-play-state: paused !important;
 }
 
 /* 侧板入场动画在拖/缩期间同样让位（animation-play-state 不会自动下沉到后代） */

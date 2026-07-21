@@ -66,6 +66,8 @@ interface ApisTabProps {
   mobileVendorDetailOpen?: boolean;
   /** 移动端两级导航：详情态切换回调（P1-6） */
   onMobileVendorDetailOpenChange?: (open: boolean) => void;
+  /** Settings 外层滚动视口，供模型长列表虚拟化复用。 */
+  scrollElement?: HTMLElement | null;
 }
 
 export const ApisTab: React.FC<ApisTabProps> = (props) => {
@@ -144,7 +146,7 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
             // 列表态只显示供应商列表，进入详情后整屏切换为详情面板（顶栏返回键回到列表）
             mobileVendorDetailOpen ? (
               <div key="vendor-detail" className="desktop-shell-content-enter w-full min-w-0 space-y-6">
-                <VendorDetailPanel />
+                <VendorDetailPanel scrollElement={props.scrollElement ?? null} />
               </div>
             ) : (
               <div key="vendor-list" className="desktop-shell-content-enter w-full min-w-0">
@@ -155,7 +157,7 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
             <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(180px,200px)_1fr]">
               <VendorSidebar />
               <div className="space-y-6 w-full min-w-0">
-                <VendorDetailPanel />
+                <VendorDetailPanel scrollElement={props.scrollElement ?? null} />
               </div>
             </div>
           )}

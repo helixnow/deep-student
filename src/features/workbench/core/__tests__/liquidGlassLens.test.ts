@@ -200,16 +200,32 @@ describe('attachLiquidGlassLens', () => {
     const el = stubEl(80, 40, '14px');
     const detach = attachLiquidGlassLens(el);
     syncLiquidGlassCapability();
-    expect(el.style.getPropertyValue('--wb-lens-filter')).toContain('url(#');
+    const entrance = el.style.getPropertyValue('--wb-lens-filter');
+    expect(entrance).toContain('url(#');
+    // 入口底模糊须与静态档同量级，避免「先透后糊」
+    expect(entrance).toContain('blur(18px)');
     vi.advanceTimersByTime(400);
     const filter = el.style.getPropertyValue('--wb-lens-filter');
     expect(filter).not.toContain('url(#');
-    expect(filter).toContain('blur(');
+    expect(filter).toContain('blur(18px)');
     // 静态降级后让出真折射并发槽（不再占 MAX_ACTIVE_LENSES 名额）
     expect(getActiveLiquidGlassLensCount()).toBe(0);
     detach();
     el.remove();
     vi.useRealTimers();
+  });
+
+  it('staticOnly：首帧即静态毛玻璃，不占折射并发槽', () => {
+    const el = stubEl(80, 40, '14px');
+    const detach = attachLiquidGlassLens(el, { staticOnly: true });
+    syncLiquidGlassCapability();
+    const filter = el.style.getPropertyValue('--wb-lens-filter');
+    expect(filter).toContain('blur(18px)');
+    expect(filter).not.toContain('url(#');
+    expect(getActiveLiquidGlassLensCount()).toBe(0);
+    expect(document.getElementById('wb-liquid-glass-defs')?.querySelector('filter')).toBeNull();
+    detach();
+    el.remove();
   });
 });
 

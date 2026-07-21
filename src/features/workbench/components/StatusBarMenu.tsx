@@ -44,7 +44,7 @@ export const StatusBarMenu: React.FC<StatusBarMenuProps> = ({
   const [closing, setClosing] = useState(false);
   const wasOpenRef = useRef(false);
   const mounted = open || closing;
-  useLiquidGlassLens(panelRef, mounted);
+  useLiquidGlassLens(panelRef, mounted, { staticOnly: true });
 
   useEffect(() => {
     if (open) {

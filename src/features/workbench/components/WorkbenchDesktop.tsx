@@ -20,6 +20,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import '../styles/workbench.css';
+import '../styles/workbench-drag-pause.css';
 import '../styles/a11y-cursor.css';
 import '../apps/registerAll';
 import { DEFAULT_DOCK_PINNED } from '../apps/registerAll';
@@ -56,10 +57,8 @@ import { DesktopAgendaWidget } from './DesktopAgendaWidget';
 import { DesktopShortcutsLayer } from './DesktopShortcuts';
 import { WindowShell } from './WindowShell';
 import { SnapPreview } from './SnapPreview';
-import { installInteractionTraceBridge } from '../core/interactionTrace';
-
-// DEV：挂全局桥 + 允许空桌面时也能落盘/控制台读交互延迟
-installInteractionTraceBridge();
+import { enableInteractionTrace } from '../core/interactionTrace';
+import { isWorkbenchDiagnosticsRequested } from '../core/workbenchDiagnosticsGate';
 import { Dock, getDockPinned, setDockPinned, subscribeDockPinned } from './Dock';
 import { StatusBar } from './StatusBar';
 import { AppsPanel } from './AppsPanel';
@@ -80,6 +79,11 @@ import {
 import { installImeScrollContainment } from '../core/imeScrollContainment';
 import { ContentCloseConfirmationHost } from '../apps/content/ContentCloseConfirmation';
 
+// 仅诊断参数启动时开启交互时间线采集（普通 dev 默认关）
+if (isWorkbenchDiagnosticsRequested()) {
+  enableInteractionTrace();
+}
+
 // ---------------------------------------------------------------------------
 // 设置读取（key 契约见 P10 WorkbenchSettingsSection；热更新走 workbench:settings-changed）
 // ---------------------------------------------------------------------------
@@ -90,6 +94,7 @@ const SETTING_KEYS = {
   tileMargins: 'desktop.workbenchTileMargins',
   dockSize: 'desktop.workbenchDockSize',
   dockAutohide: 'desktop.workbenchDockAutohide',
+  restoreSession: 'desktop.workbenchRestoreSession',
   devPanel: 'desktop.workbenchDevPanel',
 } as const;
 
@@ -316,7 +321,12 @@ export const WorkbenchDesktop: React.FC = () => {
       setTileMargins(parseJson<TileMarginsSetting>(marginsVal, DEFAULT_TILE_MARGINS));
       setDockSize(parseDockSize(dockSizeVal));
       setDockAutohide(String(autohideVal ?? '') === 'true');
-      setDevPanel(String(devPanelVal ?? '') === 'true');
+      // 无启动参数时强制关闭 HUD；带参时默认开（可用设置关掉）
+      if (isWorkbenchDiagnosticsRequested()) {
+        setDevPanel(devPanelVal == null || String(devPanelVal) === '' || String(devPanelVal) === 'true');
+      } else {
+        setDevPanel(false);
+      }
     })();
 
     const onSettingsChanged = (e: Event) => {
@@ -337,7 +347,7 @@ export const WorkbenchDesktop: React.FC = () => {
           setDockSize(parseDockSize(value));
           break;
         case SETTING_KEYS.devPanel:
-          setDevPanel(value === true);
+          setDevPanel(isWorkbenchDiagnosticsRequested() && value === true);
           break;
         default:
           // materialTier 由设置页直接调 setMaterialTier，无需处理
@@ -412,17 +422,26 @@ export const WorkbenchDesktop: React.FC = () => {
       }
     });
     void (async () => {
-      const snapshot = await loadSnapshot();
+      // 默认不恢复上次窗口布局（冷启动更快）；开启后才 hydrate 快照
+      const restoreSessionVal = await readSetting(SETTING_KEYS.restoreSession);
+      const shouldRestoreSession = String(restoreSessionVal ?? '') === 'true';
       if (disposed) return;
-      if (snapshot) {
-        const windows = await pruneSnapshotWindows(snapshot.windows);
+
+      if (shouldRestoreSession) {
+        const snapshot = await loadSnapshot();
         if (disposed) return;
-        useWindowStore.getState().hydrate(windows, snapshot.tilingRatios, {
-          preserveExisting: true,
-        });
-        setDockPinned(
-          snapshot.dockPinned.length > 0 ? snapshot.dockPinned : [...DEFAULT_DOCK_PINNED],
-        );
+        if (snapshot) {
+          const windows = await pruneSnapshotWindows(snapshot.windows);
+          if (disposed) return;
+          useWindowStore.getState().hydrate(windows, snapshot.tilingRatios, {
+            preserveExisting: true,
+          });
+          setDockPinned(
+            snapshot.dockPinned.length > 0 ? snapshot.dockPinned : [...DEFAULT_DOCK_PINNED],
+          );
+        } else if (getDockPinned().length === 0) {
+          setDockPinned([...DEFAULT_DOCK_PINNED]);
+        }
       } else if (getDockPinned().length === 0) {
         setDockPinned([...DEFAULT_DOCK_PINNED]);
       }

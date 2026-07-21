@@ -434,6 +434,10 @@
   border-radius: 8px;
   background: color-mix(in hsl, hsl(var(--card)) 88%, transparent 12%);
   cursor: pointer;
+  /* 离屏卡片跳过布局/绘制/AX（静态声明，非手势期切换）：
+     每卡自带 shadow-DOM 模板预览，节点数大；拖窗每帧税 ∝ 参与布局的节点数 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
   transition:
     border-color 140ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
     background-color 140ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),

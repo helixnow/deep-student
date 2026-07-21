@@ -7,7 +7,7 @@
  * 「今日节律」flyout：到期闪卡 / 番茄 / 自动化健康 / 任务入口。
  * autohide：desktop.workbenchMenuBarAutohide（menuBarAutohideStore，可被外部强制）；
  * 隐藏至顶缘 4px 热区，reveal ~180ms / conceal ~150ms 防误触（对齐 Dock autohide）。
- * Windows 右侧为窗控胶囊让位。
+ * Windows：三键（最小化/最大化/关闭）直接融入顶栏最右端，整条空白区可拖拽。
  */
 import React, { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
@@ -25,6 +25,7 @@ import {
   Timer,
 } from '@phosphor-icons/react';
 import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
+import { WindowControls } from '@/components/WindowControls';
 import { toggleAppsPanel } from './appsPanelStore';
 import { StatusBarBrandMenu } from './StatusBarBrandMenu';
 import { StatusBarAppMenus } from './StatusBarAppMenus';
@@ -148,7 +149,7 @@ const StatusBarComponent: React.FC = () => {
   const titleId = useId();
   const winChromeInset = isWindows();
   const macChrome = isMacOS();
-  useLiquidGlassLens(panelRef, centerOpen);
+  useLiquidGlassLens(panelRef, centerOpen, { staticOnly: true });
 
   const dueCount = useSyncExternalStore(
     subscribeFlashcardsDueCount,
@@ -446,7 +447,7 @@ const StatusBarComponent: React.FC = () => {
   );
 
   const handleDragMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if (!macChrome || event.button !== 0) return;
+    if ((!macChrome && !winChromeInset) || event.button !== 0) return;
     if ((event.target as HTMLElement).closest('[data-no-drag]')) return;
     event.preventDefault();
     if (event.detail === 2) {
@@ -454,7 +455,7 @@ const StatusBarComponent: React.FC = () => {
       return;
     }
     void getCurrentWindow().startDragging();
-  }, [macChrome]);
+  }, [macChrome, winChromeInset]);
 
   const automationRunning = automation?.runningCount ?? 0;
   const automationFailed = automation?.failedCount ?? 0;
@@ -500,7 +501,7 @@ const StatusBarComponent: React.FC = () => {
       onFocusCapture={handleBarFocusCapture}
       onBlurCapture={handleBarBlurCapture}
     >
-      {macChrome ? (
+      {macChrome || winChromeInset ? (
         <div
           className="wb-menubar-drag-region"
           data-testid="wb-menubar-drag-region"
@@ -705,6 +706,17 @@ const StatusBarComponent: React.FC = () => {
 
         {/* 时钟居右端（macOS 菜单栏时钟落位）；点击展开今日日程 flyout */}
         <StatusBarClock onOpenChange={setClockOpen} />
+
+        {/* Windows：三键直接融入顶栏最右端（无独立胶囊/logo），拖拽由整条 drag-region 接管 */}
+        {winChromeInset ? (
+          <div
+            className="wb-menubar-window-controls"
+            data-testid="wb-menubar-window-controls"
+            data-no-drag
+          >
+            <WindowControls />
+          </div>
+        ) : null}
       </div>
     </div>
     </>

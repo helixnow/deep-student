@@ -114,7 +114,15 @@ export const SettingsGroup = ({
   children: React.ReactNode;
   className?: string;
 }) => (
-  <section className={cn('min-w-0 rounded-2xl border border-border/40 bg-background px-3 py-3 sm:px-4', className)}>
+  <section
+    className={cn(
+      // content-visibility:auto（静态、非手势期切换）：离屏分组跳过布局/绘制与
+      // AX bounds 序列化——拖拽窗口时的每帧税 ∝ 参与布局的节点数（见 wb-interaction-trace）。
+      'min-w-0 rounded-2xl border border-border/40 bg-background px-3 py-3 sm:px-4',
+      '[content-visibility:auto] [contain-intrinsic-size:auto_360px]',
+      className,
+    )}
+  >
     <GroupTitle title={title} actions={actions} />
     {description ? (
       <p className="px-1 pb-3 text-xs leading-5 text-muted-foreground/80">

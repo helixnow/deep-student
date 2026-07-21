@@ -1,6 +1,8 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatedMarkdown } from '@nvq/flowtoken';
-import '@nvq/flowtoken/dist/styles.css';
+// 本地修补版样式：原版含 [class*="language-"] * 宽键失效集选择器（性能坑），
+// 见 flowtoken-patched.css 头部注释。
+import '../../styles/flowtoken-patched.css';
 import { openUrl } from '@/utils/urlOpener';
 import { escapeHtmlTagsForFlowToken } from './flowTokenEligibility';
 

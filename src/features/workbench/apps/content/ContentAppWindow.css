@@ -32,7 +32,8 @@
  * ANTI-REGRESSION：拖/缩期间 scheduler 下发 renderThrottleMs>0 时，
  * useDragRenderPause 挂上 data-wb-render-paused。只命中宿主自身，
  * 禁止 `host *` 通配——否则每个可见重内容窗都会在起拖后做全子树样式匹配。
- * 子树动画靠继承 animation-play-state；transition 用较短列表覆盖常见控件。
+ * 注意：animation-play-state **不继承**，宿主级 paused 只停宿主自身的动画；
+ * 子树里的无限动画由 workbench-drag-pause.css 集中点名暂停。
  */
 .wb-content-host[data-wb-render-paused] {
   animation-play-state: paused !important;

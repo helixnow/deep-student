@@ -26,16 +26,20 @@ const BEZEL_MIN = 10;
 const BEZEL_MAX = 28;
 /** feDisplacementMap scale（负值 = 放大透镜） */
 const DISPLACE_SCALE = -28;
-/** 折射面薄 blur：露出边缘弯光，避免牛奶磨砂 */
-const LENS_BLUR = 'blur(3px)';
+/**
+ * 入口折射的底模糊须与静态毛玻璃同量级。
+ * 旧值 blur(3px) 会在 ~320ms 降级前把面板衬成「几乎无模糊」，
+ * 顶栏菜单盖在清晰窗体内容上时尤其明显。
+ */
+const LENS_BLUR = 'blur(18px)';
 /** 同时允许的真折射表面数（Dock 不计入） */
 const MAX_ACTIVE_LENSES = 2;
 /**
- * 真折射展示时长：入口帧用 displacement 读出透镜感，之后降级为普通玻璃 blur，
- * 静态浮层视觉几乎不变，避免 backdrop 每帧重采样 SVG 位移图。
+ * 真折射展示时长：入口帧叠 displacement 读出透镜感，之后降级为无 url(#) 的毛玻璃，
+ * 避免 backdrop 每帧重采样 SVG 位移图。底模糊与静态档对齐，降级不应再出现「突然糊上」。
  */
 const LENS_STATIC_DEGRADE_MS = 320;
-/** 降级后的轻量毛玻璃（与 token 玻璃接近，无 url(#filter)） */
+/** 降级后的毛玻璃（与 --wb-glass-blur token 对齐，无 url(#filter)） */
 const LENS_STATIC_FILTER = 'blur(18px) saturate(1.8) brightness(1.08)';
 /** 圆角档位（px）：同档共享 map + filter */
 const RADIUS_BUCKETS = [8, 12, 14, 16, 18, 20, 24, 28] as const;
@@ -49,6 +53,11 @@ export type LensOptions = {
   radius?: number;
   /** 覆盖位移强度（负值透镜） */
   scale?: number;
+  /**
+   * 跳过入口折射，首帧即静态毛玻璃。
+   * 用于顶栏菜单 / 短命 flyout：避免 SVG displacement 与「先透后糊」观感。
+   */
+  staticOnly?: boolean;
 };
 
 type LensBinding = {
@@ -425,9 +434,27 @@ function deactivateBinding(binding: LensBinding): void {
   clearElementFilter(binding.el);
 }
 
+/** 静态毛玻璃：不占真折射并发槽、不挂 SVG displacement */
+function activateStaticOnly(binding: LensBinding): void {
+  clearDegradeTimer(binding);
+  if (binding.active && !binding.staticMode) {
+    releaseFilter(binding.filterId);
+    const idx = activeEls.indexOf(binding.el);
+    if (idx >= 0) activeEls.splice(idx, 1);
+  }
+  binding.active = true;
+  binding.staticMode = true;
+  applyStaticFilter(binding.el);
+}
+
 function activateBinding(binding: LensBinding): void {
   if (!getLiquidGlassCapability()) {
     clearElementFilter(binding.el);
+    return;
+  }
+
+  if (binding.options.staticOnly) {
+    activateStaticOnly(binding);
     return;
   }
 
@@ -465,6 +492,12 @@ function updateBinding(binding: LensBinding): void {
   if (!getLiquidGlassCapability()) {
     deactivateBinding(binding);
     clearElementFilter(binding.el);
+    return;
+  }
+
+  // 静态档不依赖尺寸/displacement；菜单首帧可能尚未布局完成
+  if (binding.options.staticOnly) {
+    activateStaticOnly(binding);
     return;
   }
 
@@ -542,14 +575,16 @@ export function useLiquidGlassLens(
 ): void {
   const radius = options?.radius;
   const scale = options?.scale;
+  const staticOnly = options?.staticOnly === true;
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el || !enabled) return;
     return attachLiquidGlassLens(el, {
       ...(radius !== undefined ? { radius } : {}),
       ...(scale !== undefined ? { scale } : {}),
+      ...(staticOnly ? { staticOnly: true } : {}),
     });
-  }, [ref, enabled, radius, scale]);
+  }, [ref, enabled, radius, scale, staticOnly]);
 }
 
 /** 单测：重置（真正 disconnect observer/media 监听，防重复挂载叠加） */

@@ -98,6 +98,7 @@ import {
   type ToolSensitivityLevel,
   type ManagedPermissionTool,
 } from './toolPermissionModel';
+import { SettingsVirtualList, type SettingsVirtualItem } from './SettingsVirtualList';
 
 // Types
 interface McpServer {
@@ -147,6 +148,8 @@ interface McpToolsSectionProps {
   onHealthCheck: () => void;
   onClearCache: () => void;
   onOpenPolicy: () => void;
+  /** Settings 外层滚动视口；提供时服务器长列表走虚拟化（拖窗每帧税 ∝ 挂载节点） */
+  scrollElement?: HTMLElement | null;
 }
 
 // 辅助函数
@@ -260,6 +263,13 @@ function ServerListItem({
   }, [server.transportType, t]);
 
   const [showActions, setShowActions] = useState(false);
+  // 性能：悬停桌面上操作按钮 opacity-0 直到 hover，推迟到首次 hover/展开再挂载
+  // （AX 每帧税 ∝ 挂载节点数）；触屏常显不推迟。
+  const [actionsWarm, setActionsWarm] = useState(
+    () => typeof window === 'undefined'
+      || typeof window.matchMedia !== 'function'
+      || !window.matchMedia('(hover: hover) and (pointer: fine)').matches,
+  );
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -319,8 +329,14 @@ function ServerListItem({
       {/* 主行 */}
       <div
         onClick={() => onToggleExpand(expandedPanel ? null : 'preview')}
-        onMouseEnter={() => setShowActions(true)}
+        onMouseEnter={() => {
+          setShowActions(true);
+          if (!actionsWarm) setActionsWarm(true);
+        }}
         onMouseLeave={() => setShowActions(false)}
+        onFocusCapture={() => {
+          if (!actionsWarm) setActionsWarm(true);
+        }}
         className={cn(
           'group relative w-full text-left px-4 py-3 cursor-pointer',
           'transition-colors duration-100'
@@ -417,6 +433,11 @@ function ServerListItem({
                 ? 'opacity-100'
                 : 'opacity-0 pointer-events-none [@media(pointer:coarse)]:opacity-100 [@media(pointer:coarse)]:pointer-events-auto'
             )}>
+              {!(actionsWarm || isExpanded) ? (
+                /* 冷态占位：宽度 = 按钮数 × w-7 + gap-1，首次 hover 挂载真身，无布局跳动 */
+                <div className="h-7" style={{ width: isBuiltin ? 28 : 124 }} aria-hidden="true" />
+              ) : (
+              <>
               <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'preview' ? null : 'preview'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'preview' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_preview')} aria-label="preview">
                 <Eye className="w-3.5 h-3.5" />
               </DsButton>
@@ -443,6 +464,8 @@ function ServerListItem({
                     <Trash className="w-3.5 h-3.5" />
                   </DsButton>
                 </>
+              )}
+              </>
               )}
             </div>
           </div>
@@ -2460,9 +2483,10 @@ function ShellCommandRulesSection() {
   );
 }
 
-/** 工具权限管理区域 - 非折叠，直接展示 */
-function ToolPermissionsSection({ toolsByServer }: {
+/** 工具权限管理区域；embedded 时由外层折叠头承载标题，避免双标题与双分隔线 */
+function ToolPermissionsSection({ toolsByServer, embedded = false }: {
   toolsByServer: Record<string, { items: McpCachedTool[]; at?: number }>;
+  embedded?: boolean;
 }) {
   const { t } = useTranslation(['settings', 'common']);
   const [isLoading, setIsLoading] = useState(true);
@@ -3038,12 +3062,18 @@ function ToolPermissionsSection({ toolsByServer }: {
   return (
     <div
       id="settings-tool-permissions"
-      className="mt-8 min-w-0 max-w-full scroll-mt-6 border-t border-border/40 pt-6"
+      className={cn(
+        'min-w-0 max-w-full',
+        embedded
+          ? 'mt-3'
+          : 'mt-8 scroll-mt-6 border-t border-border/40 pt-6 [content-visibility:auto] [contain-intrinsic-size:auto_720px]',
+      )}
     >
-      {/* 标题栏 */}
-      <h3 className="text-sm font-medium text-foreground mb-4">
-        {t('settings:tool_permissions.title')}
-      </h3>
+      {!embedded && (
+        <h3 className="mb-4 text-sm font-medium text-foreground">
+          {t('settings:tool_permissions.title')}
+        </h3>
+      )}
 
       {isLoading ? (
         <div className="space-y-3">
@@ -3666,7 +3696,8 @@ export function McpToolsSection({
   onRefreshRegistry,
   onHealthCheck,
   onClearCache,
-  onOpenPolicy
+  onOpenPolicy,
+  scrollElement = null,
 }: McpToolsSectionProps) {
   const { t } = useTranslation(['settings', 'common']);
   // 展开面板状态：key 是服务器 index，value 是展开类型
@@ -3675,6 +3706,8 @@ export function McpToolsSection({
   const [isAddingNew, setIsAddingNew] = useState(false);
   // 正在测试的服务器 ID
   const [testingServerId, setTestingServerId] = useState<string | null>(null);
+  // 权限区默认折叠：仅用户展开后挂载（IO 预取会被短列表 + rootMargin 立刻触发，无效）
+  const [permissionsExpanded, setPermissionsExpanded] = useState(false);
 
   // stdio 测试步骤 → 可读标签映射
   const testStepLabel = useMemo(() => {
@@ -3848,39 +3881,48 @@ export function McpToolsSection({
                 />
               )}
               
-              {/* 现有服务器列表 */}
-              {servers.map((server, idx) => {
-                const serverId = server.id || `server_${idx}`;
-                const status = serverStatusMap.get(serverId) || serverStatusMap.get(server.id);
-                const snapshotEntry = toolsByServer[serverId] || toolsByServer[server.id];
-                const cachedCount = snapshotEntry?.items?.length ?? 0;
-                const toolNames = (snapshotEntry?.items || [])
-                  .map(item => stripMcpPrefix(item?.name))
-                  .filter((name): name is string => Boolean(name));
-
-                return (
-                  <ServerListItem
-                    key={serverId}
-                    server={server}
-                    status={status}
-                    cachedToolCount={cachedCount}
-                    toolNames={toolNames}
-                    expandedPanel={expandedPanels.get(idx) || null}
-                    onSave={(data) => onSaveServer(data, server.id)}
-                    onDelete={() => onDeleteServer(server.id)}
-                    onToggleExpand={(type) => handleToggleExpand(idx, type)}
-                    onTest={async () => {
-                      if (testingServerId) return;
-                      setTestingServerId(server.id);
-                      try { await onTestServer(server); } finally { setTestingServerId(null); }
-                    }}
-                    isTesting={testingServerId === server.id}
-                    disableTest={testingServerId != null && testingServerId !== server.id}
-                    testStepLabel={testingServerId === server.id ? testStepLabel : null}
-                    isBuiltin={isBuiltinServer(server.id)}
-                  />
-                );
-              })}
+              {/* 现有服务器列表：超阈值虚拟化，展开态由 measureElement 动态量高 */}
+              <SettingsVirtualList
+                className="grid gap-3"
+                items={servers.map((server, idx): SettingsVirtualItem => {
+                  const serverId = server.id || `server_${idx}`;
+                  const status = serverStatusMap.get(serverId) || serverStatusMap.get(server.id);
+                  const snapshotEntry = toolsByServer[serverId] || toolsByServer[server.id];
+                  const cachedCount = snapshotEntry?.items?.length ?? 0;
+                  const toolNames = (snapshotEntry?.items || [])
+                    .map(item => stripMcpPrefix(item?.name))
+                    .filter((name): name is string => Boolean(name));
+                  const expanded = expandedPanels.get(idx) || null;
+                  return {
+                    key: serverId,
+                    estimateSize: expanded ? 360 : 96,
+                    render: () => (
+                      <ServerListItem
+                        server={server}
+                        status={status}
+                        cachedToolCount={cachedCount}
+                        toolNames={toolNames}
+                        expandedPanel={expanded}
+                        onSave={(data) => onSaveServer(data, server.id)}
+                        onDelete={() => onDeleteServer(server.id)}
+                        onToggleExpand={(type) => handleToggleExpand(idx, type)}
+                        onTest={async () => {
+                          if (testingServerId) return;
+                          setTestingServerId(server.id);
+                          try { await onTestServer(server); } finally { setTestingServerId(null); }
+                        }}
+                        isTesting={testingServerId === server.id}
+                        disableTest={testingServerId != null && testingServerId !== server.id}
+                        testStepLabel={testingServerId === server.id ? testStepLabel : null}
+                        isBuiltin={isBuiltinServer(server.id)}
+                      />
+                    ),
+                  };
+                })}
+                scrollElement={scrollElement}
+                threshold={0}
+                overscan={2}
+              />
             </div>
           )}
         </div>
@@ -3926,8 +3968,32 @@ export function McpToolsSection({
           </div>
         )}
 
-        {/* 工具权限管理 */}
-        <ToolPermissionsSection toolsByServer={toolsByServer} />
+        {/* 工具权限管理：默认折叠，展开后才挂载整段权限 DOM（~750 节点） */}
+        <div className="mt-8 border-t border-border/40 pt-6">
+          <DsButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setPermissionsExpanded((open) => !open)}
+            className="!h-auto !px-1 !py-1.5 w-full !justify-start gap-1.5 text-sm font-medium text-foreground"
+            aria-expanded={permissionsExpanded}
+            aria-controls="settings-tool-permissions"
+          >
+            <CaretRight
+              className={cn('h-3.5 w-3.5 shrink-0 transition-transform', permissionsExpanded && 'rotate-90')}
+              aria-hidden
+            />
+            {t('settings:tool_permissions.title')}
+            {!permissionsExpanded && (
+              <span className="ml-1 text-xs font-normal text-muted-foreground">
+                {t('settings:tool_permissions.expand_hint', '点击展开')}
+              </span>
+            )}
+          </DsButton>
+          {permissionsExpanded ? (
+            <ToolPermissionsSection toolsByServer={toolsByServer} embedded />
+          ) : null}
+        </div>
       </div>
     </SettingSection>
   );

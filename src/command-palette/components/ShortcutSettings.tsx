@@ -20,9 +20,15 @@ import { formatShortcut, buildShortcutString } from '../registry/shortcutUtils';
 import { CATEGORY_CONFIG, type Command, type CommandCategory } from '../registry/types';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { SettingSection } from '@/features/settings';
+import {
+  SettingsVirtualList,
+  type SettingsVirtualItem,
+} from '@/features/settings/components/SettingsVirtualList';
 
 interface ShortcutSettingsProps {
   className?: string;
+  /** Settings 外层滚动视口；提供时长列表走虚拟化（AX 每帧税 ∝ 挂载节点数） */
+  scrollElement?: HTMLElement | null;
 }
 
 interface EditingState {
@@ -39,7 +45,7 @@ const GroupTitle = ({ title, rightSlot }: { title: string; rightSlot?: React.Rea
   </div>
 );
 
-export function ShortcutSettings({ className }: ShortcutSettingsProps) {
+export function ShortcutSettings({ className, scrollElement = null }: ShortcutSettingsProps) {
   const { t } = useTranslation(['command_palette', 'common', 'settings']);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -273,11 +279,8 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
             </div>
           </div>
 
-          {Array.from(groupedCommands.entries()).map(([category, commands], groupIdx) => (
-            <div key={category} className={groupIdx > 0 ? 'mt-8' : ''}>
-              <GroupTitle title={t(CATEGORY_CONFIG[category]?.labelKey ?? category, category)} />
-              <div className="space-y-px">
-                {commands.map((command) => {
+          {(() => {
+            const renderCommandRow = (command: Command) => {
                   const effectiveShortcut = shortcutManager.getShortcut(command.id);
                   const hasCustom = shortcutManager.hasCustomShortcut(command.id);
                   const isEditing = editing?.commandId === command.id;
@@ -382,10 +385,40 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                       </div>
                     </div>
                   );
-                })}
-              </div>
-            </div>
-          ))}
+            };
+
+            // 扁平化「分组标题 + 行」为虚拟列表项：仅可视区挂载，压低 AX 每帧税
+            const virtualItems: SettingsVirtualItem[] = [];
+            let groupIdx = 0;
+            for (const [category, commands] of groupedCommands) {
+              const idx = groupIdx++;
+              virtualItems.push({
+                key: `cat:${category}`,
+                estimateSize: idx > 0 ? 76 : 44,
+                render: () => (
+                  <div className={idx > 0 ? 'pt-8' : ''}>
+                    <GroupTitle title={t(CATEGORY_CONFIG[category]?.labelKey ?? category, category)} />
+                  </div>
+                ),
+              });
+              for (const command of commands) {
+                virtualItems.push({
+                  key: command.id,
+                  estimateSize: 42,
+                  render: () => <div className="pt-px">{renderCommandRow(command)}</div>,
+                });
+              }
+            }
+
+            return (
+              <SettingsVirtualList
+                items={virtualItems}
+                scrollElement={scrollElement}
+                threshold={30}
+                overscan={2}
+              />
+            );
+          })()}
 
           {filteredCommands.length === 0 && (
             <div className="py-12 text-center text-muted-foreground/60 text-sm">

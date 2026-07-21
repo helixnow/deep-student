@@ -18,7 +18,7 @@
  * 交互时间线（interactionTrace）：
  *   globalThis.__WB_INTERACTION_TRACE__ + DEV 落盘 `.tmp/wb-interaction-trace.json`
  *
- * 由 `desktop.workbenchDevPanel` 设置开启时挂载到 WorkbenchDesktop（开发期开关）；
+ * 需诊断门闩（`VITE_WB_DIAGNOSTICS=1` / `?wbDiag=1`）且 `desktop.workbenchDevPanel` 开启时挂载；
  * 也可独立渲染（store 数据全部来自 useWindowStore / appRegistry，可 mock 测试）。
  */
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';

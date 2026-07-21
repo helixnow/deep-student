@@ -108,7 +108,7 @@ describe('OS mode drag performance anti-regression', () => {
     expect(chat).toContain('useDragRenderPause');
   });
 
-  it('Settings 窗：活树跟手；禁止截图冻结 / 嵌套抬层 / attr 弄脏', () => {
+  it('Settings 窗：真实内容常驻并通过懒加载与虚拟化控制 DOM 规模', () => {
     const app = readRepo(
       'src',
       'features',
@@ -119,10 +119,26 @@ describe('OS mode drag performance anti-regression', () => {
     );
     expect(app).toContain('data-wb-settings-host');
     expect(app).toContain('data-wb-settings-layer');
-    // 活树路径：禁止截图冻结；也不挂 render-paused（属性翻转弄脏层）
-    expect(app).not.toMatch(/import\s*\{[^}]*useDragVisualFreeze/);
-    expect(app).not.toMatch(/import\s*\{[^}]*useDragRenderPause/);
     expect(app).not.toContain('@zumer/snapdom');
+    expect(app).not.toContain('useSettingsDragSnapshot');
+    expect(app).not.toContain('data-wb-settings-snapshot');
+
+    const settings = readRepo('src', 'features', 'settings', 'components', 'Settings.tsx');
+    expect(settings).toContain('data-wb-settings-content-ready');
+    expect(settings).toContain('React.lazy');
+    expect(settings).toContain('React.Suspense');
+    expect(settings).toContain('viewportRef={setSettingsScrollElement}');
+
+    const virtualList = readRepo(
+      'src',
+      'features',
+      'settings',
+      'components',
+      'SettingsVirtualList.tsx',
+    );
+    expect(virtualList).toContain("from '@tanstack/react-virtual'");
+    expect(virtualList).toContain('useVirtualizer');
+    expect(virtualList).toContain('data-settings-virtualized');
 
     const css = readRepo(
       'src',
@@ -133,14 +149,12 @@ describe('OS mode drag performance anti-regression', () => {
       'SettingsAppWindow.css',
     );
     const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '');
-    // 并入窗壳单层：禁止 settings 自建 contain / translateZ / will-change
+    // 真实内容常驻；仍禁止手势开始时动态创建新的布局/合成边界。
     expect(strip(css)).not.toMatch(/contain\s*:/);
     expect(strip(css)).not.toMatch(/translateZ\(/);
     expect(strip(css)).not.toMatch(/will-change\s*:\s*transform/);
-    expect(strip(css)).not.toMatch(/display:\s*none\s*!important/);
-    expect(strip(css)).not.toContain('data-wb-drag-frozen');
-    expect(strip(css)).not.toContain('data-wb-drag-snap-surface');
     expect(strip(css)).not.toMatch(/\[data-wb-settings-host\][^{]*\*/);
+    expect(css).not.toContain('data-wb-settings-snapshot');
 
     // 跟手期清窗内 blur（直接属性；禁止窗根翻转继承变量逼整树 recalc）
     const wb = readRepo('src', 'features', 'workbench', 'styles', 'workbench.css');
@@ -161,10 +175,14 @@ describe('OS mode drag performance anti-regression', () => {
     const wbWithoutComments = wb.replace(/\/\*[\s\S]*?\*\//g, '');
     expect(wbWithoutComments).not.toMatch(/\[class\*=/);
 
-    // 跟手期 inert+aria-hidden：剪 AX 树，内容仍可见
+    // 先把焦点移出活树再 inert；display:none 负责真正从内部 AX 树剪除节点。
     const shell = readRepo('src', 'features', 'workbench', 'components', 'WindowShell.tsx');
     expect(shell).toContain("setAttribute('aria-hidden', 'true')");
     expect(shell).toContain('content.inert = true');
+    expect(shell).toMatch(
+      /gestureContentFocusRef\.current[\s\S]*?el\.focus\(\{ preventScroll: true \}\)[\s\S]*?content\.inert = true[\s\S]*?setAttribute\('aria-hidden', 'true'\)/,
+    );
+    expect(shell).toContain('previousContentFocus.focus({ preventScroll: true })');
     expect(shell).toContain('timeInteractionPhase');
     expect(shell).toContain('layoutAnchor');
     expect(shell).toContain('shellClass');
@@ -175,9 +193,13 @@ describe('OS mode drag performance anti-regression', () => {
     expect(trace).toContain('schema: \'interactionTrace.v2\'');
     expect(trace).toContain('buckets');
 
-    // settings 故意不进 heavy flush：跟手期不得对其 setAttribute
+    // settings 由自身懒加载/虚拟化处理，不进入全局 heavy-host 扫描。
     const flags = readRepo('src', 'features', 'workbench', 'core', 'shellGestureFlags.ts');
     expect(flags).not.toMatch(/HEAVY_HOST_SELECTOR[\s\S]*?\[data-wb-settings-host\]/);
+
+    // renderer accessibility 是产品能力，禁止用全局关闭规避性能问题。
+    const windowsConfig = readRepo('src-tauri', 'tauri.windows.conf.json');
+    expect(windowsConfig).not.toContain('--disable-renderer-accessibility');
   });
 
   it('桌面偏移通过 ref 快照提供，禁止手势 provider 内 getBoundingClientRect', () => {
@@ -270,11 +292,13 @@ describe('OS mode drag performance anti-regression', () => {
     expect(workbenchRule).not.toMatch(/contain\s*:\s*[^;]*(layout|paint|content|strict)/);
   });
 
-  it('桌面 WebView 呈现自愈接线覆盖 Windows 与 macOS', () => {
-    // 宿主侧：Focused/Resized/ScaleFactorChanged → NotifyParentWindowPositionChanged
+  it('桌面 WebView 呈现自愈不在窗口事件内同步调用 WebView2', () => {
+    // 宿主侧同步 COM 调用会与 WebView 日志/IPC 锁反转，导致 Windows AppHangB1。
     const librs = readRepo('src-tauri', 'src', 'lib.rs');
-    expect(librs).toContain('NotifyParentWindowPositionChanged');
-    expect(librs).toMatch(/WindowEvent::Focused\(true\)[\s\S]*?ScaleFactorChanged/);
+    expect(librs).not.toContain('NotifyParentWindowPositionChanged');
+    expect(librs).not.toContain('.target(Target::new(TargetKind::Webview))');
+    expect(librs).not.toContain('crate::quick_assistant::preload_if_enabled');
+    expect(librs).toContain('不要在 WindowEvent 回调中同步调用 with_webview');
     // 页面侧：桌面根整面重绘 nudge 挂载在 WorkbenchDesktop
     const desktop = readRepo(
       'src',
@@ -299,6 +323,16 @@ describe('OS mode drag performance anti-regression', () => {
     expect(trace).toContain('__WB_INTERACTION_TRACE__');
     expect(trace).toContain('.tmp/wb-interaction-trace.json');
     expect(trace).toContain('/__wb_interaction_trace');
+    expect(trace).toContain('isWorkbenchDiagnosticsRequested');
+    expect(trace).toContain('let enabled = false');
+
+    const gate = readRepo('src', 'features', 'workbench', 'core', 'workbenchDiagnosticsGate.ts');
+    expect(gate).toContain('VITE_WB_DIAGNOSTICS');
+    expect(gate).toContain('wbDiag');
+
+    const desktop = readRepo('src', 'features', 'workbench', 'components', 'WorkbenchDesktop.tsx');
+    expect(desktop).toContain('isWorkbenchDiagnosticsRequested');
+    expect(desktop).not.toContain('installInteractionTraceBridge();');
 
     const shell = readRepo('src', 'features', 'workbench', 'components', 'WindowShell.tsx');
     expect(shell).toContain('beginInteraction');

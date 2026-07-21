@@ -1,7 +1,7 @@
 //! 快速学习小窗（quick-assistant）的原生窗口生命周期管理。
 //!
 //! 全部创建 / 显示 / 隐藏路径都收敛到本模块：
-//! - 应用启动时按设置预加载隐藏窗口，首次呼出无白窗延迟；
+//! - 首次呼出时按需创建窗口，避免启动阶段同步创建第二个 WebView；
 //! - 呼出时定位到鼠标所在显示器，并恢复上次的位置与尺寸；
 //! - 隐藏时把焦点归还给用户之前正在使用的应用。
 //!
@@ -48,7 +48,7 @@ mod desktop {
         get_setting(app, ENABLED_KEY).as_deref() != Some("false")
     }
 
-    /// 确保小窗存在（不显示）。用于启动预加载与首次呼出。
+    /// 确保小窗存在（不显示）。仅在用户首次呼出时创建。
     pub fn ensure_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
             return Ok(window);
@@ -205,30 +205,18 @@ mod desktop {
         }
     }
 
-    /// 启动阶段预加载：设置开启时提前建好隐藏窗口。
-    pub fn preload_if_enabled(app: &AppHandle) {
-        if !is_enabled(app) {
-            return;
-        }
-        if let Err(error) = ensure_window(app) {
-            log::warn!("[QuickAssistant] preload failed: {error}");
-        }
-    }
-
     pub fn apply_enabled(app: &AppHandle, enabled: bool) {
-        if enabled {
-            if let Err(error) = ensure_window(app) {
-                log::warn!("[QuickAssistant] preload failed: {error}");
+        if !enabled {
+            if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+                persist_bounds(app, &window);
+                let _ = window.destroy();
             }
-        } else if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
-            persist_bounds(app, &window);
-            let _ = window.destroy();
         }
     }
 }
 
 #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
-pub use desktop::{preload_if_enabled, toggle};
+pub use desktop::toggle;
 
 #[tauri::command]
 pub fn quick_assistant_show(app: AppHandle) {
@@ -246,7 +234,7 @@ pub fn quick_assistant_hide(app: AppHandle) {
     let _ = app;
 }
 
-/// 设置开关联动：开启时预加载隐藏窗口，关闭时销毁窗口释放资源。
+/// 设置开关联动：开启时保持懒创建，关闭时销毁窗口释放资源。
 #[tauri::command]
 pub fn quick_assistant_apply_enabled(app: AppHandle, enabled: bool) {
     #[cfg(any(target_os = "macos", windows, target_os = "linux"))]

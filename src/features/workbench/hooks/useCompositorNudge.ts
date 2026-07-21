@@ -19,9 +19,9 @@
  * - 仅 Windows WebView2 / macOS WKWebView 的 Tauri 主窗口启用；浏览器与
  *   WebKitGTK 保持 no-op。
  *
- * 配套：Rust 侧在 Focused/Resized/ScaleFactorChanged 时调用
- * ICoreWebView2Controller::NotifyParentWindowPositionChanged（lib.rs），
- * 两层自愈相互独立。CI：platformPerformanceConfig.test.ts。
+ * Rust 侧不得在 Focused/Resized/ScaleFactorChanged 回调内同步进入
+ * WebView2 COM；该路径会与 WebView 日志/IPC 锁反转并冻结 UI 消息循环。
+ * 本 hook 是主窗口安全的呈现自愈路径。CI：platformPerformanceConfig.test.ts。
  */
 import { useEffect, type RefObject } from 'react';
 import { isMacOS, isWindows } from '@/utils/platform';

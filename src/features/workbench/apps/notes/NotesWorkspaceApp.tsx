@@ -472,6 +472,17 @@ const WorkspacePane: React.FC<WorkspacePaneProps> = ({
   const { t } = useTranslation('workbench');
   const active = tabs.find((tab) => tab.key === activeKey) ?? null;
   const modKey = isMacOS() ? '⌘' : 'Ctrl+';
+  // 只挂载当前 + 最近 1 个标签的完整编辑器：后台标签不再用 hidden 常驻整份 Crepe，
+  // 显著压低窗口 DOM 规模（拖窗每帧税 ∝ 节点数）。内容已由 DSTU/脏标记持久化。
+  const [mountedKeys, setMountedKeys] = useState<string[]>(() => (activeKey ? [activeKey] : []));
+  useEffect(() => {
+    if (!activeKey) return;
+    setMountedKeys((prev) => {
+      const next = [activeKey, ...prev.filter((key) => key !== activeKey)];
+      const living = new Set(tabs.map((tab) => tab.key));
+      return next.filter((key) => living.has(key)).slice(0, 2);
+    });
+  }, [activeKey, tabs]);
   return (
     <section
       className="notes-workspace-pane"
@@ -534,40 +545,42 @@ const WorkspacePane: React.FC<WorkspacePaneProps> = ({
             </div>
           </div>
         )}
-        {tabs.map((tab) => {
-          const visible = tab.key === activeKey;
-          return (
-            <div className="notes-document-host" hidden={!visible} key={tab.key}>
-              {tab.type === 'note' ? (
-                <UnifiedAppPanel
-                  type="note"
-                  resourceId={tab.id}
-                  dstuPath={`/${tab.id}`}
-                  strictType
-                  isActive={workspaceActive && visible}
-                  focusOnActive={workspaceActive && visible}
-                  hostWindowId={windowId}
-                  propertiesPanelDisabled
-                  onTitleChange={(title) => onTitleChange(tab.key, title)}
-                  onSaveStateChange={(state) => onSaveStateChange(tab.key, state)}
-                  className="h-full"
-                />
-              ) : (
-                <React.Suspense fallback={<MindMapPaneFallback />}>
-                  <MindMapContentView
+        {tabs
+          .filter((tab) => mountedKeys.includes(tab.key))
+          .map((tab) => {
+            const visible = tab.key === activeKey;
+            return (
+              <div className="notes-document-host" hidden={!visible} key={tab.key}>
+                {tab.type === 'note' ? (
+                  <UnifiedAppPanel
+                    type="note"
                     resourceId={tab.id}
-                    storeInstanceId={`${windowId}:${tab.key}`}
+                    dstuPath={`/${tab.id}`}
+                    strictType
                     isActive={workspaceActive && visible}
                     focusOnActive={workspaceActive && visible}
+                    hostWindowId={windowId}
+                    propertiesPanelDisabled
                     onTitleChange={(title) => onTitleChange(tab.key, title)}
                     onSaveStateChange={(state) => onSaveStateChange(tab.key, state)}
                     className="h-full"
                   />
-                </React.Suspense>
-              )}
-            </div>
-          );
-        })}
+                ) : (
+                  <React.Suspense fallback={<MindMapPaneFallback />}>
+                    <MindMapContentView
+                      resourceId={tab.id}
+                      storeInstanceId={`${windowId}:${tab.key}`}
+                      isActive={workspaceActive && visible}
+                      focusOnActive={workspaceActive && visible}
+                      onTitleChange={(title) => onTitleChange(tab.key, title)}
+                      onSaveStateChange={(state) => onSaveStateChange(tab.key, state)}
+                      className="h-full"
+                    />
+                  </React.Suspense>
+                )}
+              </div>
+            );
+          })}
       </div>
     </section>
   );

@@ -6,10 +6,13 @@
  *
  * 可读出口：
  * 1. globalThis.__WB_INTERACTION_TRACE__
- * 2. DEV POST → `.tmp/wb-interaction-trace.json`
+ * 2. DEV POST → `.tmp/wb-interaction-trace.json`（仅诊断门闩开启时）
  * 3. console `[WB_TRACE]` 摘要（含 costs 占比）
+ *
+ * 开发版默认关闭采集/落盘；需 `VITE_WB_DIAGNOSTICS=1` 或 `?wbDiag=1` 启动（见 workbenchDiagnosticsGate）。
  */
 import { summarizeFrameDeltas, type PerfFrameStats } from './perfMonitor';
+import { isWorkbenchDiagnosticsRequested } from './workbenchDiagnosticsGate';
 
 export type InteractionKind = 'drag' | 'resize' | 'snap.settle';
 
@@ -40,6 +43,24 @@ export interface InteractionLongTaskEntry {
   name?: string;
 }
 
+/** long-animation-frame 单帧归因（仅记录 ≥50ms 的帧） */
+export interface InteractionLoafEntry {
+  /** 相对 startedAt */
+  atMs: number;
+  durationMs: number;
+  /** 帧内脚本执行总时长 */
+  scriptMs: number;
+  /** 帧内 style/layout 总时长（styleAndLayoutStart→end） */
+  styleAndLayoutMs: number;
+  /** 渲染段总时长（renderStart→end，包含 style/layout） */
+  renderMs: number;
+  /** 脚本内部强制同步布局总时长（计入 scriptMs） */
+  forcedLayoutMs?: number;
+  /** 最贵脚本的归因（sourceURL/functionName/invoker） */
+  topScript?: string;
+  topScriptMs?: number;
+}
+
 export interface InteractionFrameBuckets {
   /** <8.3ms (~120fps+) */
   lt8: number;
@@ -64,6 +85,13 @@ export interface InteractionCosts {
     /** 占 totalMs 的百分比 */
     shareOfTotalPct?: number;
     entries: InteractionLongTaskEntry[];
+  };
+  /** long-animation-frame 归因（script vs style/layout），仅慢帧 */
+  loaf?: {
+    count: number;
+    scriptTotalMs: number;
+    styleAndLayoutTotalMs: number;
+    entries: InteractionLoafEntry[];
   };
   /** 跟手帧分桶 + p95 */
   frames?: {
@@ -160,7 +188,8 @@ function bucketFrames(deltas: readonly number[]): InteractionFrameBuckets {
 // 单例状态
 // ============================================================================
 
-let enabled = isDevBuild();
+// 默认关闭：避免普通 `npm run dev:tauri` 持续写 `.tmp/wb-interaction-trace.json` 与 HUD 开销
+let enabled = false;
 let ownerCount = 0;
 let seq = 0;
 let active: InteractionSession | null = null;
@@ -170,9 +199,13 @@ const listeners = new Set<InteractionTraceListener>();
 let frameDeltas: number[] = [];
 let frameRaf: number | ReturnType<typeof setTimeout> = 0;
 let lastFrameTs = 0;
-let consoleLog = isDevBuild();
+let consoleLog = false;
 let persistScheduled = false;
 let longTaskObserver: PerformanceObserver | null = null;
+let loafObserver: PerformanceObserver | null = null;
+
+const LOAF_MIN_DURATION_MS = 50;
+const LOAF_MAX_ENTRIES = 24;
 
 const requestFrame: (cb: () => void) => number | ReturnType<typeof setTimeout> =
   typeof requestAnimationFrame === 'function'
@@ -203,6 +236,87 @@ function stopLongTaskObserver(): void {
       /* ignore */
     }
     longTaskObserver = null;
+  }
+  if (loafObserver) {
+    try {
+      loafObserver.disconnect();
+    } catch {
+      /* ignore */
+    }
+    loafObserver = null;
+  }
+}
+
+/** long-animation-frame 条目的非标准字段（Chromium 123+）。 */
+interface LoafPerformanceEntry extends PerformanceEntry {
+  renderStart?: number;
+  styleAndLayoutStart?: number;
+  scripts?: Array<{
+    duration: number;
+    invoker?: string;
+    sourceURL?: string;
+    sourceFunctionName?: string;
+    /** 脚本内部强制同步 style/layout 的时长（Chromium LoAF 扩展字段） */
+    forcedStyleAndLayoutDuration?: number;
+  }>;
+}
+
+function startLoafObserver(session: InteractionSession): void {
+  if (typeof PerformanceObserver !== 'function') return;
+  try {
+    const supported = PerformanceObserver.supportedEntryTypes;
+    if (!supported || !supported.includes('long-animation-frame')) return;
+    loafObserver = new PerformanceObserver((list) => {
+      if (!active || active !== session) return;
+      const costs = ensureCosts(session);
+      const loaf = (costs.loaf ??= {
+        count: 0,
+        scriptTotalMs: 0,
+        styleAndLayoutTotalMs: 0,
+        entries: [],
+      });
+      for (const raw of list.getEntries()) {
+        if (raw.duration < LOAF_MIN_DURATION_MS) continue;
+        const entry = raw as LoafPerformanceEntry;
+        const end = entry.startTime + entry.duration;
+        const renderStart = entry.renderStart ?? 0;
+        const styleStart = entry.styleAndLayoutStart ?? 0;
+        const renderMs = renderStart > 0 ? end - renderStart : 0;
+        const styleMs = styleStart > 0 ? end - styleStart : 0;
+        let scriptMs = 0;
+        let forcedLayoutMs = 0;
+        let topScript: string | undefined;
+        let topScriptMs = 0;
+        for (const s of entry.scripts ?? []) {
+          scriptMs += s.duration;
+          forcedLayoutMs += s.forcedStyleAndLayoutDuration ?? 0;
+          if (s.duration > topScriptMs) {
+            topScriptMs = s.duration;
+            topScript = [s.sourceFunctionName, s.invoker, s.sourceURL]
+              .filter(Boolean)
+              .join(' | ') || undefined;
+          }
+        }
+        loaf.count += 1;
+        loaf.scriptTotalMs = round1(loaf.scriptTotalMs + scriptMs);
+        loaf.styleAndLayoutTotalMs = round1(loaf.styleAndLayoutTotalMs + styleMs);
+        if (loaf.entries.length < LOAF_MAX_ENTRIES) {
+          loaf.entries.push({
+            atMs: round1(entry.startTime - session.startedAt),
+            durationMs: round1(entry.duration),
+            scriptMs: round1(scriptMs),
+            styleAndLayoutMs: round1(styleMs),
+            renderMs: round1(renderMs),
+            forcedLayoutMs: forcedLayoutMs > 0 ? round1(forcedLayoutMs) : undefined,
+            topScript,
+            topScriptMs: topScriptMs > 0 ? round1(topScriptMs) : undefined,
+          });
+        }
+      }
+    });
+    loafObserver.observe({ type: 'long-animation-frame', buffered: false } as PerformanceObserverInit);
+  } catch {
+    loafObserver = null;
   }
 }
 
@@ -237,6 +351,7 @@ function startLongTaskObserver(session: InteractionSession): void {
   } catch {
     longTaskObserver = null;
   }
+  startLoafObserver(session);
 }
 
 function stopFrameSample(): PerfFrameStats | undefined {
@@ -436,7 +551,7 @@ export function acquireInteractionTrace(): () => void {
     if (released) return;
     released = true;
     ownerCount = Math.max(0, ownerCount - 1);
-    if (ownerCount === 0 && !isDevBuild()) {
+    if (ownerCount === 0 && !isWorkbenchDiagnosticsRequested()) {
       enabled = false;
       if (active) endInteraction({ aborted: true });
     }
@@ -641,7 +756,7 @@ export function resetInteractionTraceForTests(): void {
   listeners.clear();
   ownerCount = 0;
   seq = 0;
-  enabled = isDevBuild();
+  enabled = false;
   consoleLog = false;
   persistScheduled = false;
   try {
@@ -652,5 +767,10 @@ export function resetInteractionTraceForTests(): void {
 }
 
 if (isDevBuild()) {
+  // 始终挂桥，便于控制台 `__WB_INTERACTION_TRACE__.enable()`；采集默认关
   installInteractionTraceBridge();
+  if (isWorkbenchDiagnosticsRequested()) {
+    enabled = true;
+    consoleLog = true;
+  }
 }

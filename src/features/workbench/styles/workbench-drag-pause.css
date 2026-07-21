@@ -1,0 +1,98 @@
+/**
+ * workbench-drag-pause — 拖/缩/settle 期间的全局动画暂停总名单
+ *
+ * 背景（2026-07 CDP invalidationTracking 排查）：拖窗跟手期，所有仍在播放的
+ * 无限 CSS 动画每帧各产生一次 "Animation" 样式失效，开的窗口越多每帧底噪越高。
+ * 项目原有的暂停规则散落在各 App CSS 且名单不全，还普遍存在一个错误假设——
+ * `animation-play-state` **不继承**，只给宿主设 paused 停不掉子树里各自声明的
+ * 动画。本文件集中点名所有已知的常驻/条件无限动画。
+ *
+ * 纪律：
+ * - 禁止 `:root[data-wb-dragging] *` 通配（起拖瞬间全文档重匹配）。
+ * - 新增无限动画（`animation: ... infinite`）时必须同步登记到这里。
+ * - 键统一挂 `:root[data-wb-dragging]` / `:root[data-wb-settling]`：
+ *   属性翻转每次手势只发生一次，换来跟手期每帧零动画失效。
+ */
+
+/* ---- Tailwind 通用无限动画（.animate-spin/.animate-pulse 已在 workbench.css
+ *      按窗口壳类暂停；这里按根旗把其他窗口里的也一并停掉） ---- */
+:root[data-wb-dragging] .animate-spin,
+:root[data-wb-settling] .animate-spin,
+:root[data-wb-dragging] .animate-pulse,
+:root[data-wb-settling] .animate-pulse,
+:root[data-wb-dragging] .animate-sweep,
+:root[data-wb-settling] .animate-sweep,
+:root[data-wb-dragging] .animate-bounce,
+:root[data-wb-settling] .animate-bounce,
+:root[data-wb-dragging] .animate-ping,
+:root[data-wb-settling] .animate-ping,
+
+/* ---- 笔记 / Crepe 编辑器 ---- */
+:root[data-wb-dragging] .ProseMirror-gapcursor::after,
+:root[data-wb-settling] .ProseMirror-gapcursor::after,
+:root[data-wb-dragging] .acr-ai-caret__bar,
+:root[data-wb-settling] .acr-ai-caret__bar,
+:root[data-wb-dragging] .notes-save-status-dot[data-status='saving'],
+:root[data-wb-settling] .notes-save-status-dot[data-status='saving'],
+
+/* ---- Agent 视觉（窗口光环 / strip 呼吸点） ---- */
+:root[data-wb-dragging] .wb-window[data-agent-active]::before,
+:root[data-wb-settling] .wb-window[data-agent-active]::before,
+:root[data-wb-dragging] .wb-window[data-agent-active]::after,
+:root[data-wb-settling] .wb-window[data-agent-active]::after,
+:root[data-wb-dragging] .acr-agent-strip[data-status='acting'] .acr-agent-strip-label::after,
+:root[data-wb-settling] .acr-agent-strip[data-status='acting'] .acr-agent-strip-label::after,
+:root[data-wb-dragging] .acr-agent-strip-dot[data-state='acting'],
+:root[data-wb-settling] .acr-agent-strip-dot[data-state='acting'],
+:root[data-wb-dragging] .acr-agent-strip-dot[data-state='acting']::after,
+:root[data-wb-settling] .acr-agent-strip-dot[data-state='acting']::after,
+
+/* ---- 浏览器窗 ---- */
+:root[data-wb-dragging] .wb-browser-spinner,
+:root[data-wb-settling] .wb-browser-spinner,
+:root[data-wb-dragging] .wb-browser-address-progress-runner,
+:root[data-wb-settling] .wb-browser-address-progress-runner,
+
+/* ---- 系统窗骨架 / 任务条 ---- */
+:root[data-wb-dragging] .wb-sys-bone::after,
+:root[data-wb-settling] .wb-sys-bone::after,
+:root[data-wb-dragging] .wb-sys-activity-runner,
+:root[data-wb-settling] .wb-sys-activity-runner,
+:root[data-wb-dragging] .wb-content-skeleton__bone,
+:root[data-wb-settling] .wb-content-skeleton__bone,
+:root[data-wb-dragging] .wb-content-skeleton__image-blob,
+:root[data-wb-settling] .wb-content-skeleton__image-blob,
+
+/* ---- 聊天：思考链 / 等待态（shimmer 与 wait-dots 见 ChatSessionSurface.css） ---- */
+:root[data-wb-dragging] .timeline-item--running .timeline-item__marker,
+:root[data-wb-settling] .timeline-item--running .timeline-item__marker,
+:root[data-wb-dragging] .inline-tool-indicator--running .inline-tool-indicator__pulse,
+:root[data-wb-settling] .inline-tool-indicator--running .inline-tool-indicator__pulse,
+:root[data-wb-dragging] .anki-card-panel__spinner,
+:root[data-wb-settling] .anki-card-panel__spinner,
+
+/* ---- 制卡任务 / 待办 / 自动化 ---- */
+:root[data-wb-dragging] .wb-at-pulse-dot,
+:root[data-wb-settling] .wb-at-pulse-dot,
+:root[data-wb-dragging] .wb-at-progress-active::after,
+:root[data-wb-settling] .wb-at-progress-active::after,
+:root[data-wb-dragging] .todo-empty-decor::before,
+:root[data-wb-settling] .todo-empty-decor::before,
+:root[data-wb-dragging] .todo-empty-decor::after,
+:root[data-wb-settling] .todo-empty-decor::after,
+:root[data-wb-dragging] .automation-timeline__dot--pulse,
+:root[data-wb-settling] .automation-timeline__dot--pulse,
+
+/* ---- 菜单栏 / 桌面空态（在 .wb-window 之外，壳类名单打不中） ---- */
+:root[data-wb-dragging] .wb-menubar-automation-iconwrap[data-pulse] .wb-menubar-item-icon,
+:root[data-wb-settling] .wb-menubar-automation-iconwrap[data-pulse] .wb-menubar-item-icon,
+:root[data-wb-dragging] .wb-empty-hint-arrow,
+:root[data-wb-settling] .wb-empty-hint-arrow {
+  animation-play-state: paused !important;
+}
+
+/* 标题栏三键符号的 hover/focus 浮现过渡：跟手期禁用，避免指针扫过时与拖拽争帧 */
+.wb-window.wb-shell-dragging .wb-title-key,
+.wb-window.wb-shell-resizing .wb-title-key {
+  transition: none !important;
+}

@@ -37,6 +37,7 @@ import type { VendorConfig } from '@/types';
 import { isOpenAICodexOAuthVendor } from '@/utils/vendorAuth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { SettingsVirtualList, type SettingsVirtualItem } from './SettingsVirtualList';
 
 // --- Save Status Indicator ---
 type SaveStatus = 'idle' | 'saving' | 'saved';
@@ -63,6 +64,9 @@ const InlineEditorCollapse: React.FC<{
   fill?: boolean;
 }> = ({ open, children, className, fill = false }) => {
   const [shouldRender, setShouldRender] = useState(open);
+  // 首帧以 open=true 挂载时（编辑器宿主按需挂载的场景），先渲染收起态，
+  // 下一帧再翻开 data-open，让 0fr→1fr 高度动画照常播放。
+  const [entered, setEntered] = useState(!open);
   const lastChildrenRef = useRef<React.ReactNode>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -74,6 +78,15 @@ const InlineEditorCollapse: React.FC<{
   if (open && !shouldRender) {
     setShouldRender(true);
   }
+
+  useLayoutEffect(() => {
+    if (!entered) {
+      const raf = requestAnimationFrame(() => setEntered(true));
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [entered]);
+
+  const visualOpen = open && entered;
 
   useEffect(() => {
     if (open) {
@@ -94,8 +107,8 @@ const InlineEditorCollapse: React.FC<{
     <div
       ref={rootRef}
       className={cn('settings-inline-editor', className)}
-      data-open={open ? 'true' : 'false'}
-      aria-hidden={!open}
+      data-open={visualOpen ? 'true' : 'false'}
+      aria-hidden={!visualOpen}
     >
       <div className={cn('settings-inline-editor-clip', fill && 'h-full')}>
         <div className={cn('settings-inline-editor-body', fill && 'h-full min-h-0')}>
@@ -244,7 +257,11 @@ const getProviderWebsiteUrl = (providerType?: string | null): string | null => {
 
 // --- Component ---
 
-export const VendorDetailPanel: React.FC = () => {
+interface VendorDetailPanelProps {
+  scrollElement?: HTMLElement | null;
+}
+
+export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElement = null }) => {
   const { t } = useTranslation(['settings', 'common']);
   const { isXl } = useBreakpoint();
   const {
@@ -299,6 +316,37 @@ export const VendorDetailPanel: React.FC = () => {
   >(null);
   const confirmingDeleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 性能（AX 每帧税 ∝ 挂载节点数）：次要操作按钮（收藏/测试/删除）在悬停
+  // 桌面上本就 opacity-0 直到卡片 hover，因此推迟到首次 hover/聚焦再挂载，
+  // 视觉无差；触屏/窄屏这些按钮常显，不推迟。
+  const [warmActionCards, setWarmActionCards] = useState<Set<string>>(() => new Set());
+  const warmCardActions = useCallback((profileId: string) => {
+    setWarmActionCards((prev) => {
+      if (prev.has(profileId)) return prev;
+      const next = new Set(prev);
+      next.add(profileId);
+      return next;
+    });
+  }, []);
+  const deferHoverActions = useMemo(() => {
+    if (isSmallScreen) return false;
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+    return window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 768px)').matches;
+  }, [isSmallScreen]);
+  // 内联编辑宿主按需挂载：编辑关闭后保留一个动画周期再卸载，退场动画不丢
+  const [lingeringEditorId, setLingeringEditorId] = useState<string | null>(null);
+  const prevInlineEditIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const current = !isAddingNewModel ? inlineEditState?.profileId ?? null : null;
+    const prev = prevInlineEditIdRef.current;
+    prevInlineEditIdRef.current = current;
+    if (prev && prev !== current) {
+      // 关闭或切换到别的卡：旧宿主保留一个动画周期播完退场
+      setLingeringEditorId(prev);
+      const timer = setTimeout(() => setLingeringEditorId(null), INLINE_EDITOR_MOTION_MS + 80);
+      return () => clearTimeout(timer);
+    }
+  }, [inlineEditState?.profileId, isAddingNewModel]);
   const isCodexOAuthVendor = isOpenAICodexOAuthVendor(selectedVendor);
   const usesNoApiKey =
     selectedVendor?.authMode === 'none' || selectedVendor?.noApiKey === true;
@@ -423,14 +471,22 @@ export const VendorDetailPanel: React.FC = () => {
     };
 
     const isReadOnly = !!(api.isBuiltin && api.isReadOnly);
+    const secondaryActionsMounted = !deferHoverActions || warmActionCards.has(profile.id);
+    const warmThisCard = deferHoverActions && !secondaryActionsMounted
+      ? () => warmCardActions(profile.id)
+      : undefined;
 
     return (
-      <div key={profile.id} className={cn(
-        "group/card relative border border-transparent",
-        isEditing
-          ? cn(settingsQuietRowBaseClassName, settingsQuietActiveSurfaceClassName)
-          : settingsQuietInteractiveRowClassName
-      )}>
+      <div
+        key={profile.id}
+        onPointerEnter={warmThisCard}
+        onFocusCapture={warmThisCard}
+        className={cn(
+          "group/card relative border border-transparent",
+          isEditing
+            ? cn(settingsQuietRowBaseClassName, settingsQuietActiveSurfaceClassName)
+            : settingsQuietInteractiveRowClassName
+        )}>
         {/* 卡片头部 */}
         <div className="p-3">
           <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap">
@@ -460,6 +516,11 @@ export const VendorDetailPanel: React.FC = () => {
               {/* 次要操作：桌面 hover 时显示；触屏/窄屏无 hover，常显（否则收藏/删除在移动端不可达）。
                   测试连接在窄屏隐藏以节省宽度——编辑器底部已有「测试连接」入口 */}
               <div className="flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 max-md:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-150">
+                {!secondaryActionsMounted ? (
+                  /* 冷态占位：宽度 = 3 个 w-7 按钮 + 2 个 gap-0.5，首次 hover 挂载真身，无布局跳动 */
+                  <div className="h-7 w-[88px]" aria-hidden="true" />
+                ) : (
+                <>
                 <DsButton
                   size="sm"
                   variant="ghost"
@@ -523,6 +584,8 @@ export const VendorDetailPanel: React.FC = () => {
                   /* 占位：保持对齐（窄屏无需占位） */
                   <div className="h-7 w-7 shrink-0 max-md:hidden" />
                 )}
+                </>
+                )}
               </div>
               {/* 编辑按钮 */}
               <DsButton
@@ -546,8 +609,8 @@ export const VendorDetailPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* 内联编辑区：宽桌面在卡片内展开；编辑过程中缩窗则原地提升为浮层，保留未保存表单状态。 */}
-        {!isSmallScreen && (
+        {/* 内联编辑区：宿主按需挂载（编辑中/退场动画期），列表静止时不为每卡常驻编辑器骨架 */}
+        {!isSmallScreen && (isEditing || lingeringEditorId === profile.id) && (
           <ResponsiveInlineEditorHost
             floating={isEditing && useResponsiveInlineDialog}
             testId={`responsive-inline-model-editor-${profile.id}`}
@@ -587,6 +650,95 @@ export const VendorDetailPanel: React.FC = () => {
       </div>
     );
   };
+
+  const shouldVirtualizeModels = (
+    selectedVendorModels.length > 8
+    && Boolean(scrollElement)
+    && !inlineEditState
+    && !isAddingNewModel
+  );
+  const virtualModelItems: SettingsVirtualItem[] = [];
+
+  if (shouldVirtualizeModels) {
+    if (shouldGroupByFamily) {
+      familyGroups.forEach((group) => {
+        const isCollapsed = collapsedFamilies.has(group.family.id);
+        const groupId = `vendor-family-${group.family.id}`;
+        virtualModelItems.push({
+          key: `family:${group.family.id}`,
+          estimateSize: 56,
+          render: () => (
+            <button
+              key={`family:${group.family.id}`}
+              type="button"
+              onClick={() => {
+                setCollapsedFamilies((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(group.family.id)) next.delete(group.family.id);
+                  else next.add(group.family.id);
+                  return next;
+                });
+              }}
+              className="mt-3 flex w-full items-center justify-between gap-3 rounded-t-lg border border-border/40 px-4 py-3 text-left transition-colors hover:bg-muted/30"
+              aria-expanded={!isCollapsed}
+              aria-controls={groupId}
+            >
+              <div className="flex min-w-0 items-baseline gap-2">
+                <span className="truncate text-sm font-medium text-foreground">{group.family.label}</span>
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground/60">{group.items.length}</span>
+              </div>
+              <span className="shrink-0 text-muted-foreground" aria-hidden="true">
+                {isCollapsed ? <CaretDown className="h-4 w-4" /> : <CaretUp className="h-4 w-4" />}
+              </span>
+            </button>
+          ),
+        });
+
+        if (!isCollapsed) {
+          group.items.forEach((item, index) => {
+            const isLast = index === group.items.length - 1;
+            virtualModelItems.push({
+              key: `model:${item.profile.id}`,
+              estimateSize: 78,
+              render: () => (
+                <div
+                  key={`model:${item.profile.id}`}
+                  id={index === 0 ? groupId : undefined}
+                  role="listitem"
+                  aria-posinset={index + 1}
+                  aria-setsize={group.items.length}
+                  className={cn(
+                    'border-x border-border/40 px-2 pt-1',
+                    isLast && 'mb-3 rounded-b-lg border-b pb-2',
+                  )}
+                >
+                  {renderModelCard(item)}
+                </div>
+              ),
+            });
+          });
+        }
+      });
+    } else {
+      selectedVendorModels.forEach((item, index) => {
+        virtualModelItems.push({
+          key: `model:${item.profile.id}`,
+          estimateSize: 78,
+          render: () => (
+            <div
+              key={`model:${item.profile.id}`}
+              role="listitem"
+              aria-posinset={index + 1}
+              aria-setsize={selectedVendorModels.length}
+              className="pb-3"
+            >
+              {renderModelCard(item)}
+            </div>
+          ),
+        });
+      });
+    }
+  }
 
   return (
     <>
@@ -732,15 +884,9 @@ export const VendorDetailPanel: React.FC = () => {
               </span>
             </button>
 
-            {/* 可折叠内容 */}
-            <div
-              className={cn(
-                "grid transition-all duration-300 ease-in-out",
-                connectionExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-              )}
-            >
-              <div className="overflow-hidden">
-                <div className="px-4 pb-4 pt-1 space-y-4 text-sm">
+            {/* 可折叠内容：退场动画完成后卸载，避免隐藏表单常驻 DOM/AX 树。 */}
+            <InlineEditorCollapse open={connectionExpanded}>
+              <div className="px-4 pb-4 pt-1 space-y-4 text-sm">
                   {/* Base URL */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
@@ -819,9 +965,8 @@ export const VendorDetailPanel: React.FC = () => {
                       <div className="text-sm text-foreground leading-relaxed">{selectedVendor.notes}</div>
                     </div>
                   )}
-                </div>
               </div>
-            </div>
+            </InlineEditorCollapse>
           </div>
         )}
       </div>
@@ -939,9 +1084,19 @@ export const VendorDetailPanel: React.FC = () => {
                 </InlineEditorCollapse>
               </ResponsiveInlineEditorHost>
             )}
-            <div className="space-y-3">
+            <div
+              className="space-y-3"
+              data-wb-settings-model-count={selectedVendorModels.length}
+            >
               {selectedVendorModels.length === 0 && !isAddingNewModel ? (
                 <div className="rounded-lg border border-dashed border-border/60 p-8 text-center text-sm text-muted-foreground bg-muted/10">{t('settings:vendor_panel.model_empty')}</div>
+              ) : shouldVirtualizeModels ? (
+                <SettingsVirtualList
+                  items={virtualModelItems}
+                  scrollElement={scrollElement}
+                  threshold={0}
+                  overscan={1}
+                />
               ) : shouldGroupByFamily ? (
                 <div className="space-y-3">
                   {familyGroups.map((group) => {

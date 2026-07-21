@@ -222,9 +222,6 @@
    * the single 40px layout boundary for every window arrangement. */
   --wb-menubar-height: 40px;
 
-  /* Windows 窗控宿主的完整宽度：图标拖拽区 + 三键胶囊 + 右侧外边距。 */
-  --wb-windows-chrome-width: 165px;
-  --wb-menubar-chrome-inset: var(--wb-windows-chrome-width);
   /* 对标 Tahoe 透明菜单栏：fill 降到近透明（保留 blur 维持文字可读），
    * 底缘分隔弱化；reduced/minimal 档在下方降级块单独回填实底 */
   --wb-menubar-bg: hsl(var(--card) / 0.10);

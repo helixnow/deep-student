@@ -44,6 +44,7 @@ import { prefersReducedMotion } from '../core/pointerEngine';
 import {
   beginInteraction,
   endInteraction,
+  isInteractionTraceEnabled,
   markInteraction,
   timeInteractionPhase,
 } from '../core/interactionTrace';
@@ -393,6 +394,8 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
   const dragZRef = useRef<number | null>(null);
   /** move 跟手锚点：left/top 固定于此，位移走 translate3d */
   const dragAnchorRef = useRef<Frame | null>(null);
+  /** 手势期间暂存内容区焦点；先移焦再 inert，避免 Chromium 拒绝 AX 剪枝。 */
+  const gestureContentFocusRef = useRef<HTMLElement | null>(null);
 
   const def = win ? appRegistry.get(win.typeId) : undefined;
   const minSize = def?.minSize ?? FALLBACK_MIN_SIZE;
@@ -490,17 +493,61 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       releaseLock = null;
     };
     gestureRef.current = { kind, releaseCursor };
+    // ANTI-REGRESSION：手势期间只关内容命中。禁止动态切 contain /
+    // content-visibility（即使延到 rAF）——会在首个 transform 前强制整棵
+    // 重内容子树重新布局/绘制，跨 WebView2 / WKWebView / WebKitGTK 都会起拖卡一下。
+    //
+    // aria-hidden + inert：内容仍可见，但从无障碍树摘掉。WebView2 在 UIA 客户端
+    // 活跃时，跟手 translate 会每帧重算控件密集窗（设置）的 AX bounds → ~100ms
+    // longtask；display:none 能到 6ms 也符合「AX 子树被剪掉」。视觉不变。
+    //
+    // 顺序：本块必须在 data-wb-dragging / 锚点样式 / class 等失效写入之前——
+    // focus() 会同步刷新脏树；此前顺序颠倒时 pointerdown 内出现整文档强制
+    // 布局（LoAF forcedLayout 19~44ms，随窗口 DOM 规模增长），正是起拖顿挫。
+    const content = contentRef.current;
+    if (content) {
+      const active = document.activeElement;
+      gestureContentFocusRef.current =
+        active instanceof HTMLElement && content.contains(active) ? active : null;
+      if (gestureContentFocusRef.current) {
+        el.focus({ preventScroll: true });
+      }
+      content.style.pointerEvents = 'none';
+      content.inert = true;
+      content.setAttribute('aria-hidden', 'true');
+    }
     enterShellGestureGlobal();
     if (kind === 'resize') {
       suspendNativeSurface(windowId);
     } else {
       syncNativeSurface(windowId);
     }
-    const winTypeId = useWindowStore.getState().windows[windowId]?.typeId;
+    // 诊断 meta 只在 trace 开启时收集：DOM 查询别混进生产 pointerdown 热路径
+    let traceMeta: Record<string, unknown> | undefined;
+    if (isInteractionTraceEnabled()) {
+      const winTypeId = useWindowStore.getState().windows[windowId]?.typeId;
+      const traceContent = contentRef.current;
+      if (winTypeId) {
+        traceMeta = { typeId: winTypeId, contentNodeCount: traceContent?.querySelectorAll('*').length ?? 0 };
+        if (winTypeId === 'settings') {
+          const settingsModelHost = traceContent?.querySelector<HTMLElement>('[data-wb-settings-model-count]');
+          const settingsVirtualList = traceContent?.querySelector<HTMLElement>('[data-settings-virtualized]');
+          Object.assign(traceMeta, {
+            settingsModelCount: Number(settingsModelHost?.dataset.wbSettingsModelCount ?? 0),
+            settingsVirtualized: Boolean(settingsVirtualList),
+            settingsMountedVirtualRows:
+              settingsVirtualList?.querySelectorAll('[data-index]').length ?? 0,
+            settingsActiveTab:
+              traceContent?.querySelector<HTMLElement>('[data-wb-settings-active-tab]')
+                ?.dataset.wbSettingsActiveTab ?? null,
+          });
+        }
+      }
+    }
     beginInteraction({
       kind: kind === 'move' ? 'drag' : 'resize',
       windowId,
-      meta: winTypeId ? { typeId: winTypeId } : undefined,
+      meta: traceMeta,
     });
     // flag 在 enter 时已挂；begin 之后记相对时刻
     markInteraction('flagSet');
@@ -530,19 +577,6 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       markInteraction('firstMove');
     }
     markInteraction('armed');
-    // ANTI-REGRESSION：手势期间只关内容命中。禁止动态切 contain /
-    // content-visibility（即使延到 rAF）——会在首个 transform 前强制整棵
-    // 重内容子树重新布局/绘制，跨 WebView2 / WKWebView / WebKitGTK 都会起拖卡一下。
-    //
-    // aria-hidden + inert：内容仍可见，但从无障碍树摘掉。WebView2 在 UIA 客户端
-    // 活跃时，跟手 translate 会每帧重算控件密集窗（设置）的 AX bounds → ~100ms
-    // longtask；display:none 能到 6ms 也符合「AX 子树被剪掉」。视觉不变。
-    const content = contentRef.current;
-    if (content) {
-      content.style.pointerEvents = 'none';
-      content.setAttribute('aria-hidden', 'true');
-      content.inert = true;
-    }
   }, [ensureLayoutFrame, windowId]);
 
   const endShellGesture = useCallback(() => {
@@ -570,6 +604,11 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       contentRef.current.style.pointerEvents = '';
       contentRef.current.removeAttribute('aria-hidden');
       contentRef.current.inert = false;
+    }
+    const previousContentFocus = gestureContentFocusRef.current;
+    gestureContentFocusRef.current = null;
+    if (previousContentFocus?.isConnected) {
+      previousContentFocus.focus({ preventScroll: true });
     }
     resumeNativeSurface(windowId);
 

@@ -2950,7 +2950,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         // 补全弹层 150 = inputBarPopover 与拖拽遮罩 300 = inputBarDragOverlay）
         // 只在此上下文内比较，对外整体以 100 参与排序（低于移动顶栏 1100，符合设计）。
         // Tailwind 任意值无法引用 TS 常量，改档位时请与 src/config/zIndex.ts 同步。
-        'relative isolate z-[100] w-full flex-shrink-0 px-4 pt-2.5 transition-all duration-500 ease-out unified-input-docked md:px-8 md:pb-4',
+        // 性能：勿用 transition-all——大容器上 transition-all 会让每次样式失效都
+        // 检查全部属性（CDP trace 实锤拖窗期间每帧一次 Animation 失效），点名
+        // 实际会变的 padding/background 即可。
+        'relative isolate z-[100] w-full flex-shrink-0 px-4 pt-2.5 transition-[padding,background-color] duration-500 ease-out unified-input-docked md:px-8 md:pb-4',
         className
       )}
       style={{

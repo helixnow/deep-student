@@ -42,6 +42,10 @@ import { DonutChart, HBarChart } from './components/charts';
 import { PropRow } from './components/bits';
 import { AnimatedNumber } from './components/AnimatedNumber';
 import { SessionRow } from './components/SessionRow';
+import {
+  SettingsVirtualList,
+  type SettingsVirtualItem,
+} from '@/features/settings/components/SettingsVirtualList';
 import './anki-tasks.css';
 
 export interface AnkiTasksAppProps {
@@ -66,6 +70,9 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
   const [loading, setLoading] = useState(true);
   const [recovering, setRecovering] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // 会话列表滚动视口：长列表（上限可到数百行）虚拟化，压低常驻 DOM 规模
+  // （窗口拖拽的每帧税 ∝ 挂载节点数，见 wb-interaction-trace）
+  const [listScrollElement, setListScrollElement] = useState<HTMLDivElement | null>(null);
   const [filter, setFilter] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('time');
@@ -480,7 +487,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
   }
 
   const body = (
-    <CustomScrollArea className="h-full">
+    <CustomScrollArea className="h-full" viewportRef={setListScrollElement}>
       <div
         className={`wb-at-screen max-w-[960px] mx-auto w-full${
           // 移动端：列表底部预留手势导航安全区
@@ -773,20 +780,27 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 {!isSmallScreen && <span className="w-[120px] flex-shrink-0" />}
               </div>
 
-              {/* 行 */}
-              <div>
-                {sortedAndFiltered.map(s => (
-                  <SessionRow
-                    key={s.documentId}
-                    session={s}
-                    isSmallScreen={isSmallScreen}
-                    expanded={expandedId === s.documentId}
-                    onToggle={() => setExpandedId(p => (p === s.documentId ? null : s.documentId))}
-                    onJump={() => s.sourceSessionId && onNavigateToChat?.(s.sourceSessionId)}
-                    onRefresh={load}
-                  />
-                ))}
-              </div>
+              {/* 行：超过阈值走窗口虚拟化（复用外层滚动视口，动态量高兼容展开区） */}
+              <SettingsVirtualList
+                items={sortedAndFiltered.map((s): SettingsVirtualItem => ({
+                  key: s.documentId,
+                  estimateSize: expandedId === s.documentId ? 320 : 48,
+                  render: () => (
+                    <SessionRow
+                      key={s.documentId}
+                      session={s}
+                      isSmallScreen={isSmallScreen}
+                      expanded={expandedId === s.documentId}
+                      onToggle={() => setExpandedId(p => (p === s.documentId ? null : s.documentId))}
+                      onJump={() => s.sourceSessionId && onNavigateToChat?.(s.sourceSessionId)}
+                      onRefresh={load}
+                    />
+                  ),
+                }))}
+                scrollElement={listScrollElement}
+                threshold={25}
+                overscan={3}
+              />
 
               {/* 页脚 */}
               <div className="wb-at-footer">

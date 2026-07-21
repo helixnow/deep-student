@@ -40,6 +40,7 @@ import {
 import { OPEN_WALLPAPER_MANAGER_EVENT } from '@/features/workbench/components/WallpaperManagerDialog';
 import { importWallpaperToLibrary } from './wallpaperLibrary';
 import { resolveWorkbenchModeEnabled } from './workbenchMode';
+import { isWorkbenchDiagnosticsRequested } from '@/features/workbench/core/workbenchDiagnosticsGate';
 
 export type PerformanceProfile = 'quality' | 'balanced' | 'performance' | 'custom';
 
@@ -51,6 +52,11 @@ export const WORKBENCH_SETTING_KEYS = {
   tileMargins: 'desktop.workbenchTileMargins',
   dockSize: 'desktop.workbenchDockSize',
   dockAutohide: 'desktop.workbenchDockAutohide',
+  /**
+   * 下次启动是否恢复上次桌面窗口布局（默认关：冷启动更快）。
+   * 快照仍会后台保存；关闭时仅跳过启动 hydrate。
+   */
+  restoreSession: 'desktop.workbenchRestoreSession',
   /** 菜单栏自动隐藏（StatusBar 自读；见 menuBarAutohideStore） */
   menuBarAutohide: 'desktop.workbenchMenuBarAutohide',
   /** 双击标题栏行为（WindowTitleBar 自读；见 titleBarBehaviorStore） */
@@ -179,6 +185,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
   const [tileMargins, setTileMargins] = useState<TileMarginsSetting>(DEFAULT_TILE_MARGINS);
   const [dockSize, setDockSize] = useState(DOCK_SIZE_DEFAULT);
   const [dockAutohide, setDockAutohide] = useState(false);
+  const [restoreSession, setRestoreSession] = useState(false);
   const [menuBarAutohide, setMenuBarAutohide] = useState(false);
   const [titleBarDoubleClick, setTitleBarDoubleClick] = useState<TitleBarDoubleClickAction>('zoom');
   const [devPanel, setDevPanel] = useState(false);
@@ -205,6 +212,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         marginsVal,
         dockSizeVal,
         autohideVal,
+        restoreSessionVal,
         menuBarAutohideVal,
         titleBarDoubleClickVal,
         devPanelVal,
@@ -222,6 +230,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         read(WORKBENCH_SETTING_KEYS.tileMargins),
         read(WORKBENCH_SETTING_KEYS.dockSize),
         read(WORKBENCH_SETTING_KEYS.dockAutohide),
+        read(WORKBENCH_SETTING_KEYS.restoreSession),
         read(WORKBENCH_SETTING_KEYS.menuBarAutohide),
         read(WORKBENCH_SETTING_KEYS.titleBarDoubleClick),
         read(WORKBENCH_SETTING_KEYS.devPanel),
@@ -241,6 +250,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       setTileMargins(parseJsonSetting<TileMarginsSetting>(marginsVal, DEFAULT_TILE_MARGINS));
       setDockSize(parseDockSize(dockSizeVal));
       setDockAutohide(String(autohideVal ?? '') === 'true');
+      setRestoreSession(String(restoreSessionVal ?? '') === 'true');
       setMenuBarAutohide(String(menuBarAutohideVal ?? '') === 'true');
       setTitleBarDoubleClick(parseTitleBarDoubleClickAction(titleBarDoubleClickVal));
       setDevPanel(String(devPanelVal ?? '') === 'true');
@@ -653,6 +663,18 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       />
 
       <SwitchRow
+        title={t('workbench:settings.restoreSession.title')}
+        description={t('workbench:settings.restoreSession.desc')}
+        checked={restoreSession}
+        loading={!loaded}
+        onCheckedChange={(next) => {
+          if (!loaded) return;
+          setRestoreSession(next);
+          void persist(WORKBENCH_SETTING_KEYS.restoreSession, String(next), next);
+        }}
+      />
+
+      <SwitchRow
         title={t('workbench:settings.menubarAutohide.title')}
         description={t('workbench:settings.menubarAutohide.desc')}
         checked={menuBarAutohide}
@@ -690,10 +712,11 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       <SwitchRow
         title={t('workbench:settings.devPanel.title')}
         description={t('workbench:settings.devPanel.desc')}
-        checked={devPanel}
+        checked={devPanel && isWorkbenchDiagnosticsRequested()}
         loading={!loaded}
+        disabled={!isWorkbenchDiagnosticsRequested()}
         onCheckedChange={(next) => {
-          if (!loaded) return;
+          if (!loaded || !isWorkbenchDiagnosticsRequested()) return;
           setDevPanel(next);
           void persist(WORKBENCH_SETTING_KEYS.devPanel, String(next), next);
         }}

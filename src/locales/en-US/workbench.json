@@ -620,6 +620,10 @@
       "title": "Automatically Hide Dock",
       "desc": "Hides the Dock when not in use. Move the pointer to the bottom edge to reveal it."
     },
+    "restoreSession": {
+      "title": "Restore last desktop on launch",
+      "desc": "On next launch, restore previously open windows and layout. Off by default for faster cold starts; desktop state is still saved so you can turn this on later."
+    },
     "menubarAutohide": {
       "title": "Automatically Hide Menu Bar",
       "desc": "Hides the menu bar when not in use. Move the pointer to the top edge to reveal it."
@@ -633,7 +637,7 @@
     },
     "devPanel": {
       "title": "Diagnostics Panel",
-      "desc": "Shows scheduler diagnostics on the desktop: window lifecycles, memory budget and frame timing (for development)."
+      "desc": "Shows scheduler diagnostics on the desktop: window lifecycles, memory budget and frame timing. Off by default in development; start with npm run dev:tauri:diag or ?wbDiag=1."
     },
     "browserEnabled": {
       "title": "Built-in Browser",

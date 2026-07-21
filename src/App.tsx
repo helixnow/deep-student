@@ -30,7 +30,6 @@ import { useWindowDrag } from './hooks/useWindowDrag';
 import { ModernSidebar } from './components/ModernSidebar';
 import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
-import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
 import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MobileAppNavigationProvider } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
 import { initReminderScheduler } from '@/features/todo/reminderScheduler';
@@ -2081,22 +2080,6 @@ function App() {
 
     void startDragging(event);
   }, [startDragging, toggleDesktopWindowMaximize]);
-  /** 工作台 chrome 拖拽条：仅 strip 启动 startDragging（不与 CSS app-region 混用） */
-  const handleWorkbenchChromeDragMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {
-    if (event.button !== 0) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (event.detail === 2) {
-      void toggleDesktopWindowMaximize();
-      return;
-    }
-
-    void startDragging(event);
-  }, [startDragging, toggleDesktopWindowMaximize]);
   const clearHeaderHotzonePress = useCallback((element: HTMLElement) => {
     delete element.dataset.shellHotzoneStartX;
     delete element.dataset.shellHotzoneStartY;
@@ -2546,47 +2529,21 @@ function App() {
           />
         )}
 
-        {/* 桌面端：固定顶部栏；工作台模式只留 Win/Mac 窗口控制区（无标题/导航条） */}
-        {!isSmallScreen && (
+        {/* 桌面端：固定顶部栏。工作台模式不渲染——窗口拖拽与 Win 三键
+            全部由 Workbench StatusBar（wb-menubar）接管。 */}
+        {!isSmallScreen && !workbenchActive && (
         <header
           data-shell-layer="window-chrome"
           data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
-          data-workbench-chrome={workbenchActive ? 'controls-only' : undefined}
-          className={cn(
-            'desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none',
-            workbenchActive && 'desktop-shell-titlebar--workbench-chrome',
-          )}
+          className="desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none"
           style={{
-            // 工作台模式的层级由 CSS（--wb-z-menubar + 1）接管，不能被内联样式压住
-            zIndex: workbenchActive ? undefined : Z_INDEX.desktopTitlebar,
-            paddingTop: workbenchActive ? 0 : `${topbarTopMargin}px`,
-            height: `${DESKTOP_SHELL.titlebarBaseHeight + (workbenchActive ? 0 : topbarTopMargin)}px`,
-            minHeight: `${DESKTOP_SHELL.titlebarBaseHeight + (workbenchActive ? 0 : topbarTopMargin)}px`,
+            zIndex: Z_INDEX.desktopTitlebar,
+            paddingTop: `${topbarTopMargin}px`,
+            height: `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
+            minHeight: `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
           }}
-          onMouseDown={workbenchActive ? undefined : handleDesktopTitlebarMouseDown}
+          onMouseDown={handleDesktopTitlebarMouseDown}
         >
-          {workbenchActive ? (
-            <>
-              {/* Windows：应用图标拖拽区与自绘窗口控制按钮共用胶囊。macOS 由 StatusBar 接管。 */}
-              {isWindows() ? (
-                <div className="desktop-shell-workbench-chrome-host ml-auto flex h-full items-center justify-end pr-2">
-                  <div className="desktop-shell-workbench-chrome-pill">
-                    <div
-                      className="desktop-shell-workbench-drag-strip"
-                      aria-label={t('common:window_controls.drag')}
-                      title={t('common:window_controls.drag')}
-                      onMouseDown={handleWorkbenchChromeDragMouseDown}
-                    >
-                      <DeepStudentMark className="desktop-shell-workbench-app-icon" />
-                    </div>
-                    <div className="desktop-shell-workbench-chrome-controls" data-no-drag>
-                      <WindowControls />
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </>
-          ) : (
             <>
               <div
                 aria-hidden="true"
@@ -2702,7 +2659,6 @@ function App() {
                 </div>
               </div>
             </>
-          )}
         </header>
         )}
 

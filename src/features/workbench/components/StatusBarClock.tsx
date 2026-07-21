@@ -197,7 +197,7 @@ export const StatusBarClock: React.FC<StatusBarClockProps> = ({ onOpenChange }) 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
   const exposeOpen = useWorkbenchOverlay((s) => s.exposeOpen);
-  useLiquidGlassLens(panelRef, open);
+  useLiquidGlassLens(panelRef, open, { staticOnly: true });
   useFocusReturn(open);
 
   const close = useCallback(() => setPhase((p) => (p === 'open' ? 'closing' : p)), []);

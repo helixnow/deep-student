@@ -589,12 +589,12 @@ pub fn run() {
         .level_for("reqwest", log::LevelFilter::Warn)
         .level_for("deep_student_lib", log::LevelFilter::Info);
 
-    // Webview 回显只能用于开发构建；生产环境开启会与前端 console 捕获形成回路。
+    // 调试日志只写 stdout。不要启用 TargetKind::Webview：
+    // 后台日志 emit 与主线程 resize/focus 窗口事件可能争用 WebView 锁，
+    // 形成锁反转并让 Windows 主窗口触发 AppHangB1。
     #[cfg(debug_assertions)]
     {
-        log_plugin_builder = log_plugin_builder
-            .target(Target::new(TargetKind::Stdout))
-            .target(Target::new(TargetKind::Webview));
+        log_plugin_builder = log_plugin_builder.target(Target::new(TargetKind::Stdout));
     }
 
     builder
@@ -1353,10 +1353,8 @@ pub fn run() {
                 });
             }
 
-            // 快速学习小窗预加载：设置开启时提前建好隐藏窗口，
-            // 首次快捷键呼出即刻显示，无现场创建的白窗延迟。
-            #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
-            crate::quick_assistant::preload_if_enabled(&app_handle);
+            // 快速学习小窗按需创建。不要在 setup 阶段同步构建第二个隐藏
+            // WebView；Windows 上它会与主窗口启动事件争用 UI 消息循环。
 
             // macOS 窗口圆角设置
             #[cfg(target_os = "macos")]
@@ -1445,37 +1443,10 @@ pub fn run() {
                 }
             }
 
-            // Windows：WebView2 呈现位置自愈（2026-07-10 OS 模式整层错位事故）。
-            // WebView2 把 Chromium 合成输出经 DirectComposition 呈现到宿主 HWND 的
-            // 那一段，在 resize / 最大化 / 跨 DPI 显示器移动后偶发保持陈旧偏移：
-            // 页面布局正确，但整个画面上/下错位（顶部黑条、Dock 画出窗框以下）。
-            // NotifyParentWindowPositionChanged 是宿主侧标准自愈调用——强制
-            // WebView2 重新计算相对宿主窗口的呈现位置与裁剪。幂等且极廉价，
-            // 在聚焦 / 尺寸 / DPI 变化时各补一次。前端另有 useCompositorNudge
-            // 做页面侧整面重绘，两层自愈相互独立（CI：platformPerformanceConfig）。
-            #[cfg(windows)]
-            {
-                if let Some(window) = app.get_webview_window("main") {
-                    let webview_for_refresh = window.clone();
-                    window.on_window_event(move |event| {
-                        use tauri::WindowEvent;
-                        let should_refresh = matches!(
-                            event,
-                            WindowEvent::Focused(true)
-                                | WindowEvent::Resized(_)
-                                | WindowEvent::ScaleFactorChanged { .. }
-                        );
-                        if should_refresh {
-                            let _ = webview_for_refresh.with_webview(|platform| {
-                                let controller = platform.controller();
-                                // SAFETY: with_webview 在 UI 线程回调；controller 由 wry
-                                // 持有存活。该 COM 调用无出参、幂等，失败可安全忽略。
-                                let _ = unsafe { controller.NotifyParentWindowPositionChanged() };
-                            });
-                        }
-                    });
-                }
-            }
+            // Windows 的页面侧合成器自愈由 useCompositorNudge 负责。
+            // 不要在 WindowEvent 回调中同步调用 with_webview / WebView2 COM：
+            // resize/focus 事件与 WebView 日志或 IPC 并发时可能发生锁反转，
+            // 阻塞 Tauri UI 消息循环并触发 Windows AppHangB1。
 
             Ok(())
         })

@@ -2,7 +2,7 @@
  * StatusBar / StatusBarItems（SB1 壳 + SB2 信号项 + SB3 今日节律）
  * ---------------------------------------------------------------------------
  * 紧凑玻璃顶条：左侧品牌，右侧状态与工具。根 pointer-events:none，子项 auto。
- * Windows：右侧为窗控胶囊让位（data-chrome-inset=windows）。
+ * Windows：三键融入顶栏最右端，整条空白区可拖拽（data-chrome-inset=windows）。
  * 今日节律：纵向节律行（闪卡 / 番茄 / 自动化 / 任务）。
  */
 
@@ -60,14 +60,18 @@
   );
 }
 
-/* Windows 下直接收窄菜单栏边界，让快捷入口稳定停在窗控宿主左侧。 */
+/* Windows：三键融入顶栏最右端（无独立胶囊/logo），整条空白区可拖拽。 */
 .wb-menubar[data-chrome-inset='windows'] {
-  right: var(--wb-menubar-chrome-inset, 165px);
-  padding-right: 12px;
+  padding-right: 6px;
 }
 
 .wb-menubar[data-chrome-inset='windows'] .wb-menubar-trailing {
   flex-shrink: 0;
+}
+
+/* Windows 无系统交通灯：drag-region 全幅铺满顶栏（空白区拖拽 + 双击缩放） */
+.wb-menubar[data-chrome-inset='windows'] .wb-menubar-drag-region {
+  inset: 0;
 }
 
 /* macOS：状态栏与系统标题栏共面，左侧只给原生红黄绿按钮留位。 */
@@ -200,6 +204,52 @@
 .wb-menubar-brand-mark {
   width: 16px;
   height: 16px;
+}
+
+/* ==== Windows 窗控三键（融入顶栏，无外壳胶囊） ==================== */
+
+.wb-menubar-window-controls {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  pointer-events: none;
+}
+
+/* 压掉 WindowControls 自带的胶囊外壳（deep-student.css 全局样式） */
+.wb-menubar-window-controls [data-shell-window-controls] {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: auto;
+}
+
+/* 三键按菜单栏项造型融入顶栏（尺寸/圆角/前景对齐 wb-menubar-item） */
+.wb-menubar-window-controls [data-shell-window-button] {
+  height: 26px !important;
+  width: 32px !important;
+  min-height: 26px !important;
+  min-width: 32px !important;
+  border: none !important;
+  border-radius: var(--wb-menubar-item-radius, 6px) !important;
+  color: var(--wb-menubar-fg-strong, hsl(var(--foreground))) !important;
+}
+
+.wb-menubar-window-controls [data-shell-window-button]:hover,
+.wb-menubar-window-controls [data-shell-window-button]:focus-visible {
+  background: var(--wb-menubar-item-hover-bg, var(--interactive-hover, rgba(0, 0, 0, 0.08))) !important;
+  color: var(--wb-menubar-fg-strong, hsl(var(--foreground))) !important;
+}
+
+/* 关闭键保留 Windows 惯例的红色悬停（token 与非工作台顶栏同源） */
+.wb-menubar-window-controls [data-shell-window-button='close']:hover,
+.wb-menubar-window-controls [data-shell-window-button='close']:focus-visible {
+  background: var(--shell-window-close-hover, hsl(0 72% 51%)) !important;
+  color: var(--shell-window-close-foreground, #fff) !important;
 }
 
 /* ==== 聚焦应用 / 窗口菜单 ======================================== */
@@ -405,10 +455,10 @@
   box-shadow: var(--wb-glass-edge), var(--wb-shadow-popover);
   outline: none;
   pointer-events: auto;
-  /* 入场：菜单栏下拉基准 ~150ms 轻量 scale+fade，锚定入口按钮附近（仅 transform/opacity） */
+  /* 入场：轻量 scale（0.92→1），避免 wb-kf-window-open 的 0.34 大缩放打断 backdrop-filter 采样 */
   transform-origin: calc(100% - 20px) top;
-  animation: wb-kf-window-open var(--wb-motion-quick, 150ms)
-    var(--wb-ease-window-open, cubic-bezier(0.32, 0.72, 0, 1)) both;
+  animation: wb-kf-overshoot-in var(--wb-motion-quick, 150ms)
+    var(--wb-ease-overshoot, cubic-bezier(0.34, 1.28, 0.64, 1)) both;
 }
 
 /* 离场：~90ms 加速淡出（macOS 菜单消失近乎瞬时；data-phase 由 StatusBar 相位机挂） */

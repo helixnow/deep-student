@@ -33,20 +33,8 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useVendorModels } from '@/hooks/useVendorModels';
 import { consumePendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { isAndroid, isMobilePlatform } from '@/utils/platform';
-import { ShortcutSettings } from '@/command-palette';
 import '@/command-palette/styles/shortcut-settings.css';
 import { AppMenuDemo } from '@/components/ui/app-menu';
-import { McpToolsSection } from './McpToolsSection';
-import { ModelsTab } from './ModelsTab';
-import { AboutTab } from './AboutTab';
-import { AppearanceTab } from './AppearanceTab';
-import { GeneralTab } from './GeneralTab';
-import { ApisTab } from './ApisTab';
-import { ParamsTab } from './ParamsTab';
-import { ExternalSearchTab } from './ExternalSearchTab';
-import { PluginsTab } from './plugins/PluginsTab';
-import { AutomationSettingsSection } from './AutomationSettingsSection';
-import { SubagentProfilesSection } from './SubagentProfilesSection';
 import type { AutomationListen } from './automationSettingsApi';
 import { useSettingsNavigation } from './useSettingsNavigation';
 import { type UnifiedModelInfo } from '@/components/shared/UnifiedModelSelector';
@@ -137,8 +125,6 @@ import { type McpStatusInfo } from '@/mcp/mcpService';
 import { testMcpSseFrontend, testMcpHttpFrontend, testMcpWebsocketFrontend } from '@/mcp/mcpFrontendTester';
 import { getBuiltinServer, BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
 import UnifiedErrorHandler, { useUnifiedErrorHandler } from '@/components/UnifiedErrorHandler';
-import { DataImportExport } from '@/components/DataImportExport';
-import { DataGovernanceDashboard } from './DataGovernanceDashboard';
 // Tauri 2.x API导入
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { listen as tauriListen } from '@tauri-apps/api/event';
@@ -157,7 +143,28 @@ declare global {
 const isTauri = typeof window !== 'undefined' && window.__TAURI_INTERNALS__;
 const invoke = isTauri ? tauriInvoke : null;
 
+const ApisTab = React.lazy(() => import('./ApisTab').then((module) => ({ default: module.ApisTab })));
+const ExternalSearchTab = React.lazy(() => import('./ExternalSearchTab').then((module) => ({ default: module.ExternalSearchTab })));
+const ModelsTab = React.lazy(() => import('./ModelsTab').then((module) => ({ default: module.ModelsTab })));
+const PluginsTab = React.lazy(() => import('./plugins/PluginsTab').then((module) => ({ default: module.PluginsTab })));
+const McpToolsSection = React.lazy(() => import('./McpToolsSection').then((module) => ({ default: module.McpToolsSection })));
+const AutomationSettingsSection = React.lazy(() => import('./AutomationSettingsSection').then((module) => ({ default: module.AutomationSettingsSection })));
+const SubagentProfilesSection = React.lazy(() => import('./SubagentProfilesSection').then((module) => ({ default: module.SubagentProfilesSection })));
+const DataGovernanceDashboard = React.lazy(() => import('./DataGovernanceDashboard').then((module) => ({ default: module.DataGovernanceDashboard })));
+const GeneralTab = React.lazy(() => import('./GeneralTab').then((module) => ({ default: module.GeneralTab })));
+const AppearanceTab = React.lazy(() => import('./AppearanceTab').then((module) => ({ default: module.AppearanceTab })));
+const ParamsTab = React.lazy(() => import('./ParamsTab').then((module) => ({ default: module.ParamsTab })));
+const ShortcutSettings = React.lazy(() => import('@/command-palette/components/ShortcutSettings').then((module) => ({ default: module.ShortcutSettings })));
+const DataImportExport = React.lazy(() => import('@/components/DataImportExport').then((module) => ({ default: module.DataImportExport })));
+const AboutTab = React.lazy(() => import('./AboutTab').then((module) => ({ default: module.AboutTab })));
 
+const SettingsTabFallback = () => (
+  <div
+    className="wb-sys-skeleton min-h-[360px] w-full rounded-xl bg-muted/20"
+    role="status"
+    aria-label="Loading settings"
+  />
+);
 
 export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const { t, i18n } = useTranslation(['settings', 'common']);
@@ -194,6 +201,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const setActiveTab = useSettingsShellStore((state) => state.setActiveTab);
   const dataGovernanceTabTarget = useSettingsShellStore((state) => state.dataGovernanceTabTarget);
   const applySettingsRoute = useSettingsShellStore((state) => state.applySettingsRoute);
+  const [settingsScrollElement, setSettingsScrollElement] = useState<HTMLDivElement | null>(null);
   
   // 顶栏标题在 vendorState / mcpSection 就绪后统一计算（见下方 SettingsBreadcrumb）
 
@@ -1312,6 +1320,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         <CustomScrollArea
           className="min-h-0 flex-1 w-full max-w-full"
           // OverlayScrollbars 会把 viewport 的 padding 强制写成 0，水平内边距必须放在内层。
+          // viewportRef：虚拟化列表（SettingsVirtualList / ShortcutSettings）需要真实滚动元素。
+          viewportRef={setSettingsScrollElement}
           trackOffsetTop={16}
           trackOffsetBottom={16}
           trackOffsetRight={0}
@@ -1327,6 +1337,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           >
           {/* key 按 tab：切换时重挂载并播放入场动画（与桌面壳层视图切换同款观感） */}
           <div key={activeTab} className="desktop-shell-content-enter mx-auto w-full max-w-[72rem]">
+            <React.Suspense fallback={<SettingsTabFallback />}>
             <div className="space-y-6">
         {/* API配置管理 */}
         {/* API配置管理 */}
@@ -1376,6 +1387,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             isSmallScreen={effectiveMobilePanelMode}
             mobileVendorDetailOpen={mobileVendorDetailOpen}
             onMobileVendorDetailOpenChange={setMobileVendorDetailOpen}
+            scrollElement={settingsScrollElement}
           />
         )}
 
@@ -1451,6 +1463,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             onHealthCheck={handleRunHealthCheck}
             onClearCache={handleClearCaches}
             onOpenPolicy={handleOpenMcpPolicy}
+            scrollElement={settingsScrollElement}
           />
         )}
         {/* 数据统计 */}
@@ -1689,13 +1702,14 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         )}
         {/* 快捷键设置 */}
         {activeTab === 'shortcuts' && (
-          <ShortcutSettings className="min-h-[500px]" />
+          <ShortcutSettings className="min-h-[500px]" scrollElement={settingsScrollElement} />
         )}
 
         {/* 关于页面 */}
         {/* 关于页面 */}
         {activeTab === 'about' && <AboutTab />}
             </div>
+            </React.Suspense>
           </div>
           </div>
         </CustomScrollArea>
@@ -1788,7 +1802,11 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
   if (isSmallScreen) {
     return (
-      <div className="study-shell-page settings absolute inset-0 flex flex-col overflow-hidden">
+      <div
+        className="study-shell-page settings absolute inset-0 flex flex-col overflow-hidden"
+        data-wb-settings-content-ready
+        data-wb-settings-active-tab={activeTab}
+      >
         <MacTopSafeDragZone className="settings-top-safe-drag-zone" style={SETTINGS_TOP_SAFE_DRAG_ZONE_STYLE} />
         <UnifiedErrorHandler errors={mcpErrors} onDismiss={dismissMcpError} onClearAll={clearMcpErrors} />
 
@@ -1840,7 +1858,11 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
   // ===== 桌面端布局 =====
   return (
-    <div className="settings absolute inset-0 flex flex-col overflow-hidden bg-[color:var(--shell-workspace-panel)]">
+    <div
+      className="settings absolute inset-0 flex flex-col overflow-hidden bg-[color:var(--shell-workspace-panel)]"
+      data-wb-settings-content-ready
+      data-wb-settings-active-tab={activeTab}
+    >
       <UnifiedErrorHandler errors={mcpErrors} onDismiss={dismissMcpError} onClearAll={clearMcpErrors} />
 
       {/* 主内容区域 */}

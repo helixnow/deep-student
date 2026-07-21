@@ -997,45 +997,36 @@
    通过 CSS 强制覆盖，确保文字始终清晰可见
    ============================================================================ */
 
-/* 
+/*
  * Mermaid mindmap 生成的 SVG 结构：
+ * - svg 根带 aria-roledescription="mindmap"（生成后不变，天然是稳定键）
  * - 节点容器使用 class="mindmap-node" 或 class="section-X"
- * - 文字使用 <text> 和 <tspan> 元素
- * - 使用通用选择器确保覆盖所有情况
+ *
+ * 性能：勿用 g[class*="mindmap"] / g[class*="section"]——class 属性子串选择器
+ * 会让页面任何元素的 class 变化都触发这些规则的子树失效（Blink 失效集按属性名
+ * 建键）。改为按 svg 根的 aria-roledescription 作键，一次性覆盖全部节点。
  */
 
 /* 亮色模式 - Mindmap 所有节点文字强制白色 */
-.chat-v2 .mermaid-content svg g[class*="mindmap"] text,
-.chat-v2 .mermaid-content svg g[class*="mindmap"] tspan,
-.chat-v2 .mermaid-content svg g[class*="section"] text,
-.chat-v2 .mermaid-content svg g[class*="section"] tspan,
-.chat-v2 .mermaid-content svg .mindmap-node text,
-.chat-v2 .mermaid-content svg .mindmap-node tspan {
+.chat-v2 .mermaid-content svg[aria-roledescription='mindmap'] text,
+.chat-v2 .mermaid-content svg[aria-roledescription='mindmap'] tspan {
   fill: var(--diagram-node-contrast-text) !important;
   font-weight: 500;
   text-shadow: var(--text-shadow-contrast-medium);
 }
 
 /* 暗色模式 - Mindmap 文字使用浅灰色 */
-.dark .chat-v2 .mermaid-content svg g[class*="mindmap"] text,
-.dark .chat-v2 .mermaid-content svg g[class*="mindmap"] tspan,
-.dark .chat-v2 .mermaid-content svg g[class*="section"] text,
-.dark .chat-v2 .mermaid-content svg g[class*="section"] tspan,
-.dark .chat-v2 .mermaid-content svg .mindmap-node text,
-.dark .chat-v2 .mermaid-content svg .mindmap-node tspan {
+.dark .chat-v2 .mermaid-content svg[aria-roledescription='mindmap'] text,
+.dark .chat-v2 .mermaid-content svg[aria-roledescription='mindmap'] tspan {
   fill: var(--diagram-node-contrast-text) !important;
   text-shadow: var(--text-shadow-contrast-strong);
 }
 
 /* Mindmap 节点边框增强 */
-.chat-v2 .mermaid-content svg g[class*="mindmap"] rect,
-.chat-v2 .mermaid-content svg g[class*="mindmap"] circle,
-.chat-v2 .mermaid-content svg g[class*="mindmap"] ellipse,
-.chat-v2 .mermaid-content svg g[class*="mindmap"] polygon,
-.chat-v2 .mermaid-content svg g[class*="section"] rect,
-.chat-v2 .mermaid-content svg g[class*="section"] circle,
-.chat-v2 .mermaid-content svg g[class*="section"] ellipse,
-.chat-v2 .mermaid-content svg g[class*="section"] polygon {
+.chat-v2 .mermaid-content svg[aria-roledescription='mindmap'] rect,
+.chat-v2 .mermaid-content svg[aria-roledescription='mindmap'] circle,
+.chat-v2 .mermaid-content svg[aria-roledescription='mindmap'] ellipse,
+.chat-v2 .mermaid-content svg[aria-roledescription='mindmap'] polygon {
   stroke-width: 2px !important;
 }
 

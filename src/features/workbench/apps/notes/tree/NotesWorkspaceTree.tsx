@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   DndContext,
@@ -18,6 +18,7 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { FileText, FolderSimple, TreeStructure } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -151,6 +152,30 @@ export function NotesWorkspaceTree({
     [items, expandedSet],
   );
   const visibleIds = useMemo(() => rows.map((row) => row.id), [rows]);
+  // 长树虚拟化：仅挂载视口行，压低笔记窗常驻 DOM（拖窗每帧税 ∝ 节点数）
+  const TREE_VIRTUALIZE_THRESHOLD = 40;
+  const shouldVirtualizeTree = rows.length > TREE_VIRTUALIZE_THRESHOLD;
+  const [treeScrollMargin, setTreeScrollMargin] = useState(0);
+  const virtualRowsHostRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (!shouldVirtualizeTree) return;
+    const host = virtualRowsHostRef.current;
+    const scrollEl = treeRef.current;
+    if (!host || !scrollEl) return;
+    setTreeScrollMargin(
+      host.getBoundingClientRect().top
+        - scrollEl.getBoundingClientRect().top
+        + scrollEl.scrollTop,
+    );
+  }, [shouldVirtualizeTree, showRoot, rows.length]);
+  const treeVirtualizer = useVirtualizer({
+    count: shouldVirtualizeTree ? rows.length : 0,
+    getScrollElement: () => treeRef.current,
+    getItemKey: (index) => rows[index]?.id ?? index,
+    estimateSize: () => 32,
+    overscan: 8,
+    scrollMargin: treeScrollMargin,
+  });
 
   const effectiveRenamingId = renamingId ?? internalRenamingId;
 
@@ -713,7 +738,8 @@ export function NotesWorkspaceTree({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
-      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+      // WhileDragging：空闲/窗口拖拽时不做全树 droppable 测量，减 pointerdown 强制布局
+      measuring={{ droppable: { strategy: MeasuringStrategy.WhileDragging } }}
       modifiers={[restrictToVerticalAxis]}
       autoScroll={{ enabled: true, threshold: { x: 1, y: 0.25 }, ...SHELL_SAFE_AUTO_SCROLL }}
     >
@@ -744,7 +770,58 @@ export function NotesWorkspaceTree({
             />
           ) : null}
 
-          {rows.map((row) => {
+          {shouldVirtualizeTree ? (
+            <div
+              ref={virtualRowsHostRef}
+              className="relative w-full"
+              style={{ height: treeVirtualizer.getTotalSize() }}
+              data-nwt-virtualized
+            >
+              {treeVirtualizer.getVirtualItems().map((virtualRow) => {
+                const row = rows[virtualRow.index];
+                if (!row) return null;
+                const isOver = overId === row.id;
+                const dropInside = Boolean(
+                  isOver && isFolderItem(row.item) && dropPosition === 'inside' && !dropInvalid,
+                );
+                const depth = showRoot ? row.depth + 1 : row.depth;
+                return (
+                  <div
+                    key={row.id}
+                    ref={treeVirtualizer.measureElement}
+                    data-index={virtualRow.index}
+                    className="absolute left-0 top-0 w-full"
+                    style={{ transform: `translateY(${virtualRow.start - treeScrollMargin}px)` }}
+                  >
+                    <TreeRow
+                      item={row.item}
+                      depth={depth}
+                      expanded={expandedSet.has(row.id)}
+                      selected={selectionSet.has(row.id)}
+                      active={activeId === row.id}
+                      renaming={effectiveRenamingId === row.id}
+                      dropInside={dropInside}
+                      dropPosition={isOver ? dropPosition : null}
+                      dropInvalid={isOver && dropInvalid}
+                      disableDrag={disableDrag}
+                      dragMember={activeDragId !== null && draggedIdSet.has(row.id)}
+                      focusable={focusTargetId === row.id}
+                      siblingCount={row.siblingCount}
+                      indexAmongSiblings={row.indexAmongSiblings}
+                      onSelect={onSelect}
+                      onRowClick={handleRowClick}
+                      onOpen={onOpen}
+                      onToggleExpand={toggleExpandAnimated}
+                      onRenameCommit={commitRename}
+                      onRenameCancel={endRename}
+                      onRenameStart={beginRename}
+                      onContextMenu={openMenu}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          ) : rows.map((row) => {
             const isOver = overId === row.id;
             const dropInside = Boolean(
               isOver && isFolderItem(row.item) && dropPosition === 'inside' && !dropInvalid,
