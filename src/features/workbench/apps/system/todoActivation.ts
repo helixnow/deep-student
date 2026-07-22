@@ -30,6 +30,10 @@ function invalid(hint: string): ActivationResult {
   return { handled: false, code: 'INVALID_ARGS', hint };
 }
 
+/** 同步 store 写入后的读回校验：命中即返回 authoritative ack，避免 ACTION_UNVERIFIED 假阴性。 */
+const ackIf = (verified: boolean): ActivationResult =>
+  verified ? { handled: true, acknowledged: true } : { handled: true };
+
 /**
  * 桌面回收站是主内容区的内联视图（useTodoTrashView）；导航类 action
  * 生效前必须收起，否则 store 状态已切换但主区仍停留在回收站。
@@ -53,7 +57,7 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
     case 'showAutomations': {
       await closeTrashViewBestEffort();
       store.setWorkspaceView('automations');
-      return { handled: true };
+      return ackIf(useTodoStore.getState().workspaceView === 'automations');
     }
     case 'showList': {
       const listId = payloadString(ctx.payload, 'listId');
@@ -62,7 +66,8 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
       store.setWorkspaceView('todos');
       store.setActiveList(listId);
       await useTodoStore.getState().reloadCurrentView();
-      return { handled: true };
+      const after = useTodoStore.getState();
+      return ackIf(after.workspaceView === 'todos' && after.activeListId === listId);
     }
     case 'focusItem': {
       const itemId = payloadString(ctx.payload, 'itemId');
@@ -81,7 +86,8 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
       await useTodoStore.getState().loadItems(item.todoListId, false);
       useTodoStore.getState().selectItem(itemId);
       agentFlash('todo', itemId);
-      return { handled: true };
+      const after = useTodoStore.getState();
+      return ackIf(after.selectedItemId === itemId && after.workspaceView === 'todos');
     }
     case 'quickAdd': {
       const dueDate = payloadString(ctx.payload, 'dueDate');
@@ -103,7 +109,14 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
       useTodoStore.getState().setActiveList(listId);
       await useTodoStore.getState().loadItems(listId, false);
       useTodoStore.getState().requestQuickAdd(dueDate ?? undefined);
-      return { handled: true };
+      const after = useTodoStore.getState();
+      const preset = after.quickAddPreset;
+      const dueOk = dueDate ? preset?.dueDate === dueDate : preset != null;
+      return ackIf(
+        after.workspaceView === 'todos'
+          && after.activeListId === listId
+          && dueOk,
+      );
     }
     case 'showView': {
       const view = payloadString(ctx.payload, 'view') as TodoViewFilter | null;
@@ -114,7 +127,8 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
       store.setWorkspaceView('todos');
       store.setViewFilter(view);
       await useTodoStore.getState().reloadCurrentView();
-      return { handled: true };
+      const after = useTodoStore.getState();
+      return ackIf(after.workspaceView === 'todos' && after.filter.view === view);
     }
     case 'search': {
       const query = payloadString(ctx.payload, 'query') ?? '';
@@ -122,7 +136,8 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
       store.setSearch(query);
       if (query) await useTodoStore.getState().searchItems(query);
       else await useTodoStore.getState().reloadCurrentView();
-      return { handled: true };
+      const after = useTodoStore.getState();
+      return ackIf(after.workspaceView === 'todos' && after.filter.search === query);
     }
     case 'setFilters': {
       const payload = payloadRecord(ctx.payload);
@@ -143,7 +158,20 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
       }
       store.setWorkspaceView('todos');
       await useTodoStore.getState().reloadCurrentView();
-      return { handled: true };
+      const after = useTodoStore.getState();
+      let verified = after.workspaceView === 'todos';
+      if (payload.priority === null) {
+        verified = verified && after.filter.priorityFilter === null;
+      } else if (typeof payload.priority === 'string') {
+        verified = verified && after.filter.priorityFilter === payload.priority;
+      }
+      if (typeof payload.showCompleted === 'boolean') {
+        verified = verified && after.filter.showCompleted === payload.showCompleted;
+      }
+      if (typeof payload.sortBy === 'string') {
+        verified = verified && after.filter.sortBy === payload.sortBy;
+      }
+      return ackIf(verified);
     }
     default:
       return {

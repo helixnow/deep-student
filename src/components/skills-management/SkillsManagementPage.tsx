@@ -118,6 +118,7 @@ interface SkillImportZipResult {
 interface SkillRequiresProbeResult {
   bins: Array<{ name: string; found: boolean }>;
   env: Array<{ name: string; set: boolean }>;
+  python_packages?: Array<{ name: string; found: boolean }>;
   invalid: string[];
   missing_count: number;
 }
@@ -1249,7 +1250,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   // ========== 渲染主内容 ==========
   const renderMainContent = () => (
     <div className="study-shell-page flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-      <div className="study-shell-toolbar flex-shrink-0 px-4 sm:px-6 py-3 sticky top-0 z-10 space-y-3">
+      <div className="study-shell-toolbar flex-shrink-0 px-4 sm:px-8 py-3 sticky top-0 z-10 space-y-3">
         <div className={cn("flex items-center gap-4", isSmallScreen ? "justify-between" : "justify-between")}>
           <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
             <span className="font-medium text-foreground truncate">{t('skills:management.all_skills')}</span>
@@ -1488,7 +1489,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
       <CustomScrollArea
         className="flex-1 min-h-0"
         viewportRef={listViewportRef}
-        viewportClassName="p-4 sm:p-6 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))] sm:pb-[calc(1.5rem+var(--mobile-safe-area-bottom,0px))]"
+        viewportClassName="px-4 sm:px-8 pt-4 sm:pt-6 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))] sm:pb-[calc(1.5rem+var(--mobile-safe-area-bottom,0px))]"
       >
         {/* 技能源浏览器 / 上游更新确认：列表顶部内联展开（非模态，不遮挡页面） */}
         {tapBrowserOpen && (
@@ -1662,7 +1663,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             )}
           </div>
 
-          {scan.requires && (scan.requires.bins.length > 0 || scan.requires.env.length > 0) && (
+          {scan.requires &&
+            (scan.requires.bins.length > 0 ||
+              scan.requires.env.length > 0 ||
+              (scan.requires.python_packages?.length ?? 0) > 0) && (
             <div className="space-y-1">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                 {t('skills:management.requires_heading')}
@@ -1694,6 +1698,22 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   >
                     {t('skills:management.requires_env', { name: env.name })}
                     {!env.set && (
+                      <span className="text-amber-600 dark:text-amber-400">
+                        {t('skills:management.requires_missing')}
+                      </span>
+                    )}
+                  </span>
+                ))}
+                {(scan.requires.python_packages ?? []).map((pkg) => (
+                  <span
+                    key={`py-${pkg.name}`}
+                    className={cn(
+                      'study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[10px]',
+                      !pkg.found && 'study-shell-badge--warning',
+                    )}
+                  >
+                    {t('skills:management.requires_python_package', { name: pkg.name })}
+                    {!pkg.found && (
                       <span className="text-amber-600 dark:text-amber-400">
                         {t('skills:management.requires_missing')}
                       </span>

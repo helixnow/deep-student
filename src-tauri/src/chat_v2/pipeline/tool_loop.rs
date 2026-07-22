@@ -2963,16 +2963,14 @@ impl ChatV2Pipeline {
             ));
         }
 
-        let is_local_shell =
-            crate::chat_v2::approval_scope::is_local_shell_execute_tool(
-                &tool_call.name,
-                &tool_call.arguments,
-            );
-        let is_external_mcp =
-            crate::chat_v2::tool_approval_policy::is_external_mcp_call(
-                &tool_call.name,
-                &tool_call.arguments,
-            );
+        let is_local_shell = crate::chat_v2::approval_scope::is_local_shell_execute_tool(
+            &tool_call.name,
+            &tool_call.arguments,
+        );
+        let is_external_mcp = crate::chat_v2::tool_approval_policy::is_external_mcp_call(
+            &tool_call.name,
+            &tool_call.arguments,
+        );
         // The immutable catastrophe guard applies to the backend-owned local
         // shell before user rules or any preset bypass. External MCP execution
         // is remote/uncontrolled and is explicitly not claimed to be protected
@@ -2981,8 +2979,7 @@ impl ChatV2Pipeline {
             // The pipeline checkpoint does not know the runtime cwd/roots yet
             // (the executor re-checks with full context before spawn), but
             // HOME is always protected and cheap to resolve here.
-            let guard_roots: Vec<std::path::PathBuf> =
-                dirs::home_dir().into_iter().collect();
+            let guard_roots: Vec<std::path::PathBuf> = dirs::home_dir().into_iter().collect();
             tool_call
                 .arguments
                 .get("command")
@@ -2998,8 +2995,7 @@ impl ChatV2Pipeline {
             None
         };
         if immutable_command_guard.as_ref().is_some_and(|decision| {
-            decision.effect
-                == crate::chat_v2::approval_scope::ShellCommandGuardEffect::Deny
+            decision.effect == crate::chat_v2::approval_scope::ShellCommandGuardEffect::Deny
         }) {
             return Ok(build_preflight_blocked_result(
                 "终端命令被不可覆盖的灾难命令守卫拒绝".to_string(),
@@ -3117,6 +3113,7 @@ impl ChatV2Pipeline {
             Some(&plan_binding_key),
             chrono::Utc::now(),
         );
+        let mut plan_gate_just_approved = false;
         match authority_decision {
             super::authority_mode::AuthorityGateDecision::Allow => {}
             super::authority_mode::AuthorityGateDecision::BlockAsk { message, tool_name } => {
@@ -3183,7 +3180,9 @@ impl ChatV2Pipeline {
                     .await;
                 match plan_outcome {
                     ApprovalOutcome::Approved => {
-                        // Plan batch approved for this planId; continue to ApprovalManager.
+                        // Plan batch approved for this binding — skip secondary TOOL_APPROVAL
+                        // for the same binding (privilege escalation still asks below).
+                        plan_gate_just_approved = true;
                     }
                     ApprovalOutcome::Rejected { reason } => {
                         let message = match reason {
@@ -3216,14 +3215,48 @@ impl ChatV2Pipeline {
         let immutable_guard_asks = immutable_command_guard.as_ref().is_some_and(|decision| {
             decision.effect == crate::chat_v2::approval_scope::ShellCommandGuardEffect::Ask
         });
-        let approval_required =
+        let privilege_escalation =
+            crate::chat_v2::approval_scope::is_privilege_escalation_tool_for_args(
+                &tool_call.name,
+                &tool_call.arguments,
+            );
+        let plan_binding_covers_tool_approval =
+            super::authority_mode::plan_binding_satisfies_tool_approval(
+                &authority_state,
+                &plan_binding_key,
+                privilege_escalation,
+                plan_gate_just_approved,
+                chrono::Utc::now(),
+            );
+        let approval_required = if plan_binding_covers_tool_approval {
+            false
+        } else {
             super::authority_mode::requires_tool_approval(
                 &authority_state,
                 sensitivity,
                 effective_sensitivity,
                 immutable_guard_asks,
                 is_external_mcp,
+                privilege_escalation,
+            )
+        };
+        if privilege_escalation
+            && approval_required
+            && authority_state.authority_mode == crate::chat_v2::types::AuthorityMode::Craft
+            && matches!(
+                authority_state.permission_preset,
+                crate::chat_v2::types::PermissionPreset::FullAccess
+                    | crate::chat_v2::types::PermissionPreset::DangerFullAccess
+            )
+        {
+            log::info!(
+                "[ChatV2::audit] privilege_escalation=true approval_forced=true permission_preset={} session={} tool_call_id={} tool={}",
+                authority_state.permission_preset.as_str(),
+                session_id,
+                tool_call.id,
+                tool_call.name
             );
+        }
         let mut approval_requirement_satisfied = false;
 
         // trusted automation: begin —— 预授权旁路（无人值守定时任务）。
@@ -3278,10 +3311,9 @@ impl ChatV2Pipeline {
                 &approval_arguments,
             );
             let can_use_session_remember = !immutable_guard_asks
-                && authority_state.authority_mode
-                    == crate::chat_v2::types::AuthorityMode::Craft
+                && authority_state.authority_mode == crate::chat_v2::types::AuthorityMode::Craft
                 && authority_state.permission_preset
-                == crate::chat_v2::types::PermissionPreset::Relaxed
+                    == crate::chat_v2::types::PermissionPreset::Relaxed
                 && sensitivity == Some(ToolSensitivity::Medium)
                 && effective_sensitivity == Some(ToolSensitivity::Medium)
                 && !irreversible;
@@ -3448,14 +3480,14 @@ impl ChatV2Pipeline {
                 ));
             }
         };
-        let current_approval_required =
-            super::authority_mode::requires_tool_approval(
-                &current_authority,
-                sensitivity,
-                effective_sensitivity,
-                immutable_guard_asks,
-                is_external_mcp,
-            );
+        let current_approval_required = super::authority_mode::requires_tool_approval(
+            &current_authority,
+            sensitivity,
+            effective_sensitivity,
+            immutable_guard_asks,
+            is_external_mcp,
+            privilege_escalation,
+        );
         if current_approval_required && !approval_requirement_satisfied {
             return Ok(build_preflight_blocked_result(
                 "会话审批策略在执行前发生变化，当前调用需要重新审批".to_string(),
@@ -3533,7 +3565,11 @@ impl ChatV2Pipeline {
         .with_event_meta(skill_state_version, round_id.map(|s| s.to_string()))
         .with_execution_allowed_tools(execution_allowed_tools.clone())
         .with_skill_package_roots(skill_package_roots.clone())
-        .with_shell_guard_approved(immutable_guard_asks && approval_requirement_satisfied)
+        .with_shell_guard_approved(super::authority_mode::shell_guard_admitted(
+            immutable_guard_asks,
+            approval_required,
+            approval_requirement_satisfied,
+        ))
         .with_shell_authority_admission(
             current_authority.authority_mode,
             current_authority.permission_preset,

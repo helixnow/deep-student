@@ -119,6 +119,7 @@ describe('install trust chain (scan risk + trust gate)', () => {
       overwrite: false,
       expectedPackageSha256: null,
       tempZipPath: null,
+      declaredRiskLevel: null,
     });
     expect(result.installed).toBe(false);
     expect(result.scan.risk_level).toBe('medium');

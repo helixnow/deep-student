@@ -353,6 +353,77 @@ describe('StageManager R1-06', () => {
     expect((firstRes.data as AcrReceipt).status).toBe('completed');
   });
 
+  it('wait_for aliases typeId note to the notes window for lease binding', async () => {
+    const winA = useWindowStore.getState().windows['win-a'];
+    useWindowStore.setState((state) => ({
+      windows: {
+        ...state.windows,
+        'win-notes': {
+          ...winA,
+          id: 'win-notes',
+          typeId: 'notes',
+          instanceKey: null,
+          title: 'Notes',
+        },
+      },
+      focusStack: [...state.focusStack, 'win-notes'],
+      lifecycles: { ...state.lifecycles, 'win-notes': 'focused' },
+    }));
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const waitSpy = vi.spyOn(workbenchBus, 'waitForAgent').mockImplementation(async () => {
+      await gate;
+      return {
+        matched: true,
+        timedOut: false,
+        elapsedMs: 1,
+        failedConditions: [],
+        observation: {
+          windowId: 'win-notes',
+          typeId: 'notes',
+          revision: 'notes:1',
+          state: {},
+          selection: [],
+          availableActions: [],
+          entities: [],
+          affordances: [],
+        },
+      };
+    });
+
+    try {
+      const pending = stageManager.handleBridgeRequest(
+        baseReq({
+          command: 'wait_for',
+          runId: 'run-alias-note',
+          correlationId: 'corr-alias-note',
+          args: {
+            typeId: 'note',
+            conditions: [{ kind: 'stateEquals', path: 'ready', value: true }],
+            timeoutMs: 5_000,
+          },
+        }),
+      );
+      await vi.waitFor(() => {
+        expect(stageManager.getDiagnostics().transactions).toEqual([
+          expect.objectContaining({
+            runId: 'run-alias-note',
+            kind: 'wait_for',
+            windowId: 'win-notes',
+          }),
+        ]);
+      });
+      release();
+      const result = await pending;
+      expect(result.ok).toBe(true);
+    } finally {
+      waitSpy.mockRestore();
+    }
+  });
+
   it('准备资源期间取消会阻止 driver.apply', async () => {
     const winA = useWindowStore.getState().windows['win-a'];
     useWindowStore.setState((state) => ({

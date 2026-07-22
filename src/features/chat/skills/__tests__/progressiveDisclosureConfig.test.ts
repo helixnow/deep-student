@@ -153,6 +153,7 @@ describe('progressive disclosure defaults', () => {
       satisfied: false,
       missingBins: ['missing-tool'],
       missingEnv: [],
+      missingPythonPackages: [],
     });
 
     const result = JSON.parse(handleLoadSkillsToolCall('legacy-load-test-session', {

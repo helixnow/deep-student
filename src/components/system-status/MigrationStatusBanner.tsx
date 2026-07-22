@@ -5,7 +5,7 @@ import { Warning, Copy, Database, X, XCircle } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { cn } from '@/lib/utils';
-import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
+import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { getMigrationDiagnosticReport } from '@/api/dataGovernance';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
@@ -109,8 +109,11 @@ export const MigrationStatusBanner: React.FC = () => {
   const { Icon } = levelStyles;
 
   const openDataGovernance = () => {
-    // 先写入 pending tab，Settings 挂载时会消费该值完成 tab 切换
-    setPendingSettingsTab('data-governance');
+    // 错误直接进入恢复页；普通警告仍回到概览。
+    setPendingSettingsRoute({
+      tab: 'data-governance',
+      dataGovernanceTab: migrationLevel === 'error' ? 'recovery' : 'overview',
+    });
     // 切换 App 视图到 Settings
     dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
   };

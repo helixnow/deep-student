@@ -1,6 +1,8 @@
 import { create } from 'zustand';
+import type { StartupComponentIssue } from '@/types/dataGovernance';
 
 export type SystemStatusLevel = 'info' | 'warning' | 'error';
+export type { StartupComponentIssue, StartupComponentStatus } from '@/types/dataGovernance';
 
 interface SystemStatusState {
   migrationVisible: boolean;
@@ -28,9 +30,13 @@ interface SystemStatusState {
   requireMaintenanceRestart: (reason: string) => void;
   /** 退出维护模式 */
   exitMaintenanceMode: () => void;
+  /** 启动期各数据组件可用性；与全局备份/恢复维护模式分开。 */
+  componentHealth: StartupComponentIssue[];
+  setComponentHealth: (components: StartupComponentIssue[]) => void;
+  isComponentBlocked: (component: string) => boolean;
 }
 
-export const useSystemStatusStore = create<SystemStatusState>((set) => ({
+export const useSystemStatusStore = create<SystemStatusState>((set, get) => ({
   migrationVisible: false,
   migrationLevel: 'info',
   migrationMessage: '',
@@ -83,4 +89,10 @@ export const useSystemStatusStore = create<SystemStatusState>((set) => ({
         maintenanceGeneration: state.maintenanceGeneration + 1,
       };
     }),
+  componentHealth: [],
+  setComponentHealth: (components) => set({ componentHealth: components }),
+  isComponentBlocked: (component) =>
+    get()
+      .componentHealth
+      .some((entry) => entry.component === component && entry.status === 'blocked'),
 }));

@@ -83,7 +83,10 @@ describe('unified notes workspace ACR activation', { timeout: 20_000 }, () => {
       instanceKey: 'note-acr',
       action: 'scrollToHeading',
       payload: { heading: '结论', level: 2 },
-    })).resolves.toEqual({ delivered: true, result: { handled: true } });
+    })).resolves.toEqual({
+      delivered: true,
+      result: { handled: true, acknowledged: true },
+    });
     expect(openResource).toHaveBeenCalledWith({ type: 'note', id: 'note-acr' });
     expect(scrollToHeading).toHaveBeenCalledWith('结论', 2);
   });
@@ -113,7 +116,10 @@ describe('unified notes workspace ACR activation', { timeout: 20_000 }, () => {
       action: 'focusNode',
       payload: { nodeId: rootId },
     });
-    expect(focused).toEqual({ delivered: true, result: { handled: true } });
+    expect(focused).toEqual({
+      delivered: true,
+      result: { handled: true, acknowledged: true },
+    });
     expect(store.getState().focusedNodeId).toBe(rootId);
 
     const view = await workbenchBus.activateDetailed({
@@ -122,7 +128,10 @@ describe('unified notes workspace ACR activation', { timeout: 20_000 }, () => {
       action: 'setView',
       payload: { view: 'outline' },
     });
-    expect(view).toEqual({ delivered: true, result: { handled: true } });
+    expect(view).toEqual({
+      delivered: true,
+      result: { handled: true, acknowledged: true },
+    });
     expect(store.getState().currentView).toBe('outline');
     expect(decoyStore.getState().currentView).toBe('mindmap');
     unregisterDecoy();

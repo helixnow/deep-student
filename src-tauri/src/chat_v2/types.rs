@@ -1819,6 +1819,33 @@ impl ToolResultInfo {
         }
     }
 
+    /// Create a failed tool result while preserving structured diagnostics.
+    ///
+    /// Use this when a tool has a machine-readable error payload that the UI
+    /// and model still need (for example partial/rejected batch results).
+    pub fn failure_with_output(
+        tool_call_id: Option<String>,
+        block_id: Option<String>,
+        tool_name: String,
+        input: Value,
+        output: Value,
+        error: String,
+        duration_ms: u64,
+    ) -> Self {
+        Self {
+            tool_call_id,
+            block_id,
+            tool_name,
+            input,
+            output,
+            success: false,
+            error: Some(error),
+            duration_ms: Some(duration_ms),
+            reasoning_content: None,
+            thought_signature: None,
+        }
+    }
+
     /// 设置该工具调用对应的思维链内容
     pub fn with_reasoning(mut self, reasoning: Option<String>) -> Self {
         self.reasoning_content = reasoning;

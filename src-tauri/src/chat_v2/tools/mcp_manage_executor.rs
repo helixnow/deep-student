@@ -207,9 +207,7 @@ impl McpManageExecutor {
         let id_matches: Vec<usize> = list
             .iter()
             .enumerate()
-            .filter_map(|(index, entry)| {
-                (Self::entry_id(entry) == Some(needle)).then_some(index)
-            })
+            .filter_map(|(index, entry)| (Self::entry_id(entry) == Some(needle)).then_some(index))
             .collect();
         match id_matches.as_slice() {
             [index] => return Ok(Some(*index)),

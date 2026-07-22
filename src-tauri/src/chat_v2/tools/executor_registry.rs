@@ -475,14 +475,12 @@ impl ToolExecutorRegistry {
             tool_name: tool_name.to_string(),
             base_sensitivity,
             dynamic: executor.has_dynamic_sensitivity(tool_name),
-            protected:
-                crate::chat_v2::approval_scope::ignores_broad_approval_bypass_for_args(
-                    tool_name, arguments,
-                ),
-            never_remember:
-                crate::chat_v2::approval_scope::never_remember_approval_for_args(
-                    tool_name, arguments,
-                ),
+            protected: crate::chat_v2::approval_scope::ignores_broad_approval_bypass_for_args(
+                tool_name, arguments,
+            ),
+            never_remember: crate::chat_v2::approval_scope::never_remember_approval_for_args(
+                tool_name, arguments,
+            ),
         })
     }
 

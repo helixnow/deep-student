@@ -501,9 +501,10 @@ export const UnifiedSidebarContent: React.FC<UnifiedSidebarContentProps> = ({
   return (
     <CustomScrollArea
       className={cn('flex-1 min-h-0', className)}
-      viewportClassName={styles.content.viewportPadding}
+      // OverlayScrollbars 会清零 viewport padding，边距放在内层
+      viewportClassName="h-full w-full min-h-0"
     >
-      <div className={styles.content.spacing}>
+      <div className={cn(styles.content.viewportPadding, styles.content.spacing)}>
         {children}
       </div>
     </CustomScrollArea>

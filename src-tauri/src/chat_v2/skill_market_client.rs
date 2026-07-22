@@ -1,4 +1,4 @@
-//! 社区技能市场只读客户端。
+//! 社区技能市场客户端与受治理的 Agent 工具。
 //!
 //! 社区技能市场 API。
 //! - search / skills 列表 / skill detail / verify / download
@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use tauri::State;
+use tauri::{Manager, State};
 
 use super::error::{ChatV2Error, ChatV2Result};
 use super::skill_taps::repack_skill_subdir;
@@ -29,7 +29,7 @@ use super::skills::{
     install_skill_package_from_zip_bytes, prepare_skill_package_from_zip_bytes,
     SkillImportZipResult, DEFAULT_AGENT_SKILLS_BASE, MAX_SKILL_PACKAGE_ZIP_BYTES,
 };
-use super::tools::skill_install_executor::AGENT_INSTALLED_MARKER;
+use super::tools::skill_install_executor::{AGENT_INSTALLED_MARKER, POST_WRITE_TRUST_NEXT_STEP};
 use crate::commands::AppState;
 
 /// 社区技能市场 API。
@@ -1254,11 +1254,20 @@ pub async fn skill_market_verify(
     slug: String,
     version: Option<String>,
 ) -> Result<SkillMarketVerifyResult, String> {
-    let client = SkillMarketClient::shared().map_err(|e| String::from(ChatV2Error::IoError(e)))?;
+    skill_market_verify_impl(slug, version)
+        .await
+        .map_err(String::from)
+}
+
+async fn skill_market_verify_impl(
+    slug: String,
+    version: Option<String>,
+) -> ChatV2Result<SkillMarketVerifyResult> {
+    let client = SkillMarketClient::shared().map_err(ChatV2Error::IoError)?;
     client
         .verify(&slug, version.as_deref())
         .await
-        .map_err(|e| String::from(map_skill_market_err(e)))
+        .map_err(map_skill_market_err)
 }
 
 /// 下载 SkillMarket 技能 → 临时 zip → 复用 skill_scan 内核扫描。
@@ -1274,6 +1283,7 @@ pub async fn skill_market_download_and_scan(
     overwrite: Option<bool>,
     expected_package_sha256: Option<String>,
     temp_zip_path: Option<String>,
+    declared_risk_level: Option<String>,
 ) -> Result<SkillMarketDownloadScanResult, String> {
     skill_market_download_and_scan_impl(
         state,
@@ -1283,6 +1293,7 @@ pub async fn skill_market_download_and_scan(
         overwrite,
         expected_package_sha256,
         temp_zip_path,
+        declared_risk_level,
     )
     .await
     .map_err(String::from)
@@ -1296,23 +1307,39 @@ async fn skill_market_download_and_scan_impl(
     overwrite: Option<bool>,
     expected_package_sha256: Option<String>,
     temp_zip_path: Option<String>,
+    declared_risk_level: Option<String>,
 ) -> ChatV2Result<SkillMarketDownloadScanResult> {
     let install = install.unwrap_or(false);
     let overwrite = overwrite.unwrap_or(false);
     let client = SkillMarketClient::shared().map_err(ChatV2Error::IoError)?;
 
-    // 若未指定 version，先 detail 解析 latest
+    // 若未指定 version，优先复用 verify 的 latest 解析；detail 作为兼容回退。
+    // 旧实现吞掉 detail 错误后只返回 “version could not be resolved”，既丢失
+    // 根因，也迫使模型额外调用 detail 并重试。
     let mut resolved_version = version.unwrap_or_default();
+    let mut version_resolution_errors = Vec::new();
     if resolved_version.trim().is_empty() {
-        if let Ok(detail) = client.skill_detail(&slug).await {
-            resolved_version = detail.version;
+        match client.verify(&slug, None).await {
+            Ok(verdict) => resolved_version = verdict.version,
+            Err(error) => version_resolution_errors.push(format!("verify: {}", error)),
+        }
+    }
+    if resolved_version.trim().is_empty() {
+        match client.skill_detail(&slug).await {
+            Ok(detail) => resolved_version = detail.version,
+            Err(error) => version_resolution_errors.push(format!("detail: {}", error)),
         }
     }
 
     if resolved_version.is_empty() {
-        return Err(ChatV2Error::InvalidInput(
-            "Community marketplace version could not be resolved".to_string(),
-        ));
+        return Err(ChatV2Error::InvalidInput(format!(
+            "Community marketplace version could not be resolved{}",
+            if version_resolution_errors.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", version_resolution_errors.join("; "))
+            }
+        )));
     }
     let provenance = encode_skill_market_provenance(&slug, &resolved_version);
 
@@ -1379,6 +1406,23 @@ async fn skill_market_download_and_scan_impl(
             prepared.result().package_sha256
         )));
     }
+    let declared_risk_level = declared_risk_level
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| matches!(*value, "low" | "medium" | "high"))
+        .ok_or_else(|| {
+            ChatV2Error::InvalidInput(
+                "declaredRiskLevel is required when installing and must match the preceding scan"
+                    .to_string(),
+            )
+        })?;
+    if prepared.result().risk_level != declared_risk_level {
+        return Err(ChatV2Error::InvalidInput(format!(
+            "Community marketplace risk changed after confirmation: declared {}, detected {}",
+            declared_risk_level,
+            prepared.result().risk_level
+        )));
+    }
 
     let skill_id = prepared.result().skill_id.clone();
     let provenance_json = json!({
@@ -1443,12 +1487,14 @@ fn map_skill_market_err(err: String) -> ChatV2Error {
 }
 
 // ============================================================================
-// Agent 只读工具：skill_market_search / skill_market_skill_detail
+// Agent 工具：只读发现 + 受治理的验证/扫描/安装
 // ============================================================================
 
 pub mod tool_names {
     pub const SKILL_MARKET_SEARCH: &str = "skill_market_search";
     pub const SKILL_MARKET_SKILL_DETAIL: &str = "skill_market_skill_detail";
+    pub const SKILL_MARKET_VERIFY: &str = "skill_market_verify";
+    pub const SKILL_MARKET_DOWNLOAD_AND_SCAN: &str = "skill_market_download_and_scan";
 }
 
 /// SkillMarket 只读工具执行器（搜索 / 详情）。写操作（download+install）不在此暴露。
@@ -1593,6 +1639,221 @@ impl crate::chat_v2::tools::ToolExecutor for SkillMarketReadToolExecutor {
 
     fn name(&self) -> &'static str {
         "SkillMarketReadToolExecutor"
+    }
+}
+
+/// Community marketplace verification/download executor.
+///
+/// The marketplace UI already exposes these operations through Tauri commands.
+/// This executor gives the agent the same governed path, avoiding shell-based
+/// downloads and ad-hoc repackaging. The install mutation remains dynamically
+/// classified as High and therefore follows the normal approval policy.
+pub struct SkillMarketInstallToolExecutor;
+
+impl SkillMarketInstallToolExecutor {
+    pub fn new() -> Self {
+        Self
+    }
+
+    fn strip_namespace(tool_name: &str) -> &str {
+        crate::chat_v2::tools::strip_tool_namespace(tool_name)
+    }
+
+    fn required_slug(args: &Value) -> Result<String, String> {
+        args.get("slug")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| "slug is required".to_string())
+    }
+
+    fn optional_string(args: &Value, camel: &str, snake: &str) -> Option<String> {
+        args.get(camel)
+            .or_else(|| args.get(snake))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    }
+
+    async fn execute_verify(args: &Value) -> Result<Value, String> {
+        let result = skill_market_verify_impl(
+            Self::required_slug(args)?,
+            Self::optional_string(args, "version", "version"),
+        )
+        .await
+        .map_err(String::from)?;
+        serde_json::to_value(result)
+            .map_err(|error| format!("Failed to serialize marketplace verification: {}", error))
+    }
+
+    async fn execute_download(
+        args: &Value,
+        ctx: &crate::chat_v2::tools::ExecutionContext,
+    ) -> Result<Value, String> {
+        let state = ctx.window_ref().state::<AppState>();
+        let result = skill_market_download_and_scan_impl(
+            state,
+            Self::required_slug(args)?,
+            Self::optional_string(args, "version", "version"),
+            args.get("install").and_then(Value::as_bool),
+            args.get("overwrite").and_then(Value::as_bool),
+            Self::optional_string(args, "expectedPackageSha256", "expected_package_sha256"),
+            Self::optional_string(args, "tempZipPath", "temp_zip_path"),
+            Self::optional_string(args, "declaredRiskLevel", "declared_risk_level"),
+        )
+        .await
+        .map_err(String::from)?;
+        let installed = result.installed;
+        let mut output = serde_json::to_value(result).map_err(|error| {
+            format!("Failed to serialize marketplace download result: {}", error)
+        })?;
+        if let Some(object) = output.as_object_mut() {
+            if let Some(skill_id) = object
+                .get("scan")
+                .and_then(|scan| scan.get("skill_id"))
+                .cloned()
+            {
+                object.insert("skill_id".to_string(), skill_id);
+            }
+            object.insert(
+                "next_step".to_string(),
+                Value::String(if installed {
+                    POST_WRITE_TRUST_NEXT_STEP.to_string()
+                } else {
+                    "Review scan.risk_level/risk_signals and show the summary to the user, then call this tool with install=true, expectedPackageSha256=scan.package_sha256, tempZipPath=temp_zip_path, and declaredRiskLevel=scan.risk_level. The platform approval card is the confirmation boundary; do not use shell or ask for a duplicate text confirmation.".to_string()
+                }),
+            );
+        }
+        Ok(output)
+    }
+}
+
+impl Default for SkillMarketInstallToolExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::chat_v2::tools::ToolExecutor for SkillMarketInstallToolExecutor {
+    async fn execute(
+        &self,
+        call: &crate::chat_v2::types::ToolCall,
+        ctx: &crate::chat_v2::tools::ExecutionContext,
+    ) -> Result<crate::chat_v2::types::ToolResultInfo, String> {
+        use std::time::Instant;
+        let started = Instant::now();
+        let short = Self::strip_namespace(&call.name);
+        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
+
+        let result = match short {
+            tool_names::SKILL_MARKET_VERIFY => Self::execute_verify(&call.arguments).await,
+            tool_names::SKILL_MARKET_DOWNLOAD_AND_SCAN => {
+                Self::execute_download(&call.arguments, ctx).await
+            }
+            other => Err(format!(
+                "Unsupported community marketplace install tool: {}",
+                other
+            )),
+        };
+        let duration = started.elapsed().as_millis() as u64;
+
+        let tool_result = match result {
+            Ok(output) => {
+                ctx.emit_tool_call_end(Some(json!({
+                    "result": output,
+                    "durationMs": duration,
+                })));
+                crate::chat_v2::types::ToolResultInfo::success(
+                    Some(call.id.clone()),
+                    Some(ctx.block_id.clone()),
+                    call.name.clone(),
+                    call.arguments.clone(),
+                    output,
+                    duration,
+                )
+            }
+            Err(error) => {
+                ctx.emit_tool_call_error(&error);
+                crate::chat_v2::types::ToolResultInfo::failure_with_output(
+                    Some(call.id.clone()),
+                    Some(ctx.block_id.clone()),
+                    call.name.clone(),
+                    call.arguments.clone(),
+                    json!({
+                        "status": "error",
+                        "slug": call.arguments.get("slug").cloned().unwrap_or(Value::Null),
+                        "install": call.arguments.get("install").cloned().unwrap_or(Value::Bool(false)),
+                        "terminal_for_skill_workflow": true,
+                        "next_step": "Stop this candidate skill's workflow and report the error truthfully. Do not retry the same call, substitute shell/web tools, or claim installation success.",
+                    }),
+                    error,
+                    duration,
+                )
+            }
+        };
+        if let Err(error) = ctx.save_tool_block(&tool_result) {
+            log::warn!(
+                "[SkillMarketInstallToolExecutor] Failed to save tool block: {}",
+                error
+            );
+        }
+        Ok(tool_result)
+    }
+
+    fn can_handle(&self, tool_name: &str) -> bool {
+        matches!(
+            Self::strip_namespace(tool_name),
+            tool_names::SKILL_MARKET_VERIFY | tool_names::SKILL_MARKET_DOWNLOAD_AND_SCAN
+        )
+    }
+
+    fn sensitivity_level(&self, tool_name: &str) -> crate::chat_v2::tools::ToolSensitivity {
+        match Self::strip_namespace(tool_name) {
+            tool_names::SKILL_MARKET_VERIFY => crate::chat_v2::tools::ToolSensitivity::Low,
+            tool_names::SKILL_MARKET_DOWNLOAD_AND_SCAN => {
+                crate::chat_v2::tools::ToolSensitivity::High
+            }
+            _ => crate::chat_v2::tools::ToolSensitivity::High,
+        }
+    }
+
+    fn sensitivity_level_for_call(
+        &self,
+        tool_name: &str,
+        arguments: &Value,
+    ) -> crate::chat_v2::tools::ToolSensitivity {
+        if Self::strip_namespace(tool_name) == tool_names::SKILL_MARKET_DOWNLOAD_AND_SCAN
+            && !arguments
+                .get("install")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+        {
+            crate::chat_v2::tools::ToolSensitivity::Medium
+        } else {
+            self.sensitivity_level(tool_name)
+        }
+    }
+
+    fn has_dynamic_sensitivity(&self, tool_name: &str) -> bool {
+        Self::strip_namespace(tool_name) == tool_names::SKILL_MARKET_DOWNLOAD_AND_SCAN
+    }
+
+    fn concurrency_class(
+        &self,
+        tool_name: &str,
+    ) -> crate::chat_v2::tools::executor::ToolConcurrency {
+        if Self::strip_namespace(tool_name) == tool_names::SKILL_MARKET_VERIFY {
+            crate::chat_v2::tools::executor::ToolConcurrency::ReadOnly
+        } else {
+            crate::chat_v2::tools::executor::ToolConcurrency::Serial
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        "SkillMarketInstallToolExecutor"
     }
 }
 
@@ -2064,6 +2325,29 @@ mod tests {
         assert_eq!(
             executor.sensitivity_level("builtin-skill_market_search"),
             crate::chat_v2::tools::ToolSensitivity::Low
+        );
+    }
+
+    #[test]
+    fn install_tool_executor_classifies_scan_and_install_separately() {
+        use crate::chat_v2::tools::ToolExecutor;
+        let executor = SkillMarketInstallToolExecutor::new();
+        assert!(executor.can_handle("builtin-skill_market_verify"));
+        assert!(executor.can_handle("builtin-skill_market_download_and_scan"));
+        assert!(!executor.can_handle("builtin-skill_market_search"));
+        assert_eq!(
+            executor.sensitivity_level_for_call(
+                "builtin-skill_market_download_and_scan",
+                &json!({ "install": false }),
+            ),
+            crate::chat_v2::tools::ToolSensitivity::Medium
+        );
+        assert_eq!(
+            executor.sensitivity_level_for_call(
+                "builtin-skill_market_download_and_scan",
+                &json!({ "install": true }),
+            ),
+            crate::chat_v2::tools::ToolSensitivity::High
         );
     }
 }

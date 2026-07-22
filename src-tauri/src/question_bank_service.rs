@@ -516,14 +516,18 @@ impl QuestionBankService {
         // "对该次提交改判"处理（与 AI 评判 qbank_grading/pipeline.rs 的落库口径一致），
         // 不新增作答记录、不重复递增 attempt_count。
         if let Some(override_val) = is_correct_override {
-            let latest_submission =
-                VfsQuestionRepo::get_submissions_with_conn(&tx, question_id, 1)
-                    .map_err(|e| AppError::database(e.to_string()))?
-                    .into_iter()
-                    .next();
+            let latest_submission = VfsQuestionRepo::get_submissions_with_conn(&tx, question_id, 1)
+                .map_err(|e| AppError::database(e.to_string()))?
+                .into_iter()
+                .next();
             if let Some(latest) = latest_submission {
                 if latest.is_correct.is_none() && latest.user_answer == user_answer {
-                    return self.regrade_pending_submission_in_tx(tx, question, latest, override_val);
+                    return self.regrade_pending_submission_in_tx(
+                        tx,
+                        question,
+                        latest,
+                        override_val,
+                    );
                 }
             }
         }

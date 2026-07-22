@@ -7,6 +7,7 @@
  */
 import { getSetting } from '@/utils/settingsApi';
 import { isContentDirty } from '../apps/content/contentDirtyRegistry';
+import { resolveWorkbenchAppTypeId } from '../apps/content/typeMap';
 import { prepareWorkspaceResource } from '../apps/notes/workspaceRegistry';
 import { appRegistry } from '../core/appRegistry';
 import { getAgentUndo } from '../core/agentUndoJournal';
@@ -716,13 +717,14 @@ function resolveAgentRequestWindowId(target: AgentWindowTarget): string | null {
   const state = useWindowStore.getState();
   if (target.windowId) return state.windows[target.windowId]?.id ?? null;
   if (target.typeId) {
+    const appTypeId = resolveWorkbenchAppTypeId(target.typeId);
     const candidates = Object.values(state.windows).filter(
-      (window) => window.typeId === target.typeId,
+      (window) => window.typeId === appTypeId,
     );
     if (target.instanceKey) {
       return candidates.find((window) => window.instanceKey === target.instanceKey)?.id ?? null;
     }
-    if (appRegistry.get(target.typeId)?.instanceMode === 'single') {
+    if (appRegistry.get(appTypeId)?.instanceMode === 'single') {
       return candidates[0]?.id ?? null;
     }
     const focusedId = state.focusStack.at(-1);
@@ -912,8 +914,9 @@ function resolveLegacyMutationWindowId(req: AcrBridgeRequest): string | null {
   }
   const typeId = typeof args.typeId === 'string' ? args.typeId : '';
   const instanceKey = typeof args.instanceKey === 'string' ? args.instanceKey : null;
+  const appTypeId = resolveWorkbenchAppTypeId(typeId);
   const candidates = Object.values(useWindowStore.getState().windows).filter(
-    (window) => window.typeId === typeId,
+    (window) => window.typeId === appTypeId,
   );
   return (
     instanceKey
@@ -1891,8 +1894,9 @@ async function handleApplyOps(
     : undefined;
   let preparingWindowId = notesWindow?.id ?? initialProbe.windowId;
   if (!preparingWindowId && target.resourceId) {
+    const appTypeId = resolveWorkbenchAppTypeId(target.typeId);
     preparingWindowId = Object.values(useWindowStore.getState().windows).find(
-      (window) => window.typeId === target.typeId
+      (window) => window.typeId === appTypeId
         && window.instanceKey === target.resourceId,
     )?.id ?? null;
   }
@@ -1923,8 +1927,9 @@ async function handleApplyOps(
     const probed = probeTarget(target);
     let windowId = probed.windowId;
     if (!target.windowId && !windowId && target.resourceId) {
+      const appTypeId = resolveWorkbenchAppTypeId(target.typeId);
       const found = Object.values(useWindowStore.getState().windows).find(
-        (window) => window.typeId === target.typeId
+        (window) => window.typeId === appTypeId
           && window.instanceKey === target.resourceId,
       );
       windowId = found?.id ?? null;

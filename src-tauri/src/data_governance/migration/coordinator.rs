@@ -17,9 +17,11 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use rusqlite::OptionalExtension;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::data_governance::schema_registry::{DatabaseId, SchemaRegistry};
+use crate::data_governance::StartupComponentHealth;
 
 /// 记录并跳过迭代中的错误，避免静默丢弃
 fn log_and_skip_err<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> {
@@ -59,6 +61,21 @@ const CHAT_V2_SESSION_TAGS_SYNC_TRIGGERS: [&str; 3] = [
 ];
 const CORE_BACKUP_ROOT_DIR_NAME: &str = "migration_core_backups";
 const CORE_BACKUP_RETENTION_COUNT: usize = 5;
+const RESTORE_FAILURE_JOURNAL_FILE: &str = "restore-failures.json";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistentRestoreFailure {
+    database: DatabaseId,
+    migration_error: String,
+    restore_error: String,
+    failed_at: String,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct PersistentRestoreFailureJournal {
+    #[serde(default)]
+    failures: Vec<PersistentRestoreFailure>,
+}
 
 /// 已知历史 checksum 漂移的显式 allowlist（fail-close 的唯一放行通道）。
 ///
@@ -130,6 +147,8 @@ pub struct MigrationReport {
     pub total_duration_ms: u64,
     /// 错误信息（如果有）
     pub error: Option<String>,
+    /// Per-component startup health, including isolated failures and dependency skips.
+    pub component_health: StartupComponentHealth,
 }
 
 impl MigrationReport {
@@ -140,6 +159,7 @@ impl MigrationReport {
             success: true,
             total_duration_ms: 0,
             error: None,
+            component_health: StartupComponentHealth::default(),
         }
     }
 
@@ -196,9 +216,16 @@ impl MigrationCoordinator {
 
     /// 执行所有数据库的迁移
     ///
-    /// 按依赖顺序执行，任一数据库失败则停止后续迁移。
+    /// 按依赖顺序执行。单库失败只恢复并阻断该库，跳过其传递依赖，
+    /// 同时继续迁移无关数据库。
     /// 迁移前检查磁盘可用空间，空间不足时 fail-fast。
     pub fn run_all(&mut self) -> Result<MigrationReport, MigrationError> {
+        if !cfg!(feature = "data_governance") {
+            return Err(MigrationError::NotImplemented(
+                "Data governance feature is not enabled".to_string(),
+            ));
+        }
+
         let start = std::time::Instant::now();
         let mut report = MigrationReport::new();
 
@@ -209,6 +236,12 @@ impl MigrationCoordinator {
 
         // Issue #11 修复：迁移前检查磁盘可用空间
         self.preflight_disk_space_check()?;
+
+        // 上次单库恢复如果未完成，必须先基于当时的可信快照重试。未恢复前不创建
+        // 新快照，否则会把已经迁移失败的文件覆盖成新的“基线”。
+        if let Some(persisted_report) = self.retry_persisted_restore_failures(start)? {
+            return Ok(persisted_report);
+        }
 
         // 核心库迁移前保护：仅在存在待迁移项时，且同一启动周期只备份一次初始状态
         self.maybe_backup_core_databases_before_migration()?;
@@ -227,19 +260,38 @@ impl MigrationCoordinator {
         );
 
         for db_id in ordered_databases {
-            // fail-close：依赖不满足时立即中断
+            // 依赖失败只阻断当前组件；无关数据库仍继续迁移。
             if let Err(e) = self.check_dependencies(&db_id, &report) {
-                tracing::error!(
-                    "❌ [MigrationCoordinator] {} 依赖检查失败: {}",
+                let dependency = match &e {
+                    MigrationError::DependencyNotSatisfied { dependency, .. } => dependency.clone(),
+                    _ => "unknown".to_string(),
+                };
+                let reason = format!("Skipped because dependency '{}' is blocked", dependency);
+                tracing::warn!(
+                    "⚠️ [MigrationCoordinator] {} 依赖检查失败，跳过该组件: {}",
                     db_id.as_str(),
                     e
                 );
-                report.success = false;
-                report.error = Some(e.to_string());
-                return Err(e);
+                report.component_health.mark_dependency_blocked(
+                    db_id.as_str(),
+                    &dependency,
+                    reason.clone(),
+                );
+                let current_version = self.current_database_version_or_zero(&db_id);
+                report.add(DatabaseMigrationReport {
+                    id: db_id,
+                    from_version: current_version,
+                    to_version: current_version,
+                    applied_count: 0,
+                    success: false,
+                    duration_ms: 0,
+                    error: Some(reason),
+                });
+                continue;
             }
 
-            // 执行迁移（任一数据库失败即停止）
+            let from_version = self.current_database_version_or_zero(&db_id);
+            let migration_started = std::time::Instant::now();
             match self.migrate_database(db_id.clone()) {
                 Ok(db_report) => {
                     tracing::info!(
@@ -252,61 +304,57 @@ impl MigrationCoordinator {
                     report.add(db_report);
                 }
                 Err(e) => {
-                    let completed_dbs: Vec<&str> = report
-                        .databases
-                        .iter()
-                        .filter(|r| r.success)
-                        .map(|r| r.id.as_str())
-                        .collect();
                     tracing::error!(
                         failed_db = db_id.as_str(),
                         error = %e,
-                        completed_dbs = ?completed_dbs,
-                        "❌ [MigrationCoordinator] {} 迁移失败 (已完成: {:?})",
+                        "❌ [MigrationCoordinator] {} 迁移失败",
                         db_id.as_str(),
-                        completed_dbs,
                     );
 
-                    // 自动恢复：从迁移前快照恢复所有核心库到一致状态
-                    tracing::warn!(
-                        "[MigrationCoordinator] 尝试从迁移前快照自动恢复所有核心数据库..."
-                    );
-                    match self.restore_from_latest_core_backup() {
-                        Ok(count) => {
-                            tracing::info!(
-                                "[MigrationCoordinator] 自动恢复成功: 已恢复 {} 个数据库到迁移前状态",
-                                count
-                            );
-                            report.success = false;
-                            report.error = Some(format!(
-                                "Database '{}' migration failed: {}. Auto-recovered {} databases from pre-migration snapshot. Completed before failure: [{}]",
-                                db_id.as_str(),
-                                e,
-                                count,
-                                completed_dbs.join(", "),
-                            ));
-                            return Err(MigrationError::RecoveredFromBackup {
-                                original_error: format!(
-                                    "Database '{}' migration failed: {}",
-                                    db_id.as_str(),
-                                    e
-                                ),
-                                restored_count: count,
-                            });
-                        }
+                    // 只恢复失败数据库。成功的无关数据库不得回滚。
+                    let failure_reason = match self
+                        .restore_database_from_latest_core_backup(&db_id)
+                    {
+                        Ok(()) => format!(
+                            "Database '{}' migration failed: {}. Restored this database from the startup snapshot.",
+                            db_id.as_str(),
+                            e
+                        ),
                         Err(restore_err) => {
-                            tracing::error!("[MigrationCoordinator] 自动恢复失败: {}", restore_err);
-                            report.success = false;
-                            report.error = Some(format!(
-                                "Database '{}' migration failed: {}. Auto-recovery also failed: {}. Successfully completed: [{}]",
+                            tracing::error!(
+                                failed_db = db_id.as_str(),
+                                error = %restore_err,
+                                "[MigrationCoordinator] 单库自动恢复失败"
+                            );
+                            self.record_restore_failure(
+                                &db_id,
+                                &e.to_string(),
+                                &restore_err.to_string(),
+                            )?;
+                            format!(
+                                "Database '{}' migration failed: {}. Restoring this database also failed: {}",
                                 db_id.as_str(),
                                 e,
-                                restore_err,
-                                completed_dbs.join(", "),
-                            ));
-                            return Err(e);
+                                restore_err
+                            )
                         }
-                    }
+                    };
+                    report
+                        .component_health
+                        .mark_blocked(db_id.as_str(), failure_reason.clone());
+                    report.error = Some(match report.error.take() {
+                        Some(previous) => format!("{}; {}", previous, failure_reason),
+                        None => failure_reason.clone(),
+                    });
+                    report.add(DatabaseMigrationReport {
+                        id: db_id,
+                        from_version,
+                        to_version: from_version,
+                        applied_count: 0,
+                        success: false,
+                        duration_ms: migration_started.elapsed().as_millis() as u64,
+                        error: Some(failure_reason),
+                    });
                 }
             }
         }
@@ -320,8 +368,234 @@ impl MigrationCoordinator {
         Ok(report)
     }
 
+    fn current_database_version_or_zero(&self, id: &DatabaseId) -> u32 {
+        let path = self.get_database_path(id);
+        if !path.exists() {
+            return 0;
+        }
+        rusqlite::Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .ok()
+        .and_then(|conn| self.get_current_version(&conn).ok())
+        .unwrap_or(0)
+    }
+
     fn core_backup_root_dir(&self) -> PathBuf {
         self.app_data_dir.join(CORE_BACKUP_ROOT_DIR_NAME)
+    }
+
+    fn restore_failure_journal_path(&self) -> PathBuf {
+        self.core_backup_root_dir()
+            .join(RESTORE_FAILURE_JOURNAL_FILE)
+    }
+
+    fn restore_failure_journal_backup_path(&self) -> PathBuf {
+        self.core_backup_root_dir()
+            .join("restore-failures.json.bak")
+    }
+
+    fn load_restore_failure_journal(
+        &self,
+    ) -> Result<PersistentRestoreFailureJournal, MigrationError> {
+        let primary = self.restore_failure_journal_path();
+        let backup = self.restore_failure_journal_backup_path();
+        let path = if primary.is_file() {
+            primary
+        } else if backup.is_file() {
+            backup
+        } else {
+            return Ok(PersistentRestoreFailureJournal::default());
+        };
+        let content = std::fs::read_to_string(&path).map_err(|error| {
+            MigrationError::Database(format!(
+                "无法读取单库恢复故障记录 {}: {}",
+                path.display(),
+                error
+            ))
+        })?;
+        serde_json::from_str(&content).map_err(|error| {
+            MigrationError::Database(format!(
+                "单库恢复故障记录已损坏 {}: {}",
+                path.display(),
+                error
+            ))
+        })
+    }
+
+    fn persist_restore_failure_journal(
+        &self,
+        journal: &PersistentRestoreFailureJournal,
+    ) -> Result<(), MigrationError> {
+        let path = self.restore_failure_journal_path();
+        let backup = self.restore_failure_journal_backup_path();
+        if journal.failures.is_empty() {
+            if path.exists() {
+                std::fs::remove_file(&path).map_err(|error| {
+                    MigrationError::Database(format!(
+                        "清除单库恢复故障记录失败 {}: {}",
+                        path.display(),
+                        error
+                    ))
+                })?;
+            }
+            if backup.exists() {
+                std::fs::remove_file(&backup)?;
+            }
+            return Ok(());
+        }
+        let parent = path.parent().ok_or_else(|| {
+            MigrationError::Database("单库恢复故障记录路径没有父目录".to_string())
+        })?;
+        std::fs::create_dir_all(parent)?;
+        let temp = path.with_extension("json.tmp");
+        let content = serde_json::to_vec_pretty(journal).map_err(|error| {
+            MigrationError::Database(format!("序列化恢复故障记录失败: {error}"))
+        })?;
+        {
+            use std::io::Write;
+            let mut file = std::fs::File::create(&temp)?;
+            file.write_all(&content)?;
+            file.sync_all()?;
+        }
+        if path.exists() {
+            if backup.exists() {
+                std::fs::remove_file(&backup)?;
+            }
+            std::fs::rename(&path, &backup)?;
+        }
+        if let Err(error) = std::fs::rename(&temp, &path) {
+            if backup.exists() {
+                let _ = std::fs::rename(&backup, &path);
+            }
+            return Err(error.into());
+        }
+        if backup.exists() {
+            std::fs::remove_file(&backup)?;
+        }
+        Ok(())
+    }
+
+    fn record_restore_failure(
+        &self,
+        database: &DatabaseId,
+        migration_error: &str,
+        restore_error: &str,
+    ) -> Result<(), MigrationError> {
+        let mut journal = self.load_restore_failure_journal()?;
+        journal
+            .failures
+            .retain(|failure| failure.database != *database);
+        journal.failures.push(PersistentRestoreFailure {
+            database: database.clone(),
+            migration_error: migration_error.to_string(),
+            restore_error: restore_error.to_string(),
+            failed_at: chrono::Utc::now().to_rfc3339(),
+        });
+        self.persist_restore_failure_journal(&journal)
+    }
+
+    fn retry_persisted_restore_failures(
+        &self,
+        started: std::time::Instant,
+    ) -> Result<Option<MigrationReport>, MigrationError> {
+        let journal = self.load_restore_failure_journal()?;
+        if journal.failures.is_empty() {
+            return Ok(None);
+        }
+
+        tracing::warn!(
+            failures = journal.failures.len(),
+            "[MigrationCoordinator] 发现未完成的单库恢复，先重试可信快照恢复"
+        );
+        let mut remaining = Vec::new();
+        for mut failure in journal.failures {
+            match self.restore_database_from_latest_core_backup(&failure.database) {
+                Ok(()) => tracing::info!(
+                    database = failure.database.as_str(),
+                    "[MigrationCoordinator] 持久化单库恢复重试成功"
+                ),
+                Err(error) => {
+                    failure.restore_error = error.to_string();
+                    failure.failed_at = chrono::Utc::now().to_rfc3339();
+                    remaining.push(failure);
+                }
+            }
+        }
+        let journal = PersistentRestoreFailureJournal {
+            failures: remaining,
+        };
+        self.persist_restore_failure_journal(&journal)?;
+        if journal.failures.is_empty() {
+            return Ok(None);
+        }
+
+        let mut report = MigrationReport::new();
+        let blocked: HashSet<DatabaseId> = journal
+            .failures
+            .iter()
+            .map(|failure| failure.database.clone())
+            .collect();
+        for database in DatabaseId::all_ordered() {
+            if let Some(failure) = journal
+                .failures
+                .iter()
+                .find(|failure| failure.database == database)
+            {
+                let current_version = self.current_database_version_or_zero(&database);
+                let reason = format!(
+                    "Database '{}' remains blocked: migration failed ({}); restoring the trusted startup snapshot failed again ({})",
+                    database.as_str(),
+                    failure.migration_error,
+                    failure.restore_error
+                );
+                report
+                    .component_health
+                    .mark_blocked(database.as_str(), reason.clone());
+                report.add(DatabaseMigrationReport {
+                    id: database,
+                    from_version: current_version,
+                    to_version: current_version,
+                    applied_count: 0,
+                    success: false,
+                    duration_ms: 0,
+                    error: Some(reason),
+                });
+                continue;
+            }
+            if let Some(dependency) = database
+                .dependencies()
+                .iter()
+                .find(|dependency| blocked.contains(*dependency))
+            {
+                let current_version = self.current_database_version_or_zero(&database);
+                let reason = format!(
+                    "Skipped because dependency '{}' has an unresolved restore failure",
+                    dependency.as_str()
+                );
+                report.component_health.mark_dependency_blocked(
+                    database.as_str(),
+                    dependency.as_str(),
+                    reason.clone(),
+                );
+                report.add(DatabaseMigrationReport {
+                    id: database,
+                    from_version: current_version,
+                    to_version: current_version,
+                    applied_count: 0,
+                    success: false,
+                    duration_ms: 0,
+                    error: Some(reason),
+                });
+            }
+        }
+        report.error = Some(
+            "One or more databases could not be restored from the trusted startup snapshot"
+                .to_string(),
+        );
+        report.total_duration_ms = started.elapsed().as_millis() as u64;
+        Ok(Some(report))
     }
 
     fn startup_guard_key(&self) -> String {
@@ -350,7 +624,21 @@ impl MigrationCoordinator {
     }
 
     fn maybe_backup_core_databases_before_migration(&mut self) -> Result<(), MigrationError> {
-        let pending = self.pending_migrations_count()?;
+        let pending = match self.pending_migrations_count() {
+            Ok(pending) => pending,
+            Err(error) => {
+                // A corrupt/unreadable database must be handled by the per-database
+                // migration and restore path below. Failing here turns one damaged
+                // component into a global startup failure, while attempting a new
+                // core snapshot could overwrite the last trusted recovery point.
+                tracing::warn!(
+                    error = %error,
+                    data_dir = %self.app_data_dir.display(),
+                    "[MigrationCoordinator] 无法读取部分数据库版本；跳过新核心快照并继续逐库隔离迁移"
+                );
+                return Ok(());
+            }
+        };
         if pending == 0 {
             tracing::info!(
                 "[MigrationCoordinator] 当前无待执行迁移，跳过核心库快照备份: {}",
@@ -583,6 +871,116 @@ impl MigrationCoordinator {
         self.failpoint("after_restore")?;
 
         Ok(restored)
+    }
+
+    /// Restore exactly one governed database from the latest startup snapshot.
+    ///
+    /// If the database did not exist when the snapshot was created, recovery
+    /// removes the newly-created failed database instead of treating it as valid.
+    pub fn restore_database_from_latest_core_backup(
+        &self,
+        id: &DatabaseId,
+    ) -> Result<(), MigrationError> {
+        self.failpoint("before_restore")?;
+
+        let root = self.core_backup_root_dir();
+        let mut snapshot_dirs: Vec<PathBuf> = std::fs::read_dir(&root)
+            .map_err(|e| {
+                MigrationError::Database(format!(
+                    "无法读取迁移前快照目录 {}: {}",
+                    root.display(),
+                    e
+                ))
+            })?
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.is_dir()
+                    && path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| name.starts_with("startup_"))
+            })
+            .collect();
+        snapshot_dirs.sort();
+        let latest = snapshot_dirs
+            .last()
+            .ok_or_else(|| MigrationError::Database("无迁移前快照目录可用于恢复".to_string()))?;
+
+        let relative = match id {
+            DatabaseId::Vfs => "databases/vfs.db",
+            DatabaseId::ChatV2 => "chat_v2.db",
+            DatabaseId::Mistakes => "mistakes.db",
+            DatabaseId::LlmUsage => "llm_usage.db",
+        };
+        let src = latest.join(relative);
+        let dst = self.get_database_path(id);
+
+        if src.is_file() {
+            if let Some(parent) = dst.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            Self::backup_sqlite_consistent(&src, &dst)?;
+        } else {
+            // Metadata from snapshots created by this coordinator is the proof
+            // that an omitted file did not exist before migration.
+            let metadata_path = latest.join("metadata.json");
+            let content = std::fs::read_to_string(&metadata_path).map_err(|e| {
+                MigrationError::Database(format!(
+                    "快照缺少数据库 {} 且无法读取元数据 {}: {}",
+                    relative,
+                    metadata_path.display(),
+                    e
+                ))
+            })?;
+            let metadata: serde_json::Value = serde_json::from_str(&content)
+                .map_err(|e| MigrationError::Database(format!("解析快照元数据失败: {}", e)))?;
+            let copied_files = metadata
+                .get("copied_files")
+                .and_then(|value| value.as_array())
+                .ok_or_else(|| {
+                    MigrationError::Database("快照元数据缺少 copied_files".to_string())
+                })?;
+            if copied_files
+                .iter()
+                .any(|value| value.as_str() == Some(relative))
+            {
+                return Err(MigrationError::Database(format!(
+                    "快照声明包含数据库但文件不存在: {}",
+                    src.display()
+                )));
+            }
+            if dst.exists() {
+                std::fs::remove_file(&dst).map_err(|e| {
+                    MigrationError::Database(format!(
+                        "删除迁移前不存在的失败数据库 {} 失败: {}",
+                        dst.display(),
+                        e
+                    ))
+                })?;
+            }
+        }
+
+        for ext in ["db-wal", "db-shm"] {
+            let residual = dst.with_extension(ext);
+            if residual.exists() {
+                std::fs::remove_file(&residual).map_err(|e| {
+                    MigrationError::Database(format!(
+                        "清理恢复后的残留文件 {} 失败: {}",
+                        residual.display(),
+                        e
+                    ))
+                })?;
+            }
+        }
+
+        self.failpoint("after_restore")?;
+        tracing::info!(
+            database = id.as_str(),
+            snapshot = %latest.display(),
+            "[MigrationCoordinator] 单数据库恢复完成"
+        );
+        Ok(())
     }
 
     fn backup_core_databases_once_per_startup(&mut self) -> Result<(), MigrationError> {
@@ -4190,12 +4588,37 @@ END;",
     /// 从所有数据库读取当前版本信息，生成统一的 SchemaRegistry。
     /// 支持多种迁移系统：Refinery、ChatV2、LLM Usage 等。
     pub fn aggregate_schema_registry(&self) -> Result<SchemaRegistry, MigrationError> {
+        self.aggregate_schema_registry_internal(None)
+    }
+
+    /// Aggregate healthy components while isolating per-database read failures.
+    pub fn aggregate_schema_registry_with_health(
+        &self,
+        component_health: &mut StartupComponentHealth,
+    ) -> Result<SchemaRegistry, MigrationError> {
+        self.aggregate_schema_registry_internal(Some(component_health))
+    }
+
+    fn aggregate_schema_registry_internal(
+        &self,
+        mut component_health: Option<&mut StartupComponentHealth>,
+    ) -> Result<SchemaRegistry, MigrationError> {
         use crate::data_governance::schema_registry::{get_data_contract_version, DatabaseStatus};
 
         tracing::info!("📊 [SchemaAggregation] 开始聚合数据库 Schema 状态...");
         let mut registry = SchemaRegistry::new();
 
         for db_id in DatabaseId::all_ordered() {
+            if component_health
+                .as_ref()
+                .is_some_and(|health| health.is_blocked(db_id.as_str()))
+            {
+                tracing::warn!(
+                    database = db_id.as_str(),
+                    "⏭️ [SchemaAggregation] 跳过已阻断数据库"
+                );
+                continue;
+            }
             let db_path = self.get_database_path(&db_id);
 
             // 如果数据库文件不存在，记录并跳过
@@ -4208,14 +4631,53 @@ END;",
                 continue;
             }
 
-            let conn = rusqlite::Connection::open(&db_path)
-                .map_err(|e| MigrationError::Database(e.to_string()))?;
+            let conn = match rusqlite::Connection::open(&db_path) {
+                Ok(conn) => conn,
+                Err(error) => {
+                    let error = MigrationError::Database(format!("{}: {}", db_id.as_str(), error));
+                    if let Some(health) = component_health.as_deref_mut() {
+                        health.mark_blocked(
+                            db_id.as_str(),
+                            format!("Schema aggregation failed: {}", error),
+                        );
+                        health.apply_database_dependency_closure();
+                        continue;
+                    }
+                    return Err(error);
+                }
+            };
 
-            let version = self.get_current_version(&conn)?;
+            let version = match self.get_current_version(&conn) {
+                Ok(version) => version,
+                Err(error) => {
+                    if let Some(health) = component_health.as_deref_mut() {
+                        health.mark_blocked(
+                            db_id.as_str(),
+                            format!("Schema version read failed: {}", error),
+                        );
+                        health.apply_database_dependency_closure();
+                        continue;
+                    }
+                    return Err(error);
+                }
+            };
             let migration_set = self.get_migration_set(&db_id);
 
             // 读取迁移历史（包含 Refinery 记录的 checksum）
-            let history = self.read_migration_history(&conn)?;
+            let history = match self.read_migration_history(&conn) {
+                Ok(history) => history,
+                Err(error) => {
+                    if let Some(health) = component_health.as_deref_mut() {
+                        health.mark_blocked(
+                            db_id.as_str(),
+                            format!("Migration history read failed: {}", error),
+                        );
+                        health.apply_database_dependency_closure();
+                        continue;
+                    }
+                    return Err(error);
+                }
+            };
 
             // 使用 Refinery 记录的最新 checksum（权威来源）
             let checksum = history
@@ -5962,6 +6424,36 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_core_backup_preflight_isolates_unreadable_database() {
+        let (mut coordinator, temp_dir) = create_test_coordinator();
+        let vfs_db = temp_dir.path().join("databases").join("vfs.db");
+        std::fs::create_dir_all(vfs_db.parent().unwrap()).unwrap();
+        std::fs::write(&vfs_db, b"not a sqlite database").unwrap();
+
+        mark_latest_version(
+            &temp_dir.path().join("chat_v2.db"),
+            CHAT_V2_MIGRATION_SET.latest_version() as u32,
+        );
+        mark_latest_version(
+            &temp_dir.path().join("mistakes.db"),
+            MISTAKES_MIGRATIONS.latest_version() as u32,
+        );
+        mark_latest_version(
+            &temp_dir.path().join("llm_usage.db"),
+            LLM_USAGE_MIGRATION_SET.latest_version() as u32,
+        );
+
+        coordinator
+            .maybe_backup_core_databases_before_migration()
+            .expect("unreadable component must not abort global migration preflight");
+
+        assert!(
+            !coordinator.core_backup_root_dir().exists(),
+            "an unreadable database must not seed a new trusted core snapshot"
+        );
+    }
+
     /// 复现 V20260202 (llm_usage) 迁移失败场景
     ///
     /// 模拟已完成 V20260130+V20260131+V20260201 的数据库，
@@ -6301,55 +6793,41 @@ mod tests {
     fn test_failpoint_injection_keeps_core_state_atomic_and_retry_succeeds() {
         struct Case {
             point: &'static str,
-            expect_recovered_error: bool,
+            failed_component: Option<DatabaseId>,
         }
         let cases = [
-            // 核心快照完成后、任何库迁移前（错误直接上抛，不走恢复）
             Case {
                 point: "after_core_backup",
-                expect_recovered_error: false,
+                failed_component: None,
             },
-            // 第二个库迁移前（vfs 已完成 → 必须整体回滚）
             Case {
                 point: "before_db_migration::llm_usage",
-                expect_recovered_error: true,
+                failed_component: Some(DatabaseId::LlmUsage),
             },
-            // 第三个库迁移前
             Case {
                 point: "before_db_migration::chat_v2",
-                expect_recovered_error: true,
+                failed_component: Some(DatabaseId::ChatV2),
             },
-            // 迁移 SQL 与 history 已落盘、验证前
             Case {
                 point: "after_db_migration::chat_v2",
-                expect_recovered_error: true,
+                failed_component: Some(DatabaseId::ChatV2),
             },
-            // 最后一个库迁移后、验证前
             Case {
                 point: "after_db_migration::mistakes",
-                expect_recovered_error: true,
+                failed_component: Some(DatabaseId::Mistakes),
             },
-            // 最后一个库验证完成后、审计/报告前
             Case {
                 point: "after_verification::mistakes",
-                expect_recovered_error: true,
+                failed_component: Some(DatabaseId::Mistakes),
             },
         ];
 
         for case in &cases {
             let (mut coordinator, temp_dir) = create_test_coordinator();
             let old_tuple = build_old_core_state(&coordinator);
-            assert_eq!(
-                new_schema_sentinels(&coordinator),
-                (false, false, false),
-                "[{}] 旧状态哨兵应全为旧",
-                case.point
-            );
 
             let guard = fault_injection::arm(temp_dir.path(), case.point, 1);
-            let err = coordinator
-                .run_all()
-                .expect_err(&format!("[{}] 注入后 run_all 必须失败", case.point));
+            let run = coordinator.run_all();
             assert_eq!(
                 guard.hits(),
                 1,
@@ -6357,47 +6835,71 @@ mod tests {
                 case.point
             );
 
-            if case.expect_recovered_error {
-                match &err {
-                    MigrationError::RecoveredFromBackup {
-                        original_error,
-                        restored_count,
-                    } => {
+            if let Some(failed_component) = &case.failed_component {
+                let report = run.unwrap_or_else(|error| {
+                    panic!("[{}] 单库故障不应成为全局错误: {}", case.point, error)
+                });
+                assert!(!report.success);
+                assert!(report
+                    .component_health
+                    .is_blocked(failed_component.as_str()));
+                let failed_report = report
+                    .databases
+                    .iter()
+                    .find(|entry| &entry.id == failed_component)
+                    .expect("failed database report must be retained");
+                assert!(!failed_report.success);
+                assert!(
+                    failed_report
+                        .error
+                        .as_deref()
+                        .is_some_and(|error| error.contains("[failpoint]")),
+                    "failure report should retain the injected error"
+                );
+
+                for entry in &report.databases {
+                    if entry.id != *failed_component {
                         assert!(
-                            original_error.contains("[failpoint]"),
-                            "[{}] 原始错误应为注入错误: {}",
+                            entry.success,
+                            "[{}] unrelated {} must continue",
                             case.point,
-                            original_error
+                            entry.id.as_str()
                         );
-                        assert_eq!(*restored_count, 4, "[{}] 四个核心库都应被恢复", case.point);
                     }
-                    other => panic!(
-                        "[{}] 期望 RecoveredFromBackup，实际: {:?}",
-                        case.point, other
-                    ),
+                }
+
+                let current = core_version_tuple(&coordinator);
+                for (id, version) in current {
+                    let old_version = old_tuple
+                        .iter()
+                        .find(|(old_id, _)| old_id == &id)
+                        .map(|(_, version)| *version)
+                        .unwrap();
+                    if id == *failed_component {
+                        assert_eq!(
+                            version, old_version,
+                            "[{}] failed database alone must be restored",
+                            case.point
+                        );
+                    } else {
+                        assert!(
+                            version >= migration_set_for(&id).latest_version() as u32,
+                            "[{}] unrelated {} must remain migrated",
+                            case.point,
+                            id.as_str()
+                        );
+                    }
                 }
             } else {
+                let err = run.expect_err("global post-snapshot failpoint must still fail");
                 assert!(
                     err.to_string().contains("[failpoint]"),
                     "[{}] 应为注入错误: {}",
                     case.point,
                     err
                 );
+                assert_eq!(core_version_tuple(&coordinator), old_tuple);
             }
-
-            // 一致性：故障后必须"全旧"，不允许混合
-            assert_eq!(
-                core_version_tuple(&coordinator),
-                old_tuple,
-                "[{}] 故障后 schema tuple 必须全部回到旧版本",
-                case.point
-            );
-            assert_eq!(
-                new_schema_sentinels(&coordinator),
-                (false, false, false),
-                "[{}] 故障后哨兵必须全旧（禁止混合状态）",
-                case.point
-            );
             assert_markers_intact(&coordinator, case.point);
 
             // 解除故障后重试必须成功，且全部推进到新版本
@@ -6424,8 +6926,82 @@ mod tests {
         }
     }
 
-    /// 恢复前故障（before_restore）：恢复流程被阻断时，如果失败点在第一个库
-    /// 迁移前，磁盘仍应保持一致的全旧状态，且重试成功。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_vfs_failure_blocks_dependency_closure_but_not_llm_usage() {
+        let (mut coordinator, temp_dir) = create_test_coordinator();
+        let old_tuple = build_old_core_state(&coordinator);
+        let guard = fault_injection::arm(temp_dir.path(), "before_db_migration::vfs", 1);
+
+        let report = coordinator.run_all().unwrap();
+        assert_eq!(guard.hits(), 1);
+        assert!(!report.success);
+        assert!(report.component_health.is_blocked("vfs"));
+        assert!(report.component_health.is_blocked("chat_v2"));
+        assert!(report.component_health.is_blocked("mistakes"));
+        assert!(!report.component_health.is_blocked("llm_usage"));
+
+        for dependent in ["chat_v2", "mistakes"] {
+            let issue = report
+                .component_health
+                .issues()
+                .into_iter()
+                .find(|issue| issue.component == dependent)
+                .unwrap();
+            assert_eq!(issue.dependency.as_deref(), Some("vfs"));
+        }
+
+        let current = core_version_tuple(&coordinator);
+        let llm_version = current
+            .iter()
+            .find(|(id, _)| id == &DatabaseId::LlmUsage)
+            .unwrap()
+            .1;
+        assert_eq!(llm_version, LLM_USAGE_MIGRATION_SET.latest_version() as u32);
+        for blocked in [DatabaseId::Vfs, DatabaseId::ChatV2, DatabaseId::Mistakes] {
+            let before = old_tuple.iter().find(|(id, _)| id == &blocked).unwrap().1;
+            let after = current.iter().find(|(id, _)| id == &blocked).unwrap().1;
+            assert_eq!(after, before, "{} must not advance", blocked.as_str());
+        }
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_chat_failure_isolated_from_mistakes_and_llm_usage() {
+        let (mut coordinator, temp_dir) = create_test_coordinator();
+        let old_tuple = build_old_core_state(&coordinator);
+        let guard = fault_injection::arm(temp_dir.path(), "before_db_migration::chat_v2", 1);
+
+        let report = coordinator.run_all().unwrap();
+        assert_eq!(guard.hits(), 1);
+        assert_eq!(
+            report.component_health.blocked_components(),
+            vec!["chat_v2"]
+        );
+
+        let current = core_version_tuple(&coordinator);
+        for independent in [DatabaseId::LlmUsage, DatabaseId::Mistakes] {
+            let version = current.iter().find(|(id, _)| id == &independent).unwrap().1;
+            assert!(
+                version >= migration_set_for(&independent).latest_version() as u32,
+                "{} should remain at or advance beyond the latest registered migration",
+                independent.as_str()
+            );
+        }
+        let old_chat = old_tuple
+            .iter()
+            .find(|(id, _)| id == &DatabaseId::ChatV2)
+            .unwrap()
+            .1;
+        let current_chat = current
+            .iter()
+            .find(|(id, _)| id == &DatabaseId::ChatV2)
+            .unwrap()
+            .1;
+        assert_eq!(current_chat, old_chat);
+    }
+
+    /// 恢复前故障只阻断失败组件，并在健康信息中同时保留迁移与恢复错误。
     #[cfg(feature = "data_governance")]
     #[test]
     fn test_failpoint_before_restore_leaves_untouched_state_consistent() {
@@ -6435,30 +7011,50 @@ mod tests {
         let migration_guard = fault_injection::arm(temp_dir.path(), "before_db_migration::vfs", 1);
         let restore_guard = fault_injection::arm(temp_dir.path(), "before_restore", 1);
 
-        let err = coordinator.run_all().unwrap_err();
+        let report = coordinator.run_all().unwrap();
         assert_eq!(migration_guard.hits(), 1);
         assert_eq!(restore_guard.hits(), 1, "恢复流程应已被触达并被阻断");
-        // 恢复失败时返回原始迁移错误（而非 RecoveredFromBackup）
+        assert!(!report.success);
+        assert!(report.component_health.is_blocked("vfs"));
+        let reason = report
+            .component_health
+            .issues()
+            .into_iter()
+            .find(|issue| issue.component == "vfs")
+            .and_then(|issue| issue.reason)
+            .unwrap();
         assert!(
-            matches!(&err, MigrationError::Database(msg) if msg.contains("[failpoint]")),
-            "unexpected error: {err:?}"
+            reason.contains("migration failed") && reason.contains("also failed"),
+            "both errors must be retained: {reason}"
         );
 
-        // vfs 迁移前失败 + 恢复被阻断 → 磁盘未被触碰，仍是全旧
-        assert_eq!(core_version_tuple(&coordinator), old_tuple);
-        assert_eq!(new_schema_sentinels(&coordinator), (false, false, false));
+        let current = core_version_tuple(&coordinator);
+        assert_eq!(current[0], old_tuple[0], "vfs must remain unchanged");
+        assert_eq!(
+            current[1].1,
+            migration_set_for(&DatabaseId::LlmUsage).latest_version() as u32,
+            "independent llm_usage must continue"
+        );
+        assert!(
+            coordinator.restore_failure_journal_path().is_file(),
+            "恢复失败必须跨进程持久化，避免下次启动建立错误基线"
+        );
         assert_markers_intact(&coordinator, "before_restore");
 
         drop(migration_guard);
         drop(restore_guard);
-        let report = coordinator.run_all().unwrap();
+        let mut restarted = MigrationCoordinator::new(temp_dir.path().to_path_buf());
+        let report = restarted.run_all().unwrap();
         assert!(report.success);
-        assert_eq!(new_schema_sentinels(&coordinator), (true, true, true));
-        assert_markers_intact(&coordinator, "before_restore(retry)");
+        assert!(
+            !restarted.restore_failure_journal_path().exists(),
+            "可信快照恢复成功后必须清除故障记录"
+        );
+        assert_eq!(new_schema_sentinels(&restarted), (true, true, true));
+        assert_markers_intact(&restarted, "before_restore(retry)");
     }
 
-    /// 恢复后故障（after_restore）：所有文件已恢复但恢复结果上报失败。
-    /// 磁盘必须已经是一致的全旧状态，重试成功。
+    /// 恢复后上报故障仍只 affects the failed database.
     #[cfg(feature = "data_governance")]
     #[test]
     fn test_failpoint_after_restore_disk_recovered_despite_reported_failure() {
@@ -6469,18 +7065,33 @@ mod tests {
             fault_injection::arm(temp_dir.path(), "before_db_migration::chat_v2", 1);
         let restore_guard = fault_injection::arm(temp_dir.path(), "after_restore", 1);
 
-        let err = coordinator.run_all().unwrap_err();
+        let report = coordinator.run_all().unwrap();
         assert_eq!(migration_guard.hits(), 1);
         assert_eq!(restore_guard.hits(), 1, "after_restore 应在恢复完成后触发");
-        // 恢复"上报失败" → 返回原始迁移错误
-        assert!(
-            matches!(&err, MigrationError::Database(msg) if msg.contains("[failpoint]")),
-            "unexpected error: {err:?}"
-        );
+        assert!(!report.success);
+        assert!(report.component_health.is_blocked("chat_v2"));
 
-        // 尽管恢复被上报为失败，磁盘上必须已经是一致的全旧状态
-        assert_eq!(core_version_tuple(&coordinator), old_tuple);
-        assert_eq!(new_schema_sentinels(&coordinator), (false, false, false));
+        let current = core_version_tuple(&coordinator);
+        let old_chat = old_tuple
+            .iter()
+            .find(|(id, _)| id == &DatabaseId::ChatV2)
+            .unwrap()
+            .1;
+        let current_chat = current
+            .iter()
+            .find(|(id, _)| id == &DatabaseId::ChatV2)
+            .unwrap()
+            .1;
+        assert_eq!(current_chat, old_chat, "chat_v2 was restored on disk");
+        for independent in [DatabaseId::LlmUsage, DatabaseId::Mistakes] {
+            let version = current.iter().find(|(id, _)| id == &independent).unwrap().1;
+            assert_eq!(
+                version,
+                migration_set_for(&independent).latest_version() as u32,
+                "{} must not be rolled back",
+                independent.as_str()
+            );
+        }
         assert_markers_intact(&coordinator, "after_restore");
 
         drop(migration_guard);
@@ -6843,6 +7454,51 @@ mod tests {
 
         assert!(!wal_residual.exists(), "残留 WAL 必须被清理");
         assert!(!shm_residual.exists(), "残留 SHM 必须被清理");
+    }
+
+    #[test]
+    fn test_single_database_restore_does_not_rewind_unrelated_databases() {
+        let (mut coordinator, temp_dir) = create_test_coordinator();
+        for path in [
+            temp_dir.path().join("databases").join("vfs.db"),
+            temp_dir.path().join("chat_v2.db"),
+            temp_dir.path().join("mistakes.db"),
+            temp_dir.path().join("llm_usage.db"),
+        ] {
+            create_test_sqlite_db(&path);
+        }
+        coordinator
+            .backup_core_databases_once_per_startup()
+            .unwrap();
+
+        for id in DatabaseId::all_ordered() {
+            let conn = rusqlite::Connection::open(coordinator.get_database_path(&id)).unwrap();
+            conn.execute(
+                "INSERT INTO test_data (value) VALUES (?1)",
+                [format!("new-{}", id.as_str())],
+            )
+            .unwrap();
+        }
+
+        coordinator
+            .restore_database_from_latest_core_backup(&DatabaseId::ChatV2)
+            .unwrap();
+
+        for id in DatabaseId::all_ordered() {
+            let conn = rusqlite::Connection::open(coordinator.get_database_path(&id)).unwrap();
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM test_data WHERE value = ?1",
+                    [format!("new-{}", id.as_str())],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            if id == DatabaseId::ChatV2 {
+                assert_eq!(count, 0, "failed database must be restored");
+            } else {
+                assert_eq!(count, 1, "{} must not be restored", id.as_str());
+            }
+        }
     }
 
     /// 存在多个快照时必须恢复最新的一个。

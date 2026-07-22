@@ -17,6 +17,7 @@ interface SettingsShellState {
 
 const DATA_GOVERNANCE_TABS: ReadonlySet<string> = new Set([
   'overview',
+  'recovery',
   'archive',
   'backup',
   'sync',

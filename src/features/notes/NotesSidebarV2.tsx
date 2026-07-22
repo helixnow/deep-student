@@ -504,7 +504,9 @@ const NotesSidebarContent: React.FC<{
               </p>
             </div>
           ) : (
-          <CustomScrollArea className="absolute inset-0" viewportRef={searchListRef} viewportClassName="p-2">
+          <CustomScrollArea className="absolute inset-0" viewportRef={searchListRef} viewportClassName="h-full w-full min-h-0">
+            {/* OverlayScrollbars 会清零 viewport padding，边距放在内层 */}
+            <div className="p-2">
             <div
               style={{
                 height: `${rowVirtualizer.getTotalSize()}px`,
@@ -558,6 +560,7 @@ const NotesSidebarContent: React.FC<{
                 );
               })}
             </div>
+            </div>
           </CustomScrollArea>
           )
         ) : showFavoritesOnly && filteredNotes.length === 0 ? (
@@ -592,70 +595,73 @@ const NotesSidebarContent: React.FC<{
           <CustomScrollArea
             className="h-full"
             viewportRef={treeViewportRef}
-            viewportClassName="pl-1 pr-1"
+            viewportClassName="h-full w-full min-h-0"
           >
-            <DndFileTree
-              scrollViewportRef={treeViewportRef}
-              treeData={treeData}
-              selectedIds={selectedIds}
-              onSelect={(ids) => {
-                const id = ids[0];
-                setSelectedNodeId(id);
-                const note = notes.find(n => n.id === id);
-                if (note) setActive(note);
-                if (note) void ensureNoteContent(note.id);
-                if (isReferenceId(id)) void validateReference(id);
-                // 选中的是笔记（非文件夹/引用）时收起移动侧栏，直达编辑器
-                if (note) onNoteSelected?.();
-              }}
-              onDoubleClick={async (id) => {
-                if (isReferenceId(id)) return;
-                const note = notes.find(n => n.id === id);
-                if (!note) return;
-                try {
-                  const dstuPath = `/${id}`;
-                  const dstuNode: DstuNode = {
-                    id: note.id,
-                    sourceId: note.id,
-                    path: dstuPath,
-                    name: note.title,
-                    type: 'note',
-                    size: note.content_md?.length || 0,
-                    createdAt: new Date(note.created_at).getTime(),
-                    updatedAt: new Date(note.updated_at).getTime(),
-                    previewType: 'markdown',
-                  };
-                  await openResource(dstuNode);
-                } catch {
-                  setActive(note);
-                  void ensureNoteContent(note.id);
-                }
-              }}
-              expandedIds={expandedIds}
-              onExpand={(id) => {
-                setExpandedIds(prev => [...prev, id]);
-                const folder = folders[id];
-                if (folder?.children) {
-                  const refIds = folder.children.filter(isReferenceId);
-                  if (refIds.length > 0) void batchValidateReferences(refIds);
-                }
-              }}
-              onCollapse={(id) => setExpandedIds(prev => prev.filter(p => p !== id))}
-              onDrop={handleDrop}
-              renamingId={renamingId}
-              onRename={(id, name) => {
-                renameItem(id, name);
-                setRenamingId(null);
-              }}
-              onDelete={(ids) => deleteItems(ids)}
-              onContextMenu={handleContextMenu}
-              onCreateChild={async (folderId) => {
-                setExpandedIds(prev => prev.includes(folderId) ? prev : [...prev, folderId]);
-                const id = await createNote(folderId);
-                if (id) setRenamingId(id);
-              }}
-              disableDrag={showFavoritesOnly}
-            />
+            {/* OverlayScrollbars 会清零 viewport padding，边距放在内层 */}
+            <div className="pl-1 pr-1">
+              <DndFileTree
+                scrollViewportRef={treeViewportRef}
+                treeData={treeData}
+                selectedIds={selectedIds}
+                onSelect={(ids) => {
+                  const id = ids[0];
+                  setSelectedNodeId(id);
+                  const note = notes.find(n => n.id === id);
+                  if (note) setActive(note);
+                  if (note) void ensureNoteContent(note.id);
+                  if (isReferenceId(id)) void validateReference(id);
+                  // 选中的是笔记（非文件夹/引用）时收起移动侧栏，直达编辑器
+                  if (note) onNoteSelected?.();
+                }}
+                onDoubleClick={async (id) => {
+                  if (isReferenceId(id)) return;
+                  const note = notes.find(n => n.id === id);
+                  if (!note) return;
+                  try {
+                    const dstuPath = `/${id}`;
+                    const dstuNode: DstuNode = {
+                      id: note.id,
+                      sourceId: note.id,
+                      path: dstuPath,
+                      name: note.title,
+                      type: 'note',
+                      size: note.content_md?.length || 0,
+                      createdAt: new Date(note.created_at).getTime(),
+                      updatedAt: new Date(note.updated_at).getTime(),
+                      previewType: 'markdown',
+                    };
+                    await openResource(dstuNode);
+                  } catch {
+                    setActive(note);
+                    void ensureNoteContent(note.id);
+                  }
+                }}
+                expandedIds={expandedIds}
+                onExpand={(id) => {
+                  setExpandedIds(prev => [...prev, id]);
+                  const folder = folders[id];
+                  if (folder?.children) {
+                    const refIds = folder.children.filter(isReferenceId);
+                    if (refIds.length > 0) void batchValidateReferences(refIds);
+                  }
+                }}
+                onCollapse={(id) => setExpandedIds(prev => prev.filter(p => p !== id))}
+                onDrop={handleDrop}
+                renamingId={renamingId}
+                onRename={(id, name) => {
+                  renameItem(id, name);
+                  setRenamingId(null);
+                }}
+                onDelete={(ids) => deleteItems(ids)}
+                onContextMenu={handleContextMenu}
+                onCreateChild={async (folderId) => {
+                  setExpandedIds(prev => prev.includes(folderId) ? prev : [...prev, folderId]);
+                  const id = await createNote(folderId);
+                  if (id) setRenamingId(id);
+                }}
+                disableDrag={showFavoritesOnly}
+              />
+            </div>
           </CustomScrollArea>
         )}
       </div>

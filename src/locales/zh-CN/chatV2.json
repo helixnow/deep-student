@@ -1672,8 +1672,8 @@
       "hints": {
         "cautious": "中高风险操作逐项确认，危险授权从不记住。",
         "relaxed": "低风险和中风险操作静默执行；高风险操作仍逐项审批。",
-        "full_access": "普通工具免审批；本地 shell 仍保留 runtime roots、操作系统沙箱和网络边界，shell guard 可强制拒绝或要求确认。外部 MCP 的内部行为不受本地 shell guard 约束。",
-        "danger_full_access": "危险：普通工具免审批，并取消本地 shell 的宿主机文件与网络限制；可识别的灾难命令仍会拒绝，模糊命令仍可能要求确认。外部 MCP 的内部行为不受本地 shell guard 约束。"
+        "full_access": "沙箱内工具与 shell 免逐步确认；技能信任/MCP 安装/runtime root 等特权仍单次确认；灾难命令拒绝。",
+        "danger_full_access": "危险：沙箱内工具与 shell 免逐步确认，并取消本地 shell 的宿主机文件与网络限制；技能信任/MCP 安装/runtime root 等特权仍单次确认；灾难命令拒绝。"
       },
       "shortHints": {
         "cautious": "中高风险逐项确认",
@@ -1682,10 +1682,10 @@
         "danger_full_access": "宿主机文件与网络无限制"
       },
       "modePriority": "此档位只控制做一做；问一问/想一想模式本身的限制始终优先。",
-      "fullAccessActive": "完全访问已开启 · 点击降为宽松",
-      "fullAccessDowngradeHint": "恢复高风险操作的逐项审批（宽松档）",
-      "dangerActive": "危险完全访问已开启 · 点击降为宽松",
-      "dangerDowngradeHint": "立即恢复 runtime roots、操作系统沙箱与网络边界",
+      "fullAccessActive": "完全访问",
+      "fullAccessDowngradeHint": "完全访问已开启。点击降为宽松，恢复高风险操作的逐项审批。",
+      "dangerActive": "危险访问",
+      "dangerDowngradeHint": "危险完全访问已开启。点击降为宽松，立即恢复 runtime roots、操作系统沙箱与网络边界。",
       "dangerConfirmTitle": "开启危险完全访问？",
       "dangerConfirmDescription": "这会让普通工具和全部外部 MCP 免审批，并允许本地 shell 不受文件与网络沙箱限制。可识别的灾难命令仍会拒绝，无法静态判定的动态脚本仍可能破坏宿主机；外部 MCP 的内部行为也不受本地 shell guard 约束。仅在你明确理解风险时继续。",
       "dangerConfirmAction": "确认开启危险完全访问"
@@ -1708,6 +1708,8 @@
     "description": "操作描述",
     "arguments": "参数",
     "approve": "本次允许",
+    "allowSession": "本会话允许",
+    "allowScope": "允许此范围",
     "reject": "本次拒绝",
     "rejectReasonPlaceholder": "可选：告诉 AI 为什么拒绝或希望它怎么做",
     "rejectDirectly": "直接拒绝",

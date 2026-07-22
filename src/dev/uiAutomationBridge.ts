@@ -452,7 +452,13 @@ function startBridge() {
       return;
     }
 
-    ws.onopen = () => console.info('[ui-bridge] connected');
+    ws.onopen = () => {
+      console.info('[ui-bridge] connected');
+      // 握手诊断：让服务端确认反向通道可用
+      try {
+        ws?.send(JSON.stringify({ id: -1, ok: true, value: `hello from ${location.pathname}${location.search}` }));
+      } catch {}
+    };
 
     ws.onmessage = async (ev) => {
       let msg: { id: number; code: string };
@@ -461,6 +467,9 @@ function startBridge() {
       } catch {
         return;
       }
+      try {
+        ws?.send(JSON.stringify({ id: -2, ok: true, value: `recv ${msg.id}` }));
+      } catch {}
       try {
         const fn = new Function(
           `return (async () => { ${msg.code}\n })();`,

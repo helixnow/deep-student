@@ -539,7 +539,10 @@ impl SkillLifecycleExecutor {
             "package_sha256": expected_package_sha256,
             "risk_level": risk_level,
             "risk_signals": risk_signals,
-            "message": "Trust granted, bound to the current package fingerprint. Any change to the package (SKILL.md, scripts, references, assets) invalidates the trust automatically and requires a new grant.",
+            "runtime_catalog_refresh": "next_user_turn",
+            "load_skills_now": false,
+            "next_step": "Do not call load_skills again in this tool loop. The trust grant succeeded, but this request keeps its immutable pre-grant runtime catalog snapshot. Tell the user the skill is trusted and will be loadable from their next message.",
+            "message": "Trust granted, bound to the current package fingerprint. Any change to any package file invalidates the trust automatically and requires a new grant. The current request keeps its pre-grant runtime catalog snapshot; the trusted skill becomes loadable on the next user turn.",
         }))
     }
 
@@ -611,14 +614,32 @@ impl ToolExecutor for SkillLifecycleExecutor {
             Err(error_msg) => {
                 ctx.emit_tool_call_error(&error_msg);
 
-                let result = ToolResultInfo::failure(
-                    Some(call.id.clone()),
-                    Some(ctx.block_id.clone()),
-                    call.name.clone(),
-                    call.arguments.clone(),
-                    error_msg,
-                    duration,
-                );
+                let result = if short == tool_names::SKILL_TRUST_REQUEST {
+                    ToolResultInfo::failure_with_output(
+                        Some(call.id.clone()),
+                        Some(ctx.block_id.clone()),
+                        call.name.clone(),
+                        call.arguments.clone(),
+                        json!({
+                            "status": "error",
+                            "action": call.arguments.get("action").cloned().unwrap_or(Value::Null),
+                            "skill_id": call.arguments.get("skill_id").cloned().unwrap_or(Value::Null),
+                            "terminal_for_skill_workflow": true,
+                            "next_step": "Stop this skill's install/trust workflow and report the error truthfully. Do not inspect the package with workspace/shell tools, do not call load_skills, and do not retry unless a later user turn changes the state.",
+                        }),
+                        error_msg,
+                        duration,
+                    )
+                } else {
+                    ToolResultInfo::failure(
+                        Some(call.id.clone()),
+                        Some(ctx.block_id.clone()),
+                        call.name.clone(),
+                        call.arguments.clone(),
+                        error_msg,
+                        duration,
+                    )
+                };
 
                 if let Err(e) = ctx.save_tool_block(&result) {
                     log::warn!("[SkillLifecycleExecutor] Failed to save tool block: {}", e);

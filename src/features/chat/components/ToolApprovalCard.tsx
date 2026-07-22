@@ -174,8 +174,12 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
     respondingRef.current = false;
   }, [request.toolCallId, request.timeoutSeconds]);
 
+  const rememberDisabled = Boolean(request.runtimeScope?.rememberDisabled)
+    || request.permissionPreset !== 'relaxed'
+    || request.sensitivity !== 'medium';
+
   const handleResponse = useCallback(
-    async (approved: boolean, reason?: string) => {
+    async (approved: boolean, reason?: string, rememberSession = false) => {
       if (respondingRef.current || hasResponded || isResponding || isResolved || isTimedOutLocally) return;
 
       respondingRef.current = true;
@@ -188,7 +192,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
           approved,
           reason: reason ?? null,
           remember: false,
-          rememberSession: false,
+          rememberSession,
           arguments: request.arguments,
         });
         setHasResponded(true);
@@ -429,6 +433,20 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               <X size={16} className="mr-1" />
               {t('approval.reject')}
             </DsButton>
+
+            {!rememberDisabled && (
+              <DsButton
+                variant="outline"
+                size="sm"
+                onClick={() => handleResponse(true, undefined, true)}
+                disabled={isResponding || isTimedOutLocally}
+                className="text-success hover:text-success/80"
+              >
+                {shellScope
+                  ? t('approval.allowScope')
+                  : t('approval.allowSession')}
+              </DsButton>
+            )}
 
             {/* 批准按钮（仅此次） */}
             <DsButton

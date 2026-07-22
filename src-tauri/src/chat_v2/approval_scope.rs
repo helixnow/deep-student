@@ -262,6 +262,24 @@ fn is_privilege_escalation_tool(tool_name: &str) -> bool {
     PRIVILEGE_ESCALATION_TOOLS.contains(&short)
 }
 
+/// Public wrapper for pipeline gates that need privilege-escalation detection
+/// without reaching into the private matcher.
+pub fn is_privilege_escalation_tool_name(tool_name: &str) -> bool {
+    is_privilege_escalation_tool(tool_name)
+}
+
+/// Argument-aware privilege escalation detection for multiplexed tools.
+pub fn is_privilege_escalation_tool_for_args(tool_name: &str, args: &Value) -> bool {
+    let short = semantic_tool_short_name(tool_name);
+    if short == "skill_market_download_and_scan" {
+        return args
+            .get("install")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+    }
+    is_privilege_escalation_tool(tool_name)
+}
+
 /// 权限升级与 Workbench High 工具永不进入 remember / 本会话允许 / 始终允许。
 pub fn never_remember_approval(tool_name: &str) -> bool {
     is_privilege_escalation_tool(tool_name)
@@ -271,18 +289,43 @@ pub fn never_remember_approval(tool_name: &str) -> bool {
         || is_governance_always_confirm_tool(tool_name)
 }
 
-/// Argument-aware never-remember policy. Every real shell execution is
-/// single-use: PATH, wrappers, scripts, and executable file contents can all
-/// change after approval. Preflight is analysis-only and remains rememberable.
+/// Argument-aware never-remember policy.
+///
+/// Privilege / High / write-capable shell stays single-use. Medium read-only
+/// shell families (`ls` / `git status` / …) may be session-remembered under
+/// Craft+Relaxed; PATH/wrappers/scripts/interpreters/`-c`/`-e` remain High and
+/// therefore never-remember. Preflight is analysis-only and remains rememberable.
 pub fn never_remember_approval_for_args(tool_name: &str, args: &Value) -> bool {
-    if never_remember_approval(tool_name) {
+    if is_privilege_escalation_tool_for_args(tool_name, args)
+        || is_workbench_always_confirm_tool(tool_name)
+        || is_acr_destructive_domain_tool(tool_name)
+        || is_dstu_purge_tool(tool_name)
+        || is_governance_always_confirm_tool(tool_name)
+    {
+        return true;
+    }
+    if is_high_risk_external_mcp_tool(tool_name) {
         return true;
     }
     let short = semantic_tool_short_name(tool_name);
-    (is_shell_runtime_tool_for_args(tool_name, args) && short != "local_shell_preflight")
-        || is_high_risk_external_mcp_tool(tool_name)
-        || (is_shell_runtime_tool_for_args(tool_name, args)
-            && args.get("command").and_then(Value::as_str).is_none())
+    if short == "local_shell_preflight" {
+        return false;
+    }
+    if !is_shell_runtime_tool_for_args(tool_name, args) {
+        return false;
+    }
+    // External MCP shell is uncontrolled — always single-use, even for read-only
+    // command text. Medium remember narrowing applies to local shell only.
+    let (source, _) = tool_source_namespace(tool_name, args);
+    if source.starts_with("mcp") {
+        return true;
+    }
+    // Missing concrete command → cannot classify; keep single-use.
+    let Some(command) = args.get("command").and_then(Value::as_str) else {
+        return true;
+    };
+    // Only Medium (read-only family) shell may be remembered; High stays never-remember.
+    shell_command_tool_sensitivity(command) != ToolSensitivity::Medium
 }
 
 /// Tools in these families execute local commands, mutate files, or perform
@@ -822,14 +865,44 @@ fn make_skill_install_approval_scope(
     risk_level: &str,
 ) -> Option<RuntimeApprovalScope> {
     let (_, short) = tool_source_namespace(tool_name, &Value::Null);
-    if short != "skill_install" {
+    let is_market_install = short == "skill_market_download_and_scan"
+        && args
+            .get("install")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+    if short != "skill_install" && !is_market_install {
         return None;
     }
     let (tool_source, short_tool_name) = tool_source_namespace(tool_name, args);
-    let expected_sha256 = extract_str_field(args, &["expected_sha256", "expectedSha256"])?;
+    let expected_sha256 = extract_str_field(
+        args,
+        &[
+            "expected_sha256",
+            "expectedSha256",
+            "expected_package_sha256",
+            "expectedPackageSha256",
+        ],
+    )?;
     let declared_risk = extract_str_field(args, &["declared_risk_level", "declaredRiskLevel"])
-        .unwrap_or_else(|| "low".to_string());
-    let skill_id = extract_str_field(args, &["skill_id", "skillId"]);
+        .unwrap_or_else(|| {
+            if is_market_install {
+                "unknown".to_string()
+            } else {
+                "low".to_string()
+            }
+        });
+    let skill_id = extract_str_field(args, &["skill_id", "skillId"]).or_else(|| {
+        is_market_install
+            .then(|| extract_str_field(args, &["slug"]))
+            .flatten()
+    });
+    let source_summary = if is_market_install {
+        let slug = extract_str_field(args, &["slug"])?;
+        let version = extract_str_field(args, &["version"]).unwrap_or_else(|| "latest".to_string());
+        Some(format!("skill_market:{}@{}", slug, version))
+    } else {
+        skill_install_source_summary(args)
+    };
     let sha_prefix: String = expected_sha256.chars().take(12).collect();
     Some(RuntimeApprovalScope {
         kind: "skill_install".to_string(),
@@ -850,7 +923,7 @@ fn make_skill_install_approval_scope(
         max_output_bytes: 0,
         track_file_changes: false,
         risk_level: risk_level.to_string(),
-        network_allowed: false,
+        network_allowed: is_market_install,
         has_shell_operators: false,
         uses_script_runner: false,
         first_token: None,
@@ -867,7 +940,7 @@ fn make_skill_install_approval_scope(
         execution_location: None,
         sandbox_enforced: None,
         remember_disabled: Some(true),
-        source_summary: skill_install_source_summary(args),
+        source_summary,
         expected_sha256_prefix: Some(sha_prefix),
         declared_risk_level: Some(declared_risk),
         skill_id,
@@ -1139,8 +1212,7 @@ fn make_mcp_manage_approval_scope(
     let (tool_source, short_tool_name) = tool_source_namespace(tool_name, args);
     let server_id = extract_str_field(args, &["server_id", "serverId"])?;
 
-    let (approval_identity, source_summary, revision_prefix) =
-        if canonical == "mcp_server_remove" {
+    let (approval_identity, source_summary, revision_prefix) = if canonical == "mcp_server_remove" {
         let expected_transport =
             extract_str_field(args, &["expected_transport", "expectedTransport"])?;
         let expected_revision =
@@ -1603,10 +1675,9 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
         // Observation revisions are OCC evidence, not the approved intent.
         // A successful runtime rebase legitimately changes this volatile value
         // while retaining the exact target, actions and postconditions.
-        "workbench_act" | "workbench_act_high" => filtered_args_fingerprint(
-            args,
-            &["observationRevision", "observation_revision"],
-        ),
+        "workbench_act" | "workbench_act_high" => {
+            filtered_args_fingerprint(args, &["observationRevision", "observation_revision"])
+        }
         "workbench_undo" => extract_str_field(args, &["undoToken", "undo_token"])
             .map(|token| format!("token={token}")),
         "workbench_open_app" | "workbench_app_command" | "workbench_close_window" => {
@@ -1615,6 +1686,23 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
 
         "skill_install" => extract_str_field(args, &["expected_sha256", "expectedSha256"])
             .map(|sha| format!("sha={}", sha)),
+        "skill_market_download_and_scan" => {
+            let install = args
+                .get("install")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let slug = extract_str_field(args, &["slug"]);
+            let version =
+                extract_str_field(args, &["version"]).unwrap_or_else(|| "latest".to_string());
+            let sha =
+                extract_str_field(args, &["expected_package_sha256", "expectedPackageSha256"]);
+            match (install, slug, sha) {
+                (true, Some(slug), Some(sha)) => {
+                    Some(format!("slug={slug}:version={version}:sha={sha}"))
+                }
+                _ => None,
+            }
+        }
 
         "skill_workshop_apply" => {
             let proposal_id = extract_str_field(args, &["proposal_id", "proposalId"]);
@@ -1960,8 +2048,7 @@ fn classify_guard_path(
     let normalized = guard_token_lower(token);
     if matches!(
         normalized.as_str(),
-        "/"
-            | "/*"
+        "/" | "/*"
             | "."
             | "./"
             | "~"
@@ -1979,9 +2066,7 @@ fn classify_guard_path(
     ) || (normalized.len() == 3
         && normalized.as_bytes()[1] == b':'
         && normalized.as_bytes()[2] == b'/')
-        || (normalized.len() == 4
-            && normalized.as_bytes()[1] == b':'
-            && &normalized[2..] == "/*")
+        || (normalized.len() == 4 && normalized.as_bytes()[1] == b':' && &normalized[2..] == "/*")
     {
         return GuardPathClass::RootLike;
     }
@@ -2027,7 +2112,11 @@ fn classify_guard_path(
             .is_some_and(|ch| matches!(ch, '~' | '$' | '%'))
             && !token.contains('`')
         {
-            let candidate = if raw.is_absolute() { raw } else { cwd.join(raw) };
+            let candidate = if raw.is_absolute() {
+                raw
+            } else {
+                cwd.join(raw)
+            };
             let resolved = candidate
                 .canonicalize()
                 .unwrap_or_else(|_| lexical_normalize_path(&candidate));
@@ -2062,11 +2151,7 @@ fn classify_guard_path(
     GuardPathClass::Other
 }
 
-fn guard_path_is_root_like(
-    token: &str,
-    cwd: Option<&Path>,
-    protected_roots: &[PathBuf],
-) -> bool {
+fn guard_path_is_root_like(token: &str, cwd: Option<&Path>, protected_roots: &[PathBuf]) -> bool {
     classify_guard_path(token, cwd, protected_roots) == GuardPathClass::RootLike
 }
 
@@ -2171,15 +2256,22 @@ fn guard_view_is_catastrophic(
             if args.iter().any(|arg| {
                 matches!(
                     guard_token_lower(arg).as_str(),
-                    "/delete" | "-delete" | "/deletevalue" | "-deletevalue" | "/import"
-                        | "-import" | "/createstore" | "-createstore"
+                    "/delete"
+                        | "-delete"
+                        | "/deletevalue"
+                        | "-deletevalue"
+                        | "/import"
+                        | "-import"
+                        | "/createstore"
+                        | "-createstore"
                 )
             }) {
                 return Some("boot_configuration_change");
             }
         }
-        "shutdown" | "reboot" | "halt" | "poweroff" | "stop-computer"
-        | "restart-computer" => return Some("system_shutdown"),
+        "shutdown" | "reboot" | "halt" | "poweroff" | "stop-computer" | "restart-computer" => {
+            return Some("system_shutdown")
+        }
         _ => {}
     }
     None
@@ -2206,16 +2298,12 @@ fn guard_literal_nested_payload(view: &PolicyCommandView<'_>) -> Option<String> 
             }
             args.iter().enumerate().find_map(|(index, arg)| {
                 let lower = guard_token_lower(arg);
-                (lower.starts_with('-')
-                    && !lower.starts_with("--")
-                    && lower[1..].contains('c'))
-                .then(|| args.get(index + 1..).unwrap_or_default().join(" "))
-                .filter(|payload| !payload.trim().is_empty())
+                (lower.starts_with('-') && !lower.starts_with("--") && lower[1..].contains('c'))
+                    .then(|| args.get(index + 1..).unwrap_or_default().join(" "))
+                    .filter(|payload| !payload.trim().is_empty())
             })
         }
-        "powershell" | "pwsh" => {
-            payload_after_flag(&["-command", "/command", "-c", "/c"])
-        }
+        "powershell" | "pwsh" => payload_after_flag(&["-command", "/command", "-c", "/c"]),
         "cmd" => payload_after_flag(&["/c", "-c", "/k", "-k"]),
         "eval" | "iex" | "invoke-expression" => {
             let payload = args.join(" ");
@@ -2355,7 +2443,9 @@ fn guard_view_requires_approval(
     }
     if (view.executable == "terraform" && lower_args.iter().any(|arg| arg == "destroy"))
         || (view.executable == "pulumi"
-            && lower_args.iter().any(|arg| matches!(arg.as_str(), "destroy" | "up")))
+            && lower_args
+                .iter()
+                .any(|arg| matches!(arg.as_str(), "destroy" | "up")))
     {
         return Some("infrastructure_change");
     }
@@ -2428,7 +2518,9 @@ fn guard_view_requires_approval(
             | "bcdedit"
             | "update-bootconfigurationdata"
     ) || (view.executable == "defaults"
-        && lower_args.iter().any(|arg| matches!(arg.as_str(), "write" | "delete")))
+        && lower_args
+            .iter()
+            .any(|arg| matches!(arg.as_str(), "write" | "delete")))
     {
         return Some("system_configuration");
     }
@@ -2502,53 +2594,12 @@ fn git_readonly_subcommand(args: &[String]) -> bool {
 fn shell_executable_is_readonly_family(view: &PolicyCommandView<'_>) -> bool {
     let args = &view.words[view.effective_index.saturating_add(1)..];
     match view.executable.as_str() {
-        "ls" | "dir"
-        | "cat"
-        | "head"
-        | "tail"
-        | "wc"
-        | "stat"
-        | "which"
-        | "where"
-        | "where.exe"
-        | "whoami"
-        | "id"
-        | "uname"
-        | "realpath"
-        | "readlink"
-        | "pwd"
-        | "echo"
-        | "printf"
-        | "date"
-        | "true"
-        | "false"
-        | "basename"
-        | "dirname"
-        | "file"
-        | "strings"
-        | "nl"
-        | "tree"
-        | "du"
-        | "df"
-        | "env"
-        | "printenv"
-        | "type"
-        | "grep"
-        | "egrep"
-        | "fgrep"
-        | "rg"
-        | "ag"
-        | "get-childitem"
-        | "gci"
-        | "get-content"
-        | "gc"
-        | "get-item"
-        | "gi"
-        | "get-location"
-        | "gl"
-        | "select-string"
-        | "write-output"
-        | "get-process"
+        "ls" | "dir" | "cat" | "head" | "tail" | "wc" | "stat" | "which" | "where"
+        | "where.exe" | "whoami" | "id" | "uname" | "realpath" | "readlink" | "pwd" | "echo"
+        | "printf" | "date" | "true" | "false" | "basename" | "dirname" | "file" | "strings"
+        | "nl" | "tree" | "du" | "df" | "env" | "printenv" | "type" | "grep" | "egrep"
+        | "fgrep" | "rg" | "ag" | "get-childitem" | "gci" | "get-content" | "gc" | "get-item"
+        | "gi" | "get-location" | "gl" | "select-string" | "write-output" | "get-process"
         | "gps" => true,
         "git" => git_readonly_subcommand(args),
         _ => false,
@@ -2576,7 +2627,10 @@ pub fn shell_command_tool_sensitivity(command: &str) -> ToolSensitivity {
         return ToolSensitivity::High;
     }
     let segments = lex_shell_command_segments(&analysis.trimmed);
-    let Some(view) = segments.first().and_then(|words| policy_command_view(words)) else {
+    let Some(view) = segments
+        .first()
+        .and_then(|words| policy_command_view(words))
+    else {
         return ToolSensitivity::High;
     };
     if shell_executable_is_readonly_family(&view) {
@@ -2601,9 +2655,7 @@ pub fn immutable_shell_command_guard(
             reason: "empty_command",
         };
     }
-    if let Some(reason) =
-        guard_catastrophic_reason(&analysis.trimmed, cwd, protected_roots, 0)
-    {
+    if let Some(reason) = guard_catastrophic_reason(&analysis.trimmed, cwd, protected_roots, 0) {
         return ShellCommandGuardDecision {
             effect: ShellCommandGuardEffect::Deny,
             reason,
@@ -4012,6 +4064,48 @@ mod tests {
     }
 
     #[test]
+    fn medium_readonly_shell_commands_are_not_never_remembered() {
+        for command in [
+            "git status --short",
+            "ls -la",
+            "pwd",
+            "cat README.md",
+            "rg TODO src",
+        ] {
+            let args = json!({"command": command});
+            assert_eq!(
+                shell_command_tool_sensitivity(command),
+                ToolSensitivity::Medium,
+                "{command}"
+            );
+            assert!(
+                !never_remember_approval_for_args("builtin-local_shell_execute", &args),
+                "Medium readonly shell may be session-remembered: {command}"
+            );
+        }
+        // High / write / pipe / interpreter still never-remember.
+        for command in [
+            "rm -rf target",
+            "ls | cat",
+            "curl https://example.com",
+            "python -c 'print(1)'",
+            "sh -c 'echo hi'",
+        ] {
+            assert!(
+                never_remember_approval_for_args(
+                    "builtin-local_shell_execute",
+                    &json!({"command": command})
+                ),
+                "High shell must stay single-use: {command}"
+            );
+        }
+        assert!(never_remember_approval_for_args(
+            "builtin-local_shell_execute",
+            &json!({})
+        ));
+    }
+
+    #[test]
     fn wrapper_payloads_are_hashed_and_classified_by_effective_command() {
         let cases = [
             ("env MODE=test rm -rf notes", true, false, "rm"),
@@ -4422,6 +4516,45 @@ mod tests {
         assert!(!never_remember_approval("builtin-local_shell_execute"));
         assert!(!never_remember_approval("builtin-skill_set_enabled"));
         assert!(!never_remember_approval("builtin-custom_agent_propose"));
+    }
+
+    #[test]
+    fn marketplace_scan_is_non_privileged_but_install_is_single_use() {
+        let tool = "builtin-skill_market_download_and_scan";
+        assert!(!is_privilege_escalation_tool_for_args(
+            tool,
+            &json!({ "slug": "demo", "install": false })
+        ));
+        let install_args = json!({
+            "slug": "demo",
+            "version": "1.0.0",
+            "install": true,
+            "expectedPackageSha256": "a".repeat(64),
+            "tempZipPath": "/tmp/confirmed.zip",
+            "declaredRiskLevel": "medium"
+        });
+        assert!(is_privilege_escalation_tool_for_args(tool, &install_args));
+        assert!(never_remember_approval_for_args(tool, &install_args));
+        let scope =
+            make_runtime_approval_scope(tool, &install_args, "high").expect("market install scope");
+        assert_eq!(scope.kind, "skill_install");
+        assert_eq!(
+            scope.source_summary.as_deref(),
+            Some("skill_market:demo@1.0.0")
+        );
+        assert_eq!(scope.declared_risk_level.as_deref(), Some("medium"));
+
+        let missing_risk_args = json!({
+            "slug": "demo",
+            "install": true,
+            "expectedPackageSha256": "a".repeat(64),
+        });
+        let missing_risk_scope = make_runtime_approval_scope(tool, &missing_risk_args, "high")
+            .expect("market install scope without declaration");
+        assert_eq!(
+            missing_risk_scope.declared_risk_level.as_deref(),
+            Some("unknown")
+        );
     }
 
     /// SECURITY 回归（02 号报告 P2-1）：never-remember 判定不得依赖 `builtin-` 前缀。
@@ -4990,12 +5123,11 @@ mod tests {
             "Remove-Item -Recurse -Force $env:TEMP",
         ] {
             let decision = immutable_shell_command_guard(command, None, &[]);
+            assert_eq!(decision.effect, ShellCommandGuardEffect::Ask, "{command}");
             assert_eq!(
-                decision.effect,
-                ShellCommandGuardEffect::Ask,
+                decision.reason, "unresolvable_recursive_delete",
                 "{command}"
             );
-            assert_eq!(decision.reason, "unresolvable_recursive_delete", "{command}");
         }
     }
 

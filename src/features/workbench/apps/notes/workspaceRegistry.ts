@@ -329,6 +329,10 @@ export async function prepareWorkspaceResource(
   return ready ? windowId : null;
 }
 
+/** 同步 store/editor 写入后的读回校验：命中即 authoritative ack，避免 ACTION_UNVERIFIED 假阴性。 */
+const ackIf = (verified: boolean): ActivationResult =>
+  verified ? { handled: true, acknowledged: true } : { handled: true };
+
 /** Select a resource, await its editor/store, and deliver an ACR app command. */
 export async function activateWorkspaceResource(
   resource: NotesWorkspaceResourceRef,
@@ -374,7 +378,8 @@ export async function activateWorkspaceResource(
       };
     }
     editor.scrollToHeading(heading, level);
-    return { windowId, result: { handled: true } };
+    // 无廉价 heading 命中 API：编辑器已挂载且指令已发出即 ACK（优于永不 ACK）。
+    return { windowId, result: { handled: true, acknowledged: true } };
   }
 
   const p = payloadRecord(payload);
@@ -395,7 +400,7 @@ export async function activateWorkspaceResource(
     }
     store.getState().expandToNode(nodeId, { silent: true });
     store.getState().setFocusedNodeId(nodeId);
-    return { windowId, result: { handled: true } };
+    return { windowId, result: ackIf(store.getState().focusedNodeId === nodeId) };
   }
   if (action === 'setView') {
     const view = p?.view;
@@ -407,7 +412,7 @@ export async function activateWorkspaceResource(
       return { windowId, result: { handled: false, code: 'MINDMAP_NOT_READY' } };
     }
     store.getState().setCurrentView(view);
-    return { windowId, result: { handled: true } };
+    return { windowId, result: ackIf(store.getState().currentView === view) };
   }
   if (action === 'search') {
     const query = typeof p?.query === 'string' ? p.query : '';
@@ -416,16 +421,33 @@ export async function activateWorkspaceResource(
       return { windowId, result: { handled: false, code: 'MINDMAP_NOT_READY' } };
     }
     store.getState().search(query);
-    return { windowId, result: { handled: true } };
+    return { windowId, result: ackIf(store.getState().searchQuery === query) };
   }
   if (action === 'nextSearchResult' || action === 'previousSearchResult') {
     const store = await waitForMindmapStore(resource.id, windowId);
     if (!store) {
       return { windowId, result: { handled: false, code: 'MINDMAP_NOT_READY' } };
     }
+    const before = store.getState();
+    if (before.searchResults.length === 0) {
+      // 无可导航结果：指令已接收但未产生状态变更，不 ACK。
+      return { windowId, result: { handled: true } };
+    }
+    const expectedIndex = action === 'nextSearchResult'
+      ? (before.currentSearchIndex + 1) % before.searchResults.length
+      : before.currentSearchIndex <= 0
+        ? before.searchResults.length - 1
+        : before.currentSearchIndex - 1;
+    const expectedNodeId = before.searchResults[expectedIndex];
     if (action === 'nextSearchResult') store.getState().nextSearchResult();
     else store.getState().prevSearchResult();
-    return { windowId, result: { handled: true } };
+    const after = store.getState();
+    return {
+      windowId,
+      result: ackIf(
+        after.currentSearchIndex === expectedIndex && after.focusedNodeId === expectedNodeId,
+      ),
+    };
   }
   if (action === 'clearSearch') {
     const store = await waitForMindmapStore(resource.id, windowId);
@@ -433,7 +455,12 @@ export async function activateWorkspaceResource(
       return { windowId, result: { handled: false, code: 'MINDMAP_NOT_READY' } };
     }
     store.getState().clearSearch();
-    return { windowId, result: { handled: true } };
+    return {
+      windowId,
+      result: ackIf(
+        store.getState().searchQuery === '' && store.getState().searchResults.length === 0,
+      ),
+    };
   }
   return { windowId, result: { handled: false, code: 'UNKNOWN_ACTION' } };
 }

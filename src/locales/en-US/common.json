@@ -3634,6 +3634,13 @@
   "maintenance": {
     "banner_title": "Maintenance Mode",
     "banner_description": "The system is undergoing maintenance. Some features are temporarily unavailable.",
+    "partial_degradation_title": "Some data features need attention",
+    "partial_degradation_description": "Affected components: {{components}}. Other data and features remain available.",
+    "component_unavailable": "Temporarily unavailable",
+    "component_unavailable_description": "This feature's data component could not be upgraded safely, so only this feature has been paused.",
+    "blocked_by_dependency": "Required component {{dependency}} is currently unavailable.",
+    "other_features_available": "Other unaffected features remain available",
+    "chat_unavailable": "Chat data is temporarily unavailable",
     "recovery_required": "Some data services remain safely locked. Restart the app to finish recovery before editing data.",
     "blocked_chat_send": "Cannot send messages during maintenance mode. Please try again later.",
     "blocked_note_save": "Cannot save notes during maintenance mode. Please try again later.",

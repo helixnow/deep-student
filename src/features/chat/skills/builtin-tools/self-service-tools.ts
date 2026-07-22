@@ -92,7 +92,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
    - \`list\`：查看 pending 提案
    - \`reject\`：按 \`proposal_id\` 拒绝提案（留审计）
 2. **生效**：用户审阅后调用 \`builtin-skill_workshop_apply\`（High，**必须用户审批且不可 remember**），原样携带 propose/list 返回的 \`proposal_id\`、\`skill_id\`、\`content_sha256\`（作为 \`expected_content_sha256\`）和 \`proposal_revision\`（作为 \`expected_proposal_revision\`）；不得自行重算或更新摘要。\`propose_create\` 目标目录已存在时需 \`overwrite: true\`
-3. **信任**：新写入技能默认 **untrusted**，需用户在技能管理中信任后才能注入 runtime root；下一轮可 \`load_skills\` 使用正文
+3. **信任**：新写入技能默认 **untrusted**。下一步调用 \`builtin-skill_trust_request\`（先 \`action=inspect\` 再 \`grant\`，grant 必审批且不可 remember）；信任后才能注入 runtime root，再 \`load_skills\` 使用正文。「技能管理」仅作备用
 
 ## 技能生命周期管理（skill_set_enabled / skill_remove / skill_trust_request）
 
@@ -355,7 +355,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-skill_workshop_apply',
       description:
-        '将已审阅的 pending 技能提案写入 ~/.deep-student/skills（High 审批，不可 remember）。必须原样携带 propose/list 返回的内容摘要和 revision；审批后任何提案或 SKILL.md 变化都会拒绝。写 provenance，新技能默认 untrusted。propose_create 目标已存在时需 overwrite=true。',
+        '将已审阅的 pending 技能提案写入 ~/.deep-student/skills（High 审批，不可 remember）。必须原样携带 propose/list 返回的内容摘要和 revision；审批后任何提案或 SKILL.md 变化都会拒绝。写 provenance，新技能默认 untrusted——下一步走 skill_trust_request（inspect→grant），勿在信任前 load_skills。「技能管理」仅备用。propose_create 目标已存在时需 overwrite=true。',
       inputSchema: {
         type: 'object',
         required: [

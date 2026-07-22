@@ -9,22 +9,32 @@ describe('visible note demo skill contract', () => {
     expect(canvasNoteSkill.content).toContain('可见操作演示');
     expect(canvasNoteSkill.content).toContain('builtin-note_list');
     expect(canvasNoteSkill.content).toContain('打开并聚焦');
+    expect(canvasNoteSkill.content).toContain('typeId:"notes"');
+    expect(canvasNoteSkill.content).toContain('waitWhileNoteHot');
     expect(canvasNoteSkill.content).toContain('不得为了演示而自行创建笔记');
     expect(canvasNoteSkill.content).toContain('不得为了演示而自行创建笔记、编造笔记主题、覆盖整篇内容');
   });
 
   it('defines the Workbench and domain-tool sequence for a real ACR performance', () => {
     const content = workbenchToolsSkill.content;
-    const listWindows = content.indexOf('builtin-workbench_list_windows');
+    const getCapabilities = content.indexOf('builtin-workbench_get_capabilities');
+    const listWindows = content.indexOf('builtin-workbench_list_windows', getCapabilities);
     const openApp = content.indexOf('builtin-workbench_open_app', listWindows);
     const domainEdit = content.indexOf('builtin-note_append', openApp);
     const confirmation = content.indexOf('最后重新读取笔记或观察窗口确认结果', domainEdit);
 
     expect(workbenchToolsSkill.description).toContain('展示/演示/让我看你操作');
     expect(content).toContain('可见笔记演示');
+    expect(content).toContain('typeId: "notes"');
+    expect(content).toContain('用 `note` 做能力发现');
+    expect(content).toContain('get_capabilities(typeId:"note")');
+    expect(content).toContain('acknowledged:true');
+    expect(content).toContain('targetRef');
+    expect(content).toContain('waitWhileNoteHot');
     expect(content).toContain('probe -> apply_ops');
     expect(content).toContain('AgentStrip、AI 光标/高亮、节奏与进度');
-    expect(listWindows).toBeGreaterThanOrEqual(0);
+    expect(getCapabilities).toBeGreaterThanOrEqual(0);
+    expect(listWindows).toBeGreaterThan(getCapabilities);
     expect(openApp).toBeGreaterThan(listWindows);
     expect(domainEdit).toBeGreaterThan(openApp);
     expect(confirmation).toBeGreaterThan(domainEdit);

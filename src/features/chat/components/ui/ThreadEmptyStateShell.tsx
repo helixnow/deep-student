@@ -54,7 +54,7 @@ export const ThreadEmptyStateShell: React.FC<ThreadEmptyStateShellProps> = ({
         ) : null}
         <h2
           data-slot="thread-empty-primary-action"
-          className={cn('text-balance text-xl font-medium text-foreground', titleClassName)}
+          className={cn('text-balance text-2xl font-medium text-foreground', titleClassName)}
         >
           {title}
         </h2>

@@ -63,7 +63,7 @@ describe('ComposerPlusMenu', () => {
     });
   });
 
-  it('shows persistent downgrade pills while elevated presets are active', () => {
+  it('shows compact inline downgrade chips while elevated presets are active', () => {
     const onPermissionPresetChange = vi.fn();
     const { rerender } = render(
       <ComposerPlusMenu
@@ -81,7 +81,10 @@ describe('ComposerPlusMenu', () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId('full-access-active'));
+    const fullAccessChip = screen.getByTestId('full-access-active');
+    expect(fullAccessChip.className).toContain('inline-flex');
+    expect(fullAccessChip.textContent ?? '').not.toMatch(/点击降为宽松|click to downgrade/i);
+    fireEvent.click(fullAccessChip);
     expect(onPermissionPresetChange).toHaveBeenCalledWith('relaxed');
 
     rerender(

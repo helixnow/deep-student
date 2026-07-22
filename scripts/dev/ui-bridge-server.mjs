@@ -13,21 +13,21 @@ import { WebSocketServer } from 'ws';
 
 const PORT = 17423;
 
-let appSocket = null;
+const sockets = new Set();
 let nextId = 1;
 const pending = new Map();
 
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/status') {
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ connected: !!appSocket }));
+    res.end(JSON.stringify({ connected: sockets.size > 0, clients: sockets.size }));
     return;
   }
   if (req.method === 'POST' && req.url === '/eval') {
     let body = '';
     req.on('data', (c) => (body += c));
     req.on('end', () => {
-      if (!appSocket) {
+      if (sockets.size === 0) {
         res.writeHead(503, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: 'app not connected' }));
         return;
@@ -49,7 +49,16 @@ const server = http.createServer((req, res) => {
         }
       }, 15000);
       pending.set(id, { res, timer });
-      appSocket.send(JSON.stringify({ id, code }));
+      // 广播到所有 webview，取第一个响应（隐藏窗口可能永不响应）
+      const payload = JSON.stringify({ id, code });
+      for (const ws of sockets) {
+        try {
+          ws.send(payload);
+          console.log(`[bridge] eval ${id} sent (readyState=${ws.readyState}, buffered=${ws.bufferedAmount})`);
+        } catch (e) {
+          console.log(`[bridge] eval ${id} send failed: ${e}`);
+        }
+      }
     });
     return;
   }
@@ -59,13 +68,17 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server, path: '/app' });
 wss.on('connection', (ws) => {
-  appSocket = ws;
-  console.log('[bridge] app connected');
+  sockets.add(ws);
+  console.log(`[bridge] app connected (clients=${sockets.size})`);
   ws.on('message', (data) => {
     let msg;
     try {
       msg = JSON.parse(String(data));
     } catch {
+      return;
+    }
+    if (msg.id < 0) {
+      console.log(`[bridge] diag: ${JSON.stringify(msg.value)}`);
       return;
     }
     const entry = pending.get(msg.id);
@@ -76,8 +89,8 @@ wss.on('connection', (ws) => {
     entry.res.end(JSON.stringify(msg));
   });
   ws.on('close', () => {
-    if (appSocket === ws) appSocket = null;
-    console.log('[bridge] app disconnected');
+    sockets.delete(ws);
+    console.log(`[bridge] app disconnected (clients=${sockets.size})`);
   });
 });
 

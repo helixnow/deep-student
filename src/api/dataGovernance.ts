@@ -44,6 +44,7 @@ import {
   SYNC_PROGRESS_EVENT,
   isSyncPhaseTerminal,
 } from "../types/dataGovernance";
+import type { StartupComponentIssue } from '@/types/dataGovernance';
 
 // ==================== 维护模式 API ====================
 
@@ -54,8 +55,15 @@ import {
 export async function getMaintenanceStatus(): Promise<{
   is_in_maintenance_mode: boolean;
   blocked_components: string[];
+  component_health?: { components: StartupComponentIssue[] } | null;
+  component_issues?: StartupComponentIssue[];
 }> {
-  return invoke<{ is_in_maintenance_mode: boolean; blocked_components: string[] }>(
+  return invoke<{
+    is_in_maintenance_mode: boolean;
+    blocked_components: string[];
+    component_health?: { components: StartupComponentIssue[] } | null;
+    component_issues?: StartupComponentIssue[];
+  }>(
     "data_governance_get_maintenance_status",
   );
 }

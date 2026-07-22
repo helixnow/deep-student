@@ -67,3 +67,14 @@ export function resourceTypeToAppTypeId(type: ResourceType | string): string | n
   if (typeof type !== 'string' || !type) return null;
   return RESOURCE_TYPE_TO_APP_TYPE_ID[type] ?? null;
 }
+
+/**
+ * Alias / resource typeId → registered workbench app typeId.
+ * Mirrors launch remapping for the notes workspace (`note`/`mindmap` → `notes`).
+ * Unknown typeIds pass through unchanged (unlike resourceTypeToAppTypeId which returns null).
+ */
+export function resolveWorkbenchAppTypeId(typeId: string): string {
+  if (typeof typeId !== 'string' || !typeId) return typeId;
+  if (isNotesWorkspaceResourceType(typeId)) return NOTES_APP_TYPE_ID;
+  return typeId;
+}

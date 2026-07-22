@@ -8,6 +8,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 // 🚀 性能优化：Settings, Dashboard, SOTADashboard 改为懒加载
 import { CaretLeft, CaretRight, CircleNotch, DownloadSimple, Terminal, Warning, X } from '@phosphor-icons/react';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
+import type { StartupComponentIssue } from '@/stores/systemStatusStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
@@ -74,6 +75,7 @@ import { useDialogControl } from './contexts/DialogControlContext';
 import './styles/typography.css'; // 全局排版（字体/字号/行高）
 import './styles/shadcn-overrides.css'; // 修复图标尺寸被覆盖的问题
 import { MigrationStatusBanner } from './components/system-status/MigrationStatusBanner';
+import { FeatureUnavailablePanel } from './components/system-status/FeatureUnavailablePanel';
 import { SettingsShellSidebar } from '@/features/settings/components/SettingsShellSidebar';
 import { TodoShellSidebar } from '@/features/todo/components/TodoShellSidebar';
 import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from './app/shell/DesktopShellIcons';
@@ -567,6 +569,9 @@ function App() {
   const maintenanceMode = useSystemStatusStore((s) => s.maintenanceMode);
   const maintenanceReason = useSystemStatusStore((s) => s.maintenanceReason);
   const maintenanceRequiresRestart = useSystemStatusStore((s) => s.maintenanceRequiresRestart);
+  const chatV2Blocked = useSystemStatusStore((s) =>
+    s.componentHealth.some((entry) => entry.component === 'chat_v2' && entry.status === 'blocked'),
+  );
 
   // 🆕 任务3：应用启动时同步后端维护模式状态到前端 store
   useEffect(() => {
@@ -575,13 +580,30 @@ function App() {
         const status = await invoke<{
           is_in_maintenance_mode: boolean;
           blocked_components?: string[];
+          component_health?: { components?: StartupComponentIssue[] } | null;
+          component_issues?: StartupComponentIssue[];
         }>('data_governance_get_maintenance_status');
+        const componentHealth =
+          status.component_health?.components
+          ?? status.component_issues
+          ?? [];
+        useSystemStatusStore.getState().setComponentHealth(componentHealth);
         if (status.is_in_maintenance_mode) {
           useSystemStatusStore.getState().requireMaintenanceRestart(
             status.blocked_components?.length
               ? t('common:maintenance.recovery_required')
               : t('common:maintenance.banner_description')
           );
+        } else if (componentHealth.some((entry) => entry.status !== 'healthy')) {
+          const affected = componentHealth
+            .filter((entry) => entry.status !== 'healthy')
+            .map((entry) => entry.component)
+            .join(', ');
+          useSystemStatusStore.getState().showMigrationStatus({
+            level: componentHealth.some((entry) => entry.status === 'blocked') ? 'error' : 'warning',
+            message: t('common:maintenance.partial_degradation_title'),
+            details: t('common:maintenance.partial_degradation_description', { components: affected }),
+          });
         }
       } catch (err) {
         // 命令可能不存在（旧版后端），静默忽略
@@ -1111,6 +1133,26 @@ function App() {
     });
   }, []);
   const templateJsonPreviewReturnRef = useRef<CurrentView>('template-management');
+
+  useEffect(() => {
+    let shouldOpenRecoveryReceipt = false;
+    try {
+      shouldOpenRecoveryReceipt =
+        localStorage.getItem('deep-student.pending-recovery-receipt') === '1';
+      if (shouldOpenRecoveryReceipt) {
+        localStorage.removeItem('deep-student.pending-recovery-receipt');
+      }
+    } catch {
+      return;
+    }
+
+    if (!shouldOpenRecoveryReceipt) return;
+    setPendingSettingsRoute({
+      tab: 'data-governance',
+      dataGovernanceTab: 'recovery',
+    });
+    setCurrentView('settings');
+  }, [setCurrentView]);
 
   const uiLabEnabled = useIsUILabEnabled();
 
@@ -2397,8 +2439,10 @@ function App() {
   ), []);
 
   const chatV2Content = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}><LazyChatV2Page /></Suspense>
-  ), []);
+    chatV2Blocked
+      ? <FeatureUnavailablePanel component="chat_v2" title={t('common:maintenance.chat_unavailable')} />
+      : <Suspense fallback={<PageLoadingFallback />}><LazyChatV2Page /></Suspense>
+  ), [chatV2Blocked, t]);
 
   // template-management: 依赖仅在模板选择流程触发时变化，日常视图切换中保持稳定
   const templateManagementContent = useMemo(() => (

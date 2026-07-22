@@ -178,7 +178,7 @@
 }
 
 .wb-agenda-days {
-  grid-auto-rows: 28px;
+  grid-auto-rows: 32px;
   row-gap: 1px;
   animation: wb-agenda-month-enter 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -207,7 +207,7 @@
   color: inherit;
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
 

@@ -57,10 +57,10 @@ export const canvasNoteSkill: SkillDefinition = {
 
 当用户说“展示一下”“演示”“让我看你操作”“可视化操作”等，意图是看到学习桌面中的真实窗口操作，而不是看到一串后台 CRUD 工具卡：
 
-1. **同时加载 \`workbench-tools\`**，并按其“可见笔记演示”剧本执行。
-2. 先用 \`builtin-note_list\` 找到已有笔记（若用户已指定笔记则直接使用），再用 Workbench 工具检查窗口并打开/聚焦目标笔记。
+1. **同时加载 \`workbench-tools\`**，并按其“可见笔记演示”剧本执行。能力发现用 \`builtin-workbench_get_capabilities(typeId:"notes")\`（已注册应用）；\`note\` 仅作资源类型 / \`open_app\` 别名，不要用它做 get_capabilities。
+2. 先用 \`builtin-note_list\` 找到已有笔记（若用户已指定笔记则直接使用），再用 Workbench 工具检查窗口并打开并聚焦目标笔记。
 3. 用户只要求“展示能力”且未授权改内容时，默认做无损演示：打开、聚焦、读取或滚动已有笔记，然后说明如需观看 AI 光标与逐步编辑，请指定目标笔记和要改的内容。
-4. 用户已明确授权具体修改时，在目标笔记窗口打开并聚焦后，优先调用 \`builtin-note_append\` 或 \`builtin-note_replace\`。它们会经 ACR 前端委托呈现窗口光环、AgentStrip、AI 光标/高亮、节奏化编辑与进度。
+4. 用户已明确授权具体修改时，在目标笔记窗口打开并聚焦后，优先调用 \`builtin-note_append\` 或 \`builtin-note_replace\`（带 \`expected_updated_at\`）。\`open+focus\` 后 probe 可能为 \`hot\`：前端委托路径会 \`waitWhileNoteHot\` 后再 \`apply_ops\`，仍应继续可见写入，不要因 hot 改走后台或放弃演出。它们会呈现窗口光环、AgentStrip、AI 光标/高亮、节奏化编辑与进度。
 5. **不得为了演示而自行创建笔记、编造笔记主题、覆盖整篇内容或修改未获授权的笔记。** \`builtin-note_create\` / \`builtin-note_set\` 只能在用户明确要求创建或完整重写时使用。
 6. 写入后用 \`builtin-note_read\` 或 \`builtin-workbench_query_state\` 确认结果，不要仅根据工具调用已发出就宣称成功。
 `,

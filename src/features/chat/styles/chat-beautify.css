@@ -175,7 +175,7 @@
 }
 
 .chat-v2 .chat-empty-composer-layout__message-list [data-slot="thread-empty-primary-action"] {
-  font-size: clamp(1.15rem, 1.6vw, 1.5rem);
+  font-size: clamp(1.35rem, 2vw, 1.75rem);
 }
 
 .chat-v2 .chat-empty-composer-layout__footer {

@@ -1,3 +1,12 @@
+export type StartupComponentStatus = 'healthy' | 'degraded' | 'blocked';
+
+export interface StartupComponentIssue {
+  component: string;
+  status: StartupComponentStatus;
+  reason: string | null;
+  dependency: string | null;
+}
+
 /**
  * 数据治理系统类型定义
  *
@@ -640,7 +649,15 @@ export interface BackedUpAsset {
 // ==================== UI 相关类型 ====================
 
 /** Dashboard Tab 类型 */
-export type DashboardTab = 'overview' | 'archive' | 'backup' | 'sync' | 'audit' | 'cache' | 'debug';
+export type DashboardTab =
+  | 'overview'
+  | 'recovery'
+  | 'archive'
+  | 'backup'
+  | 'sync'
+  | 'audit'
+  | 'cache'
+  | 'debug';
 
 /**
  * 数据库 ID 类型（治理范围内的数据库）

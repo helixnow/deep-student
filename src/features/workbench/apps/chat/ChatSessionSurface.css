@@ -40,9 +40,9 @@
     padding-inline: 1rem;
   }
 
-  /* 空态标题原为 vw 基准（clamp 1.6vw），窄窗内改为容器宽度基准 */
+  /* 空态标题原为 vw 基准（clamp 2vw），窄窗内改为容器宽度基准 */
   [data-wb-chat-session] [data-slot='thread-empty-primary-action'] {
-    font-size: clamp(1.05rem, 3.4cqi, 1.4rem);
+    font-size: clamp(1.2rem, 4cqi, 1.6rem);
   }
 
   /* 空态 composer 栈的左右留白与移动端媒体查询档对齐 */

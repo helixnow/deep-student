@@ -461,10 +461,24 @@ pub fn data_governance_get_maintenance_status(
         blocked_components.push("workspaces".to_string());
     }
 
+    let component_health = app
+        .try_state::<super::StartupComponentHealthState>()
+        .map(|state| state.snapshot())
+        .or_else(|| {
+            app.try_state::<std::sync::Arc<super::StartupComponentHealthState>>()
+                .map(|state| state.snapshot())
+        });
+    let component_issues = component_health
+        .as_ref()
+        .map(|health| health.issues())
+        .unwrap_or_default();
+
     Ok(MaintenanceStatusResponse {
         is_in_maintenance_mode: !blocked_components.is_empty(),
         blocked_components,
         current_operation: crate::backup_common::current_data_governance_operation(),
+        component_health,
+        component_issues,
     })
 }
 

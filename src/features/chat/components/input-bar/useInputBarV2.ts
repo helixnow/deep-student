@@ -24,6 +24,7 @@ import {
   resolveExplicitInjectModes,
 } from './injectModeUtils';
 import { resolveChatReadiness, triggerOpenSettingsModels } from '@/features/chat/readiness/readinessGate';
+import { clearComposerDraft } from './composerDraftStorage';
 // ============================================================================
 // InputBar 选项
 // ============================================================================
@@ -358,6 +359,14 @@ export function useInputBarV2(
       return;
     }
 
+    // 正文已拷贝到 finalContent。先清草稿 + 乐观清空输入框：
+    // 1) 避免异步 prep 期间 debounce 又把正文写回 sessionStorage
+    // 2) 首条消息 empty→docked remount 时不会把已发送内容恢复进输入框
+    // sendMessageWithIds 仍会再清一次（attachments / sticky refs），此处只提前清文本。
+    const previousInput = state.inputValue;
+    clearComposerDraft(state.sessionId);
+    state.setInputValue('');
+
     try {
       // 路由：streaming 时入队，idle 时直发
       if (willEnqueue) {
@@ -365,11 +374,9 @@ export function useInputBarV2(
         // 但保留 pendingContextRefs 不清除 —— 用户还在为后续消息组合上下文。
         const nonStickyRefs = state.pendingContextRefs.filter((r) => r.isSticky !== true);
         state.enqueueMessage(finalContent, allAttachments, nonStickyRefs);
-        // 清空输入框和附件（与直发路径行为一致），但保留 pendingContextRefs
-        state.setInputValue('');
         state.clearAttachments();
       } else {
-        // 直发：sendMessage 内部已清空 inputValue/attachments/contextRefs（保留 sticky）
+        // 直发：sendMessage 内部会再清空 attachments/contextRefs（保留 sticky）
         await state.sendMessage(finalContent, allAttachments);
       }
 
@@ -386,6 +393,11 @@ export function useInputBarV2(
       }
     } catch (error: unknown) {
       console.error('[useInputBarV2] Send message failed:', error);
+      // 本地回合尚未提交时恢复正文，便于重试；已 commit 则保持空输入
+      const latest = store.getState();
+      if (latest.sessionStatus === 'idle' && !latest.inputValue.trim() && previousInput) {
+        latest.setInputValue(previousInput);
+      }
       throw error;
     }
     }

@@ -1672,8 +1672,8 @@
       "hints": {
         "cautious": "Confirm each Medium or High action. Dangerous approvals are never remembered.",
         "relaxed": "Low and Medium actions run silently; High actions still require approval.",
-        "full_access": "Ordinary tools run without approval. Local shell keeps runtime roots, the OS sandbox, and network boundaries; the shell guard may still deny or require confirmation. External MCP internals are not governed by the local shell guard.",
-        "danger_full_access": "Danger: ordinary tools run without approval and local-shell host file/network limits are removed. Recognized catastrophic commands are still denied and ambiguous commands may still require confirmation. External MCP internals are not governed by the local shell guard."
+        "full_access": "Tools and shell inside the sandbox run without step-by-step confirmation; privilege actions such as skill trust / MCP install / runtime root still require a one-shot confirmation; catastrophic commands are denied.",
+        "danger_full_access": "Danger: tools and shell run without step-by-step confirmation and local-shell host file/network limits are removed; privilege actions such as skill trust / MCP install / runtime root still require a one-shot confirmation; catastrophic commands are denied."
       },
       "shortHints": {
         "cautious": "Confirm Medium and High actions",
@@ -1682,10 +1682,10 @@
         "danger_full_access": "Unrestricted host files and network"
       },
       "modePriority": "This preset controls Craft only. Ask and Plan mode restrictions always take precedence.",
-      "fullAccessActive": "Full access on · click to downgrade",
-      "fullAccessDowngradeHint": "Restore per-item approval for high-risk actions (Relaxed)",
-      "dangerActive": "DANGER FULL ACCESS · click to downgrade",
-      "dangerDowngradeHint": "Immediately restore runtime roots, the OS sandbox, and network boundaries",
+      "fullAccessActive": "Full access",
+      "fullAccessDowngradeHint": "Full access is on. Click to downgrade to Relaxed and restore per-item approval for high-risk actions.",
+      "dangerActive": "Danger",
+      "dangerDowngradeHint": "Danger full access is on. Click to downgrade to Relaxed and restore runtime roots, the OS sandbox, and network boundaries.",
       "dangerConfirmTitle": "Enable danger full access?",
       "dangerConfirmDescription": "Ordinary tools and every external MCP will run without approval, and local shell will have no file or network sandbox. Recognized catastrophic commands are still denied, but dynamically generated scripts that cannot be classified may still damage the host; external MCP internals are also outside the local shell guard. Continue only if you explicitly accept these risks.",
       "dangerConfirmAction": "Enable danger full access"
@@ -1708,6 +1708,8 @@
     "description": "Description",
     "arguments": "Arguments",
     "approve": "Allow Once",
+    "allowSession": "Allow for Session",
+    "allowScope": "Allow Scope",
     "reject": "Reject Once",
     "rejectReasonPlaceholder": "Optional: tell the AI why you rejected or what it should do instead",
     "rejectDirectly": "Reject Directly",

@@ -253,9 +253,7 @@ impl CustomAgentExecutor {
                         }
                     }
                     "reasoning_effort" | "reasoningEffort" => {
-                        let value = value
-                            .trim()
-                            .trim_matches(|c| c == '"' || c == '\'');
+                        let value = value.trim().trim_matches(|c| c == '"' || c == '\'');
                         if !matches!(
                             value,
                             "minimal" | "low" | "medium" | "high" | "xhigh" | "x_high"
@@ -767,11 +765,7 @@ impl CustomAgentExecutor {
         }))
     }
 
-    async fn execute_propose(
-        &self,
-        args: &Value,
-        ctx: &ExecutionContext,
-    ) -> Result<Value, String> {
+    async fn execute_propose(&self, args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
         match args
             .get("action")
             .and_then(Value::as_str)
@@ -869,8 +863,7 @@ impl CustomAgentExecutor {
 
         // 目标文件 TOCTOU：create 要求目标仍不存在；update 要求目标内容
         // 仍是提案时的版本（否则会覆盖用户/其他会话的手工修改）
-        let _file_guard =
-            crate::chat_v2::workspace::custom_agents::lock_custom_agent_files()?;
+        let _file_guard = crate::chat_v2::workspace::custom_agents::lock_custom_agent_files()?;
         let agents_dir = self.agents_dir();
         let target = Self::resolve_persona_path(&agents_dir, &file_name)?;
         match meta.previous_sha256.as_deref() {
@@ -977,8 +970,7 @@ impl CustomAgentExecutor {
             .ok_or("expected_content_sha256 is required from custom_agent_get")?;
         let expected_content_sha256 =
             Self::normalize_sha256(expected_content_sha256, "expected_content_sha256")?;
-        let _file_guard =
-            crate::chat_v2::workspace::custom_agents::lock_custom_agent_files()?;
+        let _file_guard = crate::chat_v2::workspace::custom_agents::lock_custom_agent_files()?;
         let target = Self::resolve_persona_path(&self.agents_dir(), &file_name)?;
         if !target.exists() {
             return Err(format!(
@@ -1287,8 +1279,7 @@ mod tests {
         assert!(replay.is_err());
 
         // remove：删除后文件消失
-        let expected_content_sha256 =
-            CustomAgentExecutor::sha256_hex(VALID_PERSONA.as_bytes());
+        let expected_content_sha256 = CustomAgentExecutor::sha256_hex(VALID_PERSONA.as_bytes());
         let removed = executor
             .execute_remove(&json!({
                 "file_name": "paper-summarizer.md",

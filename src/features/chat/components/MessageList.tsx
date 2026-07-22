@@ -594,6 +594,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
     if (!viewportElement) return;
 
     let lastScrollTop = viewportElement.scrollTop;
+    let lastScrollHeight = viewportElement.scrollHeight;
 
     const releaseLock = () => {
       programmaticScrollLockRef.current = false;
@@ -605,16 +606,32 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
     const syncScrollState = () => {
       const prevScrollTop = lastScrollTop;
+      const prevScrollHeight = lastScrollHeight;
       const { scrollTop, scrollHeight, clientHeight } = viewportElement;
       lastScrollTop = scrollTop;
+      lastScrollHeight = scrollHeight;
 
       const distanceToBottom = scrollHeight - scrollTop - clientHeight;
       // 底部附近阈值 50px（主流聊天产品 同级灵敏度）
       const nearBottom = distanceToBottom < 50;
-      // 吸底循环/平滑回底只会增大 scrollTop，因此 scrollTop 减小必然是用户向上滚
-      // （滚动条拖拽/键盘/触摸等 wheel 之外的输入）。
-      // distanceToBottom > 1 排除内容收缩时浏览器 clamp 产生的减小（恰好落在底部）
-      const scrolledUp = scrollTop < prevScrollTop - 1 && distanceToBottom > 1;
+      // 流式期间 viewport 关闭了原生 overflow-anchor，上方内容收缩/重排（思维链
+      // 折叠、preparing 工具块被移除、markdown/KaTeX 重新布局）会让浏览器把
+      // scrollTop 向下 clamp。这种 clamp 不是用户操作，却会让 scrollTop 减小，
+      // 若据此判定"用户上滚"会错误地永久中断吸底跟随。因此当本次 scrollTop 的
+      // 减小量可由 scrollHeight 的收缩解释时（含少量重排抖动余量），排除误判。
+      const heightShrunk = prevScrollHeight - scrollHeight;
+      const scrollTopDrop = prevScrollTop - scrollTop;
+      const dropExplainedByShrink =
+        heightShrunk > 0 && scrollTopDrop <= heightShrunk + 4;
+      // 吸底循环/平滑回底只会增大 scrollTop，因此 scrollTop 减小通常是用户向上滚
+      // （滚动条拖拽/键盘/触摸等 wheel 之外的输入）。真正的 wheel/触控板上滚由
+      // useSmoothWheel 的 onUserScrollUp 第一时间捕获，这里只作兜底：
+      // distanceToBottom > 1 排除内容收缩时浏览器 clamp 落在底部的减小；
+      // !dropExplainedByShrink 进一步排除收缩量大于 1px 的 clamp。
+      const scrolledUp =
+        scrollTop < prevScrollTop - 1 &&
+        distanceToBottom > 1 &&
+        !dropExplainedByShrink;
 
       if (programmaticScrollLockRef.current) {
         if (scrolledUp) {
@@ -629,9 +646,11 @@ const MessageListInner: React.FC<MessageListProps> = ({
       }
 
       // 吸底跟随期间程序化滚动会经过"距底 > 50px"的中间位置（大块内容 easing 追赶），
-      // 不能据此判定用户离开底部；跟随中只有向上滚动才代表用户接管
+      // 不能据此判定用户离开底部；跟随中只有向上滚动才代表用户接管。
+      // 再要求 !nearBottom：跟随中若 scrollTop 因重排被下拉但仍贴近底部（距底 < 50px），
+      // 视为抖动而非用户离开，避免收缩/clamp 抖动错误中断吸底。
       const followingBottom = isAutoScrollingRef.current && !userHasScrolledRef.current;
-      const awayFromBottom = followingBottom ? scrolledUp : !nearBottom;
+      const awayFromBottom = followingBottom ? (scrolledUp && !nearBottom) : !nearBottom;
       userHasScrolledRef.current = awayFromBottom;
       setShowScrollToBottom(awayFromBottom);
       // P1-8: 回到底部即视为"已读"，清除新消息圆点
@@ -647,6 +666,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
     syncScrollStateRef.current = syncScrollState;
     resetScrollBaselineRef.current = () => {
       lastScrollTop = viewportElement.scrollTop;
+      lastScrollHeight = viewportElement.scrollHeight;
     };
     syncScrollState();
     viewportElement.addEventListener('scroll', syncScrollState, { passive: true });

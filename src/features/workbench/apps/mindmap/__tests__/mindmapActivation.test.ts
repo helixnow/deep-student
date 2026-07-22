@@ -54,7 +54,7 @@ describe('mindmap workbench activation', () => {
       action: 'focusNode',
       payload: { nodeId: 'node_first' },
     });
-    expect(result).toEqual({ handled: true });
+    expect(result).toEqual({ handled: true, acknowledged: true });
     expect(first.getState().focusedNodeId).toBe('node_first');
     expect(second.getState().focusedNodeId).toBeNull();
   });
@@ -68,7 +68,7 @@ describe('mindmap workbench activation', () => {
       payload: { view: 'outline' },
     });
     store.setState({ mindmapId: 'mm_wait' });
-    await expect(pending).resolves.toEqual({ handled: true });
+    await expect(pending).resolves.toEqual({ handled: true, acknowledged: true });
     expect(store.getState().currentView).toBe('outline');
   });
 

@@ -289,9 +289,10 @@ fn extract_probe_state(data: &Option<serde_json::Value>) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// 只有 clean 可直接委托；dirty/hot/frozen/未知状态一律 fail closed。
+/// clean/dirty/hot 可委托前端（noteDriver 支持 waitWhileNoteHot / dirty suggestion）；
+/// frozen/closed/disabled/未知状态一律 fail closed（后端回落仅 closed|disabled）。
 fn should_delegate_frontend(probe_state: &str) -> bool {
-    probe_state == "clean"
+    matches!(probe_state, "clean" | "dirty" | "hot")
 }
 
 fn is_safe_backend_fallback_state(probe_state: &str) -> bool {
@@ -678,9 +679,11 @@ fn with_backend_fallback_message(mut output: serde_json::Value) -> serde_json::V
 /// - `note_list` / `note_search` / `note_create`: 后端直读/直写
 ///
 /// ## 写入路径（R1-03）
-/// 1. `acr_bridge_call(probe)` → clean/dirty/hot 则 `apply_ops`
+/// 1. `acr_bridge_call(probe)` → clean/dirty/hot 则前端委托 `apply_ops`
+///    （hot 由 noteDriver.waitWhileNoteHot 消化；dirty 走 suggestion / apply_ops）
 /// 2. closed/disabled + expected_updated_at → 后端 CAS + `dstu:change`
-/// 3. `execute_write_frontend` 原样保留（suggestion 由前端触发，Rust 不直接调用）
+/// 3. frozen/未知 → fail closed（不委托、不安全回落）
+/// 4. `execute_write_frontend` 原样保留（suggestion 由前端触发，Rust 不直接调用）
 pub struct CanvasToolExecutor;
 
 impl CanvasToolExecutor {
@@ -2169,8 +2172,8 @@ mod tests {
     #[test]
     fn test_should_delegate_frontend() {
         assert!(should_delegate_frontend("clean"));
-        assert!(!should_delegate_frontend("dirty"));
-        assert!(!should_delegate_frontend("hot"));
+        assert!(should_delegate_frontend("dirty"));
+        assert!(should_delegate_frontend("hot"));
         assert!(!should_delegate_frontend("closed"));
         assert!(!should_delegate_frontend("frozen"));
         assert!(!should_delegate_frontend("disabled"));

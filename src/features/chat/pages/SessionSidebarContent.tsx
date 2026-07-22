@@ -739,8 +739,11 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         buildSessionSidebarBody(true)
       ) : (
         <div className="flex h-full min-h-0 flex-col bg-[color:var(--shell-navigation-surface)]">
-          <CustomScrollArea className="min-h-0 flex-1" viewportClassName="px-2 py-1">
-            {buildSessionSidebarBody(false)}
+          <CustomScrollArea className="min-h-0 flex-1" viewportClassName="h-full w-full min-h-0">
+            {/* OverlayScrollbars 会清零 viewport padding，边距放在内层 */}
+            <div className="px-2 py-1">
+              {buildSessionSidebarBody(false)}
+            </div>
           </CustomScrollArea>
         </div>
       )}

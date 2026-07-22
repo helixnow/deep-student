@@ -199,6 +199,8 @@ impl SelfInspectExecutor {
                 registered.push(json!({
                     "id": skill_id,
                     "content_length": content_length,
+                    "runtime_admitted": true,
+                    "admission_error": Value::Null,
                     "loaded": if session_state_available {
                         Value::Bool(loaded_ids.contains(skill_id))
                     } else {
@@ -213,10 +215,46 @@ impl SelfInspectExecutor {
             }
         }
 
+        if let Some(admission_errors) = ctx.skill_admission_errors.as_ref() {
+            let mut skill_ids: Vec<&String> = admission_errors.keys().collect();
+            skill_ids.sort();
+            for skill_id in skill_ids {
+                // An admitted entry wins if malformed input supplied both maps.
+                if ctx
+                    .skill_contents
+                    .as_ref()
+                    .is_some_and(|contents| contents.contains_key(skill_id))
+                {
+                    continue;
+                }
+                registered.push(json!({
+                    "id": skill_id,
+                    "content_length": Value::Null,
+                    "runtime_admitted": false,
+                    "admission_error": admission_errors.get(skill_id),
+                    "loaded": if session_state_available {
+                        Value::Bool(loaded_ids.contains(skill_id))
+                    } else {
+                        Value::Null
+                    },
+                    "active": if session_state_available {
+                        Value::Bool(active_ids.contains(skill_id))
+                    } else {
+                        Value::Null
+                    },
+                }));
+            }
+        }
+        registered.sort_by(|left, right| {
+            left.get("id")
+                .and_then(Value::as_str)
+                .cmp(&right.get("id").and_then(Value::as_str))
+        });
+
         let note = if session_state_available {
-            "loaded/active reflect the current session skill state; registered skills come from the runtime skill registry."
+            "registered_skills reflects this request's immutable runtime catalog snapshot, including rejected entries and their admission errors. loaded/active reflect current session state. Trust or enable changes made during this tool loop appear in the runtime catalog on the next user turn."
         } else {
-            "Only registered skill ids are listed; loaded/active state was unavailable in this execution context."
+            "registered_skills reflects this request's immutable runtime catalog snapshot, including rejected entries; loaded/active state was unavailable in this execution context."
         };
 
         json!({
@@ -346,10 +384,7 @@ impl SelfInspectExecutor {
         })
     }
 
-    fn collect_effective_runtime(
-        ctx: &ExecutionContext,
-        limitations: &mut Vec<String>,
-    ) -> Value {
+    fn collect_effective_runtime(ctx: &ExecutionContext, limitations: &mut Vec<String>) -> Value {
         let profile = ctx.chat_v2_db.as_ref().and_then(|db| {
             let conn = match db.get_conn_safe() {
                 Ok(conn) => conn,
@@ -452,8 +487,7 @@ impl SelfInspectExecutor {
 
         let effective_runtime = (section == InspectSection::All)
             .then(|| Self::collect_effective_runtime(ctx, &mut limitations));
-        let mut payload =
-            Self::assemble_payload(section, roots, skills, mcp, search, limitations);
+        let mut payload = Self::assemble_payload(section, roots, skills, mcp, search, limitations);
         if let (Some(runtime), Some(object)) = (effective_runtime, payload.as_object_mut()) {
             object.insert("effective_runtime".to_string(), runtime);
         }

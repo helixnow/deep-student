@@ -1,12 +1,14 @@
-//! SKILL.md runtime dependency declarations (`requires.bins` / `requires.env`).
+//! SKILL.md runtime dependency declarations (`requires.bins` / `requires.env` /
+//! `requires.python_packages`).
 //!
 //! Parses interoperable frontmatter and probes the local machine during
-//! skill scan/install. Bin names are validated before any process lookup.
+//! skill scan/install. Bin/package names are validated before any process lookup.
 
 use std::collections::HashSet;
 use std::env;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::Duration;
 
 use std::sync::OnceLock;
@@ -17,8 +19,6 @@ use tokio::time::timeout;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
-#[cfg(target_os = "windows")]
-use std::process::Command;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -35,10 +35,21 @@ fn env_name_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$").expect("valid env name regex"))
 }
 
+/// Pip / PyPI distribution name (PEP 503–ish subset, no extras/URLs).
+fn python_package_name_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"^[A-Za-z0-9]([A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$")
+            .expect("valid python package name regex")
+    })
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkillRequires {
     pub bins: Vec<String>,
     pub env: Vec<String>,
+    #[serde(default)]
+    pub python_packages: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,14 +65,22 @@ pub struct SkillRequiresEnvProbe {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillRequiresPythonPackageProbe {
+    pub name: String,
+    pub found: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkillRequiresProbe {
     pub bins: Vec<SkillRequiresBinProbe>,
     pub env: Vec<SkillRequiresEnvProbe>,
+    #[serde(default)]
+    pub python_packages: Vec<SkillRequiresPythonPackageProbe>,
     pub invalid: Vec<String>,
     pub missing_count: usize,
 }
 
-/// 前端运行时探测入口：按声明的 bins/env 探测本机满足情况。
+/// 前端运行时探测入口：按声明的 bins/env/python_packages 探测本机满足情况。
 ///
 /// 用于加载期 requires 门控（不满足的技能不进入 `<available_skills>`），
 /// 与安装期扫描共用同一套探测逻辑。名称非法的条目记入 `invalid`。
@@ -69,10 +88,12 @@ pub struct SkillRequiresProbe {
 pub async fn skill_probe_requires(
     bins: Option<Vec<String>>,
     env: Option<Vec<String>>,
+    python_packages: Option<Vec<String>>,
 ) -> SkillRequiresProbe {
     probe_requires(SkillRequires {
         bins: bins.unwrap_or_default(),
         env: env.unwrap_or_default(),
+        python_packages: python_packages.unwrap_or_default(),
     })
     .await
 }
@@ -101,7 +122,7 @@ fn is_frontmatter_delimiter_line(line: &str) -> bool {
         == "---"
 }
 
-/// Parse `requires.bins` / `requires.env` from SKILL.md (top-level + nested compatibility metadata).
+/// Parse `requires.bins` / `requires.env` / `requires.python_packages` from SKILL.md.
 pub fn parse_requires_from_skill_md(text: &str) -> SkillRequires {
     let Some(frontmatter) = extract_frontmatter(text) else {
         return SkillRequires::default();
@@ -109,6 +130,7 @@ pub fn parse_requires_from_skill_md(text: &str) -> SkillRequires {
 
     let mut bins = Vec::new();
     let mut env = Vec::new();
+    let mut python_packages = Vec::new();
 
     merge_string_lists(
         &mut bins,
@@ -118,23 +140,32 @@ pub fn parse_requires_from_skill_md(text: &str) -> SkillRequires {
         &mut env,
         parse_requires_block(frontmatter, "requires", "env"),
     );
+    merge_string_lists(
+        &mut python_packages,
+        parse_requires_block(frontmatter, "requires", "python_packages"),
+    );
 
     // OpenClaw-compatible nested metadata:
-    // metadata.openclaw.requires.{bins,env}
+    // metadata.openclaw.requires.{bins,env,python_packages}
     if let Some(metadata) = parse_mapping_value(frontmatter, "metadata", 0) {
         if let Some(openclaw) = parse_mapping_value(&metadata, "openclaw", 0) {
             merge_string_lists(
                 &mut bins,
                 parse_requires_block(&openclaw, "requires", "bins"),
             );
+            merge_string_lists(&mut env, parse_requires_block(&openclaw, "requires", "env"));
             merge_string_lists(
-                &mut env,
-                parse_requires_block(&openclaw, "requires", "env"),
+                &mut python_packages,
+                parse_requires_block(&openclaw, "requires", "python_packages"),
             );
         }
     }
 
-    SkillRequires { bins, env }
+    SkillRequires {
+        bins,
+        env,
+        python_packages,
+    }
 }
 
 fn merge_string_lists(target: &mut Vec<String>, incoming: Vec<String>) {
@@ -312,10 +343,31 @@ fn is_valid_env(name: &str) -> bool {
     env_name_re().is_match(name)
 }
 
+fn is_valid_python_package(name: &str) -> bool {
+    python_package_name_re().is_match(name)
+}
+
+/// Map PyPI distribution name → importable top-level module for probing.
+fn python_import_name(package: &str) -> String {
+    let lower = package.to_ascii_lowercase().replace('_', "-");
+    match lower.as_str() {
+        "pymupdf" => "fitz".to_string(),
+        "pillow" => "PIL".to_string(),
+        "opencv-python" | "opencv-python-headless" => "cv2".to_string(),
+        "scikit-learn" => "sklearn".to_string(),
+        "beautifulsoup4" | "bs4" => "bs4".to_string(),
+        "pyyaml" => "yaml".to_string(),
+        "python-dateutil" => "dateutil".to_string(),
+        "msgpack-python" => "msgpack".to_string(),
+        other => other.replace('-', "_"),
+    }
+}
+
 fn partition_requires(requires: SkillRequires) -> (SkillRequires, Vec<String>) {
     let mut invalid = Vec::new();
     let mut valid_bins = Vec::new();
     let mut valid_env = Vec::new();
+    let mut valid_python_packages = Vec::new();
 
     for bin in requires.bins {
         if is_valid_bin(&bin) {
@@ -331,11 +383,19 @@ fn partition_requires(requires: SkillRequires) -> (SkillRequires, Vec<String>) {
             invalid.push(format!("env:{}", env));
         }
     }
+    for pkg in requires.python_packages {
+        if is_valid_python_package(&pkg) {
+            valid_python_packages.push(pkg);
+        } else {
+            invalid.push(format!("python_package:{}", pkg));
+        }
+    }
 
     (
         SkillRequires {
             bins: valid_bins,
             env: valid_env,
+            python_packages: valid_python_packages,
         },
         invalid,
     )
@@ -443,7 +503,48 @@ async fn probe_bin(bin: &str) -> bool {
     .unwrap_or(false)
 }
 
-/// Probe declared bins/env on the local machine.
+fn apply_no_window(cmd: &mut Command) {
+    #[cfg(target_os = "windows")]
+    {
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let _ = cmd;
+}
+
+/// Lightweight importability probe via `importlib.util.find_spec`.
+fn probe_python_package_sync(package: &str) -> bool {
+    let import_name = python_import_name(package);
+    // Avoid injecting untrusted strings into -c beyond validated package → mapped import.
+    let script = format!(
+        "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec({import_name:?}) else 1)"
+    );
+
+    for python in ["python3", "python"] {
+        let mut cmd = Command::new(python);
+        cmd.args(["-c", &script]);
+        apply_no_window(&mut cmd);
+        if let Ok(output) = cmd.output() {
+            if output.status.success() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+async fn probe_python_package(package: &str) -> bool {
+    let name = package.to_string();
+    timeout(
+        Duration::from_secs(PROBE_TIMEOUT_SECS),
+        tokio::task::spawn_blocking(move || probe_python_package_sync(&name)),
+    )
+    .await
+    .ok()
+    .and_then(|join| join.ok())
+    .unwrap_or(false)
+}
+
+/// Probe declared bins/env/python_packages on the local machine.
 pub async fn probe_requires(requires: SkillRequires) -> SkillRequiresProbe {
     let (validated, mut invalid) = partition_requires(requires);
 
@@ -459,8 +560,15 @@ pub async fn probe_requires(requires: SkillRequires) -> SkillRequiresProbe {
         env.push(SkillRequiresEnvProbe { name, set });
     }
 
-    let missing_count =
-        bins.iter().filter(|b| !b.found).count() + env.iter().filter(|e| !e.set).count();
+    let mut python_packages = Vec::new();
+    for name in validated.python_packages {
+        let found = probe_python_package(&name).await;
+        python_packages.push(SkillRequiresPythonPackageProbe { name, found });
+    }
+
+    let missing_count = bins.iter().filter(|b| !b.found).count()
+        + env.iter().filter(|e| !e.set).count()
+        + python_packages.iter().filter(|p| !p.found).count();
 
     invalid.sort();
     invalid.dedup();
@@ -468,6 +576,7 @@ pub async fn probe_requires(requires: SkillRequires) -> SkillRequiresProbe {
     SkillRequiresProbe {
         bins,
         env,
+        python_packages,
         invalid,
         missing_count,
     }
@@ -486,8 +595,25 @@ pub fn format_missing_requires_hints(probe: &SkillRequiresProbe) -> Vec<String> 
             env.name
         ));
     }
+    for pkg in probe.python_packages.iter().filter(|p| !p.found) {
+        hints.push(python_package_missing_hint(&pkg.name));
+    }
 
     hints
+}
+
+fn python_package_missing_hint(package: &str) -> String {
+    let import_name = python_import_name(package);
+    let import_note = if import_name != package.replace('-', "_").to_ascii_lowercase()
+        && import_name.to_ascii_lowercase() != package.to_ascii_lowercase()
+    {
+        format!(" (import as `{import_name}`)")
+    } else {
+        String::new()
+    };
+    format!(
+        "Python package `{package}` is not importable{import_note}. Prefer proposing `local_shell_execute` with `uv pip install {package}` (or `python3 -m pip install {package}`) after the skill is trusted and the command is approved, then retry loading this skill."
+    )
 }
 
 fn bin_missing_hint(bin: &str) -> String {
@@ -548,6 +674,8 @@ requires:
     - pandoc
   env:
     - OPENAI_API_KEY
+  python_packages:
+    - pymupdf
 ---
 
 # body
@@ -555,6 +683,7 @@ requires:
         let parsed = parse_requires_from_skill_md(md);
         assert_eq!(parsed.bins, vec!["python", "pandoc"]);
         assert_eq!(parsed.env, vec!["OPENAI_API_KEY"]);
+        assert_eq!(parsed.python_packages, vec!["pymupdf"]);
     }
 
     #[test]
@@ -565,11 +694,13 @@ description: Demo skill for requires parsing
 requires:
   bins: [node, uv]
   env: [API_KEY, OTHER_ENV]
+  python_packages: [pymupdf, pillow]
 ---
 "#;
         let parsed = parse_requires_from_skill_md(md);
         assert_eq!(parsed.bins, vec!["node", "uv"]);
         assert_eq!(parsed.env, vec!["API_KEY", "OTHER_ENV"]);
+        assert_eq!(parsed.python_packages, vec!["pymupdf", "pillow"]);
     }
 
     #[test]
@@ -577,22 +708,14 @@ requires:
         let parsed = parse_requires_from_skill_md("# no frontmatter\n");
         assert!(parsed.bins.is_empty());
         assert!(parsed.env.is_empty());
+        assert!(parsed.python_packages.is_empty());
     }
 
     #[test]
     fn frontmatter_delimiters_must_occupy_their_own_line() {
-        assert!(extract_frontmatter(
-            "---suffix\nname: Demo\n---\n"
-        )
-        .is_none());
-        assert!(extract_frontmatter(
-            "---\nname: Demo\n---suffix\n# body\n"
-        )
-        .is_none());
-        assert!(extract_frontmatter(
-            "---\nname: Demo\n\t--- \r\n# body\n"
-        )
-        .is_none());
+        assert!(extract_frontmatter("---suffix\nname: Demo\n---\n").is_none());
+        assert!(extract_frontmatter("---\nname: Demo\n---suffix\n# body\n").is_none());
+        assert!(extract_frontmatter("---\nname: Demo\n\t--- \r\n# body\n").is_none());
         assert_eq!(
             extract_frontmatter("  ---  \r\nname: Demo\r\n--- \r\n# body\n"),
             Some("name: Demo")
@@ -602,16 +725,28 @@ requires:
     #[test]
     fn parses_flow_map_and_openclaw_nested_requires() {
         let flow = parse_requires_from_skill_md(
-            "---\nname: Demo\nrequires: {bins: [node, uv], env: [API_KEY]}\n---\n",
+            "---\nname: Demo\nrequires: {bins: [node, uv], env: [API_KEY], python_packages: [pymupdf]}\n---\n",
         );
         assert_eq!(flow.bins, vec!["node", "uv"]);
         assert_eq!(flow.env, vec!["API_KEY"]);
+        assert_eq!(flow.python_packages, vec!["pymupdf"]);
 
         let nested = parse_requires_from_skill_md(
-            "---\nname: Demo\nmetadata:\n  openclaw:\n    requires:\n      bins: [rg]\n      env:\n        - SEARCH_TOKEN\n---\n",
+            "---\nname: Demo\nmetadata:\n  openclaw:\n    requires:\n      bins: [rg]\n      env:\n        - SEARCH_TOKEN\n      python_packages:\n        - pillow\n---\n",
         );
         assert_eq!(nested.bins, vec!["rg"]);
         assert_eq!(nested.env, vec!["SEARCH_TOKEN"]);
+        assert_eq!(nested.python_packages, vec!["pillow"]);
+    }
+
+    #[test]
+    fn python_import_name_maps_common_packages() {
+        assert_eq!(python_import_name("pymupdf"), "fitz");
+        assert_eq!(python_import_name("PyMuPDF"), "fitz");
+        assert_eq!(python_import_name("pillow"), "PIL");
+        assert_eq!(python_import_name("scikit-learn"), "sklearn");
+        assert_eq!(python_import_name("requests"), "requests");
+        assert_eq!(python_import_name("python-dateutil"), "dateutil");
     }
 
     #[test]
@@ -642,10 +777,7 @@ requires:
         let executable = temp.path().join("demo-tool");
         std::fs::write(&executable, b"#!/bin/sh\nexit 0\n").unwrap();
         std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
-        assert!(probe_bin_in_dirs(
-            "demo-tool",
-            &[temp.path().to_path_buf()]
-        ));
+        assert!(probe_bin_in_dirs("demo-tool", &[temp.path().to_path_buf()]));
 
         std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o600)).unwrap();
         assert!(!probe_bin_in_dirs(
@@ -663,11 +795,17 @@ requires:
                 "$(whoami)".to_string(),
             ],
             env: vec!["GOOD_ENV".to_string(), "bad-env".to_string()],
+            python_packages: vec![
+                "pymupdf".to_string(),
+                "bad pkg".to_string(),
+                "../evil".to_string(),
+            ],
         };
         let (valid, invalid) = partition_requires(requires);
         assert_eq!(valid.bins, vec!["python"]);
         assert_eq!(valid.env, vec!["GOOD_ENV"]);
-        assert_eq!(invalid.len(), 3);
+        assert_eq!(valid.python_packages, vec!["pymupdf"]);
+        assert_eq!(invalid.len(), 5);
     }
 
     #[tokio::test]
@@ -679,6 +817,7 @@ requires:
                 "SKILL_REQUIRES_TEST_VAR".to_string(),
                 "SKILL_REQUIRES_MISSING_VAR".to_string(),
             ],
+            python_packages: Vec::new(),
         })
         .await;
         std::env::remove_var("SKILL_REQUIRES_TEST_VAR");
@@ -698,6 +837,40 @@ requires:
         assert_eq!(probe.missing_count, 1);
     }
 
+    #[tokio::test]
+    async fn probe_python_packages_reports_missing_and_stdlib_found() {
+        let probe = probe_requires(SkillRequires {
+            bins: Vec::new(),
+            env: Vec::new(),
+            python_packages: vec![
+                "json".to_string(), // stdlib — found when Python is present
+                "deep-student-definitely-missing-pkg-xyz".to_string(),
+            ],
+        })
+        .await;
+
+        let missing = probe
+            .python_packages
+            .iter()
+            .find(|p| p.name == "deep-student-definitely-missing-pkg-xyz")
+            .unwrap();
+        assert!(!missing.found);
+
+        let stdlib = probe
+            .python_packages
+            .iter()
+            .find(|p| p.name == "json")
+            .unwrap();
+        // If neither python3 nor python is available, both are missing.
+        if probe_bin_sync("python3") || probe_bin_sync("python") {
+            assert!(stdlib.found);
+            assert_eq!(probe.missing_count, 1);
+        } else {
+            assert!(!stdlib.found);
+            assert_eq!(probe.missing_count, 2);
+        }
+    }
+
     #[test]
     fn format_hints_for_missing_python_on_windows() {
         let probe = SkillRequiresProbe {
@@ -706,6 +879,7 @@ requires:
                 found: false,
             }],
             env: Vec::new(),
+            python_packages: Vec::new(),
             invalid: Vec::new(),
             missing_count: 1,
         };
@@ -714,5 +888,26 @@ requires:
         assert!(hints[0].contains("python"));
         #[cfg(target_os = "windows")]
         assert!(hints[0].contains("winget install Python.Python.3"));
+    }
+
+    #[test]
+    fn format_hints_for_missing_python_packages() {
+        let probe = SkillRequiresProbe {
+            bins: Vec::new(),
+            env: Vec::new(),
+            python_packages: vec![SkillRequiresPythonPackageProbe {
+                name: "pymupdf".to_string(),
+                found: false,
+            }],
+            invalid: Vec::new(),
+            missing_count: 1,
+        };
+        let hints = format_missing_requires_hints(&probe);
+        assert_eq!(hints.len(), 1);
+        assert!(hints[0].contains("pymupdf"));
+        assert!(hints[0].contains("fitz"));
+        assert!(hints[0].contains("uv pip install pymupdf"));
+        assert!(hints[0].contains("python3 -m pip install pymupdf"));
+        assert!(hints[0].contains("local_shell_execute"));
     }
 }

@@ -19,7 +19,7 @@ use sha2::{Digest, Sha256};
 use tauri::Manager;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
-use super::skill_install_executor::AGENT_INSTALLED_MARKER;
+use super::skill_install_executor::{AGENT_INSTALLED_MARKER, POST_WRITE_TRUST_NEXT_STEP};
 use super::strip_tool_namespace;
 use crate::chat_v2::skills::{
     assess_skill_package_risk, expand_path, is_portable_skill_path_component, validate_skill_path,
@@ -35,6 +35,8 @@ pub mod tool_names {
 const PROPOSALS_SUBDIR: &str = "skill_proposals";
 const SKILL_FILE_NAME: &str = "SKILL.md";
 const PROPOSAL_META_FILE: &str = "PROPOSAL.json";
+const APPLY_SUCCESS_MESSAGE: &str =
+    "Skill written to ~/.deep-student/skills. It is untrusted by default — call skill_trust_request with action=inspect then grant before the skill body injects or package scripts can run via SKILL_DIR. Do not load_skills until trust is granted. Skills management is only a backup.";
 const MAX_CONTENT_BYTES: usize = 40_000;
 const MAX_PACKAGE_FILES: usize = 256;
 const MAX_PACKAGE_FILE_BYTES: usize = 8 * 1024 * 1024;
@@ -212,13 +214,28 @@ impl SkillWorkshopExecutor {
             }
         }
         let normalized = parts.join("/");
+        let normalized_lower = normalized.to_ascii_lowercase();
         let allowed = normalized.eq_ignore_ascii_case(SKILL_FILE_NAME)
-            || ["scripts/", "references/", "assets/"]
-                .iter()
-                .any(|prefix| normalized.to_ascii_lowercase().starts_with(prefix));
+            || [
+                "scripts/",
+                "references/",
+                "assets/",
+                "agents/",
+                "templates/",
+                "examples/",
+            ]
+            .iter()
+            .any(|prefix| normalized_lower.starts_with(prefix))
+            || normalized_lower == "_meta.json"
+            || normalized_lower == "skill-card.md"
+            || (!normalized_lower.contains('/')
+                && (normalized_lower == "readme"
+                    || normalized_lower.starts_with("readme.")
+                    || normalized_lower == "license"
+                    || normalized_lower.starts_with("license.")));
         if !allowed {
             return Err(format!(
-                "Skill package path '{}' is outside SKILL.md, scripts/, references/, or assets/",
+                "Skill package path '{}' is outside the supported Agent Skills package layout (SKILL.md, scripts/, references/, assets/, agents/, templates/, examples/, README*, LICENSE*, _meta.json, skill-card.md)",
                 raw
             ));
         }
@@ -1236,7 +1253,8 @@ impl SkillWorkshopExecutor {
             "risk_level": risk_level,
             "risk_signals": risk_signals,
             "trust_status": "untrusted",
-            "message": "Skill written to ~/.deep-student/skills. It is untrusted by default — the user must trust it in Skills management before package scripts can run via SKILL_DIR. On the next turn you may load_skills to use the skill body.",
+            "message": APPLY_SUCCESS_MESSAGE,
+            "next_step": POST_WRITE_TRUST_NEXT_STEP,
         }))
     }
 }
@@ -1514,6 +1532,14 @@ mod tests {
             ("scripts/run.sh".to_string(), b"echo ok".to_vec()),
             ("references/guide.md".to_string(), b"guide".to_vec()),
             ("assets/icon.bin".to_string(), vec![0, 1, 2]),
+            ("agents/openai.yaml".to_string(), b"interface: {}".to_vec()),
+            ("templates/report.md".to_string(), b"template".to_vec()),
+            ("examples/sample.md".to_string(), b"example".to_vec()),
+            ("README.md".to_string(), b"readme".to_vec()),
+            ("README.en.md".to_string(), b"english readme".to_vec()),
+            ("LICENSE.txt".to_string(), b"license".to_vec()),
+            ("_meta.json".to_string(), b"{}".to_vec()),
+            ("skill-card.md".to_string(), b"card".to_vec()),
         ];
         assert!(SkillWorkshopExecutor::validate_package_files(valid).is_ok());
         for path in [
@@ -1588,5 +1614,18 @@ mod tests {
         };
         assert!(SkillWorkshopExecutor::read_proposal_package(&root, &meta).is_err());
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_success_narrative_routes_through_skill_trust_request() {
+        assert!(APPLY_SUCCESS_MESSAGE.contains("skill_trust_request"));
+        assert!(APPLY_SUCCESS_MESSAGE.contains("Do not load_skills until trust is granted"));
+        assert!(APPLY_SUCCESS_MESSAGE.contains("Skills management is only a backup"));
+        assert!(!APPLY_SUCCESS_MESSAGE.contains("user must trust it in Skills management"));
+        assert!(!APPLY_SUCCESS_MESSAGE.contains("On the next turn you may load_skills"));
+
+        assert!(POST_WRITE_TRUST_NEXT_STEP.contains("action=inspect"));
+        assert!(POST_WRITE_TRUST_NEXT_STEP.contains("action=grant"));
+        assert!(POST_WRITE_TRUST_NEXT_STEP.contains("Skills management UI is only a backup"));
     }
 }

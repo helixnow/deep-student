@@ -25,7 +25,7 @@ vi.mock('@/components/UnifiedNotification', () => ({
 }));
 
 describe('BlockingApprovalBar runtime scope', () => {
-  it('offers only one-shot actions when a stale relaxed Medium approval is rendered', () => {
+  it('offers session remember for Craft+Relaxed Medium approvals without always/global', () => {
     const interaction: ToolApprovalBlockingInteraction = {
       kind: 'tool_approval',
       toolCallId: 'call-relaxed-medium',
@@ -33,7 +33,7 @@ describe('BlockingApprovalBar runtime scope', () => {
       arguments: {},
       sensitivity: 'medium',
       permissionPreset: 'relaxed',
-      description: 'stale approval',
+      description: 'relaxed medium approval',
       timeoutSeconds: 30,
     };
 
@@ -41,7 +41,7 @@ describe('BlockingApprovalBar runtime scope', () => {
 
     expect(screen.getByRole('button', { name: 'approval.approve' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'approval.reject' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'approval.allowSession' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'approval.allowSession' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'approval.alwaysAllow' })).not.toBeInTheDocument();
   });
 
@@ -77,6 +77,38 @@ describe('BlockingApprovalBar runtime scope', () => {
     expect(screen.getByText('git status')).toBeInTheDocument();
     expect(screen.getByText('net')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'approval.allowScope' })).not.toBeInTheDocument();
+  });
+
+  it('offers scoped session remember for Relaxed Medium readonly shell', () => {
+    const interaction: ToolApprovalBlockingInteraction = {
+      kind: 'tool_approval',
+      toolCallId: 'call-shell-medium',
+      toolName: 'builtin-local_shell_execute',
+      arguments: { command: 'git status --short' },
+      sensitivity: 'medium',
+      permissionPreset: 'relaxed',
+      description: 'Execute git status',
+      timeoutSeconds: 30,
+      runtimeScope: {
+        kind: 'shell',
+        toolSource: 'builtin',
+        toolName: 'local_shell_execute',
+        rootId: 'workspace',
+        cwd: '.',
+        commandPrefix: 'git status',
+        commandHash: '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+        riskLevel: 'medium',
+        networkAllowed: false,
+        hasShellOperators: false,
+        usesScriptRunner: false,
+        firstToken: 'git',
+      },
+    };
+
+    render(<BlockingApprovalBar interaction={interaction} sessionId="sess-shell-medium" />);
+
+    expect(screen.getByRole('button', { name: 'approval.allowScope' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'approval.alwaysAllow' })).not.toBeInTheDocument();
   });
 
   it('shows the bound root authority and effective sandbox-readable roots', () => {

@@ -31,6 +31,10 @@ import {
   todoAgentManifest,
 } from './agentManifests';
 
+/** 同步 store 写入后的读回校验：命中即返回 authoritative ack，避免 ACTION_UNVERIFIED 假阴性。 */
+const ackIf = (verified: boolean) =>
+  verified ? ({ handled: true, acknowledged: true } as const) : ({ handled: true } as const);
+
 /** Flashcards 语义控制；不开放代替用户评分。 */
 export async function handleFlashcardsActivation(ctx: ActivationContext) {
   const { useFsrsReviewStore } = await import('@/features/flashcards/store/fsrsReviewStore');
@@ -44,7 +48,8 @@ export async function handleFlashcardsActivation(ctx: ActivationContext) {
       } as const;
     }
     useFsrsReviewStore.getState().startDueSession();
-    return { handled: true } as const;
+    const after = useFsrsReviewStore.getState();
+    return ackIf(after.screen === 'session' && after.sessionMode === 'due');
   };
   switch (ctx.action) {
     case 'startReview': {
@@ -66,9 +71,18 @@ export async function handleFlashcardsActivation(ctx: ActivationContext) {
             hint: useFsrsReviewStore.getState().error ?? '复习批次准备失败',
           } as const;
         }
-        return { handled: true } as const;
+        const after = useFsrsReviewStore.getState();
+        return ackIf(after.screen === 'session' && after.sessionMode === 'batch');
       }
       store.applyLaunchPayload(ctx.payload);
+      // 非 session 的同步跳转可读回；session 异步路径已由上面分支覆盖。
+      if (
+        payload?.screen === 'today'
+        || payload?.screen === 'library'
+        || payload?.screen === 'settings'
+      ) {
+        return ackIf(useFsrsReviewStore.getState().screen === payload.screen);
+      }
       return { handled: true } as const;
     }
     case 'showScreen': {
@@ -79,19 +93,23 @@ export async function handleFlashcardsActivation(ctx: ActivationContext) {
         return { handled: false, code: 'INVALID_ARGS', hint: 'screen 值无效' } as const;
       }
       store.setScreen(screen);
-      return { handled: true } as const;
+      return ackIf(useFsrsReviewStore.getState().screen === screen);
     }
     case 'startDueReview':
       return startDueReview();
-    case 'flipCard':
+    case 'flipCard': {
       if (store.screen !== 'session') {
         return { handled: false, code: 'INVALID_STATE', hint: '当前不在复习会话中' } as const;
       }
+      const beforeFlipped = store.flipped;
       store.flip();
-      return { handled: true } as const;
-    case 'endReview':
+      return ackIf(useFsrsReviewStore.getState().flipped === !beforeFlipped);
+    }
+    case 'endReview': {
       store.endSession();
-      return { handled: true } as const;
+      const after = useFsrsReviewStore.getState();
+      return ackIf(after.screen === 'today' && after.sessionMode === null);
+    }
     default:
       return {
         handled: false,
@@ -111,7 +129,7 @@ export async function handleFlashcardsActivation(ctx: ActivationContext) {
  * start 后由 pomodoroProjectionSource 订阅 mode 变化自动投射开窗（时序：store 先变 → notify → project）。
  */
 export type PomodoroActivationResult =
-  | { handled: true }
+  | { handled: true; acknowledged?: true }
   | { handled: false; code: string; hint: string };
 
 const POMODORO_STRICT_HINT = '严格模式下专注中不可暂停';
@@ -128,7 +146,8 @@ export function handlePomodoroActivation(ctx: ActivationContext): PomodoroActiva
         if (typeof p.taskTitle === 'string') taskTitle = p.taskTitle;
       }
       store.start(taskId, taskTitle);
-      return { handled: true };
+      const after = usePomodoroStore.getState();
+      return ackIf(after.mode === 'work' && after.status === 'running');
     }
     case 'pause': {
       if (store.settings.strictMode && store.mode === 'work' && store.status === 'running') {
@@ -148,7 +167,7 @@ export function handlePomodoroActivation(ctx: ActivationContext): PomodoroActiva
           hint: '当前状态不可暂停（没有运行中的计时）',
         };
       }
-      return { handled: true };
+      return ackIf(usePomodoroStore.getState().status === 'paused');
     }
     case 'resume': {
       const beforeStatus = store.status;
@@ -163,11 +182,11 @@ export function handlePomodoroActivation(ctx: ActivationContext): PomodoroActiva
               : '当前状态无需恢复',
         };
       }
-      return { handled: true };
+      return ackIf(usePomodoroStore.getState().status === 'running');
     }
     case 'stop': {
       store.stop(true);
-      return { handled: true };
+      return ackIf(usePomodoroStore.getState().mode === 'idle');
     }
     default:
       console.warn(`[workbench:pomodoro] unknown activation action: ${ctx.action}`);

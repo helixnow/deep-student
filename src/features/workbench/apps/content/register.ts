@@ -130,7 +130,8 @@ export function handleNoteActivation(ctx: ActivationContext): ActivationResult {
     };
   }
   api.scrollToHeading(heading, level);
-  return { handled: true };
+  // Editor API accepted the scroll; no cheap post-scroll DOM probe here.
+  return { handled: true, acknowledged: true };
 }
 
 /**
@@ -147,6 +148,11 @@ function payloadRecord(payload: unknown): Record<string, unknown> {
   return payload && typeof payload === 'object' && !Array.isArray(payload)
     ? (payload as Record<string, unknown>)
     : {};
+}
+
+/** 同步镜像 store 写回校验：命中即 authoritative ACK，避免 ACTION_UNVERIFIED 假阴性。 */
+function ackIf(verified: boolean): ActivationResult {
+  return verified ? { handled: true, acknowledged: true } : { handled: true };
 }
 
 /** Keep an unfinished SM-2 queue scoped to its exam and ask before the OS shell closes it. */
@@ -333,19 +339,26 @@ export async function handleExamActivation(
       };
     }
     const result = dispatchExamFocus(targetResourceId, questionId);
-    if (result.handled) {
-      // The global store is an agent-observation mirror; the mounted view owns
-      // the actual per-resource session and acknowledged the navigation above.
-      useQuestionBankStore.getState().setCurrentQuestion(questionId);
-    }
-    return result;
+    if (!result.handled) return result;
+    // The global store is an agent-observation mirror; the mounted view owns
+    // the actual per-resource session and acknowledged the navigation above.
+    useQuestionBankStore.getState().setCurrentQuestion(questionId);
+    return ackIf(useQuestionBankStore.getState().currentQuestionId === questionId);
   }
   if (ctx.action === 'nextQuestion' || ctx.action === 'previousQuestion') {
     const result = dispatchExamControl(targetResourceId, ctx.action);
-    if (result.handled && result.currentQuestionId) {
-      useQuestionBankStore.getState().setCurrentQuestion(result.currentQuestionId);
+    if (!result.handled) return result;
+    if (result.acknowledged === true) {
+      if (result.currentQuestionId) {
+        useQuestionBankStore.getState().setCurrentQuestion(result.currentQuestionId);
+      }
+      return { handled: true, acknowledged: true };
     }
-    return result;
+    if (!result.currentQuestionId) return { handled: true };
+    useQuestionBankStore.getState().setCurrentQuestion(result.currentQuestionId);
+    return ackIf(
+      useQuestionBankStore.getState().currentQuestionId === result.currentQuestionId,
+    );
   }
   if (ctx.action === 'setFilters') {
     const payload = payloadRecord(ctx.payload);
@@ -353,13 +366,23 @@ export async function handleExamActivation(
       ? (payload.filters as QuestionFilters)
       : (payload as QuestionFilters);
     const result = dispatchExamControl(targetResourceId, 'setFilters', { filters });
-    if (result.handled) useQuestionBankStore.getState().setFilters(filters);
-    return result;
+    if (!result.handled) return result;
+    if (result.acknowledged === true) {
+      useQuestionBankStore.getState().setFilters(filters);
+      return { handled: true, acknowledged: true };
+    }
+    useQuestionBankStore.getState().setFilters(filters);
+    return ackIf(useQuestionBankStore.getState().filters === filters);
   }
   if (ctx.action === 'resetFilters') {
     const result = dispatchExamControl(targetResourceId, 'resetFilters');
-    if (result.handled) useQuestionBankStore.getState().resetFilters();
-    return result;
+    if (!result.handled) return result;
+    if (result.acknowledged === true) {
+      useQuestionBankStore.getState().resetFilters();
+      return { handled: true, acknowledged: true };
+    }
+    useQuestionBankStore.getState().resetFilters();
+    return ackIf(Object.keys(useQuestionBankStore.getState().filters).length === 0);
   }
   if (ctx.action === 'setPracticeMode') {
     const payload = payloadRecord(ctx.payload);
@@ -390,8 +413,13 @@ export async function handleExamActivation(
       mode: mode as PracticeMode,
       tag: typeof tag === 'string' ? tag : undefined,
     });
-    if (result.handled) useQuestionBankStore.getState().setPracticeMode(mode as PracticeMode);
-    return result;
+    if (!result.handled) return result;
+    if (result.acknowledged === true) {
+      useQuestionBankStore.getState().setPracticeMode(mode as PracticeMode);
+      return { handled: true, acknowledged: true };
+    }
+    useQuestionBankStore.getState().setPracticeMode(mode as PracticeMode);
+    return ackIf(useQuestionBankStore.getState().practiceMode === mode);
   }
   if (ctx.action === 'setFocusMode') {
     const enabled = payloadRecord(ctx.payload).enabled;

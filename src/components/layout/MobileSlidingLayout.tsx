@@ -821,21 +821,24 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
               isMobileLayout ? (
                 <CustomScrollArea
                   className="min-h-0 flex-1"
-                  // 抽屉贴屏幕左缘：横屏刘海/挖孔机型需要叠加左侧安全区。
-                  // 底部同时避让软键盘（--keyboard-inset：iOS overlay 键盘 >0，
-                  // Android adjustResize ≈0，键盘收起恒 0）：抽屉内含搜索等输入
-                  // 入口，聚焦时保证列表尾部可滚出键盘遮挡区
-                  viewportClassName="px-2 py-1 pl-[calc(0.5rem+var(--mobile-safe-area-left,0px))] pb-[calc(0.5rem+max(var(--mobile-safe-area-bottom,0px),var(--keyboard-inset,0px)))]"
+                  // OverlayScrollbars 会清零 viewport padding；安全区/键盘避让放内层
+                  viewportClassName="h-full w-full min-h-0"
                 >
-                  <div data-mobile-drawer-page className="min-h-0">
-                    {sidebar}
+                  {/* 抽屉贴屏幕左缘：横屏刘海/挖孔机型需要叠加左侧安全区。
+                      底部同时避让软键盘（--keyboard-inset：iOS overlay 键盘 >0，
+                      Android adjustResize ≈0，键盘收起恒 0）：抽屉内含搜索等输入
+                      入口，聚焦时保证列表尾部可滚出键盘遮挡区 */}
+                  <div className="px-2 py-1 pl-[calc(0.5rem+var(--mobile-safe-area-left,0px))] pb-[calc(0.5rem+max(var(--mobile-safe-area-bottom,0px),var(--keyboard-inset,0px)))]">
+                    <div data-mobile-drawer-page className="min-h-0">
+                      {sidebar}
+                    </div>
+                    {showSidebarAppNavigation && (
+                      <MobileSidebarNavigation
+                        embedded
+                        onNavigate={closeSidebarAfterAppNavigation}
+                      />
+                    )}
                   </div>
-                  {showSidebarAppNavigation && (
-                    <MobileSidebarNavigation
-                      embedded
-                      onNavigate={closeSidebarAfterAppNavigation}
-                    />
-                  )}
                 </CustomScrollArea>
               ) : (
                 <div className="min-h-0 flex-1 overflow-hidden">{sidebar}</div>

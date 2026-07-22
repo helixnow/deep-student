@@ -23,7 +23,9 @@ import {
   LinkSimple,
   Paperclip,
   Plus,
+  ShieldWarning,
   Sparkle,
+  Warning,
 } from '@phosphor-icons/react';
 import {
   AppMenu,
@@ -247,7 +249,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
             : t('chatV2:inputBar.plusMenu.compactContext');
 
   return (
-    <div className="flex flex-col items-start gap-0.5">
+    <div className="flex items-center gap-1">
       <AppMenu open={open} onOpenChange={onOpenChange}>
         <AppMenuTrigger asChild>
           <span className="inline-flex rounded-[var(--radius-shell-control)]">
@@ -628,7 +630,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
       {authorityAskBlockedHint && authorityMode === 'ask' && onAuthorityModeChange && (
         <button
           type="button"
-          className="ml-1 text-[11px] text-warning underline-offset-2 hover:underline"
+          className="shrink-0 text-[11px] text-warning underline-offset-2 hover:underline"
           onClick={handleSwitchToPlan}
           data-testid="plus-menu-switch-to-plan"
         >
@@ -638,25 +640,43 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
       {permissionPreset === 'full_access' && (
         <button
           type="button"
-          // 📱 11px 最低可读字号 + 伪元素扩大触控命中区（视觉 pill 不变）
-          className="ml-1 rounded bg-warning/15 px-1.5 py-0.5 text-[11px] font-semibold text-warning relative after:absolute after:-inset-y-2 after:inset-x-0 after:content-['']"
+          // Compact inline chip next to "+" — full guidance lives in title/aria-label.
+          // Pseudo-element expands hit target without growing toolbar height.
+          className={cn(
+            'relative inline-flex h-6 shrink-0 items-center gap-0.5 rounded-md',
+            'bg-warning/15 px-1.5 text-[10px] font-medium leading-none text-warning',
+            'hover:bg-warning/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-warning/40',
+            "after:absolute after:-inset-y-1.5 after:-inset-x-1 after:content-['']",
+          )}
           onClick={() => applyPermissionPreset('relaxed')}
           data-testid="full-access-active"
           title={t('chatV2:authority.permissionPreset.fullAccessDowngradeHint')}
+          aria-label={t('chatV2:authority.permissionPreset.fullAccessDowngradeHint')}
         >
-          {t('chatV2:authority.permissionPreset.fullAccessActive')}
+          <ShieldWarning size={12} weight="fill" className="shrink-0" aria-hidden="true" />
+          <span className="max-w-[3.75rem] truncate">
+            {t('chatV2:authority.permissionPreset.fullAccessActive')}
+          </span>
         </button>
       )}
       {permissionPreset === 'danger_full_access' && (
         <button
           type="button"
-          // 📱 11px 最低可读字号 + 伪元素扩大触控命中区（视觉 pill 不变）
-          className="ml-1 rounded bg-destructive px-1.5 py-0.5 text-[11px] font-semibold text-destructive-foreground shadow-sm relative after:absolute after:-inset-y-2 after:inset-x-0 after:content-['']"
+          className={cn(
+            'relative inline-flex h-6 shrink-0 items-center gap-0.5 rounded-md',
+            'bg-destructive px-1.5 text-[10px] font-medium leading-none text-destructive-foreground shadow-sm',
+            'hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/50',
+            "after:absolute after:-inset-y-1.5 after:-inset-x-1 after:content-['']",
+          )}
           onClick={() => applyPermissionPreset('relaxed')}
           data-testid="danger-full-access-active"
           title={t('chatV2:authority.permissionPreset.dangerDowngradeHint')}
+          aria-label={t('chatV2:authority.permissionPreset.dangerDowngradeHint')}
         >
-          {t('chatV2:authority.permissionPreset.dangerActive')}
+          <Warning size={12} weight="fill" className="shrink-0" aria-hidden="true" />
+          <span className="max-w-[3.75rem] truncate">
+            {t('chatV2:authority.permissionPreset.dangerActive')}
+          </span>
         </button>
       )}
       <DsAlertDialog

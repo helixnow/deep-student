@@ -33,6 +33,7 @@ function formatMissingRequires(skillId: string): string {
   const missing = [
     ...(gate?.missingBins ?? []).map((name) => `missing command ${name}`),
     ...(gate?.missingEnv ?? []).map((name) => `missing environment variable ${name}`),
+    ...(gate?.missingPythonPackages ?? []).map((name) => `missing Python package ${name}`),
   ];
   return missing.length > 0 ? missing.join(', ') : 'runtime requirements are not satisfied';
 }
@@ -71,6 +72,7 @@ export function getSkillRuntimeAdmission(skill: SkillDefinition): SkillRuntimeAd
         skillId: skill.id,
         missingBins: gate.missingBins.join(', ') || '-',
         missingEnv: gate.missingEnv.join(', ') || '-',
+        missingPythonPackages: gate.missingPythonPackages.join(', ') || '-',
       },
       message: `Skill "${skill.id}" cannot be loaded: ${formatMissingRequires(skill.id)}`,
     };

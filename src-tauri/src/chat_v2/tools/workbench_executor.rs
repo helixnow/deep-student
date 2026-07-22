@@ -466,7 +466,9 @@ fn app_command_business_error(data: &Value) -> Option<String> {
         .get("hint")
         .and_then(Value::as_str)
         .filter(|hint| !hint.trim().is_empty())
-        .unwrap_or("检查 typeId/action/payload；建议改走 observe + workbench_act 执行 manifest 能力");
+        .unwrap_or(
+            "检查 typeId/action/payload；建议改走 observe + workbench_act 执行 manifest 能力",
+        );
     Some(structured_error(code, message, hint, false))
 }
 
@@ -972,8 +974,8 @@ mod tests {
         assert_eq!(err["hint"], "note 不支持指令 search");
         assert_eq!(err["retryable"], false);
 
-        let fallback = app_command_business_error(&json!({ "handled": false }))
-            .expect("fallback error");
+        let fallback =
+            app_command_business_error(&json!({ "handled": false })).expect("fallback error");
         let fallback: Value = serde_json::from_str(&fallback).expect("structured error");
         assert_eq!(fallback["code"], "ACTION_FAILED");
     }

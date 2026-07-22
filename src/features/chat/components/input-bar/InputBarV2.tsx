@@ -29,6 +29,12 @@ import { useModelMentionAutocomplete } from './useModelMentionAutocomplete';
 import { COMPOSER_PANEL_KEYS } from '../../core/types/common';
 import { QUEUE_HARD_CAP } from '../../core/types/queue';
 import { usePdfPageRefs } from './usePdfPageRefs';
+import {
+  clearComposerDraft,
+  composerDraftStorageKey,
+  restoreComposerDraftIfSafe,
+  writeComposerDraft,
+} from './composerDraftStorage';
 import { useDialogControl } from '@/contexts/DialogControlContext';
 import { isBuiltinServer } from '@/mcp/builtinMcpServer';
 import type { ModelInfo } from '../../utils/parseModelMentions';
@@ -439,40 +445,42 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     // ★ 会话级 composer 草稿：sessionStorage keyed by sessionId。
     // 切换会话/视图后回到本会话时恢复未发送草稿；发送后 inputValue 置空 → 自动清除。
     // 只存文本，不存附件二进制（附件由 Store/VFS 管理）。
-    const draftStorageKey = sessionId ? `dstu.chatv2.draft.${sessionId}` : null;
+    //
+    // 注意：首条消息发送后 empty→docked 会 remount 本组件。发送路径会同步
+    // clearComposerDraft；此处恢复也必须避开 streaming/sending，否则会把已发送
+    // 正文写回输入框。
+    const draftStorageKey = composerDraftStorageKey(sessionId);
     const draftRestoredKeyRef = useRef<string | null>(null);
 
     useEffect(() => {
       if (!draftStorageKey) return;
       if (draftRestoredKeyRef.current === draftStorageKey) return;
       draftRestoredKeyRef.current = draftStorageKey;
-      try {
-        const draft = sessionStorage.getItem(draftStorageKey);
-        if (draft && store.getState().inputValue === '') {
-          store.getState().setInputValue(draft);
-        }
-      } catch {
-        // sessionStorage 不可用（隐私模式等）时静默跳过
+      const state = store.getState();
+      const draft = restoreComposerDraftIfSafe(
+        sessionId,
+        state.inputValue,
+        state.sessionStatus,
+      );
+      if (draft) {
+        state.setInputValue(draft);
       }
-    }, [draftStorageKey, store]);
+    }, [draftStorageKey, sessionId, store]);
 
     useEffect(() => {
       if (!draftStorageKey) return;
       // 恢复动作尚未执行前不要用空值覆盖已存草稿
       if (draftRestoredKeyRef.current !== draftStorageKey) return;
+      // 清空必须同步：empty→docked remount 发生在同一轮 commit，等 300ms 会丢竞态
+      if (!inputValue) {
+        clearComposerDraft(sessionId);
+        return;
+      }
       const timer = window.setTimeout(() => {
-        try {
-          if (inputValue) {
-            sessionStorage.setItem(draftStorageKey, inputValue);
-          } else {
-            sessionStorage.removeItem(draftStorageKey);
-          }
-        } catch {
-          // 静默：草稿只是增强能力
-        }
+        writeComposerDraft(sessionId, inputValue);
       }, 300);
       return () => window.clearTimeout(timer);
-    }, [draftStorageKey, inputValue]);
+    }, [draftStorageKey, inputValue, sessionId]);
 
     const handleContextRefCreated = useCallback((payload: { contextRef: { resourceId: string; hash: string; typeId: string }; attachmentId: string }) => {
       const state = store.getState();

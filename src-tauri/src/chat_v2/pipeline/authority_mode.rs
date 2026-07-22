@@ -57,6 +57,26 @@ pub fn is_write_tool(tool_name: &str, effective_sensitivity: Option<ToolSensitiv
     }
 }
 
+/// Plan dual-gate: after `plan_gate` approved a binding (this call or an active
+/// batch), skip the secondary TOOL_APPROVAL for that same binding.
+/// Privilege-escalation tools still require a one-shot confirmation.
+pub fn plan_binding_satisfies_tool_approval(
+    state: &SessionAuthorityState,
+    binding_key: &str,
+    privilege_escalation: bool,
+    plan_gate_just_approved: bool,
+    now: chrono::DateTime<Utc>,
+) -> bool {
+    if privilege_escalation || state.authority_mode != AuthorityMode::Plan {
+        return false;
+    }
+    plan_gate_just_approved
+        || state
+            .plan
+            .as_ref()
+            .is_some_and(|plan| plan.is_active_for_binding(binding_key, now))
+}
+
 /// Whether the ApprovalManager must run for this call.
 ///
 /// Presets apply only in Craft. In particular, Plan approval is not converted
@@ -65,32 +85,66 @@ pub fn is_write_tool(tool_name: &str, effective_sensitivity: Option<ToolSensitiv
 /// rule cannot downgrade a statically High tool; `effective_sensitivity`
 /// catches argument-aware/dynamic High. Unknown is always approval-required
 /// outside the two explicit full-access presets.
+///
+/// Full Access / Danger Full Access bypass ordinary tool approval and no longer
+/// elevate on immutable shell-guard Ask. Privilege-escalation tools (skill trust,
+/// MCP install, runtime root, …) always require a one-shot confirmation.
+/// Catastrophic Deny remains hard-blocked elsewhere in `tool_loop`.
 pub fn requires_tool_approval(
     state: &SessionAuthorityState,
     base_sensitivity: Option<ToolSensitivity>,
     effective_sensitivity: Option<ToolSensitivity>,
     immutable_command_guard_asks: bool,
     external_mcp: bool,
+    privilege_escalation: bool,
 ) -> bool {
-    if immutable_command_guard_asks && !external_mcp {
+    if privilege_escalation {
         return true;
     }
+    let guard_asks = immutable_command_guard_asks && !external_mcp;
     if state.authority_mode != AuthorityMode::Craft {
+        // Ask / Plan ignore Full Access presets and still honor guard Ask.
+        if guard_asks {
+            return true;
+        }
         return effective_sensitivity != Some(ToolSensitivity::Low);
     }
     match state.permission_preset {
         PermissionPreset::Cautious => {
+            if guard_asks {
+                return true;
+            }
             base_sensitivity != Some(ToolSensitivity::Low)
                 || effective_sensitivity != Some(ToolSensitivity::Low)
         }
         PermissionPreset::Relaxed => {
+            if guard_asks {
+                return true;
+            }
             base_sensitivity.is_none()
                 || effective_sensitivity.is_none()
                 || base_sensitivity == Some(ToolSensitivity::High)
                 || effective_sensitivity == Some(ToolSensitivity::High)
         }
-        PermissionPreset::FullAccess | PermissionPreset::DangerFullAccess => false,
+        PermissionPreset::FullAccess | PermissionPreset::DangerFullAccess => {
+            // Ordinary tools + guard Ask bypass; privilege escalation handled above.
+            false
+        }
     }
+}
+
+/// Whether an immutable shell-guard Ask has been admitted for executor spawn.
+///
+/// Admission can come from an explicit approval or from an authority preset /
+/// approved Plan binding that bypassed the secondary tool approval entirely.
+/// The executor only needs backend-owned evidence that the pipeline admitted
+/// this exact call; it must not force a second confirmation after a valid bypass.
+pub fn shell_guard_admitted(
+    immutable_guard_asks: bool,
+    approval_required: bool,
+    approval_requirement_satisfied: bool,
+) -> bool {
+    immutable_guard_asks && (!approval_required || approval_requirement_satisfied)
 }
 
 /// Gate decision before ApprovalManager.
@@ -230,7 +284,7 @@ impl PlanGateManager {
     pub fn new() -> Self {
         Self {
             pending: Mutex::new(HashMap::new()),
-            default_timeout: 60,
+            default_timeout: 300,
         }
     }
 
@@ -328,6 +382,7 @@ mod tests {
             Some(ToolSensitivity::Medium),
             false,
             false,
+            false,
         ));
         assert!(requires_tool_approval(
             &state,
@@ -335,6 +390,7 @@ mod tests {
             Some(ToolSensitivity::Low),
             false,
             false,
+            false,
         ));
         assert!(requires_tool_approval(
             &state,
@@ -342,8 +398,20 @@ mod tests {
             Some(ToolSensitivity::High),
             false,
             false,
+            false,
         ));
-        assert!(requires_tool_approval(&state, None, None, false, false));
+        assert!(requires_tool_approval(
+            &state, None, None, false, false, false
+        ));
+        // Relaxed: immutable guard Ask still forces approval.
+        assert!(requires_tool_approval(
+            &state,
+            Some(ToolSensitivity::Medium),
+            Some(ToolSensitivity::Medium),
+            true,
+            false,
+            false,
+        ));
 
         state.permission_preset = PermissionPreset::Cautious;
         assert!(requires_tool_approval(
@@ -352,27 +420,70 @@ mod tests {
             Some(ToolSensitivity::Medium),
             false,
             false,
+            false,
         ));
+        assert!(requires_tool_approval(
+            &state,
+            Some(ToolSensitivity::Low),
+            Some(ToolSensitivity::Low),
+            true,
+            false,
+            false,
+        ));
+
         state.permission_preset = PermissionPreset::FullAccess;
+        // FullAccess + High → bypass ordinary approval.
         assert!(!requires_tool_approval(
             &state,
             Some(ToolSensitivity::High),
             Some(ToolSensitivity::High),
+            false,
+            false,
+            false,
+        ));
+        // FullAccess + privilege escalation → still requires one-shot approval.
+        assert!(requires_tool_approval(
+            &state,
+            Some(ToolSensitivity::High),
+            Some(ToolSensitivity::High),
+            false,
+            false,
+            true,
+        ));
+        // FullAccess + guard Ask + no privilege → no longer forces approval.
+        assert!(!requires_tool_approval(
+            &state,
+            Some(ToolSensitivity::High),
+            Some(ToolSensitivity::High),
+            true,
+            false,
+            false,
+        ));
+        // External MCP + guard Ask remains a no-op under FullAccess either way.
+        assert!(!requires_tool_approval(
+            &state,
+            Some(ToolSensitivity::High),
+            Some(ToolSensitivity::High),
+            true,
+            true,
+            false,
+        ));
+
+        state.permission_preset = PermissionPreset::DangerFullAccess;
+        assert!(!requires_tool_approval(
+            &state,
+            Some(ToolSensitivity::High),
+            Some(ToolSensitivity::High),
+            true,
             false,
             false,
         ));
         assert!(requires_tool_approval(
             &state,
-            Some(ToolSensitivity::High),
-            Some(ToolSensitivity::High),
-            true,
+            Some(ToolSensitivity::Low),
+            Some(ToolSensitivity::Low),
             false,
-        ));
-        assert!(!requires_tool_approval(
-            &state,
-            Some(ToolSensitivity::High),
-            Some(ToolSensitivity::High),
-            true,
+            false,
             true,
         ));
     }
@@ -383,10 +494,7 @@ mod tests {
             (PermissionPreset::Cautious, "\"cautious\""),
             (PermissionPreset::Relaxed, "\"relaxed\""),
             (PermissionPreset::FullAccess, "\"full_access\""),
-            (
-                PermissionPreset::DangerFullAccess,
-                "\"danger_full_access\"",
-            ),
+            (PermissionPreset::DangerFullAccess, "\"danger_full_access\""),
         ] {
             assert_eq!(serde_json::to_string(&preset).unwrap(), expected);
             assert_eq!(
@@ -410,6 +518,7 @@ mod tests {
                 Some(ToolSensitivity::High),
                 false,
                 false,
+                false,
             ));
             assert!(requires_tool_approval(
                 &state,
@@ -417,8 +526,26 @@ mod tests {
                 Some(ToolSensitivity::Low),
                 true,
                 false,
+                false,
+            ));
+            // Privilege escalation still forces approval under Ask/Plan.
+            assert!(requires_tool_approval(
+                &state,
+                Some(ToolSensitivity::Low),
+                Some(ToolSensitivity::Low),
+                false,
+                false,
+                true,
             ));
         }
+    }
+
+    #[test]
+    fn shell_guard_admission_accepts_full_access_bypass_or_explicit_approval() {
+        assert!(shell_guard_admitted(true, false, false));
+        assert!(shell_guard_admitted(true, true, true));
+        assert!(!shell_guard_admitted(true, true, false));
+        assert!(!shell_guard_admitted(false, false, false));
     }
 
     #[test]
@@ -469,6 +596,44 @@ mod tests {
                 "{name} must be meta-read"
             );
         }
+    }
+
+    #[test]
+    fn plan_approved_binding_skips_secondary_tool_approval() {
+        let mut state = SessionAuthorityState {
+            authority_mode: AuthorityMode::Plan,
+            permission_preset: Default::default(),
+            plan: None,
+        };
+        let now = Utc::now();
+        let binding = plan_call_binding_key("builtin-note_delete", &json!({"id": 1}), Some("r1"));
+
+        assert!(plan_binding_satisfies_tool_approval(
+            &state, &binding, false, true, now
+        ));
+        assert!(!plan_binding_satisfies_tool_approval(
+            &state, &binding, true, true, now
+        ));
+
+        let mut plan = PlanAuthorityState::new_pending("delete notes");
+        plan.bind_to_call(binding.clone());
+        plan.mark_approved(600);
+        state.plan = Some(plan);
+        assert!(plan_binding_satisfies_tool_approval(
+            &state, &binding, false, false, now
+        ));
+        assert!(!plan_binding_satisfies_tool_approval(
+            &state,
+            "planbind:other",
+            false,
+            false,
+            now
+        ));
+
+        state.authority_mode = AuthorityMode::Craft;
+        assert!(!plan_binding_satisfies_tool_approval(
+            &state, &binding, false, true, now
+        ));
     }
 
     #[test]

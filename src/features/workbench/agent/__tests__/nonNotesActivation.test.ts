@@ -182,7 +182,7 @@ describe('ACR 非 Notes 应用 activation', () => {
         windowId: 'exam-win',
         instanceKey: 'exam-1',
         action: 'nextQuestion',
-      })).resolves.toEqual({ handled: true, currentQuestionId: 'q2' });
+      })).resolves.toEqual({ handled: true, acknowledged: true });
       expect(useQuestionBankStore.getState().currentQuestionId).toBe('q2');
 
       await handleExamActivation({
@@ -265,18 +265,18 @@ describe('ACR 非 Notes 应用 activation', () => {
       queue: [{ id: 'card-1', front: 'front', back: 'back' }],
       queueIndex: 0,
     });
-    expect((await handleFlashcardsActivation({
+    await expect(handleFlashcardsActivation({
       windowId: 'fc-win',
       instanceKey: null,
       action: 'flipCard',
-    })).handled).toBe(true);
+    })).resolves.toEqual({ handled: true, acknowledged: true });
     expect(useFsrsReviewStore.getState().flipped).toBe(true);
 
-    await handleFlashcardsActivation({
+    await expect(handleFlashcardsActivation({
       windowId: 'fc-win',
       instanceKey: null,
       action: 'endReview',
-    });
+    })).resolves.toEqual({ handled: true, acknowledged: true });
     expect(useFsrsReviewStore.getState().screen).toBe('today');
 
     const rate = await handleFlashcardsActivation({
@@ -350,7 +350,7 @@ describe('ACR 非 Notes 应用 activation', () => {
       { name: 'startReview', args: { screen: 'session', mode: 'batch', cardIds: ['anki-1'] } },
     );
 
-    expect(success).toMatchObject({ handled: true, changed: true });
+    expect(success).toMatchObject({ handled: true, changed: true, acknowledged: true });
     expect(useFsrsReviewStore.getState().queue[0]).toMatchObject({
       id: 'state-existing',
       ankiCardId: 'anki-1',

@@ -35,6 +35,13 @@ pub mod tool_names {
 /// 技能目录内的 agent 安装溯源 marker（须可被 packageFiles 索引，不用点前缀）。
 pub(crate) const AGENT_INSTALLED_MARKER: &str = "AGENT_INSTALLED.json";
 
+/// 安装/workshop 写入成功后的信任正门 next_step（与 skill_trust_request inspect 风格对齐）。
+pub(crate) const POST_WRITE_TRUST_NEXT_STEP: &str =
+    "Call skill_trust_request with action=inspect and this skill_id to get the live package_sha256 and risk_level; explain the reason and risk summary to the user, then call skill_trust_request with action=grant using expected_package_sha256 set to package_sha256 and declared_risk_level set to risk_level from inspect. Grant requires user approval and cannot be remembered. Skills management UI is only a backup. After grant succeeds, do not call load_skills in the same tool loop: this request keeps its pre-grant runtime catalog snapshot, and the skill becomes loadable on the next user turn.";
+
+const INSTALL_SUCCESS_MESSAGE: &str =
+    "Skill package installed to ~/.deep-student/skills. It is untrusted by default — call skill_trust_request with action=inspect then grant before the skill body injects or package scripts can run via SKILL_DIR. Skills management is only a backup.";
+
 const PROVENANCE_SETTINGS_PREFIX: &str = "skill.provenance.";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -253,6 +260,7 @@ impl SkillInstallExecutor {
     }
 
     fn scan_result_payload(result: &SkillImportZipResult, source: &ParsedSource) -> Value {
+        let mut next_step = "After user confirms, call skill_install with the same source and expected_sha256 set to package_sha256 from this scan.".to_string();
         let mut payload = json!({
             "skill_id": result.skill_id,
             "package_sha256": result.package_sha256,
@@ -264,11 +272,29 @@ impl SkillInstallExecutor {
             "source_summary": source.summary,
             "install_path_preview": result.path,
             "files_extracted": result.files_extracted,
-            "next_step": "After user confirms, call skill_install with the same source and expected_sha256 set to package_sha256 from this scan.",
         });
         if let Some(requires) = &result.requires {
             payload["requires"] = serde_json::to_value(requires).unwrap_or(Value::Null);
+            if requires.missing_count > 0 {
+                let hints = format_missing_requires_hints(requires);
+                if !hints.is_empty() {
+                    payload["missing_requires_hints"] = json!(hints);
+                }
+                let missing_python: Vec<&str> = requires
+                    .python_packages
+                    .iter()
+                    .filter(|pkg| !pkg.found)
+                    .map(|pkg| pkg.name.as_str())
+                    .collect();
+                if !missing_python.is_empty() {
+                    next_step = format!(
+                        "Missing Python packages ({}). After user confirms, call skill_install with the same source and expected_sha256 set to package_sha256 from this scan; after trust is granted, propose local_shell_execute to install them (prefer `uv pip install ...` or `python3 -m pip install ...`).",
+                        missing_python.join(", ")
+                    );
+                }
+            }
         }
+        payload["next_step"] = json!(next_step);
         payload
     }
 
@@ -403,7 +429,7 @@ impl SkillInstallExecutor {
             .map(format_missing_requires_hints)
             .unwrap_or_default();
 
-        let mut message = "Skill package installed to ~/.deep-student/skills. It is untrusted by default — the user must trust it in Skills management before package scripts can run via SKILL_DIR.".to_string();
+        let mut message = INSTALL_SUCCESS_MESSAGE.to_string();
         if !missing_hints.is_empty() {
             message.push_str(" Some runtime dependencies are missing; see missing_requires_hints.");
         }
@@ -421,6 +447,7 @@ impl SkillInstallExecutor {
             "source_summary": source.summary,
             "trust_status": "untrusted",
             "message": message,
+            "next_step": POST_WRITE_TRUST_NEXT_STEP,
         });
         if let Some(requires) = &installed.requires {
             output["requires"] = serde_json::to_value(requires).unwrap_or(Value::Null);
@@ -572,5 +599,21 @@ mod tests {
         assert!(parsed.summary.is_char_boundary(parsed.summary.len()));
         assert!(parsed.summary.chars().count() <= 83);
         assert!(parsed.summary.ends_with("..."));
+    }
+
+    #[test]
+    fn install_success_narrative_routes_through_skill_trust_request() {
+        assert!(INSTALL_SUCCESS_MESSAGE.contains("skill_trust_request"));
+        assert!(INSTALL_SUCCESS_MESSAGE.contains("action=inspect then grant"));
+        assert!(INSTALL_SUCCESS_MESSAGE.contains("Skills management is only a backup"));
+        assert!(!INSTALL_SUCCESS_MESSAGE.contains("user must trust it in Skills management"));
+
+        assert!(POST_WRITE_TRUST_NEXT_STEP.contains("skill_trust_request"));
+        assert!(POST_WRITE_TRUST_NEXT_STEP.contains("action=inspect"));
+        assert!(POST_WRITE_TRUST_NEXT_STEP.contains("action=grant"));
+        assert!(POST_WRITE_TRUST_NEXT_STEP.contains("expected_package_sha256"));
+        assert!(POST_WRITE_TRUST_NEXT_STEP.contains("declared_risk_level"));
+        assert!(POST_WRITE_TRUST_NEXT_STEP.contains("Skills management UI is only a backup"));
+        assert!(POST_WRITE_TRUST_NEXT_STEP.contains("After trust is granted, load_skills"));
     }
 }

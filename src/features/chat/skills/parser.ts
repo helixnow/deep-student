@@ -332,10 +332,17 @@ function parseRequiresMap(value: unknown): SkillRequires | undefined {
   const record = value as Record<string, unknown>;
   const bins = coerceStringArrayField(record.bins);
   const env = coerceStringArrayField(record.env);
-  if (!bins && !env) {
+  const pythonPackages =
+    coerceStringArrayField(record.python_packages) ??
+    coerceStringArrayField(record.pythonPackages);
+  if (!bins && !env && !pythonPackages) {
     return undefined;
   }
-  return { bins, env };
+  const result: SkillRequires = {};
+  if (bins) result.bins = bins;
+  if (env) result.env = env;
+  if (pythonPackages) result.pythonPackages = pythonPackages;
+  return result;
 }
 
 function parseRequiresField(
@@ -729,10 +736,18 @@ export function serializeSkillToMarkdown(
     delete frontmatter.dependencies;
   }
 
-  if (metadata.requires && (metadata.requires.bins?.length || metadata.requires.env?.length)) {
+  if (
+    metadata.requires &&
+    (metadata.requires.bins?.length ||
+      metadata.requires.env?.length ||
+      metadata.requires.pythonPackages?.length)
+  ) {
     frontmatter.requires = {
       ...(metadata.requires.bins?.length ? { bins: metadata.requires.bins } : {}),
       ...(metadata.requires.env?.length ? { env: metadata.requires.env } : {}),
+      ...(metadata.requires.pythonPackages?.length
+        ? { python_packages: metadata.requires.pythonPackages }
+        : {}),
     };
   } else {
     delete frontmatter.requires;

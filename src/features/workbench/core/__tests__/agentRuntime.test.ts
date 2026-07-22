@@ -13,15 +13,57 @@ import type { AgentActionCall, AppDefinition } from '../types';
 import { resetWindowStoreForTests, useWindowStore } from '../windowStore';
 
 const TYPE_ID = 'acr2-core-runtime-test';
+const NOTES_CAP_TYPE_ID = 'notes';
 let value = 0;
 let appRevision = 0;
 let manyNodes = false;
 let refAvailable = true;
 let encodedTargetId: string | null = null;
+let lastHydratedArgs: Record<string, unknown> | null = null;
 
 function currentCounterRef(): string {
   return `counter:item:${encodeURIComponent(encodedTargetId ?? 'main')}`;
 }
+
+appRegistry.register({
+  typeId: NOTES_CAP_TYPE_ID,
+  nameKey: 'workbench:test.notes-alias',
+  icon: null,
+  instanceMode: 'single',
+  memoryWeight: 1,
+  defaultFrame: { w: 400, h: 300 },
+  minSize: { w: 200, h: 150 },
+  render: null as unknown as AppDefinition['render'],
+  agentManifest: {
+    version: 1,
+    description: 'Notes workspace capabilities fixture',
+    capabilities: [
+      {
+        name: 'scrollToHeading',
+        description: 'Scroll note heading',
+        inputSchema: {
+          type: 'object',
+          properties: { heading: { type: 'string' } },
+          required: ['heading'],
+          additionalProperties: false,
+        },
+        risk: 'low',
+        mutates: true,
+        reversible: false,
+        idempotent: true,
+      },
+    ],
+    observe: () => ({
+      revision: 'notes:1',
+      state: {},
+      selection: [],
+      availableActions: ['scrollToHeading'],
+      entities: [],
+      affordances: [],
+    }),
+    execute: () => ({ handled: true, acknowledged: true, changed: true }),
+  },
+});
 
 appRegistry.register({
   typeId: TYPE_ID,
@@ -55,6 +97,55 @@ appRegistry.register({
         targetKinds: ['counter'],
       },
       {
+        name: 'focusWindow',
+        description: 'Hydration fixture for targetIdPath=windowId',
+        inputSchema: {
+          type: 'object',
+          properties: { windowId: { type: 'string', minLength: 1 } },
+          required: ['windowId'],
+          additionalProperties: false,
+        },
+        risk: 'low',
+        mutates: true,
+        reversible: false,
+        idempotent: true,
+        targetKinds: ['counter'],
+        targetIdPath: 'windowId',
+      },
+      {
+        name: 'focusNode',
+        description: 'Hydration fixture for well-known required nodeId',
+        inputSchema: {
+          type: 'object',
+          properties: { nodeId: { type: 'string', minLength: 1 } },
+          required: ['nodeId'],
+          additionalProperties: false,
+        },
+        risk: 'low',
+        mutates: true,
+        reversible: false,
+        idempotent: true,
+        targetKinds: ['counter'],
+      },
+      {
+        name: 'openResource',
+        description: 'Hydration fixture for notes-resource resourceType+resourceId',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            resourceType: { type: 'string', enum: ['note', 'mindmap'] },
+            resourceId: { type: 'string', minLength: 1 },
+          },
+          required: ['resourceType', 'resourceId'],
+          additionalProperties: false,
+        },
+        risk: 'low',
+        mutates: true,
+        reversible: false,
+        idempotent: true,
+        targetKinds: ['notes-resource'],
+      },
+      {
         name: 'readValue',
         description: 'Read the fixture value',
         inputSchema: { type: 'object', additionalProperties: false },
@@ -77,14 +168,30 @@ appRegistry.register({
       revision: `app:${appRevision}`,
       state: { value },
       selection: refAvailable ? [currentCounterRef()] : [],
-      availableActions: ['setValue', 'readValue', 'opaqueWrite', 'undeclaredAction'],
+      availableActions: [
+        'setValue',
+        'focusWindow',
+        'focusNode',
+        'openResource',
+        'readValue',
+        'opaqueWrite',
+        'undeclaredAction',
+      ],
       entities: refAvailable
-        ? [{
-            ref: currentCounterRef(),
-            kind: 'counter',
-            label: 'Counter',
-            actions: ['setValue', 'undeclaredAction'],
-          }]
+        ? [
+            {
+              ref: currentCounterRef(),
+              kind: 'counter',
+              label: 'Counter',
+              actions: ['setValue', 'focusWindow', 'focusNode', 'undeclaredAction'],
+            },
+            {
+              ref: 'notes:note:note-42',
+              kind: 'notes-resource',
+              label: 'Note 42',
+              actions: ['openResource'],
+            },
+          ]
         : [],
       affordances: manyNodes
         ? Array.from({ length: 205 }, (_, index) => ({
@@ -93,14 +200,25 @@ appRegistry.register({
             actions: ['setValue'],
           }))
         : refAvailable
-          ? [{
-              ref: currentCounterRef(),
-              kind: 'counter',
-              actions: ['setValue', 'undeclaredAction'],
-            }]
+          ? [
+              {
+                ref: currentCounterRef(),
+                kind: 'counter',
+                actions: ['setValue', 'focusWindow', 'focusNode', 'undeclaredAction'],
+              },
+              {
+                ref: 'notes:note:note-42',
+                kind: 'notes-resource',
+                actions: ['openResource'],
+                value: { resourceType: 'note', resourceId: 'note-42' },
+              },
+            ]
           : [],
     }),
     execute: (_ctx, action) => {
+      lastHydratedArgs = action.args && typeof action.args === 'object'
+        ? { ...(action.args as Record<string, unknown>) }
+        : null;
       if (action.name === 'readValue') {
         return { handled: true, changed: false, details: { value } };
       }
@@ -108,6 +226,14 @@ appRegistry.register({
         value += 1;
         appRevision += 1;
         return { handled: true };
+      }
+      if (
+        action.name === 'focusWindow'
+        || action.name === 'focusNode'
+        || action.name === 'openResource'
+      ) {
+        appRevision += 1;
+        return { handled: true, changed: true, acknowledged: true };
       }
       if (action.name !== 'setValue') return { handled: false };
       const next = Number((action.args as { value: number }).value);
@@ -147,6 +273,69 @@ describe('ACR 2.0 core runtime', () => {
     manyNodes = false;
     refAvailable = true;
     encodedTargetId = null;
+    lastHydratedArgs = null;
+  });
+
+  it('get_capabilities aliases typeId note/mindmap to the notes manifest', () => {
+    for (const typeId of ['note', 'mindmap', 'notes'] as const) {
+      const discovery = getAgentCapabilities({ typeId });
+      expect(discovery.apps[0]).toMatchObject({
+        typeId: NOTES_CAP_TYPE_ID,
+        manifestVersion: 1,
+        description: 'Notes workspace capabilities fixture',
+      });
+      expect(discovery.apps[0].capabilities.map((cap) => cap.name)).toContain('scrollToHeading');
+    }
+  });
+
+  it('hydrates focusWindow windowId and focusNode nodeId from targetRef before schema checks', async () => {
+    const windowId = openFixture();
+    const before = await observeAgentWindow({ windowId });
+
+    const focusWindow = await actOnAgentWindow({
+      windowId,
+      observationRevision: before.revision,
+      actions: [{
+        name: 'focusWindow',
+        args: {},
+        targetRef: 'counter:item:main',
+      }],
+    });
+    expect(focusWindow.status).toBe('completed');
+    expect(lastHydratedArgs).toEqual({ windowId: 'main' });
+
+    const afterFocusWindow = await observeAgentWindow({ windowId });
+    const focusNode = await actOnAgentWindow({
+      windowId,
+      observationRevision: afterFocusWindow.revision,
+      actions: [{
+        name: 'focusNode',
+        args: {},
+        targetRef: 'counter:item:main',
+      }],
+    });
+    expect(focusNode.status).toBe('completed');
+    expect(lastHydratedArgs).toEqual({ nodeId: 'main' });
+  });
+
+  it('hydrates openResource resourceType and resourceId from notes-resource targetRef', async () => {
+    const windowId = openFixture();
+    const before = await observeAgentWindow({ windowId });
+
+    const opened = await actOnAgentWindow({
+      windowId,
+      observationRevision: before.revision,
+      actions: [{
+        name: 'openResource',
+        args: {},
+        targetRef: 'notes:note:note-42',
+      }],
+    });
+    expect(opened.status).toBe('completed');
+    expect(lastHydratedArgs).toEqual({
+      resourceType: 'note',
+      resourceId: 'note-42',
+    });
   });
 
   it('discovers typed capabilities and emits a deterministic bounded observation', async () => {
@@ -157,6 +346,9 @@ describe('ACR 2.0 core runtime', () => {
       manifestVersion: 1,
       capabilities: [
         { name: 'setValue', mutates: true, reversible: true },
+        { name: 'focusWindow', mutates: true },
+        { name: 'focusNode', mutates: true },
+        { name: 'openResource', mutates: true },
         { name: 'readValue', risk: 'read', mutates: false },
         { name: 'opaqueWrite', mutates: true, reversible: false },
       ],
@@ -165,8 +357,19 @@ describe('ACR 2.0 core runtime', () => {
     const first = await observeAgentWindow({ windowId });
     const second = await observeAgentWindow({ windowId });
     expect(second.revision).toBe(first.revision);
-    expect(first.availableActions).toEqual(['setValue', 'readValue', 'opaqueWrite']);
-    expect(first.affordances.roots[0].actions).toEqual(['setValue']);
+    expect(first.availableActions).toEqual([
+      'setValue',
+      'focusWindow',
+      'focusNode',
+      'openResource',
+      'readValue',
+      'opaqueWrite',
+    ]);
+    expect(first.affordances.roots[0].actions).toEqual([
+      'setValue',
+      'focusWindow',
+      'focusNode',
+    ]);
     expect(first.selection).toEqual(['counter:item:main']);
 
     manyNodes = true;

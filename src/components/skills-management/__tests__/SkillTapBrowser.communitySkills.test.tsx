@@ -164,6 +164,7 @@ describe('SkillTapBrowser SkillMarket tab', () => {
           overwrite: false,
           expectedPackageSha256: sampleScan.package_sha256,
           tempZipPath: '/tmp/sonoscli.zip',
+          declaredRiskLevel: sampleScan.risk_level,
         }),
       );
       expect(reloadSkills).toHaveBeenCalled();

@@ -1,7 +1,7 @@
 /**
  * Chat V2 - 技能 requires 加载期门控
  *
- * 安装期的 requires.bins/env 探测只发生一次；本模块在技能加载/刷新时
+ * 安装期的 requires.bins/env/python_packages 探测只发生一次；本模块在技能加载/刷新时
  * 重新探测本机环境（在加载前检查本机环境与
  * requires_toolsets），结果用于：
  *
@@ -23,11 +23,14 @@ export interface SkillRequiresGate {
   missingBins: string[];
   /** 缺失的环境变量 */
   missingEnv: string[];
+  /** 缺失的 Python 包（PyPI 名） */
+  missingPythonPackages: string[];
 }
 
 interface SkillRequiresProbeResult {
   bins: Array<{ name: string; found: boolean }>;
   env: Array<{ name: string; set: boolean }>;
+  python_packages?: Array<{ name: string; found: boolean }>;
   invalid: string[];
   missing_count: number;
 }
@@ -48,19 +51,29 @@ export async function refreshRequiresGates(skills: SkillDefinition[]): Promise<v
   for (const skill of skills) {
     const bins = skill.requires?.bins ?? [];
     const env = skill.requires?.env ?? [];
-    if (bins.length === 0 && env.length === 0) continue;
+    const pythonPackages = skill.requires?.pythonPackages ?? [];
+    if (bins.length === 0 && env.length === 0 && pythonPackages.length === 0) continue;
 
     try {
       const probe = await invoke<SkillRequiresProbeResult>('skill_probe_requires', {
         bins,
         env,
+        // Tauri command args use snake_case (`python_packages`).
+        python_packages: pythonPackages,
       });
       const missingBins = probe.bins.filter((b) => !b.found).map((b) => b.name);
       const missingEnv = probe.env.filter((e) => !e.set).map((e) => e.name);
+      const missingPythonPackages = (probe.python_packages ?? [])
+        .filter((pkg) => !pkg.found)
+        .map((pkg) => pkg.name);
       nextCache.set(skill.id, {
-        satisfied: missingBins.length === 0 && missingEnv.length === 0,
+        satisfied:
+          missingBins.length === 0 &&
+          missingEnv.length === 0 &&
+          missingPythonPackages.length === 0,
         missingBins,
         missingEnv,
+        missingPythonPackages,
       });
     } catch (error) {
       // 非 Tauri 环境或命令失败：fail-open，不做门控

@@ -195,7 +195,7 @@ describe('SKILL.md parser compatibility matrix', () => {
         '---',
         'name: flow-requires',
         'description: Flow map compatibility',
-        'requires: { bins: [node, uv], env: [API_KEY] }',
+        'requires: { bins: [node, uv], env: [API_KEY], python_packages: [pymupdf] }',
         '---',
         '# body',
       ].join('\n'),
@@ -206,6 +206,7 @@ describe('SKILL.md parser compatibility matrix', () => {
     expect(flow.skill?.requires).toEqual({
       bins: ['node', 'uv'],
       env: ['API_KEY'],
+      pythonPackages: ['pymupdf'],
     });
 
     const nested = parseSkillFile(
@@ -218,6 +219,7 @@ describe('SKILL.md parser compatibility matrix', () => {
         '    requires:',
         '      bins: [rg]',
         '      env: [SEARCH_TOKEN]',
+        '      python_packages: [pillow]',
         '---',
         '# body',
       ].join('\n'),
@@ -227,6 +229,7 @@ describe('SKILL.md parser compatibility matrix', () => {
     );
     expect(nested.skill?.requires).toEqual({
       bins: ['rg'],
+      pythonPackages: ['pillow'],
       env: ['SEARCH_TOKEN'],
     });
   });
@@ -455,11 +458,13 @@ describe('available_skills requires gating (injection path parity)', () => {
       satisfied: true,
       missingBins: [],
       missingEnv: [],
+      missingPythonPackages: [],
     });
     __setRequiresGateForTest('gated-skill', {
       satisfied: false,
       missingBins: ['nonexistent-bin-xyz'],
       missingEnv: ['MISSING_ENV_XYZ'],
+      missingPythonPackages: [],
     });
 
     const xmlPrompt = generateAvailableSkillsPrompt();
@@ -518,11 +523,13 @@ describe('available_skills requires gating (injection path parity)', () => {
       satisfied: true,
       missingBins: [],
       missingEnv: [],
+      missingPythonPackages: [],
     });
     __setRequiresGateForTest('card-sync-notes', {
       satisfied: false,
       missingBins: [],
       missingEnv: ['NOTES_CLOUD_TOKEN', 'NOTES_CLOUD_DATABASE_ID'],
+      missingPythonPackages: [],
     });
 
     // 外部 fixture 技能默认 untrusted，测试里显式授信以便进入注入路径

@@ -165,7 +165,10 @@ impl ApprovalManager {
             pending_tool_names: Arc::new(Mutex::new(HashMap::new())),
             pending_remember_disabled: Arc::new(Mutex::new(HashMap::new())),
             pending_session_only: Arc::new(Mutex::new(HashMap::new())),
-            default_timeout: 60,
+            // Desktop users may review a detailed command/risk card before deciding.
+            // One minute caused legitimate approvals to expire while the app was
+            // backgrounded or assistive UI was reading the card.
+            default_timeout: 300,
             remembered: Arc::new(Mutex::new(HashMap::new())),
             session_remembered: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -1516,7 +1519,7 @@ mod tests {
     }
 
     #[test]
-    fn shell_execution_cannot_be_remembered_for_session() {
+    fn medium_readonly_shell_can_be_session_remembered_with_precise_scope() {
         let manager = ApprovalManager::new();
         let approved_args = serde_json::json!({
             "command": "git status --short",
@@ -1536,7 +1539,8 @@ mod tests {
 
         assert_eq!(
             manager.check_session_remembered("sess_1", "execute_command", &approved_args),
-            None
+            Some(true),
+            "Medium readonly shell may be session-remembered"
         );
         assert!(
             manager
@@ -1564,7 +1568,7 @@ mod tests {
                     })
                 )
                 .is_none(),
-            "different command prefix must ask again"
+            "different / High command must ask again"
         );
     }
 

@@ -27,6 +27,10 @@ function payloadRecord(payload: unknown): Record<string, unknown> | null {
 
 const ACTIVATION_READY_TIMEOUT_MS = 8000;
 
+/** 同步 store 写入后的读回校验：命中即 authoritative ack，避免 ACTION_UNVERIFIED 假阴性。 */
+const ackIf = (verified: boolean): ActivationResult =>
+  verified ? { handled: true, acknowledged: true } : { handled: true };
+
 function applyMindmapActivation(
   storeApi: MindMapStoreApi,
   ctx: ActivationContext,
@@ -55,7 +59,7 @@ function applyMindmapActivation(
       }
       store.expandToNode(nodeId, { silent: true });
       store.setFocusedNodeId(nodeId);
-      return { handled: true };
+      return ackIf(storeApi.getState().focusedNodeId === nodeId);
     }
     case 'setView': {
       const view = payload?.view;
@@ -71,22 +75,39 @@ function applyMindmapActivation(
       } else {
         store.setCurrentView(view as MindMapViewType);
       }
-      return { handled: true };
+      return ackIf(storeApi.getState().currentView === view);
     }
     case 'search': {
       const query = typeof payload?.query === 'string' ? payload.query : '';
       store.search(query);
-      return { handled: true };
+      return ackIf(storeApi.getState().searchQuery === query);
     }
     case 'nextSearchResult':
-      store.nextSearchResult();
-      return { handled: true };
-    case 'previousSearchResult':
-      store.prevSearchResult();
-      return { handled: true };
+    case 'previousSearchResult': {
+      const before = storeApi.getState();
+      if (before.searchResults.length === 0) {
+        // 无可导航结果：指令已接收但未产生状态变更，不 ACK。
+        return { handled: true };
+      }
+      const expectedIndex = ctx.action === 'nextSearchResult'
+        ? (before.currentSearchIndex + 1) % before.searchResults.length
+        : before.currentSearchIndex <= 0
+          ? before.searchResults.length - 1
+          : before.currentSearchIndex - 1;
+      const expectedNodeId = before.searchResults[expectedIndex];
+      if (ctx.action === 'nextSearchResult') store.nextSearchResult();
+      else store.prevSearchResult();
+      const after = storeApi.getState();
+      return ackIf(
+        after.currentSearchIndex === expectedIndex && after.focusedNodeId === expectedNodeId,
+      );
+    }
     case 'clearSearch':
       store.clearSearch();
-      return { handled: true };
+      return ackIf(
+        storeApi.getState().searchQuery === '' &&
+          storeApi.getState().searchResults.length === 0,
+      );
     default:
       return {
         handled: false,

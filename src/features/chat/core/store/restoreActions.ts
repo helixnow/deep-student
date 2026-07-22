@@ -1189,6 +1189,12 @@ export function createRestoreActions(
             resetTransientRuntimes(getState().setPendingApproval);
           }
 
+          // liveState 已前进（例如发送后清空了输入框）时保留当前 composer，
+          // 避免后端快照里尚未刷掉的旧草稿把已发送正文写回输入框。
+          const resolvedInputValue = liveStateAdvanced
+            ? liveState.inputValue
+            : inputValue;
+
           set({
             sessionId: session.id,
             mode: session.mode,
@@ -1223,7 +1229,7 @@ export function createRestoreActions(
             chatParams,
             features,
             modeState,
-            inputValue,
+            inputValue: resolvedInputValue,
             attachments: [],
             panelStates,
             pendingContextRefs,

@@ -176,10 +176,7 @@ mod tests {
         assert_eq!(tool_approval_domain("builtin-note_read"), "note");
         assert_eq!(tool_approval_domain("mcp_qbank_search"), "qbank");
         assert!(is_external_mcp_call("mcp_search", &json!({})));
-        assert!(is_external_mcp_call(
-            "search",
-            &json!({"_serverId":"docs"})
-        ));
+        assert!(is_external_mcp_call("search", &json!({"_serverId":"docs"})));
         assert!(!is_external_mcp_call(
             "builtin-search",
             &json!({"_serverId":"spoofed"})

@@ -34,7 +34,7 @@ describe('content onActivation R2-10', () => {
       action: 'scrollToHeading',
       payload: { heading: '引言', level: 2 },
     });
-    expect(result).toEqual({ handled: true });
+    expect(result).toEqual({ handled: true, acknowledged: true });
     expect(scrollToHeading).toHaveBeenCalledWith('引言', 2);
   });
 
@@ -53,7 +53,7 @@ describe('content onActivation R2-10', () => {
       action: 'focusQuestion',
       payload: { questionId: 'Q2' },
     });
-    expect(result).toEqual({ handled: true });
+    expect(result).toEqual({ handled: true, acknowledged: true });
     expect(spy).toHaveBeenCalled();
     const ev = spy.mock.calls.find(
       (c) => (c[0] as CustomEvent).type === 'qbank:focus-question',

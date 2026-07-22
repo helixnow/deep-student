@@ -30,6 +30,10 @@ import type {
   AppDefinition,
   WorkbenchWindow,
 } from './types';
+import {
+  isNotesWorkspaceResourceType,
+  resolveWorkbenchAppTypeId,
+} from '../apps/content/typeMap';
 import { appRegistry } from './appRegistry';
 import { useWindowStore } from './windowStore';
 import {
@@ -40,6 +44,23 @@ import {
   runAgentUndoExclusive,
   updateAgentUndo,
 } from './agentUndoJournal';
+
+/** Well-known entity id args commonly paired with targetRef / targetKinds. */
+const WELL_KNOWN_TARGET_ID_FIELDS = [
+  'windowId',
+  'nodeId',
+  'itemId',
+  'cardId',
+  'listId',
+  'folderId',
+  'resourceId',
+  'messageId',
+  'questionId',
+  'templateId',
+  'sessionId',
+  'skillId',
+  'typeId',
+] as const;
 
 export const AGENT_MAX_BATCH_ACTIONS = 20;
 export const AGENT_MAX_AFFORDANCE_NODES = 200;
@@ -227,6 +248,9 @@ function resolveAgentWindow(target: AgentWindowTarget = {}): ResolvedAgentWindow
   const virtualResolved = resolveVirtualAgentTarget(target);
   if (virtualResolved) return virtualResolved;
   const state = useWindowStore.getState();
+  const appTypeId = target.typeId
+    ? resolveWorkbenchAppTypeId(target.typeId)
+    : undefined;
   let win: WorkbenchWindow | undefined;
   if (target.windowId) {
     win = state.windows[target.windowId];
@@ -237,7 +261,7 @@ function resolveAgentWindow(target: AgentWindowTarget = {}): ResolvedAgentWindow
         '窗口可能已关闭；请重新调用 list_windows 或 observe',
       );
     }
-    if (target.typeId && win.typeId !== target.typeId) {
+    if (appTypeId && win.typeId !== appTypeId) {
       runtimeError(
         'WINDOW_TARGET_MISMATCH',
         `窗口 ${target.windowId} 的类型是 ${win.typeId}，不是 ${target.typeId}`,
@@ -252,10 +276,10 @@ function resolveAgentWindow(target: AgentWindowTarget = {}): ResolvedAgentWindow
         true,
       );
     }
-  } else if (target.typeId) {
-    const def = appRegistry.get(target.typeId);
+  } else if (appTypeId) {
+    const def = appRegistry.get(appTypeId);
     const candidates = Object.values(state.windows).filter(
-      (candidate) => candidate.typeId === target.typeId,
+      (candidate) => candidate.typeId === appTypeId,
     );
     if (target.instanceKey) {
       win = candidates.find((candidate) => candidate.instanceKey === target.instanceKey);
@@ -347,7 +371,8 @@ export function getAgentCapabilities(
       });
       return { apps };
     }
-    const def = appRegistry.get(target.typeId);
+    const appTypeId = resolveWorkbenchAppTypeId(target.typeId);
+    const def = appRegistry.get(appTypeId);
     if (!def) {
       runtimeError(
         'APP_NOT_REGISTERED',
@@ -358,17 +383,17 @@ export function getAgentCapabilities(
     if (!def.agentManifest) {
       runtimeError(
         'APP_AGENT_UNAVAILABLE',
-        `${target.typeId} 尚未声明 Agent 能力`,
+        `${appTypeId} 尚未声明 Agent 能力`,
         '该应用仍可使用旧 app_command；能力发现需等待 agentManifest 接入',
       );
     }
     const state = useWindowStore.getState();
     const win = Object.values(state.windows).find(
-      (candidate) => candidate.typeId === target.typeId
+      (candidate) => candidate.typeId === appTypeId
         && (!target.instanceKey || candidate.instanceKey === target.instanceKey),
     );
     apps.push({
-      typeId: target.typeId,
+      typeId: appTypeId,
       windowId: win?.id,
       instanceKey: win?.instanceKey,
       manifestVersion: def.agentManifest.version,
@@ -922,6 +947,109 @@ export function evaluateAgentConditions(
   return failures;
 }
 
+/** Decode the final id segment of a stable ref (`kind:entity:id`). */
+function decodeTargetRefId(targetRef: string): string {
+  const encodedRefId = targetRef.split(':').at(-1) ?? '';
+  try {
+    return decodeURIComponent(encodedRefId);
+  } catch {
+    // Malformed external refs remain usable as opaque strings.
+    return encodedRefId;
+  }
+}
+
+/**
+ * Notes-resource refs are `notes:{note|mindmap}:{resourceId}` (see notes agentManifest).
+ * Only returns a type when the encoding is unambiguous — never guess.
+ */
+function decodeNotesResourceTypeFromTargetRef(
+  targetRef: string,
+): 'note' | 'mindmap' | null {
+  const parts = targetRef.split(':');
+  if (parts.length < 3 || parts[0] !== 'notes') return null;
+  try {
+    const resourceType = decodeURIComponent(parts[1]!);
+    return isNotesWorkspaceResourceType(resourceType) ? resourceType : null;
+  } catch {
+    return null;
+  }
+}
+
+function readActionArgPath(args: unknown, path: string): unknown {
+  const parts = path.split('.').map((part) => part.trim()).filter(Boolean);
+  let value: unknown = args;
+  for (const part of parts) {
+    if (!value || typeof value !== 'object' || !(part in value)) return undefined;
+    value = (value as Record<string, unknown>)[part];
+  }
+  return value;
+}
+
+function writeActionArgPath(
+  args: Record<string, unknown>,
+  path: string,
+  value: string,
+): void {
+  const parts = path.split('.').map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 0) return;
+  let current = args;
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    const part = parts[i]!;
+    const next = current[part];
+    if (!next || typeof next !== 'object' || Array.isArray(next)) {
+      current[part] = {};
+    }
+    current = current[part] as Record<string, unknown>;
+  }
+  const leaf = parts[parts.length - 1]!;
+  if (current[leaf] === undefined) current[leaf] = value;
+}
+
+/**
+ * Before schema validation: fill missing entity id args from targetRef's last segment.
+ * Never overwrites caller-provided args; mismatch checks still run after hydration.
+ */
+function hydrateActionArgsFromTargetRef(
+  action: AgentActionCall,
+  capability: AgentCapability,
+): void {
+  if (!action.targetRef || typeof action.targetRef !== 'string') return;
+  const refId = decodeTargetRefId(action.targetRef);
+  if (!refId) return;
+
+  const args = action.args && typeof action.args === 'object' && !Array.isArray(action.args)
+    ? action.args as Record<string, unknown>
+    : {};
+  action.args = args;
+
+  if (capability.targetIdPath) {
+    if (readActionArgPath(args, capability.targetIdPath) === undefined) {
+      writeActionArgPath(args, capability.targetIdPath, refId);
+    }
+    return;
+  }
+
+  if (!capability.targetKinds?.length) return;
+  const required = Array.isArray(capability.inputSchema.required)
+    ? capability.inputSchema.required
+    : [];
+  for (const field of WELL_KNOWN_TARGET_ID_FIELDS) {
+    if (!required.includes(field)) continue;
+    if (args[field] !== undefined) continue;
+    args[field] = refId;
+  }
+
+  // notes-resource refs encode resourceType in the middle segment; hydrate when required.
+  if (
+    required.includes('resourceType')
+    && args.resourceType === undefined
+    && capability.targetKinds.includes('notes-resource')
+  ) {
+    const resourceType = decodeNotesResourceTypeFromTargetRef(action.targetRef);
+    if (resourceType) args.resourceType = resourceType;
+  }
+}
+
 function validateActionAgainstObservation(
   action: AgentActionCall,
   capability: AgentCapability,
@@ -978,15 +1106,6 @@ function validateActionAgainstObservation(
       `使用以下类型之一: ${capability.targetKinds.join(', ')}`,
     );
   }
-  const readArgPath = (path: string): unknown => {
-    const parts = path.split('.').map((part) => part.trim()).filter(Boolean);
-    let value: unknown = action.args;
-    for (const part of parts) {
-      if (!value || typeof value !== 'object' || !(part in value)) return undefined;
-      value = (value as Record<string, unknown>)[part];
-    }
-    return value;
-  };
   const args = action.args && typeof action.args === 'object' && !Array.isArray(action.args)
     ? action.args as Record<string, unknown>
     : {};
@@ -994,7 +1113,7 @@ function validateActionAgainstObservation(
     .map((key) => args[key])
     .find((value): value is string => typeof value === 'string' && value.includes(':'));
   const declaredRef = capability.targetRefPath
-    ? readArgPath(capability.targetRefPath)
+    ? readActionArgPath(args, capability.targetRefPath)
     : conventionalRef;
   if (declaredRef !== undefined && declaredRef !== action.targetRef) {
     return new AgentRuntimeError(
@@ -1004,14 +1123,8 @@ function validateActionAgainstObservation(
     );
   }
   if (capability.targetIdPath) {
-    const declaredId = readArgPath(capability.targetIdPath);
-    const encodedRefId = action.targetRef.split(':').at(-1) ?? '';
-    let refId = encodedRefId;
-    try {
-      refId = decodeURIComponent(encodedRefId);
-    } catch {
-      // Malformed external refs remain comparable as opaque strings.
-    }
+    const declaredId = readActionArgPath(args, capability.targetIdPath);
+    const refId = decodeTargetRefId(action.targetRef);
     if (declaredId === undefined || String(declaredId) !== refId) {
       return new AgentRuntimeError(
         'TARGET_REF_MISMATCH',
@@ -1181,6 +1294,7 @@ export async function actOnAgentWindow(
         '使用经过高风险确认的 act 工具，或移除该动作后重试',
       );
     }
+    hydrateActionArgsFromTargetRef(action, capability);
     const args = action.args ?? (capability.inputSchema.type === 'object' ? {} : undefined);
     const schemaErrors = validateSchema(args, capability.inputSchema);
     if (schemaErrors.length) {
@@ -1733,7 +1847,8 @@ export function isAgentActRequestReadOnly(request: unknown): boolean {
     manifest = resolveAgentWindow(input).manifest;
   } catch {
     if (input.typeId) {
-      manifest = appRegistry.getAgentManifest(input.typeId)
+      const appTypeId = resolveWorkbenchAppTypeId(input.typeId);
+      manifest = appRegistry.getAgentManifest(appTypeId)
         ?? virtualAgentManifests.get(input.typeId);
     }
   }

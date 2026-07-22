@@ -16,6 +16,7 @@ export interface PlaygroundAskUserResponse {
 export interface PlaygroundToolApprovalResponse {
   approved: boolean;
   remember: boolean;
+  rememberSession?: boolean;
   reason?: string;
 }
 

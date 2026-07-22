@@ -10,6 +10,10 @@ pub struct MaintenanceStatusResponse {
     pub blocked_components: Vec<String>,
     /// 当前持有全局数据治理租约的操作；旧客户端可安全忽略该 additive 字段。
     pub current_operation: Option<crate::backup_common::DataGovernanceOperationSnapshot>,
+    /// Startup component health when the parent registered it as Tauri state.
+    pub component_health: Option<super::StartupComponentHealth>,
+    /// Non-healthy startup entries, provided for concise diagnostics.
+    pub component_issues: Vec<super::StartupComponentIssue>,
 }
 
 /// Schema 注册表响应

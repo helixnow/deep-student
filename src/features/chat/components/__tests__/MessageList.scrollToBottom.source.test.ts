@@ -44,9 +44,12 @@ describe('MessageList scroll-to-bottom source contract', () => {
 
   it('shows the control based on scroll position rather than streaming state alone', () => {
     expect(source).toContain("viewportElement.addEventListener('scroll', syncScrollState");
-    expect(source).toContain('const scrolledUp = scrollTop < prevScrollTop - 1 && distanceToBottom > 1;');
+    // scrolledUp 现在额外排除内容收缩/clamp 造成的 scrollTop 下降（!dropExplainedByShrink），
+    // 避免流式重排把 clamp 误判为用户上滚而中断吸底
+    expect(source).toContain('scrollTop < prevScrollTop - 1');
+    expect(source).toContain('!dropExplainedByShrink');
     expect(source).toContain('const followingBottom = isAutoScrollingRef.current && !userHasScrolledRef.current;');
-    expect(source).toContain('const awayFromBottom = followingBottom ? scrolledUp : !nearBottom;');
+    expect(source).toContain('const awayFromBottom = followingBottom ? (scrolledUp && !nearBottom) : !nearBottom;');
     expect(source).toContain('userHasScrolledRef.current = awayFromBottom;');
     expect(source).toContain('setShowScrollToBottom(awayFromBottom);');
     expect(source).toContain("data-open={showScrollToBottom ? 'true' : 'false'}");

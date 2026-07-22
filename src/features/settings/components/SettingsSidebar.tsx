@@ -138,68 +138,71 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
         aria-label={t('sidebar.navigation_label')}
         role="navigation"
         className={cn('min-h-0 flex-1', isCollapsed && 'pointer-events-none opacity-0')}
-        viewportClassName={cn('py-1', isCollapsed ? 'px-0' : 'px-2')}
+        // OverlayScrollbars 会把 viewport 的 padding 强制清零，边距必须放在内层
+        viewportClassName="h-full w-full min-h-0"
         trackOffsetTop={4}
         trackOffsetBottom={4}
       >
-        {searchQuery ? (
-          searchResults.length > 0 ? (
-            <ul className="space-y-0.5">
-              {searchResults.map((item, idx) => (
-                <li key={`${item.tab}-${idx}`}>
+        <div className={cn('py-1', isCollapsed ? 'px-0' : 'px-2')}>
+          {searchQuery ? (
+            searchResults.length > 0 ? (
+              <ul className="space-y-0.5">
+                {searchResults.map((item, idx) => (
+                  <li key={`${item.tab}-${idx}`}>
+                    <WorkbenchSidebarRow
+                      rowType="nav"
+                      isActive={false}
+                      onClick={() => handleSearchResultClick(item.tab)}
+                    >
+                      <span className="flex min-w-0 flex-col items-start text-left">
+                        <span className={`truncate ${SETTINGS_NAV_ITEM_LABEL_CLASS_NAME}`}>{item.label}</span>
+                        <span className="truncate text-xs text-[color:var(--sidebar-muted,var(--muted-foreground))] opacity-70">
+                          {tabLabelMap.get(item.tab) ?? item.tab}
+                        </span>
+                      </span>
+                    </WorkbenchSidebarRow>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="px-3 py-2 text-sm text-[color:var(--sidebar-muted,var(--muted-foreground))] opacity-80">
+                {t('sidebar.no_results')}
+              </p>
+            )
+          ) : (
+          <ul className="space-y-0.5">
+            {sidebarNavItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.value;
+
+              return (
+                <li key={item.value}>
                   <WorkbenchSidebarRow
                     rowType="nav"
-                    isActive={false}
-                    onClick={() => handleSearchResultClick(item.tab)}
+                    isActive={isActive}
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={isActive ? undefined : () => {
+                      setActiveTab(item.value as any);
+                      if (isSmallScreen) setSidebarOpen(false);
+                    }}
+                    className={isActive ? 'cursor-default' : undefined}
+                    title={undefined}
+                    leftSlot={<Icon className="h-[18px] w-[18px] flex-shrink-0" />}
                   >
-                    <span className="flex min-w-0 flex-col items-start text-left">
-                      <span className={`truncate ${SETTINGS_NAV_ITEM_LABEL_CLASS_NAME}`}>{item.label}</span>
-                      <span className="truncate text-xs text-[color:var(--sidebar-muted,var(--muted-foreground))] opacity-70">
-                        {tabLabelMap.get(item.tab) ?? item.tab}
-                      </span>
-                    </span>
+                    {!isCollapsed && (
+                      <WorkbenchSidebarRowLabel>
+                        <span className={SETTINGS_NAV_ITEM_LABEL_CLASS_NAME}>
+                        {item.label}
+                        </span>
+                      </WorkbenchSidebarRowLabel>
+                    )}
                   </WorkbenchSidebarRow>
                 </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="px-3 py-2 text-sm text-[color:var(--sidebar-muted,var(--muted-foreground))] opacity-80">
-              {t('sidebar.no_results')}
-            </p>
-          )
-        ) : (
-        <ul className="space-y-0.5">
-          {sidebarNavItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.value;
-
-            return (
-              <li key={item.value}>
-                <WorkbenchSidebarRow
-                  rowType="nav"
-                  isActive={isActive}
-                  aria-current={isActive ? 'page' : undefined}
-                  onClick={isActive ? undefined : () => {
-                    setActiveTab(item.value as any);
-                    if (isSmallScreen) setSidebarOpen(false);
-                  }}
-                  className={isActive ? 'cursor-default' : undefined}
-                  title={undefined}
-                  leftSlot={<Icon className="h-[18px] w-[18px] flex-shrink-0" />}
-                >
-                  {!isCollapsed && (
-                    <WorkbenchSidebarRowLabel>
-                      <span className={SETTINGS_NAV_ITEM_LABEL_CLASS_NAME}>
-                      {item.label}
-                      </span>
-                    </WorkbenchSidebarRowLabel>
-                  )}
-                </WorkbenchSidebarRow>
-              </li>
-            );
-          })}
-        </ul>
-        )}
+              );
+            })}
+          </ul>
+          )}
+        </div>
       </CustomScrollArea>
     </WorkbenchSidebarSurface>
   );

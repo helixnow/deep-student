@@ -24,14 +24,14 @@ describe('handlePomodoroActivation R2-10', () => {
     });
   });
 
-  it('start 返回 handled:true 且 store 进入 running', () => {
+  it('start 返回 handled:true + acknowledged:true 且 store 进入 running', () => {
     const r = handlePomodoroActivation({
       windowId: 'w',
       instanceKey: null,
       action: 'start',
       payload: { taskTitle: '写场景库' },
     });
-    expect(r).toEqual({ handled: true });
+    expect(r).toEqual({ handled: true, acknowledged: true });
     expect(usePomodoroStore.getState().mode).toBe('work');
     expect(usePomodoroStore.getState().currentTaskTitle).toBe('写场景库');
   });

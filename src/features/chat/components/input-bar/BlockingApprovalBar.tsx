@@ -104,6 +104,11 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
     skillApprovalScope?.kind === 'skill_install' || skillApprovalScope?.kind === 'skill_lifecycle'
       ? (skillApprovalScope.declaredRiskLevel ?? skillApprovalScope.riskLevel)
       : skillApprovalScope?.riskLevel;
+  // Craft+Relaxed Medium only; privilege / High / rememberDisabled stay one-shot.
+  // Product deliberately omits always/global persistent remember.
+  const rememberDisabled = Boolean(interaction.runtimeScope?.rememberDisabled)
+    || interaction.permissionPreset !== 'relaxed'
+    || interaction.sensitivity !== 'medium';
   // 工具显示名称
   const displayToolName = useMemo(
     () => getReadableToolName(interaction.toolName, t, {
@@ -168,7 +173,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
   // 显式传参而非读 state，避免倒计时自动拒绝把输入到一半的文本发出去。
   const handleResponse = useCallback(
     async (
-      decision: 'approve' | 'reject',
+      decision: 'approve' | 'allow_session' | 'reject',
       customReason?: string
     ) => {
       if (respondingRef.current || hasResponded || isResponding || isResolved) return;
@@ -176,7 +181,9 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
       respondingRef.current = true;
       setIsResponding(true);
       try {
-        const approved = decision === 'approve';
+        const approved = decision === 'approve' || decision === 'allow_session';
+        // 本次允许：remember=false；本会话允许：rememberSession=true（无 always/global）
+        const rememberSession = decision === 'allow_session';
         const trimmedReason = customReason?.trim();
         // 'user_rejected' 为无理由拒绝的哨兵值，后端据此保持笼统文案（向后兼容）
         const reason = approved ? undefined : (trimmedReason || 'user_rejected');
@@ -185,6 +192,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
           await interaction.respond({
             approved,
             remember: false,
+            rememberSession,
             reason,
           });
         } else {
@@ -195,7 +203,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             approved,
             reason: reason ?? null,
             remember: false,
-            rememberSession: false,
+            rememberSession,
             arguments: interaction.arguments,
           });
         }
@@ -630,7 +638,22 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             {t('approval.reject')}
           </DsButton>
 
-          {/* 批准 */}
+          {/* 本会话允许（session only；无始终允许 / global persistent） */}
+          {!rememberDisabled && (
+            <DsButton
+              variant="outline"
+              size="sm"
+              onClick={() => handleResponse('allow_session')}
+              disabled={disabled}
+              className="text-success hover:text-success/80"
+            >
+              {shellScope
+                ? t('approval.allowScope')
+                : t('approval.allowSession')}
+            </DsButton>
+          )}
+
+          {/* 本次允许 */}
           <DsButton
             size="sm"
             onClick={() => handleResponse('approve')}

@@ -29,6 +29,19 @@ import {
   reportFrontendError,
   serializeUnknown,
 } from './logging/errorReporter';
+import { getStartupRecoveryStatus } from './features/data-recovery/dataRecoveryApi';
+import { RecoveryShell } from './features/data-recovery/RecoveryShell';
+import { StartupPreflight } from './features/data-recovery/StartupPreflight';
+import { ComponentRecoveryShell } from './features/data-recovery/ComponentRecoveryShell';
+import {
+  clearRecoveryDebugScenario,
+  createCoreMigrationFailureDebugIssues,
+  createStartupConflictDebugStatus,
+  createStartupPreflightFailureDebugStatus,
+  getRecoveryDebugScenario,
+} from './features/data-recovery/debugRecoveryScenarios';
+import { getMaintenanceStatus } from './api/dataGovernance';
+import { useSystemStatusStore } from './stores/systemStatusStore';
 
 // 尽早初始化平台检测类，确保 CSS 规则在渲染前生效
 initPlatformClasses();
@@ -380,6 +393,41 @@ const appTree = (
   </ErrorBoundary>
 );
 
+const recoveryTree = (
+  status: Awaited<ReturnType<typeof getStartupRecoveryStatus>>,
+  debugPreview = false,
+  onDebugExit?: () => void,
+) => (
+  <ErrorBoundary name="RecoveryShell" fallback={(error, componentStack) => <TopLevelFallback error={error} componentStack={componentStack} />}>
+    <OverlayCoordinatorProvider>
+      <DialogControlProvider>
+        <RecoveryShell
+          status={status}
+          debugPreview={debugPreview}
+          onDebugExit={onDebugExit}
+        />
+      </DialogControlProvider>
+    </OverlayCoordinatorProvider>
+  </ErrorBoundary>
+);
+
+const getStartupRecoveryStatusWithTimeout = async () => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      getStartupRecoveryStatus(),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error('Startup recovery preflight timed out after 15 seconds')),
+          15_000,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
 // F22: React 18 的 StrictMode 双调用诊断仅在开发态生效，生产构建为 no-op——
 // 因此原先「仅 prod 启用」等于全程没有 StrictMode 检查（注释意图与 React 行为相反）。
 // 调整为：
@@ -405,36 +453,103 @@ if (IS_POMODORO_MINI_WINDOW) {
   import('./quick-assistant/QuickAssistantWindow').then(({ QuickAssistantWindow }) => {
     root.render(<QuickAssistantWindow />);
   });
-} else if ((import.meta as any).env?.MODE === 'production' || enableDevStrictMode) {
-  root.render(<React.StrictMode>{appTree}</React.StrictMode>);
-} else {
-  root.render(appTree);
-}
-if (!IS_POMODORO_MINI_WINDOW) {
   void initSentryIfConfigured();
-}
+} else {
+  const debugScenario = getRecoveryDebugScenario();
+  const exitDebugPreview = () => {
+    clearRecoveryDebugScenario();
+    window.location.reload();
+  };
+  if (debugScenario === 'startup-conflict') {
+    root.render(recoveryTree(createStartupConflictDebugStatus(), true, exitDebugPreview));
+  } else if (debugScenario === 'startup-preflight-failure') {
+    root.render(recoveryTree(
+      createStartupPreflightFailureDebugStatus(),
+      true,
+      exitDebugPreview,
+    ));
+  } else if (debugScenario === 'core-migration-failure') {
+    root.render(
+      <ErrorBoundary name="DebugComponentRecoveryShell" fallback={(error, componentStack) => <TopLevelFallback error={error} componentStack={componentStack} />}>
+        <ComponentRecoveryShell
+          components={createCoreMigrationFailureDebugIssues()}
+          debugPreview
+          onDebugExit={exitDebugPreview}
+        />
+      </ErrorBoundary>,
+    );
+  } else {
+  root.render(<StartupPreflight />);
+  void getStartupRecoveryStatusWithTimeout()
+    .then(async (status) => {
+      if (status.recovery_required) {
+        root.render(recoveryTree(status));
+        return;
+      }
 
+      const maintenanceStatus = await getMaintenanceStatus().catch((error) => ({
+        is_in_maintenance_mode: false,
+        blocked_components: [],
+        component_health: {
+          components: [{
+            component: 'vfs',
+            status: 'blocked' as const,
+            reason: `Startup component health unavailable: ${String(error)}`,
+            dependency: null,
+          }],
+        },
+        component_issues: [],
+      }));
+      const componentHealth = maintenanceStatus.component_health?.components ?? [];
+      useSystemStatusStore.getState().setComponentHealth(componentHealth);
+      const coreRecoveryRequired = componentHealth.some(
+        (component) =>
+          component.status === 'blocked'
+          && (component.component === 'vfs' || component.component === 'mistakes'),
+      );
+      if (coreRecoveryRequired) {
+        root.render(
+          <ErrorBoundary name="ComponentRecoveryShell" fallback={(error, componentStack) => <TopLevelFallback error={error} componentStack={componentStack} />}>
+            <ComponentRecoveryShell components={componentHealth} />
+          </ErrorBoundary>,
+        );
+        return;
+      }
 
-// Initialize Frontend MCP Service from saved settings (best-effort)
-if (!IS_LIGHTWEIGHT_WINDOW) {
-  bootstrapMcpFromSettings({ preheat: true }).catch((err) => {
-    debugLog.warn('[MCP] Bootstrap failed:', err);
-  });
-}
-
-if (!IS_LIGHTWEIGHT_WINDOW) {
-  void import('./quick-assistant/window').then(async ({
-    initializeQuickAssistantGlobalShortcut,
-    initializeQuickAssistantMainBridge,
-  }) => {
-    const cleanups = await Promise.all([
-      initializeQuickAssistantGlobalShortcut(),
-      initializeQuickAssistantMainBridge(),
-    ]);
-    cleanups.forEach(registerCleanup);
-  }).catch((error) => {
-    console.warn('[QuickAssistant] initialization failed:', error);
-  });
+      if ((import.meta as any).env?.MODE === 'production' || enableDevStrictMode) {
+        root.render(<React.StrictMode>{appTree}</React.StrictMode>);
+      } else {
+        root.render(appTree);
+      }
+      startNormalFrontendRuntime();
+    })
+    .catch((error) => {
+      // 纯 Web 预览没有 Tauri IPC，可继续渲染；桌面端不能把预检故障误判为安全启动，
+      // 因为恢复专用后端不会创建普通 AppState。
+      if ((window as any).__TAURI_INTERNALS__) {
+        const unavailable = [{
+          component: 'startup_preflight',
+          status: 'blocked' as const,
+          reason: `Startup recovery preflight unavailable: ${String(error)}`,
+          dependency: null,
+        }];
+        useSystemStatusStore.getState().setComponentHealth(unavailable);
+        root.render(
+          <ErrorBoundary name="StartupPreflightFailure" fallback={(renderError, componentStack) => <TopLevelFallback error={renderError} componentStack={componentStack} />}>
+            <ComponentRecoveryShell components={unavailable} />
+          </ErrorBoundary>,
+        );
+        return;
+      }
+      console.warn('[main] Tauri startup preflight unavailable in web preview.', error);
+      if ((import.meta as any).env?.MODE === 'production' || enableDevStrictMode) {
+        root.render(<React.StrictMode>{appTree}</React.StrictMode>);
+      } else {
+        root.render(appTree);
+      }
+      startNormalFrontendRuntime();
+    });
+  }
 }
 
 // Respond to settings change to reload MCP servers from DB
@@ -458,10 +573,9 @@ const handleSystemSettingsChanged = async (event?: Event) => {
     debugLog.warn('[MCP] Bootstrap (settings reload) failed:', err);
   });
 };
-window.addEventListener('systemSettingsChanged', handleSystemSettingsChanged);
-registerCleanup(() => window.removeEventListener('systemSettingsChanged', handleSystemSettingsChanged));
 
-if ((window as any).__TAURI_INTERNALS__) {
+const initializeMcpDebugRuntime = () => {
+  if (!(window as any).__TAURI_INTERNALS__) return;
   (async () => {
     try {
       // 🔧 MCP Debug Enhancement Module - 全自动调试支持
@@ -520,7 +634,7 @@ if ((window as any).__TAURI_INTERNALS__) {
       // ignore initialization errors
     }
   })();
-}
+};
 
 // 🆕 P1防闪退：Chat V2 会话保存（应用生命周期）
 // 动态导入避免循环依赖，使用同步方式触发保存
@@ -549,8 +663,6 @@ const handleBeforeUnload = () => {
     disposeGlobalCacheManager();
   } catch {}
 };
-window.addEventListener('beforeunload', handleBeforeUnload);
-registerCleanup(() => window.removeEventListener('beforeunload', handleBeforeUnload));
 
 // 🆕 P1防闪退：移动端 visibilitychange 监听
 // 当应用进入后台时触发保存（移动端常见场景）
@@ -559,8 +671,39 @@ const handleVisibilityChange = () => {
     triggerChatV2EmergencySave();
   }
 };
-document.addEventListener('visibilitychange', handleVisibilityChange);
-registerCleanup(() => document.removeEventListener('visibilitychange', handleVisibilityChange));
+
+let normalFrontendRuntimeStarted = false;
+
+function startNormalFrontendRuntime() {
+  if (normalFrontendRuntimeStarted || IS_LIGHTWEIGHT_WINDOW) return;
+  normalFrontendRuntimeStarted = true;
+
+  void initSentryIfConfigured();
+  bootstrapMcpFromSettings({ preheat: true }).catch((err) => {
+    debugLog.warn('[MCP] Bootstrap failed:', err);
+  });
+
+  void import('./quick-assistant/window').then(async ({
+    initializeQuickAssistantGlobalShortcut,
+    initializeQuickAssistantMainBridge,
+  }) => {
+    const cleanups = await Promise.all([
+      initializeQuickAssistantGlobalShortcut(),
+      initializeQuickAssistantMainBridge(),
+    ]);
+    cleanups.forEach(registerCleanup);
+  }).catch((error) => {
+    console.warn('[QuickAssistant] initialization failed:', error);
+  });
+
+  window.addEventListener('systemSettingsChanged', handleSystemSettingsChanged);
+  registerCleanup(() => window.removeEventListener('systemSettingsChanged', handleSystemSettingsChanged));
+  window.addEventListener('beforeunload', handleBeforeUnload);
+  registerCleanup(() => window.removeEventListener('beforeunload', handleBeforeUnload));
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  registerCleanup(() => document.removeEventListener('visibilitychange', handleVisibilityChange));
+  initializeMcpDebugRuntime();
+}
 
 if ((import.meta as any)?.hot) {
   (import.meta as any).hot.dispose(() => {

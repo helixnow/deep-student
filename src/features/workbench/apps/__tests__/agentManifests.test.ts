@@ -425,6 +425,7 @@ describe('ACR 2.0 app manifests', () => {
     expect(switched).toMatchObject({
       handled: true,
       changed: true,
+      acknowledged: true,
       undo: {
         inverse: {
           name: 'setView',

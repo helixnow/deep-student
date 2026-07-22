@@ -25,6 +25,10 @@ function parseResource(
   return getWorkspaceActiveResource(ctx.windowId);
 }
 
+/** 同步宿主写入后的读回校验：命中即 authoritative ack，避免 ACTION_UNVERIFIED 假阴性。 */
+const ackIf = (verified: boolean): ActivationResult =>
+  verified ? { handled: true, acknowledged: true } : { handled: true };
+
 /** Notes is a tabbed host; commands resolve an explicit resource or its active tab. */
 export async function handleNotesActivation(
   ctx: ActivationContext,
@@ -39,9 +43,13 @@ export async function handleNotesActivation(
       };
     }
     const windowId = await requestWorkspaceResource(resource, ctx.windowId);
-    return windowId
-      ? { handled: true }
-      : { handled: false, code: 'ACTIVATION_NOT_READY', hint: '笔记应用尚未就绪' };
+    if (!windowId) {
+      return { handled: false, code: 'ACTIVATION_NOT_READY', hint: '笔记应用尚未就绪' };
+    }
+    const active = getWorkspaceActiveResource(windowId);
+    return ackIf(
+      Boolean(active && active.type === resource.type && active.id === resource.id),
+    );
   }
   if (!resource) {
     return { handled: false, code: 'INVALID_STATE', hint: '笔记应用当前没有活动标签页' };

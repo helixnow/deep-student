@@ -9,10 +9,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { setActiveList, selectItem, setViewFilter, setWorkspaceView, loadItems, requestQuickAdd, initialize, enterFolder, navigateTo, setSelectedIds, agentFlash, todoState, finderState } = vi.hoisted(() => {
   const todoState = {
     activeListId: null as string | null,
+    selectedItemId: null as string | null,
+    workspaceView: 'todos' as 'todos' | 'automations',
     error: null as string | null,
     items: [] as Array<{ id: string; todoListId: string }>,
     lists: [{ id: 'list-default', isDefault: true }],
-    filter: { view: 'all' },
+    filter: { view: 'all', search: '' },
+    quickAddPreset: null as { dueDate?: string; requestId: string } | null,
   };
   const finderState = {
     currentPath: { folderId: 'root-old' },
@@ -24,11 +27,13 @@ const { setActiveList, selectItem, setViewFilter, setWorkspaceView, loadItems, r
   todoState,
   finderState,
   setActiveList: vi.fn((id: string | null) => { todoState.activeListId = id; }),
-  selectItem: vi.fn(),
+  selectItem: vi.fn((id: string | null) => { todoState.selectedItemId = id; }),
   setViewFilter: vi.fn((view: string) => { todoState.filter.view = view; }),
-  setWorkspaceView: vi.fn(),
+  setWorkspaceView: vi.fn((view: 'todos' | 'automations') => { todoState.workspaceView = view; }),
   loadItems: vi.fn(async () => undefined),
-  requestQuickAdd: vi.fn(),
+  requestQuickAdd: vi.fn((dueDate?: string) => {
+    todoState.quickAddPreset = { dueDate, requestId: 'qa-1' };
+  }),
   initialize: vi.fn(async () => undefined),
   enterFolder: vi.fn(async (id: string) => { finderState.currentPath = { folderId: id }; }),
   navigateTo: vi.fn((path: { folderId: string }) => { finderState.currentPath = path; }),
@@ -118,9 +123,13 @@ describe('todo / files onActivation', () => {
     setSelectedIds.mockClear();
     agentFlash.mockClear();
     todoState.activeListId = null;
+    todoState.selectedItemId = null;
+    todoState.workspaceView = 'todos';
     todoState.error = null;
     todoState.items = [{ id: 'item-9', todoListId: 'list-a' }];
     todoState.filter.view = 'all';
+    todoState.filter.search = '';
+    todoState.quickAddPreset = null;
     finderState.currentPath = { folderId: 'root-old' };
     finderState.inlineEdit.editingId = null;
     finderState.searchQuery = '';
@@ -133,41 +142,44 @@ describe('todo / files onActivation', () => {
       instanceKey: null,
       action: 'showAutomations',
     });
-    expect(result).toEqual({ handled: true });
+    expect(result).toEqual({ handled: true, acknowledged: true });
     expect(setWorkspaceView).toHaveBeenCalledWith('automations');
   });
 
   it('todo showList → setActiveList(listId)', async () => {
-    await handleTodoActivation({
+    const result = await handleTodoActivation({
       windowId: 'w1',
       instanceKey: null,
       action: 'showList',
       payload: { listId: 'list-a' },
     });
+    expect(result).toEqual({ handled: true, acknowledged: true });
     expect(setWorkspaceView).toHaveBeenCalledWith('todos');
     expect(setActiveList).toHaveBeenCalledWith('list-a');
     expect(selectItem).not.toHaveBeenCalled();
   });
 
   it('todo focusItem → selectItem + agentFlash', async () => {
-    await handleTodoActivation({
+    const result = await handleTodoActivation({
       windowId: 'w1',
       instanceKey: null,
       action: 'focusItem',
       payload: { itemId: 'item-9' },
     });
+    expect(result).toEqual({ handled: true, acknowledged: true });
     expect(setWorkspaceView).toHaveBeenCalledWith('todos');
     expect(selectItem).toHaveBeenCalledWith('item-9');
     expect(agentFlash).toHaveBeenCalledWith('todo', 'item-9');
   });
 
   it('todo quickAdd → 打开默认清单并预填日期', async () => {
-    await handleTodoActivation({
+    const result = await handleTodoActivation({
       windowId: 'w1',
       instanceKey: null,
       action: 'quickAdd',
       payload: { dueDate: '2026-07-12' },
     });
+    expect(result).toEqual({ handled: true, acknowledged: true });
     expect(setWorkspaceView).toHaveBeenCalledWith('todos');
     expect(setActiveList).toHaveBeenCalledWith('list-default');
     expect(loadItems).toHaveBeenCalledWith('list-default', false);

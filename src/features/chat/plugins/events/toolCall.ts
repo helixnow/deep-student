@@ -779,6 +779,7 @@ const toolCallEventHandler: EventHandler = {
       // 避免技能管理页仍显示变更前的旧列表。
       const isSkillFilesystemMutatingTool =
         toolName === 'skill_install' ||
+        toolName === 'skill_market_download_and_scan' ||
         toolName === 'skill_workshop_apply' ||
         toolName === 'skill_remove';
       if (isSkillFilesystemMutatingTool && unwrappedResult && typeof unwrappedResult === 'object') {
@@ -786,26 +787,35 @@ const toolCallEventHandler: EventHandler = {
           skill_id?: unknown;
           applied?: unknown;
           removed?: unknown;
+          installed?: unknown;
+          scan?: { skill_id?: unknown };
           path?: unknown;
         };
+        const mutatedSkillId =
+          typeof mutateResult.skill_id === 'string'
+            ? mutateResult.skill_id
+            : typeof mutateResult.scan?.skill_id === 'string'
+              ? mutateResult.scan.skill_id
+              : null;
         const mutated =
-          typeof mutateResult.skill_id === 'string' &&
-          mutateResult.skill_id.length > 0 &&
+          typeof mutatedSkillId === 'string' &&
+          mutatedSkillId.length > 0 &&
           (toolName !== 'skill_workshop_apply' || mutateResult.applied === true) &&
-          (toolName !== 'skill_remove' || mutateResult.removed === true);
+          (toolName !== 'skill_remove' || mutateResult.removed === true) &&
+          (toolName !== 'skill_market_download_and_scan' || mutateResult.installed === true);
         if (mutated) {
           // skill_remove：后端已删目录 + provenance + 信任记录；
           // 这里同步清掉 localStorage 里的启停覆盖，避免残留条目
           if (toolName === 'skill_remove') {
             try {
-              setSkillDisabled(mutateResult.skill_id as string, false);
+              setSkillDisabled(mutatedSkillId, false);
             } catch (error) {
               console.warn('[ToolCall] Failed to clear enable override after skill_remove:', error);
             }
           }
           void reloadSkills()
             .then(() => {
-              console.log('[ToolCall] Reloaded skills after', toolName, mutateResult.skill_id);
+              console.log('[ToolCall] Reloaded skills after', toolName, mutatedSkillId);
             })
             .catch((error: unknown) => {
               console.warn('[ToolCall] Failed to reload skills after', toolName, error);

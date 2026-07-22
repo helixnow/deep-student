@@ -323,6 +323,7 @@ class SkillRegistry {
         const missing = [
           ...(gate?.missingBins ?? []).map((name) => `缺少命令 ${name}`),
           ...(gate?.missingEnv ?? []).map((name) => `缺少环境变量 ${name}`),
+          ...(gate?.missingPythonPackages ?? []).map((name) => `缺少 Python 包 ${name}`),
         ].join('、');
         return `- \`${skill.id}\`：${missing || '依赖不满足'}`;
       })

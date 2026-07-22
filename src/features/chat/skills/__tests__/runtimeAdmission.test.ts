@@ -45,6 +45,7 @@ describe('skill dependency runtime admission', () => {
       satisfied: false,
       missingBins: ['python'],
       missingEnv: ['API_TOKEN'],
+      missingPythonPackages: ['pymupdf'],
     });
     const admission = getSkillRuntimeAdmission(requiresSkill);
     expect(admission).toMatchObject({
@@ -54,9 +55,11 @@ describe('skill dependency runtime admission', () => {
         skillId: 'requires-skill',
         missingBins: 'python',
         missingEnv: 'API_TOKEN',
+        missingPythonPackages: 'pymupdf',
       },
     });
     expect(admission.message).toContain('missing command python');
+    expect(admission.message).toContain('missing Python package pymupdf');
   });
 
   it('rejects a parent when a dependency is disabled', () => {

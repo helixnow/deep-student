@@ -275,6 +275,7 @@
     "requires_heading": "Runtime dependencies",
     "requires_bin": "bin {{name}}",
     "requires_env": "env {{name}}",
+    "requires_python_package": "pip {{name}}",
     "requires_missing": "missing",
     "export": "Export",
     "export_all": "Export All",

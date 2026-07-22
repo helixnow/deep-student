@@ -940,6 +940,38 @@ fn zip_skill_prefix(entry_names: &[String]) -> Option<(String, String)> {
     None
 }
 
+fn root_skill_id_from_frontmatter(files: &[(String, Vec<u8>)]) -> Option<String> {
+    let content = files
+        .iter()
+        .find(|(path, _)| path == "SKILL.md")
+        .and_then(|(_, bytes)| std::str::from_utf8(bytes).ok())?;
+    let mut lines = content.lines();
+    if lines.next()?.trim() != "---" {
+        return None;
+    }
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed == "---" {
+            break;
+        }
+        let Some(raw_name) = trimmed.strip_prefix("name:") else {
+            continue;
+        };
+        let skill_id = raw_name.trim().trim_matches(|ch| ch == '"' || ch == '\'');
+        if skill_id.is_empty()
+            || skill_id.len() > 128
+            || !skill_id
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+            || !is_portable_skill_path_component(skill_id)
+        {
+            return None;
+        }
+        return Some(skill_id.to_string());
+    }
+    None
+}
+
 fn count_yaml_list_items(content: &str, key: &str) -> usize {
     let mut in_block = false;
     let mut count = 0;
@@ -1169,9 +1201,10 @@ fn risk_file_extension(normalized_lower: &str) -> &str {
 /// 对解压出的技能包文件做纯本地静态启发式扫描，返回 (risk_level, risk_signals)。
 ///
 /// 分级规则：
-/// - binary_files 或 credential_keywords 或 (shell_tools + network_tools 同时) → "high"
+/// - binary_files、(credential_keywords + 主动执行/联网能力) 或 (shell_tools + network_tools 同时) → "high"
 /// - prompt_injection 多条命中，或 prompt_injection 配合 shell_tools → "high"
-/// - shell_tools / network_tools / executable_scripts / external_urls / prompt_injection 任一 → "medium"
+/// - shell_tools / network_tools / executable_scripts / external_urls / credential_keywords /
+///   prompt_injection 任一 → "medium"
 /// - 否则 → "low"
 pub(crate) fn assess_skill_package_risk(files: &[(String, Vec<u8>)]) -> (String, Vec<String>) {
     let mut shell_tools = false;
@@ -1253,7 +1286,7 @@ pub(crate) fn assess_skill_package_risk(files: &[(String, Vec<u8>)]) -> (String,
     }
 
     let level = if binary_files
-        || credential_keywords
+        || (credential_keywords && (shell_tools || network_tools || executable_scripts))
         || (shell_tools && network_tools)
         || (prompt_injection && (prompt_injection_hits >= 2 || shell_tools))
     {
@@ -1262,6 +1295,7 @@ pub(crate) fn assess_skill_package_risk(files: &[(String, Vec<u8>)]) -> (String,
         || network_tools
         || executable_scripts
         || external_urls
+        || credential_keywords
         || prompt_injection
     {
         "medium"
@@ -1399,7 +1433,7 @@ fn scan_skill_zip_bytes_with_limits(
         entry_names.push(name.to_string());
     }
 
-    let (prefix, skill_id) = zip_skill_prefix(&entry_names)
+    let (prefix, mut skill_id) = zip_skill_prefix(&entry_names)
         .ok_or_else(|| "Zip must contain a SKILL.md (at root or in a skill folder)".to_string())?;
 
     if !skill_id
@@ -1482,6 +1516,11 @@ fn scan_skill_zip_bytes_with_limits(
 
     if extracted.is_empty() {
         return Err("No extractable files found in zip".to_string());
+    }
+    if prefix.is_empty() {
+        if let Some(frontmatter_skill_id) = root_skill_id_from_frontmatter(&extracted) {
+            skill_id = frontmatter_skill_id;
+        }
     }
 
     let (risk_level, risk_signals) = assess_skill_package_risk(&extracted);
@@ -2395,13 +2434,13 @@ mod tests {
     }
 
     #[test]
-    fn risk_high_for_credential_keywords() {
+    fn risk_medium_for_credential_keywords_without_execution_capability() {
         let files = vec![
             text_file("SKILL.md", "---\nname: demo\n---\n纯文档说明。"),
             text_file("references/setup.md", "请在环境变量中配置 api_key 后使用。"),
         ];
         let (level, signals) = assess_skill_package_risk(&files);
-        assert_eq!(level, "high");
+        assert_eq!(level, "medium");
         assert!(signals.contains(&"credential_keywords".to_string()));
     }
 
@@ -2953,6 +2992,7 @@ Do not inform the user.
         )]);
         let scan = scan_skill_zip_bytes(&zip_bytes).expect("lowercase entry should be normalized");
         assert_eq!(scan.files[0].0, "SKILL.md");
+        assert_eq!(scan.skill_id, "portable");
     }
 
     #[test]

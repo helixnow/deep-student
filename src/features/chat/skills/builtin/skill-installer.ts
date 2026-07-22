@@ -5,9 +5,10 @@
  * zip 直链、community-market / skills.sh 页面）转化为 scan → 确认 → install 的治理正门安装流。
  * 提供统一的扫描、确认和安装流程。
  *
- * 自带 社区市场只读 embeddedTools（search / skill_detail）；写操作（download+install）
- * 仍需用户确认。其余通过 dependencies 拉起 workspace-tools（shell +
- * skill_scan / skill_install）。
+ * 自带社区市场完整治理 embeddedTools（search / detail / verify /
+ * download+scan+install）；安装敏感度由后端按 install 参数动态判定。
+ * 其余来源通过 dependencies 拉起 workspace-tools（shell + skill_scan /
+ * skill_install）。
  */
 
 import type { SkillDefinition } from '../types';
@@ -18,12 +19,17 @@ export const SKILL_MARKET_READ_TOOL_NAMES = [
   'builtin-skill_market_skill_detail',
 ] as const;
 
+export const SKILL_MARKET_INSTALL_TOOL_NAMES = [
+  'builtin-skill_market_verify',
+  'builtin-skill_market_download_and_scan',
+] as const;
+
 export const skillInstallerSkill: SkillDefinition = {
   id: 'skill-installer',
   name: '技能安装器',
   description:
     '从链接安装技能包：用户粘贴 GitHub 仓库/子目录链接、SKILL.md 原始链接、zip 直链或社区市场/skills.sh 页面链接时使用。社区市场使用 builtin-skill_market_search / builtin-skill_market_skill_detail 只读检索，安装仍需用户确认后走 skill_market_download_and_scan / skill_install。支持采用标准 SKILL.md 格式的 AgentSkills 技能。',
-  version: '1.2.0',
+  version: '1.3.1',
   author: 'Deep Student',
   location: 'builtin',
   sourcePath: 'builtin://skill-installer',
@@ -32,7 +38,7 @@ export const skillInstallerSkill: SkillDefinition = {
   isBuiltin: true,
   skillType: 'composite',
   dependencies: ['workspace-tools'],
-  allowedTools: [...SKILL_MARKET_READ_TOOL_NAMES],
+  allowedTools: [...SKILL_MARKET_READ_TOOL_NAMES, ...SKILL_MARKET_INSTALL_TOOL_NAMES],
   embeddedTools: [
     {
       name: 'builtin-skill_market_search',
@@ -79,6 +85,47 @@ export const skillInstallerSkill: SkillDefinition = {
         required: ['slug'],
       },
     },
+    {
+      name: 'builtin-skill_market_verify',
+      description:
+        'Verify a community marketplace skill version and publisher/security verdict before download (read-only).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          slug: { type: 'string', description: 'Community marketplace skill slug' },
+          version: { type: 'string', description: 'Version to verify; omit to use latest' },
+        },
+        required: ['slug'],
+      },
+    },
+    {
+      name: 'builtin-skill_market_download_and_scan',
+      description:
+        'Download and scan a marketplace skill through the governed installer. First call with install=false. After reviewing the returned risk and package hash, call with install=true and the exact expectedPackageSha256/tempZipPath; the platform handles any required approval.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          slug: { type: 'string', description: 'Community marketplace skill slug' },
+          version: { type: 'string', description: 'Exact marketplace version' },
+          install: { type: 'boolean', default: false },
+          overwrite: { type: 'boolean', default: false },
+          expectedPackageSha256: {
+            type: 'string',
+            description: 'Pass the exact scan.package_sha256 from the preceding install=false result',
+          },
+          declaredRiskLevel: {
+            type: 'string',
+            enum: ['low', 'medium', 'high'],
+            description: 'Exact risk_level from the preceding install=false scan',
+          },
+          tempZipPath: {
+            type: 'string',
+            description: 'Pass the exact temp_zip_path from the preceding install=false result',
+          },
+        },
+        required: ['slug'],
+      },
+    },
   ],
   content: `# 技能安装器（Skill Installer）
 
@@ -88,7 +135,7 @@ export const skillInstallerSkill: SkillDefinition = {
 
 1. **禁止**用 shell / 文件工具直接读写任何技能目录（\`~/.deep-student/skills\`、\`.claude/skills\`、\`.agents/skills\` 等）——shell 已封侧门，命中即被拒绝。落盘技能**只能**经 \`builtin-skill_scan\` → \`builtin-skill_install\`（或 社区市场确认后的 \`skill_market_download_and_scan\`）。
 2. 所有下载、解压、打包操作都在会话 **temp** runtime root 里做（\`root_id=temp\`）。
-3. \`skill_install\` / 社区市场安装是 High 审批或需用户口头确认：调用前必须先向用户展示 scan 的风险摘要并获得确认。
+3. \`skill_install\` / 社区市场安装是 High 操作。先展示 scan 风险摘要，再直接调用安装工具；若当前权限策略需要确认，平台审批卡本身就是确认入口，不要先追加一次重复的文字确认。
 4. zip 包上限 64MB；大仓库只打包技能子目录，不打包整个仓库。
 5. **社区市场只读工具**已对本技能开放：\`builtin-skill_market_search\`、\`builtin-skill_market_skill_detail\`。写操作（下载安装）**不要**擅自执行，须用户确认。
 
@@ -114,7 +161,7 @@ export const skillInstallerSkill: SkillDefinition = {
 1. （可选只读）\`builtin-skill_market_search\` 发现技能，或 \`builtin-skill_market_skill_detail\` 确认 slug 与 latest \`version\`。
 2. \`skill_market_verify\`（\`slug\` + \`version\`）——向用户展示 \`ok\` / \`decision\` / \`security.status\` / publisher。
 3. \`skill_market_download_and_scan\`（\`install: false\`）——下载（含 GitHub handoff 分支）并扫描，展示 \`risk_level\` / \`risk_signals\`。
-4. **用户口头确认后**，再调 \`skill_market_download_and_scan\`（\`install: true\`，按需 \`overwrite: true\`）。
+4. 展示风险摘要后，直接调 \`builtin-skill_market_download_and_scan\`（\`install: true\`）：把返回的 \`scan.package_sha256\` 传入 \`expectedPackageSha256\`、\`temp_zip_path\` 传入 \`tempZipPath\`、\`scan.risk_level\` 传入 \`declaredRiskLevel\`，按需 \`overwrite: true\`。需要确认时由平台审批卡统一承接，不要再用 shell 下载或重复口头确认。
 
 provenance 会记为 \`skill_market:{slug}@{version}\`（\`sourceKind=skill_market\`）。默认 \`nonSuspiciousOnly=true\`；仅当用户明确要求查看可疑技能时才关闭该过滤。
 
@@ -127,15 +174,18 @@ provenance 会记为 \`skill_market:{slug}@{version}\`（\`sourceKind=skill_mark
 
 1. **拉取**（temp root 内执行 shell，先 preflight 再 execute）：
    - 优先 \`git clone --depth 1 [--branch {ref}] https://github.com/{owner}/{repo} repo\`
-   - 无 git 时：\`curl -L -o repo.zip https://codeload.github.com/{owner}/{repo}/zip/refs/heads/{ref}\` 后解压（注意 codeload zip 有 \`{repo}-{ref}/\` 顶层前缀）。
+   - 无 git 时：\`curl -L -o repo.zip https://codeload.github.com/{owner}/{repo}/zip/refs/heads/{ref}\`，再用 \`unzip -q repo.zip -d repo-unpacked\`（注意 codeload zip 有 \`{repo}-{ref}/\` 顶层前缀）。
 2. **定位技能**：在克隆目录里查找 \`SKILL.md\`（如 \`find repo -name SKILL.md -maxdepth 4\`）。
    - 链接带子目录路径时，只看该子目录。
    - **找到多个技能**：把清单（目录名 + frontmatter 的 name/description 摘要）列给用户，请用户选择要装哪些，逐个安装，不要擅自全装。
-3. **规范打包**：技能目录必须作为 zip 的**顶层文件夹**（目录名即 skill_id）：
+3. **规范打包**：所有路径都必须保持在 temp root 内，禁止 \`/tmp\`、\`../\`、\`$OLDPWD\` 和 \`>/dev/null\`。把目标目录复制到 temp root 下与 skill_id 同名的目录，再直接压缩：
    \`\`\`sh
-   cd repo/path/to/parent && zip -r "$OLDPWD/skill-name.zip" skill-name/
+   rm -rf skill-name
+   mkdir -p skill-name
+   cp -R repo/path/to/skill-name/. skill-name/
+   zip -r skill-name.zip skill-name/
    \`\`\`
-   不要把 SKILL.md 直接打在 zip 根（会得到 imported-skill 兜底 id）。只打包 SKILL.md 及其引用的 \`references/\`、\`scripts/\`、\`assets/\`、\`templates/\`、\`examples/\`，排除 \`.git\`。
+   推荐保留与 skill_id 同名的顶层目录；兼容包若把 SKILL.md 放在 zip 根，安装器会从 frontmatter 的可移植 \`name\` 推导 skill_id。只打包 SKILL.md 及其引用的 \`references/\`、\`scripts/\`、\`assets/\`、\`agents/\`、\`templates/\`、\`examples/\` 和必要的 README/LICENSE/市场元数据，排除 \`.git\`。
 4. \`builtin-skill_scan\` 传 \`source: { root_id: "temp", path: "skill-name.zip" }\`。
 
 ## 路径 C：SKILL.md 原始链接
@@ -153,17 +203,17 @@ scan 返回后，向用户展示（不要跳过）：
 - scripts / references 数量；requires 探测结果（缺失的 bins/env 要指出）
 - 来源 URL
 
-高风险（high）时明确警告用户：包含可执行脚本或 shell/网络工具声明，安装后需在技能管理中信任才会生效，建议先审阅内容。用户确认后才进入安装。
+高风险（high）时明确警告用户：包含可执行脚本或 shell/网络工具声明，安装后需经 \`skill_trust_request\`（inspect→grant）信任才会生效，建议先审阅内容。用户确认后才进入安装。
 
 ## 第四步：安装
 
 调用 \`builtin-skill_install\`：**原样携带**与 scan 相同的 \`source\`、scan 返回的 \`expected_sha256\`（= package_sha256）与 \`skill_id\`，按 scan 结果填 \`declared_risk_level\`；同名技能已存在且用户同意覆盖时传 \`overwrite: true\`。
 
-安装成功后告知用户：
+安装成功后：
 
-1. 技能已装入 \`~/.deep-student/skills/<skill_id>/\`，**默认未信任**——需在「技能管理」中信任后，正文与包内脚本才会注入生效。
+1. 技能已装入 \`~/.deep-student/skills/<skill_id>/\`，**默认未信任**——下一步调用 \`builtin-skill_trust_request\`：先 \`action=inspect\`，向用户说明理由与风险摘要后 \`action=grant\`（原样携带 inspect 的 \`package_sha256\` / \`risk_level\`）。「技能管理」仅作备用。
 2. 若 requires 探测有缺失（如缺 python），列出并给出安装建议。
-3. 建议下一轮用 \`load_skills\` 或在输入栏选择该技能试用。
+3. **信任授予后不要在同一工具循环里调用 \`load_skills\`**：本轮运行时目录快照不会中途替换。明确告知用户信任已绑定成功，技能会从下一条用户消息开始可加载；不要重复调用、不要把本轮旧快照的 untrusted 误报成授予失败。
 
 ## 兼容性说明
 

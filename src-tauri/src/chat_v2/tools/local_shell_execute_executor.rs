@@ -17,10 +17,10 @@ use tokio_util::sync::CancellationToken;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::approval_scope::{
-    analyze_shell_command, immutable_shell_command_guard, shell_command_tool_sensitivity,
+    analyze_shell_command, immutable_shell_command_guard,
     normalized_shell_runtime_location_with_default, redact_shell_command_for_display,
-    redact_tool_arguments_for_display, validate_shell_path_operands_within_root,
-    ShellCommandGuardEffect,
+    redact_tool_arguments_for_display, shell_command_tool_sensitivity,
+    validate_shell_path_operands_within_root, ShellCommandGuardEffect,
 };
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::runtime_roots::{
@@ -446,12 +446,12 @@ impl LocalShellExecuteExecutor {
     fn authoritative_shell_authority(
         ctx: &ExecutionContext,
     ) -> Result<SessionAuthorityState, String> {
-        let db = ctx
-            .chat_v2_db
-            .as_ref()
-            .ok_or_else(|| "Chat V2 database is unavailable for shell authority lookup".to_string())?;
-        ChatV2Repo::get_session_authority_state(db, &ctx.session_id)
-            .map_err(|error| format!("Failed to read authoritative shell permission preset: {error}"))
+        let db = ctx.chat_v2_db.as_ref().ok_or_else(|| {
+            "Chat V2 database is unavailable for shell authority lookup".to_string()
+        })?;
+        ChatV2Repo::get_session_authority_state(db, &ctx.session_id).map_err(|error| {
+            format!("Failed to read authoritative shell permission preset: {error}")
+        })
     }
 
     fn shell_security_mode(state: &SessionAuthorityState) -> ShellSecurityMode {
@@ -695,7 +695,7 @@ impl LocalShellExecuteExecutor {
     /// ReadOnly roots reject every write-capable effective command. Writable
     /// roots additionally reject explicit absolute/parent-traversing operands
     /// that resolve outside the selected root.
-    fn ensure_root_writable_for_command(
+    pub(crate) fn ensure_root_writable_for_command(
         root: &RuntimeRoot,
         cwd: &Path,
         command: &str,
@@ -711,8 +711,8 @@ impl LocalShellExecuteExecutor {
         }
         validate_shell_path_operands_within_root(&root.path, cwd, command).map_err(|error| {
             format!(
-                "Write-capable command violates runtime root '{}': {}",
-                root.id, error
+                "Write-capable command violates runtime root '{}': {}. Keep every input/output path relative to the selected root; do not use /tmp, /dev/null, '..', or $OLDPWD. Copy inputs into a child directory and write outputs in the root when repackaging.",
+                root.id, error,
             )
         })?;
         Ok(())
@@ -1308,9 +1308,7 @@ impl LocalShellExecuteExecutor {
                                 })?
                                 .map(|_| ())
                                 .map_err(|error| {
-                                    format!(
-                                        "Failed to reap forced Windows sandbox helper: {error}"
-                                    )
+                                    format!("Failed to reap forced Windows sandbox helper: {error}")
                                 })
                         }
                     }
@@ -1571,11 +1569,8 @@ impl LocalShellExecuteExecutor {
             }
         }
         let sandbox_effect_report = sandbox_backend.effect_report(&sandbox_policy);
-        let shell_security_fingerprint = Self::shell_security_fingerprint(
-            &command_hash,
-            &shell_authority,
-            security_mode,
-        );
+        let shell_security_fingerprint =
+            Self::shell_security_fingerprint(&command_hash, &shell_authority, security_mode);
         let capture_workspace_change_set = track_file_changes
             && root.kind == RuntimeRootKind::Workspace
             && root.access == RuntimeRootAccess::ReadWrite
@@ -1623,8 +1618,7 @@ impl LocalShellExecuteExecutor {
         if let Some(home) = dirs::home_dir() {
             guard_roots.push(home);
         }
-        let immutable_guard =
-            immutable_shell_command_guard(&command, Some(&cwd_abs), &guard_roots);
+        let immutable_guard = immutable_shell_command_guard(&command, Some(&cwd_abs), &guard_roots);
         match immutable_guard.effect {
             ShellCommandGuardEffect::Deny => {
                 return Err(format!(

@@ -3577,6 +3577,13 @@
   "maintenance": {
     "banner_title": "维护模式",
     "banner_description": "系统正在进行维护操作，部分功能暂时受限。",
+    "partial_degradation_title": "部分数据功能需要处理",
+    "partial_degradation_description": "受影响组件：{{components}}。其他数据和功能仍可正常使用。",
+    "component_unavailable": "暂不可用",
+    "component_unavailable_description": "该功能的数据组件未能安全完成升级，因此已单独暂停。",
+    "blocked_by_dependency": "依赖组件 {{dependency}} 当前不可用。",
+    "other_features_available": "其他未受影响的功能仍可继续使用",
+    "chat_unavailable": "聊天数据暂时无法打开",
     "recovery_required": "部分数据服务仍处于安全锁定状态。请重启应用完成恢复后再编辑数据。",
     "blocked_chat_send": "维护模式下无法发送消息，请稍后再试。",
     "blocked_note_save": "维护模式下无法保存笔记，请稍后再试。",

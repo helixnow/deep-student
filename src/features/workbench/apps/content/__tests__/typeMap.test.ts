@@ -4,6 +4,7 @@ import {
   FILE_PREVIEW_APP_TYPE_ID,
   NOTES_APP_TYPE_ID,
   RESOURCE_APP_TYPE_IDS,
+  resolveWorkbenchAppTypeId,
   resourceTypeToAppTypeId,
 } from '../typeMap';
 
@@ -50,5 +51,13 @@ describe('workbench content typeMap', () => {
     expect(RESOURCE_APP_TYPE_IDS.has('notes')).toBe(false);
     expect(RESOURCE_APP_TYPE_IDS.has('files')).toBe(false);
     expect(RESOURCE_APP_TYPE_IDS.has('chat')).toBe(false);
+  });
+
+  it('resolveWorkbenchAppTypeId aliases note/mindmap → notes and passes through others', () => {
+    expect(resolveWorkbenchAppTypeId('note')).toBe(NOTES_APP_TYPE_ID);
+    expect(resolveWorkbenchAppTypeId('mindmap')).toBe(NOTES_APP_TYPE_ID);
+    expect(resolveWorkbenchAppTypeId('notes')).toBe(NOTES_APP_TYPE_ID);
+    expect(resolveWorkbenchAppTypeId('exam')).toBe('exam');
+    expect(resolveWorkbenchAppTypeId('desktop')).toBe('desktop');
   });
 });

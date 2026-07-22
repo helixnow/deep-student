@@ -514,10 +514,7 @@ impl SandboxBackend for UnsandboxedShellBackend {
             command: shell_command.to_string(),
             cwd: cwd.to_path_buf(),
             policy: policy.clone(),
-            profile_name: format!(
-                "{UNSANDBOXED_PROFILE_PREFIX}{}",
-                Uuid::new_v4().simple()
-            ),
+            profile_name: format!("{UNSANDBOXED_PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
         };
         let executable = std::env::current_exe()
             .map_err(|error| format!("Cannot locate the Windows Job Object helper: {error}"))?;
@@ -828,10 +825,7 @@ fn run_payload(
     cancellation_event: Option<HANDLE>,
 ) -> Result<i32, String> {
     validate_payload(&mut payload)?;
-    if payload
-        .profile_name
-        .starts_with(UNSANDBOXED_PROFILE_PREFIX)
-    {
+    if payload.profile_name.starts_with(UNSANDBOXED_PROFILE_PREFIX) {
         if is_cancelled(cancellation_event) {
             return Ok(124);
         }
@@ -925,9 +919,7 @@ fn run_unsandboxed_job_process(
         return Ok(124);
     }
     if unsafe { ResumeThread(thread_handle.0) } == u32::MAX {
-        return Err(last_error(
-            "Failed to resume Danger Full Access PowerShell",
-        ));
+        return Err(last_error("Failed to resume Danger Full Access PowerShell"));
     }
     loop {
         match unsafe { WaitForSingleObject(process.0, 100) } {

@@ -290,6 +290,7 @@ export interface SkillMetadata {
    * requires:
    *   bins: [python, pandoc]
    *   env: [OPENAI_API_KEY]
+   *   python_packages: [pymupdf]
    * ```
    */
   requires?: SkillRequires;
@@ -299,6 +300,8 @@ export interface SkillMetadata {
 export interface SkillRequires {
   bins?: string[];
   env?: string[];
+  /** PyPI distribution names (YAML key: `python_packages`). */
+  pythonPackages?: string[];
 }
 
 // ============================================================================

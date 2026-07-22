@@ -27,6 +27,7 @@ import {
   Database,
   Trash,
   CircleNotch,
+  ShieldCheck,
 } from '@phosphor-icons/react';
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/shad/Tabs';
@@ -81,6 +82,12 @@ import { BackupTab, type BackupJobOperation } from './data-governance/BackupTab'
 import { SyncTab } from './data-governance/SyncTab';
 import { AuditTab } from './data-governance/AuditTab';
 import { ChatSessionArchiveTab } from './data-governance/ChatSessionArchiveTab';
+import { RecoveryCenter } from '@/features/data-recovery/RecoveryCenter';
+import {
+  createPartialDegradationDebugIssues,
+  setRecoveryDebugScenario,
+  type RecoveryDebugScenario,
+} from '@/features/data-recovery/debugRecoveryScenarios';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -88,10 +95,11 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
 
 export const DebugTab: React.FC = () => {
   const { t } = useTranslation(['data', 'common']);
-  const { showMigrationStatus, clearMigrationStatus } = useSystemStatusStore(
+  const { showMigrationStatus, clearMigrationStatus, setComponentHealth } = useSystemStatusStore(
     useShallow((state) => ({
       showMigrationStatus: state.showMigrationStatus,
       clearMigrationStatus: state.clearMigrationStatus,
+      setComponentHealth: state.setComponentHealth,
     }))
   );
   const [flowRunning, setFlowRunning] = useState(false);
@@ -102,6 +110,41 @@ export const DebugTab: React.FC = () => {
   const flowTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [showPurgeDialog, setShowPurgeDialog] = useState(false);
   const [isPurgeRunning, setIsPurgeRunning] = useState(false);
+  const componentHealthBeforePreviewRef = useRef(
+    useSystemStatusStore.getState().componentHealth,
+  );
+  const partialPreviewActiveRef = useRef(false);
+
+  const openRecoveryScenario = useCallback((scenario: RecoveryDebugScenario) => {
+    if (!import.meta.env.DEV) return;
+    setRecoveryDebugScenario(scenario);
+    window.location.reload();
+  }, []);
+
+  const previewPartialDegradation = useCallback(() => {
+    if (!import.meta.env.DEV) return;
+    if (!partialPreviewActiveRef.current) {
+      componentHealthBeforePreviewRef.current =
+        useSystemStatusStore.getState().componentHealth;
+      partialPreviewActiveRef.current = true;
+    }
+    setComponentHealth(createPartialDegradationDebugIssues());
+    showMigrationStatus({
+      level: 'error',
+      message: t('data:governance.debug_partial_degradation_message'),
+      details: t('data:governance.debug_partial_degradation_details'),
+    });
+    showGlobalNotification(
+      'info',
+      t('data:governance.debug_partial_degradation_hint'),
+    );
+  }, [setComponentHealth, showMigrationStatus, t]);
+
+  const clearPartialDegradationPreview = useCallback(() => {
+    setComponentHealth(componentHealthBeforePreviewRef.current);
+    clearMigrationStatus();
+    partialPreviewActiveRef.current = false;
+  }, [clearMigrationStatus, setComponentHealth]);
 
   const handlePurgeAllData = useCallback(async () => {
     if (isPurgeRunning) return;
@@ -269,6 +312,71 @@ export const DebugTab: React.FC = () => {
         <p className="text-sm text-muted-foreground">
           {t('data:governance.debug_panel_desc')}
         </p>
+      </div>
+
+      <div className="rounded-[var(--radius-shell-panel)] border border-warning/25 bg-warning/5 p-4">
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="mt-0.5 shrink-0 text-warning" size={20} />
+          <div className="min-w-0 flex-1">
+            <h4 className="text-sm font-semibold text-foreground">
+              {t('data:governance.debug_recovery_scenarios_title')}
+            </h4>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {t('data:governance.debug_recovery_scenarios_desc')}
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <DsButton
+            variant="secondary"
+            size="sm"
+            disabled={!import.meta.env.DEV}
+            onClick={() => openRecoveryScenario('startup-conflict')}
+            data-testid="debug-startup-conflict"
+          >
+            <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
+            {t('data:governance.debug_preview_startup_conflict')}
+          </DsButton>
+          <DsButton
+            variant="secondary"
+            size="sm"
+            disabled={!import.meta.env.DEV}
+            onClick={() => openRecoveryScenario('startup-preflight-failure')}
+            data-testid="debug-startup-preflight-failure"
+          >
+            <Warning className="mr-1.5 h-3.5 w-3.5" />
+            {t('data:governance.debug_preview_preflight_failure')}
+          </DsButton>
+          <DsButton
+            variant="secondary"
+            size="sm"
+            disabled={!import.meta.env.DEV}
+            onClick={() => openRecoveryScenario('core-migration-failure')}
+            data-testid="debug-core-migration-failure"
+          >
+            <Database className="mr-1.5 h-3.5 w-3.5" />
+            {t('data:governance.debug_preview_core_failure')}
+          </DsButton>
+          <DsButton
+            variant="secondary"
+            size="sm"
+            disabled={!import.meta.env.DEV}
+            onClick={previewPartialDegradation}
+            data-testid="debug-partial-degradation"
+          >
+            <Warning className="mr-1.5 h-3.5 w-3.5" />
+            {t('data:governance.debug_preview_partial_failure')}
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={clearPartialDegradationPreview}
+            className="sm:col-span-2"
+          >
+            <XCircle className="mr-1.5 h-3.5 w-3.5" />
+            {t('data:governance.debug_clear_partial_failure')}
+          </DsButton>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -1649,6 +1757,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           <Gauge className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_overview')}</span>
         </TabsTrigger>
+        <TabsTrigger value="recovery" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+          <ShieldCheck className="h-4 w-4" />
+          <span className="hidden sm:inline">{t('data:governance.tab_recovery')}</span>
+        </TabsTrigger>
         <TabsTrigger value="archive" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
           <Archive className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_archive')}</span>
@@ -1687,6 +1799,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           onVerifyLatestBackup={verifyLatestBackup}
           onOpenArchive={() => setActiveTab('archive')}
         />
+      </TabsContent>
+
+      <TabsContent value="recovery">
+        <RecoveryCenter mode="settings" />
       </TabsContent>
 
       <TabsContent value="archive">

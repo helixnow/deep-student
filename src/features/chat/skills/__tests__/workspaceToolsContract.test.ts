@@ -64,11 +64,19 @@ describe('workspace mutation tool contracts', () => {
     expect(workspaceToolsSkill.content).not.toContain('其他平台当前不支持本地 shell');
   });
 
-  it('states that preflight cannot waive approval for real execution', () => {
+  it('routes shell approval through the backend instead of conversational confirmation', () => {
     const preflight = workspaceToolsSkill.embeddedTools.find(
       (item) => item.name === 'builtin-local_shell_preflight',
     );
-    expect(preflight?.description).toContain('任何真实执行仍必须单独经过用户审批');
+    const execute = workspaceToolsSkill.embeddedTools.find(
+      (item) => item.name === 'builtin-local_shell_execute',
+    );
+    expect(preflight?.description).toContain('直接提交 local_shell_execute');
+    expect(preflight?.description).toContain('不要在正文中自行索要确认');
+    expect(execute?.description).toContain('后端按当前会话档位');
+    expect(execute?.description).toContain('allow_network=true');
+    expect(workspaceToolsSkill.content).toContain('完全访问会免除普通 shell 审批');
+    expect(workspaceToolsSkill.content).not.toContain('每次真实执行都必须经过用户审批');
   });
 
   it('exposes subagent_call as a single-task tool with optional workspace/profile/wait', () => {

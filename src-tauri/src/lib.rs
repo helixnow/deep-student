@@ -681,22 +681,64 @@ pub fn run() {
             // RUST_BACKTRACE / RUST_LOG 已移至 run() 开头（真正的单线程阶段）。
             // ANTI-REGRESSION：勿在此 set_var WEBVIEW2_* 注入 --disable-gpu*；见 windows conf。
 
+            // 在打开任何业务数据库前扫描数据时间线冲突。可恢复冲突不再让 Tauri
+            // setup 失败；后端只注册恢复状态并保持窗口可用，由前端 Recovery Shell
+            // 引导用户选择。该分支绝不能继续初始化 AppState/数据治理/后台任务。
+            let startup_recovery_state =
+                match crate::data_space::prepare_startup_recovery(&base_app_data_dir) {
+                    Ok(incident) => crate::data_space::StartupRecoveryState::new(
+                        base_app_data_dir.clone(),
+                        incident,
+                    ),
+                    Err(error) => {
+                        error!(
+                            "[startup] 数据空间恢复预检失败，进入可交互恢复模式: {}",
+                            error
+                        );
+                        crate::data_space::StartupRecoveryState::failed(
+                            base_app_data_dir.clone(),
+                            "startup_preflight",
+                            error,
+                        )
+                    }
+                };
+            let startup_recovery_required = startup_recovery_state.is_recovery_required();
+            app.manage(startup_recovery_state);
+
+            if startup_recovery_required {
+                warn!(
+                    "[startup] 检测到待处理的数据时间线冲突，进入恢复专用启动模式；业务数据库保持关闭"
+                );
+                crate::debug_logger::init_global_logger(app_log_dir);
+                crate::debug_logger::start_periodic_flush();
+                return Ok(());
+            }
+
             // 初始化数据空间管理器（A/B 双数据空间）并应用 pending 切换
             if let Err(e) = crate::data_space::init_data_space_manager(base_app_data_dir.clone()) {
                 error!(
-                    "[startup] 数据空间初始化失败，拒绝在可能不完整的数据槽上继续启动: {}",
+                    "[startup] 数据空间初始化失败，进入可交互恢复模式: {}",
                     e
                 );
-                return Err(Box::new(e));
+                app.state::<crate::data_space::StartupRecoveryState>()
+                    .set_failure("data_space_init", &e);
+                crate::debug_logger::init_global_logger(app_log_dir);
+                crate::debug_logger::start_periodic_flush();
+                return Ok(());
             }
             let data_space = crate::data_space::get_data_space_manager()
                 .expect("DataSpaceManager not initialized");
             let active_app_data_dir = data_space.active_dir();
             if let Err(e) = std::fs::create_dir_all(&active_app_data_dir) {
                 error!(
-                    "[startup] 创建活动数据目录失败（将继续以降级模式运行）: {}",
+                    "[startup] 创建活动数据目录失败，进入可交互恢复模式: {}",
                     e
                 );
+                app.state::<crate::data_space::StartupRecoveryState>()
+                    .set_failure("active_data_directory", &e);
+                crate::debug_logger::init_global_logger(app_log_dir);
+                crate::debug_logger::start_periodic_flush();
+                return Ok(());
             }
             // 上次进程若在虚拟 URI 复制阶段崩溃，临时 ZIP 可能包含完整用户数据；
             // 新进程启动时没有可恢复任务所有权，必须主动清理。
@@ -738,18 +780,30 @@ pub fn run() {
                                 "启动阶段数据清理不完整，已保留清理标记并拒绝打开业务库",
                             );
                             error!("{}", error);
-                            return Err(Box::new(error));
+                            app.state::<crate::data_space::StartupRecoveryState>()
+                                .set_failure("startup_cleanup", &error);
+                            crate::debug_logger::init_global_logger(app_log_dir);
+                            crate::debug_logger::start_periodic_flush();
+                            return Ok(());
                         }
                         if let Err(e) =
                             crate::startup_cleanup::clear_purge_marker(&base_app_data_dir)
                         {
                             error!("清除清理标记失败，拒绝打开业务库: {}", e);
-                            return Err(Box::new(e));
+                            app.state::<crate::data_space::StartupRecoveryState>()
+                                .set_failure("startup_cleanup_marker", &e);
+                            crate::debug_logger::init_global_logger(app_log_dir);
+                            crate::debug_logger::start_periodic_flush();
+                            return Ok(());
                         }
                     }
                     Err(e) => {
                         error!("启动阶段数据清理失败: {}", e);
-                        return Err(Box::new(e));
+                        app.state::<crate::data_space::StartupRecoveryState>()
+                            .set_failure("startup_cleanup", &e);
+                        crate::debug_logger::init_global_logger(app_log_dir);
+                        crate::debug_logger::start_periodic_flush();
+                        return Ok(());
                     }
                 }
             }
@@ -767,10 +821,17 @@ pub fn run() {
             #[cfg(feature = "data_governance")]
             let mut data_governance_init_failed = false;
             #[cfg(feature = "data_governance")]
+            let component_health_state =
+                crate::data_governance::StartupComponentHealthState::default();
+            #[cfg(feature = "data_governance")]
+            let mut startup_component_health =
+                crate::data_governance::StartupComponentHealth::default();
+            #[cfg(feature = "data_governance")]
             {
                 use tracing::{info, warn};
 
                 info!("🔧 [DataGovernance] 开始初始化数据治理系统...");
+                app.manage(component_health_state.clone());
 
                 // 审计健康状态（用于前端识别审计失真）
                 let audit_health_state = std::sync::Arc::new(
@@ -780,6 +841,8 @@ pub fn run() {
 
                 match crate::data_governance::initialize_with_report(&active_app_data_dir) {
                     Ok(result) => {
+                        startup_component_health = result.component_health.clone();
+                        component_health_state.replace(startup_component_health.clone());
                         let report = &result.report;
 
                         if report.is_fully_successful() {
@@ -930,6 +993,13 @@ pub fn run() {
                             // 新二进制不能在未声明兼容的旧 schema 上继续业务写入。
                             // 保持应用可启动以便诊断/导出，但进入 fail-close 维护模式。
                             data_governance_init_failed = true;
+                            for component in ["vfs", "mistakes", "chat_v2", "llm_usage"] {
+                                startup_component_health.mark_blocked(
+                                    component,
+                                    format!("迁移失败后已恢复旧版数据结构: {}", error_msg),
+                                );
+                            }
+                            component_health_state.replace(startup_component_health.clone());
                         } else {
                             warn!("⚠️ [DataGovernance] 初始化失败（将以降级模式继续运行）: {}", error_msg);
                             warn!(
@@ -938,6 +1008,20 @@ pub fn run() {
                             );
                             data_governance_init_failed =
                                 crate::data_governance::should_force_maintenance_mode_on_init_failure(&e);
+                            if data_governance_init_failed {
+                                for component in ["vfs", "mistakes", "chat_v2", "llm_usage"] {
+                                    startup_component_health.mark_blocked(
+                                        component,
+                                        format!("启动迁移无法建立安全状态: {}", error_msg),
+                                    );
+                                }
+                            } else {
+                                startup_component_health.mark_degraded(
+                                    "mistakes",
+                                    error_msg.clone(),
+                                );
+                            }
+                            component_health_state.replace(startup_component_health.clone());
 
                             crate::data_governance::commands::persist_migration_error(&active_app_data_dir, &error_msg);
 
@@ -966,6 +1050,15 @@ pub fn run() {
                         }
                     }
                 }
+            }
+
+            #[cfg(feature = "data_governance")]
+            if startup_component_health.requires_core_recovery() {
+                warn!(
+                    blocked_components = ?startup_component_health.blocked_components(),
+                    "[DataGovernance] 核心数据域不可安全打开，进入治理恢复启动模式"
+                );
+                return Ok(());
             }
 
             // 构建并注册全局 AppState（使用当前活动的数据空间目录）
@@ -1086,12 +1179,19 @@ pub fn run() {
                 info!("✅ [Backup] BackupJobManagerState 已注册为 Tauri State（单例模式）");
             }
 
-            // 数据治理 fail-close 时不得再初始化会打开/写入磁盘的新数据库组件。
+            // 按组件健康状态初始化扩展数据库；一个独立组件失败不能再拖入全站维护。
             #[cfg(feature = "data_governance")]
-            let initialize_extended_databases = !data_governance_init_failed;
+            let initialize_chat_v2 =
+                !data_governance_init_failed && !startup_component_health.is_blocked("chat_v2");
             #[cfg(not(feature = "data_governance"))]
-            let initialize_extended_databases = true;
-            if initialize_extended_databases {
+            let initialize_chat_v2 = true;
+            #[cfg(feature = "data_governance")]
+            let initialize_llm_usage =
+                !data_governance_init_failed && !startup_component_health.is_blocked("llm_usage");
+            #[cfg(not(feature = "data_governance"))]
+            let initialize_llm_usage = true;
+
+            if initialize_chat_v2 {
                 // 初始化 Chat V2（使用统一初始化函数）
                 match crate::chat_v2::init_chat_v2(&active_app_data_dir) {
                 Ok(chat_v2_db) => {
@@ -1182,9 +1282,21 @@ pub fn run() {
                 Err(e) => {
                     error!("⚠️ Chat V2 数据库初始化失败（将以降级模式继续运行）: {}", e);
                     // 不阻止应用启动，但 Chat V2 功能将不可用
+                    #[cfg(feature = "data_governance")]
+                    {
+                        startup_component_health.mark_blocked(
+                            "chat_v2",
+                            format!("Chat V2 数据库初始化失败: {}", e),
+                        );
+                        component_health_state.replace(startup_component_health.clone());
+                    }
                 }
                 }
+            } else {
+                warn!("⚠️ [DataGovernance] Chat V2 组件被单独隔离，跳过数据库与工作区初始化");
+            }
 
+            if initialize_llm_usage {
                 // 初始化 LLM Usage 统计数据库
                 match crate::llm_usage::LlmUsageDatabase::new(&active_app_data_dir) {
                 Ok(llm_usage_db) => {
@@ -1198,10 +1310,18 @@ pub fn run() {
                 }
                 Err(e) => {
                     error!("⚠️ LLM Usage 数据库初始化失败（统计功能将不可用）: {}", e);
+                    #[cfg(feature = "data_governance")]
+                    {
+                        startup_component_health.mark_blocked(
+                            "llm_usage",
+                            format!("LLM Usage 数据库初始化失败: {}", e),
+                        );
+                        component_health_state.replace(startup_component_health.clone());
+                    }
                 }
                 }
             } else {
-                warn!("⚠️ [DataGovernance] fail-close 模式下已跳过 Chat V2 与 LLM Usage 数据库初始化");
+                warn!("⚠️ [DataGovernance] LLM Usage 组件被单独隔离，跳过统计数据库初始化");
             }
 
             // Workbench 内置浏览器：manage 未打开的 DB + Service（不无条件 ensure_open）
@@ -1822,6 +1942,13 @@ pub fn run() {
             ,crate::commands::canvas_note_replace
             ,crate::commands::canvas_note_set
             // DataSpace (A/B) commands
+            ,crate::data_space::get_startup_recovery_status
+            ,crate::data_space::retry_startup_recovery_preflight
+            ,crate::data_space::list_startup_recovery_incidents
+            ,crate::data_space::resolve_startup_recovery
+            ,crate::data_space::open_startup_recovery_incident_folder
+            ,crate::data_space::export_startup_recovery_incident
+            ,crate::data_space::export_startup_recovery_report
             ,crate::data_space::get_data_space_info
             ,crate::data_space::mark_data_space_pending_switch_to_inactive
             ,crate::data_space::purge_all_database_files

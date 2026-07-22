@@ -339,6 +339,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
         overwrite: marketPending.overwrite,
         expectedPackageSha256: marketPending.result.scan.package_sha256,
         tempZipPath,
+        declaredRiskLevel: marketPending.result.scan.risk_level,
       });
       await reloadSkills();
       setMarketInstalled((prev) => new Set(prev).add(marketPending.card.slug));

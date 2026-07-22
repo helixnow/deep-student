@@ -266,10 +266,8 @@ impl ToolExecutor for SkillsExecutor {
                         .then_with(|| left.name.cmp(&right.name))
                 });
                 loaded_tools.dedup();
-                let mut loaded_tool_names: Vec<String> = loaded_tools
-                    .iter()
-                    .map(|tool| tool.name.clone())
-                    .collect();
+                let mut loaded_tool_names: Vec<String> =
+                    loaded_tools.iter().map(|tool| tool.name.clone()).collect();
                 loaded_tool_names.sort();
                 loaded_tool_names.dedup();
 
@@ -416,6 +414,9 @@ impl ToolExecutor for SkillsExecutor {
                     }
                 }
 
+                let has_untrusted_rejection = rejected_skills
+                    .values()
+                    .any(|reason| reason.to_ascii_lowercase().contains("untrusted"));
                 let rejected_message = if rejected_skills.is_empty() {
                     None
                 } else {
@@ -426,7 +427,7 @@ impl ToolExecutor for SkillsExecutor {
                     entries.sort();
                     Some(format!("Rejected: {}", entries.join(", ")))
                 };
-                let message = if loaded_skills.is_empty() {
+                let mut message = if loaded_skills.is_empty() {
                     if not_found_skills.is_empty() && rejected_message.is_none() {
                         "No new skills were loaded.".to_string()
                     } else {
@@ -454,10 +455,18 @@ impl ToolExecutor for SkillsExecutor {
                         parts.join(". ")
                     )
                 };
+                if has_untrusted_rejection {
+                    message.push_str(
+                        " If trust was granted earlier in this same tool loop, this is the immutable pre-grant runtime catalog snapshot, not a failed grant. Do not retry load_skills in this request; the trusted package becomes loadable on the next user turn.",
+                    );
+                }
+
+                let all_failed = loaded_skills.is_empty()
+                    && (!not_found_skills.is_empty() || !rejected_skills.is_empty());
 
                 // 构建输出结构
                 let output = LoadSkillsOutput {
-                    status: if loaded_skills.is_empty() && !rejected_skills.is_empty() {
+                    status: if all_failed {
                         "error".to_string()
                     } else {
                         "success".to_string()
@@ -467,7 +476,7 @@ impl ToolExecutor for SkillsExecutor {
                     loaded_tools,
                     rejected_skills,
                     skill_state_version,
-                    message,
+                    message: message.clone(),
                 };
 
                 let duration_ms = start_time.elapsed().as_millis() as u64;
@@ -476,29 +485,44 @@ impl ToolExecutor for SkillsExecutor {
                     "durationMs": duration_ms,
                 });
 
-                // 发射工具调用结束事件
-                ctx.emitter.emit_end_with_meta(
-                    event_types::TOOL_CALL,
-                    &ctx.block_id,
-                    Some(result_json.clone()),
-                    ctx.variant_id.as_deref(),
-                    Some(skill_state_version),
-                    ctx.round_id.as_deref(),
-                );
+                if all_failed {
+                    ctx.emit_tool_call_error(&message);
+                } else {
+                    ctx.emitter.emit_end_with_meta(
+                        event_types::TOOL_CALL,
+                        &ctx.block_id,
+                        Some(result_json.clone()),
+                        ctx.variant_id.as_deref(),
+                        Some(skill_state_version),
+                        ctx.round_id.as_deref(),
+                    );
+                }
 
                 tracing::info!(
                     "[SkillsExecutor] load_skills persisted and synced: {:?}",
                     parsed_input.skills
                 );
 
-                Ok(ToolResultInfo::success(
-                    Some(call.id.clone()),
-                    Some(ctx.block_id.clone()),
-                    call.name.clone(),
-                    call.arguments.clone(),
-                    result_json,
-                    duration_ms,
-                ))
+                if all_failed {
+                    Ok(ToolResultInfo::failure_with_output(
+                        Some(call.id.clone()),
+                        Some(ctx.block_id.clone()),
+                        call.name.clone(),
+                        call.arguments.clone(),
+                        result_json,
+                        message,
+                        duration_ms,
+                    ))
+                } else {
+                    Ok(ToolResultInfo::success(
+                        Some(call.id.clone()),
+                        Some(ctx.block_id.clone()),
+                        call.name.clone(),
+                        call.arguments.clone(),
+                        result_json,
+                        duration_ms,
+                    ))
+                }
             }
             _ => {
                 let error_msg = format!("未知的 Skills 工具: {}", call.name);

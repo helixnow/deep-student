@@ -115,9 +115,9 @@ frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内�
 - **builtin-workspace_change_revert**: 使用变更工具返回的完整 mutation_receipt 回滚该次变更
 - **builtin-attachment_stage**: 把聊天附件的原始字节物化到会话 temp root 的 attachments/ 子目录，返回 root_id + relative_path，供 workspace 文件工具或 local_shell_execute（cwd 选 temp）继续处理二进制/大文件
 - **builtin-local_shell_preflight**: 检查本地命令、cwd、runtime root 与风险等级，但不会执行命令
-- **builtin-local_shell_execute**: 经用户审批后执行非交互本地命令，返回 exit code、stdout/stderr 与截断状态
+- **builtin-local_shell_execute**: 提交非交互本地命令，由后端按当前会话档位决定静默执行或展示审批 UI，返回 exit code、stdout/stderr 与截断状态
 
-本地执行器不是交互式终端：没有 PTY、stdin 或持久 shell session。macOS 固定使用 \`/bin/sh -c\`；Windows 固定使用受信任 System32 路径下的 Windows PowerShell（\`-NoProfile -NonInteractive\`，UTF-8 输出）；Linux 桌面使用 bubblewrap（bwrap）沙箱包裹的 \`/bin/sh -c\`（UTF-8 输出），系统未安装 bubblewrap 时预检会报告沙箱不可用并拒绝执行，此时应提示用户安装 bubblewrap 包；其余平台（移动端）当前不支持本地 shell。每次真实执行都必须经过用户审批，网络默认禁止，只有显式 \`allow_network=true\` 的独立审批 scope 才可放行。
+本地执行器不是交互式终端：没有 PTY、stdin 或持久 shell session。macOS 固定使用 \`/bin/sh -c\`；Windows 固定使用受信任 System32 路径下的 Windows PowerShell（\`-NoProfile -NonInteractive\`，UTF-8 输出）；Linux 桌面使用 bubblewrap（bwrap）沙箱包裹的 \`/bin/sh -c\`（UTF-8 输出），系统未安装 bubblewrap 时预检会报告沙箱不可用并拒绝执行，此时应提示用户安装 bubblewrap 包；其余平台（移动端）当前不支持本地 shell。真实执行的审批由后端按当前会话档位统一处理：预检未标记 blocked 时直接调用 \`builtin-local_shell_execute\`，不要在正文中自行索要确认或等待用户再次回复；需要审批时后端会暂停并展示审批 UI。网络默认禁止，联网命令必须显式传 \`allow_network=true\`；该参数声明网络能力边界，不代表模型需要额外口头确认。完全访问会免除普通 shell 审批但仍执行在沙箱中，危险完全访问才会取消本地 shell 的文件与网络沙箱边界。
 
 ### 本地命令的执行根选择
 - 与用户项目文件相关的命令使用 \`root_id=workspace\`；如果 workspace 未配置，应提示用户选择工作区，不要在其他 root 中猜测项目位置。
@@ -147,8 +147,8 @@ frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内�
 
 1. 若 zip 在聊天附件里：先用 **builtin-attachment_stage** 物化到 temp root（见上文「处理用户发送的附件」）。
 2. 调用 **builtin-skill_scan**（Low，免审批）：\`source\` 填 \`{ url: "https://..." }\` 或 \`{ root_id: "temp", path: "attachments/xxx.zip" }\`；返回 \`package_sha256\`、\`risk_level\`、\`risk_signals\` 等扫描摘要。
-3. 向用户展示风险与能力摘要，口头确认后再调用 **builtin-skill_install**（High，**必须用户审批**）：携带相同 \`source\`、必填 \`expected_sha256\` 和 \`skill_id\`（均来自 scan 结果）、可选 \`declared_risk_level\` 与 \`overwrite\`。
-4. 安装成功后告知用户：技能已装入 \`~/.deep-student/skills/<id>/\`，**默认未信任**；需在技能管理中信任后，包内脚本才可通过 SKILL_DIR 执行。
+3. 向用户展示风险与能力摘要后直接调用 **builtin-skill_install**（High）：携带相同 \`source\`、必填 \`expected_sha256\` 和 \`skill_id\`（均来自 scan 结果）、可选 \`declared_risk_level\` 与 \`overwrite\`。需要确认时由平台审批卡统一承接，不要先追加一次重复的文字确认。
+4. 安装成功后：技能已装入 \`~/.deep-student/skills/<id>/\`，**默认未信任**。下一步调用 \`builtin-skill_trust_request\`（先 \`action=inspect\` 再 \`grant\`）；「技能管理」仅作备用。信任后再 \`load_skills\` / 跑 SKILL_DIR 脚本。
 
 **禁止**用 shell / 文件工具绕过上述流程直接改技能目录。
 
@@ -548,7 +548,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-local_shell_preflight',
       description:
-        '预检本地 shell 命令的 runtime root、cwd、平台 shell 合同、风险等级和审批信息。此工具只返回结构化分析，不会执行命令、启动进程或写入文件；任何真实执行仍必须单独经过用户审批。',
+        '预检本地 shell 命令的 runtime root、cwd、平台 shell 合同、风险等级和审批信息。此工具只返回结构化分析，不会执行命令、启动进程或写入文件。预检未标记 blocked 时应直接提交 local_shell_execute；后端会按当前会话档位静默执行或展示审批 UI，不要在正文中自行索要确认。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -587,13 +587,13 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-local_shell_execute',
       description:
-        '经用户审批后执行非交互本地 shell 命令。macOS 固定使用 /bin/sh -c；Windows 固定使用受信任 System32 Windows PowerShell（-NoProfile -NonInteractive，UTF-8 输出）；Linux 桌面使用 bubblewrap（bwrap）沙箱 + /bin/sh -c（需系统安装 bubblewrap，缺失时拒绝执行）；移动端不支持。执行前会重新校验 runtime root 和 cwd，强制 timeout，截断 stdout/stderr，并保存 tool block 审计记录；不提供 PTY、stdin 或持久 shell session，网络默认禁止。',
+        '提交非交互本地 shell 命令，由后端按当前会话档位静默执行或展示审批 UI。不要在调用前用正文自行索要确认。macOS 固定使用 /bin/sh -c；Windows 固定使用受信任 System32 Windows PowerShell（-NoProfile -NonInteractive，UTF-8 输出）；Linux 桌面使用 bubblewrap（bwrap）沙箱 + /bin/sh -c（需系统安装 bubblewrap，缺失时拒绝执行）；移动端不支持。执行前会重新校验 runtime root 和 cwd，强制 timeout，截断 stdout/stderr，并保存 tool block 审计记录；不提供 PTY、stdin 或持久 shell session，网络默认禁止，联网命令须显式传 allow_network=true。',
       inputSchema: {
         type: 'object',
         properties: {
           command: {
             type: 'string',
-            description: '要执行的命令字符串。此工具会真实执行命令，必须先经过审批。',
+            description: '要执行的命令字符串。此工具会真实执行命令；直接提交调用，由后端统一处理所需审批。',
           },
           root_id: {
             type: 'string',
@@ -722,7 +722,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-skill_install',
       description:
-        'Install a scanned skill package to ~/.deep-student/skills after user approval. Re-fetches source, verifies expected_sha256 matches scan, re-scans risk, writes provenance, default untrusted until user trusts in Skills management.',
+        'Install a scanned skill package to ~/.deep-student/skills after user approval. Re-fetches source, verifies expected_sha256 matches scan, re-scans risk, writes provenance, default untrusted — next call skill_trust_request (inspect then grant); Skills management is only a backup.',
       inputSchema: {
         type: 'object',
         properties: {

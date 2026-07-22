@@ -320,7 +320,10 @@ impl ChatV2Pipeline {
         )); // 🆕 skill_scan / skill_install 技能包自装（High 安装必审批 + provenance）
         executors.push(Arc::new(
             super::skill_market_client::SkillMarketReadToolExecutor::new(),
-        )); // 🆕 skill_market_search / skill_market_skill_detail 只读市场工具（写操作仍走 UI/确认）
+        )); // 🆕 skill_market_search / skill_market_skill_detail 只读市场工具
+        executors.push(Arc::new(
+            super::skill_market_client::SkillMarketInstallToolExecutor::new(),
+        )); // 🆕 skill_market_verify / skill_market_download_and_scan 治理安装正门
         executors.push(Arc::new(
             super::tools::skill_workshop_executor::SkillWorkshopExecutor::new(),
         )); // 🆕 skill_workshop_propose / skill_workshop_apply 提案式自建/自改技能
@@ -1123,7 +1126,7 @@ mod tests {
     }
 
     #[test]
-    fn test_skill_market_read_tools_registered_before_general_executor() {
+    fn test_skill_market_tools_registered_before_general_executor() {
         let registry = ChatV2Pipeline::create_executor_registry();
         let search = registry
             .get_executor("builtin-skill_market_search")
@@ -1136,8 +1139,12 @@ mod tests {
         // 写操作不得由只读执行器承接
         let download = registry
             .get_executor("builtin-skill_market_download_and_scan")
-            .expect("fallback executor");
-        assert_ne!(download.name(), "SkillMarketReadToolExecutor");
+            .expect("builtin-skill_market_download_and_scan must have a registered executor");
+        assert_eq!(download.name(), "SkillMarketInstallToolExecutor");
+        let verify = registry
+            .get_executor("builtin-skill_market_verify")
+            .expect("builtin-skill_market_verify must have a registered executor");
+        assert_eq!(verify.name(), "SkillMarketInstallToolExecutor");
     }
 
     #[test]

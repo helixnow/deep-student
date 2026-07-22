@@ -148,14 +148,17 @@ export interface SkillPackageScanResult {
   references_count: number;
   allowed_tools_count: number;
   package_sha256: string;
-  risk_level: string;
+  risk_level: 'low' | 'medium' | 'high';
   risk_signals: string[];
   requires?: {
     bins: Array<{ name: string; found: boolean }>;
     env: Array<{ name: string; set: boolean }>;
+    python_packages?: Array<{ name: string; found: boolean }>;
     invalid: string[];
     missing_count: number;
   };
+  missing_requires_hints?: string[];
+  next_step?: string;
 }
 
 /**
@@ -422,6 +425,7 @@ export async function skillMarketDownloadAndScan(params: {
   overwrite?: boolean;
   expectedPackageSha256?: string | null;
   tempZipPath?: string | null;
+  declaredRiskLevel?: 'low' | 'medium' | 'high' | null;
 }): Promise<SkillMarketDownloadScanResult> {
   return invoke<SkillMarketDownloadScanResult>('skill_market_download_and_scan', {
     slug: params.slug,
@@ -430,5 +434,6 @@ export async function skillMarketDownloadAndScan(params: {
     overwrite: params.overwrite ?? false,
     expectedPackageSha256: params.expectedPackageSha256 ?? null,
     tempZipPath: params.tempZipPath ?? null,
+    declaredRiskLevel: params.declaredRiskLevel ?? null,
   });
 }
