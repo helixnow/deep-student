@@ -1672,18 +1672,18 @@
       "hints": {
         "cautious": "中高风险操作逐项确认，危险授权从不记住。",
         "relaxed": "低风险和中风险操作静默执行；高风险操作仍逐项审批。",
-        "full_access": "沙箱内工具与 shell 免逐步确认；技能信任/MCP 安装/runtime root 等特权仍单次确认；灾难命令拒绝。",
+        "full_access": "工具与 shell 免逐步确认，并取消本地 shell 的 runtime root、宿主机文件与网络沙箱限制；技能信任/MCP 安装/runtime root 等特权仍单次确认；灾难命令拒绝。",
         "danger_full_access": "危险：沙箱内工具与 shell 免逐步确认，并取消本地 shell 的宿主机文件与网络限制；技能信任/MCP 安装/runtime root 等特权仍单次确认；灾难命令拒绝。"
       },
       "shortHints": {
         "cautious": "中高风险逐项确认",
         "relaxed": "中低风险静默执行，仅 High 审批",
-        "full_access": "工具免审批，保留本地安全边界",
+        "full_access": "宿主机文件与网络完全访问",
         "danger_full_access": "宿主机文件与网络无限制"
       },
       "modePriority": "此档位只控制做一做；问一问/想一想模式本身的限制始终优先。",
       "fullAccessActive": "完全访问",
-      "fullAccessDowngradeHint": "完全访问已开启。点击降为宽松，恢复高风险操作的逐项审批。",
+      "fullAccessDowngradeHint": "完全访问已开启，本地 shell 可访问当前用户有权访问的宿主机文件与网络。点击降为宽松以恢复审批和沙箱边界。",
       "dangerActive": "危险访问",
       "dangerDowngradeHint": "危险完全访问已开启。点击降为宽松，立即恢复 runtime roots、操作系统沙箱与网络边界。",
       "dangerConfirmTitle": "开启危险完全访问？",

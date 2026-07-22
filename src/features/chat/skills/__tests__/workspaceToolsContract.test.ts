@@ -75,7 +75,8 @@ describe('workspace mutation tool contracts', () => {
     expect(preflight?.description).toContain('不要在正文中自行索要确认');
     expect(execute?.description).toContain('后端按当前会话档位');
     expect(execute?.description).toContain('allow_network=true');
-    expect(workspaceToolsSkill.content).toContain('完全访问会免除普通 shell 审批');
+    expect(workspaceToolsSkill.content).toContain('完全访问会同时免除普通 shell 审批');
+    expect(workspaceToolsSkill.content).toContain('取消本地 shell 的 runtime root、文件系统和网络沙箱边界');
     expect(workspaceToolsSkill.content).not.toContain('每次真实执行都必须经过用户审批');
   });
 

@@ -7,7 +7,9 @@ use sha2::{Digest, Sha256};
 use tauri::Manager;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
-use super::shell_sandbox::{PlatformSandboxBackend, SandboxBackend, SandboxCapability};
+use super::shell_sandbox::{
+    PlatformSandboxBackend, SandboxBackend, SandboxCapability, UnsandboxedShellBackend,
+};
 use super::strip_tool_namespace;
 use crate::chat_v2::approval_scope::{
     analyze_shell_command, immutable_shell_command_guard, redact_shell_command_for_display,
@@ -148,6 +150,18 @@ impl LocalShellPreflightExecutor {
         )
     }
 
+    fn full_access_unsandboxed(
+        authority_admission: Option<(AuthorityMode, PermissionPreset)>,
+    ) -> bool {
+        matches!(
+            authority_admission,
+            Some((
+                AuthorityMode::Craft,
+                PermissionPreset::FullAccess | PermissionPreset::DangerFullAccess
+            ))
+        )
+    }
+
     fn inspect_cwd(root: &RuntimeRoot, cwd: &Path) -> (String, bool, Vec<String>) {
         let target = root.path.join(cwd);
         let display = if cwd.as_os_str().is_empty() {
@@ -238,10 +252,15 @@ impl LocalShellPreflightExecutor {
                 platform
             ));
         }
-        // 🔒 运行时沙箱能力探测：平台契约声明支持但沙箱启动器实际不可用
+        let unsandboxed = Self::full_access_unsandboxed(ctx.shell_authority_admission);
+        // 🔒 运行时执行能力探测：受限档位检查平台沙箱，完全访问检查无沙箱后端。
         // （如 Linux 桌面未安装 bubblewrap）时，预检直接标 blocked，
         // 并把安装指引透传给模型/用户，避免 execute 阶段才失败。
-        let sandbox_capability = PlatformSandboxBackend::new().capability();
+        let sandbox_capability = if unsandboxed {
+            UnsandboxedShellBackend::new().capability()
+        } else {
+            PlatformSandboxBackend::new().capability()
+        };
         let sandbox_available = matches!(&sandbox_capability, SandboxCapability::Available);
         if shell.execution_supported && !sandbox_available {
             if let SandboxCapability::Unavailable { reason } = &sandbox_capability {
@@ -291,7 +310,7 @@ impl LocalShellPreflightExecutor {
         // 指引改用 skill_install（scan → install）或技能管理 UI。
         let touches_skills_directory =
             crate::chat_v2::skills::command_mentions_skills_directory(&command);
-        if touches_skills_directory {
+        if touches_skills_directory && !unsandboxed {
             reasons.push(
                 "command touches a skill package directory; local shell is blocked here — \
                  use skill_scan first, then skill_install with expected_sha256, or the Skills management UI"
@@ -328,10 +347,11 @@ impl LocalShellPreflightExecutor {
                 (None, Some(error))
             }
         };
-        let skill_cwd_blocked = root
-            .as_ref()
-            .map(|root| root.kind == RuntimeRootKind::SkillPackage)
-            .unwrap_or(false);
+        let skill_cwd_blocked = !unsandboxed
+            && root
+                .as_ref()
+                .map(|root| root.kind == RuntimeRootKind::SkillPackage)
+                .unwrap_or(false);
         if skill_cwd_blocked {
             reasons.push(
                 "shell execution cannot run directly inside skill package roots; use skill_root_id for SKILL_DIR injection"
@@ -339,7 +359,8 @@ impl LocalShellPreflightExecutor {
             );
         }
         // 🔒 与 execute 侧一致：只读 root（workspace / authorized）不放行写入类命令
-        let readonly_write_blocked = root
+        let readonly_write_blocked = !unsandboxed
+            && root
             .as_ref()
             .map(|root| {
                 root.access == RuntimeRootAccess::ReadOnly
@@ -373,7 +394,7 @@ impl LocalShellPreflightExecutor {
                 (".".to_string(), false, Some(error))
             }
         };
-        let path_operand_blocked = if !readonly_write_blocked && cwd_valid {
+        let path_operand_blocked = if !unsandboxed && !readonly_write_blocked && cwd_valid {
             root.as_ref()
                 .and_then(|root| {
                     let cwd_abs = root.path.join(Path::new(&cwd_relative));
@@ -431,7 +452,7 @@ impl LocalShellPreflightExecutor {
             || !sandbox_available
             || command_policy.effective_effect
                 == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
-            || touches_skills_directory
+            || (touches_skills_directory && !unsandboxed)
             || skill_cwd_blocked
             || readonly_write_blocked
             || path_operand_blocked.is_some()
@@ -486,7 +507,7 @@ impl LocalShellPreflightExecutor {
             "platform": platform,
             "os": shell.os,
             "shell_path": shell.shell_path,
-            "sandbox_backend": shell.sandbox_backend,
+            "sandbox_backend": if unsandboxed { "unsandboxed" } else { shell.sandbox_backend },
             "sandbox_available": sandbox_available,
             "shell_kind": shell.shell_kind,
             "shell_invocation": shell.invocation,
@@ -494,7 +515,8 @@ impl LocalShellPreflightExecutor {
             "non_interactive": true,
             "pty_available": false,
             "persistent_shell_session": false,
-            "network_default": "deny",
+            "network_default": if unsandboxed { "allow" } else { "deny" },
+            "runtime_roots_enforced": !unsandboxed,
             "execution_supported": shell.execution_supported,
             "requires_approval_before_execute": requires_approval_before_execute,
             "approval_flow": "backend_managed",
@@ -640,6 +662,20 @@ mod tests {
                 Some((AuthorityMode::Craft, PermissionPreset::Relaxed)),
             )
         );
+    }
+
+    #[test]
+    fn only_craft_full_access_presets_select_unsandboxed_preflight() {
+        assert!(LocalShellPreflightExecutor::full_access_unsandboxed(Some(
+            (AuthorityMode::Craft, PermissionPreset::FullAccess,)
+        )));
+        assert!(LocalShellPreflightExecutor::full_access_unsandboxed(Some(
+            (AuthorityMode::Craft, PermissionPreset::DangerFullAccess,)
+        )));
+        assert!(!LocalShellPreflightExecutor::full_access_unsandboxed(Some(
+            (AuthorityMode::Plan, PermissionPreset::FullAccess,)
+        )));
+        assert!(!LocalShellPreflightExecutor::full_access_unsandboxed(None));
     }
 
     #[test]

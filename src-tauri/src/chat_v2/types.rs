@@ -463,9 +463,9 @@ impl AuthorityMode {
 /// Session-only Craft approval behavior preset.
 ///
 /// Ask and Plan keep their authority semantics and do not inherit these
-/// bypasses. `FullAccess` keeps the local-shell runtime-root, hard-sandbox and
-/// network boundaries; only `DangerFullAccess` may select the explicit
-/// unsandboxed local-shell backend.
+/// bypasses. In Craft mode, both full-access presets select the explicit
+/// unsandboxed local-shell backend. `DangerFullAccess` remains a wire-compatible
+/// alias with stronger UI warnings for existing sessions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum PermissionPreset {
     /// Prompt for every Medium/High operation and never remember approvals.
@@ -475,10 +475,10 @@ pub enum PermissionPreset {
     #[default]
     #[serde(rename = "relaxed")]
     Relaxed,
-    /// Tool approval bypass; local shell remains fully sandboxed.
+    /// Tool approval bypass plus unrestricted local-shell host access.
     #[serde(rename = "full_access")]
     FullAccess,
-    /// Tool approval bypass plus the explicit unsandboxed local-shell backend.
+    /// Legacy high-warning alias for unrestricted local-shell host access.
     #[serde(rename = "danger_full_access")]
     DangerFullAccess,
 }

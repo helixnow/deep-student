@@ -14,7 +14,8 @@
 //!   canonical path / 文件系统身份）。绝不绕过指纹绑定。
 //!
 //! 这三个工具与 `skill_install` / `skill_workshop_*` 同为技能治理正门；
-//! shell 侧门由 `skills::command_mentions_skills_directory` deny 规则继续封死。
+//! 受限档位下的 shell 侧门由 `skills::command_mentions_skills_directory` deny 规则封死；
+//! Craft 完全访问按其宿主机权限语义放行。
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};

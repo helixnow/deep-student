@@ -507,7 +507,7 @@ impl SandboxBackend for UnsandboxedShellBackend {
     ) -> Result<Command, String> {
         if let SandboxCapability::Unavailable { reason } = self.capability() {
             return Err(format!(
-                "Danger Full Access shell backend is unavailable: {reason}"
+                "Full Access shell backend is unavailable: {reason}"
             ));
         }
         let payload = WindowsSandboxPayload {
@@ -533,7 +533,7 @@ impl SandboxBackend for UnsandboxedShellBackend {
 
     fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport {
         SandboxEffectReport {
-            backend: "danger_unsandboxed_job",
+            backend: "unsandboxed_job",
             shell_kind: "windows_powershell",
             output_encoding: "utf-8",
             enforced: false,

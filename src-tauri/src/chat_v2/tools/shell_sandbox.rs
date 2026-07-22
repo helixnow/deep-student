@@ -110,8 +110,8 @@ pub trait SandboxBackend: Send + Sync {
 }
 
 pub struct PlatformSandboxBackend;
-/// Explicit backend used only by the backend-authorized
-/// `danger_full_access` Craft preset. It removes filesystem/network sandbox
+/// Explicit backend used by backend-authorized full-access Craft presets. It
+/// removes filesystem/network sandbox
 /// boundaries but intentionally retains process-group isolation, resource
 /// limits, bounded output, timeout/cancellation cleanup and env filtering.
 pub struct UnsandboxedShellBackend;
@@ -202,7 +202,7 @@ impl SandboxBackend for UnsandboxedShellBackend {
     ) -> Result<Command, String> {
         if let SandboxCapability::Unavailable { reason } = self.capability() {
             return Err(format!(
-                "Danger Full Access shell backend is unavailable: {reason}"
+                "Full Access shell backend is unavailable: {reason}"
             ));
         }
         let mut command = Command::new("/bin/sh");
@@ -214,7 +214,7 @@ impl SandboxBackend for UnsandboxedShellBackend {
 
     fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport {
         SandboxEffectReport {
-            backend: "danger_unsandboxed",
+            backend: "unsandboxed",
             shell_kind: "posix_sh",
             output_encoding: "utf-8",
             enforced: false,
@@ -246,12 +246,12 @@ impl SandboxBackend for UnsandboxedShellBackend {
         _cwd: &Path,
         _policy: &SandboxPolicy,
     ) -> Result<Command, String> {
-        Err("Danger Full Access shell backend is unavailable".to_string())
+        Err("Full Access shell backend is unavailable".to_string())
     }
 
     fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport {
         SandboxEffectReport {
-            backend: "danger_unavailable",
+            backend: "unsandboxed_unavailable",
             shell_kind: "unavailable",
             output_encoding: "unknown",
             enforced: false,
@@ -1218,7 +1218,7 @@ mod tests {
             vec![OsStr::new("-c"), OsStr::new("printf ok")]
         );
         let report = backend.effect_report(&policy);
-        assert_eq!(report.backend, "danger_unsandboxed");
+        assert_eq!(report.backend, "unsandboxed");
         assert!(!report.enforced);
         assert!(!report.network_enforced);
         assert!(report.process_group_isolated);

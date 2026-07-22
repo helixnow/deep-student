@@ -1672,18 +1672,18 @@
       "hints": {
         "cautious": "Confirm each Medium or High action. Dangerous approvals are never remembered.",
         "relaxed": "Low and Medium actions run silently; High actions still require approval.",
-        "full_access": "Tools and shell inside the sandbox run without step-by-step confirmation; privilege actions such as skill trust / MCP install / runtime root still require a one-shot confirmation; catastrophic commands are denied.",
+        "full_access": "Tools and shell run without step-by-step confirmation, and local-shell runtime-root, host-file, and network sandbox limits are removed; privilege actions such as skill trust / MCP install / runtime root still require a one-shot confirmation; catastrophic commands are denied.",
         "danger_full_access": "Danger: tools and shell run without step-by-step confirmation and local-shell host file/network limits are removed; privilege actions such as skill trust / MCP install / runtime root still require a one-shot confirmation; catastrophic commands are denied."
       },
       "shortHints": {
         "cautious": "Confirm Medium and High actions",
         "relaxed": "Run Low/Medium silently; approve High",
-        "full_access": "No tool approval; local boundaries remain",
+        "full_access": "Full host-file and network access",
         "danger_full_access": "Unrestricted host files and network"
       },
       "modePriority": "This preset controls Craft only. Ask and Plan mode restrictions always take precedence.",
       "fullAccessActive": "Full access",
-      "fullAccessDowngradeHint": "Full access is on. Click to downgrade to Relaxed and restore per-item approval for high-risk actions.",
+      "fullAccessDowngradeHint": "Full access is on. Local shell can access host files and network available to the current user. Click to downgrade to Relaxed and restore approval and sandbox boundaries.",
       "dangerActive": "Danger",
       "dangerDowngradeHint": "Danger full access is on. Click to downgrade to Relaxed and restore runtime roots, the OS sandbox, and network boundaries.",
       "dangerConfirmTitle": "Enable danger full access?",

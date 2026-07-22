@@ -37,7 +37,7 @@ use crate::commands::AppState;
 
 use super::shell_sandbox::{
     cleanup_finished_process_group, terminate_process_group, PlatformSandboxBackend,
-    SandboxBackend, SandboxCapability, SandboxPolicy, UnsandboxedShellBackend,
+    SandboxBackend, SandboxPolicy, UnsandboxedShellBackend,
 };
 
 pub mod tool_names {
@@ -107,7 +107,7 @@ struct FileSnapshot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ShellSecurityMode {
     Sandboxed,
-    DangerUnsandboxed,
+    Unsandboxed,
 }
 
 impl Default for LocalShellExecuteExecutor {
@@ -188,8 +188,12 @@ impl LocalShellExecuteExecutor {
         })
     }
 
-    fn resolve_cwd(root: &RuntimeRoot, cwd: &Path) -> Result<PathBuf, String> {
-        if root.kind == RuntimeRootKind::SkillPackage {
+    fn resolve_cwd(
+        root: &RuntimeRoot,
+        cwd: &Path,
+        allow_skill_package: bool,
+    ) -> Result<PathBuf, String> {
+        if root.kind == RuntimeRootKind::SkillPackage && !allow_skill_package {
             return Err(
                 "Shell execution cannot run directly inside skill package roots yet".to_string(),
             );
@@ -456,9 +460,12 @@ impl LocalShellExecuteExecutor {
 
     fn shell_security_mode(state: &SessionAuthorityState) -> ShellSecurityMode {
         if state.authority_mode == AuthorityMode::Craft
-            && state.permission_preset == PermissionPreset::DangerFullAccess
+            && matches!(
+                state.permission_preset,
+                PermissionPreset::FullAccess | PermissionPreset::DangerFullAccess
+            )
         {
-            ShellSecurityMode::DangerUnsandboxed
+            ShellSecurityMode::Unsandboxed
         } else {
             ShellSecurityMode::Sandboxed
         }
@@ -471,7 +478,7 @@ impl LocalShellExecuteExecutor {
     ) -> String {
         let mode_label = match mode {
             ShellSecurityMode::Sandboxed => "sandboxed",
-            ShellSecurityMode::DangerUnsandboxed => "danger_unsandboxed",
+            ShellSecurityMode::Unsandboxed => "unsandboxed",
         };
         let payload = format!(
             "deep-student-shell-security-v1\0{}\0{}\0{}\0{}",
@@ -1412,7 +1419,7 @@ impl LocalShellExecuteExecutor {
             );
         }
         let security_mode = Self::shell_security_mode(&shell_authority);
-        let danger_unsandboxed = security_mode == ShellSecurityMode::DangerUnsandboxed;
+        let unsandboxed = security_mode == ShellSecurityMode::Unsandboxed;
         let state = ctx.window_ref().state::<AppState>();
         let raw_command_policy = state
             .database
@@ -1433,7 +1440,7 @@ impl LocalShellExecuteExecutor {
         // 🔒 封侧门：命令正文命中技能包目录即拒绝执行。安装/修改技能必须走
         // skill_install 工具（scan → install 两段式审批）或技能管理 UI，
         // 不允许用一条被批准的 shell 命令绕过安装审批与 provenance 记录。
-        if crate::chat_v2::skills::command_mentions_skills_directory(&command) {
+        if !unsandboxed && crate::chat_v2::skills::command_mentions_skills_directory(&command) {
             return Err(
                 "Command touches a skill package directory, which is blocked for local shell. \
                  Use skill_scan first, then skill_install with expected_sha256 from the scan result, \
@@ -1486,13 +1493,13 @@ impl LocalShellExecuteExecutor {
             .or_else(|| args.get("allowNetwork"))
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let allow_network = danger_unsandboxed || requested_allow_network;
+        let allow_network = unsandboxed || requested_allow_network;
         let network_capable = Self::looks_network_capable(&command);
         let network_policy = Self::network_policy_json_for_mode(
             requested_allow_network,
             allow_network,
             network_capable,
-            !danger_unsandboxed,
+            !unsandboxed,
         );
 
         let skill_root_id_input = args
@@ -1508,11 +1515,11 @@ impl LocalShellExecuteExecutor {
             revalidate_runtime_root(&state.database, &root)?
         };
         root.path = validated_root_path;
-        let cwd_abs = Self::resolve_cwd(&root, &cwd_relative)?;
-        if !danger_unsandboxed {
+        let cwd_abs = Self::resolve_cwd(&root, &cwd_relative, unsandboxed)?;
+        if !unsandboxed {
             Self::ensure_root_writable_for_command(&root, &cwd_abs, &command)?;
         }
-        if !danger_unsandboxed
+        if !unsandboxed
             && root.kind == RuntimeRootKind::Workspace
             && root.access == RuntimeRootAccess::ReadWrite
             && Self::command_appears_write_capable(&command)
@@ -1532,7 +1539,7 @@ impl LocalShellExecuteExecutor {
         let analysis = analyze_shell_command(&command);
         let env_plan = Self::build_env_plan(args)?;
         let env_policy = Self::env_policy_json(&env_plan, skill_dir_injection.as_ref());
-        let sandbox_policy = if danger_unsandboxed {
+        let sandbox_policy = if unsandboxed {
             SandboxPolicy {
                 readable_roots: Vec::new(),
                 writable_roots: Vec::new(),
@@ -1550,24 +1557,11 @@ impl LocalShellExecuteExecutor {
                 allow_network,
             )?
         };
-        let sandbox_backend: Box<dyn SandboxBackend> = if danger_unsandboxed {
+        let sandbox_backend: Box<dyn SandboxBackend> = if unsandboxed {
             Box::new(UnsandboxedShellBackend::new())
         } else {
             Box::new(PlatformSandboxBackend::new())
         };
-        // Full Access is not an implicit fallback to an unsandboxed process.
-        // The platform backend must be available or command construction fails
-        // closed. Danger Full Access reaches the separate backend only through
-        // the authoritative metadata branch above.
-        if shell_authority.authority_mode == AuthorityMode::Craft
-            && shell_authority.permission_preset == PermissionPreset::FullAccess
-        {
-            if let SandboxCapability::Unavailable { reason } = sandbox_backend.capability() {
-                return Err(format!(
-                    "Full Access requires the platform local-shell sandbox; refusing execution: {reason}"
-                ));
-            }
-        }
         let sandbox_effect_report = sandbox_backend.effect_report(&sandbox_policy);
         let shell_security_fingerprint =
             Self::shell_security_fingerprint(&command_hash, &shell_authority, security_mode);
@@ -1842,9 +1836,9 @@ impl LocalShellExecuteExecutor {
             "permission_preset": shell_authority.permission_preset.as_str(),
             "shell_security_mode": match security_mode {
                 ShellSecurityMode::Sandboxed => "sandboxed",
-                ShellSecurityMode::DangerUnsandboxed => "danger_unsandboxed",
+                ShellSecurityMode::Unsandboxed => "unsandboxed",
             },
-            "runtime_roots_enforced": !danger_unsandboxed,
+            "runtime_roots_enforced": !unsandboxed,
             "immutable_command_guard": immutable_guard,
             "root": Self::root_json(&root),
             "root_id": root.id,
@@ -2036,7 +2030,7 @@ mod tests {
     }
 
     #[test]
-    fn only_craft_danger_selects_unsandboxed_backend_and_changes_fingerprint() {
+    fn craft_full_access_presets_select_unsandboxed_backend() {
         let full = SessionAuthorityState {
             authority_mode: AuthorityMode::Craft,
             permission_preset: PermissionPreset::FullAccess,
@@ -2054,11 +2048,11 @@ mod tests {
         };
         assert_eq!(
             LocalShellExecuteExecutor::shell_security_mode(&full),
-            ShellSecurityMode::Sandboxed
+            ShellSecurityMode::Unsandboxed
         );
         assert_eq!(
             LocalShellExecuteExecutor::shell_security_mode(&danger),
-            ShellSecurityMode::DangerUnsandboxed
+            ShellSecurityMode::Unsandboxed
         );
         assert_eq!(
             LocalShellExecuteExecutor::shell_security_mode(&plan_danger),
@@ -2068,12 +2062,12 @@ mod tests {
             LocalShellExecuteExecutor::shell_security_fingerprint(
                 "command-hash",
                 &full,
-                ShellSecurityMode::Sandboxed,
+                ShellSecurityMode::Unsandboxed,
             ),
             LocalShellExecuteExecutor::shell_security_fingerprint(
                 "command-hash",
                 &danger,
-                ShellSecurityMode::DangerUnsandboxed,
+                ShellSecurityMode::Unsandboxed,
             )
         );
     }
@@ -2263,7 +2257,8 @@ mod tests {
             configured: false,
         };
 
-        assert!(LocalShellExecuteExecutor::resolve_cwd(&root, Path::new("")).is_err());
+        assert!(LocalShellExecuteExecutor::resolve_cwd(&root, Path::new(""), false).is_err());
+        assert!(LocalShellExecuteExecutor::resolve_cwd(&root, Path::new(""), true).is_ok());
     }
 
     #[test]
