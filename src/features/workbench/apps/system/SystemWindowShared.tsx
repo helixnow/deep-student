@@ -139,6 +139,8 @@ export interface WorkbenchSidebarLayoutProps {
   /** Compact drawer controlled state. Wide and medium sidebars remain visible. */
   drawerOpen?: boolean;
   onDrawerOpenChange?: (open: boolean) => void;
+  /** Wide/medium mode can fully collapse its persistent sidebar. */
+  sidebarCollapsed?: boolean;
 }
 
 /**
@@ -156,6 +158,7 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
   navLabel,
   drawerOpen: controlledDrawerOpen,
   onDrawerOpenChange,
+  sidebarCollapsed = false,
 }) => {
   const { t } = useTranslation('workbench');
   const [internalDrawerOpen, setInternalDrawerOpen] = useState(false);
@@ -226,9 +229,13 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
   const closeLabel = t('workbench:apps.system.hideNav');
 
   return (
-    <div className="wb-sys-split" data-wb-sys-drawer-mode={compact ? 'true' : 'false'}>
+    <div
+      className="wb-sys-split"
+      data-wb-sys-drawer-mode={compact ? 'true' : 'false'}
+      data-wb-sys-sidebar-collapsed={!compact && sidebarCollapsed ? 'true' : 'false'}
+    >
       {/* 并排侧栏（compact 档由 CSS 离场） */}
-      <div className="wb-sys-aside" aria-hidden={compact}>
+      <div className="wb-sys-aside" aria-hidden={compact || sidebarCollapsed}>
         {!compact && sidebar}
       </div>
 

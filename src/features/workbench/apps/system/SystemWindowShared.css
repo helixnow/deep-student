@@ -178,6 +178,14 @@
   overflow: hidden;
   /* 侧栏与内容之间的软分隔线：与对话窗口同源，避免同色背景下两面糊成一片 */
   border-right: 1px solid var(--wb-sidebar-seam, hsl(var(--border) / 0.55));
+  transition:
+    width 200ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    border-color 200ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-sys-split[data-wb-sys-sidebar-collapsed='true'] .wb-sys-aside {
+  width: 0;
+  border-right-color: transparent;
 }
 
 /* 中窗：侧栏收窄，还内容一口气 */
@@ -433,6 +441,10 @@
 /* ==== 动效降级（reduced-motion / minimal 材质档） ====================== */
 
 @media (prefers-reduced-motion: reduce) {
+  .wb-sys-aside {
+    transition-duration: 0ms;
+  }
+
   .wb-sys-bone::after,
   .wb-sys-activity[data-active='true'] .wb-sys-activity-runner {
     animation: none;
@@ -469,6 +481,10 @@
 
 :root[data-wb-material='minimal'] .wb-sys-fade {
   animation-duration: 0ms;
+}
+
+:root[data-wb-material='minimal'] .wb-sys-aside {
+  transition-duration: 0ms;
 }
 
 :root[data-wb-material='minimal'] .wb-sys-drawer,

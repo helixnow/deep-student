@@ -6,3 +6,17 @@
   position: absolute;
   inset: 0;
 }
+
+.wb-chat-titlebar-controls {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  pointer-events: none;
+}
+
+.wb-chat-titlebar-sidebar-toggle {
+  width: 28px;
+  height: 28px;
+  pointer-events: auto;
+  color: var(--wb-titlebar-fg, hsl(var(--foreground)));
+}

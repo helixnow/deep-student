@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { AppWindowProps } from '../../../core/types';
@@ -50,8 +50,8 @@ vi.mock('../../system/useWbSysSize', () => ({
 }));
 
 vi.mock('../../system/SystemWindowShared', () => ({
-  WorkbenchSidebarLayout: ({ sidebar, children }: { sidebar: React.ReactNode; children: React.ReactNode }) => (
-    <div><aside>{sidebar}</aside><main>{children}</main></div>
+  WorkbenchSidebarLayout: ({ sidebar, children, sidebarCollapsed }: { sidebar: React.ReactNode; children: React.ReactNode; sidebarCollapsed?: boolean }) => (
+    <div data-testid="sidebar-layout" data-sidebar-collapsed={sidebarCollapsed ? 'true' : 'false'}><aside>{sidebar}</aside><main>{children}</main></div>
   ),
   WbSysSkeleton: () => <div data-testid="chat-skeleton" />,
 }));
@@ -77,6 +77,7 @@ describe('ChatAppWindow', () => {
     fakeSessions.clear();
     managerListeners.clear();
     currentSessionId = null;
+    document.querySelectorAll('[data-wb-titlebar-slot]').forEach((element) => element.remove());
   });
 
   it('renders the complete Chat page with the conversation-only original sidebar', async () => {
@@ -84,6 +85,24 @@ describe('ChatAppWindow', () => {
 
     expect(await screen.findByTestId('chat-v2-page')).toBeInTheDocument();
     expect(screen.getByTestId('chat-sidebar')).toHaveAttribute('data-navigation-scope', 'chat');
+  });
+
+  it('toggles the OS window sidebar from its titlebar control', async () => {
+    const titlebarSlot = document.createElement('div');
+    titlebarSlot.dataset.wbTitlebarSlot = '';
+    titlebarSlot.dataset.windowId = 'chat-window';
+    document.body.appendChild(titlebarSlot);
+
+    render(<ChatAppWindow {...makeProps()} />);
+
+    const toggle = await screen.findByRole('button', { name: '切换边栏' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('sidebar-layout')).toHaveAttribute('data-sidebar-collapsed', 'false');
+
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('sidebar-layout')).toHaveAttribute('data-sidebar-collapsed', 'true');
   });
 
   it('tracks the selected session title inside the singleton window', () => {

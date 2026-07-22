@@ -9,6 +9,7 @@ let mockSessionStatus = 'idle';
 let mockIsDataLoaded = true;
 let latestViewport: HTMLDivElement | null = null;
 let latestVirtualizerOptions: any = null;
+let resizeObserverCallbacks: ResizeObserverCallback[] = [];
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -152,10 +153,11 @@ function configureViewportMetrics(
   } = {}
 ) {
   let currentScrollTop = scrollTop;
+  let currentScrollHeight = scrollHeight;
 
   Object.defineProperty(viewport, 'scrollHeight', {
     configurable: true,
-    get: () => scrollHeight,
+    get: () => currentScrollHeight,
   });
   Object.defineProperty(viewport, 'clientHeight', {
     configurable: true,
@@ -170,7 +172,7 @@ function configureViewportMetrics(
   });
 
   const scrollTo = vi.fn(({ top }: { top: number }) => {
-    currentScrollTop = top;
+    currentScrollTop = Math.max(0, Math.min(top, currentScrollHeight - clientHeight));
     fireEvent.scroll(viewport);
   });
 
@@ -182,6 +184,12 @@ function configureViewportMetrics(
   return {
     scrollTo,
     getScrollTop: () => currentScrollTop,
+    setScrollTop: (value: number) => {
+      currentScrollTop = value;
+    },
+    setScrollHeight: (value: number) => {
+      currentScrollHeight = value;
+    },
   };
 }
 
@@ -192,7 +200,16 @@ describe('MessageList scroll-to-bottom control', () => {
     mockIsDataLoaded = true;
     latestViewport = null;
     latestVirtualizerOptions = null;
+    resizeObserverCallbacks = [];
     vi.clearAllMocks();
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) {
+        resizeObserverCallbacks.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       callback(0);
       return 1;
@@ -242,13 +259,62 @@ describe('MessageList scroll-to-bottom control', () => {
     fireEvent.click(button);
 
     expect(scrollTo).toHaveBeenCalledWith({ top: 1000, behavior: 'smooth' });
-    expect(getScrollTop()).toBe(1000);
+    expect(getScrollTop()).toBe(600);
     expect(animatedContainer).toHaveAttribute('data-open', 'false');
     expect(animatedContainer).toHaveAttribute('aria-hidden', 'true');
 
     await waitFor(() => {
       expect(screen.getByRole('button', { hidden: true, name: 'Scroll to bottom' })).toHaveAttribute('tabindex', '-1');
     });
+  });
+
+  it('keeps following streamed growth after the user clicks back to bottom', async () => {
+    const frameCallbacks = new Map<number, FrameRequestCallback>();
+    let nextFrameId = 1;
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      const id = nextFrameId++;
+      frameCallbacks.set(id, callback);
+      return id;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+      frameCallbacks.delete(id);
+    });
+    const flushFrame = () => {
+      const callbacks = [...frameCallbacks.values()];
+      frameCallbacks.clear();
+      callbacks.forEach((callback) => callback(0));
+    };
+
+    mockSessionStatus = 'streaming';
+    renderMessageList();
+    const viewport = requireViewport();
+    const metrics = configureViewportMetrics(viewport, {
+      scrollHeight: 1000,
+      clientHeight: 400,
+      scrollTop: 600,
+    });
+
+    flushFrame();
+    metrics.setScrollHeight(1120);
+    resizeObserverCallbacks.forEach((callback) => callback([], {} as ResizeObserver));
+    flushFrame();
+    expect(metrics.getScrollTop()).toBe(720);
+
+    // 明确的指针滚动才会暂停跟随；单纯内容重排产生的 scroll 事件不会。
+    fireEvent.scroll(viewport);
+    fireEvent.pointerDown(viewport);
+    metrics.setScrollTop(400);
+    fireEvent.scroll(viewport);
+    fireEvent.pointerUp(window);
+
+    const button = await screen.findByRole('button', { name: 'Scroll to bottom' });
+    fireEvent.click(button);
+    expect(metrics.getScrollTop()).toBe(720);
+
+    metrics.setScrollHeight(1220);
+    resizeObserverCallbacks.forEach((callback) => callback([], {} as ResizeObserver));
+    flushFrame();
+    expect(metrics.getScrollTop()).toBe(820);
   });
 
   it('preserves the visible anchor offset when history is inserted at the head', () => {

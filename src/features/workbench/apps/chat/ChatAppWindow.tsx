@@ -4,10 +4,14 @@
  * OS 模式仍复用完整 ChatV2Page，会话管理由裁剪后的原 ModernSidebar 承担；
  * Dock 只负责打开或聚焦这个应用窗口。
  */
-import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { AppWindowProps } from '../../core/types';
 import { ModernSidebar } from '@/components/ModernSidebar';
+import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import { DsButton } from '@/components/ui/DsButton';
+import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from '@/app/shell/DesktopShellIcons';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { getSessionTitleText } from '@/features/chat/utils/sessionTitle';
 import { WorkbenchSidebarLayout } from '../system/SystemWindowShared';
@@ -36,6 +40,7 @@ function dispatchSessionNavigation(sessionId: string): () => void {
 }
 
 export const ChatAppWindow: React.FC<AppWindowProps> = ({
+  windowId,
   instanceKey,
   isActive,
   isVisible,
@@ -45,6 +50,33 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
 }) => {
   const { t } = useTranslation('workbench');
   const { ref, sizeClass } = useWbSysSize();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [titlebarTarget, setTitlebarTarget] = useState<HTMLElement | null>(null);
+  const compact = sizeClass === 'compact';
+  const navigationVisible = compact ? drawerOpen : !sidebarCollapsed;
+
+  useLayoutEffect(() => {
+    const findTarget = () => {
+      const target = Array.from(document.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))
+        .find((element) => element.dataset.windowId === windowId) ?? null;
+      setTitlebarTarget((current) => current === target ? current : target);
+    };
+    findTarget();
+    const observer = new MutationObserver(findTarget);
+    const escapedWindowId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(windowId) : windowId;
+    const shell = document.querySelector<HTMLElement>(`[data-wb-window-id="${escapedWindowId}"]`);
+    observer.observe(shell ?? document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [windowId]);
+
+  const toggleNavigation = useCallback(() => {
+    if (compact) {
+      setDrawerOpen((open) => !open);
+      return;
+    }
+    setSidebarCollapsed((collapsed) => !collapsed);
+  }, [compact]);
 
   // 消费壳层降档信号（与 ChatSessionSurface 同一策略）：不可见持续 800ms
   // 才降 silky（瞬时遮挡不骤停），回可见立即回 balanced 全速补渲；
@@ -112,12 +144,15 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
       <WorkbenchSidebarLayout
         sizeClass={sizeClass}
         navLabel={t('workbench:apps.chat.sessionNav')}
+        sidebarCollapsed={sidebarCollapsed}
+        drawerOpen={drawerOpen}
+        onDrawerOpenChange={setDrawerOpen}
         sidebar={(
           <ModernSidebar
             currentView="chat-v2"
             onViewChange={() => {}}
             navigationScope="chat"
-            sidebarCollapsed={false}
+            sidebarCollapsed={sidebarCollapsed}
           />
         )}
       >
@@ -133,6 +168,26 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
           </Suspense>
         </div>
       </WorkbenchSidebarLayout>
+      {titlebarTarget ? createPortal(
+        <div className="wb-chat-titlebar-controls">
+          <CommonTooltip content={t('common:navigation.toggle_sidebar', '切换边栏')} position="bottom">
+            <DsButton
+              variant="ghost"
+              size="icon"
+              className="wb-chat-titlebar-sidebar-toggle"
+              onPointerDown={(event) => event.stopPropagation()}
+              onDoubleClick={(event) => event.stopPropagation()}
+              onClick={toggleNavigation}
+              aria-label={t('common:navigation.toggle_sidebar', '切换边栏')}
+              aria-expanded={navigationVisible}
+              data-wb-chat-sidebar-toggle
+            >
+              {navigationVisible ? <SidebarFrameWithLeftRailIcon /> : <SidebarFrameIcon />}
+            </DsButton>
+          </CommonTooltip>
+        </div>,
+        titlebarTarget,
+      ) : null}
     </div>
   );
 };

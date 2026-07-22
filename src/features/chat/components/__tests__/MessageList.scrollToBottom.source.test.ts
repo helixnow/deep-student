@@ -49,11 +49,19 @@ describe('MessageList scroll-to-bottom source contract', () => {
     expect(source).toContain('scrollTop < prevScrollTop - 1');
     expect(source).toContain('!dropExplainedByShrink');
     expect(source).toContain('const followingBottom = isAutoScrollingRef.current && !userHasScrolledRef.current;');
-    expect(source).toContain('const awayFromBottom = followingBottom ? (scrolledUp && !nearBottom) : !nearBottom;');
+    expect(source).toContain('const userScrolledUp = scrolledUp && userScrollInteractionRef.current;');
+    expect(source).toContain('const awayFromBottom = followingBottom ? (userScrolledUp && !nearBottom) : !nearBottom;');
     expect(source).toContain('userHasScrolledRef.current = awayFromBottom;');
     expect(source).toContain('setShowScrollToBottom(awayFromBottom);');
     expect(source).toContain("data-open={showScrollToBottom ? 'true' : 'false'}");
     expect(source).not.toContain('{showScrollToBottom && isStreaming && (');
+  });
+
+  it('wakes sticky bottom-follow immediately when streamed content grows', () => {
+    expect(source).toContain("viewportElement.querySelector<HTMLElement>('[role=\"log\"]')");
+    expect(source).toContain('new ResizeObserver(startLoop)');
+    expect(source).toContain('window.clearTimeout(idleTimerId);');
+    expect(source).toContain('resizeObserver?.disconnect();');
   });
 
   it('uses transitions-dev panel reveal semantics for fade-out', () => {

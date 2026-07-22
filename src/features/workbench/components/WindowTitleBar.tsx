@@ -401,6 +401,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
       ? t('a11y.immersiveExit')
       : t('a11y.immersiveEnter');
   const hostsAppTabs = appTypeId === 'notes' || appTypeId === 'files';
+  const hostsAppTitlebarSlot = hostsAppTabs || appTypeId === 'chat';
   /** 长标题被渐隐截断时，悬停标题栏空白区可见完整标题（三键自带 title 优先） */
   const barTooltip = titleOverflow ? title : undefined;
 
@@ -538,7 +539,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
           />
         </div>
       </div>
-      {hostsAppTabs ? (
+      {hostsAppTitlebarSlot ? (
         <div
           className="wb-title-app-slot"
           data-wb-titlebar-slot

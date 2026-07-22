@@ -237,6 +237,13 @@ describe('长标题溢出', () => {
       restoreSize();
     }
   });
+
+  it('chat exposes a titlebar control slot without replacing its centered title', () => {
+    const { container } = renderBar({ appTypeId: 'chat', title: '新对话' });
+
+    expect(container.querySelector('[data-wb-titlebar-slot]')).not.toBeNull();
+    expect(container.querySelector('[data-wb-window-title]')?.textContent).toBe('新对话');
+  });
 });
 
 describe('双击标题栏（按设置分发）', () => {

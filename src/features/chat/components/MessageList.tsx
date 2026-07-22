@@ -461,6 +461,9 @@ const MessageListInner: React.FC<MessageListProps> = ({
   const rafIdRef = useRef<number | null>(null);
   const programmaticScrollLockRef = useRef(false);
   const programmaticScrollUnlockTimerRef = useRef<number | null>(null);
+  // scroll 事件本身无法区分用户操作和流式内容重排。仅在指针拖动期间，
+  // 或由 wheel/key 明确报告向上意图时，才允许中断吸底跟随。
+  const userScrollInteractionRef = useRef(false);
 
   // 🔧 用户滚动意图检测：根据实际滚动位置决定是否保持吸底跟随
   const userHasScrolledRef = useRef(false);
@@ -589,6 +592,12 @@ const MessageListInner: React.FC<MessageListProps> = ({
     resumeAutoScrollRef.current();
   }, [scrollToBottom]);
 
+  const pauseAutoFollow = useCallback(() => {
+    if (!isAutoScrollingRef.current) return;
+    userHasScrolledRef.current = true;
+    setShowScrollToBottom(true);
+  }, []);
+
   // 基于真实滚动位置同步吸底状态与按钮可见性
   useEffect(() => {
     if (!viewportElement) return;
@@ -632,9 +641,10 @@ const MessageListInner: React.FC<MessageListProps> = ({
         scrollTop < prevScrollTop - 1 &&
         distanceToBottom > 1 &&
         !dropExplainedByShrink;
+      const userScrolledUp = scrolledUp && userScrollInteractionRef.current;
 
       if (programmaticScrollLockRef.current) {
-        if (scrolledUp) {
+        if (userScrolledUp) {
           // 锁窗口内用户上滚接管：立即解锁并暂停自动跟随
           releaseLock();
           userHasScrolledRef.current = true;
@@ -650,7 +660,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
       // 再要求 !nearBottom：跟随中若 scrollTop 因重排被下拉但仍贴近底部（距底 < 50px），
       // 视为抖动而非用户离开，避免收缩/clamp 抖动错误中断吸底。
       const followingBottom = isAutoScrollingRef.current && !userHasScrolledRef.current;
-      const awayFromBottom = followingBottom ? (scrolledUp && !nearBottom) : !nearBottom;
+      const awayFromBottom = followingBottom ? (userScrolledUp && !nearBottom) : !nearBottom;
       userHasScrolledRef.current = awayFromBottom;
       setShowScrollToBottom(awayFromBottom);
       // P1-8: 回到底部即视为"已读"，清除新消息圆点
@@ -670,13 +680,33 @@ const MessageListInner: React.FC<MessageListProps> = ({
     };
     syncScrollState();
     viewportElement.addEventListener('scroll', syncScrollState, { passive: true });
+    const beginUserScrollInteraction = () => {
+      userScrollInteractionRef.current = true;
+    };
+    const endUserScrollInteraction = () => {
+      userScrollInteractionRef.current = false;
+    };
+    const handleScrollKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowUp' || event.key === 'PageUp' || event.key === 'Home') {
+        pauseAutoFollow();
+      }
+    };
+    viewportElement.addEventListener('pointerdown', beginUserScrollInteraction, { passive: true });
+    window.addEventListener('pointerup', endUserScrollInteraction, { passive: true });
+    window.addEventListener('pointercancel', endUserScrollInteraction, { passive: true });
+    viewportElement.addEventListener('keydown', handleScrollKeyDown);
 
     return () => {
       syncScrollStateRef.current = () => {};
       resetScrollBaselineRef.current = () => {};
       viewportElement.removeEventListener('scroll', syncScrollState);
+      viewportElement.removeEventListener('pointerdown', beginUserScrollInteraction);
+      window.removeEventListener('pointerup', endUserScrollInteraction);
+      window.removeEventListener('pointercancel', endUserScrollInteraction);
+      viewportElement.removeEventListener('keydown', handleScrollKeyDown);
+      userScrollInteractionRef.current = false;
     };
-  }, [viewportElement]);
+  }, [pauseAutoFollow, viewportElement]);
 
   useEffect(() => {
     return () => {
@@ -690,12 +720,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
   useSmoothWheel(containerRef.current, {
     // 直接提供已知 viewport，避免缓动循环每帧 querySelector
     getScrollElement: () => viewportElement,
-    onUserScrollUp: () => {
-      if (isAutoScrollingRef.current) {
-        userHasScrolledRef.current = true;
-        setShowScrollToBottom(true);
-      }
-    },
+    onUserScrollUp: pauseAutoFollow,
   });
 
   // 🚀 P1优化：流式生成时使用 rAF 自动滚动（替代 setInterval）
@@ -760,13 +785,27 @@ const MessageListInner: React.FC<MessageListProps> = ({
       rafIdRef.current = requestAnimationFrame(scrollLoop);
     };
 
-    // 重启入口（防重入：rAF 或降频定时器任一在运行时调用为 no-op）
+    // 重启入口。内容增长时清掉贴底降频定时器，下一帧立即追上最新内容；
+    // 这也保证点击“回到底部”后会持续跟随，而不是只跳到点击瞬间的底部。
     const startLoop = () => {
-      if (!isAutoScrollingRef.current || rafIdRef.current !== null || idleTimerId !== null) return;
+      if (!isAutoScrollingRef.current || userHasScrolledRef.current) return;
+      if (idleTimerId !== null) {
+        window.clearTimeout(idleTimerId);
+        idleTimerId = null;
+      }
+      if (rafIdRef.current !== null) return;
       idleFrames = 0;
       rafIdRef.current = requestAnimationFrame(scrollLoop);
     };
     resumeAutoScrollRef.current = startLoop;
+
+    const streamedContent = viewportElement.querySelector<HTMLElement>('[role="log"]');
+    const resizeObserver = typeof ResizeObserver === 'function' && streamedContent
+      ? new ResizeObserver(startLoop)
+      : null;
+    if (resizeObserver && streamedContent) {
+      resizeObserver.observe(streamedContent);
+    }
 
     startLoop();
 
@@ -781,6 +820,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
         window.clearTimeout(idleTimerId);
         idleTimerId = null;
       }
+      resizeObserver?.disconnect();
     };
   }, [isStreaming, viewportElement]);
 
