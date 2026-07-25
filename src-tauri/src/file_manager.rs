@@ -887,6 +887,10 @@ impl FileManager {
         Ok(())
     }
 
+    fn portable_relative_path(path: &Path) -> String {
+        path.to_string_lossy().replace('\\', "/")
+    }
+
     /// ★ 审阅 14 P1-1：解析 notes_assets/<subject>/<note_id>，并确认位于 notes_assets 子树内。
     fn resolve_note_assets_dir(&self, subject: &str, note_id: &str) -> Result<PathBuf> {
         Self::validate_note_asset_path_segment("subject", subject)?;
@@ -942,9 +946,8 @@ impl FileManager {
         let abs_str = abs.to_string_lossy().to_string();
         let rel_str = abs
             .strip_prefix(&writable_dir)
-            .unwrap_or(&abs)
-            .to_string_lossy()
-            .to_string();
+            .map(Self::portable_relative_path)
+            .unwrap_or_else(|_| Self::portable_relative_path(&abs));
         Ok((abs_str, rel_str))
     }
 
@@ -1450,5 +1453,15 @@ mod note_asset_path_tests {
             "550e8400-e29b-41d4-a716-446655440000"
         )
         .is_ok());
+    }
+
+    #[test]
+    fn serializes_relative_asset_paths_with_forward_slashes() {
+        let path = Path::new(r"notes_assets\_global\note-1\image.png");
+
+        assert_eq!(
+            FileManager::portable_relative_path(path),
+            "notes_assets/_global/note-1/image.png"
+        );
     }
 }

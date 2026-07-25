@@ -64,6 +64,8 @@ export const createTransientBlobUrlRegistry = (): TransientBlobUrlRegistry => {
   };
 };
 
+export const normalizeNoteAssetPath = (path: string): string => path.replace(/\\/g, '/');
+
 /**
  * 将 File 转换为 base64 字符串
  */
@@ -153,7 +155,7 @@ export const createImageUploader = (
         // 1. markdown 正文只存储小体积的路径引用（如 "notes_assets/abc123.png"）
         // 2. 图片文件已经通过 notes_save_asset 保存到磁盘
         // 3. 编辑器渲染时 proxyDomURL 会自动转换路径为 data URL 显示
-        const stableRef = saved.relative_path;
+        const stableRef = normalizeNoteAssetPath(saved.relative_path);
 
         emitImageUploadDebug('upload_complete', 'info', '使用稳定路径引用代替 data URL', {
           stableRef,
@@ -251,6 +253,10 @@ export const createImageBlockConfig = (
         inputUrl: url?.slice(0, 100),
         urlLength: url?.length || 0,
       });
+
+      const normalizedAssetUrl = url.startsWith('notes_assets\\')
+        ? normalizeNoteAssetPath(url)
+        : url;
       
       // 如果是 http/https/blob/data URL，直接返回
       if (url.startsWith('http://') || url.startsWith('https://') || 
@@ -289,25 +295,25 @@ export const createImageBlockConfig = (
       }
       
       // 如果是 notes_assets 相对路径，通过后端获取 data URL
-      if (url.startsWith('notes_assets/') && isTauriEnv()) {
+      if (normalizedAssetUrl.startsWith('notes_assets/') && isTauriEnv()) {
         try {
           emitImageUploadDebug('file_read', 'info', 'proxyDomURL: 相对路径 -> 后端获取', {
-            relativePath: url,
+            relativePath: normalizedAssetUrl,
           });
           
           // 直接传递相对路径给后端，后端会自动处理
-          const base64Data = await getImageAsBase64(url);
+          const base64Data = await getImageAsBase64(normalizedAssetUrl);
           const dataUrl = base64Data.startsWith('data:') ? base64Data : `data:image/jpeg;base64,${base64Data}`;
           
           emitImageUploadDebug('file_read', 'success', 'proxyDomURL: 相对路径转换成功', {
-            inputUrl: url,
+            inputUrl: normalizedAssetUrl,
             dataUrlLength: dataUrl.length,
           });
           
           return dataUrl;
         } catch (e) {
           emitImageUploadDebug('error', 'error', 'proxyDomURL: 转换相对路径失败', {
-            url,
+            url: normalizedAssetUrl,
             error: getErrorMessage(e),
           });
           console.error('[imageUpload] proxyDomURL: failed to convert relative path', e);
@@ -318,7 +324,7 @@ export const createImageBlockConfig = (
           isTauri: isTauriEnv(),
         });
       }
-      return url;
+      return normalizedAssetUrl;
     },
   };
 };
