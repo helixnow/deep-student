@@ -314,6 +314,14 @@ body {
   overflow: hidden;
 }
 
+/* Chat can intentionally hide its mobile chrome in favour of an in-canvas
+   drawer trigger. Remove the otherwise reserved toolbar inset at the same time. */
+@media (width < 768px) {
+  [data-shell-role="app-shell"]:not(:has([data-mobile-shell="header"])) .desktop-shell-workspace {
+    padding-top: 0 !important;
+  }
+}
+
 .desktop-shell-view-layer {
   isolation: isolate;
 }
@@ -410,31 +418,15 @@ body {
   will-change: width, transform;
 }
 
-.desktop-shell-sidebar-expanded-accessory,
-.desktop-shell-sidebar-collapsed-accessory {
-  position: absolute;
+.desktop-shell-sidebar-top-accessory {
+  /* Keep titlebar controls out of the sidebar's animated layout layer. */
+  position: fixed;
   z-index: 20;
   pointer-events: none;
-}
-
-.desktop-shell-sidebar-expanded-accessory {
-  transform: translateX(var(--shell-sidebar-translate-x));
-  transition: transform var(--resize-dur) var(--resize-ease);
-  will-change: transform;
-}
-
-.desktop-shell-sidebar-collapsed-accessory {
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    opacity 120ms ease-out,
-    visibility 0s linear 120ms;
-}
-
-.desktop-shell-sidebar-collapsed-accessory[data-open="true"] {
-  opacity: 1;
-  visibility: visible;
-  transition-delay: 120ms, 0s;
+  transition: none !important;
+  animation: none !important;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .desktop-shell-sidebar-track {
@@ -457,15 +449,12 @@ body {
 }
 
 [data-shell-role="app-shell"][data-sidebar-visible="false"]
-  .desktop-shell-sidebar-motion-surface,
-[data-shell-role="app-shell"][data-sidebar-visible="false"]
-  .desktop-shell-sidebar-expanded-accessory {
+  .desktop-shell-sidebar-motion-surface {
   pointer-events: none;
 }
 
 [data-shell-role="app-shell"][data-sidebar-resizing="true"] .t-resize,
 [data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-sidebar-titlebar-surface,
-[data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-sidebar-expanded-accessory,
 [data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-sidebar-motion-surface,
 [data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-header-cell--nav,
 [data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-header-cell--workspace {
@@ -1432,8 +1421,7 @@ main {
   }
 
   .desktop-shell-sidebar-titlebar-surface,
-  .desktop-shell-sidebar-expanded-accessory,
-  .desktop-shell-sidebar-collapsed-accessory,
+  .desktop-shell-sidebar-top-accessory,
   .desktop-shell-sidebar-motion-surface,
   .desktop-shell-sidebar-resize-indicator,
   .desktop-shell-header-cell--nav,

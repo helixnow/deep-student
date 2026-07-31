@@ -755,6 +755,13 @@
     "about": "About",
     "plugins": "Plugins"
   },
+  "mobile_groups": {
+    "0": "Models",
+    "1": "General",
+    "2": "Tools & Search",
+    "3": "Data",
+    "4": "More"
+  },
   "automation": {
     "title": "Automations",
     "description": "Manage scheduled reminders and unattended Agent tasks.",

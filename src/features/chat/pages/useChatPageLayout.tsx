@@ -143,20 +143,11 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     showBackArrow: true,
     onMenuClick: closeGroupEditor,
   } : {
-    title: headerTitle,
-    showMenu: viewMode !== 'browser',
-    showBackArrow: viewMode === 'browser',
-    onMenuClick: viewMode === 'browser'
-      ? () => {
-          setViewMode('sidebar');
-          setSessionSheetOpen(true);
-        }
-      : sessionSheetOpen
-        ? () => setSessionSheetOpen(false)
-        : () => setSessionSheetOpen(true),
-    rightActions: headerRightActions,
+    // The chat home uses the drawer itself as navigation. The compact in-canvas
+    // trigger keeps the action available without a permanent top toolbar.
+    hidden: true,
   }, [
-    headerTitle, viewMode, headerRightActions, mobileResourcePanelOpen, sessionSheetOpen,
+    mobileResourcePanelOpen,
     finderBreadcrumbs, handleFinderBreadcrumbNavigate, t,
     mobileSandboxOpen, closeMobileSandbox, openAppTitle, closeMobileOpenApp,
     groupEditorOpen, groupEditorMode, closeGroupEditor,

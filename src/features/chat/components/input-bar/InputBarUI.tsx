@@ -20,7 +20,6 @@ import {
   UploadSimple,
   Camera,
   Lightning,
-  Sparkle,
   CircleNotch,
   FolderOpen,
   CaretDown,
@@ -3446,41 +3445,6 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                 onClick={handleToggleAdvancedPanel}
                 tooltipDisabled={tooltipDisabled}
               />
-            )}
-
-            {/* 📱 P1-2 移动端显式模型入口：模型名不再只埋在推理菜单二级里，
-                工具行放可截断的模型 chip，一点直达内联 ModelPicker */}
-            {isMobile && hasRuntimeModelMenu && (
-              <button
-                type="button"
-                data-testid="mobile-model-chip"
-                onClick={() => handleOpenRuntimeModelPanel('single')}
-                aria-label={runtimeModelSwitchLabel}
-                aria-expanded={panelStates.model}
-                className={cn(
-                  'inline-flex h-9 min-w-0 max-w-[10rem] shrink-0 items-center gap-1 rounded-full border px-2.5 text-[12px] font-medium leading-none transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
-                  coarseHitAreaClass,
-                  panelStates.model
-                    ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
-                    : 'border-[color:var(--input-shell-border)] bg-transparent text-[color:var(--button-utility-foreground)] active:bg-[color:var(--button-utility-active)]'
-                )}
-              >
-                {runtimeModelIconId ? (
-                  <ProviderIcon
-                    modelId={runtimeModelIconId}
-                    size={13}
-                    showTooltip={false}
-                    variant="mono"
-                    className="shrink-0 opacity-80"
-                  />
-                ) : (
-                  <Sparkle size={13} weight="bold" className="shrink-0 opacity-80" />
-                )}
-                <span className="min-w-0 truncate">
-                  {runtimeModelLabel ?? chooseRuntimeModelLabel}
-                </span>
-                <CaretDown size={11} weight="bold" className="shrink-0 opacity-55" />
-              </button>
             )}
 
             {/* 快捷键提示（对齐旧版 InputBar）：桌面 Enter 发送模式下，

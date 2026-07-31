@@ -819,8 +819,9 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
           >
             {hasSidebar ? (
               isMobileLayout ? (
-                <CustomScrollArea
-                  className="min-h-0 flex-1"
+                <>
+                  <CustomScrollArea
+                  className="scrollbar-none min-h-0 flex-1"
                   // OverlayScrollbars 会清零 viewport padding；安全区/键盘避让放内层
                   viewportClassName="h-full w-full min-h-0"
                 >
@@ -835,11 +836,21 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
                     {showSidebarAppNavigation && (
                       <MobileSidebarNavigation
                         embedded
+                        hideSettings
                         onNavigate={closeSidebarAfterAppNavigation}
                       />
                     )}
                   </div>
-                </CustomScrollArea>
+                  </CustomScrollArea>
+                  {showSidebarAppNavigation && (
+                    <div className="shrink-0 border-t border-border/70 px-2 pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))] pt-1">
+                      <MobileSidebarNavigation
+                        settingsOnly
+                        onNavigate={closeSidebarAfterAppNavigation}
+                      />
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="min-h-0 flex-1 overflow-hidden">{sidebar}</div>
               )

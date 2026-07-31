@@ -22,7 +22,7 @@
 .wb-browser-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -75,13 +75,13 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex: 1 1 auto;
   min-width: 0;
   height: 32px;
   padding: 0 10px 0 8px;
   border: 1px solid var(--wb-glass-border, hsl(var(--border) / 50%));
-  border-radius: var(--wb-menu-radius, 14px);
+  border-radius: var(--wb-radius-sm, 8px);
   background-color: var(--wb-glass-bg, hsl(var(--card) / 20%));
   background-image: var(--wb-glass-sheen, none);
   backdrop-filter: var(--wb-glass-blur, none);
@@ -347,6 +347,15 @@
    原 @media (width <= 700px) 按视口宽度判定，工作台窗口宽度与视口无关，属死代码 */
 .wb-browser-root[data-wb-sys-size='compact'] {
   padding: 8px;
+}
+
+.wb-browser-root[data-wb-sys-size='compact'] .wb-browser-nav .wb-browser-icon-btn:last-child {
+  display: none;
+}
+
+.wb-browser-root[data-wb-sys-size='compact'] .wb-browser-agent {
+  min-height: 28px;
+  padding-block: 4px;
 }
 
 .wb-browser-root[data-wb-sys-size='compact'] .wb-browser-detached {

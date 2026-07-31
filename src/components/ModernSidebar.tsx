@@ -14,6 +14,7 @@ import {
   CaretDoubleDown,
   CaretDoubleUp,
   Code,
+  Desktop,
   FileText,
   Flask,
   Folder,
@@ -57,9 +58,13 @@ import { SessionGroupActions } from '@/features/chat/pages/SessionGroupActions';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { AppUpdaterController } from '@/hooks/useAppUpdater';
 import type { CurrentView } from '@/types/navigation';
+import { useCommandPalette } from '@/command-palette';
 import { pageLifecycleTracker } from '@/debug-panel/services/pageLifecycleTracker';
 import { StudyComposeIcon, StudySettingsIcon } from './icons/StudySidebarIcons';
-import { WorkbenchModeSwitchRow } from './WorkbenchModeSwitchRow';
+import {
+  persistWorkbenchModeEnabled,
+  readWorkbenchModeEnabled,
+} from '@/features/settings/components/workbenchMode';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { formatShortcut } from '@/command-palette/registry/shortcutUtils';
 import {
@@ -330,7 +335,8 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   sidebarCollapsed = false,
   updater,
 }) => {
-  const { t } = useTranslation(['sidebar', 'common', 'chatV2']);
+  const { t } = useTranslation(['sidebar', 'common', 'chatV2', 'command_palette']);
+  const { openSessionSearch } = useCommandPalette();
   // 统一数据源：与 ChatV2 移动侧栏相同的「分组全量 + 未分组分页」策略（替代旧 limit:8 孤立拉取）
   const {
     sessions: rawRecentSessions,
@@ -365,8 +371,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const [editingRecentSessionTitle, setEditingRecentSessionTitle] = useState('');
   const [renamingRecentSessionId, setRenamingRecentSessionId] = useState<string | null>(null);
   const [recentRenameError, setRecentRenameError] = useState<string | null>(null);
-  // 侧栏内联搜索（标题即时过滤；全文搜索走会话浏览页）
-  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
+  const [workbenchModeEnabled, setWorkbenchModeEnabled] = useState(true);
   const draggedRecentGroupIdRef = useRef<string | null>(null);
   const draggedSessionIdRef = useRef<string | null>(null);
   const deleteConfirmResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -417,6 +422,30 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     }
     onViewChange(view);
   }, [currentView, onViewChange]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void readWorkbenchModeEnabled().then((enabled) => {
+      if (!cancelled) setWorkbenchModeEnabled(enabled);
+    });
+    const onModeChanged = (event: Event) => {
+      const enabled = (event as CustomEvent<{ enabled?: boolean }>).detail?.enabled;
+      if (typeof enabled === 'boolean') setWorkbenchModeEnabled(enabled);
+    };
+    window.addEventListener('workbench:mode-changed', onModeChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('workbench:mode-changed', onModeChanged);
+    };
+  }, []);
+
+  const handleWorkbenchModeAction = useCallback(() => {
+    const nextEnabled = !workbenchModeEnabled;
+    setWorkbenchModeEnabled(nextEnabled);
+    void persistWorkbenchModeEnabled(nextEnabled).then((saved) => {
+      if (!saved) setWorkbenchModeEnabled(!nextEnabled);
+    });
+  }, [workbenchModeEnabled]);
 
   useEffect(() => {
     if (currentView === 'chat-v2') {
@@ -1175,19 +1204,9 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     );
   }, [activeSessionId, beginDeleteConfirmation, blockingContinueLabel, blockingSessionIdSet, cancelRecentSessionRename, clearRecentGroupDragState, confirmingArchiveSessionId, confirmingDeleteSessionId, currentView, draggedSessionId, editingRecentSessionId, editingRecentSessionTitle, handleRecentSessionArchive, handleRecentSessionDelete, handleRecentSessionDragStart, handleRecentSessionOpen, handleRecentSessionPinToggle, openRecentSessionMenuId, prefersReducedMotion, recentRenameError, renamingRecentSessionId, resetDeleteConfirmation, saveRecentSessionRename, startRecentSessionRename, streamingSessionIdSet, t, unreadSessionIdSet]);
 
-  // 侧栏内联搜索：标题即时过滤；分组按「名称命中或含命中会话」保留
-  const normalizedSidebarSearch = sidebarSearchQuery.trim().toLowerCase();
-  const isSidebarSearchActive = normalizedSidebarSearch.length > 0;
-  const searchedSessions = useMemo(() => {
-    if (!normalizedSidebarSearch) return recentSessions;
-    return recentSessions.filter((session) =>
-      getSessionTitleText(session.title, '').toLowerCase().includes(normalizedSidebarSearch)
-    );
-  }, [normalizedSidebarSearch, recentSessions]);
-
   const pinnedRecentSessions = useMemo(
-    () => sortSessionsByUpdatedAt(searchedSessions.filter((session) => isSessionPinned(session))),
-    [searchedSessions]
+    () => sortSessionsByUpdatedAt(recentSessions.filter((session) => isSessionPinned(session))),
+    [recentSessions]
   );
 
   const {
@@ -1199,7 +1218,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     const groupLookup = new Map(recentGroups.map((group) => [group.id, group]));
     const looseSessions: ChatSession[] = [];
 
-    searchedSessions.forEach((session) => {
+    recentSessions.forEach((session) => {
       if (isSessionPinned(session)) {
         return;
       }
@@ -1220,33 +1239,20 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       sessions: sortSessionsByUpdatedAt(sessionsByGroup.get(group.id) ?? []),
     });
 
-    const matchesSearch = (section: RecentSessionGroup) =>
-      !normalizedSidebarSearch
-      || section.label.toLowerCase().includes(normalizedSidebarSearch)
-      || section.sessions.length > 0;
-
     const pinnedGroups = recentGroups
       .filter(isSessionGroupPinned)
-      .map(toRecentGroupSection)
-      .filter(matchesSearch);
+      .map(toRecentGroupSection);
 
     const topicGroups: RecentSessionGroup[] = recentGroups
       .filter((group) => !isSessionGroupPinned(group))
-      .map(toRecentGroupSection)
-      .filter(matchesSearch);
+      .map(toRecentGroupSection);
 
     return {
       pinnedRecentGroups: pinnedGroups,
       topicSessionGroups: topicGroups,
       conversationSessions: sortSessionsByUpdatedAt(looseSessions),
     };
-  }, [normalizedSidebarSearch, recentGroups, searchedSessions]);
-
-  const hasSidebarSearchResults =
-    pinnedRecentSessions.length > 0
-    || pinnedRecentGroups.length > 0
-    || topicSessionGroups.length > 0
-    || conversationSessions.length > 0;
+  }, [recentGroups, recentSessions]);
 
   const areAllTopicGroupsExpanded = useMemo(
     () => topicSessionGroups.length > 0 && topicSessionGroups.every((group) => !collapsedRecentGroupIds.has(group.id)),
@@ -1284,10 +1290,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   }, []);
 
   const renderRecentGroup = useCallback((group: RecentSessionGroup) => {
-    // 搜索时自动展开有命中的分组，便于直接看到结果
-    const isExpanded = isSidebarSearchActive
-      ? group.sessions.length > 0
-      : !collapsedRecentGroupIds.has(group.id);
+    const isExpanded = !collapsedRecentGroupIds.has(group.id);
     const isActive = false;
     const sessionGroup = recentGroups.find(g => g.id === group.id);
     if (!sessionGroup) {
@@ -1423,7 +1426,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         {sessionList}
       </section>
     );
-  }, [clearRecentGroupDragState, collapsedRecentGroupIds, dragOverRecentGroupId, draggedRecentGroupId, expandedRecentGroupSessionIds, handleRecentGroupDragOver, handleRecentGroupDragStart, handleRecentGroupDrop, handleRecentGroupPinToggle, handleViewChange, isSidebarSearchActive, recentGroups, renderRecentGroupIcon, renderRecentSessionRow, t, toggleRecentGroup, toggleRecentGroupSessions]);
+  }, [clearRecentGroupDragState, collapsedRecentGroupIds, dragOverRecentGroupId, draggedRecentGroupId, expandedRecentGroupSessionIds, handleRecentGroupDragOver, handleRecentGroupDragStart, handleRecentGroupDrop, handleRecentGroupPinToggle, handleViewChange, recentGroups, renderRecentGroupIcon, renderRecentSessionRow, t, toggleRecentGroup, toggleRecentGroupSessions]);
 
   const hasPinnedContent = pinnedRecentGroups.length > 0 || pinnedRecentSessions.length > 0;
   const isPinnedSectionCollapsed = collapsedSidebarSectionIds.has('pinned');
@@ -1489,6 +1492,29 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     >
       <WorkbenchSidebarFixed
         data-no-drag
+        data-sidebar-fixed-region="sidebar-brand"
+      >
+        <div className="flex h-8 items-center justify-between gap-2 px-2">
+          <span className="min-w-0 truncate font-[var(--font-family-display,var(--font-family))] text-[18px] font-semibold leading-none text-[color:var(--shell-navigation-foreground)]">
+            DeepStudent
+          </span>
+          <CommonTooltip content={t('command_palette:session_search_placeholder', '搜索会话...')} position="right">
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              aria-label={t('command_palette:session_search_placeholder', '搜索会话...')}
+              className="!h-8 !w-8 shrink-0 text-[color:var(--shell-navigation-muted)] hover:text-[color:var(--shell-navigation-foreground)]"
+              onClick={openSessionSearch}
+            >
+              <MagnifyingGlass size={16} weight="bold" />
+            </DsButton>
+          </CommonTooltip>
+        </div>
+      </WorkbenchSidebarFixed>
+
+      <WorkbenchSidebarFixed
+        data-no-drag
         data-sidebar-fixed-region="primary-navigation"
       >
         <nav aria-label={t('sidebar:aria.workspace_primary_entry')}>
@@ -1504,60 +1530,12 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         </nav>
       </WorkbenchSidebarFixed>
 
-      {/* 内联搜索：标题即时过滤。放在固定区而非滚动区内吸顶，
-          避免滚动 viewport 顶部 28px 渐隐 mask 把输入框上缘和 focus ring 淡化掉 */}
-      <WorkbenchSidebarFixed
-        data-no-drag
-        data-sidebar-fixed-region="session-search"
-      >
-        <div className="relative mt-2">
-          <MagnifyingGlass
-            size={14}
-            aria-hidden="true"
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--shell-navigation-muted)]"
-          />
-          <Input
-            type="text"
-            value={sidebarSearchQuery}
-            onChange={(event) => setSidebarSearchQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape' && sidebarSearchQuery) {
-                event.preventDefault();
-                event.stopPropagation();
-                setSidebarSearchQuery('');
-              }
-            }}
-            placeholder={t('sidebar:search.placeholder')}
-            aria-label={t('sidebar:search.placeholder')}
-            className="h-8 w-full rounded-[10px] border-transparent bg-[color:var(--interactive-hover)] pl-8 pr-7 text-[13px] shadow-none placeholder:text-[color:var(--shell-navigation-muted)] focus-visible:border-[color:var(--ring)]/40 focus-visible:ring-1 focus-visible:ring-ring"
-          />
-          {sidebarSearchQuery ? (
-            <DsButton
-              variant="ghost"
-              size="icon"
-              iconOnly
-              aria-label={t('sidebar:search.clear')}
-              className="absolute right-1 top-1/2 !h-6 !w-6 -translate-y-1/2 text-[color:var(--shell-navigation-muted)]"
-              onClick={() => setSidebarSearchQuery('')}
-            >
-              <X size={12} />
-            </DsButton>
-          ) : null}
-        </div>
-      </WorkbenchSidebarFixed>
-
       <WorkbenchSidebarScroll>
           {/* pt-5：让静止时首个分区标题避开 viewport 顶部 28px 渐隐 mask */}
           <div
             className="flex flex-col gap-3 px-2 pb-6 pt-5"
             data-no-drag
           >
-            {isSidebarSearchActive && !hasSidebarSearchResults ? (
-              <p className="px-2 py-1 text-[12px] text-[color:var(--shell-navigation-muted)]">
-                {t('sidebar:search.no_results')}
-              </p>
-            ) : null}
-
             {hasPinnedContent ? (
               <section className="space-y-0.5 pt-1">
                 {renderSidebarSectionHeader({ id: 'pinned', label: pinnedSectionLabel })}
@@ -1653,7 +1631,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                     />
                   ) : null}
                   {/* 展开后如未分组会话仍有分页余量，可继续加载（与移动侧栏同一策略） */}
-                  {conversationSessionsExpanded && hasMoreUngroupedSessions && !isSidebarSearchActive ? (
+                  {conversationSessionsExpanded && hasMoreUngroupedSessions ? (
                     <SidebarSessionOverflowToggle
                       label={isLoadingMoreSessions ? t('chatV2:page.loading') : t('chatV2:page.loadMore')}
                       onClick={(event) => {
@@ -1672,20 +1650,39 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
       {navigationScope === 'full' ? (
       <div className="mt-auto shrink-0 px-2 pb-3 pt-1" data-no-drag>
-        {/* 学习桌面快捷开关（与设置页总开关同一契约，便于快速切换） */}
-        <WorkbenchModeSwitchRow />
         <div className="relative flex justify-start">
-          <SidebarRow
-            rowType="nav"
-            onClick={() => handleViewChange('settings')}
-            aria-label={t('sidebar:navigation.settings')}
-            aria-current={currentView === 'settings' ? 'page' : undefined}
-            isActive={currentView === 'settings'}
-            data-tour-id="nav-settings"
-            leftSlot={<StudySettingsIcon className="size-[18px]" strokeWidth={2} />}
-          >
-            <SidebarRowLabel>{t('sidebar:navigation.settings')}</SidebarRowLabel>
-          </SidebarRow>
+          <AppMenu className="flex w-full">
+            <AppMenuTrigger asChild>
+              <SidebarRow
+                rowType="nav"
+                aria-label={t('sidebar:navigation.settings')}
+                aria-current={currentView === 'settings' ? 'page' : undefined}
+                isActive={currentView === 'settings'}
+                data-tour-id="nav-settings"
+                leftSlot={<StudySettingsIcon className="size-[18px]" strokeWidth={2} />}
+              >
+                <SidebarRowLabel>{t('sidebar:navigation.settings')}</SidebarRowLabel>
+              </SidebarRow>
+            </AppMenuTrigger>
+            <AppMenuContent align="start" width={224}>
+              <AppMenuGroup>
+                <AppMenuItem
+                  icon={<StudySettingsIcon className="size-4" strokeWidth={2} />}
+                  onClick={() => handleViewChange('settings')}
+                >
+                  {t('sidebar:navigation.settings')}
+                </AppMenuItem>
+                <AppMenuItem
+                  icon={<Desktop size={16} />}
+                  onClick={handleWorkbenchModeAction}
+                >
+                  {workbenchModeEnabled
+                    ? t('sidebar:actions.hide_workbench_mode', '隐藏学习桌面')
+                    : t('sidebar:actions.show_workbench_mode', '显示学习桌面')}
+                </AppMenuItem>
+              </AppMenuGroup>
+            </AppMenuContent>
+          </AppMenu>
 
           {shouldShowUpdateBadge ? (
             <button

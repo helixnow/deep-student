@@ -1295,6 +1295,18 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         >
           {/* 移动端：会话浏览作为主内容区域的一部分，直接切换 */}
           <div className="relative flex h-full flex-col">
+            {!groupEditorOpen && !mobileResourcePanelOpen && (
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                className="absolute left-3 top-[calc(0.75rem+var(--mobile-safe-area-top,0px))] z-20 !h-11 !w-11 rounded-[12px] bg-background/90 shadow-[var(--shadow-shell-soft)]"
+                onClick={() => setSessionSheetOpen(true)}
+                aria-label={t('common:mobile_header.open_sidebar')}
+              >
+                <SidebarFrameWithLeftRailIcon className="size-5" />
+              </DsButton>
+            )}
             {viewMode === 'browser' && renderArchiveConfirmBar()}
             {viewMode === 'browser' ? (
               <SessionBrowser

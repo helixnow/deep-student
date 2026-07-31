@@ -1183,6 +1183,7 @@
     "sessionNamePlaceholder": "输入会话名称",
     "welcome": "欢迎使用 DeepStudent",
     "newChat": "新对话",
+    "mobileDrawerSubtitle": "从这里开始学习",
     "selectOrCreate": "选择一个会话或创建新会话开始聊天",
     "timeGroups": {
       "today": "今天",

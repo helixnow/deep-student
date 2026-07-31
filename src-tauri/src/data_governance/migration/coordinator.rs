@@ -54,10 +54,70 @@ use super::vfs::VFS_MIGRATION_SET;
 const SCHEMA_FINGERPRINT_TABLE: &str = "__governance_schema_fingerprints";
 const CHAT_V2_SESSION_TAGS_SYNC_VERSION: u32 = 20260711;
 const CHAT_V2_SESSION_TAGS_PREVIOUS_VERSION: u32 = 20260528;
-const CHAT_V2_SESSION_TAGS_SYNC_TRIGGERS: [&str; 3] = [
-    "trg__change_log_session_tags_delete",
-    "trg__change_log_session_tags_insert",
-    "trg__change_log_session_tags_update",
+const CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION: u32 = 20260721;
+const CHAT_V2_WORKSPACE_DELETION_JOURNAL_PREVIOUS_VERSION: u32 = 20260720;
+const CHAT_V2_WORKSPACE_DELETION_JOURNAL_LEGACY_SCOPE_VERSION: u32 = 20260719;
+const CHAT_V2_WORKSPACE_DELETION_JOURNAL_LEGACY_FINGERPRINT: &str =
+    "50871351ff82068328d59089f21a2b400be006e15be136ce5991d8e2d41fabd6";
+
+/// A narrowly scoped recovery for a fingerprint written by an older binary
+/// whose migration set ended immediately before `target_version`.
+///
+/// This is intentionally an allowlist rather than a general rebaseline path:
+/// every listed migration must validate the complete schema delta against a
+/// scratch database before its stale fingerprint can be replaced.
+#[derive(Debug)]
+struct KnownPriorScopeRecoverySpec {
+    target_version: u32,
+    previous_version: u32,
+    accepted_recorded_scope_versions: &'static [u32],
+    accepted_recorded_fingerprints: &'static [&'static str],
+    validate_current_schema_against_target: bool,
+    migration_name: &'static str,
+    added_tables: &'static [&'static str],
+    added_indexes: &'static [&'static str],
+    added_triggers: &'static [&'static str],
+}
+
+const CHAT_V2_KNOWN_PRIOR_SCOPE_RECOVERIES: &[KnownPriorScopeRecoverySpec] = &[
+    KnownPriorScopeRecoverySpec {
+        target_version: CHAT_V2_SESSION_TAGS_SYNC_VERSION,
+        previous_version: CHAT_V2_SESSION_TAGS_PREVIOUS_VERSION,
+        accepted_recorded_scope_versions: &[CHAT_V2_SESSION_TAGS_PREVIOUS_VERSION],
+        accepted_recorded_fingerprints: &[],
+        validate_current_schema_against_target: false,
+        migration_name: "session_tags_sync_coverage",
+        added_tables: &[],
+        added_indexes: &[],
+        added_triggers: &[
+            "trg__change_log_session_tags_delete",
+            "trg__change_log_session_tags_insert",
+            "trg__change_log_session_tags_update",
+        ],
+    },
+    KnownPriorScopeRecoverySpec {
+        target_version: CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+        previous_version: CHAT_V2_WORKSPACE_DELETION_JOURNAL_PREVIOUS_VERSION,
+        // An early v20260721 binary predated V20260720 in its migration
+        // registry and wrote the v20260719 baseline under the v20260721 key.
+        accepted_recorded_scope_versions: &[
+            CHAT_V2_WORKSPACE_DELETION_JOURNAL_PREVIOUS_VERSION,
+            CHAT_V2_WORKSPACE_DELETION_JOURNAL_LEGACY_SCOPE_VERSION,
+        ],
+        // The canonical text emitted by the July 2026 draft cannot be
+        // reproduced from today's historical SQL. Accept only its audited
+        // SHA-256, after the stored text and the live target schema both pass
+        // independent validation below.
+        accepted_recorded_fingerprints: &[CHAT_V2_WORKSPACE_DELETION_JOURNAL_LEGACY_FINGERPRINT],
+        validate_current_schema_against_target: true,
+        migration_name: "workspace_deletion_intent_journal",
+        added_tables: &["__file_deletion_journal"],
+        added_indexes: &[
+            "idx__file_deletion_journal_recovery",
+            "idx__file_deletion_journal_target",
+        ],
+        added_triggers: &["trg__workspace_deletion_queue_published"],
+    },
 ];
 const CORE_BACKUP_ROOT_DIR_NAME: &str = "migration_core_backups";
 const CORE_BACKUP_RETENTION_COUNT: usize = 5;
@@ -3882,11 +3942,8 @@ END;",
                         "Schema fingerprint used legacy broad scope, rebaseline to migration-managed scope"
                     );
                 } else if known_prior_scope_poisoning {
-                    tracing::warn!(
-                        database = id.as_str(),
-                        version = schema_version,
-                        "Recovering known chat_v2 fingerprint recorded with the immediately previous migration scope"
-                    );
+                    // The recovery helper emitted a structured audit warning after every
+                    // schema-delta and sqlite_master comparison completed successfully.
                 } else if allow_rebaseline {
                     tracing::warn!(
                         database = id.as_str(),
@@ -3956,17 +4013,23 @@ END;",
         stored_canonical_schema: Option<&str>,
         current_fingerprint: &SchemaFingerprint,
     ) -> Result<bool, MigrationError> {
-        if id != &DatabaseId::ChatV2
-            || migration_set.database_name != "chat_v2"
-            || schema_version != CHAT_V2_SESSION_TAGS_SYNC_VERSION
-        {
+        if id != &DatabaseId::ChatV2 || migration_set.database_name != "chat_v2" {
             return Ok(false);
         }
 
+        let Some(spec) = CHAT_V2_KNOWN_PRIOR_SCOPE_RECOVERIES
+            .iter()
+            .find(|spec| spec.target_version == schema_version)
+        else {
+            return Ok(false);
+        };
+
         let Some(stored_canonical_schema) = stored_canonical_schema else {
+            Self::log_known_prior_scope_recovery_rejection(id, spec, "missing_canonical_schema");
             return Ok(false);
         };
         if Self::hash_canonical_schema(stored_canonical_schema)? != stored_hash {
+            Self::log_known_prior_scope_recovery_rejection(id, spec, "stored_hash_mismatch");
             return Ok(false);
         }
 
@@ -3975,6 +4038,7 @@ END;",
             .iter()
             .position(|migration| migration.refinery_version == schema_version as i32)
         else {
+            Self::log_known_prior_scope_recovery_rejection(id, spec, "target_migration_not_found");
             return Ok(false);
         };
         let target_migration = &migration_set.migrations[target_position];
@@ -3982,86 +4046,175 @@ END;",
             .checked_sub(1)
             .and_then(|position| migration_set.migrations.get(position))
             .map(|migration| migration.refinery_version);
-        if target_migration.name != "session_tags_sync_coverage"
-            || previous_version != Some(CHAT_V2_SESSION_TAGS_PREVIOUS_VERSION as i32)
+        if target_migration.name != spec.migration_name
+            || previous_version != Some(spec.previous_version as i32)
         {
+            Self::log_known_prior_scope_recovery_rejection(id, spec, "migration_chain_mismatch");
             return Ok(false);
         }
 
-        let previous_scope = self.compute_schema_fingerprint_scope(
-            migration_set,
-            CHAT_V2_SESSION_TAGS_PREVIOUS_VERSION,
-        )?;
-        if current_fingerprint.scope.tables != previous_scope.tables
-            || current_fingerprint.scope.indexes != previous_scope.indexes
-            || previous_scope
-                .triggers
-                .difference(&current_fingerprint.scope.triggers)
-                .next()
-                .is_some()
-        {
+        let previous_scope =
+            self.compute_schema_fingerprint_scope(migration_set, spec.previous_version)?;
+        if !Self::scope_delta_matches(&previous_scope, &current_fingerprint.scope, spec) {
+            Self::log_known_prior_scope_recovery_rejection(
+                id,
+                spec,
+                "managed_scope_delta_mismatch",
+            );
             return Ok(false);
         }
 
-        let added_triggers: Vec<&str> = current_fingerprint
-            .scope
-            .triggers
-            .difference(&previous_scope.triggers)
-            .map(String::as_str)
-            .collect();
-        if added_triggers.as_slice() != CHAT_V2_SESSION_TAGS_SYNC_TRIGGERS.as_slice() {
-            return Ok(false);
-        }
-
-        if current_fingerprint
-            .canonical_schema
-            .lines()
-            .any(|line| line.starts_with("missing_"))
-        {
-            return Ok(false);
-        }
-        let current_in_previous_scope = Self::filter_canonical_schema_to_scope(
-            &current_fingerprint.canonical_schema,
-            &previous_scope,
-        );
-        if current_in_previous_scope != stored_canonical_schema {
-            return Ok(false);
-        }
-
-        let scratch = rusqlite::Connection::open_in_memory()
-            .map_err(|error| MigrationError::Database(error.to_string()))?;
-        for migration in migration_set.migrations.iter() {
-            if migration.refinery_version > schema_version as i32 {
-                continue;
+        let scratch = Self::build_migration_scratch(migration_set, schema_version)?;
+        if spec.validate_current_schema_against_target {
+            let expected_current =
+                self.compute_schema_fingerprint(&scratch, migration_set, schema_version)?;
+            if current_fingerprint.canonical_schema != expected_current.canonical_schema {
+                Self::log_known_prior_scope_recovery_rejection(
+                    id,
+                    spec,
+                    "current_schema_does_not_match_target_migrations",
+                );
+                return Ok(false);
             }
-            scratch
-                .execute_batch(migration.sql)
-                .map_err(|error| MigrationError::Database(error.to_string()))?;
-        }
-
-        for trigger in CHAT_V2_SESSION_TAGS_SYNC_TRIGGERS {
-            let actual_sql: Option<String> = conn
-                .query_row(
-                    "SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?1",
-                    [trigger],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(|error| MigrationError::Database(error.to_string()))?;
-            let expected_sql: Option<String> = scratch
-                .query_row(
-                    "SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?1",
-                    [trigger],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(|error| MigrationError::Database(error.to_string()))?;
-            if actual_sql.is_none() || actual_sql != expected_sql {
+            let mut recorded_scope_matches = false;
+            for recorded_scope_version in spec.accepted_recorded_scope_versions {
+                let recorded_scratch =
+                    Self::build_migration_scratch(migration_set, *recorded_scope_version)?;
+                let expected_recorded = self.compute_schema_fingerprint(
+                    &recorded_scratch,
+                    migration_set,
+                    *recorded_scope_version,
+                )?;
+                if expected_recorded.canonical_schema == stored_canonical_schema {
+                    recorded_scope_matches = true;
+                    break;
+                }
+            }
+            let known_historical_fingerprint = spec
+                .accepted_recorded_fingerprints
+                .iter()
+                .any(|fingerprint| *fingerprint == stored_hash);
+            if !recorded_scope_matches && !known_historical_fingerprint {
+                Self::log_known_prior_scope_recovery_rejection(
+                    id,
+                    spec,
+                    "recorded_scope_canonical_mismatch",
+                );
+                return Ok(false);
+            }
+        } else {
+            let current_in_previous_scope = Self::filter_canonical_schema_to_scope(
+                &current_fingerprint.canonical_schema,
+                &previous_scope,
+            );
+            if current_in_previous_scope != stored_canonical_schema {
+                Self::log_known_prior_scope_recovery_rejection(
+                    id,
+                    spec,
+                    "previous_scope_canonical_mismatch",
+                );
                 return Ok(false);
             }
         }
 
+        for (object_type, names) in [
+            ("table", spec.added_tables),
+            ("index", spec.added_indexes),
+            ("trigger", spec.added_triggers),
+        ] {
+            for name in names {
+                let actual = Self::schema_object_definition(conn, object_type, name)?;
+                let expected = Self::schema_object_definition(&scratch, object_type, name)?;
+                if actual.is_none() || actual != expected {
+                    Self::log_known_prior_scope_recovery_rejection(
+                        id,
+                        spec,
+                        "added_object_definition_mismatch",
+                    );
+                    return Ok(false);
+                }
+            }
+        }
+
+        tracing::warn!(
+            database = id.as_str(),
+            target_version = spec.target_version,
+            previous_version = spec.previous_version,
+            migration = spec.migration_name,
+            stored_fingerprint = %stored_hash,
+            actual_fingerprint = %current_fingerprint.hash,
+            "Validated and recovering known chat_v2 prior-scope schema fingerprint"
+        );
+
         Ok(true)
+    }
+
+    fn log_known_prior_scope_recovery_rejection(
+        id: &DatabaseId,
+        spec: &KnownPriorScopeRecoverySpec,
+        reason: &str,
+    ) {
+        tracing::warn!(
+            database = id.as_str(),
+            target_version = spec.target_version,
+            previous_version = spec.previous_version,
+            migration = spec.migration_name,
+            reason,
+            "Rejected known chat_v2 prior-scope fingerprint recovery"
+        );
+    }
+
+    fn scope_delta_matches(
+        previous: &SchemaFingerprintScope,
+        current: &SchemaFingerprintScope,
+        spec: &KnownPriorScopeRecoverySpec,
+    ) -> bool {
+        fn matches(
+            previous: &BTreeSet<String>,
+            current: &BTreeSet<String>,
+            expected_added: &[&str],
+        ) -> bool {
+            let expected_added = expected_added
+                .iter()
+                .map(|name| (*name).to_owned())
+                .collect::<BTreeSet<_>>();
+            previous.is_subset(current) && current.difference(previous).eq(expected_added.iter())
+        }
+
+        matches(&previous.tables, &current.tables, spec.added_tables)
+            && matches(&previous.indexes, &current.indexes, spec.added_indexes)
+            && matches(&previous.triggers, &current.triggers, spec.added_triggers)
+    }
+
+    fn schema_object_definition(
+        conn: &rusqlite::Connection,
+        object_type: &str,
+        name: &str,
+    ) -> Result<Option<(String, String, String, String)>, MigrationError> {
+        conn.query_row(
+            "SELECT type, name, tbl_name, IFNULL(sql, '')
+             FROM sqlite_master WHERE type = ?1 AND name = ?2",
+            [object_type, name],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .optional()
+        .map_err(|error| MigrationError::Database(error.to_string()))
+    }
+
+    fn build_migration_scratch(
+        migration_set: &MigrationSet,
+        schema_version: u32,
+    ) -> Result<rusqlite::Connection, MigrationError> {
+        let scratch = rusqlite::Connection::open_in_memory()
+            .map_err(|error| MigrationError::Database(error.to_string()))?;
+        for migration in migration_set.migrations.iter() {
+            if migration.refinery_version <= schema_version as i32 {
+                scratch
+                    .execute_batch(migration.sql)
+                    .map_err(|error| MigrationError::Database(error.to_string()))?;
+            }
+        }
+        Ok(scratch)
     }
 
     fn ensure_schema_fingerprint_table(
@@ -4944,23 +5097,58 @@ mod tests {
         coordinator: &MigrationCoordinator,
         conn: &rusqlite::Connection,
     ) -> SchemaFingerprint {
+        seed_chat_v2_prior_scope_fingerprint_for(
+            coordinator,
+            conn,
+            CHAT_V2_SESSION_TAGS_SYNC_VERSION,
+            CHAT_V2_SESSION_TAGS_PREVIOUS_VERSION,
+        )
+    }
+
+    fn seed_chat_v2_prior_scope_fingerprint_for(
+        coordinator: &MigrationCoordinator,
+        conn: &rusqlite::Connection,
+        target_version: u32,
+        previous_version: u32,
+    ) -> SchemaFingerprint {
         coordinator.ensure_schema_fingerprint_table(conn).unwrap();
         let prior = coordinator
-            .compute_schema_fingerprint(
-                conn,
-                &CHAT_V2_MIGRATION_SET,
-                CHAT_V2_SESSION_TAGS_PREVIOUS_VERSION,
-            )
+            .compute_schema_fingerprint(conn, &CHAT_V2_MIGRATION_SET, previous_version)
             .unwrap();
         conn.execute(
             "INSERT INTO __governance_schema_fingerprints
              (database_id, schema_version, fingerprint, verified_at, canonical_schema)
              VALUES ('chat_v2', ?1, ?2, 'poisoned-baseline', ?3)",
-            rusqlite::params![
-                CHAT_V2_SESSION_TAGS_SYNC_VERSION,
-                prior.hash,
-                prior.canonical_schema
-            ],
+            rusqlite::params![target_version, prior.hash, prior.canonical_schema],
+        )
+        .unwrap();
+        prior
+    }
+
+    fn seed_chat_v2_historical_scope_fingerprint(
+        coordinator: &MigrationCoordinator,
+        conn: &rusqlite::Connection,
+        target_version: u32,
+        recorded_scope_version: u32,
+    ) -> SchemaFingerprint {
+        coordinator.ensure_schema_fingerprint_table(conn).unwrap();
+        let historical_scratch = MigrationCoordinator::build_migration_scratch(
+            &CHAT_V2_MIGRATION_SET,
+            recorded_scope_version,
+        )
+        .unwrap();
+        let prior = coordinator
+            .compute_schema_fingerprint(
+                &historical_scratch,
+                &CHAT_V2_MIGRATION_SET,
+                recorded_scope_version,
+            )
+            .unwrap();
+        conn.execute(
+            "INSERT INTO __governance_schema_fingerprints
+             (database_id, schema_version, fingerprint, verified_at, canonical_schema)
+             VALUES ('chat_v2', ?1, ?2, 'poisoned-historical-baseline', ?3)",
+            rusqlite::params![target_version, prior.hash, prior.canonical_schema],
         )
         .unwrap();
         prior
@@ -5480,6 +5668,270 @@ mod tests {
             }
             other => panic!("unexpected error: {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_known_chat_v2_v20260721_prior_scope_fingerprint_is_recovered_and_stable() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("chat_v2.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        apply_chat_v2_migrations(&conn);
+        let prior = seed_chat_v2_prior_scope_fingerprint_for(
+            &coordinator,
+            &conn,
+            CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+            CHAT_V2_WORKSPACE_DELETION_JOURNAL_PREVIOUS_VERSION,
+        );
+        let current = coordinator
+            .compute_schema_fingerprint(
+                &conn,
+                &CHAT_V2_MIGRATION_SET,
+                CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+            )
+            .unwrap();
+        assert_ne!(prior.hash, current.hash);
+
+        coordinator
+            .verify_schema_fingerprint(
+                &conn,
+                &DatabaseId::ChatV2,
+                &CHAT_V2_MIGRATION_SET,
+                CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+                false,
+            )
+            .unwrap();
+
+        let persisted: (String, String) = conn
+            .query_row(
+                "SELECT fingerprint, canonical_schema
+                 FROM __governance_schema_fingerprints
+                 WHERE database_id='chat_v2' AND schema_version=?1",
+                [CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(persisted, (current.hash, current.canonical_schema));
+
+        coordinator
+            .verify_schema_fingerprint(
+                &conn,
+                &DatabaseId::ChatV2,
+                &CHAT_V2_MIGRATION_SET,
+                CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+                false,
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn test_known_chat_v2_v20260721_recovers_v20260719_historical_scope_fingerprint() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("chat_v2.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        apply_chat_v2_migrations(&conn);
+        let historical = seed_chat_v2_historical_scope_fingerprint(
+            &coordinator,
+            &conn,
+            CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+            CHAT_V2_WORKSPACE_DELETION_JOURNAL_LEGACY_SCOPE_VERSION,
+        );
+        let current = coordinator
+            .compute_schema_fingerprint(
+                &conn,
+                &CHAT_V2_MIGRATION_SET,
+                CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+            )
+            .unwrap();
+        assert_ne!(historical.hash, current.hash);
+
+        coordinator
+            .verify_schema_fingerprint(
+                &conn,
+                &DatabaseId::ChatV2,
+                &CHAT_V2_MIGRATION_SET,
+                CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+                false,
+            )
+            .unwrap();
+
+        let persisted: (String, String) = conn
+            .query_row(
+                "SELECT fingerprint, canonical_schema
+                 FROM __governance_schema_fingerprints
+                 WHERE database_id='chat_v2' AND schema_version=?1",
+                [CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(persisted, (current.hash, current.canonical_schema));
+    }
+
+    #[test]
+    fn test_known_chat_v2_v20260721_recovery_rejects_changed_journal_table_sql() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("chat_v2.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        apply_chat_v2_migrations(&conn);
+        seed_chat_v2_prior_scope_fingerprint_for(
+            &coordinator,
+            &conn,
+            CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+            CHAT_V2_WORKSPACE_DELETION_JOURNAL_PREVIOUS_VERSION,
+        );
+        conn.execute(
+            "ALTER TABLE __file_deletion_journal ADD COLUMN external_drift_marker TEXT",
+            [],
+        )
+        .unwrap();
+
+        let error = coordinator
+            .verify_schema_fingerprint(
+                &conn,
+                &DatabaseId::ChatV2,
+                &CHAT_V2_MIGRATION_SET,
+                CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+                false,
+            )
+            .unwrap_err();
+        assert!(matches!(error, MigrationError::VerificationFailed { .. }));
+    }
+
+    #[test]
+    fn test_known_chat_v2_v20260721_recovery_rejects_changed_journal_index_sql() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("chat_v2.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        apply_chat_v2_migrations(&conn);
+        seed_chat_v2_prior_scope_fingerprint_for(
+            &coordinator,
+            &conn,
+            CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+            CHAT_V2_WORKSPACE_DELETION_JOURNAL_PREVIOUS_VERSION,
+        );
+        conn.execute_batch(
+            "DROP INDEX idx__file_deletion_journal_recovery;
+             CREATE INDEX idx__file_deletion_journal_recovery
+             ON __file_deletion_journal(state, prepared_at);",
+        )
+        .unwrap();
+
+        let error = coordinator
+            .verify_schema_fingerprint(
+                &conn,
+                &DatabaseId::ChatV2,
+                &CHAT_V2_MIGRATION_SET,
+                CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+                false,
+            )
+            .unwrap_err();
+        assert!(matches!(error, MigrationError::VerificationFailed { .. }));
+    }
+
+    #[test]
+    fn test_known_chat_v2_v20260721_recovery_rejects_changed_journal_trigger_sql() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("chat_v2.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        apply_chat_v2_migrations(&conn);
+        seed_chat_v2_prior_scope_fingerprint_for(
+            &coordinator,
+            &conn,
+            CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+            CHAT_V2_WORKSPACE_DELETION_JOURNAL_PREVIOUS_VERSION,
+        );
+        conn.execute_batch(
+            "DROP TRIGGER trg__workspace_deletion_queue_published;
+             CREATE TRIGGER trg__workspace_deletion_queue_published
+             AFTER DELETE ON __workspace_deletion_queue BEGIN SELECT 1; END;",
+        )
+        .unwrap();
+
+        let error = coordinator
+            .verify_schema_fingerprint(
+                &conn,
+                &DatabaseId::ChatV2,
+                &CHAT_V2_MIGRATION_SET,
+                CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+                false,
+            )
+            .unwrap_err();
+        assert!(matches!(error, MigrationError::VerificationFailed { .. }));
+    }
+
+    #[test]
+    fn test_known_chat_v2_v20260721_recovery_rejects_malformed_stored_hash() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("chat_v2.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        apply_chat_v2_migrations(&conn);
+        seed_chat_v2_prior_scope_fingerprint_for(
+            &coordinator,
+            &conn,
+            CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+            CHAT_V2_WORKSPACE_DELETION_JOURNAL_PREVIOUS_VERSION,
+        );
+        conn.execute(
+            "UPDATE __governance_schema_fingerprints SET fingerprint='not-a-sha256'
+             WHERE database_id='chat_v2' AND schema_version=?1",
+            [CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION],
+        )
+        .unwrap();
+
+        let error = coordinator
+            .verify_schema_fingerprint(
+                &conn,
+                &DatabaseId::ChatV2,
+                &CHAT_V2_MIGRATION_SET,
+                CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+                false,
+            )
+            .unwrap_err();
+        assert!(matches!(error, MigrationError::VerificationFailed { .. }));
+    }
+
+    #[test]
+    fn test_known_chat_v2_prior_scope_recovery_rejects_unlisted_versions_and_databases() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("chat_v2.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        apply_chat_v2_migrations(&conn);
+
+        let v20260719 = coordinator
+            .compute_schema_fingerprint(&conn, &CHAT_V2_MIGRATION_SET, 20260719)
+            .unwrap();
+        let v20260720 = coordinator
+            .compute_schema_fingerprint(&conn, &CHAT_V2_MIGRATION_SET, 20260720)
+            .unwrap();
+        assert!(!coordinator
+            .is_known_chat_v2_prior_scope_fingerprint(
+                &conn,
+                &DatabaseId::ChatV2,
+                &CHAT_V2_MIGRATION_SET,
+                20260720,
+                &v20260719.hash,
+                Some(&v20260719.canonical_schema),
+                &v20260720,
+            )
+            .unwrap());
+
+        let v20260721 = coordinator
+            .compute_schema_fingerprint(
+                &conn,
+                &CHAT_V2_MIGRATION_SET,
+                CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+            )
+            .unwrap();
+        assert!(!coordinator
+            .is_known_chat_v2_prior_scope_fingerprint(
+                &conn,
+                &DatabaseId::Mistakes,
+                &CHAT_V2_MIGRATION_SET,
+                CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION,
+                &v20260720.hash,
+                Some(&v20260720.canonical_schema),
+                &v20260721,
+            )
+            .unwrap());
     }
 
     #[cfg(feature = "data_governance")]

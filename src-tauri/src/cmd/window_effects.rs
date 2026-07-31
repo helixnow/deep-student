@@ -8,10 +8,13 @@ use crate::models::AppError;
 type Result<T> = std::result::Result<T, AppError>;
 
 #[cfg(target_os = "macos")]
-const TITLEBAR_SIDEBAR_VIEW_TAG: i64 = 0x44535455;
+const TITLEBAR_SIDEBAR_VIEW_IDENTIFIER: &str = "com.deepstudent.titlebar-sidebar-material";
 
 #[cfg(target_os = "macos")]
-unsafe fn find_tagged_subview(container: cocoa::base::id, tag: i64) -> cocoa::base::id {
+unsafe fn find_identified_subview(
+    container: cocoa::base::id,
+    identifier: cocoa::base::id,
+) -> cocoa::base::id {
     use cocoa::base::nil;
     use objc::{msg_send, sel, sel_impl};
 
@@ -23,9 +26,12 @@ unsafe fn find_tagged_subview(container: cocoa::base::id, tag: i64) -> cocoa::ba
     let count: usize = msg_send![subviews, count];
     for index in 0..count {
         let view: cocoa::base::id = msg_send![subviews, objectAtIndex: index];
-        let view_tag: i64 = msg_send![view, tag];
-        if view_tag == tag {
-            return view;
+        let view_identifier: cocoa::base::id = msg_send![view, identifier];
+        if view_identifier != nil {
+            let matches: bool = msg_send![view_identifier, isEqualToString: identifier];
+            if matches {
+                return view;
+            }
         }
     }
 
@@ -43,7 +49,7 @@ unsafe fn sync_titlebar_sidebar_material_impl(
         NSVisualEffectState, NSVisualEffectView, NSWindow, NSWindowButton, NSWindowOrderingMode,
     };
     use cocoa::base::{id, nil};
-    use cocoa::foundation::{NSPoint, NSRect, NSSize};
+    use cocoa::foundation::{NSPoint, NSRect, NSSize, NSString};
     use objc::{msg_send, sel, sel_impl};
 
     let close_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowCloseButton);
@@ -63,12 +69,14 @@ unsafe fn sync_titlebar_sidebar_material_impl(
         second_superview
     };
 
-    let existing = find_tagged_subview(titlebar_container, TITLEBAR_SIDEBAR_VIEW_TAG);
+    let identifier: id = NSString::alloc(nil).init_str(TITLEBAR_SIDEBAR_VIEW_IDENTIFIER);
+    let existing = find_identified_subview(titlebar_container, identifier);
     if existing != nil {
         let _: () = msg_send![existing, removeFromSuperview];
     }
 
     if !enabled || width <= 0.0 {
+        let _: () = msg_send![identifier, release];
         return Ok(());
     }
 
@@ -80,10 +88,11 @@ unsafe fn sync_titlebar_sidebar_material_impl(
 
     let view: id = NSVisualEffectView::initWithFrame_(NSVisualEffectView::alloc(nil), frame);
     if view == nil {
+        let _: () = msg_send![identifier, release];
         return Err("创建 NSVisualEffectView 失败".into());
     }
 
-    let _: () = msg_send![view, setTag: TITLEBAR_SIDEBAR_VIEW_TAG];
+    let _: () = msg_send![view, setIdentifier: identifier];
     let _: () = msg_send![view, setAutoresizingMask: NSViewHeightSizable];
     let _: () = msg_send![view, setWantsLayer: true];
     let _: () = msg_send![view, setHidden: false];
@@ -97,6 +106,8 @@ unsafe fn sync_titlebar_sidebar_material_impl(
         positioned: NSWindowOrderingMode::NSWindowBelow
         relativeTo: nil
     ];
+    let _: () = msg_send![view, release];
+    let _: () = msg_send![identifier, release];
 
     Ok(())
 }

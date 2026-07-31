@@ -1,6 +1,7 @@
 {
   "title": "Command Palette",
   "search_placeholder": "Search commands...",
+  "session_search_placeholder": "Search sessions...",
   "no_results": "No matching commands found",
   "placeholder": "Type a command or search notes...",
   "no_results_simple": "No results found",

@@ -1183,6 +1183,7 @@
     "sessionNamePlaceholder": "Enter session name",
     "welcome": "Welcome to DeepStudent",
     "newChat": "New Chat",
+    "mobileDrawerSubtitle": "Start your learning here",
     "selectOrCreate": "Select a session or create a new one to start chatting",
     "timeGroups": {
       "today": "Today",

@@ -115,7 +115,15 @@ export function CommandPalette() {
   const { t } = useTranslation(['command_palette', 'common']);
   // 移动端没有物理键盘：快捷键徽章与键盘操作提示只在桌面显示
   const { isSmallScreen } = useBreakpoint();
-  const { isOpen, close, searchCommands, executeCommand, deps, currentView } = useCommandPalette();
+  const {
+    isOpen,
+    close,
+    searchCommands,
+    executeCommand,
+    deps,
+    currentView,
+    sessionSearchOnly,
+  } = useCommandPalette();
   
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -202,6 +210,9 @@ export function CommandPalette() {
 
   // 分组结果（搜索模式按分类分组，最近/收藏模式显示为单独分组）
   const groupedCommands = useMemo(() => {
+    if (sessionSearchOnly) {
+      return new Map<DisplayCategory, Command[]>([['sessions', sessionCommands]]);
+    }
     if (viewMode === 'recent') {
       // 最近使用模式，显示为单独分组
       return new Map<DisplayCategory, Command[]>([['recent', filteredCommands]]);
@@ -219,7 +230,7 @@ export function CommandPalette() {
       groups.set('sessions', sessionCommands);
     }
     return groups;
-  }, [filteredCommands, viewMode, fileCommands, sessionCommands]);
+  }, [filteredCommands, viewMode, fileCommands, sessionCommands, sessionSearchOnly]);
   
   // 扁平化命令列表（用于键盘导航）
   const flatCommands = useMemo(() => {
@@ -241,7 +252,7 @@ export function CommandPalette() {
         inputRef.current?.focus();
       });
     }
-  }, [isOpen]);
+  }, [isOpen, sessionSearchOnly]);
 
   // Android 系统返回键 = 关闭面板（自绘 dialog 无 data-state，协调器 Radix 兜底覆盖不到）
   const closeRef = useRef(close);
@@ -416,7 +427,9 @@ export function CommandPalette() {
               ref={inputRef}
               type="search"
               className="command-palette-input"
-              placeholder={t('command_palette:search_placeholder')}
+              placeholder={sessionSearchOnly
+                ? t('command_palette:session_search_placeholder', 'Search sessions...')
+                : t('command_palette:search_placeholder')}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -425,11 +438,13 @@ export function CommandPalette() {
                   setViewMode('search');
                 }
               }}
-              aria-label={t('command_palette:search_placeholder')}
+              aria-label={sessionSearchOnly
+                ? t('command_palette:session_search_placeholder', 'Search sessions...')
+                : t('command_palette:search_placeholder')}
             />
           </div>
           {/* 模式切换按钮 */}
-          <div className="command-palette-mode-buttons">
+          {!sessionSearchOnly ? <div className="command-palette-mode-buttons">
             <button
               className={cn(
                 'command-palette-mode-btn',
@@ -456,7 +471,7 @@ export function CommandPalette() {
             >
               <Star size={16} />
             </button>
-          </div>
+          </div> : null}
           {!isSmallScreen && (
             <button
               className="command-palette-close-btn"

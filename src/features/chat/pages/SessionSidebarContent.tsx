@@ -193,6 +193,35 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     [matchesSearchQuery, sessions]
   );
 
+  const recentSessionBuckets = React.useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const yesterdayStart = todayStart - 24 * 60 * 60 * 1000;
+    const recentStart = todayStart - 6 * 24 * 60 * 60 * 1000;
+    const buckets = [
+      { id: 'today', label: t('page.timeGroups.today'), sessions: [] as ChatSession[] },
+      { id: 'yesterday', label: t('page.timeGroups.yesterday'), sessions: [] as ChatSession[] },
+      { id: 'recent', label: t('page.timeGroups.previous7Days'), sessions: [] as ChatSession[] },
+      { id: 'older', label: t('page.timeGroups.older'), sessions: [] as ChatSession[] },
+    ];
+
+    for (const session of recentFlatSessions) {
+      const updatedAt = Date.parse(session.updatedAt ?? '');
+      const bucket = Number.isFinite(updatedAt)
+        ? updatedAt >= todayStart
+          ? buckets[0]
+          : updatedAt >= yesterdayStart
+            ? buckets[1]
+            : updatedAt >= recentStart
+              ? buckets[2]
+              : buckets[3]
+        : buckets[3];
+      bucket.sessions.push(session);
+    }
+
+    return buckets.filter((bucket) => bucket.sessions.length > 0);
+  }, [recentFlatSessions, t]);
+
   const currentSession = React.useMemo(
     () => sessions.find((session) => session.id === currentSessionId) ?? null,
     [currentSessionId, sessions]
@@ -558,6 +587,19 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           </section>
         )}
 
+        {/* On phones, the next useful conversation comes before project organisation.
+            Desktop keeps its topic-first layout for denser, deliberate browsing. */}
+        {unified && recentSessionBuckets.map((bucket) => (
+          <section key={bucket.id} className="space-y-0.5" aria-label={bucket.label}>
+            {renderSectionLabel(bucket.label, true)}
+            <div className="space-y-0.5" role="list">
+              <AnimatePresence initial={false} mode="popLayout">
+                {bucket.sessions.map(renderAnimatedSessionRow)}
+              </AnimatePresence>
+            </div>
+          </section>
+        ))}
+
         <section className="space-y-0.5" aria-label={t('page.studySessions')}>
           <div className="flex items-center justify-between gap-2 pr-0.5">
             <div className="min-w-0 flex-1">
@@ -597,7 +639,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         </section>
 
         {/* 「最近」：跨分组扁平最近会话（排除置顶），与下方「未分组」折叠区分离 */}
-        {recentFlatSessions.length > 0 && (
+        {!unified && recentFlatSessions.length > 0 && (
           <section className="space-y-0.5" aria-label={t('page.recentSessions')}>
             {renderSectionLabel(t('page.recentSessions'), unified)}
             <div className="space-y-0.5" role="list">
@@ -657,10 +699,10 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
 
   // 侧栏内联搜索框（接通 ChatV2Page 的 searchQuery 过滤链路，替代原先被 void 的死状态）
   const renderSearchInput = () => (
-    <div className="relative px-1">
+    <div className="relative px-3">
       <MagnifyingGlass
-        size={15}
-        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[color:var(--sidebar-muted)]"
+        size={18}
+        className="pointer-events-none absolute left-7 top-1/2 -translate-y-1/2 text-[color:var(--sidebar-muted)]"
         aria-hidden="true"
       />
       <Input
@@ -676,7 +718,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         placeholder={t('page.searchPlaceholder')}
         aria-label={t('page.searchPlaceholder')}
         className={cn(
-          'h-9 min-h-0 w-full rounded-2xl border-transparent bg-[color:var(--interactive-hover)] pl-8 pr-8 text-[14px]',
+          'h-[54px] min-h-0 w-full rounded-[18px] border border-border/90 bg-muted/50 pl-11 pr-10 text-[16px] shadow-none',
           // 📱 coarse 指针下 16px 防 iOS 聚焦自动放大
           '[@media(pointer:coarse)]:text-[16px]',
           'text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted)]',
@@ -688,7 +730,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           variant="ghost"
           size="icon"
           iconOnly
-          className="absolute right-2 top-1/2 !h-6 !w-6 -translate-y-1/2 after:absolute after:-inset-2.5 after:content-['']"
+          className="absolute right-5 top-1/2 !h-7 !w-7 -translate-y-1/2 after:absolute after:-inset-2.5 after:content-['']"
           aria-label={t('page.clearSearch')}
           onClick={() => handleSearchChange('')}
         >
@@ -699,16 +741,59 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   );
 
   const buildSessionSidebarBody = (unified: boolean) => {
+    const shouldShowSearch = !unified || sessions.length >= 6 || searchQuery.length > 0;
     const body = (
-      <div className="space-y-3 pb-1 pt-1">
-        {!unified && (
+      <div className={cn('space-y-3 pb-1', unified ? 'pt-3' : 'pt-1')}>
+        {unified && (
+          <header className="flex h-11 items-center justify-between gap-3 px-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <p className="truncate text-[22px] font-bold leading-none text-foreground">DeepStudent</p>
+            </div>
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className="!h-11 !w-11 shrink-0 text-muted-foreground"
+              onClick={() => setSessionSheetOpen(false)}
+              aria-label={t('common:close')}
+            >
+              <X size={24} weight="regular" />
+            </DsButton>
+          </header>
+        )}
+        {unified ? (
+          <div className="px-3 pt-1">
+            <DsButton
+              variant="outline"
+              size="lg"
+              className="h-[54px] w-full justify-center gap-3 rounded-[18px] border-border/90 bg-background text-[20px] font-semibold shadow-none hover:bg-muted/50"
+              onClick={handleCreateSession}
+            >
+              <Plus size={22} weight="regular" />
+              {t('page.newChat')}
+            </DsButton>
+          </div>
+        ) : (
           <nav aria-label={t('page.primaryNavigation')} className="space-y-0.5">
             {renderPrimaryItem('new-chat', t('page.newChat'), ChatCenteredText, !currentSessionId, handleCreateSession, false)}
             {renderPrimaryItem('session-browser', t('browser.allSessions'), SquaresFour, viewMode === 'browser', handleOpenBrowser, false)}
           </nav>
         )}
-        {!isInitialLoading && renderSearchInput()}
+        {!isInitialLoading && shouldShowSearch && renderSearchInput()}
         {renderStudySidebarContent(unified)}
+        {unified && (
+          <div className="px-1 pt-1">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start gap-2.5 px-2.5 text-[color:var(--sidebar-muted)]"
+              onClick={handleOpenBrowser}
+            >
+              <SquaresFour size={17} />
+              {t('browser.allSessions')}
+            </DsButton>
+          </div>
+        )}
       </div>
     );
 

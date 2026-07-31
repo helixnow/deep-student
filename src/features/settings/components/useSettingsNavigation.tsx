@@ -33,7 +33,10 @@ export type SettingsSearchIndexItem = {
 export function useSettingsNavigation() {
   const { t } = useTranslation(['settings', 'common', 'data']);
 
-  const hidePlugins = isMobilePlatform();
+  const isMobile = isMobilePlatform();
+  const hidePlugins = isMobile;
+  // Keyboard shortcut bindings are only actionable on desktop keyboards.
+  const hideShortcuts = isMobile;
 
   const sidebarNavGroups = useMemo<SettingsSidebarNavItem[][]>(() => ([
     [
@@ -58,10 +61,12 @@ export function useSettingsNavigation() {
     ],
     [
       { value: 'params', icon: Wrench, label: t('settings:tabs.params') },
-      { value: 'shortcuts', icon: Keyboard, label: t('settings:tabs.shortcuts') },
+      ...(!hideShortcuts
+        ? [{ value: 'shortcuts', icon: Keyboard, label: t('settings:tabs.shortcuts') }]
+        : []),
       { value: 'about', icon: BookOpen, label: t('settings:tabs.about') },
     ],
-  ]), [t, hidePlugins]);
+  ]), [t, hidePlugins, hideShortcuts]);
 
   const sidebarNavItems = useMemo(() => sidebarNavGroups.flat(), [sidebarNavGroups]);
 
@@ -129,9 +134,11 @@ export function useSettingsNavigation() {
     { tab: 'data-governance', label: t('data:governance.restore'), keywords: ['restore', 'import'] },
     { tab: 'params', label: t('settings:params.temperature'), keywords: ['temperature', 'model params'] },
     { tab: 'params', label: t('settings:params.top_p'), keywords: ['top p', 'nucleus sampling'] },
-    { tab: 'shortcuts', label: t('settings:tabs.shortcuts'), keywords: ['shortcuts', 'keyboard', 'hotkey'] },
+    ...(!hideShortcuts
+      ? [{ tab: 'shortcuts', label: t('settings:tabs.shortcuts'), keywords: ['shortcuts', 'keyboard', 'hotkey'] }]
+      : []),
     { tab: 'about', label: t('settings:tabs.about'), keywords: ['about', 'version', 'acknowledgements'] },
-  ], [t, hidePlugins]);
+  ], [t, hidePlugins, hideShortcuts]);
 
   return {
     sidebarNavGroups,

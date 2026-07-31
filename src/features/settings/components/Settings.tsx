@@ -1160,39 +1160,46 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         ) : (
           // 分组列表态：五组分区，行高 48px + chevron
           sidebarNavGroups.map((group, groupIndex) => (
-            <nav
-              key={groupIndex}
-              aria-label={t('settings:title')}
-              className="rounded-2xl border border-border/40 bg-background px-1.5 py-1.5"
-            >
-              {group.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeTab === item.value;
-                return (
-                  <button
-                    key={item.value}
-                    type="button"
-                    data-tour-id={item.tourId}
-                    onClick={() => openMobileSection(item.value)}
-                    className={cn(
-                      'flex w-full min-h-12 items-center gap-3 px-3 text-left ui-press',
-                      settingsQuietInteractiveRowClassName,
-                      settingsQuietHoverClassName
-                    )}
-                    aria-current={isActive ? 'page' : undefined}
-                  >
-                    <Icon
+            <section key={groupIndex} aria-labelledby={`mobile-settings-group-${groupIndex}`}>
+              <h2
+                id={`mobile-settings-group-${groupIndex}`}
+                className="mb-1 px-1 text-xs font-medium text-muted-foreground"
+              >
+                {t(`settings:mobile_groups.${groupIndex}`)}
+              </h2>
+              <nav
+                aria-label={t(`settings:mobile_groups.${groupIndex}`)}
+                className="overflow-hidden rounded-[14px] border border-border/50 bg-background"
+              >
+                {group.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.value;
+                  return (
+                    <button
+                      key={item.value}
+                      type="button"
+                      data-tour-id={item.tourId}
+                      onClick={() => openMobileSection(item.value)}
                       className={cn(
-                        'h-[18px] w-[18px] shrink-0',
-                        isActive ? 'text-primary' : 'text-muted-foreground'
+                        'flex w-full min-h-12 items-center gap-3 border-t border-border/40 px-3.5 text-left first:border-t-0 ui-press',
+                        settingsQuietInteractiveRowClassName,
+                        settingsQuietHoverClassName
                       )}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-base font-medium text-foreground">{item.label}</span>
-                    <CaretRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
-                  </button>
-                );
-              })}
-            </nav>
+                      aria-current={isActive ? 'page' : undefined}
+                    >
+                      <Icon
+                        className={cn(
+                          'h-[18px] w-[18px] shrink-0',
+                          isActive ? 'text-primary' : 'text-muted-foreground'
+                        )}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-[15px] font-medium text-foreground">{item.label}</span>
+                      <CaretRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
+                    </button>
+                  );
+                })}
+              </nav>
+            </section>
           ))
         )}
       </div>

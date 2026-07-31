@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { InputBarUI } from '../InputBarUI';
 import { createDefaultPanelStates } from '../../../core/types/common';
 import type { PanelStates } from '../../../core/types/common';
@@ -75,20 +75,14 @@ describe('InputBarUI mobile inline composer panels (P0-1)', () => {
     expect(document.querySelector('[data-composer-panel-overlay]')).toBeNull();
   });
 
-  it('shows an explicit model chip in the tool row that opens the model panel (P1-2)', () => {
-    const onSetPanelState = vi.fn();
+  it('does not duplicate the model chip in the mobile tool row', () => {
     renderInputBar({
-      onSetPanelState,
       renderModelPanel: () => <div data-testid="model-panel-body">models</div>,
       onToggleThinking: vi.fn(),
       runtimeModelLabel: 'GPT-6-mini',
     });
 
-    const chip = screen.getByTestId('mobile-model-chip');
-    expect(chip).toHaveTextContent('GPT-6-mini');
-
-    fireEvent.click(chip);
-    expect(onSetPanelState).toHaveBeenCalledWith('model', true);
+    expect(screen.queryByTestId('mobile-model-chip')).toBeNull();
   });
 
   it('folds the attachment panel header actions into a more menu on mobile (P1-4)', () => {

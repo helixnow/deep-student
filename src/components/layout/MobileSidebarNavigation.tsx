@@ -10,6 +10,7 @@ import React, { createContext, useContext, useMemo, useCallback, type ReactNode 
 import { useTranslation } from 'react-i18next';
 import { ChartBar, Database, MagnifyingGlass } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { DsButton } from '@/components/ui/DsButton';
 import { createNavItems, MOBILE_NAV_SECTION_OF_VIEW, type NavItem } from '@/config/navigation';
 import type { CurrentView } from '@/types/navigation';
 import { useViewStore } from '@/stores/viewStore';
@@ -47,6 +48,10 @@ export const MobileAppNavigationProvider: React.FC<{
 interface MobileSidebarNavigationProps {
   onNavigate?: () => void;
   className?: string;
+  /** Render only the persistent settings affordance used by the mobile drawer footer. */
+  settingsOnly?: boolean;
+  /** Omit settings from the scrollable navigation when it is rendered in the fixed footer. */
+  hideSettings?: boolean;
   /**
    * @deprecated 现在只有「嵌在统一滚动抽屉内」这一种形态（旧版 pinned 底栏
    * 分支已删除），该 prop 不再被读取，保留仅为兼容既有调用方。
@@ -57,6 +62,8 @@ interface MobileSidebarNavigationProps {
 export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = ({
   onNavigate,
   className,
+  settingsOnly = false,
+  hideSettings = false,
 }) => {
   const { t } = useTranslation(['sidebar', 'common']);
   const currentView = useViewStore((state) => state.currentView);
@@ -67,6 +74,10 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
   const navigateDirect = useContext(MobileAppNavigationContext);
 
   const currentCanonicalView = canonicalizeView(currentView);
+  const settingsItem = useMemo(
+    () => navItems.find((item) => canonicalizeView(item.view) === 'settings'),
+    [navItems],
+  );
 
   // F1（移动端审计）：dashboard / data-management 在桌面侧栏之外没有任何
   // 移动端入口（原本只能靠命令面板输入命令抵达），补进抽屉「管理」分组，
@@ -104,6 +115,7 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
     const study: DrawerNavItem[] = [];
     const manage: DrawerNavItem[] = [];
     for (const item of navItems) {
+      if (hideSettings && canonicalizeView(item.view) === 'settings') continue;
       if (!admit(item.view)) continue;
       (MOBILE_NAV_SECTION_OF_VIEW[item.view] === 'study' ? study : manage).push(item);
     }
@@ -120,7 +132,7 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
       { id: 'study', label: t('sidebar:mobile_drawer.section_study', '学习'), items: study },
       { id: 'manage', label: t('sidebar:mobile_drawer.section_manage', '管理'), items: manage },
     ];
-  }, [currentCanonicalView, mobileOnlyManageItems, navItems, t]);
+  }, [currentCanonicalView, hideSettings, mobileOnlyManageItems, navItems, t]);
 
   const handleNavigate = useCallback((view: CurrentView) => {
     if (navigateDirect) {
@@ -160,6 +172,26 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
       <span className={mobileDrawerRowTitleClassName}>{label}</span>
     </button>
   );
+
+  if (settingsOnly) {
+    if (!settingsItem) return null;
+    const SettingsIcon = settingsItem.icon;
+    return (
+      <div data-mobile-shell="sidebar-settings" className={cn('flex min-h-14 items-center gap-3 px-3 py-2', className)}>
+        <div className="min-w-0 flex-1" aria-hidden="true" />
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          className="!h-11 !w-11 shrink-0 text-muted-foreground"
+          aria-label={settingsItem.name}
+          onClick={() => handleNavigate(settingsItem.view)}
+        >
+          <SettingsIcon className="size-5" />
+        </DsButton>
+      </div>
+    );
+  }
 
   return (
     <div

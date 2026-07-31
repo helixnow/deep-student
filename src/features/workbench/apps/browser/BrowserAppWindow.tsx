@@ -156,6 +156,8 @@ const AddressBar: React.FC<{
         title={draft || undefined}
         spellCheck={false}
         autoComplete="off"
+        inputMode="url"
+        onFocus={(event) => event.currentTarget.select()}
         data-wb-browser-address
       />
       {loading ? (
@@ -264,12 +266,19 @@ function stackingIndex(element: HTMLElement): number {
 }
 
 const DOM_SURFACE_VISUAL_OCCLUDER_SELECTOR = [
+  '[data-browser-surface-occluder]',
+  '[data-overlay-container="true"]',
   '[role="menu"]',
   '[data-testid="wb-dock-context-menu"]',
   '[data-testid="wb-dock-window-list"]',
   '[data-wb-tile-menu]',
   '[data-testid="workbench-dev-panel"]',
   '[data-wb-menubar]',
+  '.wb-apps-root',
+  '.wb-wpm-overlay',
+  '[data-wb-expose-root]',
+  '[data-wb-switcher-root]',
+  '[data-wb-desk-menu]',
   '.wb-switcher-bar',
   '[data-testid="wb-snap-preview"]',
   '.wb-dock-mag',
@@ -277,6 +286,11 @@ const DOM_SURFACE_VISUAL_OCCLUDER_SELECTOR = [
 ].join(',');
 
 const DOM_SURFACE_INPUT_SHIELD_SELECTOR = [
+  '[data-browser-surface-input-shield]',
+  '[data-overlay-container="true"]',
+  '.wb-apps-root',
+  '.wb-wpm-overlay',
+  '[data-wb-expose-root]',
   '[role="menu"]',
   '[data-testid="wb-dock-context-menu"]',
   '[data-testid="wb-dock-window-list"]',
@@ -289,6 +303,10 @@ const DOM_SURFACE_INPUT_SHIELD_SELECTOR = [
 // panel. The native child cannot be dimmed by a DOM backdrop, so yield the
 // full slot while any app-modal dialog is active.
 const MODAL_SURFACE_BLOCKER_SELECTOR = [
+  '[data-overlay-container="true"]',
+  '.wb-apps-root',
+  '.wb-wpm-overlay',
+  '[data-wb-expose-root]',
   '[role="dialog"][aria-modal="true"]',
   '[role="alertdialog"][aria-modal="true"]',
 ].join(',');
@@ -582,6 +600,38 @@ function useNativeBrowserSurface({
         attributeFilter: ['class', 'data-autohide', 'data-hidden'],
       });
     }
+    const isSurfaceOccluder = (node: Node | null): boolean => {
+      if (!(node instanceof Element)) return false;
+      return node.matches(DOM_SURFACE_VISUAL_OCCLUDER_SELECTOR)
+        || node.closest(DOM_SURFACE_VISUAL_OCCLUDER_SELECTOR) != null;
+    };
+    const occluderObserver = typeof MutationObserver === 'function'
+      ? new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.type === 'attributes' && isSurfaceOccluder(mutation.target)) {
+            scheduleMeasure();
+            return;
+          }
+          if (mutation.type !== 'childList') continue;
+          if (isSurfaceOccluder(mutation.target)) {
+            scheduleMeasure();
+            return;
+          }
+          for (const node of [...mutation.addedNodes, ...mutation.removedNodes]) {
+            if (isSurfaceOccluder(node)) {
+              scheduleMeasure();
+              return;
+            }
+          }
+        }
+      })
+      : null;
+    occluderObserver?.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'hidden', 'aria-hidden', 'data-state'],
+    });
     let dockTransitionRaf: number | null = null;
     let dockTransitionCount = 0;
     const measureDockDuringTransition = () => {
@@ -647,12 +697,24 @@ function useNativeBrowserSurface({
     document.addEventListener('transitionrun', onSnapTransitionRun, true);
     document.addEventListener('transitionend', onSnapTransitionDone, true);
     document.addEventListener('transitioncancel', onSnapTransitionDone, true);
+    const onOccluderTransition = (event: TransitionEvent | AnimationEvent) => {
+      if (!(event.target instanceof Element)) return;
+      if (!event.target.closest(DOM_SURFACE_VISUAL_OCCLUDER_SELECTOR)) return;
+      scheduleMeasure();
+    };
+    document.addEventListener('transitionrun', onOccluderTransition, true);
+    document.addEventListener('transitionend', onOccluderTransition, true);
+    document.addEventListener('transitioncancel', onOccluderTransition, true);
+    document.addEventListener('animationstart', onOccluderTransition, true);
+    document.addEventListener('animationend', onOccluderTransition, true);
+    document.addEventListener('animationcancel', onOccluderTransition, true);
     window.addEventListener('resize', scheduleMeasure);
     scheduleMeasure();
 
     return () => {
       observer?.disconnect();
       dockObserver?.disconnect();
+      occluderObserver?.disconnect();
       dock?.removeEventListener('transitionrun', onDockTransitionRun);
       dock?.removeEventListener('transitionend', onDockTransitionDone);
       dock?.removeEventListener('transitioncancel', onDockTransitionDone);
@@ -664,6 +726,12 @@ function useNativeBrowserSurface({
       document.removeEventListener('transitionrun', onSnapTransitionRun, true);
       document.removeEventListener('transitionend', onSnapTransitionDone, true);
       document.removeEventListener('transitioncancel', onSnapTransitionDone, true);
+      document.removeEventListener('transitionrun', onOccluderTransition, true);
+      document.removeEventListener('transitionend', onOccluderTransition, true);
+      document.removeEventListener('transitioncancel', onOccluderTransition, true);
+      document.removeEventListener('animationstart', onOccluderTransition, true);
+      document.removeEventListener('animationend', onOccluderTransition, true);
+      document.removeEventListener('animationcancel', onOccluderTransition, true);
       if (snapTransitionRaf != null) cancelAnimationFrame(snapTransitionRaf);
       window.removeEventListener('resize', scheduleMeasure);
       if (frameRef.current != null) cancelAnimationFrame(frameRef.current);

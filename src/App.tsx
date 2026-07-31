@@ -39,6 +39,7 @@ import { useAutomationRunNotifications } from '@/features/todo/hooks/useAutomati
 import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
 import { isWindows, isMacOS, isMobilePlatform } from './utils/platform';
+import { isTauriRuntime } from './utils/shared';
 import { applySidebarTranslucency, syncNativeTitlebarSidebarMaterial } from './utils/sidebarTranslucency';
 // 🚀 性能优化：ChatV2Page 改为懒加载，见 lazyComponents.tsx
 // NT-1: NoteEditorPortal（白板远程桌面模式遗留，恒 return null）已随死渲染路径移除
@@ -425,11 +426,11 @@ function DesktopHeaderNavControls({
   onNewSession,
   onTitlebarDoubleClick,
   newSessionLabel,
+  showNewSession,
   backTitle,
   backLabel,
   forwardTitle,
   forwardLabel,
-  collapsed,
 }: {
   canGoBack: boolean;
   canGoForward: boolean;
@@ -438,18 +439,15 @@ function DesktopHeaderNavControls({
   onNewSession: () => void;
   onTitlebarDoubleClick: () => void | Promise<void>;
   newSessionLabel: string;
+  showNewSession: boolean;
   backTitle: string;
   backLabel: string;
   forwardTitle: string;
   forwardLabel: string;
-  collapsed: boolean;
 }) {
   return (
     <div
-      className={cn(
-        'desktop-shell-toolbar-group transition-[transform,opacity,margin-right] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none',
-        collapsed ? 'mr-0 translate-x-0 opacity-100' : 'mr-1 translate-x-1 opacity-100'
-      )}
+      className="desktop-shell-toolbar-group"
     >
       <CommonTooltip content={backTitle} position="bottom">
         <span className="inline-flex">
@@ -479,18 +477,20 @@ function DesktopHeaderNavControls({
           </DsButton>
         </span>
       </CommonTooltip>
-      <CommonTooltip content={newSessionLabel} position="bottom">
-        <DsButton
-          variant="ghost"
-          size="icon"
-          onMouseDown={(event) => handleDesktopToolbarButtonMouseDown(event, onTitlebarDoubleClick)}
-          onClick={(event) => handleDesktopToolbarButtonClick(event, onNewSession)}
-          className="desktop-shell-toolbar-button"
-          aria-label={newSessionLabel}
-        >
-          <StudyComposeIcon className="h-4 w-4" />
-        </DsButton>
-      </CommonTooltip>
+      {showNewSession ? (
+        <CommonTooltip content={newSessionLabel} position="bottom">
+          <DsButton
+            variant="ghost"
+            size="icon"
+            onMouseDown={(event) => handleDesktopToolbarButtonMouseDown(event, onTitlebarDoubleClick)}
+            onClick={(event) => handleDesktopToolbarButtonClick(event, onNewSession)}
+            className="desktop-shell-toolbar-button"
+            aria-label={newSessionLabel}
+          >
+            <StudyComposeIcon className="h-4 w-4" />
+          </DsButton>
+        </CommonTooltip>
+      ) : null}
     </div>
   );
 }
@@ -900,6 +900,7 @@ function App() {
     typeof window === 'undefined' ? undefined : window.innerWidth
   );
   const [desktopSidebarMotionWidth, setDesktopSidebarMotionWidth] = useState<number | null>(null);
+  const [isDesktopFullscreen, setIsDesktopFullscreen] = useState(false);
   const desktopSidebarPresentationWidth = desktopSidebarMotionWidth ?? shellSidebarWidth;
   const desktopNavigationWidth = workbenchActive
     ? 0
@@ -909,18 +910,22 @@ function App() {
   const [isDesktopSidebarResizing, setIsDesktopSidebarResizing] = useState(false);
   const appShellRef = useRef<HTMLDivElement | null>(null);
   const desktopSidebarCollapsePendingRef = useRef(false);
-  const shouldUseDesktopFloatingAccessory = !isSmallScreen;
   const desktopFloatingAccessoryOffset = isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer + 16 : 16;
   const desktopSidebarToggleLabel = t('common:navigation.toggle_sidebar');
   const desktopSidebarResizeLabel = t('common:navigation.resize_sidebar');
   const desktopHeaderNavHotzoneLabel = t('chatV2:page.newSession');
   const desktopHeaderTitleHotzoneLabel = t('common:command_palette_label');
   const updateBadgeVisible = !updater.checking && updater.available && !!updater.info;
-  const desktopCollapsedLeadingWidth = 148;
+  const desktopHeaderIconButtonSize = 32;
+  const desktopHeaderControlGap = 4;
+  const desktopCollapsedControlCount = 4;
+  const desktopCollapsedLeadingWidth =
+    desktopHeaderIconButtonSize * desktopCollapsedControlCount
+    + desktopHeaderControlGap * (desktopCollapsedControlCount - 1)
+    + 16;
   const desktopTitlebarLeadingInset = !isSmallScreen && leftPanelCollapsed
     ? (isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer : 0) + 16 + desktopCollapsedLeadingWidth
     : 0;
-  const desktopFloatingAccessoryWidth = desktopCollapsedLeadingWidth;
   const toggleDesktopWindowMaximize = useCallback(async () => {
     try {
       const appWindow = getCurrentWindow();
@@ -934,26 +939,36 @@ function App() {
       console.error('Failed to toggle desktop window maximize:', error);
     }
   }, []);
-  const desktopSidebarExpandedAccessoryContent = (
-    <DesktopSidebarAccessory
-      onToggle={useUIStore.getState().toggleLeftPanel}
-      label={desktopSidebarToggleLabel}
-      collapsed={false}
-      updateVisible={updateBadgeVisible}
-      onUpdate={() => void updater.performUpdateAction()}
-      updateDownloading={updater.downloading}
-    />
-  );
-  const desktopSidebarCollapsedAccessoryContent = (
-    <DesktopSidebarAccessory
-      onToggle={useUIStore.getState().toggleLeftPanel}
-      label={desktopSidebarToggleLabel}
-      collapsed
-      updateVisible={false}
-      onUpdate={() => void updater.performUpdateAction()}
-      updateDownloading={updater.downloading}
-    />
-  );
+  useEffect(() => {
+    if (isSmallScreen || !isTauriRuntime) {
+      setIsDesktopFullscreen(false);
+      return;
+    }
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    const appWindow = getCurrentWindow();
+    const refreshFullscreenState = () => {
+      void appWindow.isFullscreen()
+        .then((fullscreen) => {
+          if (!cancelled) setIsDesktopFullscreen(fullscreen);
+        })
+        .catch(() => {
+          if (!cancelled) setIsDesktopFullscreen(false);
+        });
+    };
+    refreshFullscreenState();
+    void appWindow.onResized(refreshFullscreenState).then((dispose) => {
+      if (cancelled) {
+        dispose();
+        return;
+      }
+      unlisten = dispose;
+    }).catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [isSmallScreen]);
   // 工作台模式：顶栏只留原生/自绘窗口控制，不占内容高度
   const shellTitlebarOccupiedHeight = workbenchActive
     ? 0
@@ -1041,14 +1056,12 @@ function App() {
       leftPanelWidth: result.width,
     });
   }, [leftPanelWidth]);
-  // macOS 原生 vibrancy：标题栏内的侧栏材质层宽度随侧栏可见性/宽度同步
+  // macOS 原生 vibrancy：清理旧版标题栏材质，避免其覆盖 WebView 自绘控件。
+  // 侧栏主体仍由窗口级 Sidebar vibrancy 提供毛玻璃效果。
   useEffect(() => {
     if (isSmallScreen || !isMacOS()) return;
-    void syncNativeTitlebarSidebarMaterial(
-      isDesktopSidebarSurfaceVisible,
-      isDesktopSidebarSurfaceVisible ? desktopNavigationWidth : 0,
-    );
-  }, [desktopNavigationWidth, isDesktopSidebarSurfaceVisible, isSmallScreen]);
+    void syncNativeTitlebarSidebarMaterial(false, 0);
+  }, [isSmallScreen]);
   const [templateManagementRefreshTick, setTemplateManagementRefreshTick] = useState(0);
   const [desktopPageSidebarTarget, setDesktopPageSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [desktopPageHeaderTarget, setDesktopPageHeaderTarget] = useState<HTMLDivElement | null>(null);
@@ -2201,7 +2214,7 @@ function App() {
       groupName: currentChatHeaderGroupName,
     })
     : desktopHeaderNavHotzoneLabel;
-  const shouldShowDesktopHeaderNavControls = leftPanelCollapsed && currentView !== 'settings' && currentView !== 'todo';
+  const shouldShowDesktopHeaderNavControls = currentView !== 'settings' && currentView !== 'todo';
   const desktopHeaderNavControls = (
     <DesktopHeaderNavControls
       canGoBack={unifiedCanGoBack}
@@ -2211,12 +2224,25 @@ function App() {
       onNewSession={handleCreateChatSession}
       onTitlebarDoubleClick={toggleDesktopWindowMaximize}
       newSessionLabel={desktopHeaderNewSessionTooltipLabel}
+      showNewSession={isDesktopFullscreen}
       backTitle={t('common:navigation.back_tooltip', { shortcut: navigationShortcuts.back })}
       backLabel={t('common:navigation.back')}
       forwardTitle={t('common:navigation.forward_tooltip', { shortcut: navigationShortcuts.forward })}
       forwardLabel={t('common:navigation.forward')}
-      collapsed={leftPanelCollapsed}
     />
+  );
+  const desktopSidebarTopAccessoryContent = (
+    <div className="flex min-w-0 items-center gap-1.5">
+      <DesktopSidebarAccessory
+        onToggle={useUIStore.getState().toggleLeftPanel}
+        label={desktopSidebarToggleLabel}
+        collapsed={leftPanelCollapsed}
+        updateVisible={updateBadgeVisible && !leftPanelCollapsed}
+        onUpdate={() => void updater.performUpdateAction()}
+        updateDownloading={updater.downloading}
+      />
+      {shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}
+    </div>
   );
 
   const clearCurrentChatHeaderStoreSubscription = useCallback(() => {
@@ -2595,41 +2621,19 @@ function App() {
                 className="desktop-shell-sidebar-titlebar-surface"
               />
 
-              {shouldUseDesktopFloatingAccessory ? (
-                <>
-                  <div
-                    className="desktop-shell-sidebar-expanded-accessory"
-                    style={{
-                      left: `${desktopFloatingAccessoryOffset}px`,
-                      top: `${topbarTopMargin}px`,
-                      height: `${DESKTOP_SHELL.titlebarBaseHeight}px`,
-                      width: `${desktopFloatingAccessoryWidth}px`,
-                    }}
-                  >
-                    <div className="pointer-events-auto inline-flex h-full max-w-full items-center overflow-hidden pr-1.5">
-                      {desktopSidebarExpandedAccessoryContent}
-                    </div>
-                  </div>
-
-                  <div
-                    className="desktop-shell-sidebar-collapsed-accessory"
-                    data-open={leftPanelCollapsed ? 'true' : 'false'}
-                    style={{
-                      left: `${desktopFloatingAccessoryOffset}px`,
-                      top: `${topbarTopMargin}px`,
-                      height: `${DESKTOP_SHELL.titlebarBaseHeight}px`,
-                      width: `${desktopFloatingAccessoryWidth}px`,
-                    }}
-                  >
-                    <div className="pointer-events-auto inline-flex h-full max-w-full items-center justify-between gap-1.5 overflow-hidden pr-1.5">
-                      <div className="flex items-center">
-                        {desktopSidebarCollapsedAccessoryContent}
-                      </div>
-                      {shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}
-                    </div>
-                  </div>
-                </>
-              ) : null}
+              <div
+                className="desktop-shell-sidebar-top-accessory"
+                data-no-drag
+                style={{
+                  left: `${desktopFloatingAccessoryOffset}px`,
+                  top: `${topbarTopMargin}px`,
+                  height: `${DESKTOP_SHELL.titlebarBaseHeight}px`,
+                }}
+              >
+                <div className="pointer-events-auto inline-flex h-full items-center">
+                  {desktopSidebarTopAccessoryContent}
+                </div>
+              </div>
 
               <div
                 className={cn(
@@ -2641,7 +2645,7 @@ function App() {
                 }}
               >
                 <div
-                  className="desktop-shell-header-hotzone flex min-w-0 items-center justify-end"
+                  className="desktop-shell-header-hotzone absolute inset-0 z-0 flex min-w-0 items-center justify-end"
                   data-no-drag
                   data-shell-hotzone="desktop-nav"
                   role="button"

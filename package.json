@@ -73,6 +73,7 @@
     "registry:sync": "node scripts/sync-model-registry.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/claude-code": "^2.1.220",
     "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-html": "^6.4.9",
     "@codemirror/lang-markdown": "^6.5.0",
@@ -102,7 +103,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@sentry/browser": "^8.50.0",
     "@tanstack/react-virtual": "^3.13.12",
-    "@tauri-apps/api": "~2.10.0",
+    "@tauri-apps/api": "~2.11.0",
     "@tauri-apps/plugin-clipboard-manager": "~2.2",
     "@tauri-apps/plugin-dialog": "~2.6.0",
     "@tauri-apps/plugin-fs": "~2.4.0",

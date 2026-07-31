@@ -35,6 +35,8 @@ interface CommandPaletteContextValue {
   isOpen: boolean;
   /** 打开命令面板 */
   open: () => void;
+  /** 打开仅检索会话的命令面板 */
+  openSessionSearch: () => void;
   /** 关闭命令面板 */
   close: () => void;
   /** 切换命令面板 */
@@ -47,6 +49,8 @@ interface CommandPaletteContextValue {
   deps: DependencyResolver;
   /** 当前视图（快照值，可能滞后于最新切换；优先使用 getCurrentView()） */
   currentView: CommandView;
+  /** 当前面板是否只展示会话检索结果 */
+  sessionSearchOnly: boolean;
   /** 获取最新视图（ref-based，始终返回最新值） */
   getCurrentView: () => CommandView;
 }
@@ -83,6 +87,7 @@ export function CommandPaletteProvider({
   switchLanguage,
 }: CommandPaletteProviderProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [sessionSearchOnly, setSessionSearchOnly] = useState(false);
   const { t, i18n } = useTranslation();
 
   const focusedWorkbenchAppTypeId = useWindowStore((state) => {
@@ -104,6 +109,15 @@ export function CommandPaletteProvider({
       openAppsPanel();
       return;
     }
+    setSessionSearchOnly(false);
+    setIsOpen(true);
+  }, [workbenchActive]);
+  const openSessionSearch = useCallback(() => {
+    if (workbenchActive) {
+      openAppsPanel();
+      return;
+    }
+    setSessionSearchOnly(true);
     setIsOpen(true);
   }, [workbenchActive]);
   const close = useCallback(() => setIsOpen(false), []);
@@ -298,14 +312,16 @@ export function CommandPaletteProvider({
   const contextValue = useMemo<CommandPaletteContextValue>(() => ({
     isOpen,
     open,
+    openSessionSearch,
     close,
     toggle,
     executeCommand,
     searchCommands,
     deps,
     currentView: commandView,
+    sessionSearchOnly,
     getCurrentView,
-  }), [isOpen, open, close, toggle, executeCommand, searchCommands, deps, commandView, getCurrentView]);
+  }), [isOpen, open, openSessionSearch, close, toggle, executeCommand, searchCommands, deps, commandView, sessionSearchOnly, getCurrentView]);
   
   return (
     <CommandPaletteContext.Provider value={contextValue}>

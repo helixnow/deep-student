@@ -1,6 +1,7 @@
 {
   "title": "命令面板",
   "search_placeholder": "搜索命令...",
+  "session_search_placeholder": "搜索会话...",
   "no_results": "未找到匹配的命令",
   "placeholder": "输入命令或搜索笔记...",
   "no_results_simple": "未找到结果",

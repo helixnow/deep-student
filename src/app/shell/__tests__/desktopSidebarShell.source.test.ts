@@ -15,11 +15,13 @@ describe('desktop sidebar shell wiring', () => {
     expect(appSource).toContain('<DesktopSidebarResizeHandle');
   });
 
-  it('moves the expanded top controls with the panel and reveals separate collapsed controls', () => {
-    expect(appSource).toContain('const desktopSidebarExpandedAccessoryContent = (');
-    expect(appSource).toContain('const desktopSidebarCollapsedAccessoryContent = (');
-    expect(appSource).toContain('className="desktop-shell-sidebar-expanded-accessory"');
-    expect(appSource).toContain('className="desktop-shell-sidebar-collapsed-accessory"');
+  it('keeps top controls mounted at one fixed titlebar anchor', () => {
+    expect(appSource).toContain('const desktopSidebarTopAccessoryContent = (');
+    expect(appSource).toContain('className="desktop-shell-sidebar-top-accessory"');
+    expect(appSource).toContain('className="desktop-shell-sidebar-top-accessory"\n                data-no-drag');
+    expect(shellCssSource).toContain('.desktop-shell-sidebar-top-accessory {\n  /* Keep titlebar controls out of the sidebar\'s animated layout layer. */\n  position: fixed;');
+    expect(shellCssSource).toContain('transition: none !important;');
+    expect(shellCssSource).not.toContain('.desktop-shell-sidebar-collapsed-accessory');
   });
 
   it('uses one motion rhythm and disables it during live resizing', () => {

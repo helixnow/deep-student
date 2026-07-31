@@ -294,7 +294,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
               <AppMenuGroup>
                 <AppMenuItem
                   className={mobileItemClass}
-                  icon={<Paperclip className="w-4 h-4" weight="bold" />}
+                  icon={<Paperclip className="w-4 h-4" />}
                   onClick={onAddAttachment}
                   data-testid="plus-menu-add-attachment"
                 >
@@ -303,7 +303,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                 {isMobileEnv && onOpenCamera && (
                   <AppMenuItem
                     className={mobileItemClass}
-                    icon={<Camera className="w-4 h-4" weight="bold" />}
+                    icon={<Camera className="w-4 h-4" />}
                     onClick={onOpenCamera}
                     data-testid="plus-menu-camera"
                   >
@@ -312,7 +312,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                 )}
                 <AppMenuItem
                   className={mobileItemClass}
-                  icon={<FolderOpen className="w-4 h-4" weight="bold" />}
+                  icon={<FolderOpen className="w-4 h-4" />}
                   onClick={onOpenResourceLibrary}
                   data-testid="plus-menu-resource-library"
                 >
@@ -406,7 +406,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
               {showSkills && onOpenSkillPanel && (
                 <AppMenuItem
                   className={mobileItemClass}
-                  icon={<Hammer className="w-4 h-4" weight="bold" />}
+                  icon={<Hammer className="w-4 h-4" />}
                   onClick={handleOpenSkills}
                   data-testid="btn-toggle-skill"
                   suffix={skillBadge}
@@ -417,7 +417,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
               {showConnectors && (
                 <AppMenuItem
                   className={mobileItemClass}
-                  icon={<LinkSimple className="w-4 h-4" weight="bold" />}
+                  icon={<LinkSimple className="w-4 h-4" />}
                   onClick={handleOpenConnectors}
                   data-testid="plus-menu-connectors"
                   suffix={connectorsBadge}
@@ -430,21 +430,21 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
           <AppMenuGroup>
             <AppMenuSub openOnClick>
               <AppMenuSubTrigger
-                icon={<Paperclip className="w-4 h-4" weight="bold" />}
+                icon={<Paperclip className="w-4 h-4" />}
                 data-testid="plus-menu-add-file"
               >
                 {t('chatV2:inputBar.plusMenu.addFile')}
               </AppMenuSubTrigger>
               <AppMenuSubContent className="min-w-[180px]">
                 <AppMenuItem
-                  icon={<Paperclip className="w-4 h-4" weight="bold" />}
+                  icon={<Paperclip className="w-4 h-4" />}
                   onClick={onAddAttachment}
                   data-testid="plus-menu-add-attachment"
                 >
                   {t('analysis:input_bar.attachments.add')}
                 </AppMenuItem>
                 <AppMenuItem
-                  icon={<FolderOpen className="w-4 h-4" weight="bold" />}
+                  icon={<FolderOpen className="w-4 h-4" />}
                   onClick={onOpenResourceLibrary}
                   data-testid="plus-menu-resource-library"
                 >
@@ -452,7 +452,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                 </AppMenuItem>
                 {isMobileEnv && onOpenCamera && (
                   <AppMenuItem
-                    icon={<Camera className="w-4 h-4" weight="bold" />}
+                    icon={<Camera className="w-4 h-4" />}
                     onClick={onOpenCamera}
                     data-testid="plus-menu-camera"
                   >
@@ -476,7 +476,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
             {showMode && (
               <AppMenuSub openOnClick>
                 <AppMenuSubTrigger
-                  icon={<Sparkle className="w-4 h-4" weight="bold" />}
+                  icon={<Sparkle className="w-4 h-4" />}
                   data-testid="plus-menu-mode"
                 >
                   {t('chatV2:inputBar.plusMenu.mode')}
@@ -541,7 +541,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
             {showKnowledgeBase && (
               <AppMenuSub openOnClick>
                 <AppMenuSubTrigger
-                  icon={<Books className="w-4 h-4" weight="bold" />}
+                  icon={<Books className="w-4 h-4" />}
                   data-testid="plus-menu-knowledge-base"
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
@@ -575,7 +575,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
             {showSkills && (
               <AppMenuSub openOnClick>
                 <AppMenuSubTrigger
-                  icon={<Hammer className="w-4 h-4" weight="bold" />}
+                  icon={<Hammer className="w-4 h-4" />}
                   data-testid="btn-toggle-skill"
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
@@ -598,7 +598,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
             {showConnectors && (
               <AppMenuSub openOnClick>
                 <AppMenuSubTrigger
-                  icon={<LinkSimple className="w-4 h-4" weight="bold" />}
+                  icon={<LinkSimple className="w-4 h-4" />}
                   data-testid="plus-menu-connectors"
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
@@ -610,7 +610,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                 </AppMenuSubTrigger>
                 <AppMenuSubContent className="min-w-[200px]" data-testid="plus-menu-connectors-panel">
                   <AppMenuItem
-                    icon={<LinkSimple className="w-4 h-4" weight="bold" />}
+                    icon={<LinkSimple className="w-4 h-4" />}
                     onClick={handleOpenConnectors}
                     data-testid="plus-menu-open-connectors"
                   >

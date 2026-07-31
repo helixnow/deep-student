@@ -41,7 +41,9 @@
     "todo": "Todo",
     "ui_lab": "UI Lab",
     "command_palette": "Search & Commands",
-    "workbench_mode": "Learning Desktop"
+    "workbench_mode": "Learning Desktop",
+    "show_workbench_mode": "Show Learning Desktop",
+    "hide_workbench_mode": "Hide Learning Desktop"
   },
   "aria": {
     "sidebar_navigation": "Main navigation",

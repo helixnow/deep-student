@@ -7,6 +7,10 @@
  * 2. 原生层（仅 macOS + Tauri）：调用 `set_sidebar_vibrancy` 在窗口底部
  *    挂载 NSVisualEffectView（Sidebar 材质），配合 `data-macos-vibrancy`
  *    属性把侧边栏图层链透明化，实现真正的桌面透视。
+ *
+ * 注意：不要再为标题栏额外挂载原生材质。它位于 macOS 标题栏容器时会盖住
+ * WebView 的自绘左上控件；窗口级 Sidebar 材质与 CSS 标题栏 tint 已足够覆盖
+ * 该区域。
  */
 import { isTauriRuntime } from '@/utils/shared';
 import { isMacOS } from '@/utils/platform';
@@ -18,13 +22,9 @@ const VIBRANCY_ATTR = 'data-macos-vibrancy';
 let nativeVibrancyApplied: boolean | null = null;
 
 export async function syncNativeTitlebarSidebarMaterial(
-  visible: boolean,
-  width: number,
+  _visible: boolean,
+  _width: number,
 ): Promise<void> {
-  const root = document.documentElement;
-  const translucent = root.getAttribute(TRANSLUCENT_ATTR) === 'true';
-  const nativeVibrancy = root.getAttribute(VIBRANCY_ATTR) === 'true';
-
   if (!isTauriRuntime || !isMacOS()) {
     return;
   }
@@ -32,8 +32,9 @@ export async function syncNativeTitlebarSidebarMaterial(
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('sync_titlebar_sidebar_material', {
-      enabled: translucent && nativeVibrancy && visible,
-      width: Math.max(0, Math.round(width)),
+      // 清理旧版本可能遗留的标题栏 NSVisualEffectView，避免遮挡 WebView 控件。
+      enabled: false,
+      width: 0,
     });
   } catch (err) {
     console.warn('[sidebarTranslucency] 原生标题栏侧栏材质同步失败:', err);

@@ -123,4 +123,14 @@ describe('MobileSidebarNavigation drawer dedup', () => {
     // 当前视图入口（无论来自 createNavItems 还是手工追加）一律不渲染
     expect(screen.queryByRole('button', { name: '总览' })).toBeNull();
   });
+
+  it('can reserve settings for a fixed drawer footer without duplicating it in the scroll area', () => {
+    render(<MobileSidebarNavigation hideSettings />);
+
+    expect(screen.queryByRole('button', { name: '设置' })).toBeNull();
+    cleanup();
+
+    render(<MobileSidebarNavigation settingsOnly />);
+    expect(screen.getAllByRole('button', { name: '设置' })).toHaveLength(1);
+  });
 });
