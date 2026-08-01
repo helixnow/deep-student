@@ -32,6 +32,8 @@ import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
 import { getModelDefaultParameters } from '@/utils/modelCapabilities';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { OverlayLayerProvider } from '@/components/shared/OverlayLayer';
+import { Z_INDEX } from '@/config/zIndex';
 import {
   deepSeekV32BudgetToEffort,
   deepSeekV32EffortToBudget,
@@ -1076,7 +1078,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                   <div className="pt-1">
                     <div className="grid gap-3 md:grid-cols-2">
                       <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor={fieldIds.protocol} className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
+                        <Label htmlFor={fieldIds.protocol} className="text-xs font-medium text-muted-foreground/80 ml-1">
                           {t('settings:api.modal.protocol_label')}
                         </Label>
                         <AppSelect
@@ -2187,7 +2189,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                   : t('settings:api.modal.test_connection')}
               </span>
               {connectionTest.state === 'success' && (
-                <span className="text-xs text-emerald-600 dark:text-emerald-400">{connectionTest.latencyMs} ms</span>
+                <span className="text-xs tabular-nums text-primary">{connectionTest.latencyMs} ms</span>
               )}
               {connectionTest.state === 'failed' && (
                 <span className="text-xs text-destructive">{t('settings:api.modal.test_connection_failed_short')}</span>
@@ -2210,11 +2212,19 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         </form>
   );
 
+  // Menus render into the nearest overlay container. Keep them above every
+  // editor surface, including the embedded responsive dialog host.
+  const layeredFormContent = (
+    <OverlayLayerProvider baseZ={Z_INDEX.modal}>
+      {formContent}
+    </OverlayLayerProvider>
+  );
+
   // 嵌入模式：直接返回表单内容，不使用 Dialog 包裹
   if (embeddedMode) {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        {formContent}
+        {layeredFormContent}
       </div>
     );
   }
@@ -2230,7 +2240,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       maxWidth="max-w-[672px]"
       className="h-[min(85dvh,720px)] max-h-[min(85dvh,720px)] min-h-0 overflow-hidden p-0"
     >
-      {formContent}
+      {layeredFormContent}
     </DsDialog>
   );
 };
