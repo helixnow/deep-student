@@ -44,7 +44,6 @@ import { RawRequestPreview, type RawRequestPreviewProps, type RawRequest } from 
 import { ThreadContentShell } from './ui/ThreadContentShell';
 import { TextShimmer } from './ui/TextShimmer';
 import { ThinkingIndicator } from './ThinkingIndicator';
-import { StreamingSkeleton } from './StreamingSkeleton';
 import { dispatchContextRefPreview } from '../utils/contextRefPreview';
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { fileManager } from '@/utils/fileManager';
@@ -994,12 +993,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           </div>
                         );
                       }
-                      // 🔧 P1-6: 首 token 前的等待态 = 状态文案（呼吸点）+ shimmer 骨架，
-                      // 均复用 motion.css 共享类，自带 reduced-motion 降级
+                      // 首 token 前只显示轻量状态文案，避免用未知正文结构做骨架占位
                       return (
                         <div className="chat-fade-in">
                           <ThinkingIndicator />
-                          <StreamingSkeleton className="mt-1" />
                         </div>
                       );
                     }

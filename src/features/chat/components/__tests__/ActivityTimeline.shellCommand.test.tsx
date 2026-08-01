@@ -69,6 +69,19 @@ function createPreflightBlock(overrides: Partial<Block> = {}): Block {
   });
 }
 
+function createResourceBlock(overrides: Partial<Block> = {}): Block {
+  return {
+    id: 'resource-1',
+    type: 'mcp_tool',
+    status: 'success',
+    messageId: 'message-1',
+    toolName: 'builtin-resource_list',
+    toolInput: {},
+    toolOutput: { items: [] },
+    ...overrides,
+  };
+}
+
 describe('ActivityTimeline shell command nodes', () => {
   it('derives a blocked command summary from a successful preflight tool call', () => {
     const descriptor = getShellCommandDescriptor({
@@ -145,6 +158,23 @@ describe('ActivityTimeline shell command nodes', () => {
     expect(screen.getAllByText('timeline.shell.blocked')).toHaveLength(1);
     expect(screen.getAllByText('uname -s')).toHaveLength(1);
     expect(screen.queryByText('workspace is not configured')).not.toBeInTheDocument();
+  });
+});
+
+describe('ActivityTimeline tool groups', () => {
+  it('combines adjacent ordinary tool calls into one expandable row', () => {
+    render(<ActivityTimeline blocks={[
+      createResourceBlock(),
+      createResourceBlock({ id: 'resource-2', toolName: 'builtin-folder_list' }),
+    ]} isStreaming={false} />);
+
+    const group = screen.getByRole('button', { name: /timeline\.tool\.groupSummary/i });
+    expect(screen.queryByText('tools.resource_list')).not.toBeInTheDocument();
+
+    fireEvent.click(group);
+
+    expect(screen.getByText('tools.resource_list')).toBeInTheDocument();
+    expect(screen.getByText('tools.folder_list')).toBeInTheDocument();
   });
 });
 

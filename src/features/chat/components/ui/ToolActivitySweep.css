@@ -1,0 +1,31 @@
+.tool-activity-sweep {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  line-height: inherit;
+  vertical-align: middle;
+}
+
+.tool-activity-sweep--active::after {
+  position: absolute;
+  inset: -2px;
+  content: '';
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 38%, rgb(255 255 255 / 42%) 50%, transparent 62%);
+  transform: translateX(-130%);
+  animation: tool-activity-sweep 1.6s linear infinite;
+}
+
+@keyframes tool-activity-sweep {
+  to {
+    transform: translateX(130%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-activity-sweep--active::after {
+    animation: none;
+  }
+}

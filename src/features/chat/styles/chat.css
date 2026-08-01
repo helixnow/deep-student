@@ -38,7 +38,7 @@
  *   - --chat-motion-fast 150ms / --chat-motion-base 200ms / --chat-motion-slow 300ms
  *   - --chat-motion-ease（标准出口曲线）/ --chat-motion-ease-material（退场兜底）
  *   - --chat-motion-rise-distance 4px（入场位移）
- *   - --chat-motion-shimmer-dur 1.6s（骨架 / TextShimmer 循环周期）
+ *   - --chat-motion-shimmer-dur 1.6s（共享 shimmer 循环周期）
  *   工具类：.chat-msg-enter / .chat-fade-in / .chat-collapse / .chat-shimmer /
  *   .chat-wait-text / .chat-wait-dots（语义与名字冻结，只许补充取值）。
  *
@@ -254,7 +254,6 @@
 .chat-v2 .message-selectable-area .chain-header,
 .chat-v2 .message-selectable-area .thinking-trace__header,
 .chat-v2 .message-selectable-area .tool-trace__header,
-.chat-v2 .message-selectable-area .stream-skeleton,
 .chat-v2 .message-selectable-area [data-decoration="true"],
 .chat-v2 .message-selectable-area .qbank-citation-badge,
 .chat-v2 .message-selectable-area .mindmap-citation-card,

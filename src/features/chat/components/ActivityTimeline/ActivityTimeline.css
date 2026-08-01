@@ -22,6 +22,32 @@ button.timeline-node-dot {
   border: none;
 }
 
+.activity-timeline {
+  margin-block: 0 calc(var(--chat-md-paragraph-gap, 0.9rem) * 0.42);
+}
+
+.activity-timeline__node {
+  padding-bottom: 0.375rem;
+}
+
+.activity-timeline__node:last-child {
+  padding-bottom: 0;
+}
+
+/* When tool activity hands off to the answer body, avoid stacking the
+   timeline's paragraph gap with the markdown first-block margin. */
+.chat-v2 .message.assistant .message-content .activity-timeline + .block-renderer,
+.chat-v2 .message.assistant .message-content .activity-timeline + .block-renderer .prose,
+.chat-v2 .message.assistant .message-content .activity-timeline + .block-renderer .streaming-block-renderer {
+  margin-top: 0;
+}
+
+.chat-v2 .message.assistant .message-content .activity-timeline + .block-renderer .streaming-blocks > .stream-block:first-child,
+.chat-v2 .message.assistant .message-content .activity-timeline + .block-renderer .markdown-content > :first-child,
+.chat-v2 .message.assistant .message-content .activity-timeline + .block-renderer .markdown-content > p:first-child {
+  margin-top: 0;
+}
+
 .thinking-summary-sticky {
   position: sticky;
   isolation: isolate;

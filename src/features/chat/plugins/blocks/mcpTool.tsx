@@ -21,7 +21,6 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   WarningCircle,
   ArrowCounterClockwise,
-  Wrench,
   CaretDown,
   CaretRight,
   ArrowSquareOut,
@@ -45,7 +44,9 @@ import {
   getReadableToolName,
 } from '@/features/chat/utils/toolDisplayName';
 import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
+import { getToolVisual } from '@/features/chat/utils/toolVisual';
 import { TextShimmer } from '../../components/ui/TextShimmer';
+import { ToolActivitySweep } from '../../components/ui/ToolActivitySweep';
 import { PulseDot } from '@/components/ui/PulseDot';
 import {
   emitTemplateDesignerLifecycle,
@@ -116,6 +117,9 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
     success: 'text-success',
     error: 'text-destructive',
   }[status] || 'text-muted-foreground';
+  const toolVisual = useMemo(() => getToolVisual(name), [name]);
+  const ToolIcon = toolVisual.Icon;
+  const isActive = status === 'pending' || status === 'running';
 
   return (
     <div
@@ -124,30 +128,27 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
         'border-b border-border/30'
       )}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         {/* 工具图标 */}
-        <div
-          className={cn(
-            'p-1.5 rounded-md',
-            'bg-primary/10 dark:bg-primary/20'
-          )}
-        >
-        <Wrench size={16} className="text-primary" />
-        </div>
+        <ToolActivitySweep active={isActive} className={cn('h-7 w-7 shrink-0 justify-center rounded-md', toolVisual.backgroundClassName)}>
+          <ToolIcon size={16} className={toolVisual.className} />
+        </ToolActivitySweep>
 
         {/* 工具名称 */}
-        <div className="flex flex-col">
-          <span className="text-sm font-medium text-foreground">{displayName}</span>
+        <div className="flex min-w-0 flex-col justify-center gap-0.5">
+          <ToolActivitySweep active={isActive} className="max-w-full leading-4">
+            <span className="block truncate text-xs font-medium leading-4 text-muted-foreground">{displayName}</span>
+          </ToolActivitySweep>
           {status === 'running' ? (
             <TextShimmer
-              className="text-xs text-muted-foreground"
+              className="text-xs leading-4 text-muted-foreground"
               duration={1.5}
               spread={3}
             >
               {t(`blocks.mcpTool.status.${status}`, { ns: 'chatV2' })}
             </TextShimmer>
           ) : (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs leading-4 text-muted-foreground">
               {t(`blocks.mcpTool.status.${isStarted && status === 'success' ? 'started' : status}`, { ns: 'chatV2' })}
             </span>
           )}
@@ -155,7 +156,7 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
       </div>
 
       {/* 状态指示 */}
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         {/* 耗时：成功/失败终态均展示，便于定位慢工具 */}
         {duration !== undefined && (status === 'success' || status === 'error') && (
           <span className="text-xs text-muted-foreground tabular-nums">

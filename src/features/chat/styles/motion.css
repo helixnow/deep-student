@@ -13,8 +13,7 @@
  * - --chat-motion-ease   cubic-bezier(0.22, 1, 0.36, 1) —— 标准出口曲线（首选）
  * - --chat-motion-ease-material  cubic-bezier(0.4, 0, 0.2, 1) —— 仅退场兜底
  * - --chat-motion-rise-distance  4px —— 入场位移幅度
- * - --chat-motion-shimmer-dur    1.6s —— 骨架 / 文字 shimmer 循环周期（统一
- *                                StreamingSkeleton 1.6s 与 TextShimmer 1.5s 的分裂）
+ * - --chat-motion-shimmer-dur    1.6s —— 共享 shimmer 循环周期
  *
  * 工具类（.chat-v2 作用域内挂 className 即用）：
  * - .chat-msg-enter   消息入场：fade + 4px 上移，150ms（用户/助手消息通用，

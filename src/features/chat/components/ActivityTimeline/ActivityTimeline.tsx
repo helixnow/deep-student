@@ -25,6 +25,7 @@ import {
   WarningCircle,
   Warning,
   Terminal,
+  SquaresFour,
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { useStore } from 'zustand';
@@ -42,7 +43,9 @@ import {
   getReadableToolName,
 } from '@/features/chat/utils/toolDisplayName';
 import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
+import { getToolVisual } from '@/features/chat/utils/toolVisual';
 import { TextShimmer } from '../ui/TextShimmer';
+import { ToolActivitySweep } from '../ui/ToolActivitySweep';
 import { CompletionCard, extractCompletionData, isAttemptCompletionTool } from '../CompletionCard';
 import {
   getShellCommandDescriptor,
@@ -112,7 +115,7 @@ export interface ActivityTimelineProps {
 
 interface TimelineNodeData {
   id: string;
-  type: 'thinking' | 'tool' | 'limit' | 'todoList' | 'askUser';
+  type: 'thinking' | 'tool' | 'toolGroup' | 'limit' | 'todoList' | 'askUser';
   block: Block;
   // thinking 特有
   content?: string;
@@ -127,6 +130,8 @@ interface TimelineNodeData {
   toolOutput?: unknown;
   /** 🆕 2026-01-16: 工具调用参数正在生成中 */
   isPreparing?: boolean;
+  /** Consecutive, ordinary tool nodes presented as one compact timeline entry. */
+  toolNodes?: TimelineNodeData[];
   // todoList 特有（聚合多个 todo 工具块）
   todoBlocks?: Block[];
   todoSteps?: TodoStep[];
@@ -146,6 +151,46 @@ const RETRIEVAL_TOOL_NAMES: Record<string, string> = {
   multimodal_rag: 'builtin-unified_search',
   academic_search: 'builtin-arxiv_search',
 };
+
+function canMergeToolNode(node: TimelineNodeData | undefined): node is TimelineNodeData {
+  return node?.type === 'tool'
+    && !isShellTimelineTool(node.toolName)
+    && !isTodoTool(node.toolName)
+    && !isNoteTool(node.toolName)
+    && !isAttemptCompletionTool(node.toolName);
+}
+
+function mergeConsecutiveToolNodes(nodes: TimelineNodeData[]): TimelineNodeData[] {
+  const merged: TimelineNodeData[] = [];
+
+  for (let index = 0; index < nodes.length;) {
+    const node = nodes[index];
+    if (!canMergeToolNode(node)) {
+      merged.push(node);
+      index += 1;
+      continue;
+    }
+
+    const group = [node];
+    while (canMergeToolNode(nodes[index + group.length])) {
+      group.push(nodes[index + group.length]);
+    }
+
+    if (group.length === 1) {
+      merged.push(node);
+    } else {
+      merged.push({
+        id: `tool-group-${group[0].id}-${group[group.length - 1].id}`,
+        type: 'toolGroup',
+        block: group[0].block,
+        toolNodes: group,
+      });
+    }
+    index += group.length;
+  }
+
+  return merged;
+}
 
 /**
  * 从 TODO 工具块中提取最新的任务列表状态
@@ -356,7 +401,7 @@ function blocksToTimelineNodes(
     }
   }
 
-  return nodes;
+  return mergeConsecutiveToolNodes(nodes);
 }
 
 // ============================================================================
@@ -384,65 +429,25 @@ interface TimelineNodeProps {
 }
 
 const TimelineNode: React.FC<TimelineNodeProps> = ({
-  isFirst = false,
-  isLast = false,
-  isActive = false,
-  isExpanded = false,
   icon,
-  hideDot,
   stickyIcon,
   children,
 }) => {
   return (
-    <div className="relative flex pb-3">
-      {/* 左侧时间线轨道 - 固定宽度确保对齐，使用绝对定位确保连接线贯穿整个节点 */}
-      <div className="absolute left-0 top-0 bottom-0 flex flex-col items-center w-2">
-        {/* 上方连接线 */}
-        <div
-          className={cn(
-            'w-px flex-shrink-0',
-            isFirst ? 'h-2 bg-transparent' : 'h-2 bg-border'
-          )}
-        />
-        {/* 节点标记：图标变体 / 圆点变体 */}
-        {icon ? (
+    <div className="activity-timeline__node flex gap-1.5">
+      {/* Fixed icon column keeps every tool label on one visual axis. */}
+      <div className="flex h-5 w-5 shrink-0 items-center justify-center">
+        {icon && (
           <div
             aria-hidden="true"
-            className={cn(
-              '-mx-1 h-4 w-4 flex-shrink-0 z-10 inline-flex items-center justify-center',
-              stickyIcon && 'sticky top-0'
-            )}
+            className={cn('inline-flex h-4 w-4 items-center justify-center leading-none', stickyIcon && 'sticky top-0')}
           >
             {icon}
           </div>
-        ) : hideDot ? (
-          <div className="w-2 h-2 flex-shrink-0 z-10" aria-hidden="true" />
-        ) : (
-          /* ★ 低-9 修复：8px 圆点不再作为交互按钮（触控目标远小于 44px），
-             改为纯装饰点；展开/收起交互由节点标题按钮承担 */
-          <div
-            aria-hidden="true"
-            className={cn(
-              'timeline-node-dot rounded-full flex-shrink-0 z-10',
-              isActive
-                ? 'bg-primary ring-2 ring-primary/30'
-                : isExpanded
-                  ? 'bg-primary/70 ring-2 ring-primary/20'
-                  : 'bg-muted-foreground/50'
-            )}
-          />
         )}
-        {/* 下方连接线 - flex-1 填充剩余空间 */}
-        <div
-          className={cn(
-            'w-px flex-1',
-            isLast ? 'bg-transparent' : 'bg-border'
-          )}
-        />
       </div>
 
-      {/* 右侧内容 - 添加左侧 margin 给时间线轨道留空间 */}
-      <div className="flex-1 min-w-0 ml-5">
+      <div className="min-w-0 flex-1">
         {children}
       </div>
     </div>
@@ -592,22 +597,24 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
       isExpanded={isExpanded}
       onToggle={toggleExpanded}
       contentId={contentId}
-      hideDot
+      stickyIcon={shouldStickSummary}
+      icon={
+        <Brain
+          size={15}
+          weight={node.isThinking ? 'fill' : 'regular'}
+          className="text-primary"
+        />
+      }
     >
       <div
         ref={summaryRef}
         className={cn(
           shouldStickSummary && cn(
-          'thinking-summary-sticky sticky top-0 z-10 -ml-[28px] -mr-3 pl-[28px] pr-3 pt-1'
+            'thinking-summary-sticky sticky top-0 z-10 -mr-3 pr-3'
           )
         )}
       >
-        <div className="thinking-summary-row flex w-full max-w-full items-center pb-0.5 -ml-[22px]">
-          <Brain
-            size={15}
-            weight={node.isThinking ? 'fill' : 'regular'}
-            className="text-primary flex-shrink-0 mr-[3px]"
-          />
+        <div className="thinking-summary-row flex w-full max-w-full items-center pb-0.5">
           <DsButton
             variant="ghost"
             size="sm"
@@ -616,23 +623,23 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
             aria-expanded={hasContent ? isExpanded : undefined}
             aria-controls={hasContent ? contentId : undefined}
             className={cn(
-              'thinking-summary-trigger w-full !justify-start !px-0 rounded-[var(--radius-shell-control)] transition-colors group',
-              'text-base text-muted-foreground gap-1.5 hover:text-foreground',
+              'thinking-summary-trigger w-full !h-5 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-5 rounded-[var(--radius-shell-control)] transition-colors group',
+              'text-sm text-muted-foreground hover:text-foreground',
               'focus-visible:text-foreground',
               hasContent && 'hover:text-foreground cursor-pointer',
               'disabled:cursor-default disabled:hover:!bg-transparent'
             )}
           >
             {node.isThinking ? (
-              <TextShimmer className="text-base" duration={1.5} spread={3}>
+              <TextShimmer className="text-sm leading-5" duration={1.5} spread={3}>
                 {t('timeline.thinking.inProgress', { seconds: liveDurationSeconds })}
               </TextShimmer>
             ) : node.isAborted ? (
-              <span className="text-muted-foreground/80">
+              <span className="leading-5 text-muted-foreground/80">
                 {t('timeline.thinking.stopped')}
               </span>
             ) : (
-              <span>
+              <span className="leading-5">
                 {t('timeline.thinking.completed', { seconds: displayDurationSeconds })}
               </span>
             )}
@@ -658,7 +665,7 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
             id={contentId}
             role="region"
             aria-label={t('timeline.thinking.contentLabel')}
-            className={cn('overflow-hidden', shouldStickSummary && 'pt-3')}
+            className={cn('overflow-hidden', shouldStickSummary && 'pt-2')}
           >
             <div
               className="py-1.5 pl-2 pr-1 text-gray-500 dark:text-gray-400 text-xs leading-snug"
@@ -901,6 +908,8 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
     }),
     [node.toolName, node.toolInput, t]
   );
+  const toolVisual = useMemo(() => getToolVisual(node.toolName), [node.toolName]);
+  const ToolIcon = toolVisual.Icon;
 
   // 计算执行时间
   const durationMs = useMemo(() => {
@@ -974,8 +983,13 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
       isExpanded={isExpanded}
       onToggle={toggleExpanded}
       contentId={contentId}
+      icon={
+        <ToolActivitySweep active={isPreparing || isRunning}>
+          <ToolIcon size={14} className={toolVisual.className} />
+        </ToolActivitySweep>
+      }
     >
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-0.5">
         {/* 工具头部 - 🔧 统一交互：文字区域也可以点击展开 */}
         <DsButton
           variant="ghost"
@@ -985,42 +999,44 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
           aria-expanded={hasDetails ? isExpanded : undefined}
           aria-controls={hasDetails ? contentId : undefined}
           className={cn(
-            '!justify-start !px-0 -mt-0.5 max-w-full hover:!bg-transparent',
-            isShellCommand ? 'w-full min-w-0' : 'w-fit',
-            'text-base text-muted-foreground hover:text-foreground',
+            '!h-5 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-5 max-w-full hover:!bg-transparent',
+            isShellCommand ? 'w-full min-w-0' : 'w-fit min-w-0',
+            'text-xs text-muted-foreground hover:text-foreground',
             'disabled:cursor-default disabled:hover:text-muted-foreground'
           )}
         >
           {shellDescriptor ? (
-            <span className="flex min-w-0 items-center gap-1.5 text-foreground">
+            <span className="flex h-5 min-w-0 items-center gap-1.5 text-muted-foreground">
               <Terminal size={13} className="shrink-0 text-muted-foreground" />
-              <span className={cn('shrink-0 font-medium', statusColor)}>
+              <span className={cn('shrink-0 text-xs font-medium leading-5', statusColor)}>
                 {shellCommandVerb(shellDescriptor, t)}
               </span>
               <code
-                className="min-w-0 truncate font-mono text-xs text-foreground"
+                className="min-w-0 truncate font-mono text-xs leading-5 text-foreground"
                 title={shellCommandPlaceholder(shellDescriptor, t)}
               >
                 {shellCommandPlaceholder(shellDescriptor, t)}
               </code>
             </span>
           ) : (
-            <span className="text-base font-medium text-foreground">
-              {displayToolName}
-            </span>
+            <ToolActivitySweep active={isPreparing || isRunning} className="min-w-0 leading-5">
+              <span className="block truncate text-xs font-medium leading-5 text-muted-foreground">
+                {displayToolName}
+              </span>
+            </ToolActivitySweep>
           )}
 
           {!shellDescriptor && (isPreparing || isRunning) ? (
             <>
               <TextShimmer
-                className={cn('text-xs', statusColor)}
+                className={cn('text-[11px] leading-5', statusColor)}
                 duration={1.5}
                 spread={3}
               >
                 {statusText}
               </TextShimmer>
               {isRunning && liveRunningSeconds > 0 && (
-                <span className="text-xs tabular-nums text-muted-foreground/70">
+                <span className="text-[11px] leading-5 tabular-nums text-muted-foreground/70">
                   {liveRunningSeconds}s
                 </span>
               )}
@@ -1029,23 +1045,23 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
             <>
               {StatusIcon && (
                 <StatusIcon
-                  size={14}
+                  size={13}
                   className={cn('flex-shrink-0', statusColor)}
                 />
               )}
-              <span className={cn('text-xs', statusColor)}>
+              <span className={cn('text-[11px] leading-5', statusColor)}>
                 {statusText}
               </span>
               {durationText && (
-                <span className="text-xs text-muted-foreground/70">
+                <span className="text-[11px] leading-5 text-muted-foreground/70">
                   {durationText}
                 </span>
               )}
             </>
           ) : durationText ? (
-            <span className="ml-auto shrink-0 text-xs text-muted-foreground/70">{durationText}</span>
+            <span className="ml-auto shrink-0 text-[11px] leading-5 text-muted-foreground/70">{durationText}</span>
           ) : isRunning && liveRunningSeconds > 0 ? (
-            <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground/70">
+            <span className="ml-auto shrink-0 text-[11px] leading-5 tabular-nums text-muted-foreground/70">
               {liveRunningSeconds}s
             </span>
           ) : null}
@@ -1074,74 +1090,74 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
                   />
                 </div>
               ) : (
-              <div className="pl-5 space-y-2 text-xs">
-                {/* 错误信息 */}
-                {isError && node.toolError && (
-                  <div className="flex items-start gap-1.5 p-2 rounded-md bg-destructive/10 border border-destructive/20">
-                    <WarningCircle size={12} className="text-destructive flex-shrink-0 mt-0.5" />
-                    <span className="text-destructive break-words">
-                      {node.toolError}
-                    </span>
-                  </div>
-                )}
-
-                {/* 输入参数 */}
-                {node.toolInput && Object.keys(node.toolInput).length > 0 && (
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1 text-muted-foreground">
-                      <CaretRight size={12} />
-                      <span>{t('timeline.tool.input', { ns: 'chatV2' })}</span>
+                <div className="space-y-2 text-xs">
+                  {/* 错误信息 */}
+                  {isError && node.toolError && (
+                    <div className="flex items-start gap-1.5 p-2 rounded-md bg-destructive/10 border border-destructive/20">
+                      <WarningCircle size={12} className="text-destructive flex-shrink-0 mt-0.5" />
+                      <span className="text-destructive break-words">
+                        {node.toolError}
+                      </span>
                     </div>
-                    <div className="pl-4 space-y-0.5">
-                      {Object.entries(node.toolInput).slice(0, 5).map(([key, value]) => (
-                        <div key={key} className="flex gap-1.5">
-                          <span className="text-warning font-medium">
-                            {key}:
+                  )}
+
+                  {/* 输入参数 */}
+                  {node.toolInput && Object.keys(node.toolInput).length > 0 && (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <CaretRight size={12} />
+                        <span>{t('timeline.tool.input', { ns: 'chatV2' })}</span>
+                      </div>
+                      <div className="pl-4 space-y-0.5">
+                        {Object.entries(node.toolInput).slice(0, 5).map(([key, value]) => (
+                          <div key={key} className="flex gap-1.5">
+                            <span className="text-warning font-medium">
+                              {key}:
+                            </span>
+                            <span className="text-muted-foreground truncate max-w-[200px]">
+                              {formatParamPreview(value)}
+                            </span>
+                          </div>
+                        ))}
+                        {Object.keys(node.toolInput).length > 5 && (
+                          <span className="text-muted-foreground/60">
+                            {t('timeline.tool.moreParams', { count: Object.keys(node.toolInput).length - 5, ns: 'chatV2' })}
                           </span>
-                          <span className="text-muted-foreground truncate max-w-[200px]">
-                            {formatParamPreview(value)}
-                          </span>
-                        </div>
-                      ))}
-                      {Object.keys(node.toolInput).length > 5 && (
-                        <span className="text-muted-foreground/60">
-                          {t('timeline.tool.moreParams', { count: Object.keys(node.toolInput).length - 5, ns: 'chatV2' })}
-                        </span>
-                      )}
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* 🆕 F-P1：运行中流式输出预览（最近数行，来自 block.content） */}
-                {(isPreparing || isRunning) && node.block.content && (
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1 text-muted-foreground">
-                      <CircleNotch size={12} className="animate-spin text-primary" />
-                      <span>{t('timeline.tool.liveOutput', { ns: 'chatV2' })}</span>
+                  {/* 🆕 F-P1：运行中流式输出预览（最近数行，来自 block.content） */}
+                  {(isPreparing || isRunning) && node.block.content && (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <CircleNotch size={12} className="animate-spin text-primary" />
+                        <span>{t('timeline.tool.liveOutput', { ns: 'chatV2' })}</span>
+                      </div>
+                      <pre className="ml-4 max-h-24 overflow-hidden whitespace-pre-wrap break-all rounded-md bg-muted/60 px-2 py-1.5 font-mono text-[11px] leading-snug text-muted-foreground">
+                        {node.block.content.split('\n').slice(-6).join('\n')}
+                      </pre>
                     </div>
-                    <pre className="ml-4 max-h-24 overflow-hidden whitespace-pre-wrap break-all rounded-md bg-muted/60 px-2 py-1.5 font-mono text-[11px] leading-snug text-muted-foreground">
-                      {node.block.content.split('\n').slice(-6).join('\n')}
-                    </pre>
-                  </div>
-                )}
+                  )}
 
-                {/* 输出结果摘要 */}
-                {isSuccess && node.toolOutput !== undefined && (
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1 text-muted-foreground">
-                      <CaretRight size={12} />
-                      <span>{t('timeline.tool.output', { ns: 'chatV2' })}</span>
+                  {/* 输出结果摘要 */}
+                  {isSuccess && node.toolOutput !== undefined && (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <CaretRight size={12} />
+                        <span>{t('timeline.tool.output', { ns: 'chatV2' })}</span>
+                      </div>
+                      <div className="pl-4 text-muted-foreground">
+                        {isTemplateVisualOutput(node.toolOutput) ? (
+                          <TemplateToolOutput output={node.toolOutput} />
+                        ) : (
+                          <ToolOutputSummary output={node.toolOutput} />
+                        )}
+                      </div>
                     </div>
-                    <div className="pl-4 text-muted-foreground">
-                      {isTemplateVisualOutput(node.toolOutput) ? (
-                        <TemplateToolOutput output={node.toolOutput} />
-                      ) : (
-                        <ToolOutputSummary output={node.toolOutput} />
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
               )}
             </motion.div>
           )}
@@ -1150,7 +1166,6 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
     </TimelineNode>
   );
 };
-
 /** 🚀 节点级 memo（同 ThinkingNodeContent）：block 引用未变 + 流式态未变即跳过重渲染 */
 const ToolNodeContent = React.memo(
   ToolNodeContentInner,
@@ -1160,6 +1175,102 @@ const ToolNodeContent = React.memo(
     prev.isLast === next.isLast &&
     prev.isStreaming === next.isStreaming
 );
+
+interface ToolGroupNodeContentProps {
+  node: TimelineNodeData;
+  isFirst: boolean;
+  isLast: boolean;
+  isStreaming: boolean;
+}
+
+const ToolGroupNodeContent: React.FC<ToolGroupNodeContentProps> = ({ node, isFirst, isLast, isStreaming }) => {
+  const { t } = useTranslation('chatV2');
+  const disclosureMotion = useDisclosureMotion();
+  const contentId = useId();
+  const [isExpanded, setIsExpanded] = useState(false);
+  const toolNodes = node.toolNodes ?? [];
+  const isActive = toolNodes.some((toolNode) =>
+    (toolNode.isPreparing || toolNode.toolStatus === 'running') && isStreaming,
+  );
+  const hasError = toolNodes.some((toolNode) => toolNode.toolStatus === 'error');
+  const summary = t('timeline.tool.groupSummary', { count: toolNodes.length });
+  const groupStatus = isActive
+    ? t('timeline.tool.running')
+    : hasError
+      ? t('timeline.tool.failed')
+      : t('timeline.tool.success');
+
+  return (
+    <TimelineNode
+      isFirst={isFirst}
+      isLast={isLast}
+      isActive={isActive}
+      isExpanded={isExpanded}
+      contentId={contentId}
+      icon={
+        <ToolActivitySweep active={isActive}>
+          <SquaresFour size={14} className="text-muted-foreground" />
+        </ToolActivitySweep>
+      }
+    >
+      <DsButton
+        variant="ghost"
+        size="sm"
+        onClick={() => setIsExpanded((value) => !value)}
+        aria-expanded={isExpanded}
+        aria-controls={contentId}
+        className="!h-5 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-5 text-xs text-muted-foreground hover:!bg-transparent hover:text-foreground"
+      >
+        <ToolActivitySweep active={isActive} className="min-w-0 leading-5">
+          <span className="truncate font-medium leading-5">{summary}</span>
+        </ToolActivitySweep>
+        <span className="text-[11px] leading-5 text-muted-foreground/70">{groupStatus}</span>
+        <CaretRight size={12} className={cn('transition-transform', isExpanded && 'rotate-90')} aria-hidden="true" />
+      </DsButton>
+
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            {...disclosureMotion}
+            id={contentId}
+            role="region"
+            aria-label={summary}
+            className="overflow-hidden"
+          >
+            <div className="space-y-1 pt-1 text-xs text-muted-foreground">
+              {toolNodes.map((toolNode) => {
+                const visual = getToolVisual(toolNode.toolName);
+                const ToolIcon = visual.Icon;
+                const isToolActive = (toolNode.isPreparing || toolNode.toolStatus === 'running') && isStreaming;
+                const toolStatus = isToolActive
+                  ? t('timeline.tool.running')
+                  : toolNode.toolStatus === 'error'
+                    ? t('timeline.tool.failed')
+                    : t('timeline.tool.success');
+
+                return (
+                  <div key={toolNode.id} className="grid min-w-0 grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-1.5">
+                    <ToolActivitySweep active={isToolActive} className="h-4 w-4 items-center justify-center">
+                      <ToolIcon size={13} className="text-muted-foreground" />
+                    </ToolActivitySweep>
+                    <ToolActivitySweep active={isToolActive} className="min-w-0 leading-4">
+                      <span className="block truncate leading-4">
+                        {getReadableToolName(toolNode.toolName || '', t, {
+                          providerName: getExternalToolProviderName(toolNode.toolInput),
+                        })}
+                      </span>
+                    </ToolActivitySweep>
+                    <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/70">{toolStatus}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </TimelineNode>
+  );
+};
 
 // ============================================================================
 // TodoList 聚合节点渲染组件
@@ -1322,7 +1433,7 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
   }
 
   return (
-    <div className={cn('activity-timeline text-sm mb-3', className)}>
+    <div className={cn('activity-timeline text-sm', className)}>
       {nodes.map((node, idx) => {
         const isFirst = idx === 0;
         const isLast = idx === nodes.length - 1;
@@ -1334,6 +1445,16 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
               node={node}
               isFirst={isFirst}
               isLast={isLast}
+            />
+          );
+        } else if (node.type === 'toolGroup') {
+          return (
+            <ToolGroupNodeContent
+              key={node.id}
+              node={node}
+              isFirst={isFirst}
+              isLast={isLast}
+              isStreaming={isStreaming}
             />
           );
         } else if (node.type === 'tool') {

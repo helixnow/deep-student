@@ -1406,6 +1406,7 @@
       "preparing": "Preparing...",
       "pending": "Pending",
       "running": "Running...",
+      "groupSummary": "Used {{count}} tools",
       "success": "Completed",
       "completed": "Completed",
       "failed": "Failed",

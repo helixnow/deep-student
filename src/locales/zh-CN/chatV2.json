@@ -1406,6 +1406,7 @@
       "preparing": "正在准备...",
       "pending": "等待执行",
       "running": "执行中...",
+      "groupSummary": "已调用 {{count}} 个工具",
       "success": "执行完成",
       "completed": "执行完成",
       "failed": "执行失败",

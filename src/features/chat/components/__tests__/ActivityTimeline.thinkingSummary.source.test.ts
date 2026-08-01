@@ -30,17 +30,19 @@ describe('activity timeline thinking summary source', () => {
     expect(activityTimelineSource).toContain('const shouldStickSummary = hasContent && (isExpanded || preserveStickyOnCollapse);');
   });
 
-  it('uses the full summary row as the thinking trigger without shrinking the tap target', () => {
-    expect(activityTimelineSource).toMatch(/w-full !justify-start !px-0 rounded-\[var\(--radius-shell-control\)\] .* group/);
-    expect(activityTimelineSource).toContain('thinking-summary-trigger w-full !justify-start !px-0');
-    expect(activityTimelineSource).toContain('text-base text-muted-foreground gap-1.5 hover:text-foreground');
+  it('uses the compact aligned summary row as the thinking trigger', () => {
+    expect(activityTimelineSource).toContain('thinking-summary-trigger w-full !h-5 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-5');
+    expect(activityTimelineSource).toContain('text-sm text-muted-foreground hover:text-foreground');
     expect(activityTimelineCssSource).toContain('.thinking-summary-trigger:hover,');
     expect(activityTimelineCssSource).toContain('background: transparent;');
     expect(activityTimelineSource).not.toContain('group-hover:translate-x-0.5');
   });
 
-  it('scopes the sticky treatment to the full chat-column summary row', () => {
-    expect(activityTimelineSource).toMatch(/thinking-summary-sticky sticky top-0 z-10 -ml-\[28px\] -mr-3 pl-\[28px\] pr-3 pt-1/);
+  it('scopes the sticky treatment without negative timeline offsets', () => {
+    expect(activityTimelineSource).toContain('thinking-summary-sticky sticky top-0 z-10 -mr-3 pr-3');
+    expect(activityTimelineSource).not.toContain('-ml-[28px]');
+    expect(activityTimelineSource).not.toContain('pl-[28px]');
+    expect(activityTimelineSource).not.toContain('-ml-[22px]');
     expect(activityTimelineSource).toContain('flex w-full max-w-full items-center');
   });
 
@@ -58,7 +60,15 @@ describe('activity timeline thinking summary source', () => {
     expect(thinkingChainCssSource).toContain('list-style-position: outside;');
   });
 
-  it('leaves safety space between the sticky fade and the following thinking content', () => {
-    expect(activityTimelineSource).toContain("className={cn('overflow-hidden', shouldStickSummary && 'pt-3')}");
+  it('leaves compact safety space between the sticky row and the following thinking content', () => {
+    expect(activityTimelineSource).toContain("className={cn('overflow-hidden', shouldStickSummary && 'pt-2')}");
+  });
+
+  it('keeps timeline-to-answer spacing from stacking with markdown first-block margins', () => {
+    expect(activityTimelineSource).toContain('activity-timeline__node flex gap-1.5');
+    expect(activityTimelineSource).toContain("cn('activity-timeline text-sm'");
+    expect(activityTimelineCssSource).toContain('margin-block: 0 calc(var(--chat-md-paragraph-gap, 0.9rem) * 0.42);');
+    expect(activityTimelineCssSource).toContain('.activity-timeline__node:last-child');
+    expect(activityTimelineCssSource).toContain('.activity-timeline + .block-renderer .markdown-content > p:first-child');
   });
 });
