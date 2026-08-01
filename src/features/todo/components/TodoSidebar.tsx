@@ -152,7 +152,7 @@ export const TodoListGlyph: React.FC<{ list: TodoList; size?: number }> = ({ lis
     return (
       <IconComp
         size={size}
-        weight="bold"
+        weight="regular"
         style={list.color ? { color: list.color } : undefined}
       />
     );
@@ -165,7 +165,7 @@ export const TodoListGlyph: React.FC<{ list: TodoList; size?: number }> = ({ lis
       />
     );
   }
-  return <CheckSquare size={size} weight="bold" />;
+  return <CheckSquare size={size} weight="regular" />;
 };
 
 // ============================================================================
@@ -1129,7 +1129,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
                   isActive={isActive}
                   onClick={() => handleSmartViewClick(id)}
                   title={`${t(labelKey)} ${todoHotkeyHint(viewIndex + 1)}`}
-                  leftSlot={<Icon size={18} weight="bold" />}
+                  leftSlot={<Icon size={18} weight="regular" />}
                   rightSlot={
                     showOverdueBadge ? (
                       <span
@@ -1223,7 +1223,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
             }
           }}
           title={`${t('todo:trash.title')} ${todoHotkeyHint(8)}`}
-          leftSlot={<Trash size={18} weight="bold" />}
+          leftSlot={<Trash size={18} weight="regular" />}
           rightSlot={
             trashTotalCount > 0 ? (
               <PendingCountBadge

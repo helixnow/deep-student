@@ -27,6 +27,10 @@ const { showGlobalNotificationMock } = vi.hoisted(() => ({
   showGlobalNotificationMock: vi.fn(),
 }));
 
+const { openSessionSearchMock } = vi.hoisted(() => ({
+  openSessionSearchMock: vi.fn(),
+}));
+
 vi.mock('@/components/ui/app-menu/AppMenu', () => {
   const React = require('react');
 
@@ -87,6 +91,12 @@ vi.mock('@/components/UnifiedNotification', () => ({
   showGlobalNotification: showGlobalNotificationMock,
 }));
 
+vi.mock('@/command-palette', () => ({
+  useCommandPalette: () => ({
+    openSessionSearch: openSessionSearchMock,
+  }),
+}));
+
 vi.mock('@/hooks/useEventRegistry', () => ({
   useEventRegistry: () => undefined,
 }));
@@ -97,6 +107,7 @@ describe('ModernSidebar shell navigation', () => {
     getAllSessionIdsMock.mockReturnValue([]);
     getSessionStoreMock.mockReturnValue(undefined);
     showGlobalNotificationMock.mockReset();
+    openSessionSearchMock.mockReset();
     invokeMock.mockImplementation((command: string) => {
       if (command === 'chat_v2_list_sessions') {
         return Promise.resolve([]);
@@ -121,6 +132,37 @@ describe('ModernSidebar shell navigation', () => {
     expect(screen.getByRole('button', { name: /待办|sidebar:navigation\.todo/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '技能管理' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '设置' })).toBeInTheDocument();
+  });
+
+  it('renders the new-conversation icon to the right of the conversation section title', async () => {
+    const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent');
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    const conversationHeader = screen.getByRole('button', { name: '对话' });
+    const section = conversationHeader.closest('section');
+
+    expect(section).not.toBeNull();
+    expect(section).toContainElement(conversationHeader);
+
+    const sectionHeader = conversationHeader.parentElement;
+    expect(sectionHeader).not.toBeNull();
+    const newConversationAction = sectionHeader?.querySelector('[data-sidebar-section-action="create-conversation"]');
+    expect(newConversationAction).not.toBeNull();
+    const newConversationButton = within(newConversationAction as HTMLElement).getByRole('button', { name: '新建对话' });
+    expect(conversationHeader.compareDocumentPosition(newConversationButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(newConversationButton.querySelector('svg')).not.toBeNull();
+
+    await userEvent.setup().click(newConversationButton);
+
+    expect(dispatchEventSpy).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'modern-sidebar:group-action',
+    }));
   });
 
   it('keeps only conversation navigation in the Workbench Chat scope', async () => {
@@ -916,8 +958,8 @@ describe('ModernSidebar shell navigation', () => {
     const untitledSessionButton = within(conversationsNav).getByRole('button', { name: '未命名会话' });
 
     const groupRow = groupButton.querySelector('span.flex.min-w-0.flex-1.items-center.gap-2\\.5');
-    const titledSessionLabel = titledSessionButton.querySelector('span.block.min-w-0.flex-1.truncate.leading-4');
-    const untitledSessionLabel = untitledSessionButton.querySelector('span.block.min-w-0.flex-1.truncate.leading-4');
+    const titledSessionLabel = titledSessionButton.querySelector('span.block.min-w-0.flex-1.overflow-hidden.whitespace-nowrap');
+    const untitledSessionLabel = untitledSessionButton.querySelector('span.block.min-w-0.flex-1.overflow-hidden.whitespace-nowrap');
     const titledSessionOffsetRow = titledSessionButton.querySelector('span.flex.min-w-0.flex-1.items-center.gap-2\\.5');
 
     expect(groupRow).not.toBeNull();
@@ -1205,10 +1247,14 @@ describe('ModernSidebar shell navigation', () => {
     expect(sidebarSource).not.toContain("'absolute left-3 top-1/2 z-10 -translate-x-full -translate-y-1/2 !h-6 !w-6'");
   });
 
-  it('keeps grouped session rows full width instead of shrinking them with an outer indent', () => {
+  it('keeps grouped session titles aligned while allowing long titles to scroll on hover', () => {
     const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
 
-    expect(sidebarSource).toContain("'space-y-0.5 overflow-hidden pl-4'");
+    expect(sidebarSource).toContain("'space-y-0.5 overflow-hidden'");
+    expect(sidebarSource).toContain('<HoverScrollSidebarLabel text={sessionTitle} />');
+    expect(sidebarSource).toContain('maskImage:');
+    expect(sidebarSource).toContain('WebkitMaskImage:');
+    expect(sidebarSource).toContain('maskImage: isScrolling');
     expect(sidebarSource).not.toContain("pl-[26px]");
   });
 
@@ -1374,10 +1420,9 @@ describe('ModernSidebar shell navigation', () => {
     expect(screen.getByText('归档线程')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('重命名会话'));
-    const renameDialog = await screen.findByRole('dialog');
-    expect(within(renameDialog).getByText('重命名对话')).toBeInTheDocument();
-    expect(within(renameDialog).getByRole('textbox', { name: '对话名称' })).toHaveValue('右键会话');
-    fireEvent.click(within(renameDialog).getByRole('button', { name: '取消' }));
+    const renameInput = await screen.findByRole('textbox', { name: '对话名称' });
+    expect(renameInput).toHaveValue('右键会话');
+    fireEvent.keyDown(renameInput, { key: 'Escape' });
 
     fireEvent.contextMenu(await screen.findByRole('button', { name: '右键会话' }));
     fireEvent.click(screen.getByText('置顶线程'));
@@ -1427,16 +1472,11 @@ describe('ModernSidebar shell navigation', () => {
     fireEvent.contextMenu(await screen.findByRole('button', { name: '旧标题' }));
     fireEvent.click(screen.getByText('重命名会话'));
 
-    const renameDialog = await screen.findByRole('dialog');
-    expect(within(renameDialog).getByText('重命名对话')).toBeInTheDocument();
-    expect(within(renameDialog).getByRole('button', { name: '取消' })).toBeInTheDocument();
-    expect(within(renameDialog).getByRole('button', { name: '确定' })).toBeInTheDocument();
-
-    const input = within(renameDialog).getByRole('textbox', { name: '对话名称' });
+    const input = await screen.findByRole('textbox', { name: '对话名称' });
     expect(input).toHaveValue('旧标题');
 
     fireEvent.change(input, { target: { value: '新标题' } });
-    fireEvent.click(within(renameDialog).getByRole('button', { name: '确定' }));
+    fireEvent.keyDown(input, { key: 'Enter' });
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('chat_v2_update_session_settings', {
@@ -1471,10 +1511,8 @@ describe('ModernSidebar shell navigation', () => {
     fireEvent.contextMenu(within(conversationsNav).getByRole('button', { name: '未命名会话' }));
     fireEvent.click(screen.getByText('重命名会话'));
 
-    const renameDialog = await screen.findByRole('dialog');
-    const input = within(renameDialog).getByRole('textbox', { name: '对话名称' });
+    const input = await screen.findByRole('textbox', { name: '对话名称' });
     expect(input).toHaveValue('');
     expect(input).toHaveAttribute('placeholder', '未命名会话');
-    expect(within(renameDialog).getByRole('button', { name: '确定' })).toBeDisabled();
   });
 });

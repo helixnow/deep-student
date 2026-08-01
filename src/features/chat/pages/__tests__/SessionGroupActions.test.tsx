@@ -60,17 +60,11 @@ function renderHarness() {
 }
 
 describe('SessionGroupActions', () => {
-  it('keeps the ellipsis menu hidden until the group row is hovered/focused, while keeping the new-session icon visible', () => {
+  it('keeps group quick actions hidden until the group row is hovered/focused', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/SessionGroupActions.tsx'), 'utf-8');
     const quickAction = source.match(/const quickAction = \([\s\S]*?\n\s*\);/m)?.[0] ?? '';
 
-    // Container itself should no longer be hidden.
-    expect(source).toContain('<div className="flex items-center gap-0.5">');
-    expect(source).not.toContain('className="flex items-center gap-0.5 opacity-0');
-
-    // Only the menu trigger stays hover/focus/menu-open visible (always visible on coarse pointers).
-    expect(quickAction).toContain('className="opacity-0 transition-opacity duration-150 group-hover/sidebar-section:opacity-100 group-focus-within/sidebar-section:opacity-100 data-[menu-open=true]:opacity-100 [@media(pointer:coarse)]:opacity-100"');
-    expect(quickAction).toMatch(/opacity-0[\s\S]*?<\/div>\s*<CommonTooltip/);
+    expect(quickAction).toContain('className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/sidebar-section:opacity-100 group-focus-within/sidebar-section:opacity-100 data-[menu-open=true]:opacity-100"');
   });
 
   it('uses the study compose icon for grouped new session quick actions', () => {
@@ -86,6 +80,14 @@ describe('SessionGroupActions', () => {
     expect(newSessionButton).toContain('<StudyComposeIcon className="w-3.5 h-3.5" />');
     expect(newSessionButton).not.toContain('<Plus className="w-3.5 h-3.5" />');
     expect(newSessionButton).not.toContain('title={labels.newSession}');
+  });
+
+  it('keeps quick-action hover states transparent and color-only', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/SessionGroupActions.tsx'), 'utf-8');
+
+    expect(source).toContain('hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)]');
+    expect(source).toContain('active:bg-transparent active:text-[color:var(--shell-navigation-foreground)]');
+    expect(source).toContain('!rounded-none');
   });
 
   it('uses the group-aware new session label for accessibility without native title', () => {

@@ -17,7 +17,7 @@ describe('modern sidebar typography contract', () => {
     expect(sidebarSource).toContain('font-sidebar-study-ui');
     expect(sidebarSource).toContain("aria-label={t('sidebar:aria.workspace_primary_entry')}");
     expect(sidebarSource).toContain('className="space-y-0.5" role="list"');
-    expect(sidebarSource).toContain('className="desktop-shell-nav-section-label min-w-0 truncate"');
+    expect(sidebarSource).toContain('className="desktop-shell-nav-section-label desktop-shell-sidebar-section-label min-w-0 truncate"');
     expect(sidebarSource).toContain('className="desktop-shell-sidebar-row-title block min-w-0 flex-1 truncate leading-4"');
     expect(sidebarSource).toContain("aria-label={t('sidebar:aria.topic_sessions')}");
     expect(sidebarSource).toContain("aria-label={t('sidebar:aria.conversation_sessions')}");
@@ -28,6 +28,8 @@ describe('modern sidebar typography contract', () => {
     expect(appCssSource).toMatch(/\.desktop-shell-nav-section-label\s*\{[^}]*font-size:\s*12px;/);
     expect(appCssSource).toMatch(/\.desktop-shell-nav-section-label\s*\{[^}]*line-height:\s*16px;/);
     expect(appCssSource).toMatch(/\.desktop-shell-nav-section-label\s*\{[^}]*font-weight:\s*400;/);
+    expect(appCssSource).toMatch(/\.desktop-shell-sidebar-section-label\s*\{[^}]*font-size:\s*13px;/);
+    expect(appCssSource).toMatch(/\.desktop-shell-sidebar-section-label\s*\{[^}]*line-height:\s*18px;/);
     expect(themeColorsSource).toMatch(/--shell-navigation-section-label:\s*color-mix\(in oklch,\s*var\(--shell-navigation-row-foreground\)\s*72%,\s*transparent\);/);
     expect(appCssSource).toMatch(/\.desktop-shell-nav-section-label\s*\{[^}]*color:\s*var\(--shell-navigation-section-label\);/);
     expect(appCssSource).not.toMatch(/\.desktop-shell-nav-section-label\s*\{[^}]*color:\s*var\(--shell-navigation-muted\);/);

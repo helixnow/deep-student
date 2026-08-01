@@ -216,6 +216,75 @@ function NewSessionShortcutHint({ shortcut }: { shortcut: string }) {
   );
 }
 
+function HoverScrollSidebarLabel({ text }: { text: string }) {
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [overflowDistance, setOverflowDistance] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+  const prefersReducedMotion = useReducedMotion();
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const textElement = textRef.current;
+    if (!container || !textElement) return;
+
+    const measureOverflow = () => {
+      setOverflowDistance(Math.max(0, textElement.scrollWidth - container.clientWidth));
+    };
+
+    measureOverflow();
+    if (typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(measureOverflow);
+    observer.observe(container);
+    observer.observe(textElement);
+    return () => observer.disconnect();
+  }, [text]);
+
+  const shouldScroll = overflowDistance > 0;
+  const scrollDuration = Math.min(10, Math.max(3, overflowDistance / 32 + 2));
+  const isScrolling = shouldScroll && isHovered && !prefersReducedMotion;
+  const edgeFadeStyle = shouldScroll
+    ? {
+      maskMode: 'alpha' as const,
+      maskImage: isScrolling
+        ? 'linear-gradient(to right, transparent 0%, #fff 10px, #fff calc(100% - 10px), transparent 100%)'
+        : 'linear-gradient(to right, #fff 0%, #fff 90%, transparent 100%)',
+      WebkitMaskImage: isScrolling
+        ? 'linear-gradient(to right, transparent 0%, #fff 10px, #fff calc(100% - 10px), transparent 100%)'
+        : 'linear-gradient(to right, #fff 0%, #fff 90%, transparent 100%)',
+    }
+    : undefined;
+
+  return (
+    <span
+      ref={containerRef}
+      className="desktop-shell-sidebar-row-title block min-w-0 flex-1 overflow-hidden whitespace-nowrap"
+      style={edgeFadeStyle}
+      title={text}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <motion.span
+        ref={textRef}
+        className="inline-block w-max min-w-full whitespace-nowrap"
+        animate={{ x: isScrolling ? -overflowDistance : 0 }}
+        transition={isScrolling
+          ? {
+            duration: scrollDuration,
+            ease: 'linear',
+            repeat: Infinity,
+            repeatType: 'reverse',
+            repeatDelay: 0.6,
+          }
+          : { duration: 0.15, ease: 'easeOut' }}
+      >
+        {text}
+      </motion.span>
+    </span>
+  );
+}
+
 function isFinePointerDesktopSurface(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
     return true;
@@ -1051,13 +1120,6 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               aria-current={isActive ? 'page' : undefined}
               tabIndex={collapsed ? -1 : undefined}
               isActive={isActive}
-              leftSlot={pinned ? (
-                <PushPin
-                  data-testid="recent-session-pin-icon"
-                  size={14}
-                  className="text-[color:var(--shell-navigation-foreground)] group-hover/thread-row:opacity-0 group-focus-within/thread-row:opacity-0"
-                />
-              ) : undefined}
               rightSlot={isSessionStreaming ? (
                 <SidebarStreamingIndicator />
               ) : hasBlockingInteraction ? (
@@ -1070,7 +1132,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 </span>
               )}
             >
-              <SidebarRowLabel>{sessionTitle}</SidebarRowLabel>
+              <HoverScrollSidebarLabel text={sessionTitle} />
             </SidebarRow>
           </AppMenuTrigger>
           <AppMenuContent align="end" width={180}>
@@ -1140,14 +1202,15 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           </div>
         )}
 
-        {/* 行内快捷操作：真实 button、键盘可聚焦（hover 或 focus 时可见）；以兄弟节点绝对定位渲染，避免 button 内嵌套交互控件的非法结构 */}
+        {/* 行内快捷操作：置顶与归档并排，hover 或 focus 时可见。作为兄弟节点渲染，避免 button 嵌套交互控件。 */}
         {!collapsed && (
           // eslint-disable-next-line ds-components/no-native-button
           <button
             type="button"
+            data-testid="recent-session-pin-icon"
             aria-label={pinned ? t('sidebar:aria.unpin_session') : t('sidebar:aria.pin_session')}
             className={cn(
-              'absolute left-2.5 top-1/2 flex h-4 w-4 -translate-y-1/2 appearance-none items-center justify-center rounded-sm border-0 bg-transparent p-0 text-[color:var(--shell-navigation-muted)] transition-colors hover:text-[color:var(--shell-navigation-foreground)] outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'absolute right-8.5 top-1/2 flex h-5 min-w-[20px] -translate-y-1/2 appearance-none items-center justify-center rounded-md border-0 bg-transparent px-1 text-[color:var(--shell-navigation-muted)] transition-colors hover:text-[color:var(--shell-navigation-foreground)] outline-none focus-visible:ring-2 focus-visible:ring-ring',
               'opacity-0 group-hover/thread-row:opacity-100 group-focus-within/thread-row:opacity-100',
               pinned && 'text-[color:var(--shell-navigation-foreground)]'
             )}
@@ -1158,7 +1221,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               void handleRecentSessionPinToggle(session);
             }}
           >
-            <PushPin size={14} />
+            <PushPin size={14} weight="fill" />
           </button>
         )}
         {!collapsed && !isSessionStreaming && !hasBlockingInteraction && !hasUnreadAssistantReply && (
@@ -1307,16 +1370,12 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       : t('sidebar:actions.expand_group_sessions');
 
     const sessionList = (
-      <div
-        className={cn(
-          'grid transition-[grid-template-rows,opacity] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none',
-          isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-        )}
-      >
+      <div className="t-acc-panel">
         <div
           aria-hidden={!isExpanded}
           className={cn(
-            'space-y-0.5 overflow-hidden pl-4',
+            'space-y-0.5 overflow-hidden',
+            't-acc-panel-inner',
             !isExpanded && 'pointer-events-none'
           )}
           role="list"
@@ -1347,7 +1406,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     );
 
     return (
-      <section key={group.id} className="space-y-0.5">
+      <section key={group.id} className="t-acc space-y-0.5" data-open={String(isExpanded)}>
         <SessionGroupActions
           group={sessionGroup}
           labels={{
@@ -1408,13 +1467,14 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               draggable={!isPinnedGroup}
               isActive={isActive}
               className={cn(
-                'group/sidebar-section select-none',
+                // 分组 icon 与「课题」分区标题共用左侧基准线，标题和操作区保持原有布局。
+                't-acc-head group/sidebar-section !px-1 select-none',
                 draggedRecentGroupId === group.id && 'cursor-grabbing opacity-60',
                 dragOverRecentGroupId === group.id && draggedRecentGroupId !== group.id && 'bg-[color:var(--sidebar-quiet-hover)] ring-1 ring-black/8 dark:ring-white/10'
               )}
               leftSlot={renderRecentGroupIcon(group)}
               rightSlot={
-                <span className="flex shrink-0 items-center gap-1.5 text-[color:var(--shell-navigation-muted)]">
+                <span data-sidebar-row-actions className="flex shrink-0 items-center gap-1.5 text-[color:var(--shell-navigation-muted)]">
                   {quickAction}
                 </span>
               }
@@ -1463,14 +1523,17 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   };
 
   const conversationHeaderAction = (
-    <span className="flex shrink-0 items-center gap-1">
+    <span
+      data-sidebar-section-action="create-conversation"
+      className="relative z-10 ml-auto flex shrink-0 items-center gap-1 text-[color:var(--shell-navigation-foreground)]"
+    >
       <CommonTooltip content={newConversationLabel} position="right" shortcut={formatShortcut('mod+n')}>
         <DsButton
           variant="ghost"
           size="icon"
           iconOnly
           aria-label={newConversationLabel}
-          className="!h-6 !w-6 text-[color:var(--shell-navigation-muted)]"
+          className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)]"
           onClick={(event) => {
             event.stopPropagation();
             window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
@@ -1564,7 +1627,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         size="icon"
                         iconOnly
                         aria-label={toggleAllTopicsLabel}
-                        className="!h-6 !w-6 text-[color:var(--shell-navigation-muted)]"
+                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)]"
                         onClick={handleToggleAllTopicGroups}
                       >
                         {areAllTopicGroupsExpanded ? (
@@ -1580,7 +1643,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         size="icon"
                         iconOnly
                         aria-label={createTopicLabel}
-                        className="!h-6 !w-6 text-[color:var(--shell-navigation-muted)]"
+                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)]"
                         onClick={handleCreateRecentGroup}
                       >
                         <FolderPlus className="size-3.5" strokeWidth={2} />

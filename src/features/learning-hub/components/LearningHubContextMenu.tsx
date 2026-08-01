@@ -243,7 +243,9 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   // 边界检测：当菜单向下展示不全时，向上展示
   // ★ target 变化会改变菜单项数量/高度，需一并重新测量
   useLayoutEffect(() => {
-    if (!open || !menuRef.current || isTouchPrimary) return;
+    // `renderedOpen` changes after the opening transition starts. Include it so
+    // the first measurement happens after the portal node has been mounted.
+    if (!open || !renderedOpen || !menuRef.current || isTouchPrimary) return;
 
     const rect = menuRef.current.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
@@ -267,7 +269,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
     y = Math.max(8, y);
 
     setMenuPosition({ x, y });
-  }, [isTouchPrimary, open, position, target]);
+  }, [isTouchPrimary, open, position, renderedOpen, target]);
 
   // 点击外部关闭菜单；触屏补充：菜单外 touchstart（capture）或背景滚动时关闭，
   // 避免触摸滚动穿透时菜单悬空在错误位置

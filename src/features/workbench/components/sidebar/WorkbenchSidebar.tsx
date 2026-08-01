@@ -118,9 +118,9 @@ export function WorkbenchSidebarSectionHeader({
 }) {
   return (
     <div className="group/sidebar-top-section flex items-center justify-between gap-2 px-2">
-      <DsButton variant="ghost" size="sm" className="!h-auto !min-h-0 min-w-0 flex-1 !justify-start gap-1 rounded-md !px-1 !py-0.5 text-left text-[color:var(--shell-navigation-muted)] outline-none transition-colors hover:text-[color:var(--shell-navigation-foreground)] focus-visible:ring-2 focus-visible:ring-ring" aria-label={label} aria-expanded={!collapsed} onClick={onToggle}>
-        <span className="desktop-shell-nav-section-label min-w-0 truncate">{label}</span>
-        <CaretRight className={cn('size-3 shrink-0 opacity-0 transition-[opacity,transform] group-hover/sidebar-top-section:opacity-100 group-focus-within/sidebar-top-section:opacity-100', !collapsed && 'rotate-90')} strokeWidth={2.25} />
+      <DsButton variant="ghost" size="sm" className="!h-auto !min-h-0 min-w-0 flex-1 !justify-start gap-1 rounded-md !px-1 !py-0.5 text-left text-[color:var(--shell-navigation-muted)] outline-none hover:bg-transparent hover:text-[color:var(--shell-navigation-muted)] active:bg-transparent active:text-[color:var(--shell-navigation-muted)] focus-visible:ring-2 focus-visible:ring-ring" aria-label={label} aria-expanded={!collapsed} onClick={onToggle}>
+        <span className="desktop-shell-nav-section-label desktop-shell-sidebar-section-label min-w-0 truncate">{label}</span>
+        <CaretRight className={cn('size-3 shrink-0 transition-[opacity,transform] duration-150 motion-reduce:transition-none', collapsed ? 'rotate-0 opacity-100' : 'rotate-90 opacity-0 group-hover/sidebar-top-section:opacity-100')} strokeWidth={2.25} />
       </DsButton>
       {action}
     </div>

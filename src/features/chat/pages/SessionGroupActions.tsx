@@ -62,11 +62,12 @@ export function SessionGroupActions({
   }, []);
 
   const quickAction = (
-    <div className="flex items-center gap-0.5">
+    <div
+      data-menu-open={menuOpen ? 'true' : 'false'}
+      className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/sidebar-section:opacity-100 group-focus-within/sidebar-section:opacity-100 data-[menu-open=true]:opacity-100"
+    >
       <div
-        data-menu-open={menuOpen ? 'true' : 'false'}
-        // 📱 触屏无 hover：coarse 指针下常显，否则分组"更多"菜单入口不可达
-        className="opacity-0 transition-opacity duration-150 group-hover/sidebar-section:opacity-100 group-focus-within/sidebar-section:opacity-100 data-[menu-open=true]:opacity-100 [@media(pointer:coarse)]:opacity-100"
+        className="flex items-center"
       >
         <AppMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <AppMenuTrigger asChild>
@@ -78,7 +79,7 @@ export function SessionGroupActions({
               aria-label={labels.groupActions}
               title={labels.groupActions}
               // 触屏（<lg）放大到 36px 触控目标，桌面保持 24px 紧凑视觉（与 SessionItemRenderer 同范式）
-              className="!h-9 !w-9 lg:!h-6 lg:!w-6"
+              className="!h-9 !w-9 lg:!h-6 lg:!w-6 !rounded-none hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)]"
             >
               <DotsThree size={14} />
             </DsButton>
@@ -129,7 +130,7 @@ export function SessionGroupActions({
           }}
           aria-label={newSessionInGroupLabel}
           // 触屏（<lg）放大到 36px 触控目标，桌面保持 24px 紧凑视觉
-          className="!h-9 !w-9 lg:!h-6 lg:!w-6"
+          className="!h-9 !w-9 lg:!h-6 lg:!w-6 !rounded-none hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)]"
         >
           <StudyComposeIcon className="w-3.5 h-3.5" />
         </DsButton>

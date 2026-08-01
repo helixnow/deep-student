@@ -634,7 +634,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                         <CaretDown size={14} className="shrink-0 text-[color:var(--menu-shell-muted-foreground)]" />
                       )}
                       <span className={cn(
-                        'truncate text-2xs font-medium uppercase tracking-[0.025em] text-[color:var(--menu-shell-muted-foreground)]',
+                        'truncate text-2xs font-medium tracking-[0.025em] text-[color:var(--menu-shell-muted-foreground)]',
                         compact && 'max-w-[10rem]'
                       )}>
                         {group.vendorName}

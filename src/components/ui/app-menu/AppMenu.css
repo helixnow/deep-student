@@ -165,6 +165,11 @@
   letter-spacing: 0.03em;
 }
 
+/* 内容型分组标签（如模型选择菜单里的供应商名）保留原始大小写 */
+.app-menu-group--natural-case > .app-menu-group-label {
+  text-transform: none;
+}
+
 /* ============ Item 菜单项 ============ */
 
 .app-menu-item {

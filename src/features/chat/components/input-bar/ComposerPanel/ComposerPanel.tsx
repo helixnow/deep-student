@@ -308,7 +308,7 @@ const Section: React.FC<ComposerPanelSectionProps> = ({
               />
             )
           ) : null}
-          <span className="truncate text-[11px] font-semibold uppercase tracking-[0.04em] text-[color:var(--composer-panel-muted-foreground)]">
+          <span className="truncate text-[11px] font-semibold tracking-[0.04em] text-[color:var(--composer-panel-muted-foreground)]">
             {label}
           </span>
           {typeof count === 'number' ? (
