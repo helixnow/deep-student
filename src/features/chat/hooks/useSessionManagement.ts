@@ -113,8 +113,11 @@ export function useSidebarSessionData(): SidebarSessionData {
       : null;
 
     if (grouped || ungrouped) {
-      const merged = [...(grouped ?? []), ...(ungrouped ?? [])]
-        .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
+      const mergedById = new Map<string, ChatSession>();
+      [...(grouped ?? []), ...(ungrouped ?? [])].forEach((session) => {
+        mergedById.set(session.id, session);
+      });
+      const merged = [...mergedById.values()].sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
       setSessions(merged);
       setHasMoreUngrouped((ungrouped?.length ?? 0) >= SESSION_LIST_PAGE_SIZE);
     } else {
