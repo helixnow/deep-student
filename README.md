@@ -2,7 +2,7 @@
 
 [简体中文](./README_CN.md) | **English**
 
-<img src="./public/deepstudent-logo-dark.svg" alt="DeepStudent" width="200" />
+<img src="./public/deepstudent-logo.svg" alt="DeepStudent" width="200" />
 
 
 ### An open-source, local-first AI learning workbench

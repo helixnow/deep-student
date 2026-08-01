@@ -9,6 +9,10 @@
     <style>
       :root {
         color-scheme: dark;
+        /* transitions.dev — Shimmer text 语义变量（boot 扫光） */
+        --shimmer-dur: 2000ms;
+        --shimmer-band: 400%;
+        --shimmer-ease: linear;
       }
 
       html,
@@ -46,43 +50,80 @@
         height: 100%;
       }
 
+      /* 深色主题默认展示白色 logo；浅色主题由 html[data-boot-theme] 切换为反色（黑）logo */
+      .boot-loading__logo--light {
+        display: none;
+        filter: invert(1);
+      }
+
+      html[data-boot-theme="light"] .boot-loading__logo--dark {
+        display: none;
+      }
+
+      html[data-boot-theme="light"] .boot-loading__logo--light {
+        display: block;
+      }
+
       .boot-loading__logo--shine {
         position: absolute;
         inset: 0;
         opacity: 0.9;
-        filter: brightness(1.75);
-        -webkit-mask-image: linear-gradient(105deg, transparent 35%, black 48%, black 52%, transparent 65%);
+        /* transitions.dev Shimmer：透明 → 高亮 → 透明的扫光带，随 mask-position 线性往返 */
+        -webkit-mask-image: linear-gradient(
+          90deg,
+          transparent          0%,
+          transparent         40%,
+          black               50%,
+          transparent         60%,
+          transparent        100%
+        );
+        -webkit-mask-size: var(--shimmer-band) 100%;
         -webkit-mask-repeat: no-repeat;
-        -webkit-mask-size: 260% 100%;
-        -webkit-mask-position: 130% 0;
-        mask-image: linear-gradient(105deg, transparent 35%, black 48%, black 52%, transparent 65%);
+        -webkit-mask-position: 100% 0;
+        mask-image: linear-gradient(
+          90deg,
+          transparent          0%,
+          transparent         40%,
+          black               50%,
+          transparent         60%,
+          transparent        100%
+        );
+        mask-size: var(--shimmer-band) 100%;
         mask-repeat: no-repeat;
-        mask-size: 260% 100%;
-        mask-position: 130% 0;
-        animation: boot-shimmer 2.4s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+        mask-position: 100% 0;
+        animation: boot-shimmer var(--shimmer-dur) var(--shimmer-ease) infinite;
         pointer-events: none;
       }
 
+      /* 白色 logo 的扫光用提亮呈现（扫过深色描边），黑色 logo 的扫光用提亮呈现 */
+      .boot-loading__logo--shine-dark {
+        filter: brightness(1.75);
+      }
+
+      .boot-loading__logo--shine-light {
+        filter: invert(1) brightness(1.9);
+      }
+
       @keyframes boot-shimmer {
-        0%,
-        18% {
-          -webkit-mask-position: 130% 0;
-          mask-position: 130% 0;
+        0% {
+          -webkit-mask-position: 100% 0;
+          mask-position: 100% 0;
         }
-        72%,
         100% {
-          -webkit-mask-position: -130% 0;
-          mask-position: -130% 0;
+          -webkit-mask-position: 0% 0;
+          mask-position: 0% 0;
         }
       }
 
       @media (prefers-reduced-motion: reduce) {
         .boot-loading__logo--shine {
-          animation: none;
+          animation: none !important;
           display: none;
         }
       }
     </style>
+    <!-- ★ 启动前主题预判：外部文件以兼容 CSP script-src 'self'；为 boot 占位符选择深浅色 logo -->
+    <script src="/boot-theme.js"></script>
     <!-- ★ 2026-02-04: 最早的全局错误过滤器 - 过滤 Tauri HTTP 插件的已知 bug -->
     <script>
       (function() {
@@ -116,15 +157,30 @@
       >
         <div class="boot-loading__logo-wrap">
           <img
-            class="boot-loading__logo"
-            src="/deepstudent-logo-dark.svg"
+            class="boot-loading__logo boot-loading__logo--dark"
+            src="/deepstudent-logo.svg"
             alt="Deep Student"
             width="409"
             height="147"
           />
           <img
-            class="boot-loading__logo boot-loading__logo--shine"
-            src="/deepstudent-logo-dark.svg"
+            class="boot-loading__logo boot-loading__logo--dark boot-loading__logo--shine boot-loading__logo--shine-dark"
+            src="/deepstudent-logo.svg"
+            alt=""
+            aria-hidden="true"
+            width="409"
+            height="147"
+          />
+          <img
+            class="boot-loading__logo boot-loading__logo--light"
+            src="/deepstudent-logo.svg"
+            alt="Deep Student"
+            width="409"
+            height="147"
+          />
+          <img
+            class="boot-loading__logo boot-loading__logo--light boot-loading__logo--shine boot-loading__logo--shine-light"
+            src="/deepstudent-logo.svg"
             alt=""
             aria-hidden="true"
             width="409"
