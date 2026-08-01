@@ -21,7 +21,7 @@ import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
 import { cn } from '@/lib/utils';
 import { vfsUnifiedIndexApi } from '@/api/vfsUnifiedIndexApi';
 import { ApiKeyField } from './ApiKeyField';
-import { isPlausibleApiKey } from '../utils/apiKeyValidation';
+import { normalizePastedApiKey } from '../utils/apiKeyValidation';
 
 interface SiliconFlowModel {
   id: string;
@@ -68,6 +68,7 @@ interface ApiConfig {
 }
 
 type SiliconFlowSectionVariant = 'full' | 'quick' | 'models' | 'inline';
+const TEMPORARY_API_KEY_REVEAL_MS = 8000;
 
 interface SiliconFlowSectionProps {
   onCreateConfig: (config: Omit<ApiConfig, 'id'>) => Promise<string | null | undefined> | void;
@@ -75,11 +76,9 @@ interface SiliconFlowSectionProps {
   onBatchConfigsCreated?: (configIds: { [key: string]: string }) => void;
   onBatchCreateConfigs?: (configs: Array<Omit<ApiConfig, 'id'> & { tempId: string }>) => Promise<{ success: boolean; idMap: { [tempId: string]: string } }> | void | undefined;
   variant?: SiliconFlowSectionVariant;
-  /** 保存成功后触发（用于自动获取模型 + 自动分配） */
-  onApiKeySaved?: (apiKey: string) => void;
 }
 
-export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreateConfig, showMessage, onBatchConfigsCreated, onBatchCreateConfigs, onApiKeySaved, variant = 'full' }) => {
+export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreateConfig, showMessage, onBatchConfigsCreated, onBatchCreateConfigs, variant = 'full' }) => {
   const { t } = useTranslation(['common', 'settings']);
   const [apiKey, setApiKey] = useState('');
   const [models, setModels] = useState<SiliconFlowModel[]>([]);
@@ -91,7 +90,10 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const [showApiKey, setShowApiKey] = useState(false);
   const [confirmingClearApiKey, setConfirmingClearApiKey] = useState(false);
   const [savingApiKey, setSavingApiKey] = useState(false);
+  const [hasConfiguredApiKey, setHasConfiguredApiKey] = useState(false);
   const [apiKeyStatus, setApiKeyStatus] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
+  const [apiKeyPasted, setApiKeyPasted] = useState(false);
+  const [viewingStoredKey, setViewingStoredKey] = useState(false);
   // 一键分配后的嵌入维度创建结果（内联展示，避免静默失败）
   const [dimensionSetupResult, setDimensionSetupResult] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
   const siliconFlowVendorKey = 'builtin-siliconflow.api_key';
@@ -100,7 +102,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const [isFromCache, setIsFromCache] = useState(false); // 是否来自缓存
   const lastSavedApiKeyRef = React.useRef('');
   const statusTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const autoSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearStatusTimer = useCallback(() => {
     if (statusTimerRef.current) {
@@ -108,6 +110,33 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       statusTimerRef.current = null;
     }
   }, []);
+
+  const clearRevealTimer = useCallback(() => {
+    if (revealTimerRef.current) {
+      clearTimeout(revealTimerRef.current);
+      revealTimerRef.current = null;
+    }
+  }, []);
+
+  const hideRevealedApiKey = useCallback(() => {
+    clearRevealTimer();
+    setShowApiKey(false);
+    setViewingStoredKey(false);
+    setApiKey(current => (
+      current.trim() && current.trim() === lastSavedApiKeyRef.current
+        ? ''
+        : current
+    ));
+  }, [clearRevealTimer]);
+
+  const scheduleRevealHide = useCallback(() => {
+    clearRevealTimer();
+    revealTimerRef.current = setTimeout(() => {
+      hideRevealedApiKey();
+    }, TEMPORARY_API_KEY_REVEAL_MS);
+  }, [clearRevealTimer, hideRevealedApiKey]);
+
+  const getEffectiveApiKey = useCallback(() => apiKey.trim() || lastSavedApiKeyRef.current, [apiKey]);
 
   const scheduleStatusReset = useCallback((nextStatus: 'saved' | 'error', timeoutMs = 2200) => {
     clearStatusTimer();
@@ -325,6 +354,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         setConfirmingClearApiKey(false);
         clearStatusTimer();
         setApiKeyStatus('idle');
+        setApiKeyPasted(false);
         if (!latest.trim()) {
           setShowApiKey(false);
         }
@@ -343,9 +373,6 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   React.useEffect(() => {
     return () => {
       clearStatusTimer();
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-      }
     };
   }, [clearStatusTimer]);
 
@@ -382,29 +409,6 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     const isDirty = value.trim() !== lastSavedApiKeyRef.current;
     setApiKeyStatus(isDirty ? 'dirty' : 'idle');
 
-    // 防抖自动保存：输入停止 800ms 后自动保存。
-    // 安全校验（审阅 26 P1-2）：仅当内容形似完整 Key 时才自动保存，
-    // 避免半截 Key 被持久化并携带其向供应商发起真实请求。
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
-    if (isDirty && isPlausibleApiKey(value)) {
-      autoSaveTimerRef.current = setTimeout(() => {
-        void handleSaveApiKey();
-      }, 800);
-    }
-  };
-
-  const handleApiKeyBlur = () => {
-    // 失焦时取消防抖 timer 并立即保存（如果内容已变更且形似完整 Key）
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-      autoSaveTimerRef.current = null;
-    }
-    const trimmed = apiKey.trim();
-    if (trimmed && trimmed !== lastSavedApiKeyRef.current && isPlausibleApiKey(trimmed)) {
-      void handleSaveApiKey();
-    }
   };
 
   const handleSaveApiKey = useCallback(async () => {
@@ -420,7 +424,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       await persistApiKey(trimmed);
       lastSavedApiKeyRef.current = trimmed;
       scheduleStatusReset('saved');
-      onApiKeySaved?.(trimmed);
+      setApiKeyPasted(false);
       showMessage?.('success', t('settings:vendor_panel.api_key_saved'));
     } catch (error: unknown) {
       console.error('保存 SiliconFlow API 密钥失败:', error);
@@ -444,6 +448,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     setConfirmingClearApiKey(false);
     clearStatusTimer();
     setApiKeyStatus('idle');
+    setApiKeyPasted(false);
     setModels([]);
     setAvailableModels([]);
     setSelectedModel('');
@@ -1049,7 +1054,15 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       <ApiKeyField
         value={apiKey}
         onChange={e => handleApiKeyChange(e.target.value)}
-        onBlur={handleApiKeyBlur}
+        onPaste={e => {
+          const raw = e.clipboardData.getData('text');
+          const pasted = normalizePastedApiKey(raw);
+          setApiKeyPasted(true);
+          if (pasted !== raw) {
+            e.preventDefault();
+            handleApiKeyChange(pasted);
+          }
+        }}
         onKeyDown={e => {
           if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
             e.preventDefault();
@@ -1070,7 +1083,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         {apiKeyStatus === 'saving' && <Spinner className="h-3.5 w-3.5 animate-spin" />}
         {apiKeyStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
         {apiKeyStatus === 'error' && <WarningCircle className="h-3.5 w-3.5" />}
-        <span>{apiKeyStatusText}</span>
+        <span>{apiKeyStatus === 'dirty' && apiKeyPasted ? t('settings:vendor_panel.api_key_pasted_ready') : apiKeyStatusText}</span>
       </div>
       <div className="flex items-center justify-between gap-2 pt-2">
         <div className="flex flex-wrap gap-2">
@@ -1081,10 +1094,10 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
               void handleSaveApiKey();
             }}
             disabled={!canSaveApiKey}
-            title={t('common:actions.save')}
+            title={t('settings:vendor_panel.save_api_key')}
           >
             {savingApiKey ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <FloppyDisk className="h-3.5 w-3.5" />}
-            {t('common:actions.save')}
+            {t('settings:vendor_panel.save_api_key')}
           </DsButton>
         </div>
         {/* 简洁风格按钮 - 一键分配 */}

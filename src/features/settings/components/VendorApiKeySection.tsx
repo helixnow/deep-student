@@ -9,37 +9,38 @@ import { Check, FloppyDisk, Spinner, Trash, WarningCircle } from '@phosphor-icon
 import { DsButton } from '@/components/ui/DsButton';
 import type { VendorConfig } from '@/types';
 import { ApiKeyField } from './ApiKeyField';
-import { isPlausibleApiKey } from '../utils/apiKeyValidation';
+import { normalizePastedApiKey } from '../utils/apiKeyValidation';
 
 interface VendorApiKeySectionProps {
   vendor: VendorConfig;
   onSave: (apiKey: string) => Promise<void> | void;
   onClear: () => Promise<void> | void;
   showMessage?: (type: 'success' | 'error' | 'info', message: string) => void;
-  /** 保存成功后触发（用于自动获取模型 + 自动分配） */
-  onApiKeySaved?: (apiKey: string) => void;
 }
 
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+const TEMPORARY_API_KEY_REVEAL_MS = 8000;
 
 export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
   vendor,
   onSave,
   onClear,
   showMessage,
-  onApiKeySaved,
 }) => {
   const { t } = useTranslation(['settings', 'common']);
   const [apiKey, setApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [maskedConfigured, setMaskedConfigured] = useState(false);
+  const [hasConfiguredApiKey, setHasConfiguredApiKey] = useState(false);
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [pasted, setPasted] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [viewingStoredKey, setViewingStoredKey] = useState(false);
 
   const lastSavedKeyRef = useRef('');
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastVendorIdRef = useRef(vendor.id);
 
   const clearStatusTimer = () => {
@@ -47,6 +48,31 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
       clearTimeout(statusTimerRef.current);
       statusTimerRef.current = null;
     }
+  };
+
+  const clearRevealTimer = () => {
+    if (revealTimerRef.current) {
+      clearTimeout(revealTimerRef.current);
+      revealTimerRef.current = null;
+    }
+  };
+
+  const hideRevealedApiKey = () => {
+    clearRevealTimer();
+    setShowApiKey(false);
+    setViewingStoredKey(false);
+    setApiKey(current => (
+      current.trim() && current.trim() === lastSavedKeyRef.current
+        ? ''
+        : current
+    ));
+  };
+
+  const scheduleRevealHide = () => {
+    clearRevealTimer();
+    revealTimerRef.current = setTimeout(() => {
+      hideRevealedApiKey();
+    }, TEMPORARY_API_KEY_REVEAL_MS);
   };
 
   const scheduleStatusReset = (nextStatus: 'saved' | 'error', timeoutMs = 2200) => {
@@ -72,6 +98,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
 
     const masked = isMaskedKey(vendor.apiKey);
     const nextApiKey = masked ? '' : vendor.apiKey?.trim() ?? '';
+    const nextHasConfiguredApiKey = masked || Boolean(nextApiKey);
     const currentDraft = apiKey.trim();
     const shouldPreserveDraft = !vendorChanged && (
       saveStatus === 'dirty' ||
@@ -79,6 +106,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
     );
 
     setMaskedConfigured(masked);
+    setHasConfiguredApiKey(nextHasConfiguredApiKey || (!vendorChanged && lastSavedKeyRef.current.length > 0));
     setConfirmingClear(false);
 
     if (shouldPreserveDraft) {
@@ -86,8 +114,8 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
     }
 
     if (nextApiKey) {
-      setApiKey(nextApiKey);
       lastSavedKeyRef.current = nextApiKey;
+      setApiKey('');
       setMaskedConfigured(false);
     } else {
       setApiKey('');
@@ -97,16 +125,17 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
     }
 
     setShowApiKey(false);
+    setViewingStoredKey(false);
+    setPasted(false);
     setSaveStatus('idle');
     clearStatusTimer();
+    clearRevealTimer();
   }, [vendor.apiKey, vendor.id]);
 
   useEffect(() => {
     return () => {
       clearStatusTimer();
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-      }
+      clearRevealTimer();
     };
   }, []);
 
@@ -123,8 +152,13 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
       await onSave(trimmed);
       lastSavedKeyRef.current = trimmed;
       setMaskedConfigured(false);
+      setHasConfiguredApiKey(true);
+      setApiKey('');
+      setShowApiKey(false);
+      setViewingStoredKey(false);
+      setPasted(false);
+      clearRevealTimer();
       scheduleStatusReset('saved');
-      onApiKeySaved?.(trimmed);
       if (showMessage) {
         showMessage('success', t('settings:vendor_panel.api_key_saved'));
       }
@@ -144,40 +178,16 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
     setApiKey(value);
     setConfirmingClear(false);
     clearStatusTimer();
+    setViewingStoredKey(false);
 
     if (!trimmed) {
       setShowApiKey(false);
-    }
-    if (maskedConfigured) {
-      setMaskedConfigured(false);
+      clearRevealTimer();
     }
 
     const isDirty = trimmed && trimmed !== lastSavedKeyRef.current;
     setSaveStatus(isDirty ? 'dirty' : 'idle');
 
-    // 防抖自动保存：输入停止 800ms 后自动保存。
-    // 安全校验（审阅 26 P1-2）：仅当内容形似完整 Key 时才自动保存，
-    // 避免半截 Key 被持久化并携带其向供应商发起真实请求。
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
-    if (isDirty && isPlausibleApiKey(trimmed)) {
-      autoSaveTimerRef.current = setTimeout(() => {
-        void handleSaveApiKey();
-      }, 800);
-    }
-  };
-
-  const handleApiKeyBlur = () => {
-    // 失焦时取消防抖 timer 并立即保存（如果内容已变更且形似完整 Key）
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-      autoSaveTimerRef.current = null;
-    }
-    const trimmed = apiKey.trim();
-    if (trimmed && trimmed !== lastSavedKeyRef.current && isPlausibleApiKey(trimmed)) {
-      void handleSaveApiKey();
-    }
   };
 
   const handleClearApiKey = async () => {
@@ -192,9 +202,13 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
       setApiKey('');
       lastSavedKeyRef.current = '';
       setMaskedConfigured(false);
+      setHasConfiguredApiKey(false);
       setConfirmingClear(false);
       setShowApiKey(false);
+      setViewingStoredKey(false);
+      setPasted(false);
       clearStatusTimer();
+      clearRevealTimer();
       setSaveStatus('idle');
       if (showMessage) {
         showMessage('success', t('settings:vendor_panel.api_key_cleared'));
@@ -209,9 +223,26 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
     }
   };
 
-  const canRevealApiKey = apiKey.trim().length > 0;
+  const handleRevealToggle = () => {
+    if (showApiKey) {
+      hideRevealedApiKey();
+      return;
+    }
+
+    const savedApiKey = lastSavedKeyRef.current;
+    if (!apiKey.trim() && savedApiKey) {
+      setApiKey(savedApiKey);
+      setViewingStoredKey(true);
+    } else {
+      setViewingStoredKey(false);
+    }
+    setShowApiKey(true);
+    scheduleRevealHide();
+  };
+
+  const canRevealApiKey = apiKey.trim().length > 0 || lastSavedKeyRef.current.length > 0;
   const canSave = apiKey.trim().length > 0 && apiKey.trim() !== lastSavedKeyRef.current && !saving;
-  const canClearStoredKey = saving || maskedConfigured || lastSavedKeyRef.current.length > 0;
+  const canClearStoredKey = !saving && hasConfiguredApiKey;
   const statusText =
     saveStatus === 'saving'
       ? t('settings:vendor_panel.api_key_saving')
@@ -221,7 +252,9 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
           ? t('settings:vendor_panel.api_key_save_failed')
           : saveStatus === 'dirty'
             ? t('settings:vendor_panel.api_key_unsaved')
-            : maskedConfigured && !apiKey.trim()
+            : showApiKey && viewingStoredKey
+              ? t('settings:vendor_panel.api_key_revealed_temporarily')
+              : hasConfiguredApiKey && !apiKey.trim()
               ? t('settings:vendor_panel.api_key_securely_stored')
               : t('settings:vendor_panel.api_key_manual_save_hint');
   const statusToneClassName =
@@ -238,7 +271,15 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
       <ApiKeyField
         value={apiKey}
         onChange={e => handleApiKeyChange(e.target.value)}
-        onBlur={handleApiKeyBlur}
+        onPaste={e => {
+          const raw = e.clipboardData.getData('text');
+          const pasted = normalizePastedApiKey(raw);
+          setPasted(true);
+          if (pasted !== raw) {
+            e.preventDefault();
+            handleApiKeyChange(pasted);
+          }
+        }}
         onKeyDown={e => {
           if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
             e.preventDefault();
@@ -246,14 +287,14 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
           }
         }}
         placeholder={
-          maskedConfigured
+          hasConfiguredApiKey && !apiKey.trim()
             ? t('settings:vendor_panel.api_key_configured')
             : t('settings:vendor_panel.api_key_placeholder')
         }
         inputClassName="font-mono"
         revealed={showApiKey}
         canReveal={canRevealApiKey}
-        onToggle={() => setShowApiKey(v => !v)}
+        onToggle={handleRevealToggle}
         showLabel={t('settings:vendor_panel.show_api_key')}
         hideLabel={t('settings:vendor_panel.hide_api_key')}
       />
@@ -264,7 +305,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
         {saveStatus === 'saving' && <Spinner className="h-3.5 w-3.5 animate-spin" />}
         {saveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
         {saveStatus === 'error' && <WarningCircle className="h-3.5 w-3.5" />}
-        <span>{statusText}</span>
+        <span>{saveStatus === 'dirty' && pasted ? t('settings:vendor_panel.api_key_pasted_ready') : statusText}</span>
       </div>
       <div className="flex flex-wrap gap-2 pt-1">
         <DsButton
@@ -274,10 +315,10 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
             void handleSaveApiKey();
           }}
           disabled={!canSave}
-          title={t('common:actions.save')}
+          title={t('settings:vendor_panel.save_api_key')}
         >
           {saveStatus === 'saving' ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <FloppyDisk className="h-3.5 w-3.5" />}
-          {t('common:actions.save')}
+          {t('settings:vendor_panel.save_api_key')}
         </DsButton>
         <DsButton
           variant="danger"

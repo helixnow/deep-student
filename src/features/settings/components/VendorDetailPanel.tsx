@@ -298,7 +298,6 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
     handleBatchCreateConfigs,
     handleBatchConfigsCreated,
     onAddVendorModels,
-    triggerPostSaveAutoFlow,
     isSmallScreen,
     closeMobileVendorDetail,
   } = useVendorSettings();
@@ -927,12 +926,6 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                           onBatchCreateConfigs={handleBatchCreateConfigs}
                           onBatchConfigsCreated={handleBatchConfigsCreated}
                           showMessage={showGlobalNotification}
-                          onApiKeySaved={(apiKey) => {
-                            triggerPostSaveAutoFlow?.({
-                              ...selectedVendor,
-                              apiKey,
-                            });
-                          }}
                         />
                       ) : usesNoApiKey ? (
                         <div className="flex items-center gap-2 rounded-lg border border-border/40 px-4 py-3 text-sm text-muted-foreground">
@@ -946,12 +939,6 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                           onSave={(apiKey) => handleSaveVendorApiKey(selectedVendor.id, apiKey)}
                           onClear={() => handleClearVendorApiKey(selectedVendor.id)}
                           showMessage={showGlobalNotification}
-                          onApiKeySaved={(apiKey) => {
-                            triggerPostSaveAutoFlow?.({
-                              ...selectedVendor,
-                              apiKey,
-                            });
-                          }}
                         />
                       )}
                     </div>

@@ -52,6 +52,18 @@ const renderEditor = (authMode: string) =>
   );
 
 describe('ShadApiEditModal Codex OAuth connection test', () => {
+  it('opens the protocol menu above the editor surface', async () => {
+    renderEditor('api_key');
+
+    fireEvent.click(screen.getByRole('button', { name: '选择选项' }));
+
+    await waitFor(() => {
+      const menu = screen.getByRole('menu');
+      expect(menu).toBeInTheDocument();
+      expect(Number(menu.style.zIndex)).toBeGreaterThan(1000);
+    });
+  });
+
   it('tests Codex OAuth without requiring an API key', async () => {
     invokeMock.mockResolvedValueOnce(true);
     renderEditor('openai_codex_oauth');

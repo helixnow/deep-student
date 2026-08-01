@@ -101,12 +101,12 @@ describe('API key clearing confirmation', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /settings:vendor_panel.clear_api_key/ }));
+    fireEvent.click(screen.getByRole('button', { name: /清除/ }));
 
     expect(onClear).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: /settings:vendor_panel.clear_api_key_confirm/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /确认清除/ })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /settings:vendor_panel.clear_api_key_confirm/ }));
+    fireEvent.click(screen.getByRole('button', { name: /确认清除/ }));
 
     expect(onClear).toHaveBeenCalledTimes(1);
   });
@@ -127,10 +127,10 @@ describe('API key clearing confirmation', () => {
       />
     );
 
-    const input = screen.getByPlaceholderText(/settings:vendor_panel.api_key_configured/);
+    const input = screen.getByPlaceholderText(/API Key 已配置/);
     expect(input).toBeInTheDocument();
     expect(input).not.toHaveClass('pr-12');
-    expect(screen.queryByRole('button', { name: /settings:vendor_panel.show_api_key/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /显示 API 密钥/ })).not.toBeInTheDocument();
   });
 
   test('keeps the generic vendor reveal toggle inside the input shell without absolute overlay', () => {
@@ -150,7 +150,7 @@ describe('API key clearing confirmation', () => {
     );
 
     const input = screen.getByDisplayValue('sk-test');
-    const revealButton = screen.getByRole('button', { name: /settings:vendor_panel.show_api_key/ });
+    const revealButton = screen.getByRole('button', { name: /显示 API 密钥/ });
 
     expect(input).toHaveClass('api-key-field__input');
     expect(input).not.toHaveClass('pr-12');
@@ -180,6 +180,7 @@ describe('API key clearing confirmation', () => {
   });
 
   test('does not save a vendor API key until the user clicks save', async () => {
+    vi.useFakeTimers();
     const onSave = vi.fn().mockResolvedValue(undefined);
     const showMessage = vi.fn();
 
@@ -199,13 +200,17 @@ describe('API key clearing confirmation', () => {
       />
     );
 
-    const input = screen.getByPlaceholderText(/settings:vendor_panel.api_key_placeholder/);
-    fireEvent.change(input, { target: { value: 'sk-pasted-value' } });
+    const input = screen.getByPlaceholderText(/输入 API 密钥/);
+    fireEvent.paste(input, { clipboardData: { getData: () => '  sk-pasted-value\n' } });
 
     expect(onSave).not.toHaveBeenCalled();
-    expect(screen.getByText(/unsaved|未保存/)).toBeInTheDocument();
+    expect(screen.getByText(/已粘贴，保存后才会使用/)).toBeInTheDocument();
+    expect(input).toHaveValue('sk-pasted-value');
+    await vi.advanceTimersByTimeAsync(900);
+    expect(onSave).not.toHaveBeenCalled();
+    vi.useRealTimers();
 
-    fireEvent.click(screen.getByRole('button', { name: /save|保存/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save api key|保存 API 密钥/i }));
 
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith('sk-pasted-value');
@@ -214,15 +219,20 @@ describe('API key clearing confirmation', () => {
   });
 
   test('does not save a SiliconFlow API key until the user clicks save', async () => {
+    vi.useFakeTimers();
     render(<SiliconFlowSection variant="inline" onCreateConfig={vi.fn()} />);
 
     const input = screen.getByPlaceholderText(/siliconflow\.api_key_placeholder_local/);
-    fireEvent.change(input, { target: { value: 'sk-silicon-pasted' } });
+    fireEvent.paste(input, { clipboardData: { getData: () => '  sk-silicon-pasted\n' } });
 
     expect(TauriAPI.saveSetting).not.toHaveBeenCalledWith('builtin-siliconflow.api_key', 'sk-silicon-pasted');
-    expect(screen.getByText(/unsaved|未保存/)).toBeInTheDocument();
+    expect(screen.getByText(/已粘贴，保存后才会使用/)).toBeInTheDocument();
+    expect(input).toHaveValue('sk-silicon-pasted');
+    await vi.advanceTimersByTimeAsync(900);
+    expect(TauriAPI.saveSetting).not.toHaveBeenCalledWith('builtin-siliconflow.api_key', 'sk-silicon-pasted');
+    vi.useRealTimers();
 
-    fireEvent.click(screen.getByRole('button', { name: /save|保存/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save api key|保存 API 密钥/i }));
 
     await waitFor(() => {
       expect(TauriAPI.saveSetting).toHaveBeenCalledWith('builtin-siliconflow.api_key', 'sk-silicon-pasted');

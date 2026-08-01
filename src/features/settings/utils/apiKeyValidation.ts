@@ -14,6 +14,18 @@
  */
 export const MIN_AUTO_SAVE_KEY_LENGTH = 16;
 
+/**
+ * Removes clipboard artifacts that cannot be meaningful parts of an API key.
+ * Do not guess at prefixes such as `Bearer` or prose copied from a provider
+ * console: credentials should only be changed by an explicit user action.
+ */
+export function normalizePastedApiKey(value: string): string {
+  return value
+    .replace(/^\uFEFF/u, '')
+    .replace(/[\u200B-\u200D\uFEFF]/gu, '')
+    .trim();
+}
+
 export function isPlausibleApiKey(value: string): boolean {
   const trimmed = value.trim();
   if (trimmed.length < MIN_AUTO_SAVE_KEY_LENGTH) return false;
