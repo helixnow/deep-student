@@ -12,7 +12,6 @@ import {
   ArrowUp,
   Square,
   Paperclip,
-  SlidersHorizontal,
   CheckCircle,
   Warning,
   Clock,
@@ -76,7 +75,6 @@ import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
 import { ComposerPanelOverlay } from './ComposerPanelOverlay';
 import { ComposerInlinePanel } from './ComposerInlinePanel';
 import { ComposerPlusMenu } from './ComposerPlusMenu';
-import { ComposerToolButton } from './ComposerToolButton';
 import { ThinkingDepthSlider } from './ThinkingDepthSlider';
 import { ContextUsagePopover } from './ContextUsagePopover';
 import { ThreadContentShell } from '../ui/ThreadContentShell';
@@ -528,7 +526,7 @@ const useDeferredOpen = (open: boolean, delay = 220): DeferredPanelState => {
  * ★ 性能：底部以 React.memo 导出。InputBarV2 因 store 订阅（流式 usage 更新、
  * 面板状态等）重渲染而 props 未变时，跳过整棵输入栏子树的重复渲染。
  * 打字路径（inputValue prop 变化）仍会渲染本组件，但内部重型子树
- * （ComposerPlusMenu / ComposerToolButton / 各 chips）已独立 memo。
+ * （ComposerPlusMenu / 各 chips）已独立 memo。
  */
 const InputBarUIInner: React.FC<InputBarUIProps> = ({
   // 状态
@@ -1962,7 +1960,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     handleCameraClick();
   }, [handleCameraClick]);
 
-  // ★ 性能：以下回调传给已 memo 的 ComposerPlusMenu / ComposerToolButton，
+  // ★ 性能：以下回调传给已 memo 的 ComposerPlusMenu，
   // 必须保持引用稳定（内联箭头函数会击穿 memo，导致每个按键重渲染整个菜单子树）
   const handleOpenSkillPanelAction = useCallback(() => {
     togglePanel('skill');
@@ -3432,20 +3430,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               onOpenMcpPanel={renderMcpPanel ? handleOpenMcpPanelAction : undefined}
               mcpEnabled={mcpEnabled}
               selectedMcpServerCount={selectedMcpServerCount}
+              onOpenAdvancedPanel={renderAdvancedPanel ? handleToggleAdvancedPanel : undefined}
             />
 
             {leftAccessory}
-
-            {/* 对话控制按钮 */}
-            {renderAdvancedPanel && (
-              <ComposerToolButton
-                icon={SlidersHorizontal}
-                label={t('common:chat_controls')}
-                active={panelStates.advanced}
-                onClick={handleToggleAdvancedPanel}
-                tooltipDisabled={tooltipDisabled}
-              />
-            )}
 
             {/* 快捷键提示（对齐旧版 InputBar）：桌面 Enter 发送模式下，
                 输入框聚焦且为空时在工具行空白区展示，不占额外行、不产生布局抖动 */}
@@ -3629,7 +3617,11 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                                 >
                                   {groupedRuntimeModelOptions.length > 0 ? (
                                     groupedRuntimeModelOptions.map((group) => (
-                                      <AppMenuGroup key={group.providerLabel} label={group.providerLabel}>
+                                      <AppMenuGroup
+                                        key={group.providerLabel}
+                                        label={group.providerLabel}
+                                        className="app-menu-group--natural-case"
+                                      >
                                         {group.models.map((model) => (
                                           <AppMenuItem
                                             key={model.id}

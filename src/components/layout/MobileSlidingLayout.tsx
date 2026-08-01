@@ -17,6 +17,7 @@ import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useId
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useMobileLayoutSafe } from './MobileLayoutContext';
+import { useMobileHeaderContextSafe } from './MobileHeaderContext';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MobileUnifiedDrawerProvider } from './MobileDrawerContext';
 import { MobileSidebarNavigation } from './MobileSidebarNavigation';
@@ -110,6 +111,8 @@ const hasActiveTextSelection = (): boolean => {
 interface MobileSlidingLayoutProps {
   /** 侧边栏内容 */
   sidebar: ReactNode;
+  /** 移动侧栏中位于滚动 viewport 上方的固定内容 */
+  sidebarFixedContent?: ReactNode;
   /** 主内容 */
   children: ReactNode;
   /** 右侧面板内容（可选，用于三屏布局） */
@@ -158,6 +161,7 @@ interface MobileSlidingLayoutProps {
 
 export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   sidebar,
+  sidebarFixedContent,
   children,
   rightPanel,
   sidebarOpen,
@@ -219,10 +223,12 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   const lastContainerWidthRef = useRef<number>(0);
   const mobileLayout = useMobileLayoutSafe();
   const isMobileLayout = mobileLayout?.isMobile ?? false;
+  const mobileHeader = useMobileHeaderContextSafe();
   const enterFullscreen = mobileLayout?.enterFullscreen;
   const exitFullscreen = mobileLayout?.exitFullscreen;
   const fullscreenClaimId = useId();
   const hasSidebar = sidebar !== null && sidebar !== undefined;
+  const isMobileDrawerFullBleed = isMobileLayout && hasSidebar && Boolean(mobileHeader?.config.hidden);
 
   // 监听容器宽度变化。
   // 用 useLayoutEffect：首帧在绘制前完成测量，避免 containerWidth=0 的回退几何
@@ -812,7 +818,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
             className={cn(
               'relative z-[2] flex h-full min-h-0 flex-shrink-0 flex-col font-sidebar-study-ui',
               isMobileLayout && hasSidebar
-                ? 'bg-background text-foreground'
+                ? 'bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)]'
                 : 'bg-background',
             )}
             style={{ width: sidebarWidth }}
@@ -820,8 +826,21 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
             {hasSidebar ? (
               isMobileLayout ? (
                 <>
+                  {sidebarFixedContent ? (
+                    <div
+                      data-mobile-drawer-fixed
+                      className={cn(
+                        'shrink-0 px-2 pl-[calc(0.5rem+var(--mobile-safe-area-left,0px))]',
+                        isMobileDrawerFullBleed
+                          ? 'pt-[calc(0.5rem+var(--mobile-safe-area-top,0px))]'
+                          : 'py-1',
+                      )}
+                    >
+                      {sidebarFixedContent}
+                    </div>
+                  ) : null}
                   <CustomScrollArea
-                  className="scrollbar-none min-h-0 flex-1"
+                    className="scrollbar-none min-h-0 flex-1"
                   // OverlayScrollbars 会清零 viewport padding；安全区/键盘避让放内层
                   viewportClassName="h-full w-full min-h-0"
                 >
@@ -829,7 +848,16 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
                       底部同时避让软键盘（--keyboard-inset：iOS overlay 键盘 >0，
                       Android adjustResize ≈0，键盘收起恒 0）：抽屉内含搜索等输入
                       入口，聚焦时保证列表尾部可滚出键盘遮挡区 */}
-                  <div className="px-2 py-1 pl-[calc(0.5rem+var(--mobile-safe-area-left,0px))] pb-[calc(0.5rem+max(var(--mobile-safe-area-bottom,0px),var(--keyboard-inset,0px)))]">
+                  <div
+                    className={cn(
+                      'px-2 pl-[calc(0.5rem+var(--mobile-safe-area-left,0px))] pb-[calc(0.5rem+max(var(--mobile-safe-area-bottom,0px),var(--keyboard-inset,0px)))]',
+                      isMobileDrawerFullBleed
+                        ? sidebarFixedContent
+                          ? 'pt-0'
+                          : 'pt-[calc(0.5rem+var(--mobile-safe-area-top,0px))]'
+                        : 'py-1',
+                    )}
+                  >
                     <div data-mobile-drawer-page className="min-h-0">
                       {sidebar}
                     </div>
@@ -860,7 +888,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
 
         {/* 主内容区域 - 宽度等于外层容器宽度（视口宽度） */}
         <div
-          className="relative z-[1] h-full flex-shrink-0 overflow-x-hidden bg-background"
+          className="relative z-[1] h-full flex-shrink-0 overflow-x-hidden bg-[color:var(--shell-workspace-panel)]"
           style={{ width: containerWidth || '100vw' }}
         >
           {showContentOverlay && hasSidebar && (

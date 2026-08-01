@@ -14,10 +14,8 @@ export interface MobileHeaderConfig {
   /**
    * 是否暂时隐藏整个移动端顶栏。
    *
-   * ⚠️ 已知限制：App.tsx 的 workspace paddingTop 恒为
-   * `var(--mobile-header-total-height)`，不随 hidden 联动——设置 hidden 后
-   * 顶部会留下 56px+safe-area 的空白条。若要真正做全屏视图，需同时在
-   * App.tsx 侧按 hidden 切换 paddingTop（目前全仓无 hidden 消费者）。
+   * App 壳层会根据 `[data-mobile-shell="header"]` 是否存在同步移除
+   * workspace 的顶栏预留高度，适用于需要全屏接管移动层级的页面内面板。
    */
   hidden?: boolean;
   /** 标题（字符串形式） */
@@ -34,6 +32,8 @@ export interface MobileHeaderConfig {
   rightActions?: ReactNode;
   /** 是否显示菜单按钮（用于打开次级侧边栏） */
   showMenu?: boolean;
+  /** 只显示浮动菜单入口，不渲染占位顶栏（用于聊天新对话空态） */
+  floatingMenuButton?: boolean;
   /** 点击菜单按钮的回调 */
   onMenuClick?: () => void;
   /** 是否显示返回箭头（替代菜单图标） */
@@ -62,6 +62,7 @@ const defaultConfig: MobileHeaderConfig = {
   subtitle: undefined,
   rightActions: undefined,
   showMenu: false,
+  floatingMenuButton: false,
   onMenuClick: undefined,
 };
 

@@ -42,7 +42,17 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
 }) => {
   const { t } = useTranslation(['common']);
   const ctx = useMobileHeaderContextSafe();
-  const config = ctx?.config ?? { title: '', titleNode: undefined, subtitle: undefined, rightActions: undefined, showMenu: false, onMenuClick: undefined, showBackArrow: false, suppressGlobalBackButton: false };
+  const config = ctx?.config ?? {
+    title: '',
+    titleNode: undefined,
+    subtitle: undefined,
+    rightActions: undefined,
+    showMenu: false,
+    floatingMenuButton: false,
+    onMenuClick: undefined,
+    showBackArrow: false,
+    suppressGlobalBackButton: false,
+  };
 
   if (config.hidden) {
     return null;
@@ -62,6 +72,35 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
   const showForwardButton =
     showGlobalNavigation && Boolean(onForward) && (showBackButton || canGoForward);
 
+  if (config.floatingMenuButton && showMenuButton) {
+    return (
+      <div
+        data-mobile-shell="floating-sidebar-trigger"
+        className={cn(
+          "pointer-events-none flex w-full items-start justify-start px-3",
+          className
+        )}
+        style={{
+          paddingTop: 'calc(var(--mobile-safe-area-top, 0px) + 0.375rem)',
+          paddingLeft: 'calc(0.75rem + var(--mobile-safe-area-left, 0px))',
+          paddingRight: 'calc(0.75rem + var(--mobile-safe-area-right, 0px))',
+          ...style,
+        }}
+      >
+        <DsButton
+          variant="ghost"
+          size="icon"
+          onClick={config.onMenuClick}
+          className={cn(shellIconButtonClassName, 'pointer-events-auto')}
+          data-mobile-floating-menu-button
+          aria-label={t('common:mobile_header.open_sidebar')}
+        >
+          <List size={21} weight="regular" />
+        </DsButton>
+      </div>
+    );
+  }
+
   return (
     <header
       // 移动平台（Android/iOS）上 data-tauri-drag-region 会干扰触摸点击事件，
@@ -72,7 +111,7 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
         // 基础布局
         "flex w-full flex-shrink-0 items-center gap-2 px-3",
         // 样式 — 不用 backdrop-blur，避免与下方工具栏/遮罩叠出「顶栏阴影」
-        "border-b border-[color:var(--shell-chrome-border)] bg-[color:var(--shell-titlebar-surface)] shadow-none",
+        "mobile-shell-header border-b border-transparent bg-transparent shadow-none",
         className
       )}
       style={{

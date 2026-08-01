@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useCallback } from 'react';
-import { Plus } from '@phosphor-icons/react';
+import { DotsThreeVertical, Plus } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { useMobileHeader } from '@/components/layout';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -39,6 +39,8 @@ export interface UseChatPageLayoutDeps {
   groupEditorMode: 'create' | 'edit';
   /** 关闭分组编辑器（顶栏返回箭头 / Android 返回键） */
   closeGroupEditor: () => void;
+  /** 打开当前会话的对话设置面板 */
+  openCurrentSessionSettings: () => void;
 }
 
 export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
@@ -50,6 +52,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     mobileSandboxOpen, closeMobileSandbox,
     openAppTitle, closeMobileOpenApp,
     groupEditorOpen, groupEditorMode, closeGroupEditor,
+    openCurrentSessionSettings,
   } = deps;
 
   const currentSessionGroupKey = currentSession ? (currentSession.groupId || 'ungrouped') : null;
@@ -92,27 +95,41 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
         </DsButton>
       );
     }
-    // C-10 修复：移除"对话控制"幽灵按钮（其目标面板从未在抽屉中渲染）；
-    // 对话参数控制已由输入栏的对话控制面板承载。
     return (
-      <DsButton
-        variant="ghost"
-        size="icon"
-        iconOnly
-        onClick={() => createSession()}
-        disabled={isLoading || isEmptyNewChat}
-        aria-label={t('page.newSession')}
-        title={t('page.newSession')}
-      >
-        <Plus size={20} />
-      </DsButton>
+      <>
+        {currentSessionId && (
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={openCurrentSessionSettings}
+            aria-label={t('common:mobile_header.open_session_settings')}
+            title={t('common:mobile_header.open_session_settings')}
+          >
+            <DotsThreeVertical size={20} weight="bold" />
+          </DsButton>
+        )}
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={() => createSession()}
+          disabled={isLoading || isEmptyNewChat}
+          aria-label={t('page.newSession')}
+          title={t('page.newSession')}
+        >
+          <Plus size={20} />
+        </DsButton>
+      </>
     );
-  }, [viewMode, createSession, isLoading, isEmptyNewChat, setViewMode, t]);
+  }, [currentSessionId, viewMode, createSession, isLoading, isEmptyNewChat, openCurrentSessionSettings, setViewMode, t]);
 
   // 📱 移动端资源库面包屑导航回调
   const handleFinderBreadcrumbNavigate = useCallback((index: number) => {
     finderJumpToBreadcrumb(index);
   }, [finderJumpToBreadcrumb]);
+
+  const isMinimalChatHeader = viewMode !== 'browser' && isEmptyNewChat;
 
   // 顶栏分支与移动端可见内容一一对应：
   // 右屏（沙箱 > 资源预览 > 资源库列表）→ 中屏子屏（Anki 卡片编辑 > 分组编辑器）→ 默认（浏览视图/聊天）
@@ -143,14 +160,28 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     showBackArrow: true,
     onMenuClick: closeGroupEditor,
   } : {
-    // The chat home uses the drawer itself as navigation. The compact in-canvas
-    // trigger keeps the action available without a permanent top toolbar.
-    hidden: true,
+    // 打开会话抽屉后由侧栏自己的顶部区接管整个移动视口，避免全局 Chat
+    // header 继续压在抽屉上方，形成两个并列的导航层。
+    hidden: sessionSheetOpen,
+    title: isMinimalChatHeader ? undefined : headerTitle,
+    showMenu: viewMode !== 'browser',
+    floatingMenuButton: isMinimalChatHeader,
+    showBackArrow: viewMode === 'browser',
+    onMenuClick: viewMode === 'browser'
+      ? () => {
+          setViewMode('sidebar');
+          setSessionSheetOpen(true);
+        }
+      : sessionSheetOpen
+        ? () => setSessionSheetOpen(false)
+        : () => setSessionSheetOpen(true),
+    rightActions: isMinimalChatHeader ? undefined : headerRightActions,
   }, [
-    mobileResourcePanelOpen,
+    currentSessionId, headerRightActions, headerTitle, mobileResourcePanelOpen, viewMode, isMinimalChatHeader,
     finderBreadcrumbs, handleFinderBreadcrumbNavigate, t,
     mobileSandboxOpen, closeMobileSandbox, openAppTitle, closeMobileOpenApp,
-    groupEditorOpen, groupEditorMode, closeGroupEditor,
+    groupEditorOpen, groupEditorMode, closeGroupEditor, sessionSheetOpen,
+    setSessionSheetOpen,
   ]);
 
   return {

@@ -46,12 +46,28 @@
 /* 767.98px 与 useBreakpoint 的 not (min-width: 768px) 判定对齐：
    Android 显示缩放/分屏下视口宽可能为 767.x 的小数，767px 整数上限会漏判 */
 @media (max-width: 767.98px) {
-  /* 移动抽屉与主内容区同色（background），避免 navigation-surface 灰底露出 */
+  /* 移动 header 顶部保留一段实色，向内容区自然淡出，避免硬边压住首行内容 */
+  [data-mobile-shell='header'] {
+    background: linear-gradient(
+      to bottom,
+      var(--shell-titlebar-surface) 0%,
+      transparent 100%
+    ) !important;
+    border-bottom-color: transparent !important;
+  }
+
+  [data-mobile-shell='floating-sidebar-trigger'] [data-mobile-floating-menu-button] {
+    background: color-mix(in srgb, var(--shell-titlebar-surface) 88%, transparent) !important;
+    color: var(--shell-navigation-foreground) !important;
+    box-shadow: 0 8px 20px -16px hsl(var(--shadow-base) / 0.45) !important;
+  }
+
+  /* 移动抽屉是独立的导航层：用导航表面与工作区区分，并在右缘保留浮层边界 */
   [data-mobile-unified-drawer] {
-    background: hsl(var(--background)) !important;
-    color: hsl(var(--foreground));
-    border-right: none !important;
-    box-shadow: none !important;
+    background: var(--shell-navigation-surface) !important;
+    color: var(--shell-navigation-foreground) !important;
+    border-right: 1px solid var(--shell-navigation-border) !important;
+    box-shadow: 8px 0 24px -18px hsl(var(--shadow-base) / 0.48) !important;
   }
 
   [data-mobile-unified-drawer] [data-mobile-drawer-page] > *,

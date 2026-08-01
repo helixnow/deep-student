@@ -723,7 +723,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   });
 
   // ===== 侧边栏内容 hook =====
-  const { renderSessionSidebarContent } = useSessionSidebarContent({
+  const { renderSessionSidebarContent, renderSessionSidebarHeader } = useSessionSidebarContent({
     searchQuery, setSearchQuery, viewMode, setViewMode, setSessionSheetOpen,
     editableGroupIds: activeGroupIds,
     onCreateGroup: openCreateGroup,
@@ -951,6 +951,11 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     setMobileResourcePanelOpen(false);
   }, [openApp, handleCloseApp, setMobileResourcePanelOpen]);
 
+  const openCurrentSessionSettings = useCallback(() => {
+    if (!currentSessionId) return;
+    sessionManager.get(currentSessionId)?.getState().setPanelState('advanced', true);
+  }, [currentSessionId]);
+
   // ===== 页面布局 hook =====
   useChatPageLayout({
     currentSession, currentSessionId, expandGroup, currentSessionHasMessages,
@@ -964,6 +969,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     groupEditorOpen,
     groupEditorMode: editingGroup ? 'edit' : 'create',
     closeGroupEditor: requestCloseGroupEditor,
+    openCurrentSessionSettings,
   });
 
   // ★ 标题更新回调
@@ -1207,9 +1213,10 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
       {isSmallScreen ? (
         <MobileSlidingLayout
           className="flex-1"
+          sidebarFixedContent={renderSessionSidebarHeader()}
           sidebar={
             <div className="min-h-0">
-              {renderSessionSidebarContent({ unifiedMobileDrawer: true })}
+              {renderSessionSidebarContent({ unifiedMobileDrawer: true, mobileDrawerHeader: 'fixed' })}
             </div>
           }
           rightPanel={
@@ -1295,18 +1302,6 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         >
           {/* 移动端：会话浏览作为主内容区域的一部分，直接切换 */}
           <div className="relative flex h-full flex-col">
-            {!groupEditorOpen && !mobileResourcePanelOpen && (
-              <DsButton
-                variant="ghost"
-                size="icon"
-                iconOnly
-                className="absolute left-3 top-[calc(0.75rem+var(--mobile-safe-area-top,0px))] z-20 !h-11 !w-11 rounded-[12px] bg-background/90 shadow-[var(--shadow-shell-soft)]"
-                onClick={() => setSessionSheetOpen(true)}
-                aria-label={t('common:mobile_header.open_sidebar')}
-              >
-                <SidebarFrameWithLeftRailIcon className="size-5" />
-              </DsButton>
-            )}
             {viewMode === 'browser' && renderArchiveConfirmBar()}
             {viewMode === 'browser' ? (
               <SessionBrowser

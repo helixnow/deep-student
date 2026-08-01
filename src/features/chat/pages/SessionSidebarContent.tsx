@@ -391,8 +391,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
             <span className={unified ? mobileDrawerRowTitleClassName : 'truncate'}>{label}</span>
             <span className="flex items-center gap-1.5 text-[color:var(--sidebar-muted)]">
-              {/* 触屏无 hover：pointer-coarse 下常显；按钮用伪元素扩大命中区 */}
-              <span className="flex items-center opacity-0 transition-opacity duration-150 ease-out focus-within:opacity-100 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none [@media(pointer:coarse)]:opacity-100">
+              {/* 按钮用伪元素扩大命中区，创建会话入口保持常显 */}
+              <span className="flex items-center">
                 <DsButton
                   variant="ghost"
                   size="icon"
@@ -740,45 +740,54 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     </div>
   );
 
-  const buildSessionSidebarBody = (unified: boolean) => {
+  const renderUnifiedMobileSidebarHeader = React.useCallback(() => (
+    <div
+      data-mobile-sidebar-fixed-region="top"
+      className="bg-[color:var(--shell-navigation-surface)] pb-3 pt-3"
+    >
+      <header className="flex h-11 items-center justify-between gap-3 px-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <p className="truncate text-[22px] font-bold leading-none text-foreground">DeepStudent</p>
+        </div>
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          className="!h-11 !w-11 shrink-0 text-muted-foreground"
+          onClick={() => setSessionSheetOpen(false)}
+          aria-label={t('common:close')}
+        >
+          <X size={24} weight="regular" />
+        </DsButton>
+      </header>
+      <div className="px-3 pt-1">
+        <DsButton
+          variant="outline"
+          size="lg"
+          className="h-[54px] w-full justify-between gap-3 rounded-[18px] border-border/90 bg-background text-[20px] font-semibold shadow-none hover:bg-muted/50"
+          onClick={handleCreateSession}
+        >
+          <span className="flex min-w-0 items-center gap-3">
+            <Plus size={22} weight="regular" />
+            <span className="truncate">{t('page.newChat')}</span>
+          </span>
+        </DsButton>
+      </div>
+    </div>
+  ), [handleCreateSession, setSessionSheetOpen, t]);
+
+  const buildSessionSidebarBody = (unified: boolean, includeUnifiedHeader = true) => {
     const shouldShowSearch = !unified || sessions.length >= 6 || searchQuery.length > 0;
+    const shouldRenderUnifiedHeader = unified && includeUnifiedHeader;
     const body = (
-      <div className={cn('space-y-3 pb-1', unified ? 'pt-3' : 'pt-1')}>
-        {unified && (
-          <header className="flex h-11 items-center justify-between gap-3 px-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <p className="truncate text-[22px] font-bold leading-none text-foreground">DeepStudent</p>
-            </div>
-            <DsButton
-              variant="ghost"
-              size="icon"
-              iconOnly
-              className="!h-11 !w-11 shrink-0 text-muted-foreground"
-              onClick={() => setSessionSheetOpen(false)}
-              aria-label={t('common:close')}
-            >
-              <X size={24} weight="regular" />
-            </DsButton>
-          </header>
-        )}
-        {unified ? (
-          <div className="px-3 pt-1">
-            <DsButton
-              variant="outline"
-              size="lg"
-              className="h-[54px] w-full justify-center gap-3 rounded-[18px] border-border/90 bg-background text-[20px] font-semibold shadow-none hover:bg-muted/50"
-              onClick={handleCreateSession}
-            >
-              <Plus size={22} weight="regular" />
-              {t('page.newChat')}
-            </DsButton>
-          </div>
-        ) : (
+      <div className={cn('space-y-3 pb-1', unified ? (shouldRenderUnifiedHeader ? 'pt-0' : 'pt-3') : 'pt-1')}>
+        {shouldRenderUnifiedHeader ? renderUnifiedMobileSidebarHeader() : null}
+        {!unified ? (
           <nav aria-label={t('page.primaryNavigation')} className="space-y-0.5">
             {renderPrimaryItem('new-chat', t('page.newChat'), ChatCenteredText, !currentSessionId, handleCreateSession, false)}
             {renderPrimaryItem('session-browser', t('browser.allSessions'), SquaresFour, viewMode === 'browser', handleOpenBrowser, false)}
           </nav>
-        )}
+        ) : null}
         {!isInitialLoading && shouldShowSearch && renderSearchInput()}
         {renderStudySidebarContent(unified)}
         {unified && (
@@ -810,8 +819,12 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   };
 
   // 渲染会话侧边栏内容（复用于移动端推拉布局和桌面端面板）
-  const renderSessionSidebarContent = (options?: { unifiedMobileDrawer?: boolean }) => {
+  const renderSessionSidebarContent = (options?: {
+    unifiedMobileDrawer?: boolean;
+    mobileDrawerHeader?: 'inline' | 'fixed';
+  }) => {
     const unified = options?.unifiedMobileDrawer ?? false;
+    const includeUnifiedHeader = options?.mobileDrawerHeader !== 'fixed';
     return (
     <ChatErrorBoundary>
     <div className={cn(
@@ -821,7 +834,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         : 'text-[color:var(--sidebar-foreground)]',
     )}>
       {unified ? (
-        buildSessionSidebarBody(true)
+        buildSessionSidebarBody(true, includeUnifiedHeader)
       ) : (
         <div className="flex h-full min-h-0 flex-col bg-[color:var(--shell-navigation-surface)]">
           <CustomScrollArea className="min-h-0 flex-1" viewportClassName="h-full w-full min-h-0">
@@ -837,5 +850,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     );
   };
 
-  return { renderSessionSidebarContent };
+  return {
+    renderSessionSidebarContent,
+    renderSessionSidebarHeader: renderUnifiedMobileSidebarHeader,
+  };
 }

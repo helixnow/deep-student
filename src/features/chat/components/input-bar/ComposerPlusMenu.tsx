@@ -24,6 +24,7 @@ import {
   Paperclip,
   Plus,
   ShieldWarning,
+  SlidersHorizontal,
   Sparkle,
   Warning,
 } from '@phosphor-icons/react';
@@ -91,6 +92,8 @@ export interface ComposerPlusMenuProps {
   onOpenMcpPanel?: () => void;
   mcpEnabled?: boolean;
   selectedMcpServerCount?: number;
+  /** 打开对话控制（高级设置）面板（桌面浮层 / 移动端内联面板） */
+  onOpenAdvancedPanel?: () => void;
   /** 知识库主动检索开关（开启后注入系统提示词，要求模型优先检索本地知识库） */
   knowledgeBaseProactive?: boolean;
   onKnowledgeBaseProactiveChange?: (enabled: boolean) => void | Promise<void>;
@@ -128,6 +131,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   onOpenMcpPanel,
   mcpEnabled = false,
   selectedMcpServerCount = 0,
+  onOpenAdvancedPanel,
   knowledgeBaseProactive = false,
   onKnowledgeBaseProactiveChange,
 }) => {
@@ -199,6 +203,11 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
     onOpenSkillPanel?.();
   }, [onOpenChange, onOpenSkillPanel]);
 
+  const handleOpenAdvancedPanel = useCallback(() => {
+    onOpenChange(false);
+    onOpenAdvancedPanel?.();
+  }, [onOpenChange, onOpenAdvancedPanel]);
+
   const handleSwitchToPlan = useCallback(() => {
     if (!onAuthorityModeChange) return;
     void onAuthorityModeChange('plan');
@@ -212,6 +221,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   const showKnowledgeBase = Boolean(onKnowledgeBaseProactiveChange);
   const showSkills = Boolean(renderSkillPanel);
   const showConnectors = Boolean(renderMcpPanel && onOpenMcpPanel);
+  const showAdvanced = Boolean(onOpenAdvancedPanel);
   // 📱 P1-1：移动端单层扁平列表（无 AppMenuSub 飞出层），触控行高 ≥44px
   const useFlatMobileMenu = isMobile;
   const mobileItemClass = 'min-h-[44px]';
@@ -402,7 +412,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
               )}
 
               {/* 技能/连接器：跳转到内联面板，不嵌套飞出层 */}
-              {((showSkills && onOpenSkillPanel) || showConnectors) && <AppMenuSeparator />}
+              {((showSkills && onOpenSkillPanel) || showConnectors || showAdvanced) && <AppMenuSeparator />}
               {showSkills && onOpenSkillPanel && (
                 <AppMenuItem
                   className={mobileItemClass}
@@ -423,6 +433,16 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                   suffix={connectorsBadge}
                 >
                   {t('chatV2:inputBar.plusMenu.connectors')}
+                </AppMenuItem>
+              )}
+              {showAdvanced && (
+                <AppMenuItem
+                  className={mobileItemClass}
+                  icon={<SlidersHorizontal className="w-4 h-4" />}
+                  onClick={handleOpenAdvancedPanel}
+                  data-testid="plus-menu-advanced"
+                >
+                  {t('common:chat_controls')}
                 </AppMenuItem>
               )}
             </>
@@ -621,6 +641,16 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                   </AppMenuFooter>
                 </AppMenuSubContent>
               </AppMenuSub>
+            )}
+
+            {showAdvanced && (
+              <AppMenuItem
+                icon={<SlidersHorizontal className="w-4 h-4" />}
+                onClick={handleOpenAdvancedPanel}
+                data-testid="plus-menu-advanced"
+              >
+                {t('common:chat_controls')}
+              </AppMenuItem>
             )}
           </AppMenuGroup>
           )}

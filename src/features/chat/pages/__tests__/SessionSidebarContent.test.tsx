@@ -14,7 +14,13 @@ vi.mock('../components/ChatErrorBoundary', () => ({
   ChatErrorBoundary: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 
-function SidebarHarness({ unifiedMobileDrawer = false }: { unifiedMobileDrawer?: boolean }) {
+function SidebarHarness({
+  unifiedMobileDrawer = false,
+  fixedHeader = false,
+}: {
+  unifiedMobileDrawer?: boolean;
+  fixedHeader?: boolean;
+}) {
   const groups: SessionGroup[] = [
     {
       id: 'group-1',
@@ -48,7 +54,7 @@ function SidebarHarness({ unifiedMobileDrawer = false }: { unifiedMobileDrawer?:
     updatedAt: '2026-05-23T09:00:00Z',
   } as ChatSession;
 
-  const { renderSessionSidebarContent } = useSessionSidebarContent({
+  const { renderSessionSidebarContent, renderSessionSidebarHeader } = useSessionSidebarContent({
     searchQuery: '',
     setSearchQuery: vi.fn(),
     viewMode: 'sidebar',
@@ -71,6 +77,11 @@ function SidebarHarness({ unifiedMobileDrawer = false }: { unifiedMobileDrawer?:
       if (key === 'page.newChat') return '新对话';
       if (key === 'browser.allSessions') return '所有对话';
       if (key === 'sidebar:mobile_drawer.section_chat') return '会话';
+      if (key === 'page.studySessions') return '课题';
+      if (key === 'page.recentSessions') return '最近';
+      if (key === 'page.ungrouped') return '未分组';
+      if (key === 'page.studySessionsEmpty') return '暂无课题';
+      if (key === 'page.searchPlaceholder') return '搜索会话...';
       return typeof fallback === 'string' ? fallback : '';
     }) as any,
     resetDeleteConfirmation: vi.fn(),
@@ -79,7 +90,15 @@ function SidebarHarness({ unifiedMobileDrawer = false }: { unifiedMobileDrawer?:
     renderSessionItem: (session: ChatSession) => <div key={session.id}>{session.title}</div>,
   });
 
-  return <>{renderSessionSidebarContent({ unifiedMobileDrawer })}</>;
+  return (
+    <>
+      {fixedHeader ? renderSessionSidebarHeader() : null}
+      {renderSessionSidebarContent({
+        unifiedMobileDrawer,
+        mobileDrawerHeader: fixedHeader ? 'fixed' : 'inline',
+      })}
+    </>
+  );
 }
 
 function EmptyTopicsSidebarHarness() {
@@ -111,7 +130,14 @@ function EmptyTopicsSidebarHarness() {
     currentSessionId: ungroupedSession.id,
     hasMoreSessions: false,
     isLoadingMore: false,
-    t: ((_: string, fallback?: string) => (typeof fallback === 'string' ? fallback : '')) as any,
+    t: ((key: string, fallback?: string) => {
+      if (key === 'page.studySessions') return '课题';
+      if (key === 'page.recentSessions') return '最近';
+      if (key === 'page.ungrouped') return '未分组';
+      if (key === 'page.studySessionsEmpty') return '暂无课题';
+      if (key === 'page.searchPlaceholder') return '搜索会话...';
+      return typeof fallback === 'string' ? fallback : '';
+    }) as any,
     resetDeleteConfirmation: vi.fn(),
     createSession: vi.fn(async () => undefined),
     loadMoreSessions: vi.fn(async () => undefined),
@@ -122,16 +148,27 @@ function EmptyTopicsSidebarHarness() {
 }
 
 describe('useSessionSidebarContent', () => {
-  it('removes new-chat and all-session entries from the unified mobile drawer only', () => {
+  it('keeps the unified mobile drawer header and new-chat action outside the scroll region', () => {
+    const { container } = render(<SidebarHarness unifiedMobileDrawer fixedHeader />);
+    const fixedRegion = container.querySelector('[data-mobile-sidebar-fixed-region="top"]');
+
+    expect(fixedRegion).toBeInTheDocument();
+    expect(fixedRegion).not.toHaveClass('sticky');
+    expect(fixedRegion).toContainElement(screen.getByText('DeepStudent'));
+    const newChatButton = screen.getByRole('button', { name: '新对话' });
+    expect(fixedRegion).toContainElement(newChatButton);
+  });
+
+  it('keeps primary chat actions visible in the unified mobile drawer without the legacy section', () => {
     const { rerender } = render(<SidebarHarness />);
 
     expect(screen.getByRole('button', { name: '新对话' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '所有对话' })).toBeInTheDocument();
 
-    rerender(<SidebarHarness unifiedMobileDrawer />);
+    rerender(<SidebarHarness unifiedMobileDrawer fixedHeader />);
 
-    expect(screen.queryByRole('button', { name: '新对话' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '所有对话' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '新对话' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '所有对话' })).toBeInTheDocument();
     expect(screen.queryByText('会话')).not.toBeInTheDocument();
   });
 
