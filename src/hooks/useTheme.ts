@@ -21,6 +21,7 @@ export type ThemePalette =
   | 'green'      // 森林绿
   | 'orange'     // 日落橙
   | 'pink'       // 玫瑰粉
+  | 'bright-pink' // 明亮粉
   | 'teal'       // 青碧色
   | 'muted'      // 柔和色调
   | 'paper'      // 纸纹质感
@@ -28,7 +29,7 @@ export type ThemePalette =
 
 /** 预设调色板（不含 custom） */
 export const PRESET_PALETTES: ThemePalette[] = [
-  'default', 'purple', 'green', 'orange', 'pink', 'teal', 'muted', 'paper'
+  'default', 'purple', 'green', 'orange', 'pink', 'bright-pink', 'teal', 'muted', 'paper'
 ];
 
 /** 所有调色板 */
@@ -56,6 +57,7 @@ export const PALETTE_PREVIEW_COLORS: Record<string, string> = {
   green: '#2b7352',
   orange: '#9f5014',
   pink: '#9d2a59',
+  'bright-pink': '#fb7299',
   teal: '#247078',
   muted: '#445a7e',
   paper: '#473c37',

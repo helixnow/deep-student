@@ -320,7 +320,25 @@
   --primary-color: hsl(var(--primary));
 }
 
-/* 6. 青岩蓝 (teal) */
+/* 6. 明亮粉 (bright-pink) —— #fb7299 */
+:root[data-theme-palette='bright-pink'] {
+  --primary: 346 94% 72%;
+  --primary-foreground: 220 30% 10%;
+  --ring: 346 86% 64%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 346 82% 56%;
+  --primary-color: hsl(var(--primary));
+}
+:root.dark[data-theme-palette='bright-pink'] {
+  --primary: 346 94% 72%;
+  --primary-foreground: 220 30% 10%;
+  --ring: 346 86% 76%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 346 94% 82%;
+  --primary-color: hsl(var(--primary));
+}
+
+/* 7. 青岩蓝 (teal) */
 :root[data-theme-palette='teal'] {
   --primary: 184 54% 30%;
   --primary-foreground: 0 0% 100%;
