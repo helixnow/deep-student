@@ -111,7 +111,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         provider_type: "deepseek",
         auth_mode: None,
         base_url: "https://api.deepseek.com/v1",
-        notes: "DeepSeek 官方 API。推荐模型: deepseek-v4-flash, deepseek-v4-pro（1M 上下文，最大输出 384K）。旧别名 deepseek-chat / deepseek-reasoner 于 2026-07-24 15:59 UTC 停用，已从内置列表移除。reasoning_effort=max 时官方建议预留 ≥384K token 输出预算。",
+        notes: "",
         max_tokens_limit: Some(393_216),
         website_url: "https://deepseek.com",
     },
@@ -222,7 +222,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-deepseek-v4-flash",
         vendor_id: "builtin-deepseek",
-        label: "DeepSeek V4 Flash (官方推荐)",
+        label: "DeepSeek V4 Flash",
         model: "deepseek-v4-flash",
         is_multimodal: false,
         is_reasoning: true,
@@ -233,7 +233,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-deepseek-v4-pro",
         vendor_id: "builtin-deepseek",
-        label: "DeepSeek V4 Pro (官方推荐)",
+        label: "DeepSeek V4 Pro",
         model: "deepseek-v4-pro",
         is_multimodal: false,
         is_reasoning: true,
@@ -1369,13 +1369,10 @@ mod tests {
     }
 
     #[test]
-    fn official_deepseek_vendor_advertises_v4_and_flags_alias_retirement() {
+    fn official_deepseek_vendor_has_empty_notes_and_advertises_v4() {
         let vendor = deepseek_vendor();
 
-        assert!(vendor.notes.contains("deepseek-v4-flash"));
-        assert!(vendor.notes.contains("deepseek-v4-pro"));
-        assert!(vendor.notes.contains("384K"));
-        assert!(vendor.notes.contains("停用"));
+        assert!(vendor.notes.is_empty());
         assert_eq!(vendor.max_tokens_limit, Some(393_216));
     }
 

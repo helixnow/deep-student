@@ -498,7 +498,18 @@
       }
     },
     "no_api_key_needed_short": "No key",
-    "no_api_key_required_hint": "No API key required; models will be fetched after saving"
+    "no_api_key_required_hint": "No API key required; models will be fetched after saving",
+    "balance_title": "Account Balance",
+    "balance_loading": "Loading balance",
+    "balance_refresh": "Refresh balance",
+    "balance_remaining": "Remaining",
+    "balance_no_key": "No API key configured",
+    "balance_unauthorized": "Invalid API key. Please check and try again",
+    "balance_fetch_failed": "Failed to fetch balance",
+    "balance_just_now": "Just now",
+    "balance_minutes_ago": "{{count}} min ago",
+    "balance_hours_ago": "{{count}} hr ago",
+    "balance_days_ago": "{{count}} day(s) ago"
   },
   "vendor_model_fetcher": {
     "fetch_button": "Fetch Model List",

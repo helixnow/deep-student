@@ -498,7 +498,18 @@
       }
     },
     "no_api_key_needed_short": "无 Key",
-    "no_api_key_required_hint": "无需 API Key，保存后将自动获取模型列表"
+    "no_api_key_required_hint": "无需 API Key，保存后将自动获取模型列表",
+    "balance_title": "账户余额",
+    "balance_loading": "正在查询余额",
+    "balance_refresh": "刷新余额",
+    "balance_remaining": "剩余",
+    "balance_no_key": "未配置 API 密钥",
+    "balance_unauthorized": "API 密钥无效，请检查后重试",
+    "balance_fetch_failed": "余额查询失败",
+    "balance_just_now": "刚刚",
+    "balance_minutes_ago": "{{count}}分钟前",
+    "balance_hours_ago": "{{count}}小时前",
+    "balance_days_ago": "{{count}}天前"
   },
   "vendor_model_fetcher": {
     "fetch_button": "获取模型列表",

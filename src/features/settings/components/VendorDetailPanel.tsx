@@ -27,6 +27,8 @@ import {
 } from './SettingsCommon';
 import { SiliconFlowSection } from './SiliconFlowSection';
 import { VendorApiKeySection } from './VendorApiKeySection';
+import { DeepSeekBalanceSection } from './DeepSeekBalanceSection';
+import { isOfficialDeepSeekVendor } from './deepSeekBalance';
 import { VendorModelFetcher, supportsModelFetching } from './VendorModelFetcher';
 import { ShadApiEditModal } from './ShadApiEditModal';
 import { OpenAICodexAccountSection } from './OpenAICodexAccountSection';
@@ -964,6 +966,15 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                       </div>
                       <div className="text-sm text-foreground leading-relaxed">{selectedVendor.notes}</div>
                     </div>
+                  )}
+
+                  {/* DeepSeek 官方余额查询：仅官方域名供应商显示 */}
+                  {isOfficialDeepSeekVendor(selectedVendor) && (
+                    <DeepSeekBalanceSection
+                      key={selectedVendor.id}
+                      vendor={selectedVendor}
+                      active={connectionExpanded}
+                    />
                   )}
               </div>
             </InlineEditorCollapse>
