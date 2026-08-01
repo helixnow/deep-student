@@ -20,7 +20,11 @@ type StreamEventDetail = DebugEvent & {
 
 const TOGGLE_POS_STORAGE_KEY = 'dstu-debug-toggle-pos';
 
-const GlobalDebugPanel = () => {
+interface GlobalDebugPanelProps {
+  openRequest?: number;
+}
+
+const GlobalDebugPanel = ({ openRequest = 0 }: GlobalDebugPanelProps) => {
   const debugEnabled = useMemo(() => getDebugEnabled(), []);
   const { t } = useTranslation('common');
   // visible 控制面板是否展开（true）或隐藏（false）
@@ -84,6 +88,12 @@ const GlobalDebugPanel = () => {
   }, [hidePanel, openPanel]);
 
   useEffect(() => {
+    if (openRequest > 0) {
+      openPanel();
+    }
+  }, [openPanel, openRequest]);
+
+  useEffect(() => {
     if (!debugEnabled) return;
 
     const handleStreamEvent = (event: Event) => {
@@ -109,8 +119,6 @@ const GlobalDebugPanel = () => {
   }, [debugEnabled]);
 
   useEffect(() => {
-    if (!debugEnabled) return;
-
     const handleToggleEvent = (event?: CustomEvent<{ visible?: boolean }>) => {
       const explicit = event?.detail?.visible;
       if (typeof explicit === 'boolean') {
@@ -165,7 +173,7 @@ const GlobalDebugPanel = () => {
         handleHide as EventListener,
       );
     };
-  }, [debugEnabled, hidePanel, openPanel, togglePanel]);
+  }, [hidePanel, openPanel, togglePanel]);
 
   useEffect(() => {
     if (!debugEnabled) return;
@@ -251,8 +259,6 @@ const GlobalDebugPanel = () => {
     window.addEventListener('resize', clamp);
     return () => window.removeEventListener('resize', clamp);
   }, []);
-
-  if (!debugEnabled) return null;
 
   const tooltipContent = (
     <>

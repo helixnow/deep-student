@@ -63,8 +63,8 @@ body {
   background:
     linear-gradient(
       90deg,
-      transparent 0,
-      transparent var(--shell-navigation-width),
+      var(--shell-navigation-surface) 0,
+      var(--shell-navigation-surface) var(--shell-navigation-width),
       var(--shell-workspace-panel) var(--shell-navigation-width),
       var(--shell-workspace-panel) 100%
     );
@@ -75,7 +75,8 @@ body {
 
 .desktop-shell-header-cell {
   min-width: 0;
-  min-height: var(--shell-titlebar-height);
+  /* The shell height includes the native macOS inset; the header row does not. */
+  min-height: var(--shell-titlebar-content-height, 40px);
   background: transparent;
 }
 
@@ -412,22 +413,6 @@ body {
   box-shadow: 10px 0 24px -26px hsl(var(--foreground) / 0.32);
 }
 
-.desktop-shell-sidebar-titlebar-surface {
-  position: absolute;
-  z-index: 0;
-  inset-block: 0;
-  left: 0;
-  width: var(--sidebar-expanded-width);
-  background: var(--shell-navigation-surface);
-  border-right: 1px solid var(--shell-sidebar-divider);
-  pointer-events: none;
-  transform: translateX(var(--shell-sidebar-translate-x));
-  transition:
-    width var(--resize-dur) var(--resize-ease),
-    transform var(--resize-dur) var(--resize-ease);
-  will-change: width, transform;
-}
-
 .desktop-shell-sidebar-top-accessory {
   /* Keep titlebar controls out of the sidebar's animated layout layer. */
   position: fixed;
@@ -464,7 +449,6 @@ body {
 }
 
 [data-shell-role="app-shell"][data-sidebar-resizing="true"] .t-resize,
-[data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-sidebar-titlebar-surface,
 [data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-sidebar-motion-surface,
 [data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-header-cell--nav,
 [data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-header-cell--workspace {
@@ -1430,7 +1414,6 @@ main {
     transition: none;
   }
 
-  .desktop-shell-sidebar-titlebar-surface,
   .desktop-shell-sidebar-top-accessory,
   .desktop-shell-sidebar-motion-surface,
   .desktop-shell-sidebar-resize-indicator,

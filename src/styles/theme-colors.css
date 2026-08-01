@@ -433,13 +433,13 @@
   background: transparent;
 }
 
-/* 标题栏导航段透明，避免与全高侧边栏面板双重叠色（工作区段保持不透明） */
+/* 标题栏导航段与全高侧边栏使用同一表面，保证左侧背景连续。 */
 :root[data-sidebar-translucent="true"][data-macos-vibrancy="true"]
   .desktop-shell-titlebar[data-sidebar-visible="true"] {
   background: linear-gradient(
     90deg,
-    transparent 0,
-    transparent var(--shell-navigation-width),
+    var(--shell-navigation-surface) 0,
+    var(--shell-navigation-surface) var(--shell-navigation-width),
     var(--shell-workspace-panel) var(--shell-navigation-width),
     var(--shell-workspace-panel) 100%
   );
@@ -451,26 +451,6 @@
   [data-shell-surface="navigation"] {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
-}
-
-/* Overlay 标题栏背后是 NSWindow 的透明 frame，而不是 contentView 内的
-   NSVisualEffectView。若继续使用侧边栏的低透明度 tint，会与黑色 frame 合成
-   成一条明显更暗的 40px 色带；单独提高这一段的 tint，令视觉亮度与下方原生
-   Sidebar 材质连续。 */
-:root.dark[data-sidebar-translucent="true"][data-macos-vibrancy="true"]
-  .desktop-shell-sidebar-titlebar-surface {
-  background: hsl(var(--nav-background) / 0.82);
-}
-
-:root.dark[data-sidebar-translucent="true"][data-macos-vibrancy="true"]
-  .desktop-shell-titlebar[data-sidebar-visible="true"] {
-  background: linear-gradient(
-    90deg,
-    hsl(var(--nav-background) / 0.82) 0,
-    hsl(var(--nav-background) / 0.82) var(--shell-navigation-width),
-    var(--shell-workspace-panel) var(--shell-navigation-width),
-    var(--shell-workspace-panel) 100%
-  );
 }
 
 /* Accessibility: respect reduced transparency preference */

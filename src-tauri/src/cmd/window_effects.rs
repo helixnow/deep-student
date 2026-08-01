@@ -9,6 +9,55 @@ type Result<T> = std::result::Result<T, AppError>;
 
 #[cfg(target_os = "macos")]
 const TITLEBAR_SIDEBAR_VIEW_IDENTIFIER: &str = "com.deepstudent.titlebar-sidebar-material";
+#[cfg(target_os = "macos")]
+const TITLEBAR_SIDEBAR_CLASS_NAME: &str = "DeepStudentTitlebarSidebarMaterialView";
+
+#[cfg(target_os = "macos")]
+extern "C" fn titlebar_sidebar_material_is_opaque(
+    _this: &objc::runtime::Object,
+    _cmd: objc::runtime::Sel,
+) -> cocoa::base::BOOL {
+    cocoa::base::NO
+}
+
+#[cfg(target_os = "macos")]
+extern "C" fn titlebar_sidebar_material_hit_test(
+    _this: &objc::runtime::Object,
+    _cmd: objc::runtime::Sel,
+    _point: cocoa::foundation::NSPoint,
+) -> cocoa::base::id {
+    cocoa::base::nil
+}
+
+#[cfg(target_os = "macos")]
+fn titlebar_sidebar_material_class() -> *const objc::runtime::Class {
+    use std::sync::OnceLock;
+
+    use objc::declare::ClassDecl;
+    use objc::runtime::{Class, Object, Sel};
+    use objc::{class, sel, sel_impl};
+
+    static CLASS: OnceLock<usize> = OnceLock::new();
+    *CLASS.get_or_init(|| unsafe {
+        if let Some(existing) = Class::get(TITLEBAR_SIDEBAR_CLASS_NAME) {
+            return existing as *const Class as usize;
+        }
+
+        let superclass = class!(NSVisualEffectView);
+        let mut declaration = ClassDecl::new(TITLEBAR_SIDEBAR_CLASS_NAME, superclass)
+            .expect("titlebar sidebar material class must be declared once");
+        declaration.add_method(
+            sel!(isOpaque),
+            titlebar_sidebar_material_is_opaque as extern "C" fn(&Object, Sel) -> cocoa::base::BOOL,
+        );
+        declaration.add_method(
+            sel!(hitTest:),
+            titlebar_sidebar_material_hit_test
+                as extern "C" fn(&Object, Sel, cocoa::foundation::NSPoint) -> cocoa::base::id,
+        );
+        declaration.register() as *const Class as usize
+    }) as *const objc::runtime::Class
+}
 
 #[cfg(target_os = "macos")]
 unsafe fn find_identified_subview(
@@ -45,8 +94,9 @@ unsafe fn sync_titlebar_sidebar_material_impl(
     width: f64,
 ) -> std::result::Result<(), String> {
     use cocoa::appkit::{
-        NSView, NSViewHeightSizable, NSVisualEffectBlendingMode, NSVisualEffectMaterial,
-        NSVisualEffectState, NSVisualEffectView, NSWindow, NSWindowButton, NSWindowOrderingMode,
+        NSView, NSViewHeightSizable, NSViewMaxXMargin, NSVisualEffectBlendingMode,
+        NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindow, NSWindowButton,
+        NSWindowOrderingMode,
     };
     use cocoa::base::{id, nil};
     use cocoa::foundation::{NSPoint, NSRect, NSSize, NSString};
@@ -86,14 +136,16 @@ unsafe fn sync_titlebar_sidebar_material_impl(
         NSSize::new(width.min(bounds.size.width), bounds.size.height),
     );
 
-    let view: id = NSVisualEffectView::initWithFrame_(NSVisualEffectView::alloc(nil), frame);
+    let material_class = titlebar_sidebar_material_class();
+    let allocated: id = msg_send![material_class, alloc];
+    let view: id = NSVisualEffectView::initWithFrame_(allocated, frame);
     if view == nil {
         let _: () = msg_send![identifier, release];
         return Err("创建 NSVisualEffectView 失败".into());
     }
 
     let _: () = msg_send![view, setIdentifier: identifier];
-    let _: () = msg_send![view, setAutoresizingMask: NSViewHeightSizable];
+    let _: () = msg_send![view, setAutoresizingMask: NSViewHeightSizable | NSViewMaxXMargin];
     let _: () = msg_send![view, setWantsLayer: true];
     let _: () = msg_send![view, setHidden: false];
     view.setMaterial_(NSVisualEffectMaterial::Sidebar);

@@ -8,9 +8,8 @@
  *    挂载 NSVisualEffectView（Sidebar 材质），配合 `data-macos-vibrancy`
  *    属性把侧边栏图层链透明化，实现真正的桌面透视。
  *
- * 注意：不要再为标题栏额外挂载原生材质。它位于 macOS 标题栏容器时会盖住
- * WebView 的自绘左上控件；窗口级 Sidebar 材质与 CSS 标题栏 tint 已足够覆盖
- * 该区域。
+ * 标题栏左侧导航段使用 WebView 内与侧栏相同的表面，不再额外挂载原生
+ * NSVisualEffectView，避免原生标题栏层覆盖 WebView 自绘控件。
  */
 import { isTauriRuntime } from '@/utils/shared';
 import { isMacOS } from '@/utils/platform';
@@ -21,10 +20,8 @@ const VIBRANCY_ATTR = 'data-macos-vibrancy';
 /** 记录已应用的原生 vibrancy 状态，避免重复的 IPC/原生调用 */
 let nativeVibrancyApplied: boolean | null = null;
 
-export async function syncNativeTitlebarSidebarMaterial(
-  _visible: boolean,
-  _width: number,
-): Promise<void> {
+/** Remove the legacy native titlebar overlay that could cover WebView chrome. */
+export async function clearNativeTitlebarSidebarMaterial(): Promise<void> {
   if (!isTauriRuntime || !isMacOS()) {
     return;
   }
@@ -32,7 +29,6 @@ export async function syncNativeTitlebarSidebarMaterial(
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('sync_titlebar_sidebar_material', {
-      // 清理旧版本可能遗留的标题栏 NSVisualEffectView，避免遮挡 WebView 控件。
       enabled: false,
       width: 0,
     });
@@ -52,10 +48,6 @@ export async function applySidebarTranslucency(enabled: boolean): Promise<void> 
 
   if (nativeVibrancyApplied === enabled) {
     root.setAttribute(VIBRANCY_ATTR, String(enabled));
-    const width = Number.parseFloat(
-      getComputedStyle(root).getPropertyValue('--shell-navigation-width') || '0',
-    );
-    void syncNativeTitlebarSidebarMaterial(width > 0, width);
     return;
   }
 
@@ -64,15 +56,10 @@ export async function applySidebarTranslucency(enabled: boolean): Promise<void> 
     const native = await invoke<boolean>('set_sidebar_vibrancy', { enabled });
     nativeVibrancyApplied = enabled;
     root.setAttribute(VIBRANCY_ATTR, String(enabled && native === true));
-    const width = Number.parseFloat(
-      getComputedStyle(root).getPropertyValue('--shell-navigation-width') || '0',
-    );
-    void syncNativeTitlebarSidebarMaterial(width > 0, width);
   } catch (err) {
     // 原生调用失败时退回纯 CSS 半透明，不阻塞设置本身
     console.warn('[sidebarTranslucency] 原生 vibrancy 调用失败，退回 CSS 方案:', err);
     nativeVibrancyApplied = null;
     root.setAttribute(VIBRANCY_ATTR, 'false');
-    void syncNativeTitlebarSidebarMaterial(false, 0);
   }
 }

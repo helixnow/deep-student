@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 // 🚀 性能优化：Settings, Dashboard, SOTADashboard 改为懒加载
-import { CaretLeft, CaretRight, CircleNotch, DownloadSimple, Terminal, Warning, X } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, CircleNotch, Terminal, Warning, X } from '@phosphor-icons/react';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import type { StartupComponentIssue } from '@/stores/systemStatusStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
@@ -40,7 +40,7 @@ import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
 import { isWindows, isMacOS, isMobilePlatform } from './utils/platform';
 import { isTauriRuntime } from './utils/shared';
-import { applySidebarTranslucency, syncNativeTitlebarSidebarMaterial } from './utils/sidebarTranslucency';
+import { applySidebarTranslucency, clearNativeTitlebarSidebarMaterial } from './utils/sidebarTranslucency';
 // 🚀 性能优化：ChatV2Page 改为懒加载，见 lazyComponents.tsx
 // NT-1: NoteEditorPortal（白板远程桌面模式遗留，恒 return null）已随死渲染路径移除
 // 🚀 性能优化：TreeDragTest, PdfReader, LearningHubPage 改为懒加载
@@ -329,70 +329,14 @@ function CommandPaletteButton({
   );
 }
 
-function SidebarUpdateBadge({
-  visible,
-  onClick,
-  downloading,
-  compact,
-  className,
-}: {
-  visible: boolean;
-  onClick: () => void;
-  downloading: boolean;
-  compact?: boolean;
-  className?: string;
-}) {
-  const { t } = useTranslation('common');
-  const updateLabel = t('header.update');
-  const downloadingLabel = t('status.downloading');
-
-  if (!visible) return null;
-
-  if (compact) {
-    return (
-      <button
-        type="button"
-        data-slot="sidebar-update-badge"
-        className={cn('desktop-shell-update-badge desktop-shell-update-badge--compact', className)}
-        onClick={onClick}
-        disabled={downloading}
-        aria-label={downloading ? downloadingLabel : updateLabel}
-      >
-        {downloading ? <CircleNotch size={12} className="animate-spin" aria-hidden="true" /> : <DownloadSimple size={12} />}
-      </button>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      data-slot="sidebar-update-badge"
-      className={cn('desktop-shell-update-badge', className)}
-      onClick={onClick}
-      disabled={downloading}
-      aria-label={downloading ? downloadingLabel : updateLabel}
-    >
-      {downloading ? <CircleNotch size={12} className="animate-spin" aria-hidden="true" /> : <DownloadSimple size={12} />}
-    </button>
-  );
-}
-
 function DesktopSidebarAccessory({
   onToggle,
   label,
   collapsed,
-  updateVisible,
-  onUpdate,
-  updateDownloading,
-  compact,
 }: {
   onToggle: () => void;
   label: string;
   collapsed: boolean;
-  updateVisible: boolean;
-  onUpdate: () => void;
-  updateDownloading: boolean;
-  compact?: boolean;
 }) {
   return (
     <div className="desktop-shell-accessory-group flex min-w-0 items-center">
@@ -407,13 +351,6 @@ function DesktopSidebarAccessory({
           {collapsed ? <SidebarFrameIcon /> : <SidebarFrameWithLeftRailIcon />}
         </DsButton>
       </CommonTooltip>
-      <SidebarUpdateBadge
-        visible={updateVisible && !collapsed}
-        onClick={onUpdate}
-        downloading={updateDownloading}
-        compact={compact}
-        className={compact ? 'ml-0.5' : 'ml-1.5'}
-      />
     </div>
   );
 }
@@ -637,7 +574,29 @@ function App() {
   
   // 响应式检测：移动端布局调整
   const { isSmallScreen } = useBreakpoint();
-  const shouldRenderDebugPanel = useMemo(() => getDebugEnabled(), []);
+  const [debugPanelRequested, setDebugPanelRequested] = useState(() => getDebugEnabled());
+  const [debugPanelOpenRequest, setDebugPanelOpenRequest] = useState(0);
+
+  // 生产包不会预先加载调试面板。设置页和命令面板都可能在面板尚未挂载时
+  // 发起打开请求，因此由 App 保留请求并触发懒加载，避免事件落空。
+  const openDebugPanel = useCallback(() => {
+    setDebugPanelRequested(true);
+    setDebugPanelOpenRequest((request) => request + 1);
+  }, []);
+
+  const toggleDebugPanel = useCallback(() => {
+    const win = window as Window & { DSTU_TOGGLE_DEBUGGER?: () => void };
+    if (typeof win.DSTU_TOGGLE_DEBUGGER === 'function') {
+      win.DSTU_TOGGLE_DEBUGGER();
+      return;
+    }
+    openDebugPanel();
+  }, [openDebugPanel]);
+
+  useEventRegistry([
+    { target: 'window', type: 'DSTU_OPEN_DEBUGGER', listener: openDebugPanel },
+    { target: 'window', type: 'DEV_TOGGLE_DEBUG_PANEL', listener: toggleDebugPanel },
+  ], [openDebugPanel, toggleDebugPanel]);
 
   // 防止 content-body 被编程方式滚动
   const contentBodyRef = useRef<HTMLDivElement>(null);
@@ -915,7 +874,6 @@ function App() {
   const desktopSidebarResizeLabel = t('common:navigation.resize_sidebar');
   const desktopHeaderNavHotzoneLabel = t('chatV2:page.newSession');
   const desktopHeaderTitleHotzoneLabel = t('common:command_palette_label');
-  const updateBadgeVisible = !updater.checking && updater.available && !!updater.info;
   const desktopHeaderIconButtonSize = 32;
   const desktopHeaderControlGap = 4;
   const desktopCollapsedControlCount = 4;
@@ -969,10 +927,14 @@ function App() {
       unlisten?.();
     };
   }, [isSmallScreen]);
+  // macOS traffic lights share the native titlebar with the custom shell
+  // controls. The horizontal spacer reserves their hit area; adding a second
+  // vertical inset would render a duplicate toolbar below the native chrome.
+  const shellTitlebarTopInset = isSmallScreen || isMacOS() ? 0 : topbarTopMargin;
   // 工作台模式：顶栏只留原生/自绘窗口控制，不占内容高度
   const shellTitlebarOccupiedHeight = workbenchActive
     ? 0
-    : DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin;
+    : DESKTOP_SHELL.titlebarBaseHeight + shellTitlebarTopInset;
   const appShellCustomProperties = useMemo(() => ({
     ...getMobileShellCssVars(),
     '--sidebar-width': `${desktopNavigationWidth}px`,
@@ -982,7 +944,8 @@ function App() {
     '--shell-sidebar-translate-x': `${desktopSidebarTranslateX}px`,
     '--shell-titlebar-height': `${shellTitlebarOccupiedHeight}px`,
     '--desktop-titlebar-height': `${shellTitlebarOccupiedHeight}px`,
-    '--topbar-safe-area': `${workbenchActive ? 0 : topbarTopMargin}px`,
+    '--shell-titlebar-content-height': `${workbenchActive ? 0 : DESKTOP_SHELL.titlebarBaseHeight}px`,
+    '--topbar-safe-area': `${workbenchActive ? 0 : shellTitlebarTopInset}px`,
     '--sidebar-header-height': '65px', // 左侧导航栏第一个图标到分隔线的高度
   }) as React.CSSProperties, [
     desktopNavigationWidth,
@@ -1056,11 +1019,12 @@ function App() {
       leftPanelWidth: result.width,
     });
   }, [leftPanelWidth]);
-  // macOS 原生 vibrancy：清理旧版标题栏材质，避免其覆盖 WebView 自绘控件。
-  // 侧栏主体仍由窗口级 Sidebar vibrancy 提供毛玻璃效果。
+  // 清理旧版本可能遗留的原生标题栏材质。标题栏左段现在与侧栏共用
+  // WebView 背景，避免原生 NSVisualEffectView 覆盖自绘导航控件。
   useEffect(() => {
-    if (isSmallScreen || !isMacOS()) return;
-    void syncNativeTitlebarSidebarMaterial(false, 0);
+    if (!isSmallScreen && isMacOS()) {
+      void clearNativeTitlebarSidebarMaterial();
+    }
   }, [isSmallScreen]);
   const [templateManagementRefreshTick, setTemplateManagementRefreshTick] = useState(0);
   const [desktopPageSidebarTarget, setDesktopPageSidebarTarget] = useState<HTMLDivElement | null>(null);
@@ -1997,9 +1961,9 @@ function App() {
       onToggleSidebar={noopToggle}
       startDragging={startDragging}
       topbarTopMargin={topbarTopMargin}
+      updater={updater}
     />
-    // navigationHistory 已从 deps 中移除：ModernSidebar 仅解构 currentView/onViewChange/topbarTopMargin
-  ), [currentView, handleViewChange, leftPanelCollapsed, noopToggle, startDragging, topbarTopMargin]);
+  ), [currentView, handleViewChange, leftPanelCollapsed, noopToggle, startDragging, topbarTopMargin, updater]);
 
   const settingsShellSidebarElement = useMemo(() => (
     <SettingsShellSidebar
@@ -2214,6 +2178,7 @@ function App() {
       groupName: currentChatHeaderGroupName,
     })
     : desktopHeaderNavHotzoneLabel;
+  const shouldShowDesktopSidebarToggle = currentView !== 'settings';
   const shouldShowDesktopHeaderNavControls = currentView !== 'settings' && currentView !== 'todo';
   const desktopHeaderNavControls = (
     <DesktopHeaderNavControls
@@ -2233,14 +2198,13 @@ function App() {
   );
   const desktopSidebarTopAccessoryContent = (
     <div className="flex min-w-0 items-center gap-1.5">
-      <DesktopSidebarAccessory
-        onToggle={useUIStore.getState().toggleLeftPanel}
-        label={desktopSidebarToggleLabel}
-        collapsed={leftPanelCollapsed}
-        updateVisible={updateBadgeVisible && !leftPanelCollapsed}
-        onUpdate={() => void updater.performUpdateAction()}
-        updateDownloading={updater.downloading}
-      />
+      {shouldShowDesktopSidebarToggle ? (
+        <DesktopSidebarAccessory
+          onToggle={useUIStore.getState().toggleLeftPanel}
+          label={desktopSidebarToggleLabel}
+          collapsed={leftPanelCollapsed}
+        />
+      ) : null}
       {shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}
     </div>
   );
@@ -2608,25 +2572,19 @@ function App() {
           className="desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none"
           style={{
             zIndex: Z_INDEX.desktopTitlebar,
-            paddingTop: `${topbarTopMargin}px`,
-            height: `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
-            minHeight: `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
+            paddingTop: `${shellTitlebarTopInset}px`,
+            height: `${shellTitlebarOccupiedHeight}px`,
+            minHeight: `${shellTitlebarOccupiedHeight}px`,
           }}
           onMouseDown={handleDesktopTitlebarMouseDown}
         >
             <>
               <div
-                aria-hidden="true"
-                data-shell-surface="navigation"
-                className="desktop-shell-sidebar-titlebar-surface"
-              />
-
-              <div
                 className="desktop-shell-sidebar-top-accessory"
                 data-no-drag
                 style={{
                   left: `${desktopFloatingAccessoryOffset}px`,
-                  top: `${topbarTopMargin}px`,
+                  top: `${shellTitlebarTopInset}px`,
                   height: `${DESKTOP_SHELL.titlebarBaseHeight}px`,
                 }}
               >
@@ -2747,7 +2705,7 @@ function App() {
               ? 'var(--mobile-header-total-height)'
               : workbenchActive
                 ? 0
-                : `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
+                : `${shellTitlebarOccupiedHeight}px`,
           }}
         >
           <MigrationStatusBanner />
@@ -2899,9 +2857,9 @@ function App() {
         </DsDialogBody>
       </DsDialog>
       {/* 全局悬浮调试面板（按需懒加载，避免生产首包引入调试模块） */}
-      {shouldRenderDebugPanel && (
+      {debugPanelRequested && (
         <Suspense fallback={null}>
-          <LazyGlobalDebugPanel />
+          <LazyGlobalDebugPanel openRequest={debugPanelOpenRequest} />
         </Suspense>
       )}
 

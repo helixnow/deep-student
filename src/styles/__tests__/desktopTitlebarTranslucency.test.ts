@@ -11,30 +11,30 @@ const themeStylesSource = readFileSync(
   resolve(process.cwd(), 'src/styles/theme-colors.css'),
   'utf8',
 );
+const sidebarTranslucencySource = readFileSync(
+  resolve(process.cwd(), 'src/utils/sidebarTranslucency.ts'),
+  'utf8',
+);
 
 describe('desktop titlebar navigation material', () => {
   it('routes the sidebar titlebar surface through the same navigation glass layer as the sidebar', () => {
-    expect(appSource).toMatch(
-      /<div\s+aria-hidden="true"\s+data-shell-surface="navigation"\s+className="desktop-shell-sidebar-titlebar-surface"\s*\/>/,
-    );
+    expect(appSource).not.toContain('desktop-shell-sidebar-titlebar-surface');
   });
 
-  it('keeps the titlebar parent transparent behind the dedicated navigation glass layer', () => {
+  it('uses one continuous navigation surface across the titlebar and sidebar', () => {
     const visibleTitlebarBlock = shellStylesSource.match(
       /\.desktop-shell-titlebar\[data-sidebar-visible="true"\]\s*\{[^}]*\}/,
     )?.[0] ?? '';
 
-    expect(visibleTitlebarBlock).toContain('transparent 0');
-    expect(visibleTitlebarBlock).toContain('transparent var(--shell-navigation-width)');
-    expect(visibleTitlebarBlock).not.toContain('var(--shell-navigation-surface)');
+    expect(visibleTitlebarBlock).toContain('var(--shell-navigation-surface) 0');
+    expect(visibleTitlebarBlock).toContain('var(--shell-navigation-surface) var(--shell-navigation-width)');
   });
 
-  it('compensates the macOS overlay titlebar tint for its darker native backdrop', () => {
-    expect(themeStylesSource).toMatch(
-      /:root\.dark\[data-sidebar-translucent="true"\]\[data-macos-vibrancy="true"\][\s\S]*?\.desktop-shell-sidebar-titlebar-surface\s*\{[^}]*background:\s*hsl\(var\(--nav-background\)\s*\/\s*0\.82\)/,
-    );
-    expect(themeStylesSource).toMatch(
-      /:root\.dark\[data-sidebar-translucent="true"\]\[data-macos-vibrancy="true"\][\s\S]*?\.desktop-shell-titlebar\[data-sidebar-visible="true"\]\s*\{[^}]*hsl\(var\(--nav-background\)\s*\/\s*0\.82\)/,
-    );
+  it('only clears the legacy titlebar material and never re-enables it', () => {
+    expect(sidebarTranslucencySource).toContain('不再额外挂载原生');
+    expect(sidebarTranslucencySource).toContain('clearNativeTitlebarSidebarMaterial');
+    expect(sidebarTranslucencySource).toContain('enabled: false');
+    expect(sidebarTranslucencySource).not.toContain('shouldUseNativeTitlebarMaterial');
+    expect(themeStylesSource).not.toContain('hsl(var(--nav-background) / 0.82)');
   });
 });

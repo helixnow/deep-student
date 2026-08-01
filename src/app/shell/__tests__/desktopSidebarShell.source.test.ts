@@ -10,8 +10,8 @@ describe('desktop sidebar shell wiring', () => {
     expect(appSource).toContain("'--shell-sidebar-translate-x': `${desktopSidebarTranslateX}px`");
     expect(appSource).toContain('className="desktop-shell-sidebar-track t-resize"');
     expect(appSource).toContain('className="desktop-shell-sidebar-motion-surface"');
-    expect(appSource).toContain('className="desktop-shell-sidebar-titlebar-surface"');
-    expect(shellCssSource).toContain('transform: translateX(var(--shell-sidebar-translate-x));');
+    expect(appSource).not.toContain('className="desktop-shell-sidebar-titlebar-surface"');
+    expect(shellCssSource).toContain('var(--shell-navigation-surface) var(--shell-navigation-width)');
     expect(appSource).toContain('<DesktopSidebarResizeHandle');
   });
 
@@ -22,6 +22,13 @@ describe('desktop sidebar shell wiring', () => {
     expect(shellCssSource).toContain('.desktop-shell-sidebar-top-accessory {\n  /* Keep titlebar controls out of the sidebar\'s animated layout layer. */\n  position: fixed;');
     expect(shellCssSource).toContain('transition: none !important;');
     expect(shellCssSource).not.toContain('.desktop-shell-sidebar-collapsed-accessory');
+  });
+
+  it('keeps macOS custom chrome in the native titlebar row', () => {
+    expect(appSource).toContain('isSmallScreen || isMacOS() ? 0 : topbarTopMargin');
+    expect(appSource).toContain('top: `${shellTitlebarTopInset}px`');
+    expect(appSource).toContain('height: `${shellTitlebarOccupiedHeight}px`');
+    expect(shellCssSource).toContain('min-height: var(--shell-titlebar-content-height, 40px);');
   });
 
   it('uses one motion rhythm and disables it during live resizing', () => {
