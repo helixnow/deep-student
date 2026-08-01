@@ -775,6 +775,21 @@
     "3": "数据",
     "4": "其他"
   },
+  "mobile_descriptions": {
+    "apis": "配置模型接口与密钥",
+    "models": "分配各功能使用的模型",
+    "general": "语言、权限与听写",
+    "appearance": "主题、字体与界面",
+    "automation": "定时任务与后台运行",
+    "mcp": "连接外部工具与服务",
+    "search": "配置联网搜索引擎",
+    "plugins": "管理已安装的扩展",
+    "statistics": "查看学习与使用数据",
+    "data_governance": "备份、恢复与数据管理",
+    "params": "调整模型生成参数",
+    "shortcuts": "自定义键盘操作",
+    "about": "版本信息与开源致谢"
+  },
   "automation": {
     "title": "自动化",
     "description": "管理已创建的定时提醒和无人值守 Agent 任务。",

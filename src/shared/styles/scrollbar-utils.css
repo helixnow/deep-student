@@ -8,7 +8,20 @@
   display: none;
 }
 
-/* 同一工具类也可挂在 OverlayScrollbars host 上。 */
-.scrollbar-none .os-scrollbar {
+/* 同一工具类也可挂在滚动容器 host 上，覆盖内部原生 viewport。 */
+.scrollbar-none [class~="scroll-area--native"] {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-none [class~="scroll-area--native"]::-webkit-scrollbar,
+.scrollbar-none [data-overlayscrollbars-viewport]::-webkit-scrollbar {
+  display: none;
+}
+
+/* OverlayScrollbars host. */
+/* stylelint-disable declaration-no-important */
+.scrollbar-none [class~="os-scrollbar"] {
   display: none !important;
 }
+/* stylelint-enable declaration-no-important */

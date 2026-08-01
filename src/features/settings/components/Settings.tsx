@@ -378,7 +378,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const [extra, setExtra] = useState<SettingsExtra>({});
   const [showAppMenuDemo, setShowAppMenuDemo] = useState(false);
   const isMcpLoading = activeTab === 'mcp' && loading;
-  const { sidebarNavGroups, sidebarNavItems, settingsSearchIndex } = useSettingsNavigation();
+  const { sidebarNavItems, settingsSearchIndex } = useSettingsNavigation();
 
   // 顶部栏顶部边距高度设置（用于安卓状态栏等场景）
   const [topbarTopMargin, setTopbarTopMargin] = useState<string>('');
@@ -563,6 +563,14 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     dismissRightPanel,
   ]);
 
+  const handleMobileHeaderBack = useCallback(() => {
+    if (screenPosition === 'center' && mobileNavView === 'sections') {
+      onBack();
+      return;
+    }
+    handleMobileSettingsBack();
+  }, [screenPosition, mobileNavView, onBack, handleMobileSettingsBack]);
+
   // Android 返回键：设置两级导航逐级回退（供应商详情 → 供应商列表 → 分区内容 → 分区列表）。
   // Dialog / 右滑面板 / 左抽屉由 overlay 优先级 handler（DsDialog、MobileSlidingLayout）
   // 先行消费；此处只在中屏「分区内容态」接管，与顶栏返回箭头同一条回退链。
@@ -686,18 +694,15 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     return undefined;
   }, [screenPosition, rightPanelType, t]);
 
-  // 中屏顶栏：分区列表态显示菜单键（打开应用导航抽屉）；
-  // 分区内容态 / 供应商详情态 / 右滑面板态显示返回箭头（逐级回退）
-  const showSettingsBackArrow =
-    screenPosition === 'right' || (screenPosition === 'center' && mobileNavView === 'content');
+  // 移动端设置统一显示返回箭头：首页返回主页，内容态逐级回退。
+  const showSettingsBackArrow = true;
 
   useMobileHeader('settings', {
     titleNode: SettingsBreadcrumb,
-    showMenu: true,
-    onMenuClick: handleMobileSettingsBack,
+    onMenuClick: handleMobileHeaderBack,
     showBackArrow: showSettingsBackArrow,
     rightActions: settingsHeaderRightActions,
-  }, [SettingsBreadcrumb, screenPosition, showSettingsBackArrow, settingsHeaderRightActions, handleMobileSettingsBack]);
+  }, [SettingsBreadcrumb, settingsHeaderRightActions, handleMobileHeaderBack]);
 
   const handleSaveChatStreamTimeout = useCallback(async () => {
     const raw = String(extra?.chatStreamTimeoutSeconds ?? '').trim();
@@ -1096,16 +1101,16 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     });
   })();
 
-  // P0-1 移动端分区首页：搜索框 + iOS 式分组列表（复用 sidebarNavGroups 5 组）
+  // P0-1 移动端分区首页：搜索框 + 两列卡片入口（保持既有导航分组顺序）
   const renderMobileSectionList = () => (
     <CustomScrollArea
-      className="min-h-0 flex-1 w-full max-w-full"
-      viewportClassName="px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4"
+      className="scrollbar-none min-h-0 flex-1 w-full max-w-full bg-[color:var(--surface-muted)]"
+      viewportClassName="h-full"
       trackOffsetTop={16}
       trackOffsetBottom={16}
       trackOffsetRight={0}
     >
-      <div className="desktop-shell-content-enter mx-auto w-full max-w-[40rem] space-y-4">
+      <div className="desktop-shell-content-enter mx-auto w-full max-w-[40rem] space-y-4 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4 sm:px-5">
         {/* 搜索框 */}
         <div className="relative">
           <MagnifyingGlass
@@ -1118,7 +1123,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             onChange={(e) => setMobileSearchQuery(e.target.value)}
             placeholder={t('settings:sidebar.search_placeholder')}
             aria-label={t('settings:sidebar.search_placeholder')}
-            className="h-11 rounded-[14px] border-border/40 bg-muted/30 pl-10 text-base"
+            className="h-11 rounded-[14px] border-border/35 bg-[color:var(--surface-elevated)] pl-10 text-base shadow-[var(--shadow-content-subtle)]"
           />
         </div>
 
@@ -1134,12 +1139,14 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 const sectionItem = sidebarNavItems.find((nav) => nav.value === item.tab);
                 const SectionIcon = sectionItem?.icon;
                 return (
-                  <button
+                  <DsButton
+                    variant="ghost"
+                    size="md"
                     key={`${item.tab}-${item.label}-${index}`}
                     type="button"
                     onClick={() => openMobileSection(item.tab)}
                     className={cn(
-                      'flex w-full min-h-12 items-center gap-3 px-3 py-1.5 text-left ui-press',
+                      '!flex !h-auto !min-h-12 !w-full !justify-start !whitespace-normal !border-0 !px-3 !py-1.5 text-left ui-press',
                       settingsQuietInteractiveRowClassName,
                       settingsQuietHoverClassName
                     )}
@@ -1152,55 +1159,54 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                       )}
                     </span>
                     <CaretRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
-                  </button>
+                  </DsButton>
                 );
               })
             )}
           </div>
         ) : (
-          // 分组列表态：五组分区，行高 48px + chevron
-          sidebarNavGroups.map((group, groupIndex) => (
-            <section key={groupIndex} aria-labelledby={`mobile-settings-group-${groupIndex}`}>
-              <h2
-                id={`mobile-settings-group-${groupIndex}`}
-                className="mb-1 px-1 text-xs font-medium text-muted-foreground"
-              >
-                {t(`settings:mobile_groups.${groupIndex}`)}
-              </h2>
-              <nav
-                aria-label={t(`settings:mobile_groups.${groupIndex}`)}
-                className="overflow-hidden rounded-[14px] border border-border/50 bg-background"
-              >
-                {group.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeTab === item.value;
-                  return (
-                    <button
-                      key={item.value}
-                      type="button"
-                      data-tour-id={item.tourId}
-                      onClick={() => openMobileSection(item.value)}
-                      className={cn(
-                        'flex w-full min-h-12 items-center gap-3 border-t border-border/40 px-3.5 text-left first:border-t-0 ui-press',
-                        settingsQuietInteractiveRowClassName,
-                        settingsQuietHoverClassName
-                      )}
-                      aria-current={isActive ? 'page' : undefined}
-                    >
-                      <Icon
-                        className={cn(
-                          'h-[18px] w-[18px] shrink-0',
-                          isActive ? 'text-primary' : 'text-muted-foreground'
-                        )}
-                      />
-                      <span className="min-w-0 flex-1 truncate text-[15px] font-medium text-foreground">{item.label}</span>
-                      <CaretRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
-                    </button>
-                  );
-                })}
-              </nav>
-            </section>
-          ))
+          // 卡片态：两列等高入口，使用分组扁平化后的顺序保持信息架构稳定。
+          <nav
+            aria-label={t('settings:title')}
+            className="grid grid-cols-2 gap-x-3 gap-y-4"
+          >
+            {sidebarNavItems.map((item) => {
+              const Icon = item.icon;
+              const accent = item.mobileAccent ?? '#6f7785';
+              return (
+                <DsButton
+                  variant="ghost"
+                  size="md"
+                  key={item.value}
+                  type="button"
+                  data-tour-id={item.tourId}
+                  onClick={() => openMobileSection(item.value)}
+                  className={cn(
+                    '!flex !h-auto min-h-[136px] min-w-0 !w-full !items-start !justify-start !whitespace-normal !border-0 !bg-[color:var(--surface-elevated)] flex-col overflow-hidden rounded-[18px] px-3 py-3 text-left shadow-[var(--shadow-shell-soft)] ui-press',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--surface-muted)]'
+                  )}
+                >
+                  <span
+                    className="flex h-8 w-8 shrink-0 items-center justify-start"
+                    style={{ color: accent }}
+                  >
+                    <Icon className="h-6 w-6" />
+                  </span>
+                  <span className="mt-auto min-w-0 pt-3">
+                    <span className="flex items-center gap-1.5">
+                      <span className="min-w-0 truncate text-[15px] font-semibold leading-6 text-foreground">
+                        {item.label}
+                      </span>
+                      <CaretRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground/45" />
+                    </span>
+                    <span className="mt-1 block line-clamp-2 text-[12px] leading-5 text-muted-foreground">
+                      {item.mobileDescription}
+                    </span>
+                  </span>
+                </DsButton>
+              );
+            })}
+          </nav>
         )}
       </div>
     </CustomScrollArea>
@@ -1325,7 +1331,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       data-slot={mobilePageMode ? 'mobile-settings-page-content' : undefined}
     >
         <CustomScrollArea
-          className="min-h-0 flex-1 w-full max-w-full"
+          className={cn('min-h-0 flex-1 w-full max-w-full', mobilePageMode && 'scrollbar-none')}
           // OverlayScrollbars 会把 viewport 的 padding 强制写成 0，水平内边距必须放在内层。
           // viewportRef：虚拟化列表（SettingsVirtualList / ShortcutSettings）需要真实滚动元素。
           viewportRef={setSettingsScrollElement}

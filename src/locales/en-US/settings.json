@@ -775,6 +775,21 @@
     "3": "Data",
     "4": "More"
   },
+  "mobile_descriptions": {
+    "apis": "Configure model APIs and credentials",
+    "models": "Assign models to app features",
+    "general": "Language, permissions, and dictation",
+    "appearance": "Themes, fonts, and interface",
+    "automation": "Schedules and background tasks",
+    "mcp": "Connect tools and services",
+    "search": "Configure web search providers",
+    "plugins": "Manage installed integrations",
+    "statistics": "Learning and usage data",
+    "data_governance": "Back up, restore, and manage data",
+    "params": "Tune model generation settings",
+    "shortcuts": "Customize keyboard commands",
+    "about": "Version and open-source acknowledgements"
+  },
   "automation": {
     "title": "Automations",
     "description": "Manage scheduled reminders and unattended Agent tasks.",

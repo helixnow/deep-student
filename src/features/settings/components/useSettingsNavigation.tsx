@@ -22,6 +22,8 @@ export type SettingsSidebarNavItem = {
   label: string;
   icon: ComponentType<{ className?: string }>;
   tourId?: string;
+  mobileDescription?: string;
+  mobileAccent?: string;
 };
 
 export type SettingsSearchIndexItem = {
@@ -35,36 +37,116 @@ export function useSettingsNavigation() {
 
   const isMobile = isMobilePlatform();
   const hidePlugins = isMobile;
-  // Keyboard shortcut bindings are only actionable on desktop keyboards.
+  // Mobile platforms have no physical keyboard, so keep shortcut settings out of the mobile navigation.
   const hideShortcuts = isMobile;
 
   const sidebarNavGroups = useMemo<SettingsSidebarNavItem[][]>(() => ([
     [
-      { value: 'apis', icon: Robot, label: t('settings:tabs.api_config'), tourId: 'settings-tab-apis' },
-      { value: 'models', icon: Flask, label: t('settings:tabs.model_assignment'), tourId: 'settings-tab-models' },
+      {
+        value: 'apis',
+        icon: Robot,
+        label: t('settings:tabs.api_config'),
+        tourId: 'settings-tab-apis',
+        mobileDescription: t('settings:mobile_descriptions.apis'),
+        mobileAccent: '#e5ad3d',
+      },
+      {
+        value: 'models',
+        icon: Flask,
+        label: t('settings:tabs.model_assignment'),
+        tourId: 'settings-tab-models',
+        mobileDescription: t('settings:mobile_descriptions.models'),
+        mobileAccent: '#4d86df',
+      },
     ],
     [
-      { value: 'general', icon: SlidersHorizontal, label: t('settings:tabs.general') },
-      { value: 'appearance', icon: Palette, label: t('settings:tabs.appearance') },
-      { value: 'automation', icon: ClockCountdown, label: t('settings:tabs.automation') },
+      {
+        value: 'general',
+        icon: SlidersHorizontal,
+        label: t('settings:tabs.general'),
+        mobileDescription: t('settings:mobile_descriptions.general'),
+        mobileAccent: '#6f7785',
+      },
+      {
+        value: 'appearance',
+        icon: Palette,
+        label: t('settings:tabs.appearance'),
+        mobileDescription: t('settings:mobile_descriptions.appearance'),
+        mobileAccent: '#a35de1',
+      },
+      {
+        value: 'automation',
+        icon: ClockCountdown,
+        label: t('settings:tabs.automation'),
+        mobileDescription: t('settings:mobile_descriptions.automation'),
+        mobileAccent: '#eb8d42',
+      },
     ],
     [
-      { value: 'mcp', icon: Plug, label: t('settings:tabs.mcp_tools') },
-      { value: 'search', icon: Globe, label: t('settings:tabs.external_search') },
+      {
+        value: 'mcp',
+        icon: Plug,
+        label: t('settings:tabs.mcp_tools'),
+        mobileDescription: t('settings:mobile_descriptions.mcp'),
+        mobileAccent: '#1db77c',
+      },
+      {
+        value: 'search',
+        icon: Globe,
+        label: t('settings:tabs.external_search'),
+        mobileDescription: t('settings:mobile_descriptions.search'),
+        mobileAccent: '#4b9fe8',
+      },
       ...(!hidePlugins
-        ? [{ value: 'plugins', icon: PuzzlePiece, label: t('settings:tabs.plugins') }]
+        ? [{
+            value: 'plugins',
+            icon: PuzzlePiece,
+            label: t('settings:tabs.plugins'),
+            mobileDescription: t('settings:mobile_descriptions.plugins'),
+            mobileAccent: '#a35de1',
+          }]
         : []),
     ],
     [
-      { value: 'statistics', icon: ChartBar, label: t('settings:tabs.statistics') },
-      { value: 'data-governance', icon: Shield, label: t('settings:tabs.data_governance') },
+      {
+        value: 'statistics',
+        icon: ChartBar,
+        label: t('settings:tabs.statistics'),
+        mobileDescription: t('settings:mobile_descriptions.statistics'),
+        mobileAccent: '#4b9fe8',
+      },
+      {
+        value: 'data-governance',
+        icon: Shield,
+        label: t('settings:tabs.data_governance'),
+        mobileDescription: t('settings:mobile_descriptions.data_governance'),
+        mobileAccent: '#4f9ecf',
+      },
     ],
     [
-      { value: 'params', icon: Wrench, label: t('settings:tabs.params') },
+      {
+        value: 'params',
+        icon: Wrench,
+        label: t('settings:tabs.params'),
+        mobileDescription: t('settings:mobile_descriptions.params'),
+        mobileAccent: '#e1a642',
+      },
       ...(!hideShortcuts
-        ? [{ value: 'shortcuts', icon: Keyboard, label: t('settings:tabs.shortcuts') }]
+        ? [{
+            value: 'shortcuts',
+            icon: Keyboard,
+            label: t('settings:tabs.shortcuts'),
+            mobileDescription: t('settings:mobile_descriptions.shortcuts'),
+            mobileAccent: '#7d8490',
+          }]
         : []),
-      { value: 'about', icon: BookOpen, label: t('settings:tabs.about') },
+      {
+        value: 'about',
+        icon: BookOpen,
+        label: t('settings:tabs.about'),
+        mobileDescription: t('settings:mobile_descriptions.about'),
+        mobileAccent: '#d978ae',
+      },
     ],
   ]), [t, hidePlugins, hideShortcuts]);
 
