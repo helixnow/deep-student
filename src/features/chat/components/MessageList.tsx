@@ -11,10 +11,10 @@
  * 5. 移除 flushSync，异步状态更新
  */
 
-import React, { useRef, useEffect, useLayoutEffect, useCallback, memo, useState } from 'react';
+import React, { createPortal, useRef, useEffect, useLayoutEffect, useCallback, memo, useMemo, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useTranslation } from 'react-i18next';
-import type { StoreApi } from 'zustand';
+import { useStore, type StoreApi } from 'zustand';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { cn } from '@/utils/cn';
 import { newMessageVariants } from '@/styles/motion-variants';
@@ -22,9 +22,10 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MessageItem } from './MessageItem';
 import { clearPdfPageCache } from './renderers/MarkdownRenderer';
 import { useMessageOrder, useSessionStatus, useIsDataLoaded } from '../hooks/useChatStore';
-import type { ChatStore } from '../core/types';
+import type { Block, ChatStore } from '../core/types';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import Z_INDEX from '@/config/zIndex';
 import { useSmoothWheel } from '../hooks/useSmoothWheel';
 import {
@@ -34,6 +35,9 @@ import {
 import { ArrowDown } from '@phosphor-icons/react';
 import { ThreadEmptyStateShell } from './ui/ThreadEmptyStateShell';
 import { ThreadContentShell } from './ui/ThreadContentShell';
+import { MessageSearchBar } from './MessageSearchBar';
+import { findMessageSearchMatches } from './messageSearch';
+import { useDesktopShellChatHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
 
 // ============================================================================
 // 常量定义
@@ -51,6 +55,8 @@ const DEFAULT_ESTIMATED_ITEM_SIZE = 120;
 const VIRTUALIZATION_THRESHOLD = 80;
 /** 保证最后一条消息可以滚动到 28px 底部渐隐层之上。 */
 const MESSAGE_BOTTOM_SAFE_AREA_PX = 32;
+
+const EMPTY_BLOCK_MAP = new Map<string, Block>();
 
 /**
  * 助手消息轻量入场：复用 motion.css 共享类 .chat-msg-enter（fade + 4px 上移，
@@ -194,6 +200,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
   // 📱 移动端适配：检测屏幕尺寸
   const { isSmallScreen } = useBreakpoint();
+  const desktopChatHeaderTarget = useDesktopShellChatHeaderPortal();
 
   // 容器 ref - CustomScrollArea 的外层容器
   const containerRef = useRef<HTMLDivElement>(null);
@@ -214,6 +221,92 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
   // 订阅消息顺序（已通过 useMessageOrder 内部的引用缓存优化）
   const messageOrder = useMessageOrder(store);
+
+  // 搜索打开时才订阅 blocks：流式输出会频繁替换 blocks Map，避免关闭搜索时
+  // 让整个消息列表跟着每个 token 重渲染。
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeSearchIndex, setActiveSearchIndex] = useState(0);
+  const searchBlocks = useStore(
+    store,
+    useCallback((state: ChatStore) => isSearchOpen ? state.blocks : EMPTY_BLOCK_MAP, [isSearchOpen]),
+  );
+  const searchMatches = useMemo(
+    () => findMessageSearchMatches(
+      messageOrder,
+      store.getState().messageMap,
+      searchBlocks,
+      searchQuery,
+    ),
+    [messageOrder, searchBlocks, searchQuery, store],
+  );
+  const resolvedActiveSearchIndex = searchMatches.length > 0
+    ? Math.min(activeSearchIndex, searchMatches.length - 1)
+    : 0;
+  const activeSearchMatch = searchMatches[resolvedActiveSearchIndex] ?? null;
+  const activeSearchMessageId = activeSearchMatch?.messageId ?? null;
+  const searchMatchSet = useMemo(
+    () => new Set(searchMatches.map((match) => match.messageId)),
+    [searchMatches],
+  );
+
+  // 切换会话时不把上一个会话的搜索词带到新会话。
+  useEffect(() => {
+    setIsSearchOpen(false);
+    setSearchQuery('');
+    setActiveSearchIndex(0);
+  }, [store]);
+
+  // Ctrl/Cmd+F 只拦截当前会话页的内容搜索，避免把浏览器原生查找框打开。
+  const handleWindowKeyDown = useCallback((event: KeyboardEvent) => {
+    const isFindShortcut = (event.metaKey || event.ctrlKey)
+      && !event.altKey
+      && event.key.toLowerCase() === 'f';
+
+    if (isFindShortcut) {
+      if (forceEmptyPreview || messageOrder.length === 0) return;
+      event.preventDefault();
+      setIsSearchOpen(true);
+      return;
+    }
+
+    if (event.key === 'Escape' && isSearchOpen) {
+      event.preventDefault();
+      setIsSearchOpen(false);
+      setSearchQuery('');
+      setActiveSearchIndex(0);
+    }
+  }, [forceEmptyPreview, isSearchOpen, messageOrder.length]);
+
+  useEventRegistry([
+    {
+      target: 'window',
+      type: 'keydown',
+      listener: handleWindowKeyDown as EventListener,
+    },
+  ], [handleWindowKeyDown]);
+
+  useEffect(() => {
+    setActiveSearchIndex(0);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (activeSearchIndex < searchMatches.length) return;
+    setActiveSearchIndex(Math.max(0, searchMatches.length - 1));
+  }, [activeSearchIndex, searchMatches.length]);
+
+  const closeSearch = useCallback(() => {
+    setIsSearchOpen(false);
+    setSearchQuery('');
+    setActiveSearchIndex(0);
+  }, []);
+
+  const moveToSearchMatch = useCallback((direction: 1 | -1) => {
+    if (searchMatches.length === 0) return;
+    setActiveSearchIndex((current) => (
+      (current + direction + searchMatches.length) % searchMatches.length
+    ));
+  }, [searchMatches.length]);
 
   // WCAG: 屏幕阅读器新消息通知（适用于虚拟化模式）
   const prevSrCountRef = useRef(messageOrder.length);
@@ -934,7 +1027,10 @@ const MessageListInner: React.FC<MessageListProps> = ({
   };
 
   const scrollToMessageForAgent = useCallback(
-    async (messageId: string): Promise<ChatMessageScrollResult> => {
+    async (
+      messageId: string,
+      searchOccurrenceIndex?: number,
+    ): Promise<ChatMessageScrollResult> => {
       const order = store.getState().messageOrder;
       const index = order.indexOf(messageId);
       if (index < 0) return { status: 'message_not_found' };
@@ -989,6 +1085,28 @@ const MessageListInner: React.FC<MessageListProps> = ({
             0,
             Math.min(target, viewport.scrollHeight - viewport.clientHeight),
           );
+
+          if (searchOccurrenceIndex !== undefined) {
+            viewport.querySelectorAll<HTMLElement>(
+              '[data-chat-search-match="true"][data-search-active="true"]',
+            ).forEach((mark) => {
+              delete mark.dataset.searchActive;
+            });
+            const searchMatchesInRow = el.querySelectorAll<HTMLElement>(
+              '[data-chat-search-match="true"]',
+            );
+            const activeMark = searchMatchesInRow[searchOccurrenceIndex];
+            if (activeMark) {
+              activeMark.dataset.searchActive = 'true';
+              const markRect = activeMark.getBoundingClientRect();
+              const markTarget = viewport.scrollTop + markRect.top - viewportRect.top
+                - Math.max(0, (viewport.clientHeight - markRect.height) / 3);
+              viewport.scrollTop = Math.max(
+                0,
+                Math.min(markTarget, viewport.scrollHeight - viewport.clientHeight),
+              );
+            }
+          }
           resetScrollBaselineRef.current();
           // 按最终位置校正吸底状态与「回到底部」按钮可见性
           syncScrollStateRef.current();
@@ -1095,8 +1213,28 @@ const MessageListInner: React.FC<MessageListProps> = ({
     );
   }
 
+  const searchBar = isSearchOpen ? (
+    <MessageSearchBar
+      placement={desktopChatHeaderTarget && !isSmallScreen ? 'header' : 'floating'}
+      query={searchQuery}
+      matchCount={searchMatches.length}
+      activeMatchIndex={resolvedActiveSearchIndex}
+      activeMessageId={activeSearchMessageId}
+      activeOccurrenceIndex={activeSearchMatch?.occurrenceIndex ?? 0}
+      onQueryChange={setSearchQuery}
+      onPrevious={() => moveToSearchMatch(-1)}
+      onNext={() => moveToSearchMatch(1)}
+      onClose={closeSearch}
+      onNavigate={scrollToMessageForAgent}
+    />
+  ) : null;
+  const searchBarPortal = searchBar && desktopChatHeaderTarget && !isSmallScreen
+    ? createPortal(searchBar, desktopChatHeaderTarget)
+    : searchBar;
+
   return (
     <div className="relative h-full">
+    {searchBarPortal}
     {/* WCAG 4.1.3: 屏幕阅读器通知区域（虚拟化模式下不能在容器上用 aria-live） */}
     <div
       role="status"
@@ -1126,12 +1264,20 @@ const MessageListInner: React.FC<MessageListProps> = ({
             {messageOrder.slice(directRenderStart).map((messageId, sliceIndex) => {
               const messageIndex = directRenderStart + sliceIndex;
               const isUserMessage = store.getState().getMessage(messageId)?.role === 'user';
+              const isSearchMatch = searchMatchSet.has(messageId);
+              const isActiveSearchMatch = activeSearchMessageId === messageId;
+              const searchHighlightClass = isActiveSearchMatch
+                ? 'rounded-[var(--chat-radius-md)] bg-primary/5 ring-2 ring-primary/45'
+                : isSearchMatch
+                  ? 'rounded-[var(--chat-radius-md)] ring-1 ring-primary/20'
+                  : undefined;
               // 只有挂载后追加的消息播放入场动画；历史消息（含窗口补齐插入的）静态呈现
               const isNewlyAppended = messageIndex >= initialMessageCountRef.current;
               const content = (
                 <MessageItem
                   messageId={messageId}
                   store={store}
+                  searchQuery={searchQuery}
                   isFirst={messageIndex === 0}
                   isLatest={messageIndex === messageOrder.length - 1}
                 />
@@ -1141,8 +1287,11 @@ const MessageListInner: React.FC<MessageListProps> = ({
                   <motion.div
                     key={messageId}
                     data-chat-message-id={messageId}
+                    data-search-match={isSearchMatch ? 'true' : undefined}
+                    data-search-active={isActiveSearchMatch ? 'true' : undefined}
                     // A45-5：ACR 实体锚点（agentFlash 定位演出用）
                     data-agent-entity={`chat:${messageId}`}
+                    className={searchHighlightClass}
                     variants={newMessageVariants}
                     initial={isNewlyAppended && !prefersReducedMotion ? 'initial' : false}
                     animate="animate"
@@ -1159,9 +1308,11 @@ const MessageListInner: React.FC<MessageListProps> = ({
                 <div
                   key={messageId}
                   data-chat-message-id={messageId}
+                  data-search-match={isSearchMatch ? 'true' : undefined}
+                  data-search-active={isActiveSearchMatch ? 'true' : undefined}
                   // A45-5：ACR 实体锚点（agentFlash 定位演出用）
                   data-agent-entity={`chat:${messageId}`}
-                  className={cn(isNewlyAppended && ASSISTANT_ENTER_CLASS)}
+                  className={cn(isNewlyAppended && ASSISTANT_ENTER_CLASS, searchHighlightClass)}
                 >
                   {content}
                 </div>
@@ -1189,6 +1340,13 @@ const MessageListInner: React.FC<MessageListProps> = ({
             if (!messageId) return null;
 
             const isUserMessage = store.getState().getMessage(messageId)?.role === 'user';
+            const isSearchMatch = searchMatchSet.has(messageId);
+            const isActiveSearchMatch = activeSearchMessageId === messageId;
+            const searchHighlightClass = isActiveSearchMatch
+              ? 'rounded-[var(--chat-radius-md)] bg-primary/5 ring-2 ring-primary/45'
+              : isSearchMatch
+                ? 'rounded-[var(--chat-radius-md)] ring-1 ring-primary/20'
+                : undefined;
             const isNewlyAppended = virtualRow.index >= initialMessageCountRef.current;
 
             return (
@@ -1196,8 +1354,11 @@ const MessageListInner: React.FC<MessageListProps> = ({
                 key={messageId}
                 data-index={virtualRow.index}
                 data-chat-message-id={messageId}
+                data-search-match={isSearchMatch ? 'true' : undefined}
+                data-search-active={isActiveSearchMatch ? 'true' : undefined}
                 // A45-5：ACR 实体锚点（agentFlash 定位演出用）
                 data-agent-entity={`chat:${messageId}`}
+                className={searchHighlightClass}
                 ref={virtualizer.measureElement}
                 style={{
                   position: 'absolute',
@@ -1216,6 +1377,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
                     <MessageItem
                       messageId={messageId}
                       store={store}
+                      searchQuery={searchQuery}
                       isFirst={virtualRow.index === 0}
                       isLatest={virtualRow.index === messageOrder.length - 1}
                     />
@@ -1228,6 +1390,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
                     <MessageItem
                       messageId={messageId}
                       store={store}
+                      searchQuery={searchQuery}
                       isFirst={virtualRow.index === 0}
                       isLatest={virtualRow.index === messageOrder.length - 1}
                     />

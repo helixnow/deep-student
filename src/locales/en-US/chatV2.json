@@ -101,7 +101,16 @@
     "scrollToBottom": "Scroll to bottom",
     "waiting": "Thinking...",
     "waitingLabel": "Thinking",
-    "srNewMessages": "New messages received, total {{count}} messages"
+    "srNewMessages": "New messages received, total {{count}} messages",
+    "search": {
+      "open": "Search chat",
+      "placeholder": "Search chat...",
+      "close": "Close chat search",
+      "previous": "Previous match",
+      "next": "Next match",
+      "results": "{{current}}/{{count}}",
+      "noResults": "No matches"
+    }
   },
   "messageItem": {
     "actions": {

@@ -7,6 +7,7 @@ import { BlockedMarkdownRenderer } from './BlockedMarkdownRenderer';
 import { canUseDirectFlowTokenMarkdown } from './flowTokenEligibility';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin, parseChainOfThought } from './rendererUtils';
 import { useSuspendedStreamContent } from './StreamPreferencesContext';
+import { useMessageSearchContext } from '../messageSearchContext';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import './streaming.css';
 
@@ -83,6 +84,8 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
   const effectiveMode: 'legacy' | 'blocked' =
     streamRenderingMode ?? 'blocked';
   const { t } = useTranslation('chatV2');
+  const { query: searchQuery } = useMessageSearchContext();
+  const searchActive = Boolean(searchQuery.trim());
   // 原始 content 直通渲染器，不再经过平滑层。
   // flowtoken AnimatedMarkdown / SplitText sep="diff" 自行处理增量 diff 和动画。
   // OS 模式 background 窗（壳层已停绘）：冻结提交内容，回可见立即补渲。
@@ -112,11 +115,13 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
     isStreaming &&
     thinkingContent &&
     !thinkingContent.includes('\n') &&
+    !searchActive &&
     canUseDirectFlowTokenMarkdown(thinkingContent, hasExtendedMarkdownFeatures),
   );
   const shouldUseDirectFlowTokenForParsedMainContent =
     isStreaming &&
     Boolean(parsedContent?.mainContent) &&
+    !searchActive &&
     canUseDirectFlowTokenMarkdown(
       parsedContent?.mainContent ?? '',
       hasExtendedMarkdownFeatures,

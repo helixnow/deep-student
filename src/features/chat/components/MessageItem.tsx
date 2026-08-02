@@ -53,6 +53,7 @@ import { SelectionToolbar } from './SelectionToolbar';
 import { TranslationPopover } from './TranslationPopover';
 import { ExplainPopover } from './ExplainPopover';
 import { generateCardsFromSelection } from '../services/selectionCardGeneration';
+import { MessageSearchProvider } from './messageSearchContext';
 
 // ============================================================================
 // 辅助函数
@@ -126,6 +127,8 @@ export interface MessageItemProps {
   isFirst?: boolean;
   /** 是否是最新一条消息（用于默认展开操作区） */
   isLatest?: boolean;
+  /** 当前会话内搜索词，用于消息正文的具体文本高亮 */
+  searchQuery?: string;
 }
 
 // ============================================================================
@@ -147,6 +150,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   showActions = true,
   isFirst = false,
   isLatest = false,
+  searchQuery = '',
 }) => {
   // 📊 细粒度打点：MessageItem render
   sessionSwitchPerf.mark('mi_render', { messageId });
@@ -840,7 +844,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   }
 
   return (
-    <div
+    <MessageSearchProvider query={searchQuery}>
+      <div
       ref={messageRootRef}
       // P0-2: 移动端长按呼出内联操作条（桌面路径 longPressBind 为空对象，零监听）
       {...longPressBind}
@@ -1484,7 +1489,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
           />
         </ThreadContentShell>
       )}
-    </div>
+      </div>
+    </MessageSearchProvider>
   );
 };
 
@@ -1500,7 +1506,8 @@ export const MessageItem = React.memo(MessageItemInner, (prevProps, nextProps) =
     prevProps.showActions === nextProps.showActions &&
     prevProps.className === nextProps.className &&
     prevProps.isFirst === nextProps.isFirst &&
-    prevProps.isLatest === nextProps.isLatest
+    prevProps.isLatest === nextProps.isLatest &&
+    prevProps.searchQuery === nextProps.searchQuery
   );
 });
 

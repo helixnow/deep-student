@@ -1037,8 +1037,10 @@ function App() {
   const [templateManagementRefreshTick, setTemplateManagementRefreshTick] = useState(0);
   const [desktopPageSidebarTarget, setDesktopPageSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [desktopPageHeaderTarget, setDesktopPageHeaderTarget] = useState<HTMLDivElement | null>(null);
+  const [desktopChatHeaderTarget, setDesktopChatHeaderTarget] = useState<HTMLDivElement | null>(null);
   const [templateManagementShellBackVisible, setTemplateManagementShellBackVisible] = useState(true);
   const currentViewRef = useRef<CurrentView>('chat-v2');
+  // 移动端设置以 Sheet 覆盖在原视图之上；保留打开设置前的视图作为露出区背景。
   const isSmallScreenRef = useRef(isSmallScreen);
   const viewSwitchStartRef = useRef<{ from: CurrentView; to: CurrentView; startTime: number } | null>(null);
   
@@ -2021,8 +2023,9 @@ function App() {
   }), [currentView, desktopPageSidebarTarget]);
   const desktopShellHeaderPortalValue = useMemo(() => ({
     target: desktopPageHeaderTarget,
+    chatHeaderTarget: desktopChatHeaderTarget,
     currentView,
-  }), [currentView, desktopPageHeaderTarget]);
+  }), [currentView, desktopChatHeaderTarget, desktopPageHeaderTarget]);
 
   // 侧栏内容类型：同时作为侧栏包裹层的 key，类型变化时重挂载并重播入场动画
   const desktopShellSidebarKind = currentView === 'settings'
@@ -2668,7 +2671,14 @@ function App() {
                   </div>
                 )}
 
-                <div className="flex items-center gap-2" data-no-drag>
+                <div
+                  ref={setDesktopChatHeaderTarget}
+                  className="flex h-full min-w-0 flex-1 items-center justify-end"
+                  data-no-drag
+                  data-shell-slot="chat-search"
+                />
+
+                <div className="flex shrink-0 items-center gap-2" data-no-drag>
                   {isWindows() && <WindowControls />}
                 </div>
               </div>

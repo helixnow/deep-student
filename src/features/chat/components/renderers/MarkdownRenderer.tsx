@@ -24,6 +24,8 @@ import { QbankCitationBadge } from '../QbankCitationBadge';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { getPdfPageImageDataUrl } from '@/api/vfsRagApi';
+import { useMessageSearchContext } from '../messageSearchContext';
+import { rehypeSearchHighlights } from './rehypeSearchHighlights';
 
 // 🔧 P18 优化：PDF 页面图片缓存（避免重复请求）
 const pdfPageImageCache = new Map<string, string>();
@@ -95,6 +97,8 @@ const markdownSanitizeSchema = {
     // 只放行受控 class 与 title（tooltip），不放行任意 style
     mark: [
       ['className', 'uncertainty-mark'],
+      ['className', 'chat-search-match'],
+      'dataChatSearchMatch',
     ],
   },
   // defaultSchema 不含 mark，缺了它整个高亮节点会被消毒器拆掉
@@ -624,6 +628,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   resolveCitationImage,
 }) => {
   const shouldEnableCitations = enableCitations ?? !!(onCitationClick || resolveCitationImage);
+  const { query: searchQuery } = useMessageSearchContext();
   const containerRef = useRef<HTMLDivElement | null>(null);
   // 🚀 性能优化：按需加载 KaTeX CSS；JS 模块空闲期预取（避免首条公式原文闪烁）
   useEffect(() => {
@@ -723,6 +728,14 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
     return [...base, ...(extraRemarkPlugins || [])];
   }, [extraRemarkPlugins, shouldEnableCitations]);
 
+  const rehypePlugins = useMemo(() => {
+    const plugins: any[] = [rehypeRaw, [rehypeSanitize, markdownSanitizeSchema]];
+    if (searchQuery.trim()) {
+      plugins.push([rehypeSearchHighlights, { query: searchQuery }]);
+    }
+    return plugins;
+  }, [searchQuery]);
+
   const katexOptions: KatexOptions = useMemo(() => ({
     throwOnError: false,
     errorColor: 'hsl(var(--destructive))',
@@ -748,7 +761,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
     <div ref={containerRef} className={`markdown-content ${className}`.trim()} onClick={handleCitationClick}>
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
-        rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema]]}
+        rehypePlugins={rehypePlugins}
         components={{
           // 注意：react-markdown v9+ 会把 HAST `node` 传给自定义组件，
           // 自定义组件展开 {...props} 前必须先把 node 解构掉，

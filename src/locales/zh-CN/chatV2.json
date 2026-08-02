@@ -101,7 +101,16 @@
     "scrollToBottom": "回到底部",
     "waiting": "正在思考...",
     "waitingLabel": "正在思考",
-    "srNewMessages": "收到新消息，共 {{count}} 条"
+    "srNewMessages": "收到新消息，共 {{count}} 条",
+    "search": {
+      "open": "搜索聊天",
+      "placeholder": "搜索聊天...",
+      "close": "关闭聊天搜索",
+      "previous": "上一个匹配项",
+      "next": "下一个匹配项",
+      "results": "{{current}}/{{count}}",
+      "noResults": "无匹配"
+    }
   },
   "messageItem": {
     "actions": {

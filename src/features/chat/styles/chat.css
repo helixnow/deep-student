@@ -130,16 +130,12 @@
 /* 暗色模式覆写：用户气泡文字色已亮暗同源（foreground），无需单独覆写 */
 
 /* ============================================================================
-   文本选择 - Text Selection (SOTA 方案)
+   文本选择 - Text Selection
    ----------------------------------------------------------------------------
-   对标 DeepSeek / ChatGPT / Claude Web  的最佳实践：
-
-   核心原则：
-   ❶ 中间结构性 div 不参与选区渲染（user-select: none）
-   ❷ 叶子文本元素用 :not(div) 恢复选中（兜底，不遗漏 del/ins/mark/sub/sup 等）
-   ❸ 段落级元素 width: fit-content —— 选区紧贴文字不延伸到空白
-   ❹ 列表/定义容器（ul/ol/dl）保持全宽 —— 避免 bullet 对齐问题
-   ❺ 装饰元素 / UI 控件禁止选中
+   消息正文由 native-feel/selection.css 统一恢复为可选文本。这里不要把
+   中间结构性 div 设为 user-select: none：Chromium/WebView 在跨段落拖选时
+   可能会把选区背景绘制到这些父级 block 的整个盒子，造成整条消息被染色。
+   仅保留正文段落的紧凑宽度和装饰控件的不可选状态。
    ============================================================================ */
 
 /* 选区色：主题色淡化版本，低饱和度不抢眼 */
@@ -151,6 +147,20 @@
 .chat-v2 .message-selectable-area ::-moz-selection {
   background: hsl(var(--primary) / 14%);
   color: inherit;
+}
+
+/* 会话内查找：保持文字本身的排版，只用语义 warning 色标出命中片段。 */
+.chat-v2 mark.chat-search-match {
+  background: hsl(var(--warning) / 30%);
+  color: inherit;
+  border-radius: 3px;
+  padding-inline: 0.08em;
+}
+
+.chat-v2 mark.chat-search-match[data-search-active="true"] {
+  background: hsl(var(--warning) / 55%);
+  outline: 2px solid hsl(var(--warning) / 65%);
+  outline-offset: 1px;
 }
 
 :root.dark .chat-v2 .message-selectable-area ::selection,
@@ -170,36 +180,7 @@
 }
 
 /* ────────────────────────────────────────────────────────
-   ❶ 结构性容器 + 列表容器 → user-select: none
-   这些是全宽 block 元素，设为 none 后浏览器跳过它们的盒子，
-   只在子元素上绘制选区高亮 ── 消除"选中一大片空白"。
-   ──────────────────────────────────────────────────────── */
-.chat-v2 .message-selectable-area .streaming-markdown,
-.chat-v2 .message-selectable-area .normal-content,
-.chat-v2 .message-selectable-area .main-content,
-.chat-v2 .message-selectable-area .thinking-content,
-.chat-v2 .message-selectable-area .streaming-blocks,
-.chat-v2 .message-selectable-area .chain-of-thought,
-.chat-v2 .message-selectable-area .markdown-content,
-.chat-v2 .message-selectable-area .markdown-content ul,
-.chat-v2 .message-selectable-area .markdown-content ol,
-.chat-v2 .message-selectable-area .markdown-content dl {
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-/* ────────────────────────────────────────────────────────
-   ❷ 叶子文本元素恢复选中
-   用 :not(div) 兜底 —— 不遗漏 del / ins / mark / sub /
-   sup / details / summary / abbr 等元素
-   ──────────────────────────────────────────────────────── */
-.chat-v2 .message-selectable-area .markdown-content :not(div, script, style, br, hr) {
-  -webkit-user-select: text;
-  user-select: text;
-}
-
-/* ────────────────────────────────────────────────────────
-   ❸ 正文段落与标题 → width: fit-content
+   正文段落与标题 → width: fit-content
    只对真正的 prose block 收紧选区宽度；列表项、引用块、stream block
    等结构容器保持正常块布局，避免破坏理想阅读行长与内部排版。
    ──────────────────────────────────────────────────────── */
@@ -249,7 +230,7 @@
 }
 
 /* ────────────────────────────────────────────────────────
-   ❺ 装饰元素 / UI 控件禁止选中
+   装饰元素 / UI 控件禁止选中
    ──────────────────────────────────────────────────────── */
 .chat-v2 .message-selectable-area .chain-header,
 .chat-v2 .message-selectable-area .thinking-trace__header,

@@ -6,6 +6,7 @@ import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
 import { canUseDirectFlowTokenMarkdown, containsHtmlTagLikeContent } from './flowTokenEligibility';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin, parseChainOfThought } from './rendererUtils';
 import { useSuspendedStreamContent } from './StreamPreferencesContext';
+import { useMessageSearchContext } from '../messageSearchContext';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import { createMarkdownBlockSplitter, type MarkdownBlock } from './splitMarkdownBlocks';
 import './streamingBlocks.css';
@@ -43,6 +44,7 @@ interface MemoizedBlockProps {
   resolveCitationImage?: (type: RetrievalSourceType, index: number) => { url: string; title?: string } | null | undefined;
   blockId?: string;
   messageId?: string;
+  searchActive: boolean;
 }
 
 const FLOWTOKEN_SUPPORTED_BLOCK_TYPES = new Set<MarkdownBlock['type']>([
@@ -89,11 +91,12 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
   resolveCitationImage,
   blockId,
   messageId,
+  searchActive,
 }) => {
   const shouldUseFlowToken = shouldUseFullFlowTokenEffect(
     block,
     isActive && isStreaming,
-  );
+  ) && !searchActive;
   const motionLayer = isActive && isStreaming ? 'inline' : 'block';
 
   return (
@@ -133,6 +136,7 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
   if (prev.block.isComplete && next.block.isComplete && prev.block.raw === next.block.raw) {
     return (
       prev.isNew === next.isNew &&
+      prev.searchActive === next.searchActive &&
       prev.onLinkClick === next.onLinkClick &&
       prev.extraRemarkPlugins === next.extraRemarkPlugins &&
       prev.onCitationClick === next.onCitationClick &&
@@ -180,6 +184,8 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
   messageId,
 }) => {
   const { t } = useTranslation('chatV2');
+  const { query: searchQuery } = useMessageSearchContext();
+  const searchActive = Boolean(searchQuery.trim());
 
   // 行业最优解：不再裁剪未闭合数学。remark-math 自然降级为原文，
   // KaTeX 在闭合时无缝接管。原始 content 直通渲染器，
@@ -247,6 +253,7 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
     isStreaming &&
     thinkingContent &&
     !thinkingContent.includes('\n') &&
+    !searchActive &&
     canUseDirectFlowTokenMarkdown(thinkingContent, hasExtendedMarkdownFeatures),
   );
 
@@ -302,6 +309,7 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
             resolveCitationImage={resolveCitationImage}
             blockId={blockId}
             messageId={messageId}
+            searchActive={searchActive}
           />
         ))}
       </div>
