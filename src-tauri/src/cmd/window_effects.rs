@@ -207,6 +207,66 @@ pub async fn set_sidebar_vibrancy(window: tauri::WebviewWindow, enabled: bool) -
     }
 }
 
+/// Synchronize the native window appearance with the app's light/dark theme.
+/// NSVisualEffectView resolves its Sidebar material from the NSWindow
+/// appearance, so changing only the WebView's CSS leaves the native surface
+/// in the system appearance when the app uses an explicit theme.
+#[tauri::command]
+pub async fn set_window_appearance(window: tauri::WebviewWindow, dark: bool) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::sync::mpsc;
+
+        let (tx, rx) = mpsc::channel::<std::result::Result<(), String>>();
+        let win = window.clone();
+        window
+            .run_on_main_thread(move || {
+                let result = if let Ok(ns_window_raw) = win.ns_window() {
+                    unsafe {
+                        use cocoa::base::{id, nil};
+                        use cocoa::foundation::NSString;
+                        use objc::{class, msg_send, sel, sel_impl};
+
+                        let appearance_name = NSString::alloc(nil).init_str(if dark {
+                            "NSAppearanceNameDarkAqua"
+                        } else {
+                            "NSAppearanceNameAqua"
+                        });
+                        let appearance: id = msg_send![
+                            class!(NSAppearance),
+                            appearanceNamed: appearance_name
+                        ];
+                        let _: () = msg_send![appearance_name, release];
+
+                        if appearance == nil {
+                            Err("获取 macOS 窗口外观失败".into())
+                        } else {
+                            let ns_window = ns_window_raw as id;
+                            let _: () = msg_send![ns_window, setAppearance: appearance];
+                            Ok(())
+                        }
+                    }
+                } else {
+                    Err("获取 NSWindow 失败".into())
+                };
+                let _ = tx.send(result);
+            })
+            .map_err(|e| AppError::internal(format!("调度主线程失败: {e}")))?;
+
+        rx.recv_timeout(std::time::Duration::from_secs(3))
+            .map_err(|e| AppError::internal(format!("等待窗口外观同步结果失败: {e}")))?
+            .map_err(AppError::internal)?;
+
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, dark);
+        Ok(())
+    }
+}
+
 #[tauri::command]
 pub async fn sync_titlebar_sidebar_material(
     window: tauri::WebviewWindow,

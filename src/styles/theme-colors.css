@@ -407,20 +407,20 @@
    由原生层负责桌面模糊；WebView 内侧边栏图层链（#root → app-shell → 导航面）
    必须真正透明，桌面内容才能透出。 */
 
-/* 原生材质自带 tint。亮色以近白覆盖层仅保留轻微环境感。 */
+/* 原生模式下左侧 WebView 表面保持透明，直接透出同一块 Sidebar 材质。 */
 :where(:root[data-sidebar-translucent="true"][data-macos-vibrancy="true"]) {
-  --shell-navigation-surface: hsl(var(--nav-background) / 0.88);
-  --shell-navigation-panel: hsl(var(--nav-background) / 0.88);
-  --sidebar: hsl(var(--nav-background) / 0.88);
-  --sidebar-study-surface: hsl(var(--nav-background) / 0.88);
+  --shell-navigation-surface: transparent;
+  --shell-navigation-panel: transparent;
+  --sidebar: transparent;
+  --sidebar-study-surface: transparent;
   --shell-navigation-border: color-mix(in oklch, hsl(var(--border)) 58%, transparent);
 }
 
 :where(:root.dark[data-sidebar-translucent="true"][data-macos-vibrancy="true"]) {
-  --shell-navigation-surface: hsl(var(--nav-background) / 0.32);
-  --shell-navigation-panel: hsl(var(--nav-background) / 0.32);
-  --sidebar: hsl(var(--nav-background) / 0.32);
-  --sidebar-study-surface: hsl(var(--nav-background) / 0.32);
+  --shell-navigation-surface: transparent;
+  --shell-navigation-panel: transparent;
+  --sidebar: transparent;
+  --sidebar-study-surface: transparent;
 }
 
 /* 打通透明链路：html/body 已全局透明，这里打通 #root 与 app-shell 底色 */
@@ -436,14 +436,14 @@
 /* 标题栏导航段与全高侧边栏使用同一表面，保证左侧背景连续。 */
 :root[data-sidebar-translucent="true"][data-macos-vibrancy="true"]
   .desktop-shell-titlebar[data-sidebar-visible="true"] {
-  background: linear-gradient(
-    90deg,
-    var(--shell-navigation-surface) 0,
-    var(--shell-navigation-surface) var(--shell-navigation-width),
-    var(--shell-workspace-panel) var(--shell-navigation-width),
-    var(--shell-workspace-panel) 100%
-  );
-}
+    background: linear-gradient(
+      90deg,
+      var(--shell-navigation-surface) 0,
+      var(--shell-navigation-surface) var(--shell-navigation-surface-width, var(--shell-navigation-width)),
+      var(--shell-workspace-panel) var(--shell-navigation-surface-width, var(--shell-navigation-width)),
+      var(--shell-workspace-panel) 100%
+    );
+  }
 
 /* 桌面模糊由 NSVisualEffectView 完成；透明 WKWebView 上 backdrop-filter
    无内容可采样且易触发合成异常，故关闭 */

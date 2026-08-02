@@ -27,12 +27,14 @@ describe('desktop titlebar navigation material', () => {
     )?.[0] ?? '';
 
     expect(visibleTitlebarBlock).toContain('var(--shell-navigation-surface) 0');
-    expect(visibleTitlebarBlock).toContain('var(--shell-navigation-surface) var(--shell-navigation-width)');
+    expect(visibleTitlebarBlock).toContain('var(--shell-navigation-surface-width, var(--shell-navigation-width))');
   });
 
-  it('only clears the legacy titlebar material and never re-enables it', () => {
-    expect(sidebarTranslucencySource).toContain('不再额外挂载原生');
+  it('uses one native sidebar material and clears only the legacy titlebar overlay', () => {
+    expect(sidebarTranslucencySource).toContain('共用窗口底层材质');
     expect(sidebarTranslucencySource).toContain('clearNativeTitlebarSidebarMaterial');
+    expect(sidebarTranslucencySource).toContain('syncNativeWindowAppearance');
+    expect(sidebarTranslucencySource).toContain("'set_sidebar_vibrancy', { enabled });");
     expect(sidebarTranslucencySource).toContain('enabled: false');
     expect(sidebarTranslucencySource).not.toContain('shouldUseNativeTitlebarMaterial');
     expect(themeStylesSource).not.toContain('hsl(var(--nav-background) / 0.82)');

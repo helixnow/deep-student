@@ -1547,8 +1547,9 @@ pub fn run() {
                             warn!("获取 macOS NSWindow 失败，跳过窗口样式设置");
                         }
 
-                        // 在 WebView/React 接管前先挂载原生材质，让透明启动页从第一帧
-                        // 就显示系统毛玻璃；应用加载完成后由侧边栏设置继续管理该效果。
+                        // Mount the native Sidebar material before React renders.
+                        // The native surface is exposed only through the
+                        // transparent macOS sidebar/titlebar WebView layers.
                         if let Err(e) = window_vibrancy::apply_vibrancy(
                             &window,
                             window_vibrancy::NSVisualEffectMaterial::Sidebar,
@@ -1620,6 +1621,7 @@ pub fn run() {
 
             // macOS 窗口毛玻璃（侧边栏半透明）
             crate::commands::set_sidebar_vibrancy,
+            crate::commands::set_window_appearance,
             crate::commands::sync_titlebar_sidebar_material,
 
             // 通用设置保存/读取命令

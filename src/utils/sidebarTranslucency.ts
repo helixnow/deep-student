@@ -5,11 +5,11 @@
  * 1. CSS 层：`data-sidebar-translucent` 属性驱动 theme-colors.css 中的
  *    半透明 + backdrop-filter 规则（所有平台可用的应用内毛玻璃）。
  * 2. 原生层（仅 macOS + Tauri）：调用 `set_sidebar_vibrancy` 在窗口底部
- *    挂载 NSVisualEffectView（Sidebar 材质），配合 `data-macos-vibrancy`
- *    属性把侧边栏图层链透明化，实现真正的桌面透视。
+ *    挂载 NSVisualEffectView（Sidebar 材质），再由 CSS 透明链让左侧侧栏
+ *    和顶部左段共同透出同一块原生材质。
  *
  * 标题栏左侧导航段使用 WebView 内与侧栏相同的表面，不再额外挂载原生
- * NSVisualEffectView，避免原生标题栏层覆盖 WebView 自绘控件。
+ * NSVisualEffectView，避免它覆盖 WebView 自绘控件；两者共用窗口底层材质。
  */
 import { isTauriRuntime } from '@/utils/shared';
 import { isMacOS } from '@/utils/platform';
@@ -20,7 +20,21 @@ const VIBRANCY_ATTR = 'data-macos-vibrancy';
 /** 记录已应用的原生 vibrancy 状态，避免重复的 IPC/原生调用 */
 let nativeVibrancyApplied: boolean | null = null;
 
-/** Remove the legacy native titlebar overlay that could cover WebView chrome. */
+/** Keep the native Sidebar material in the same light/dark appearance as CSS. */
+export async function syncNativeWindowAppearance(isDark: boolean): Promise<void> {
+  if (!isTauriRuntime || !isMacOS()) {
+    return;
+  }
+
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('set_window_appearance', { dark: isDark });
+  } catch (err) {
+    console.warn('[sidebarTranslucency] 原生窗口外观同步失败:', err);
+  }
+}
+
+/** Remove the legacy titlebar overlay that could cover WebView chrome. */
 export async function clearNativeTitlebarSidebarMaterial(): Promise<void> {
   if (!isTauriRuntime || !isMacOS()) {
     return;

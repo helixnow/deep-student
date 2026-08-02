@@ -657,6 +657,7 @@ commands.allow = [
   "set_ocr_thinking_enabled",
   "set_prevent_sleep",
   "set_sidebar_vibrancy",
+  "set_window_appearance",
   "set_test_run_id",
   "simulate_budget_allocation",
   "skill_check_updates",

@@ -40,7 +40,11 @@ import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
 import { isWindows, isMacOS, isMobilePlatform } from './utils/platform';
 import { isTauriRuntime } from './utils/shared';
-import { applySidebarTranslucency, clearNativeTitlebarSidebarMaterial } from './utils/sidebarTranslucency';
+import {
+  applySidebarTranslucency,
+  clearNativeTitlebarSidebarMaterial,
+  syncNativeWindowAppearance,
+} from './utils/sidebarTranslucency';
 // 🚀 性能优化：ChatV2Page 改为懒加载，见 lazyComponents.tsx
 // NT-1: NoteEditorPortal（白板远程桌面模式遗留，恒 return null）已随死渲染路径移除
 // 🚀 性能优化：TreeDragTest, PdfReader, LearningHubPage 改为懒加载
@@ -567,6 +571,10 @@ function App() {
 
   // P1修复：暗色主题初始化
   const { isDarkMode, toggleDarkMode } = useTheme(); // 自动初始化主题系统
+
+  useEffect(() => {
+    void syncNativeWindowAppearance(isDarkMode);
+  }, [isDarkMode]);
   
 
   // 对话控制（MCP 工具与搜索引擎选择）

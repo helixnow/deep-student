@@ -91,10 +91,8 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
   React.useEffect(() => {
     if (!useMacOSGlass) return;
 
-    // NSVisualEffectView lives behind WKWebView. Its material becomes visible
-    // only once the root's opaque application surface is removed. Do this only
-    // after the native command succeeds, and restore the exact inline value
-    // when the fallback unmounts.
+    // Keep the fatal-error surface on the same native material as the normal
+    // sidebar while the fallback is mounted.
     const appRoot = document.getElementById('root');
     const previousBackground = appRoot?.style.backgroundColor ?? '';
     let cancelled = false;
