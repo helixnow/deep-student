@@ -46,7 +46,7 @@ export const MobileAppNavigationProvider: React.FC<{
 );
 
 interface MobileSidebarNavigationProps {
-  onNavigate?: () => void;
+  onNavigate?: (view?: CurrentView) => void;
   className?: string;
   /** Render only the persistent settings affordance used by the mobile drawer footer. */
   settingsOnly?: boolean;
@@ -144,7 +144,7 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
       // 兼容路径：无 Provider（如独立挂载/测试环境）时退回全局事件（无法感知拦截结果）
       dispatchAppEvent(APP_EVENTS.MOBILE_APP_NAVIGATE, { view });
     }
-    onNavigate?.();
+    onNavigate?.(view);
   }, [navigateDirect, onNavigate]);
 
   const handleOpenCommandPalette = useCallback(() => {
@@ -183,7 +183,7 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
           variant="ghost"
           size="icon"
           iconOnly
-          className="!h-11 !w-11 shrink-0 text-muted-foreground"
+          className="shell-icon-button !h-11 !w-11 !rounded-full shrink-0 text-muted-foreground"
           aria-label={settingsItem.name}
           onClick={() => handleNavigate(settingsItem.view)}
         >

@@ -64,8 +64,8 @@ body {
     linear-gradient(
       90deg,
       var(--shell-navigation-surface) 0,
-      var(--shell-navigation-surface) var(--shell-navigation-width),
-      var(--shell-workspace-panel) var(--shell-navigation-width),
+      var(--shell-navigation-surface) var(--shell-navigation-surface-width, var(--shell-navigation-width)),
+      var(--shell-workspace-panel) var(--shell-navigation-surface-width, var(--shell-navigation-width)),
       var(--shell-workspace-panel) 100%
     );
 }
@@ -307,10 +307,34 @@ body {
 
 .desktop-shell-header-title {
   min-width: 0;
+  width: min(360px, 34vw);
+  max-width: 100%;
+  overflow: hidden;
   font-size: 14px;
   line-height: 1.25;
   font-weight: 500;
   color: var(--shell-navigation-foreground);
+}
+
+.desktop-shell-header-title-input {
+  height: var(--shell-control-size);
+  min-height: var(--shell-control-size);
+  max-height: var(--shell-control-size);
+  padding-top: 0;
+  padding-bottom: 0;
+  font: inherit;
+  color: inherit;
+  border-color: hsl(var(--primary) / 0.55);
+}
+
+.desktop-shell-header-title-input:hover {
+  border-color: hsl(var(--primary) / 0.75);
+}
+
+.desktop-shell-header-title-input:focus,
+.desktop-shell-header-title-input:focus-visible {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.18);
 }
 
 .desktop-shell-workspace {

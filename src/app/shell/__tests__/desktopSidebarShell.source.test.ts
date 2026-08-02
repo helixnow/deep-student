@@ -11,7 +11,9 @@ describe('desktop sidebar shell wiring', () => {
     expect(appSource).toContain('className="desktop-shell-sidebar-track t-resize"');
     expect(appSource).toContain('className="desktop-shell-sidebar-motion-surface"');
     expect(appSource).not.toContain('className="desktop-shell-sidebar-titlebar-surface"');
-    expect(shellCssSource).toContain('var(--shell-navigation-surface) var(--shell-navigation-width)');
+    expect(appSource).toContain("'--shell-navigation-surface-width'");
+    expect(appSource).toContain('setDesktopSidebarMotionWidth(leftPanelCollapsed ? null : shellSidebarWidth)');
+    expect(shellCssSource).toContain('var(--shell-navigation-surface-width, var(--shell-navigation-width))');
     expect(appSource).toContain('<DesktopSidebarResizeHandle');
   });
 

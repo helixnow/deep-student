@@ -31,6 +31,7 @@ import { useWindowDrag } from './hooks/useWindowDrag';
 import { ModernSidebar } from './components/ModernSidebar';
 import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
+import { DesktopShellTitleEditor } from './components/DesktopShellTitleEditor';
 import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MobileAppNavigationProvider } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
 import { initReminderScheduler } from '@/features/todo/reminderScheduler';
@@ -873,7 +874,13 @@ function App() {
     ? 0
     : !isSmallScreen && leftPanelCollapsed ? 0 : desktopSidebarPresentationWidth;
   const desktopSidebarTranslateX = !isSmallScreen && leftPanelCollapsed ? -desktopSidebarPresentationWidth : 0;
-  const isDesktopSidebarSurfaceVisible = !isSmallScreen && !leftPanelCollapsed && !workbenchActive;
+  // Keep the visual shell visible until the sidebar's 360ms slide-out ends.
+  // Layout width can close immediately, but the native material must leave the
+  // titlebar and sidebar on the same frame throughout the transition.
+  const isDesktopSidebarSurfaceVisible =
+    !isSmallScreen
+    && !workbenchActive
+    && (!leftPanelCollapsed || desktopSidebarMotionWidth !== null);
   const [isDesktopSidebarResizing, setIsDesktopSidebarResizing] = useState(false);
   const appShellRef = useRef<HTMLDivElement | null>(null);
   const desktopSidebarCollapsePendingRef = useRef(false);
@@ -952,6 +959,9 @@ function App() {
     '--shell-sidebar-translate-x': `${desktopSidebarTranslateX}px`,
     '--shell-titlebar-height': `${shellTitlebarOccupiedHeight}px`,
     '--desktop-titlebar-height': `${shellTitlebarOccupiedHeight}px`,
+    '--shell-navigation-surface-width': leftPanelCollapsed && desktopSidebarMotionWidth !== null
+      ? `${desktopSidebarMotionWidth}px`
+      : 'var(--shell-navigation-width)',
     '--shell-titlebar-content-height': `${workbenchActive ? 0 : DESKTOP_SHELL.titlebarBaseHeight}px`,
     '--topbar-safe-area': `${workbenchActive ? 0 : shellTitlebarTopInset}px`,
     '--sidebar-header-height': '65px', // 左侧导航栏第一个图标到分隔线的高度
@@ -959,6 +969,8 @@ function App() {
     desktopNavigationWidth,
     desktopSidebarPresentationWidth,
     desktopSidebarTranslateX,
+    desktopSidebarMotionWidth,
+    leftPanelCollapsed,
     shellTitlebarOccupiedHeight,
     topbarTopMargin,
     workbenchActive,
@@ -2192,6 +2204,7 @@ function App() {
   }, []);
   const [currentChatHeaderTitle, setCurrentChatHeaderTitle] = useState('');
   const [currentChatHeaderGroupName, setCurrentChatHeaderGroupName] = useState('');
+  const [currentChatHeaderSessionId, setCurrentChatHeaderSessionId] = useState<string | null>(null);
   const currentChatHeaderStoreUnsubscribeRef = useRef<(() => void) | null>(null);
   const currentChatHeaderSubscribedSessionIdRef = useRef<string | null>(null);
   const desktopHeaderNewSessionTooltipLabel = currentChatHeaderGroupName
@@ -2201,6 +2214,13 @@ function App() {
     : desktopHeaderNavHotzoneLabel;
   const shouldShowDesktopSidebarToggle = currentView !== 'settings';
   const shouldShowDesktopHeaderNavControls = currentView !== 'settings' && currentView !== 'todo';
+  const handleDesktopSidebarToggle = useCallback(() => {
+    // Preserve the current native surface width while the sidebar slides out.
+    // Opening can reveal both layers immediately because the sidebar is already
+    // at its target position when the collapsed state is removed.
+    setDesktopSidebarMotionWidth(leftPanelCollapsed ? null : shellSidebarWidth);
+    useUIStore.getState().toggleLeftPanel();
+  }, [leftPanelCollapsed, shellSidebarWidth]);
   const desktopHeaderNavControls = (
     <DesktopHeaderNavControls
       canGoBack={unifiedCanGoBack}
@@ -2221,7 +2241,7 @@ function App() {
     <div className="flex min-w-0 items-center gap-1.5">
       {shouldShowDesktopSidebarToggle ? (
         <DesktopSidebarAccessory
-          onToggle={useUIStore.getState().toggleLeftPanel}
+          onToggle={handleDesktopSidebarToggle}
           label={desktopSidebarToggleLabel}
           collapsed={leftPanelCollapsed}
         />
@@ -2259,15 +2279,27 @@ function App() {
   const syncCurrentChatHeaderTitle = useCallback((sessionId?: string | null) => {
     const chatHeaderSessionId = sessionId ?? sessionManager.getCurrentSessionId();
     if (!chatHeaderSessionId) {
+      setCurrentChatHeaderSessionId(null);
       setCurrentChatHeaderTitle('');
       setCurrentChatHeaderGroupName('');
       return;
     }
 
     const chatHeaderStore = sessionManager.get(chatHeaderSessionId);
+    setCurrentChatHeaderSessionId(chatHeaderSessionId);
     setCurrentChatHeaderTitle(getChatHeaderTitleFromStoreState(chatHeaderStore?.getState()));
     setCurrentChatHeaderGroupName(getChatHeaderGroupNameFromStoreState(chatHeaderStore?.getState()));
   }, [getChatHeaderGroupNameFromStoreState, getChatHeaderTitleFromStoreState, t]);
+
+  const saveCurrentChatHeaderTitle = useCallback(async (sessionId: string, title: string) => {
+    await invoke('chat_v2_update_session_settings', {
+      sessionId,
+      settings: { title },
+    });
+
+    sessionManager.get(sessionId)?.setState({ title });
+    window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+  }, []);
 
   useEffect(() => {
     const bindCurrentChatHeaderStore = (sessionId: string | null) => {
@@ -2658,6 +2690,22 @@ function App() {
                     data-no-drag
                     data-shell-slot="learning-hub-toolbar"
                   />
+                ) : currentView === 'chat-v2' && currentChatHeaderSessionId && currentChatHeaderTitle ? (
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    <CommandPaletteButton onOpenReady={(trigger) => { commandPaletteTriggerRef.current = trigger; }} />
+                    <div className="min-w-0 flex-1 pl-1" data-no-drag>
+                      <DesktopShellTitleEditor
+                        key={currentChatHeaderSessionId}
+                        sessionId={currentChatHeaderSessionId}
+                        title={desktopShellViewLabel}
+                        renameLabel={t('chatV2:page.renameSession')}
+                        emptyTitleError={t('chatV2:page.renameEmptyError')}
+                        saveError={t('chatV2:page.renameFailed')}
+                        onSave={saveCurrentChatHeaderTitle}
+                        className="desktop-shell-header-title"
+                      />
+                    </div>
+                  </div>
                 ) : (
                   <div
                     className="desktop-shell-header-hotzone flex min-w-0 items-center gap-3"
@@ -2675,7 +2723,7 @@ function App() {
                   >
                     <CommandPaletteButton onOpenReady={(trigger) => { commandPaletteTriggerRef.current = trigger; }} />
 
-                    <div className="min-w-0 pl-1">
+                    <div className="min-w-0 flex-1 pl-1">
                       <div className="min-w-0 desktop-shell-header-title">
                         <TextSwap
                           text={desktopShellViewLabel}

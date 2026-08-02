@@ -753,7 +753,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           variant="ghost"
           size="icon"
           iconOnly
-          className="!h-11 !w-11 shrink-0 text-muted-foreground"
+          className="shell-icon-button !h-11 !w-11 !rounded-full shrink-0 text-muted-foreground"
           onClick={() => setSessionSheetOpen(false)}
           aria-label={t('common:close')}
         >

@@ -82,5 +82,5 @@ export const shellIconButtonClassName = cn(
   buttonBaseClassName,
   buttonToneClassNames.ghost,
   buttonSizeClassNames.icon,
-  'justify-center rounded-full text-[color:var(--shell-navigation-muted)] hover:text-[color:var(--shell-navigation-foreground)]'
+  'shell-icon-button justify-center !rounded-full text-[color:var(--shell-navigation-muted)] hover:text-[color:var(--shell-navigation-foreground)]'
 );

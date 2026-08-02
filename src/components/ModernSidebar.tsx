@@ -1120,6 +1120,8 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               aria-current={isActive ? 'page' : undefined}
               tabIndex={collapsed ? -1 : undefined}
               isActive={isActive}
+              hideLeadingSlot={pinned}
+              className={pinned ? '!pl-3' : undefined}
               rightSlot={isSessionStreaming ? (
                 <SidebarStreamingIndicator />
               ) : hasBlockingInteraction ? (
@@ -1128,7 +1130,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 <SidebarUnreadReplyDot />
               ) : (
                 <span className="ml-1 shrink-0 text-[11px] font-normal tabular-nums text-[color:var(--shell-navigation-muted)] group-hover/thread-row:opacity-0 group-focus-within/thread-row:opacity-0">
-                  {relativeTime}
+                  <span className={pinned ? 'mr-12 inline-block' : undefined}>{relativeTime}</span>
                 </span>
               )}
             >
@@ -1202,66 +1204,66 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           </div>
         )}
 
-        {/* 行内快捷操作：置顶与归档并排，hover 或 focus 时可见。作为兄弟节点渲染，避免 button 嵌套交互控件。 */}
+        {/* 行内快捷操作：置顶与归档组成右侧操作簇，hover 或 focus 时可见。 */}
         {!collapsed && (
-          // eslint-disable-next-line ds-components/no-native-button
-          <button
-            type="button"
-            data-testid="recent-session-pin-icon"
-            aria-label={pinned ? t('sidebar:aria.unpin_session') : t('sidebar:aria.pin_session')}
-            className={cn(
-              'absolute right-8.5 top-1/2 flex h-5 min-w-[20px] -translate-y-1/2 appearance-none items-center justify-center rounded-md border-0 bg-transparent px-1 text-[color:var(--shell-navigation-muted)] transition-colors hover:text-[color:var(--shell-navigation-foreground)] outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              'opacity-0 group-hover/thread-row:opacity-100 group-focus-within/thread-row:opacity-100',
-              pinned && 'text-[color:var(--shell-navigation-foreground)]'
-            )}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              setConfirmingArchiveSessionId(null);
-              void handleRecentSessionPinToggle(session);
-            }}
-          >
-            <PushPin size={14} weight="fill" />
-          </button>
-        )}
-        {!collapsed && !isSessionStreaming && !hasBlockingInteraction && !hasUnreadAssistantReply && (
-          <CommonTooltip content={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session') : t('sidebar:aria.archive_session')} position="right">
+          <div className="pointer-events-none absolute right-2.5 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover/thread-row:pointer-events-auto group-hover/thread-row:opacity-100 group-focus-within/thread-row:pointer-events-auto group-focus-within/thread-row:opacity-100">
             {/* eslint-disable-next-line ds-components/no-native-button */}
             <button
               type="button"
-              aria-label={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session') : t('sidebar:aria.archive_session')}
+              data-testid="recent-session-pin-icon"
+              aria-label={pinned ? t('sidebar:aria.unpin_session') : t('sidebar:aria.pin_session')}
               className={cn(
-                'absolute right-2.5 top-1/2 flex h-5 min-w-[20px] -translate-y-1/2 appearance-none items-center justify-center rounded-md border-0 px-1 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                'opacity-0 group-hover/thread-row:opacity-100 group-focus-within/thread-row:opacity-100',
-                isConfirmingArchive
-                  ? 'bg-destructive/15 text-destructive hover:bg-destructive/20'
-                  : 'bg-transparent text-[color:var(--shell-navigation-muted)] hover:text-destructive'
+                'flex size-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 !p-0 text-[color:var(--shell-navigation-muted)] transition-colors hover:text-[color:var(--shell-navigation-foreground)] outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                pinned && 'text-[color:var(--shell-navigation-foreground)]'
               )}
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                setOpenRecentSessionMenuId(null);
-                if (isConfirmingArchive) {
-                  void handleRecentSessionArchive(session.id);
-                  return;
-                }
-
-                setConfirmingArchiveSessionId(session.id);
-              }}
-              onBlur={() => {
-                setConfirmingArchiveSessionId((current) => (current === session.id ? null : current));
+                setConfirmingArchiveSessionId(null);
+                void handleRecentSessionPinToggle(session);
               }}
             >
-              <span className="w-3.5 h-3.5 t-icon-swap" data-state={isConfirmingArchive ? 'b' : 'a'}>
-                <span className="w-3.5 h-3.5 t-icon flex items-center justify-center" data-icon="a">
-                  <Archive size={14} />
-                </span>
-                <span className="w-3.5 h-3.5 t-icon flex items-center justify-center" data-icon="b">
-                  <Check size={14} />
-                </span>
-              </span>
+              <PushPin size={14} weight={pinned ? 'fill' : 'regular'} />
             </button>
-          </CommonTooltip>
+            {!collapsed && !isSessionStreaming && !hasBlockingInteraction && !hasUnreadAssistantReply && (
+              <CommonTooltip content={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session') : t('sidebar:aria.archive_session')} position="right">
+                {/* eslint-disable-next-line ds-components/no-native-button */}
+                <button
+                  type="button"
+                  aria-label={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session') : t('sidebar:aria.archive_session')}
+                  className={cn(
+                    'flex size-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 !p-0 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    isConfirmingArchive
+                      ? 'bg-destructive/15 text-destructive hover:bg-destructive/20'
+                      : 'bg-transparent text-[color:var(--shell-navigation-muted)] hover:text-destructive'
+                  )}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setOpenRecentSessionMenuId(null);
+                    if (isConfirmingArchive) {
+                      void handleRecentSessionArchive(session.id);
+                      return;
+                    }
+
+                    setConfirmingArchiveSessionId(session.id);
+                  }}
+                  onBlur={() => {
+                    setConfirmingArchiveSessionId((current) => (current === session.id ? null : current));
+                  }}
+                >
+                  <span className="w-3.5 h-3.5 t-icon-swap" data-state={isConfirmingArchive ? 'b' : 'a'}>
+                    <span className="w-3.5 h-3.5 t-icon flex items-center justify-center" data-icon="a">
+                      <Archive size={14} />
+                    </span>
+                    <span className="w-3.5 h-3.5 t-icon flex items-center justify-center" data-icon="b">
+                      <Check size={14} />
+                    </span>
+                  </span>
+                </button>
+              </CommonTooltip>
+            )}
+          </div>
         )}
       </motion.div>
     );
@@ -1468,7 +1470,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               isActive={isActive}
               className={cn(
                 // 分组 icon 与「课题」分区标题共用左侧基准线，标题和操作区保持原有布局。
-                't-acc-head group/sidebar-section !px-1 select-none',
+                't-acc-head group/sidebar-section !pl-3 !pr-1 select-none',
                 draggedRecentGroupId === group.id && 'cursor-grabbing opacity-60',
                 dragOverRecentGroupId === group.id && draggedRecentGroupId !== group.id && 'bg-[color:var(--sidebar-quiet-hover)] ring-1 ring-black/8 dark:ring-white/10'
               )}

@@ -69,6 +69,7 @@ export function WorkbenchSidebarRow({
   leftSlot,
   rightSlot,
   depth = 0,
+  hideLeadingSlot = false,
   children,
   ...buttonProps
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -77,6 +78,7 @@ export function WorkbenchSidebarRow({
   leftSlot?: React.ReactNode;
   rightSlot?: React.ReactNode;
   depth?: number;
+  hideLeadingSlot?: boolean;
 }) {
   return (
     <DsButton
@@ -97,7 +99,9 @@ export function WorkbenchSidebarRow({
       }}
     >
       <span className="flex min-w-0 flex-1 items-center gap-2.5">
-        <span className="flex w-4 shrink-0 items-center justify-center text-[color:inherit]">{leftSlot}</span>
+        {!hideLeadingSlot && (
+          <span className="flex w-4 shrink-0 items-center justify-center text-[color:inherit]">{leftSlot}</span>
+        )}
         <span className="min-w-0 flex-1">{children}</span>
         <span className="flex min-w-[24px] shrink-0 items-center justify-end gap-0.5">{rightSlot}</span>
       </span>

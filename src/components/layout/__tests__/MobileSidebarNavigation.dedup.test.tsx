@@ -7,7 +7,7 @@
  */
 import React from 'react';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { ChartBar } from '@phosphor-icons/react';
 import { useViewStore } from '@/stores/viewStore';
 import type { CurrentView } from '@/types/navigation';
@@ -132,5 +132,14 @@ describe('MobileSidebarNavigation drawer dedup', () => {
 
     render(<MobileSidebarNavigation settingsOnly />);
     expect(screen.getAllByRole('button', { name: '设置' })).toHaveLength(1);
+  });
+
+  it('passes the settings target so the caller can preserve the expanded drawer', () => {
+    const onNavigate = vi.fn();
+    render(<MobileSidebarNavigation onNavigate={onNavigate} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+
+    expect(onNavigate).toHaveBeenCalledWith('settings');
   });
 });

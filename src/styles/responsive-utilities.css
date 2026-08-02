@@ -16,6 +16,17 @@
  * 应用 44px 最小尺寸；其他按钮由组件自行设置合适的触摸区域。
  */
 @media (hover: none) and (pointer: coarse) {
+  /* 触屏没有可靠 hover：侧栏图标按钮只保留按压态，避免 hover 残留成半圆/方块。 */
+  .shell-icon-button.shell-icon-button:hover {
+    background: var(--button-plain-bg);
+    color: var(--shell-navigation-muted);
+  }
+
+  .shell-icon-button.shell-icon-button:active {
+    background: var(--button-plain-active-bg);
+    color: var(--shell-navigation-foreground);
+  }
+
   .touch-target {
     min-height: 44px !important;
     min-width: 44px !important;
