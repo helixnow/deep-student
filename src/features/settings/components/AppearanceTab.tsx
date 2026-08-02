@@ -379,12 +379,10 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
       >
         <SettingsGroup
           title={t('settings:groups.appearance')}
-          description={t('settings:study_ui_descriptions.appearance')}
         >
             <SettingRow
               title={t('settings:theme.row_title')}
-              description={t('settings:theme.row_description')}
-              className="items-center"
+              className="items-stretch md:!items-center"
             >
               <SegmentedControl
                 ariaLabel={t('settings:theme.mode_label')}

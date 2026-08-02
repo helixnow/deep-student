@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { ArrowLeft, QrCode, Plug, WarningCircle } from '@phosphor-icons/react';
+import { ArrowLeft, GearSix, QrCode, Plug, WarningCircle } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Input } from '@/components/ui/shad/Input';
@@ -518,24 +518,24 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
                 <div
                   key={p.id}
                   className={cn(
-                    'group flex items-center gap-3 px-1 py-2.5',
+                    'group grid min-w-0 grid-cols-1 items-center gap-x-4 gap-y-3 px-1 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:py-2.5',
                     settingsQuietInteractiveRowClassName,
                   )}
                 >
                   <DsButton
                     variant="ghost"
-                    className="flex h-auto min-w-0 flex-1 items-center justify-start gap-3 border-0 p-0 text-left whitespace-normal !bg-transparent hover:!bg-transparent"
+                    className="flex h-auto min-w-0 w-full items-center justify-start gap-3 border-0 p-0 text-left whitespace-normal !bg-transparent hover:!bg-transparent sm:row-start-1"
                     onClick={() => setSelectedId(p.id)}
                   >
-                    <div className="rounded-md bg-muted p-2 shrink-0">
-                      <Plug className="w-4 h-4 text-muted-foreground" />
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/80">
+                      <Plug className="size-[18px] text-muted-foreground" />
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm text-foreground/90 leading-tight">
                           {p.label}
                         </span>
-                        <Badge variant={display.variant}>
+                        <Badge className="shrink-0 whitespace-nowrap" variant={display.variant}>
                           {t(`settings:plugins.${display.key}`, display.key)}
                         </Badge>
                       </div>
@@ -544,18 +544,25 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
                       </p>
                     </div>
                   </DsButton>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Switch
-                      checked={p.enabled && p.bound}
-                      disabled={!p.bound || togglingId === p.id}
-                      onCheckedChange={(next) => void toggleEnabled(p, next)}
-                      aria-label={t('settings:plugins.enable_switch')}
-                    />
+                  <div className="flex min-h-11 items-center justify-end gap-2 border-t border-border/30 pt-2 sm:col-start-2 sm:row-start-1 sm:min-h-10 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground/80">
+                        {t('settings:plugins.enable_switch')}
+                      </span>
+                      <Switch
+                        checked={p.enabled && p.bound}
+                        disabled={!p.bound || togglingId === p.id}
+                        onCheckedChange={(next) => void toggleEnabled(p, next)}
+                        aria-label={t('settings:plugins.enable_switch')}
+                      />
+                    </div>
                     <DsButton
                       variant="ghost"
                       size="sm"
+                      className="gap-1.5 text-foreground/80"
                       onClick={() => setSelectedId(p.id)}
                     >
+                      <GearSix className="size-4" aria-hidden="true" />
                       {t('settings:plugins.configure')}
                     </DsButton>
                   </div>

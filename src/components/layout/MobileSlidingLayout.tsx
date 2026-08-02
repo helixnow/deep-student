@@ -23,6 +23,7 @@ import { MobileUnifiedDrawerProvider } from './MobileDrawerContext';
 import { MobileSidebarNavigation } from './MobileSidebarNavigation';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { Z_INDEX } from '@/config/zIndex';
+import type { CurrentView } from '@/types/navigation';
 
 /** 三屏位置枚举 */
 export type ScreenPosition = 'left' | 'center' | 'right';
@@ -146,8 +147,12 @@ interface MobileSlidingLayoutProps {
   threshold?: number;
   /** 容器类名 */
   className?: string;
+  /** 主内容外壳类名；用于需要让页面自身背景透出布局容器的场景。 */
+  mainContentClassName?: string;
   /** 右侧面板是否可用（只有可用时才能滑动到右侧） */
   rightPanelEnabled?: boolean;
+  /** 是否允许从主内容向左滑打开右侧面板；已打开面板时仍可向右滑返回。 */
+  rightPanelSwipeEnabled?: boolean;
   /** 是否自动注入移动端应用导航 */
   showSidebarAppNavigation?: boolean;
   /** 侧边栏打开时是否给主内容加遮罩 */
@@ -174,7 +179,9 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   edgeWidth = 20,
   threshold = 0.3,
   className,
+  mainContentClassName,
   rightPanelEnabled = false,
+  rightPanelSwipeEnabled = true,
   showSidebarAppNavigation = true,
   showContentOverlay = false,
   gestureIgnoreSelector = DEFAULT_GESTURE_IGNORE_SELECTOR,
@@ -505,7 +512,12 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     let newTranslate = stateRef.current.dragStartBase + deltaX;
 
     // 限制范围：三屏模式下考虑右侧面板
-    const minTranslate = isThreeScreenMode && rightPanelEnabled
+    // 右侧面板已打开时保留向右返回所需的拖动范围；只有从中屏打开面板
+    // 才受 rightPanelSwipeEnabled 控制。
+    const canSwipeToRightPanel = isThreeScreenMode && (
+      screenPosition === 'right' || (rightPanelEnabled && rightPanelSwipeEnabled)
+    );
+    const minTranslate = canSwipeToRightPanel
       ? -(sidebarWidth + containerWidth) // 可以滑动到右侧面板
       : -sidebarWidth; // 两屏模式或右侧面板不可用
     const maxTranslate = 0;
@@ -514,7 +526,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     stateRef.current.currentTranslate = newTranslate;
     // 每帧只直写 DOM，不 setState（见 applyVisualTranslate 注释）
     applyVisualTranslate(newTranslate);
-  }, [enableGesture, sidebarWidth, containerWidth, isThreeScreenMode, rightPanelEnabled, applyVisualTranslate]);
+  }, [enableGesture, sidebarWidth, containerWidth, isThreeScreenMode, rightPanelEnabled, rightPanelSwipeEnabled, screenPosition, applyVisualTranslate]);
 
   // 处理拖拽结束
   const handleDragEnd = useCallback(() => {
@@ -546,7 +558,9 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
           else if (screenPosition === 'right') onScreenPositionChange('center');
         } else {
           // 向左滑动
-          if (screenPosition === 'center' && rightPanelEnabled) onScreenPositionChange('right');
+          if (screenPosition === 'center' && rightPanelEnabled && rightPanelSwipeEnabled) {
+            onScreenPositionChange('right');
+          }
           else if (screenPosition === 'left') onScreenPositionChange('center');
         }
       }
@@ -569,7 +583,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     stateRef.current.axisLocked = null;
     setIsDragging(false);
     setSettleTick((tick) => tick + 1);
-  }, [sidebarWidth, sidebarOpen, threshold, onSidebarOpenChange, isThreeScreenMode, onScreenPositionChange, screenPosition, rightPanelEnabled]);
+  }, [sidebarWidth, sidebarOpen, threshold, onSidebarOpenChange, isThreeScreenMode, onScreenPositionChange, screenPosition, rightPanelEnabled, rightPanelSwipeEnabled]);
 
   // C-9/残留#1: 拖拽被外部中断（touchcancel / 页面失焦 / 长按菜单）时的收尾。
   // Android 10+ 手势导航下，系统返回手势抢占边缘 swipe 会向 WebView 发
@@ -588,7 +602,11 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     setSettleTick((tick) => tick + 1);
   }, []);
 
-  const closeSidebarAfterAppNavigation = useCallback(() => {
+  const closeSidebarAfterAppNavigation = useCallback((targetView?: CurrentView) => {
+    // 设置以 Sheet 覆盖在当前页面之上；保留原页面抽屉展开状态，关闭 Sheet
+    // 后用户仍回到原来的侧栏上下文。其他应用导航继续收回抽屉。
+    if (targetView === 'settings') return;
+
     if (isThreeScreenMode && onScreenPositionChange) {
       onScreenPositionChange('center');
       return;
@@ -888,7 +906,10 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
 
         {/* 主内容区域 - 宽度等于外层容器宽度（视口宽度） */}
         <div
-          className="relative z-[1] h-full flex-shrink-0 overflow-x-hidden bg-[color:var(--shell-workspace-panel)]"
+          className={cn(
+            'relative z-[1] h-full flex-shrink-0 overflow-x-hidden bg-[color:var(--shell-workspace-panel)]',
+            mainContentClassName,
+          )}
           style={{ width: containerWidth || '100vw' }}
         >
           {showContentOverlay && hasSidebar && (
@@ -898,7 +919,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
               aria-label={t('sidebar.close')}
               aria-hidden={sidebarRevealProgress <= 0.02}
               tabIndex={isSidebarOverlayInteractive ? 0 : -1}
-              onClick={closeSidebarAfterAppNavigation}
+              onClick={() => closeSidebarAfterAppNavigation()}
               data-mobile-sidebar-mask
               className={cn(
                 'absolute inset-0 appearance-none border-0 bg-[color:var(--overlay)] p-0',

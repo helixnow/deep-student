@@ -1041,6 +1041,9 @@ function App() {
   const [templateManagementShellBackVisible, setTemplateManagementShellBackVisible] = useState(true);
   const currentViewRef = useRef<CurrentView>('chat-v2');
   // 移动端设置以 Sheet 覆盖在原视图之上；保留打开设置前的视图作为露出区背景。
+  const [settingsBackdropView, setSettingsBackdropView] = useState<CurrentView>('chat-v2');
+  // 关闭 Sheet 返回原视图时跳过一次页面入场动画，避免和 Sheet 离场动画叠加造成闪现。
+  const settingsClosingViewRef = useRef<CurrentView | null>(null);
   const isSmallScreenRef = useRef(isSmallScreen);
   const viewSwitchStartRef = useRef<{ from: CurrentView; to: CurrentView; startTime: number } | null>(null);
   
@@ -1079,6 +1082,13 @@ function App() {
     // 使用 startTransition 将 LRU 更新 + 视图切换 打包在同一个 transition 中。
     // 导航历史由 useNavigationHistory 的 useEffect 推入（始终基于 committed state，避免快速点击竞态）。
     startTransition(() => {
+      if (targetView === 'settings' && prevView !== 'settings') {
+        setSettingsBackdropView(prevView);
+        settingsClosingViewRef.current = null;
+      } else if (prevView === 'settings' && targetView !== 'settings') {
+        settingsClosingViewRef.current = targetView;
+      }
+
       // 🚀 LRU 更新：记录访问时间戳，超过阈值时淘汰最久未访问的非 pinned 视图
       setVisitedViews(prev => {
         const now = Date.now();
@@ -2394,9 +2404,12 @@ function App() {
 
   const settingsContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
-      <LazySettings onBack={() => setCurrentView('chat-v2')} />
+      <LazySettings
+        onBack={() => setCurrentView('chat-v2')}
+        isActive={currentView === 'settings'}
+      />
     </Suspense>
-  ), [setCurrentView]);
+  ), [currentView, setCurrentView]);
 
   const taskDashboardContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
@@ -2489,6 +2502,8 @@ function App() {
       errorBoundaryName={view}
       extraClass={extraClass}
       extraStyle={extraStyle}
+      isBackdrop={isSmallScreen && currentView === 'settings' && view === settingsBackdropView}
+      suppressEnterAnimation={isSmallScreen && currentView !== 'settings' && view === settingsClosingViewRef.current}
     >
       {content}
     </ViewLayerRenderer>

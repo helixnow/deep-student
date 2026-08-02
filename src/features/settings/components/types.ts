@@ -71,4 +71,6 @@ export interface SystemConfig {
 
 export interface SettingsProps {
   onBack: () => void;
+  /** Settings view is kept mounted by the app shell; controls the mobile sheet portal. */
+  isActive?: boolean;
 }
