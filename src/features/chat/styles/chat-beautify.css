@@ -183,11 +183,6 @@
   margin-bottom: 0.5rem;
 }
 
-.chat-v2 .chat-empty-composer-layout__disclaimer {
-  padding-top: 0;
-  padding-bottom: 0.5rem;
-}
-
 .chat-v2 .chat-empty-composer-layout__input.unified-input-docked {
   --unified-input-shell-surface: var(--surface-root);
 

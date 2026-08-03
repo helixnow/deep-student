@@ -41,7 +41,6 @@ import { isStoreSubagentSession } from '../core/subagentSession';
 // ★ 图谱模块已废弃 - GraphSelectDialog 已移除
 // import { GraphSelectDialog } from '@/components/graph-manager/GraphSelectDialog';
 // 🆕 工具审批卡片（文档 29 P1-3）- 已移至 InputBarV2 内部渲染
-// 🆕 AI 内容免责提示（合规）
 
 // ============================================================================
 // Props 定义
@@ -271,23 +270,20 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   const shouldUseEmptyComposerLayout = effectiveShowInputBar && (forceEmptyPreview || messageCount === 0);
   const shouldUseDesktopEmptyComposerLayout = shouldUseEmptyComposerLayout && !isMobile;
   const shouldAutoFocusMobileEmptyComposer = shouldUseEmptyComposerLayout && isMobile;
-  const shouldShowDisclaimer = effectiveShowInputBar && messageCount > 0;
 
   const renderMessageList = ({
     className: messageListSlotClassName,
     compact = false,
-    showBottomFade = true,
   }: {
     className?: string;
     compact?: boolean;
-    showBottomFade?: boolean;
   } = {}) => (
     // 不按 sessionId remount：MessageList 内部随 store 切换重置；入场动画由 threadShellRef 重播
     <div
       ref={threadShellRef}
       className={cn(
         'chat-thread-enter relative',
-        compact ? 'relative overflow-visible' : 'flex-1 overflow-hidden relative',
+        compact ? 'relative overflow-visible' : 'min-h-0 flex-1 overflow-hidden relative',
         messageListSlotClassName,
         isSwitchingToUnloaded && 'pointer-events-none'
       )}
@@ -304,30 +300,12 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         emptyStateGroupName={resolvedEmptyStateGroupName}
         forceEmptyPreview={forceEmptyPreview}
       />
-      {showBottomFade ? (
-        <div
-          aria-hidden="true"
-          className="scroll-fade scroll-fade--bottom"
-          style={{ '--scroll-fade-surface': 'var(--shell-workspace-panel)' } as React.CSSProperties}
-        />
-      ) : null}
     </div>
   );
 
   const renderFooter = (className?: string) => FooterComponent ? (
     <div className={cn('flex-shrink-0 border-t border-border', className)}>
       <FooterComponent store={store} />
-    </div>
-  ) : null;
-
-  const renderDisclaimer = (className?: string) => shouldShowDisclaimer ? (
-    <div className={cn('text-center px-4 py-1', className)}>
-      {/* 字号走 caption 地板 token（12px，见 chat.css --chat-caption-font-size），
-          不再低于移动端最小可读字号 */}
-      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/50 select-none">
-        <Info size={12} className="h-3 w-3" />
-        {t('common:aiDisclaimer.chatHint')}
-      </span>
     </div>
   ) : null;
 
@@ -372,7 +350,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     <div
       className={cn(
         'chat-v2',
-        'flex flex-col h-full',
+        'flex flex-col h-full min-h-0',
         'bg-[color:var(--shell-workspace-panel)]',
         'relative',
         'overflow-hidden',
@@ -392,10 +370,8 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             {renderMessageList({
               className: 'chat-empty-composer-layout__message-list',
               compact: true,
-              showBottomFade: false,
             })}
             {renderFooter('chat-empty-composer-layout__footer')}
-            {renderDisclaimer('chat-empty-composer-layout__disclaimer')}
             <AgentTaskPanel store={store} />
             {renderInputBar('chat-empty-composer-layout__input', 'empty')}
           </ThreadContentShell>
@@ -409,9 +385,6 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
           {renderFooter()}
 
           {/* 🆕 工具审批卡片已移至 InputBarV2 内部，作为浮动面板渲染，避免遮挡问题 */}
-
-          {/* AI 内容免责提示（合规要求） */}
-          {renderDisclaimer()}
 
           {/* Agent todo panel — 贴在输入栏上方 */}
           <AgentTaskPanel store={store} />

@@ -28,8 +28,9 @@ describe('ChatContainer empty composer layout source contract', () => {
     expect(containerSource).toContain('shouldUseEmptyComposerLayout');
     expect(containerSource).toContain('const messageCount = useStore(store, (s) => s.messageOrder.length);');
     expect(containerSource).toContain('messageCount === 0');
-    expect(containerSource).toContain('showInputBar &&');
-    expect(containerSource).toContain('const shouldShowDisclaimer = showInputBar && messageCount > 0;');
+    expect(containerSource).toContain('min-h-0 flex-1 overflow-hidden relative');
+    expect(containerSource).not.toContain("compact ? 'relative overflow-visible' : 'flex-1 overflow-hidden relative'");
+    expect(containerSource).not.toContain('scroll-fade--bottom');
     expect(containerSource).toContain('chat-empty-composer-layout');
     expect(containerSource).toContain('chat-empty-composer-layout__input');
   });
@@ -65,7 +66,7 @@ describe('ChatContainer empty composer layout source contract', () => {
     expect(emptyInputRule).toContain('background: var(--surface-root);');
   });
 
-  it('keeps the docked input bottom transparent and fades only the lower gutter', () => {
+  it('keeps the docked input surface aligned with the surrounding page', () => {
     const dockedRootStart = inputBarUiSource.indexOf('ref={dropZoneRef}');
     const dockedRootEnd = inputBarUiSource.indexOf('style={{', dockedRootStart);
     const dockedRoot = inputBarUiSource.slice(dockedRootStart, dockedRootEnd);
@@ -119,7 +120,7 @@ describe('ChatContainer empty composer layout source contract', () => {
     expect(inputBarV2Source).toContain('autoFocus={autoFocus}');
     expect(inputBarUiSource).toContain('autoFocus = false');
     expect(inputBarUiSource).toContain('textarea.focus({ preventScroll: true });');
-    expect(inputBarUiSource).toContain('window.visualViewport');
+    expect(inputBarUiSource).toContain('globalKeyboardInset');
     expect(inputBarUiSource).toContain('--unified-input-keyboard-inset');
     expect(inputBarUiSource).toContain('keyboardInsetPx');
   });

@@ -11,7 +11,8 @@
  * 5. 移除 flushSync，异步状态更新
  */
 
-import React, { createPortal, useRef, useEffect, useLayoutEffect, useCallback, memo, useMemo, useState } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useCallback, memo, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
@@ -53,8 +54,6 @@ const VIRTUALIZER_INIT_DELAY = 0;
 const DEFAULT_ESTIMATED_ITEM_SIZE = 120;
 /** 超过该数量后启用虚拟滚动，避免长会话全量渲染 */
 const VIRTUALIZATION_THRESHOLD = 80;
-/** 保证最后一条消息可以滚动到 28px 底部渐隐层之上。 */
-const MESSAGE_BOTTOM_SAFE_AREA_PX = 32;
 
 const EMPTY_BLOCK_MAP = new Map<string, Block>();
 
@@ -69,7 +68,7 @@ const ASSISTANT_ENTER_CLASS = 'chat-msg-enter';
  * P0-4: 计算输入栏对消息视口的实际遮挡像素。
  *
  * 当前布局中输入栏（.unified-input-docked）是消息列表的流内 flex 兄弟，
- * 矩形不重叠时返回 0（底部 padding 退回固定安全区）。当键盘 inset /
+ * 矩形不重叠时返回 0（消息区不增加额外 padding）。当键盘 inset /
  * 浮动式输入栏使其矩形盖到视口上时，以重叠像素动态抬高底部 padding，
  * 并用输入栏写入的 CSS 变量 --unified-input-docked-height 作为上限
  * （变量缺失时以视口高度 60% 兜底），避免动画中间态的异常矩形放大 padding。
@@ -580,7 +579,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
   }, [store]);
 
   // P0-4: 观察输入栏矩形对消息视口的实际遮挡（键盘 inset / 输入栏长高 / 浮动态），
-  // 动态抬高底部安全区。输入栏与列表是流内兄弟，常态下 overlap 为 0，无额外开销
+  // 动态抬高消息区底部 padding。输入栏与列表是流内兄弟，常态下 overlap 为 0，无额外开销
   useEffect(() => {
     if (!viewportElement) return;
     const chatRoot = viewportElement.closest('.chat-v2');
@@ -1258,7 +1257,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
           role="log"
           aria-live="polite"
           aria-relevant="additions"
-          style={{ width: '100%', paddingBottom: MESSAGE_BOTTOM_SAFE_AREA_PX + inputOverlapPx }}
+          style={{ width: '100%', paddingBottom: inputOverlapPx }}
         >
           <AnimatePresence>
             {messageOrder.slice(directRenderStart).map((messageId, sliceIndex) => {
@@ -1330,7 +1329,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
           role="log"
           aria-live="off"
           style={{
-            height: `${virtualizer.getTotalSize() + MESSAGE_BOTTOM_SAFE_AREA_PX + inputOverlapPx}px`,
+            height: `${virtualizer.getTotalSize() + inputOverlapPx}px`,
             width: '100%',
             position: 'relative',
           }}

@@ -3657,7 +3657,6 @@
     "ariaLabel": "AI-generated content"
   },
   "aiDisclaimer": {
-    "chatHint": "AI-generated content may contain errors. Please verify carefully.",
     "cardHint": "AI-generated card content may contain errors. Please verify before use."
   },
   "legal": {

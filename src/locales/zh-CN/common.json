@@ -3600,7 +3600,6 @@
     "ariaLabel": "AI 生成内容"
   },
   "aiDisclaimer": {
-    "chatHint": "AI 生成的内容可能存在错误，请注意甄别",
     "cardHint": "AI 生成的卡片内容可能存在错误，请核实后使用"
   },
   "legal": {

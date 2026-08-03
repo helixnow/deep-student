@@ -1144,7 +1144,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   // ★ 监听附件预览事件，在右侧面板打开附件
   // 使用独立的附件预览状态，不依赖于 NotesContext
   const renderMainContent = () => (
-    <div className="flex h-full flex-col overflow-hidden relative">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden relative">
       {renderArchiveConfirmBar()}
       {/* 使用 currentSessionId 作为主要判断条件，选中会话时立即显示内容 */}
       {viewMode === 'browser' && !isSmallScreen ? (
@@ -1330,7 +1330,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
       {/* 桌面端：主聊天区域 + 次级面板（附件预览不再全屏替换聊天，统一走侧栏内联预览） */}
       {!isSmallScreen && (
         <div className="flex flex-1 min-w-0 h-full overflow-hidden">
-          <div className="h-full min-w-0 flex-1">
+          <div className="h-full min-h-0 min-w-0 flex-1">
             {renderMainContent()}
           </div>
           {desktopSecondaryPanelShouldRender && (
