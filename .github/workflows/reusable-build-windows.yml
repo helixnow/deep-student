@@ -151,7 +151,7 @@ jobs:
           SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-        run: npx tauri build --target x86_64-pc-windows-msvc -- --locked
+        run: npx tauri build --target x86_64-pc-windows-msvc --bundles nsis -- --locked
 
       - name: Upload native symbols to Sentry
         if: ${{ env.SENTRY_UPLOAD_ENABLED == 'true' }}
