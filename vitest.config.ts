@@ -17,7 +17,7 @@ export default defineConfig({
     silent: true, // 降低日志噪音与内存占用，避免大规模 console 输出导致 runner 不稳定
     // Node 22 + threads(tinypool) 偶发 "Channel closed" 崩溃 → 用 forks 池规避。
     // 每个 fork 允许 4GB 堆；限制 worker 数量，降低同一 runner 上多个 jsdom
-    // 进程同时把内存推过上限。CI 另外使用 8 路 shard，缩短普通分片生命周期。
+    // 进程同时把内存推过上限。CI 另外使用 32 路 shard，缩短普通分片生命周期。
     pool: "forks",
     maxWorkers: 2,
     minWorkers: 1,

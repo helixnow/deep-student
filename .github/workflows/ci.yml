@@ -116,17 +116,51 @@ jobs:
   # CI 完全没有前端测试信号。维护者转入兼职模式后，这是外部贡献者 PR
   # 的第一道回归防线。
   #
-  # forks 池限制为每个 runner 最多 2 个 worker；8 路分片缩短普通分片的
+  # forks 池限制为每个 runner 最多 2 个 worker；32 路分片缩短普通分片的
   # jsdom/module 生命周期，降低单个 runner 触及 4GB V8 堆上限的概率。
   # ============================================
   frontend-tests:
-    name: Frontend Tests (Vitest ${{ matrix.shard }}/8)
+    name: Frontend Tests (Vitest ${{ matrix.shard }}/32)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard:
+          [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+          ]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -141,7 +175,7 @@ jobs:
         run: node scripts/generate-version.mjs
 
       - name: Run vitest shard
-        run: npx vitest run --shard=${{ matrix.shard }}/8 --maxWorkers=2
+        run: npx vitest run --shard=${{ matrix.shard }}/32 --maxWorkers=2
 
   # ============================================
   # 后端静态检查（fmt + clippy）
