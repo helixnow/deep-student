@@ -711,10 +711,15 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     { id: 'rules', icon: Gear, label: t('extraction_rules'), selected: editorTab === 'rules' },
     { id: 'advanced', icon: Gear, label: t('advanced_settings'), selected: editorTab === 'advanced' },
   ];
+  const templateSidebarRowClassName = (isSelected = false) => cn(
+    'desktop-shell-nav-row',
+    isSelected && 'desktop-shell-nav-row--active',
+  );
 
   // ===== 桌面壳侧栏（legacy shell portal 专用） =====
   const shellSidebarContent = (
     <UnifiedSidebar
+      className="wb-tm-sidebar"
       searchQuery={searchTerm}
       onSearchQueryChange={setSearchTerm}
       displayMode="panel"
@@ -742,20 +747,21 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       <UnifiedSidebarContent>
         {/* 编辑模式下显示返回按钮 */}
         {isEditingMode && (
-          <div className="px-1 py-2">
+          <div className="wb-tm-sidebar-group">
             <UnifiedSidebarItem
               id="back-to-browse"
               isSelected={false}
               onClick={handleCancelEdit}
               icon={ArrowLeft}
               title={t('back_to_browse')}
+              className={templateSidebarRowClassName()}
             />
           </div>
         )}
 
         {/* 浏览模式下显示主导航项 */}
         {activeTab === 'browse' && (
-          <div className="px-1 py-2">
+          <div className="wb-tm-sidebar-group">
             <UnifiedSidebarItem
               id="browse"
               isSelected={activeTab === 'browse'}
@@ -763,14 +769,15 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
               icon={BookOpen}
               title={t('tab_browse')}
               description={t('total_templates', { count: filteredTemplates.length })}
+              className={templateSidebarRowClassName(activeTab === 'browse')}
             />
           </div>
         )}
 
         {/* 编辑器导航 - 编辑/创建模式时显示 */}
         {isEditingMode && (
-          <div className="px-2 py-1">
-            <div className="text-xs text-muted-foreground px-2 py-1 font-semibold">
+          <div className="wb-tm-sidebar-group">
+            <div className="wb-tm-sidebar-section-label">
               {activeTab === 'create' ? t('tab_create') : t('tab_edit')}: {editingTemplate?.name}
             </div>
             {editorNavItems.map(({ id, icon, label, selected }) => (
@@ -781,6 +788,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                 onClick={() => setEditorTab(id)}
                 icon={icon}
                 title={label}
+                className={templateSidebarRowClassName(selected)}
               />
             ))}
           </div>
@@ -788,8 +796,8 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
 
         {/* 导入导出操作 - 仅浏览模式显示 */}
         {!isSelectingMode && activeTab === 'browse' && (
-          <div className="px-2 py-1">
-            <div className="text-xs text-muted-foreground px-2 py-1 font-semibold">
+          <div className="wb-tm-sidebar-group">
+            <div className="wb-tm-sidebar-section-label">
               {t('import_section')}
             </div>
             <UnifiedSidebarItem
@@ -797,18 +805,21 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
               onClick={handleImportBuiltinTemplates}
               icon={Download}
               title={isImporting ? t('importing') : t('import_builtin_templates')}
+              className={templateSidebarRowClassName()}
             />
             <UnifiedSidebarItem
               id="import-external"
               onClick={handleImportExternalClick}
               icon={Upload}
               title={t('import_external_templates')}
+              className={templateSidebarRowClassName()}
             />
             <UnifiedSidebarItem
               id="export"
               onClick={handleOpenBatchExportPanel}
               icon={Download}
               title={t('export_templates_sidebar')}
+              className={templateSidebarRowClassName()}
             />
           </div>
         )}
@@ -1070,7 +1081,10 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         <CustomScrollArea
           key="browse-view"
           className="wb-tm-view flex-1 min-h-0"
-          viewportClassName={isSmallScreen ? 'py-2 px-0 pb-0' : 'p-4'}
+          viewportClassName={cn(
+            'wb-tm-scroll-viewport',
+            isSmallScreen && 'wb-tm-scroll-viewport-mobile',
+          )}
           trackOffsetRight={isSmallScreen ? 0 : 6}
         >
           {(isSelectingMode || activeTab === 'browse') && browseContent}
