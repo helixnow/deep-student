@@ -40,7 +40,6 @@ import { useAutomationRunNotifications } from '@/features/todo/hooks/useAutomati
 import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
 import { isWindows, isMacOS, isMobilePlatform } from './utils/platform';
-import { isTauriRuntime } from './utils/shared';
 import {
   applySidebarTranslucency,
   clearNativeTitlebarSidebarMaterial,
@@ -868,7 +867,6 @@ function App() {
     typeof window === 'undefined' ? undefined : window.innerWidth
   );
   const [desktopSidebarMotionWidth, setDesktopSidebarMotionWidth] = useState<number | null>(null);
-  const [isDesktopFullscreen, setIsDesktopFullscreen] = useState(false);
   const desktopSidebarPresentationWidth = desktopSidebarMotionWidth ?? shellSidebarWidth;
   const desktopNavigationWidth = workbenchActive
     ? 0
@@ -912,36 +910,6 @@ function App() {
       console.error('Failed to toggle desktop window maximize:', error);
     }
   }, []);
-  useEffect(() => {
-    if (isSmallScreen || !isTauriRuntime) {
-      setIsDesktopFullscreen(false);
-      return;
-    }
-    let cancelled = false;
-    let unlisten: (() => void) | undefined;
-    const appWindow = getCurrentWindow();
-    const refreshFullscreenState = () => {
-      void appWindow.isFullscreen()
-        .then((fullscreen) => {
-          if (!cancelled) setIsDesktopFullscreen(fullscreen);
-        })
-        .catch(() => {
-          if (!cancelled) setIsDesktopFullscreen(false);
-        });
-    };
-    refreshFullscreenState();
-    void appWindow.onResized(refreshFullscreenState).then((dispose) => {
-      if (cancelled) {
-        dispose();
-        return;
-      }
-      unlisten = dispose;
-    }).catch(() => undefined);
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [isSmallScreen]);
   // macOS traffic lights share the native titlebar with the custom shell
   // controls. The horizontal spacer reserves their hit area; adding a second
   // vertical inset would render a duplicate toolbar below the native chrome.
@@ -2230,7 +2198,7 @@ function App() {
       onNewSession={handleCreateChatSession}
       onTitlebarDoubleClick={toggleDesktopWindowMaximize}
       newSessionLabel={desktopHeaderNewSessionTooltipLabel}
-      showNewSession={isDesktopFullscreen}
+      showNewSession={leftPanelCollapsed}
       backTitle={t('common:navigation.back_tooltip', { shortcut: navigationShortcuts.back })}
       backLabel={t('common:navigation.back')}
       forwardTitle={t('common:navigation.forward_tooltip', { shortcut: navigationShortcuts.forward })}

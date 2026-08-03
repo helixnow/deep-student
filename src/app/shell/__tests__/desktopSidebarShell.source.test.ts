@@ -26,6 +26,13 @@ describe('desktop sidebar shell wiring', () => {
     expect(shellCssSource).not.toContain('.desktop-shell-sidebar-collapsed-accessory');
   });
 
+  it('shows the new-session action only when the left sidebar is collapsed', () => {
+    expect(appSource).toContain('<StudyComposeIcon className="h-4 w-4" />');
+    expect(appSource).toContain('showNewSession={leftPanelCollapsed}');
+    expect(appSource).toContain('{showNewSession ? (');
+    expect(appSource).not.toContain('isDesktopFullscreen');
+  });
+
   it('keeps macOS custom chrome in the native titlebar row', () => {
     expect(appSource).toContain('isSmallScreen || isMacOS() ? 0 : topbarTopMargin');
     expect(appSource).toContain('top: `${shellTitlebarTopInset}px`');
