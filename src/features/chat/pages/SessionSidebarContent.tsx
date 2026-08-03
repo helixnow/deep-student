@@ -38,6 +38,7 @@ import { openArchivedSessionsSettings } from '@/utils/pendingSettingsTab';
 import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
 import { compareSessionsForSidebar, isSessionPinned } from '../utils/sessionPin';
 import { getSessionTitleText } from '../utils/sessionTitle';
+import { getSidebarStudyRowClassName } from './sessionSidebarStyles';
 import type { SessionDragState } from './SessionItemRenderer';
 import type { SessionGroup } from '../types/group';
 import type { ChatSession } from '../types/session';
@@ -355,112 +356,100 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     const hasGroupMenu = !!group && editableGroupIds.has(group.id);
 
     return (
-      <section key={id} className="space-y-0.5">
+      <section key={id} className="space-y-1">
         <div className="relative">
-        <div
-          role="button"
-          tabIndex={0}
-          aria-expanded={isExpanded}
-          onClick={() => toggleGroup(id)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              toggleGroup(id);
+          <DsButton
+            variant="ghost"
+            size="sm"
+            type="button"
+            aria-expanded={isExpanded}
+            onClick={() => toggleGroup(id)}
+            className={
+              unified
+                ? mobileDrawerThreadRowClassName(
+                    active,
+                    cn('group gap-2.5', hasGroupMenu ? '!pr-20' : '!pr-12'),
+                  )
+                : getSidebarStudyRowClassName({
+                    variant: 'section',
+                    selected: active,
+                    className: cn(
+                      'appearance-none overflow-hidden whitespace-nowrap text-left text-[16px] font-normal leading-none outline-none focus-visible:ring-2 focus-visible:ring-ring select-none [&_svg]:shrink-0 [&_svg]:text-inherit',
+                      hasGroupMenu ? '!pr-20' : '!pr-12',
+                    ),
+                  })
             }
-          }}
-          className={
-            unified
-              ? mobileDrawerThreadRowClassName(active, cn('group gap-2.5', hasGroupMenu && '!pr-11'))
-              : cn(
-                  'group inline-flex min-h-[2.75rem] w-full min-w-0 shrink-0 cursor-pointer appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-2xl border border-transparent bg-transparent px-2.5 py-1.5 text-left text-[16px] font-normal leading-none outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring select-none [&_svg]:shrink-0 [&_svg]:text-inherit',
-                  active
-                    ? 'bg-[color:var(--interactive-selected)] text-[color:var(--sidebar-foreground)]'
-                    : 'text-[color:var(--sidebar-foreground)] hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--sidebar-foreground)]',
-                  hasGroupMenu && 'pr-11',
-                )
-          }
-        >
-          <span className={unified ? mobileDrawerRowIconWrapClassName : undefined}>
-            <Folder size={18} className={unified ? undefined : 'h-[18px] w-[18px] shrink-0 text-[color:var(--sidebar-foreground)]'} />
-          </span>
-          <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-            <span className={unified ? mobileDrawerRowTitleClassName : 'truncate'}>{label}</span>
-            <span className="flex items-center gap-1.5 text-[color:var(--sidebar-muted)]">
-              {/* 按钮用伪元素扩大命中区，创建会话入口保持常显 */}
-              <span className="flex items-center">
-                <DsButton
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  // 命中区扩到 44px 高；右侧只外扩 4px，避免盖住折叠箭头区域造成误触
-                  className="relative !h-5 !w-5 !p-0 after:absolute after:-inset-y-3 after:-left-3 after:-right-1 after:content-['']"
-                  aria-label={createSessionLabel}
-                  title={createSessionLabel}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleCreateSessionInFolder(id);
-                  }}
-                >
-                  <Plus size={12} />
-                </DsButton>
-              </span>
-              <CaretRight
-                size={12}
-                className={cn(
-                  'pointer-events-none shrink-0 transition-transform duration-150 ease-[var(--dropdown-ease)] motion-reduce:transition-none',
-                  isExpanded && 'rotate-90'
-                )}
-              />
+          >
+            <span className={unified ? mobileDrawerRowIconWrapClassName : undefined}>
+              <Folder size={18} className={unified ? undefined : 'h-[18px] w-[18px] shrink-0 text-[color:var(--sidebar-foreground)]'} />
             </span>
-          </span>
-        </div>
-        {hasGroupMenu && group && (
-          <div className="absolute right-0.5 top-1/2 -translate-y-1/2 flex items-center">
-            <AppMenu>
-              <AppMenuTrigger asChild>
-                <DsButton
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  className="!h-11 !w-11"
-                  aria-label={t('page.groupActions')}
-                  title={t('page.groupActions')}
-                >
-                  <DotsThree size={18} className="text-muted-foreground/80" />
-                </DsButton>
-              </AppMenuTrigger>
-              <AppMenuContent align="end" width={200}>
-                <AppMenuGroup>
-                  <AppMenuItem
-                    icon={<Plus size={16} />}
-                    onClick={() => handleCreateSessionInFolder(group.id)}
+            <span className={unified ? mobileDrawerRowTitleClassName : 'truncate'}>{label}</span>
+            <CaretRight
+              size={14}
+              className={cn(
+                'ml-auto shrink-0 text-[color:var(--sidebar-muted)] transition-transform duration-150 ease-[var(--dropdown-ease)] motion-reduce:transition-none',
+                isExpanded && 'rotate-90'
+              )}
+            />
+          </DsButton>
+          <div className="absolute right-0.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className="!h-10 !w-10 !p-0 text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
+              aria-label={createSessionLabel}
+              title={createSessionLabel}
+              onClick={() => handleCreateSessionInFolder(id)}
+            >
+              <Plus size={15} />
+            </DsButton>
+            {hasGroupMenu && group && (
+              <AppMenu>
+                <AppMenuTrigger asChild>
+                  <DsButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    className="!h-10 !w-10 !p-0 text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
+                    aria-label={t('page.groupActions')}
+                    title={t('page.groupActions')}
                   >
-                    {t('page.newSession')}
-                  </AppMenuItem>
-                  <AppMenuItem
-                    icon={<PencilSimple size={16} />}
-                    onClick={() => onRenameGroup(group)}
-                  >
-                    {t('page.renameGroup')}
-                  </AppMenuItem>
-                  <AppMenuItem
-                    icon={<Gear size={16} />}
-                    onClick={() => onEditGroup(group)}
-                  >
-                    {t('page.editGroup')}
-                  </AppMenuItem>
-                  <AppMenuSeparator />
-                  <AppMenuItem
-                    icon={<Archive size={16} />}
-                    onClick={() => requestArchiveConfirm(group.id)}
-                  >
-                    {t('page.archiveGroup')}
-                  </AppMenuItem>
-                </AppMenuGroup>
-              </AppMenuContent>
-            </AppMenu>
+                    <DotsThree size={18} className="text-muted-foreground/80" />
+                  </DsButton>
+                </AppMenuTrigger>
+                <AppMenuContent align="end" width={200}>
+                  <AppMenuGroup>
+                    <AppMenuItem
+                      icon={<Plus size={16} />}
+                      onClick={() => handleCreateSessionInFolder(group.id)}
+                    >
+                      {t('page.newSession')}
+                    </AppMenuItem>
+                    <AppMenuItem
+                      icon={<PencilSimple size={16} />}
+                      onClick={() => onRenameGroup(group)}
+                    >
+                      {t('page.renameGroup')}
+                    </AppMenuItem>
+                    <AppMenuItem
+                      icon={<Gear size={16} />}
+                      onClick={() => onEditGroup(group)}
+                    >
+                      {t('page.editGroup')}
+                    </AppMenuItem>
+                    <AppMenuSeparator />
+                    <AppMenuItem
+                      icon={<Archive size={16} />}
+                      onClick={() => requestArchiveConfirm(group.id)}
+                    >
+                      {t('page.archiveGroup')}
+                    </AppMenuItem>
+                  </AppMenuGroup>
+                </AppMenuContent>
+              </AppMenu>
+            )}
           </div>
-        )}
         </div>
 
         {/* 分组归档行内确认条（替代模态确认框） */}
@@ -571,7 +560,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     }
 
     return (
-      <div className={cn('space-y-3', unified ? 'pb-0' : 'pb-2 pt-1')}>
+      <div className={cn('space-y-2.5', unified ? 'pb-0' : 'pb-2 pt-1')}>
         {pinnedSessions.length > 0 && (
           <section className="space-y-0.5">
             <div className="space-y-0.5" role="list" aria-label={t('page.pinnedSessions')}>
@@ -595,8 +584,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           </section>
         ))}
 
-        <section className="space-y-0.5" aria-label={t('page.studySessions')}>
-          <div className="flex items-center justify-between gap-2 pr-0.5">
+        <section className="space-y-1" aria-label={t('page.studySessions')}>
+          <div className={cn('flex items-center justify-between gap-2', unified ? 'rounded-xl px-1' : 'pr-0.5')}>
             <div className="min-w-0 flex-1">
               {renderSectionLabel(t('page.studySessions'), unified)}
             </div>
@@ -607,12 +596,12 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               onClick={onCreateGroup}
               aria-label={t('page.createGroup')}
               title={t('page.createGroup')}
-              className="!h-11 !w-11 -my-2.5 shrink-0 text-muted-foreground/80"
+              className="!h-10 !w-10 -my-2 shrink-0 text-muted-foreground/80"
             >
               <Plus size={15} />
             </DsButton>
           </div>
-          <div className="space-y-0.5">
+          <div className="space-y-1">
             {visibleGroups.length > 0 ? (
               visibleGroups.map((group) =>
                 renderFolderRow(
@@ -679,7 +668,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             className={
               unified
                 ? mobileDrawerThreadRowClassName(false, 'group gap-2.5 text-muted-foreground')
-                : 'group inline-flex min-h-[2rem] w-full min-w-0 shrink-0 appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-2xl border border-transparent bg-transparent px-2.5 py-1 text-left text-ui font-normal leading-none text-[color:var(--sidebar-muted)] outline-none transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--sidebar-foreground)] focus-visible:ring-2 focus-visible:ring-ring select-none'
+                : 'group inline-flex min-h-[2.75rem] w-full min-w-0 shrink-0 appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-xl border border-transparent bg-transparent px-2.5 py-1.5 text-ui font-normal leading-none text-[color:var(--sidebar-muted)] outline-none transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--sidebar-foreground)] focus-visible:ring-2 focus-visible:ring-ring select-none'
             }
           >
             <span className={unified ? mobileDrawerRowIconWrapClassName : undefined}>
@@ -713,7 +702,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         placeholder={t('page.searchPlaceholder')}
         aria-label={t('page.searchPlaceholder')}
         className={cn(
-          'h-[54px] min-h-0 w-full rounded-[18px] border border-border/90 bg-muted/50 pl-11 pr-10 text-[16px] shadow-none',
+          'h-11 min-h-0 w-full rounded-xl border border-border/80 bg-muted/50 pl-11 pr-10 text-[16px] shadow-none',
           // 📱 coarse 指针下 16px 防 iOS 聚焦自动放大
           '[@media(pointer:coarse)]:text-[16px]',
           'text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted)]',
@@ -725,7 +714,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           variant="ghost"
           size="icon"
           iconOnly
-          className="absolute right-5 top-1/2 !h-7 !w-7 -translate-y-1/2 after:absolute after:-inset-2.5 after:content-['']"
+          className="absolute right-4 top-1/2 !h-8 !w-8 -translate-y-1/2"
           aria-label={t('page.clearSearch')}
           onClick={() => handleSearchChange('')}
         >
@@ -738,7 +727,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   const renderUnifiedMobileSidebarHeader = React.useCallback(() => (
     <div
       data-mobile-sidebar-fixed-region="top"
-      className="bg-[color:var(--shell-navigation-surface)] pb-3 pt-3"
+      className="border-b border-[color:var(--shell-navigation-border)] bg-[color:var(--shell-navigation-surface)] pb-4 pt-2"
     >
       <header className="flex h-11 items-center justify-between gap-3 px-3">
         <div className="flex min-w-0 items-center gap-3">
@@ -748,22 +737,24 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           variant="ghost"
           size="icon"
           iconOnly
-          className="shell-icon-button !h-11 !w-11 !rounded-full shrink-0 text-muted-foreground"
+          className="shell-icon-button !h-10 !w-10 !rounded-full shrink-0 text-muted-foreground"
           onClick={() => setSessionSheetOpen(false)}
           aria-label={t('common:close')}
         >
           <X size={24} weight="regular" />
         </DsButton>
       </header>
-      <div className="px-3 pt-1">
+      <div className="px-3 pt-2">
         <DsButton
-          variant="outline"
+          variant="ghost"
           size="lg"
-          className="h-[54px] w-full justify-between gap-3 rounded-[18px] border-border/90 bg-background text-[20px] font-semibold shadow-none hover:bg-muted/50"
+          className="h-12 w-full justify-start gap-3 rounded-xl border border-[color:var(--shell-navigation-border)] bg-[color:var(--interactive-selected)] px-3 text-[16px] font-medium shadow-none hover:bg-[color:var(--interactive-hover)]"
           onClick={handleCreateSession}
         >
-          <span className="flex min-w-0 items-center gap-3">
-            <Plus size={22} weight="regular" />
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-background/70 text-[color:var(--shell-navigation-foreground)]">
+            <Plus size={17} weight="regular" />
+          </span>
+          <span className="min-w-0 truncate">
             <span className="truncate">{t('page.newChat')}</span>
           </span>
         </DsButton>
@@ -775,7 +766,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     const shouldShowSearch = !unified || sessions.length >= 6 || searchQuery.length > 0;
     const shouldRenderUnifiedHeader = unified && includeUnifiedHeader;
     const body = (
-      <div className={cn('space-y-3 pb-1', unified ? (shouldRenderUnifiedHeader ? 'pt-0' : 'pt-3') : 'pt-1')}>
+      <div className={cn('space-y-2.5 pb-1', unified ? (shouldRenderUnifiedHeader ? 'pt-2' : 'pt-3') : 'pt-1')}>
         {shouldRenderUnifiedHeader ? renderUnifiedMobileSidebarHeader() : null}
         {!unified ? (
           <nav aria-label={t('page.primaryNavigation')} className="space-y-0.5">
@@ -786,11 +777,11 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         {!isInitialLoading && shouldShowSearch && renderSearchInput()}
         {renderStudySidebarContent(unified)}
         {unified && (
-          <div className="px-1 pt-1">
+          <div className="mt-2 border-t border-[color:var(--shell-navigation-border)] px-1 pt-3">
             <DsButton
               variant="ghost"
               size="sm"
-              className="w-full justify-start gap-2.5 px-2.5 text-[color:var(--sidebar-muted)]"
+              className="min-h-11 w-full justify-start gap-2.5 rounded-xl px-2.5 text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
               onClick={handleOpenBrowser}
             >
               <SquaresFour size={17} />

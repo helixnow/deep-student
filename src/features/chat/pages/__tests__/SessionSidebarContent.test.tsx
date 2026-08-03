@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 
 import { useSessionSidebarContent } from '../SessionSidebarContent';
 import type { ChatSession } from '../../types/session';
@@ -187,6 +187,14 @@ describe('useSessionSidebarContent', () => {
     render(<SidebarHarness />);
 
     expect(screen.getByRole('searchbox', { name: '搜索会话...' })).toBeInTheDocument();
+  });
+
+  it('keeps folder expansion separate from folder actions', () => {
+    render(<SidebarHarness unifiedMobileDrawer />);
+
+    const folderToggle = screen.getByRole('button', { name: '四级备考待办' });
+    expect(folderToggle.tagName).toBe('BUTTON');
+    expect(within(folderToggle).queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('keeps the topics section visible even when there are no topic groups yet', () => {
