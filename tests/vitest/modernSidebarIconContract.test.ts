@@ -13,7 +13,7 @@ describe('modern sidebar icon contract', () => {
     expect(sidebarSource).not.toContain("strokeWidth={currentView === 'settings' ? 2.3 : 2}");
   });
 
-  it('keeps the conversation-section create action visible with the writing icon', () => {
+  it('reveals the conversation-section create action on section hover with the writing icon', () => {
     const conversationSectionAction = sidebarSource.match(
       /const conversationHeaderAction = \([\s\S]*?<section className="space-y-0\.5 pt-1">/
     )?.[0] ?? '';

@@ -1527,7 +1527,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const conversationHeaderAction = (
     <span
       data-sidebar-section-action="create-conversation"
-      className="relative z-10 ml-auto flex shrink-0 items-center gap-1 text-[color:var(--shell-navigation-foreground)]"
+      className="relative z-10 ml-auto flex shrink-0 items-center gap-1 text-[color:var(--shell-navigation-foreground)] opacity-0 transition-opacity duration-150 group-hover/sidebar-top-section:opacity-100 group-focus-within/sidebar-top-section:opacity-100 motion-reduce:transition-none"
     >
       <CommonTooltip content={newConversationLabel} position="right" shortcut={formatShortcut('mod+n')}>
         <DsButton
