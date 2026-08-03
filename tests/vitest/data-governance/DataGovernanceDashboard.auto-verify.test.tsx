@@ -15,7 +15,7 @@
  */
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 // ============================================================================
 // Mocks
@@ -481,7 +481,10 @@ describe('BackupTab legacy incremental restore rejection', () => {
       screen.getByText('data:governance.incremental_legacy_unsupported'),
     ).toBeInTheDocument();
 
-    const restoreButtons = screen.getAllByTitle('data:governance.restore');
+    const backupTable = screen.getByRole('table');
+    const restoreButtons = within(backupTable).getAllByRole('button', {
+      name: 'data:governance.restore',
+    });
     expect(restoreButtons.length).toBeGreaterThanOrEqual(2);
 
     // sampleBackups[1] is incremental

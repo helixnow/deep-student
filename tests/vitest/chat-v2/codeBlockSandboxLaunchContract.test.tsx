@@ -13,7 +13,7 @@ describe('CodeBlock sandbox launch', () => {
   it('shows Open in Sandbox for html code blocks and launches workbench', () => {
     render(<CodeBlock className="language-html">{'<div>hello</div>'}</CodeBlock>);
 
-    fireEvent.click(screen.getByText(/Open in Sandbox/i));
+    fireEvent.click(screen.getByText(/Open in Sandbox|在沙箱中打开/i));
 
     expect(launchSandboxWorkbench).toHaveBeenCalledTimes(1);
   });

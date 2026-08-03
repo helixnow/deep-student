@@ -134,7 +134,7 @@ describe('InputBarUI attachment preview chips', () => {
 
     renderInputBar({ attachments, onRemoveAttachment });
 
-    fireEvent.click(screen.getByRole('button', { name: 'analysis:input_bar.attachments.remove 族谱纵向图谱.html' }));
+    fireEvent.click(screen.getByRole('button', { name: /(?:移除|remove).*族谱纵向图谱\.html/i }));
 
     expect(onRemoveAttachment).toHaveBeenCalledWith('att_html');
   });
@@ -159,7 +159,7 @@ describe('InputBarUI attachment preview chips', () => {
     const chipButton = chipItem.querySelector('.attachment-preview-chip');
     expect(chipButton).not.toHaveClass('pr-8');
     expect(chipButton).toHaveClass('pr-3');
-    expect(screen.getByRole('button', { name: 'analysis:input_bar.attachments.remove 1AI_图像 (1).psd' })).toHaveClass(
+    expect(screen.getByRole('button', { name: /(?:移除|remove).*1AI_图像 \(1\)\.psd/i })).toHaveClass(
       'absolute',
       'inset-0',
       'opacity-0',
@@ -184,7 +184,7 @@ describe('InputBarUI attachment preview chips', () => {
 
     // P0-3: 触屏没有 hover，删除按钮常显 + 伪元素扩大命中区（≥44px）
     // ★ L5 修复后：命中区只向左/上/下外扩，不向右压住文件名（点 chip 开预览）区域
-    expect(screen.getByRole('button', { name: 'analysis:input_bar.attachments.remove touch.png' })).toHaveClass(
+    expect(screen.getByRole('button', { name: /(?:移除|remove).*touch\.png/i })).toHaveClass(
       '[@media(pointer:coarse)]:opacity-100',
       '[@media(pointer:coarse)]:after:absolute',
       '[@media(pointer:coarse)]:after:-left-3',

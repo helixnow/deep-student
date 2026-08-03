@@ -24,9 +24,16 @@ vi.mock('react-i18next', () => ({
       defaultValueOrOptions?: Record<string, unknown> | string,
       maybeOptions?: Record<string, unknown>
     ) => {
-      if (_key === 'settings:api.modal.reasoning.effort.high') {
-        return '高';
-      }
+      const translations: Record<string, string> = {
+        'settings:api.modal.reasoning.effort.high': '高',
+        'chatV2:inputBar.chooseRuntimeModel': '选择模型',
+        'chatV2:inputBar.runtimeModelSwitchCurrent': '{{label}}，当前：{{current}}',
+        'chatV2:modelPicker.searchPlaceholder': '搜索名称或模型 ID...',
+        'chatV2:inputBar.runtimeModelCompareMode': '进入多选模式',
+        'chatV2:inputBar.thinkingOn': '开启',
+        'chatV2:inputBar.thinkingOff': '关闭',
+        'chatV2:inputBar.thinkingUnsupportedDescription': '该模型不支持推理',
+      };
       const defaultValue =
         typeof defaultValueOrOptions === 'string'
           ? defaultValueOrOptions
@@ -37,7 +44,7 @@ vi.mock('react-i18next', () => ({
         (typeof defaultValueOrOptions === 'object' && defaultValueOrOptions !== null
           ? defaultValueOrOptions
           : maybeOptions) ?? {};
-      const template = defaultValue ?? _key;
+      const template = translations[_key] ?? defaultValue ?? _key;
       return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
         options[name] !== undefined ? String(options[name]) : match
       );

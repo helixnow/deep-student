@@ -1669,39 +1669,72 @@ mod tests {
         let mut coordinator = create_test_coordinator(&temp_dir);
 
         let chat_db_path = get_database_path(&temp_dir, &DatabaseId::ChatV2);
+        let vfs_db_path = get_database_path(&temp_dir, &DatabaseId::Vfs);
+        let llm_db_path = get_database_path(&temp_dir, &DatabaseId::LlmUsage);
+        let vfs_db_path_for_release = vfs_db_path.clone();
         let lock_conn = Connection::open(&chat_db_path).expect("Failed to create lock db");
         lock_conn
-            .execute_batch("BEGIN EXCLUSIVE;")
-            .expect("Failed to acquire exclusive lock");
+            .execute_batch("BEGIN IMMEDIATE;")
+            .expect("Failed to acquire write lock");
+        let release_lock = std::thread::spawn(move || {
+            let latest_version = |path: &std::path::Path| -> Option<u32> {
+                let conn = Connection::open(path).ok()?;
+                conn.query_row(
+                    "SELECT MAX(version) FROM refinery_schema_history",
+                    [],
+                    |row| row.get::<_, Option<u32>>(0),
+                )
+                .ok()
+                .flatten()
+            };
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+            while std::time::Instant::now() < deadline {
+                if latest_version(&vfs_db_path_for_release)
+                    == Some(expected_latest_version(&DatabaseId::Vfs))
+                    && latest_version(&llm_db_path)
+                        == Some(expected_latest_version(&DatabaseId::LlmUsage))
+                {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            // The migration path waits about 10 seconds for SQLite's busy
+            // timeout. Start this delay only after the databases ordered before
+            // chat_v2 have finished, so parallel test load cannot release the
+            // lock before the chat_v2 migration actually attempts its write.
+            std::thread::sleep(std::time::Duration::from_secs(12));
+            lock_conn
+                .execute_batch("ROLLBACK;")
+                .expect("Failed to release write lock");
+        });
 
-        let first_err = coordinator
+        let first_report = coordinator
             .run_all()
-            .expect_err("run_all should fail while chat_v2 is locked");
-        let err_msg = format!("{:?}", first_err);
+            .expect("run_all should return a component-level failure report");
+        release_lock.join().expect("lock release thread panicked");
+        assert!(
+            !first_report.success,
+            "run_all should report failure while chat_v2 is locked"
+        );
+        let err_msg = first_report.error.as_deref().unwrap_or_default();
         assert!(
             err_msg.contains("locked") || err_msg.contains("busy"),
             "Expected lock/busy error, got: {}",
             err_msg
         );
 
-        // 2026-06：run_all 引入"任一库失败 → 所有核心库从迁移前快照恢复"的
-        // 全库一致性回滚语义。chat_v2 锁失败后，已迁移完成的 VFS 也会被
-        // 回滚到迁移前状态（本测试中为全新空库 v0），而非保留已迁移版本。
-        let vfs_db_path = get_database_path(&temp_dir, &DatabaseId::Vfs);
+        // 当前 run_all 使用组件级故障隔离：chat_v2 被锁时，已经完成且不依赖
+        // chat_v2 的 VFS 保持健康，不再做全库回滚。
         let vfs_conn = Connection::open(&vfs_db_path).expect("Failed to open vfs db");
         let vfs_version = coordinator
             .get_current_version(&vfs_conn)
             .expect("Failed to read VFS version");
         assert_eq!(
-            vfs_version, 0,
-            "VFS should be rolled back to pre-migration snapshot after chat_v2 failure (all-or-nothing recovery)"
+            vfs_version,
+            expected_latest_version(&DatabaseId::Vfs),
+            "VFS should remain healthy after an isolated chat_v2 lock failure"
         );
         drop(vfs_conn);
-
-        lock_conn
-            .execute_batch("ROLLBACK;")
-            .expect("Failed to release exclusive lock");
-        drop(lock_conn);
 
         let retry = coordinator
             .run_all()

@@ -661,9 +661,15 @@ mod tests {
             .expected_columns
             .contains(&("custom_anki_templates", "user_deleted")));
 
+        let anki_dedup = MISTAKES_MIGRATIONS
+            .get(20260724)
+            .expect("V20260724 should exist");
+        assert_eq!(anki_dedup.name, "anki_dedup_index_exclude_deleted");
+        assert!(anki_dedup.idempotent);
+
         assert_eq!(
             MISTAKES_MIGRATIONS.latest_version(),
-            20260723,
+            20260724,
             "Latest version should track the newest published mistakes migration"
         );
     }

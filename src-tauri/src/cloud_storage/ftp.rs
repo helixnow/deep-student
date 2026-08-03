@@ -231,6 +231,7 @@ impl FtpStorage {
     fn is_not_found_error(error: &AppError) -> bool {
         let err = error.to_string().to_lowercase();
         (err.contains("501") && err.contains("no such directory"))
+            || (err.contains("550") && err.contains("not retrievable"))
             || err.contains("not found")
             || err.contains("no such file")
             || err.contains("no such directory")
@@ -1075,6 +1076,15 @@ mod tests {
             storage.remote_path("objects/basic/hello.txt"),
             "deep-student-sync/objects/basic/hello.txt"
         );
+    }
+
+    #[test]
+    fn test_pyftpdlib_not_retrievable_is_not_found() {
+        let error = AppError::file_system(
+            "FTP SIZE 失败：Invalid response: [550] 550 /missing/file.txt is not retrievable.",
+        );
+
+        assert!(FtpStorage::is_not_found_error(&error));
     }
 
     #[test]

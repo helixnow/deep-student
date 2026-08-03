@@ -64,19 +64,21 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
 
   it("never persists FTP passwords in the safe localStorage config", () => {
     expect(cloudStorageSection).toContain(
-      "ftpPassword: ftpConfig.password || undefined",
+      "ftpPassword:",
     );
     expect(cloudStorageSection).toContain(
-      "ftp: config.ftp ? { ...config.ftp, password: '' } : undefined",
+      "provider === 'ftp' && ftpConfig.password.trim()",
     );
-    expect(cloudStorageSection).toContain(
-      "ftp: oldConfig.ftp ? { ...oldConfig.ftp, password: '' } : undefined",
+    expect(cloudStorageApi).toContain(
+      "export function toSafeCloudStorageConfig",
     );
+    const safeFtpCaseStart = cloudStorageApi.indexOf("case 'ftp': {");
+    const safeFtpCaseEnd = cloudStorageApi.indexOf("\n    }", safeFtpCaseStart);
+    const safeFtpCase = cloudStorageApi.slice(safeFtpCaseStart, safeFtpCaseEnd);
+    expect(safeFtpCase).toContain("username: config.ftp.username");
+    expect(safeFtpCase).not.toContain("password:");
     expect(cloudStorageSection).toContain(
-      "leakedCredentials.ftpPassword = config.ftp.password",
-    );
-    expect(cloudStorageSection).toContain(
-      "credentials.ftpPassword = oldConfig.ftp.password",
+      "localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(saved.config))",
     );
   });
 
@@ -101,19 +103,21 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
   // [P0-3A] 2026-06-12 更新：前端不再回填明文凭据，敏感字段一律传空占位，
   // 由后端 hydrate_cloud_config 从系统安全存储补全（明文不过 IPC）。
   it("sends empty FTP password placeholders instead of hydrating plaintext in the frontend", () => {
-    const ftpBranchStart = cloudStorageApi.indexOf(
-      "if (safe.provider === 'ftp')",
+    const fromSafeStart = cloudStorageApi.indexOf(
+      "export function fromSafeCloudStorageConfig",
     );
-    const ftpBranchEnd = cloudStorageApi.indexOf(
-      "  return {\n    ...safe,\n    s3:",
-      ftpBranchStart,
+    const fromSafeEnd = cloudStorageApi.indexOf(
+      "export function toRuntimeCloudStorageConfig",
+      fromSafeStart,
     );
-    const ftpBranch = cloudStorageApi.slice(ftpBranchStart, ftpBranchEnd);
+    const fromSafeBlock = cloudStorageApi.slice(fromSafeStart, fromSafeEnd);
 
-    expect(ftpBranchStart).toBeGreaterThan(-1);
-    expect(ftpBranch).toContain("password: ''");
-    expect(ftpBranch).not.toContain("safe.ftp.password");
-    expect(ftpBranch).not.toContain("ftpPassword");
+    expect(fromSafeStart).toBeGreaterThan(-1);
+    expect(fromSafeBlock).toContain("ftp: { ...config.ftp, password: '' }");
+    expect(fromSafeBlock).not.toContain("config.ftp.password");
+    expect(cloudStorageApi).toContain(
+      "fromSafeCloudStorageConfig(toSafeCloudStorageConfig(config))",
+    );
   });
 
   it("keeps FTP hidden for new configs unless the experimental flag or existing config is present", () => {

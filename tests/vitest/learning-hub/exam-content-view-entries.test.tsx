@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockGetExamSheetSessionDetail, mockResumeQuestionImport, mockInvoke } = vi.hoisted(() => ({
@@ -257,12 +257,13 @@ describe('ExamContentView secondary entry points', () => {
 
     await openSecondaryMenuItem([/管理/i, /manage/i, /learningHub:exam\.tab\.manage/i]);
 
+    const manageView = await screen.findByTestId('question-bank-manage-view');
     await waitFor(() => {
-      expect(screen.getByTitle(/CSV 导入|import/i)).toBeInTheDocument();
-      expect(screen.getByTitle(/导出|export/i)).toBeInTheDocument();
+      expect(within(manageView).getByTitle(/CSV 导入|import/i)).toBeInTheDocument();
+      expect(within(manageView).getByTitle(/导出|export/i)).toBeInTheDocument();
     }, { timeout: 5000 });
 
-    fireEvent.click(screen.getByTitle(/CSV 导入|import/i));
+    fireEvent.click(within(manageView).getByTitle(/CSV 导入|import/i));
     // CSV 导入已改为内嵌面板视图（不再弹出模态框），管理视图随之卸载
     await waitFor(() => {
       expect(screen.getByTestId('csv-import-panel')).toBeInTheDocument();
@@ -270,7 +271,8 @@ describe('ExamContentView secondary entry points', () => {
 
     // 导出对话框仍挂载在背景层，先从内嵌 CSV 视图返回管理视图
     await openSecondaryMenuItem([/管理/i, /manage/i, /learningHub:exam\.tab\.manage/i]);
-    fireEvent.click(screen.getByTitle(/导出|export/i));
+    const restoredManageView = await screen.findByTestId('question-bank-manage-view');
+    fireEvent.click(within(restoredManageView).getByTitle(/导出|export/i));
     await waitFor(() => {
       expect(screen.getByTestId('question-bank-export-dialog')).toBeInTheDocument();
     }, { timeout: 5000 });

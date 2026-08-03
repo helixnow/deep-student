@@ -125,6 +125,7 @@ function createMockStore(): ChatStore {
     setDeleteCallback: vi.fn(),
     setEditAndResendCallback: vi.fn(),
     setSendCallback: vi.fn(),
+    setWakeSessionCallback: vi.fn(),
     setAbortCallback: vi.fn(),
     setContinueMessageCallback: vi.fn(),
     continueMessage: vi.fn().mockResolvedValue(undefined),
@@ -149,6 +150,20 @@ function createMockStore(): ChatStore {
     setModelRetryTarget: vi.fn(),
     setSkillStateJson: vi.fn(),
   } as unknown as ChatStore;
+}
+
+const registeredTestSkillIds = new Set<string>();
+
+function registerTestSkill(id: string): void {
+  skillRegistry.register({
+    id,
+    name: id,
+    description: `Test skill ${id}`,
+    location: 'builtin',
+    sourcePath: `builtin://${id}`,
+    content: `Instructions for ${id}`,
+  });
+  registeredTestSkillIds.add(id);
 }
 
 // ============================================================================
@@ -181,6 +196,10 @@ describe('ChatV2TauriAdapter', () => {
     clearSessionSkills('test-session-id');
     clearModelsCache();
     groupCache.clear();
+    for (const skillId of registeredTestSkillIds) {
+      skillRegistry.unregister(skillId);
+    }
+    registeredTestSkillIds.clear();
     delete (window as any).__TAURI_INTERNALS__;
     delete (window as any).__TAURI_IPC__;
   });
@@ -638,6 +657,7 @@ describe('ChatV2TauriAdapter', () => {
 
     it('should prefer structured skill state over local cache', async () => {
       await adapter.setup();
+      registerTestSkill('manual-skill');
 
       (mockStore as any).skillStateJson = JSON.stringify({
         manualPinnedSkillIds: ['manual-skill'],
@@ -1085,6 +1105,9 @@ describe('ChatV2TauriAdapter', () => {
       const fullResponse = { ...tailResponse, totalMessageCount: undefined };
       let loadCalls = 0;
       vi.mocked(invoke).mockImplementation(async (command) => {
+        if (command === 'chat_v2_load_messages_page') {
+          throw new Error('paged history unavailable');
+        }
         if (command === 'chat_v2_load_session') {
           loadCalls += 1;
           return loadCalls === 1 ? tailResponse : fullResponse;
@@ -1127,6 +1150,9 @@ describe('ChatV2TauriAdapter', () => {
       const fullResponse = { ...tailResponse, totalMessageCount: undefined };
       let loadCalls = 0;
       vi.mocked(invoke).mockImplementation(async (command) => {
+        if (command === 'chat_v2_load_messages_page') {
+          throw new Error('paged history unavailable');
+        }
         if (command !== 'chat_v2_load_session') return undefined;
         loadCalls += 1;
         if (loadCalls === 1) return tailResponse;
@@ -1247,6 +1273,7 @@ describe('ChatV2TauriAdapter', () => {
 
     it('should restore original replay runtime from variant snapshot first', async () => {
       await adapter.setup();
+      registerTestSkill('variant-skill');
 
       (mockStore.messageMap as Map<string, unknown>).set('msg-replay-1', {
         id: 'msg-replay-1',
@@ -1295,6 +1322,7 @@ describe('ChatV2TauriAdapter', () => {
 
     it('should leave caller skillAllowedTools untouched when replaying runtime snapshot (policy is backend-only)', async () => {
       await adapter.setup();
+      registerTestSkill('instruction-only-skill');
 
       (mockStore.messageMap as Map<string, unknown>).set('msg-replay-empty-policy', {
         id: 'msg-replay-empty-policy',
@@ -1355,6 +1383,7 @@ describe('ChatV2TauriAdapter', () => {
 
     it('should not invent an empty skillAllowedTools policy from legacy replay skill snapshot', async () => {
       await adapter.setup();
+      registerTestSkill('legacy-skill');
 
       (mockStore.messageMap as Map<string, unknown>).set('msg-replay-legacy-policy', {
         id: 'msg-replay-legacy-policy',
@@ -1420,6 +1449,7 @@ describe('ChatV2TauriAdapter', () => {
 
     it('should restore original skill environment for continue(original)', async () => {
       await adapter.setup();
+      registerTestSkill('original-skill');
 
       (adapter as any).ensureModelMetadataReady = vi.fn().mockResolvedValue(undefined);
       (adapter as any).buildSendOptions = vi.fn(() => ({
@@ -1458,6 +1488,7 @@ describe('ChatV2TauriAdapter', () => {
 
     it('should use variant snapshot for retryVariant(original)', async () => {
       await adapter.setup();
+      registerTestSkill('variant-skill');
 
       (adapter as any).ensureModelMetadataReady = vi.fn().mockResolvedValue(undefined);
       (adapter as any).buildSendOptions = vi.fn(() => ({

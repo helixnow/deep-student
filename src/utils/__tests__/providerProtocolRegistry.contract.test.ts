@@ -85,12 +85,16 @@ describe('providerProtocolRegistry contract', () => {
       expect(record?.allowed_protocols, providerType).toContain('openai_responses');
     }
 
-    // 2026-07 新增条目。
-    for (const providerType of ['grok', 'xai', 'ernie', 'mistral']) {
+    // Grok/xAI 已迁移到官方主推的 Responses；其余新增条目保持 Chat Completions。
+    for (const providerType of ['grok', 'xai']) {
+      expect(byType.get(providerType), providerType).toBeDefined();
+      expect(byType.get(providerType)?.default_protocol, providerType).toBe('openai_responses');
+    }
+    for (const providerType of ['ernie', 'mistral']) {
       expect(byType.get(providerType), providerType).toBeDefined();
       expect(byType.get(providerType)?.default_protocol, providerType).toBe('openai_chat_completions');
     }
 
-    expect(registry.updated_at).toBe('2026-07-08');
+    expect(registry.updated_at).toBe('2026-07-20');
   });
 });

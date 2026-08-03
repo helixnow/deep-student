@@ -61,13 +61,16 @@ describe('providerProtocolRegistry', () => {
     ).toBe('openai_chat_completions');
   });
 
-  it('registers the 2026 provider additions with chat-completions defaults', () => {
+  it('registers the 2026 provider additions with current protocol defaults', () => {
     for (const provider of ['grok', 'xai', 'ernie', 'mistral']) {
       const record = getProviderProtocolRecord(provider);
       expect(record, `${provider} should exist in registry`).toBeDefined();
-      expect(record?.default_protocol).toBe('openai_chat_completions');
       expect(record?.allowed_protocols).not.toContain('anthropic_messages');
     }
+    expect(getProviderProtocolRecord('grok')?.default_protocol).toBe('openai_responses');
+    expect(getProviderProtocolRecord('xai')?.default_protocol).toBe('openai_responses');
+    expect(getProviderProtocolRecord('ernie')?.default_protocol).toBe('openai_chat_completions');
+    expect(getProviderProtocolRecord('mistral')?.default_protocol).toBe('openai_chat_completions');
     expect(getProviderProtocolRecord('grok')?.supports_openai_responses).toBe(true);
     expect(getProviderProtocolRecord('xai')?.supports_openai_responses).toBe(true);
     expect(getProviderProtocolRecord('ernie')?.supports_openai_responses).toBe(true);

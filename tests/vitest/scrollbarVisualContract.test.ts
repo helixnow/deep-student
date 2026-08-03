@@ -263,7 +263,7 @@ describe('unified scroll primitive contract', () => {
   it('keeps wrapper props and flex height constraints aligned', () => {
     expect(scrollAreaSource).toContain('"relative min-h-0 min-w-0"');
     expect(customScrollAreaSource).toContain(
-      '"h-full min-h-0 w-full min-w-0"',
+      '"h-full max-h-[inherit] min-h-0 w-full min-w-0"',
     );
     expect(customScrollAreaSource).toContain('nativeScrollbars={nativeScrollbars}');
     expect(shadScrollAreaSource).toContain('viewportRef={viewportRef}');
@@ -285,7 +285,7 @@ describe('repository-wide scrollbar integration contract', () => {
     expect(legacyAliases).toEqual([]);
     expect(
       scrollbarSourceEntries.find(({ file }) => file === 'shared/styles/scrollbar-utils.css')?.source,
-    ).toContain('.scrollbar-none .os-scrollbar {');
+    ).toContain('.scrollbar-none [class~="os-scrollbar"] {');
   });
 
   it('does not introduce feature-private visible scrollbar recipes', () => {
@@ -326,9 +326,9 @@ describe('repository-wide scrollbar integration contract', () => {
     expect(batchToolbarSource).toContain('viewportRef={listContainerRef}');
     expect(batchToolbarSource).toContain('getScrollElement: () => listContainerRef.current');
 
-    expect(virtualQuestionListSource).toContain('ref={parentRef}');
+    expect(virtualQuestionListSource).toContain('viewportRef={parentRef}');
     expect(virtualQuestionListSource).toContain('getScrollElement: () => parentRef.current');
-    expect(virtualQuestionListSource).toContain("cn('overflow-auto', className)");
+    expect(virtualQuestionListSource).toContain('className={className}');
   });
 
   it('keeps flex scroll hosts shrinkable and print content unclipped', () => {

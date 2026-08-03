@@ -84,6 +84,7 @@ function createStreamingStore() {
     setDeleteCallback: vi.fn(),
     setEditAndResendCallback: vi.fn(),
     setSendCallback: vi.fn(),
+    setWakeSessionCallback: vi.fn(),
     setAbortCallback: vi.fn(),
     setContinueMessageCallback: vi.fn(),
     setLoadCallback: vi.fn(),

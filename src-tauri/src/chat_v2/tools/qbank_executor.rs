@@ -5289,7 +5289,7 @@ mod occ_contract_tests {
         // numeric：answer_value 必填且 tolerance_mode 枚举受限
         assert!(validate_structured_data(
             &RepoQuestionType::Numeric,
-            &json!({"answer_value": 3.14, "tolerance": 0.01, "unit": "m", "tolerance_mode": "absolute"}),
+            &json!({"answer_value": 3.125, "tolerance": 0.01, "unit": "m", "tolerance_mode": "absolute"}),
         )
         .is_ok());
         assert!(validate_structured_data(

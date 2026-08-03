@@ -646,13 +646,13 @@ describe('Store Actions', () => {
     it('setPanelState should update panel state', () => {
       const state = getState();
 
-      expect(getState().panelStates.rag).toBe(false);
+      expect(getState().panelStates.attachment).toBe(false);
 
-      state.setPanelState('rag', true);
-      expect(getState().panelStates.rag).toBe(true);
+      state.setPanelState('attachment', true);
+      expect(getState().panelStates.attachment).toBe(true);
 
-      state.setPanelState('rag', false);
-      expect(getState().panelStates.rag).toBe(false);
+      state.setPanelState('attachment', false);
+      expect(getState().panelStates.attachment).toBe(false);
     });
 
     it('setPanelState should keep composer panels mutually exclusive when opening', () => {

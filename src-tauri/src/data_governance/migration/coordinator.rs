@@ -3080,10 +3080,12 @@ END;",
         // --- V20260207: active_skill_ids_json ---
         {
             const TARGET_VERSION: i32 = 20260207;
+            const PREVIOUS_VERSION: u32 = 20260204;
             const TARGET_COLUMN: &str = "active_skill_ids_json";
             const TARGET_TABLE: &str = "chat_v2_session_state";
 
             if self.table_exists(conn, TARGET_TABLE)?
+                && self.get_current_version(conn)? >= PREVIOUS_VERSION
                 && !self.is_migration_recorded(conn, TARGET_VERSION)?
             {
                 // 旧库兼容：主动补齐列（幂等），然后标记迁移完成
@@ -3106,10 +3108,12 @@ END;",
         // --- V20260221: 分组关联来源（pinned_resource_ids_json） ---
         {
             const TARGET_VERSION: i32 = 20260221;
+            const PREVIOUS_VERSION: u32 = 20260207;
             const TARGET_COLUMN: &str = "pinned_resource_ids_json";
             const TARGET_TABLE: &str = "chat_v2_session_groups";
 
             if self.table_exists(conn, TARGET_TABLE)?
+                && self.get_current_version(conn)? >= PREVIOUS_VERSION
                 && !self.is_migration_recorded(conn, TARGET_VERSION)?
             {
                 let _ = self.add_column_if_missing(
@@ -3131,18 +3135,15 @@ END;",
         // --- V20260306: skill_state_json ---
         {
             const TARGET_VERSION: i32 = 20260306;
+            const PREVIOUS_VERSION: u32 = 20260302;
             const TARGET_COLUMN: &str = "skill_state_json";
             const TARGET_TABLE: &str = "chat_v2_session_state";
 
             if self.table_exists(conn, TARGET_TABLE)?
+                && self.get_current_version(conn)? >= PREVIOUS_VERSION
                 && !self.is_migration_recorded(conn, TARGET_VERSION)?
             {
-                let _ = self.add_column_if_missing(
-                    conn,
-                    TARGET_TABLE,
-                    TARGET_COLUMN,
-                    "TEXT DEFAULT NULL",
-                )?;
+                let _ = self.add_column_if_missing(conn, TARGET_TABLE, TARGET_COLUMN, "TEXT")?;
                 let _ = conn
                     .execute(
                         r#"
@@ -3181,9 +3182,11 @@ END;",
         // --- V20260717: 课题首选 runtime root ---
         {
             const TARGET_VERSION: i32 = 20260717;
+            const PREVIOUS_VERSION: u32 = 20260711;
             const TARGET_TABLE: &str = "chat_v2_session_groups";
 
             if self.table_exists(conn, TARGET_TABLE)?
+                && self.get_current_version(conn)? >= PREVIOUS_VERSION
                 && !self.is_migration_recorded(conn, TARGET_VERSION)?
             {
                 let _ = self.add_column_if_missing(
@@ -3228,11 +3231,15 @@ END;",
         runner: &refinery::Runner,
     ) -> Result<(), MigrationError> {
         const VERSION: i32 = 20260201;
+        const PREVIOUS_VERSION: u32 = 20260131;
 
         if !self.table_exists(conn, "chat_v2_sessions")? {
             return Ok(());
         }
         if self.is_migration_recorded(conn, VERSION)? {
+            return Ok(());
+        }
+        if self.get_current_version(conn)? < PREVIOUS_VERSION {
             return Ok(());
         }
 
@@ -3312,11 +3319,15 @@ END;",
         runner: &refinery::Runner,
     ) -> Result<(), MigrationError> {
         const VERSION: i32 = 20260204;
+        const PREVIOUS_VERSION: u32 = 20260203;
 
         if !self.table_exists(conn, "chat_v2_sessions")? {
             return Ok(());
         }
         if self.is_migration_recorded(conn, VERSION)? {
+            return Ok(());
+        }
+        if self.get_current_version(conn)? < PREVIOUS_VERSION {
             return Ok(());
         }
 
@@ -3342,9 +3353,7 @@ END;",
                 sort_order INTEGER DEFAULT 0,
                 persist_status TEXT DEFAULT 'active',
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                default_runtime_root_id TEXT,
-                preferred_project_root_path TEXT
+                updated_at TEXT NOT NULL
             );",
         )
         .map_err(|e| {
@@ -3382,7 +3391,9 @@ END;",
         runner: &refinery::Runner,
     ) -> Result<(), MigrationError> {
         const SYNC_VERSION: i32 = 20260201;
+        const SYNC_PREVIOUS_VERSION: u32 = 20260131;
         const PREVIEW_VERSION: i32 = 20260207;
+        const PREVIEW_PREVIOUS_VERSION: u32 = 20260201;
         const PREVIEW_COLUMN: &str = "preview_data_json";
         const PREVIEW_TABLE: &str = "custom_anki_templates";
 
@@ -3412,7 +3423,7 @@ END;",
             )?;
         }
 
-        if has_mistakes {
+        if has_mistakes && self.get_current_version(conn)? >= SYNC_PREVIOUS_VERSION {
             // 对旧库提前补齐 V20260201 同步字段与索引，避免后续迁移因重复列或缺列失败。
             self.apply_mistakes_sync_fields_compat(conn)?;
             if !self.is_migration_recorded(conn, SYNC_VERSION)? {
@@ -3427,7 +3438,10 @@ END;",
 
         // 处理 V20260207 重复列问题（仅 legacy 路径）。
         // 新库不应提前写入高版本迁移记录，否则会跳过 init 迁移。
-        if has_mistakes && self.table_exists(conn, PREVIEW_TABLE)? {
+        if has_mistakes
+            && self.get_current_version(conn)? >= PREVIEW_PREVIOUS_VERSION
+            && self.table_exists(conn, PREVIEW_TABLE)?
+        {
             let _ = self.add_column_if_missing(conn, PREVIEW_TABLE, PREVIEW_COLUMN, "TEXT")?;
 
             if !self.is_migration_recorded(conn, PREVIEW_VERSION)?
@@ -7820,6 +7834,15 @@ mod tests {
             second_latest_version(&LLM_USAGE_MIGRATION_SET),
         );
         let db_path = coordinator.get_database_path(&DatabaseId::LlmUsage);
+        // This test isolates filesystem permission recovery. WAL recovery and
+        // stale-sidecar cleanup are covered separately by the snapshot tests.
+        {
+            let conn = rusqlite::Connection::open(&db_path).unwrap();
+            let mode: String = conn
+                .query_row("PRAGMA journal_mode=DELETE", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(mode.to_ascii_lowercase(), "delete");
+        }
 
         std::fs::set_permissions(&db_path, std::fs::Permissions::from_mode(0o444)).unwrap();
         let result = coordinator.migrate_single(DatabaseId::LlmUsage);
@@ -7882,6 +7905,9 @@ mod tests {
         let restored = coordinator.restore_from_latest_core_backup().unwrap();
         assert_eq!(restored, 4, "四个核心库都应恢复");
 
+        assert!(!wal_residual.exists(), "残留 WAL 必须被清理");
+        assert!(!shm_residual.exists(), "残留 SHM 必须被清理");
+
         let conn = rusqlite::Connection::open(&chat_path).unwrap();
         let tampered_count: i64 = conn
             .query_row(
@@ -7903,9 +7929,6 @@ mod tests {
             .query_row("PRAGMA quick_check", [], |row| row.get(0))
             .unwrap();
         assert_eq!(integrity, "ok");
-
-        assert!(!wal_residual.exists(), "残留 WAL 必须被清理");
-        assert!(!shm_residual.exists(), "残留 SHM 必须被清理");
     }
 
     #[test]

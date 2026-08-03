@@ -65,6 +65,32 @@ vi.mock('@/features/chat/skills/progressiveDisclosure', () => ({
   unloadSkill: vi.fn(),
 }));
 
+vi.mock('@/features/chat/skills/runtimeAdmission', () => ({
+  getSkillRuntimeAdmissionWithDependencies: (skill: { id: string }) => {
+    if (skill.id === 'external-skill') {
+      return {
+        allowed: false,
+        code: 'untrusted',
+        params: { skillId: skill.id },
+        message: 'untrusted',
+      };
+    }
+    if (skill.id === 'parent-missing') {
+      return {
+        allowed: false,
+        code: 'dependency_unavailable',
+        params: {
+          skillId: skill.id,
+          dependencyId: 'missing-dependency',
+          reason: 'missing',
+        },
+        message: 'missing dependency',
+      };
+    }
+    return { allowed: true };
+  },
+}));
+
 function createHarness(initialState: Partial<ChatStoreState> = {}) {
   let state = {
     sessionId: 'sess-skill-actions',

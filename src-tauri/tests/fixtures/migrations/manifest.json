@@ -79,12 +79,10 @@
       "source_release": "near-HEAD 2026-07 schema epoch with corrupted refinery bookkeeping",
       "schema_tuple": { "vfs": 20260720, "chat_v2": 20260717, "mistakes": 20260720, "llm_usage": 20260524 },
       "tags": ["recent_epoch", "pathological_history", "malformed_history_rows", "checksum_drift", "orphan_intermediate_table", "fts_ghost_and_missing_entries", "pomodoro_updated_at_backfill"],
-      "expected_semantics": "A near-current database with corrupted migration bookkeeping (version=0/empty-checksum rows, checksum drift on recorded versions, orphan sessions_new table) self-heals: malformed rows purged, checksums repaired, orphan table dropped, remaining newest migrations applied. Pomodoro updated_at backfill only touches NULL rows; the chat FTS rebuild fixes ghost/missing entries; automation_definitions gains trusted_profile_json.",
+      "expected_semantics": "A near-current database with malformed migration bookkeeping (version=0/empty-checksum rows and an orphan sessions_new table) self-heals: malformed rows are purged, the orphan table is dropped, and remaining newest migrations are applied. Unknown checksum drift is intentionally covered by a separate fail-close test rather than silently repaired. Pomodoro updated_at backfill only touches NULL rows; the chat FTS rebuild fixes ghost/missing entries; automation_definitions gains trusted_profile_json.",
       "history_ops": [
         { "database": "chat_v2", "op": "insert_malformed_history_rows" },
-        { "database": "chat_v2", "op": "corrupt_checksum", "version": 20260717 },
-        { "database": "chat_v2", "op": "create_orphan_intermediate_table", "table": "sessions_new" },
-        { "database": "vfs", "op": "corrupt_checksum", "version": 20260720 }
+        { "database": "chat_v2", "op": "create_orphan_intermediate_table", "table": "sessions_new" }
       ],
       "allowed_extra_tables": {},
       "seeds": {
