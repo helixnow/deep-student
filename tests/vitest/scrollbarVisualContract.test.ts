@@ -215,7 +215,16 @@ describe('unified scroll primitive contract', () => {
     expect(scrollAreaSource).toContain('ref={setOverlayViewportRef}');
     expect(scrollAreaSource).toContain('theme,');
     expect(scrollAreaSource).toContain('dragScroll: true');
-    expect(scrollAreaSource).toContain('clickScroll: true');
+    // macOS 原生滚动条无点击轨道跳转；Windows/Linux 惯例保留。
+    expect(scrollAreaSource).toMatch(/clickScroll: platform\.isMac \? false : true/);
+    expect(scrollAreaSource).toContain('data-scroll-axes={orientation}');
+    // 垂直专用容器不生成底部幽灵横向条；水平专用容器反之。
+    expect(nativeScrollbarSource).toMatch(
+      /data-scroll-axes=\"vertical\"[\s\S]*os-scrollbar-horizontal[\s\S]*display: none !important/,
+    );
+    expect(nativeScrollbarSource).toMatch(
+      /data-scroll-axes=\"horizontal\"[\s\S]*os-scrollbar-vertical[\s\S]*display: none !important/,
+    );
     expect(scrollAreaSource).toContain('flowDirectionStyles: (viewport) =>');
     expect(scrollAreaSource).toContain('direction === "rtl" ? { direction } : {}');
     expect(scrollAreaSource).toContain('refreshScrollTimelineHandleGeometry');
@@ -235,6 +244,7 @@ describe('unified scroll primitive contract', () => {
 
   it('keeps iOS on the native momentum-scrolling fallback', () => {
     expect(scrollPlatformSource).toContain('preferNativeScrollbars: isIOS');
+    expect(scrollPlatformSource).toMatch(/readonly isMac: boolean;/);
     expect(scrollAreaSource).toContain(
       'const useNative = nativeScrollbars ?? platform.preferNativeScrollbars;',
     );

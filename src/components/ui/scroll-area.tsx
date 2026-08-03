@@ -199,7 +199,10 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
           autoHideDelay: scrollHideDelay,
           autoHideSuspend: scrollAutoHideSuspend,
           dragScroll: true,
-          clickScroll: true,
+          // 点击轨道跳转遵循平台惯例：macOS 原生滚动条无此行为，点击轨道
+          // 不应跳转（聊天右缘是高频点击区，误触会意外跳走）；
+          // Windows/Linux 惯例是点击跳转，保持开启。
+          clickScroll: platform.isMac ? false : true,
         },
         overflow: { x: overflowX, y: overflowY },
       },
@@ -207,16 +210,16 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
         initialized: (instance) => {
           const elements = instance.elements();
           refreshScrollTimelineHandleGeometry([
-            elements.scrollbarHorizontal.handle,
+            elements.scrollbarHorizontal?.handle,
             elements.scrollbarVertical.handle,
-          ]);
+          ].filter((h): h is HTMLElement => Boolean(h)));
         },
         updated: (instance) => {
           const elements = instance.elements();
           refreshScrollTimelineHandleGeometry([
-            elements.scrollbarHorizontal.handle,
+            elements.scrollbarHorizontal?.handle,
             elements.scrollbarVertical.handle,
-          ]);
+          ].filter((h): h is HTMLElement => Boolean(h)));
         },
       },
     });
@@ -243,9 +246,9 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
       instance.update(true);
       const elements = instance.elements();
       refreshScrollTimelineHandleGeometry([
-        elements.scrollbarHorizontal.handle,
+        elements.scrollbarHorizontal?.handle,
         elements.scrollbarVertical.handle,
-      ]);
+      ].filter((h): h is HTMLElement => Boolean(h)));
     }, [
       getOverlayInstance,
       trackOffset?.bottom,
@@ -293,6 +296,7 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
         ref={setOverlayTargetRef}
         data-slot={dataSlot}
         data-orientation={orientation}
+        data-scroll-axes={orientation}
         data-native-scrollbars="false"
         data-overlayscrollbars-initialize=""
         data-scroll-track-top={trackOffset?.top !== undefined ? "" : undefined}

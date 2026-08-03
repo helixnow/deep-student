@@ -115,6 +115,28 @@
 }
 
 /* Per-surface track insets supplied by the unified ScrollArea wrapper. */
+/* ---------------------------------------------------------------- */
+/* Vertical-only surfaces (chat streams, lists, panels): the library
+ * always creates BOTH scrollbars even when one axis is overflow-hidden.
+ * The phantom horizontal bar would occupy the bottom 10px strip of the
+ * surface; remove it and keep the vertical track full-height.            */
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-scroll-axes="vertical"]
+  > .os-scrollbar-horizontal {
+  display: none !important;
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-scroll-axes="vertical"]
+  > .os-scrollbar-vertical {
+  top: 0;
+  bottom: 0;
+}
+
+/* Horizontal-only surfaces: drop the vertical phantom bar. */
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-scroll-axes="horizontal"]
+  > .os-scrollbar-vertical {
+  display: none !important;
+}
+
 [data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-top]
   > .os-scrollbar-vertical {
   top: var(--scroll-area-track-top);
