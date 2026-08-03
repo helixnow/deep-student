@@ -1337,18 +1337,20 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   }, [areAllTopicGroupsExpanded, topicSessionGroups]);
 
   const renderRecentGroupIcon = useCallback((group: RecentSessionGroup) => {
+    const iconColorClass = '!text-[color:var(--shell-navigation-foreground)]';
+
     if (!group.icon) {
-      return <Folder className="size-[16px]" strokeWidth={2} />;
+      return <Folder className={`size-[16px] ${iconColorClass}`} strokeWidth={2} />;
     }
 
     const PresetIcon = RECENT_GROUP_PRESET_ICONS[group.icon];
     if (PresetIcon) {
       const Icon = PresetIcon;
-      return <Icon className="size-[16px]" strokeWidth={2} />;
+      return <Icon className={`size-[16px] ${iconColorClass}`} strokeWidth={2} />;
     }
 
     return (
-      <span aria-hidden="true" className="text-sm leading-none">
+      <span aria-hidden="true" className={`text-sm leading-none ${iconColorClass}`}>
         {group.icon}
       </span>
     );

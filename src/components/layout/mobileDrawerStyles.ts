@@ -27,4 +27,4 @@ export function mobileDrawerThreadRowClassName(isActive?: boolean, className?: s
 export const mobileDrawerRowTitleClassName = 'desktop-shell-sidebar-row-title min-w-0 flex-1 truncate';
 
 export const mobileDrawerRowIconWrapClassName =
-  'flex w-[18px] shrink-0 items-center justify-center text-[color:inherit] [&_svg]:size-[18px]';
+  'flex w-[18px] shrink-0 items-center justify-center text-[color:var(--shell-navigation-foreground)] [&_svg]:size-[18px]';

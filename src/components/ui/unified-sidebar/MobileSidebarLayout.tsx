@@ -199,8 +199,7 @@ export const MobileSidebarItem: React.FC<MobileSidebarItemProps> = ({
       {/* 图标 */}
       {icon && (
         <span className={cn(
-          'flex items-center justify-center w-5 h-5 shrink-0',
-          selected ? 'text-foreground' : 'text-muted-foreground'
+          'flex items-center justify-center w-5 h-5 shrink-0 text-[color:inherit]'
         )}>
           {icon}
         </span>

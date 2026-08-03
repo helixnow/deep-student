@@ -88,7 +88,7 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
           onContextMenu={onHeaderContextMenu}
         >
           <div className="flex items-center gap-2">
-            {Icon && <Icon className="w-4 h-4 text-muted-foreground" />}
+            {Icon && <Icon className="w-4 h-4 text-foreground/90" />}
             <span className={cn('font-normal text-foreground/90', isMobileMode ? 'text-sm' : 'text-[13px]')}>
               {title}
             </span>
@@ -135,7 +135,7 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
         onClick={() => collapsible && setIsOpen(!isOpen)}
       >
         <div className="flex items-center gap-2">
-          {Icon && <Icon className="w-3 h-3 text-muted-foreground" />}
+          {Icon && <Icon className="w-3 h-3 text-muted-foreground/60" />}
           <span
             className={cn(
               'font-normal text-muted-foreground/60',

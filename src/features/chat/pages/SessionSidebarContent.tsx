@@ -320,12 +320,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         <Icon
           size={18}
           weight="regular"
-          className={unified ? undefined : cn(
-            'h-[18px] w-[18px] shrink-0',
-            active
-              ? 'text-[color:var(--sidebar-foreground)]'
-              : 'text-[color:var(--sidebar-muted)] group-hover:text-[color:var(--sidebar-foreground)]',
-          )}
+          className={unified ? undefined : 'h-[18px] w-[18px] shrink-0 text-[color:var(--sidebar-foreground)]'}
         />
       </span>
       <span className={unified ? mobileDrawerRowTitleClassName : 'min-w-0 flex-1 truncate'}>{label}</span>
@@ -386,7 +381,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           }
         >
           <span className={unified ? mobileDrawerRowIconWrapClassName : undefined}>
-            <Folder size={18} className={unified ? undefined : 'h-[18px] w-[18px] shrink-0 text-[color:var(--sidebar-muted)] group-hover:text-[color:var(--sidebar-foreground)]'} />
+            <Folder size={18} className={unified ? undefined : 'h-[18px] w-[18px] shrink-0 text-[color:var(--sidebar-foreground)]'} />
           </span>
           <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
             <span className={unified ? mobileDrawerRowTitleClassName : 'truncate'}>{label}</span>

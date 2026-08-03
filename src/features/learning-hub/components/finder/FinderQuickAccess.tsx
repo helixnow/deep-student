@@ -144,7 +144,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
       <Icon className={cn(
         'h-[18px] w-[18px] shrink-0',
         !fillContainer && 'transition-transform duration-150',
-        iconColor || 'text-muted-foreground',
+        iconColor || 'text-[color:var(--shell-navigation-foreground)]',
         !fillContainer && isActive && 'scale-105',
         !fillContainer && !isActive && 'group-hover:scale-105'
       )} />

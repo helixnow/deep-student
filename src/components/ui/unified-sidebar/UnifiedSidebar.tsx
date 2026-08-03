@@ -581,7 +581,7 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
           className={cn(
             'flex-shrink-0 transition-colors',
             styles.item.iconSize,
-            isSelected ? 'text-foreground' : 'text-muted-foreground'
+            'text-[color:inherit]'
           )}
 />
       );

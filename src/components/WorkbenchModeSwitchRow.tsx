@@ -67,7 +67,7 @@ export const WorkbenchModeSwitchRow: React.FC = () => {
       )}
     >
       <span className="flex min-w-0 flex-1 items-center gap-2.5">
-        <span className="flex w-4 shrink-0 items-center justify-center text-[color:inherit]">
+        <span className="flex w-4 shrink-0 items-center justify-center text-[color:var(--shell-navigation-foreground)]">
           <Desktop size={18} aria-hidden />
         </span>
         <span className="min-w-0 flex-1">

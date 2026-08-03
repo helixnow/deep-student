@@ -29,11 +29,28 @@ describe('modern sidebar icon contract', () => {
     expect(conversationSectionAction).toContain('active:bg-transparent');
     expect(conversationSectionAction).toContain('!rounded-none');
     expect(conversationSectionAction).not.toContain('title={newConversationLabel}');
-    expect(conversationSectionAction).not.toContain('opacity-0');
-    expect(conversationSectionAction).not.toContain('group-hover/sidebar-top-section:opacity-100');
-    expect(conversationSectionAction).not.toContain('group-focus-within/sidebar-top-section:opacity-100');
+    expect(conversationSectionAction).toContain('opacity-0');
+    expect(conversationSectionAction).toContain('group-hover/sidebar-top-section:opacity-100');
+    expect(conversationSectionAction).toContain('group-focus-within/sidebar-top-section:opacity-100');
+    expect(conversationSectionAction).toContain('motion-reduce:transition-none');
     expect(conversationSectionAction).not.toContain('<Plus className="w-3.5 h-3.5" />');
     expect(conversationSectionAction).not.toContain('<Folder className="size-[16px]" strokeWidth={2} />');
+  });
+
+  it('keeps shared sidebar leading icons aligned with their labels', () => {
+    const mobileDrawerStylesSource = readFileSync(resolve(process.cwd(), 'src/components/layout/mobileDrawerStyles.ts'), 'utf-8');
+    const sessionSidebarSource = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/SessionSidebarContent.tsx'), 'utf-8');
+    const unifiedSidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ui/unified-sidebar/UnifiedSidebar.tsx'), 'utf-8');
+    const unifiedSidebarSectionSource = readFileSync(resolve(process.cwd(), 'src/components/ui/unified-sidebar/UnifiedSidebarSection.tsx'), 'utf-8');
+    const finderSource = readFileSync(resolve(process.cwd(), 'src/features/learning-hub/components/finder/FinderQuickAccess.tsx'), 'utf-8');
+
+    expect(workbenchSidebarSource).toContain('text-[color:var(--shell-navigation-foreground)]">{leftSlot}</span>');
+    expect(mobileDrawerStylesSource).toContain('text-[color:var(--shell-navigation-foreground)] [&_svg]:size-[18px]');
+    expect(sessionSidebarSource).toContain("text-[color:var(--sidebar-foreground)]'}");
+    expect(unifiedSidebarSource).toContain("'text-[color:inherit]'");
+    expect(unifiedSidebarSectionSource).toContain('text-foreground/90');
+    expect(unifiedSidebarSectionSource).toContain('text-muted-foreground/60');
+    expect(finderSource).toContain("iconColor || 'text-[color:var(--shell-navigation-foreground)]'");
   });
 
   it('routes topic header actions through CommonTooltip instead of native title tooltips', () => {

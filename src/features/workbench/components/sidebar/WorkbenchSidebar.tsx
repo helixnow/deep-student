@@ -100,7 +100,7 @@ export function WorkbenchSidebarRow({
     >
       <span className="flex min-w-0 flex-1 items-center gap-2.5">
         {!hideLeadingSlot && (
-          <span className="flex w-4 shrink-0 items-center justify-center text-[color:inherit]">{leftSlot}</span>
+          <span className="flex w-4 shrink-0 items-center justify-center text-[color:var(--shell-navigation-foreground)]">{leftSlot}</span>
         )}
         <span className="min-w-0 flex-1">{children}</span>
         <span className="flex min-w-[24px] shrink-0 items-center justify-end gap-0.5">{rightSlot}</span>
