@@ -237,7 +237,6 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
         >
             <SettingRow
               title={t('settings:language.title')}
-              description={t('common:status.current') + ': ' + (i18n.language === 'zh-CN' ? t('settings:language.chinese') : t('settings:language.english', 'English'))}
               className="items-center"
             >
               <SegmentedControl

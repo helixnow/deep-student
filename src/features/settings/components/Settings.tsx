@@ -1207,76 +1207,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     config.webSearchBochaKey, config.webSearchSearxngEndpoint, config.webSearchGoogleCx,
   ]);
 
-  if (loading) {
-    if (isSmallScreen) {
-      // 骨架对齐正式布局：全屏 sheet + 搜索框 + 分组单行列表
-      return (
-        <Sheet open={isActive} onOpenChange={(open) => { if (!open) void handleBack(); }}>
-          <SheetContent
-            side="bottom"
-            hideCloseButton
-            overlayClassName="settings-mobile-sheet-overlay"
-            className="settings-mobile-sheet !flex !flex-col !h-[90dvh] !max-h-[90dvh] !w-full !max-w-none !gap-0 !rounded-t-3xl !border-x-0 !border-b-0 !p-0"
-            data-wb-settings-content-ready
-            data-settings-mobile-sheet-level="sections"
-            style={{
-              height: '90dvh',
-              maxHeight: '90dvh',
-              paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
-              '--settings-sheet-drag-offset': `${sheetDragStyle.offset}px`,
-              '--settings-sheet-drag-transition': sheetDragStyle.transition,
-            } as React.CSSProperties}
-          >
-            <SheetTitle className="sr-only">{t('settings:title')}</SheetTitle>
-            <div className="settings-mobile-sheet-top-fade" aria-hidden="true" />
-            <MacTopSafeDragZone className="settings-top-safe-drag-zone" style={SETTINGS_TOP_SAFE_DRAG_ZONE_STYLE} />
-            <header
-              className="settings-mobile-sheet-header"
-              onPointerDown={handleSheetPointerDown}
-              onPointerMove={handleSheetPointerMove}
-              onPointerUp={handleSheetPointerUp}
-              onPointerCancel={handleSheetPointerCancel}
-              onClickCapture={handleSheetClickCapture}
-            >
-              <div className="settings-mobile-sheet-header-action" />
-              <div className="min-w-0 flex-1" />
-              <DsButton
-                variant="ghost"
-                size="icon"
-                iconOnly
-                onClick={() => void handleBack()}
-                aria-label={t('common:actions.close')}
-                className="settings-mobile-sheet-header-action !rounded-full"
-              >
-                <X size={26} weight="regular" />
-              </DsButton>
-            </header>
-            <CustomScrollArea className="settings-mobile-sheet-body min-h-0 flex-1 w-full" viewportClassName="settings-mobile-sheet-scroll-viewport h-full">
-              <div className="space-y-5 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4">
-                <div className="h-11 w-full rounded-[14px] bg-muted animate-pulse" />
-                {sidebarNavGroups.map((group, groupIdx) => (
-                  <div key={groupIdx} className="space-y-2">
-                    <div className="h-4 w-20 rounded bg-muted animate-pulse" />
-                    <div className="overflow-hidden rounded-2xl border border-border/40 bg-background p-1">
-                      {group.map((item) => (
-                        <div key={item.value} className="flex min-h-[72px] items-center gap-3 border-b border-border/30 px-3 last:border-b-0">
-                          <div className="h-6 w-6 rounded-md bg-muted animate-pulse" />
-                          <div className="min-w-0 flex-1 space-y-2">
-                            <div className="h-4 w-28 max-w-[60%] rounded bg-muted animate-pulse" />
-                            <div className="h-3 w-44 max-w-[80%] rounded bg-muted animate-pulse" />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CustomScrollArea>
-          </SheetContent>
-        </Sheet>
-      );
-    }
-
+  if (loading && !isSmallScreen) {
     return (
       <div className="settings absolute inset-0 flex flex-col overflow-hidden bg-[color:var(--shell-workspace-panel)]">
         <div className="flex-1 flex items-center justify-center">
@@ -1312,7 +1243,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       trackOffsetBottom={16}
       trackOffsetRight={0}
     >
-      <div className="desktop-shell-content-enter mx-auto w-full max-w-[40rem] space-y-4 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4 sm:px-5">
+      <div className="desktop-shell-content-enter mx-auto w-full max-w-[40rem] space-y-4 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)] sm:px-5">
         {/* 搜索框 */}
         <div className="relative">
           <MagnifyingGlass
@@ -1545,7 +1476,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           <div
             className={cn(
               mobilePageMode
-                ? 'px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4'
+                ? 'px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)]'
                 : 'px-5 pb-6 pt-4 md:px-5 md:pb-7 md:pt-5 lg:px-8',
               effectiveMobilePanelMode && !mobilePageMode && 'px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]',
             )}
@@ -2050,8 +1981,6 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
             } as React.CSSProperties}
           >
             <SheetTitle className="sr-only">{sheetTitle}</SheetTitle>
-            <div className="settings-mobile-sheet-top-fade" aria-hidden="true" />
-
             <header
               className="settings-mobile-sheet-header"
               onPointerDown={handleSheetPointerDown}
@@ -2060,7 +1989,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               onPointerCancel={handleSheetPointerCancel}
               onClickCapture={handleSheetClickCapture}
             >
-              {isSectionsLevel ? (
+              {loading || isSectionsLevel ? (
                 <>
                   <div className="settings-mobile-sheet-header-action" />
                   <div className="min-w-0 flex-1" />
@@ -2095,7 +2024,34 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               )}
             </header>
 
-            {isSectionsLevel ? (
+            {loading ? (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-foreground" data-settings-mobile-level="loading">
+                <CustomScrollArea
+                  className="settings-mobile-sheet-body min-h-0 flex-1 w-full"
+                  viewportClassName="settings-mobile-sheet-scroll-viewport h-full"
+                >
+                  <div className="space-y-5 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)]">
+                    <div className="h-11 w-full animate-pulse rounded-[14px] bg-muted" />
+                    {sidebarNavGroups.map((group, groupIdx) => (
+                      <div key={groupIdx} className="space-y-2">
+                        <div className="h-4 w-20 animate-pulse rounded bg-muted" />
+                        <div className="overflow-hidden rounded-2xl border border-border/40 bg-background p-1">
+                          {group.map((item) => (
+                            <div key={item.value} className="flex min-h-[72px] items-center gap-3 border-b border-border/30 px-3 last:border-b-0">
+                              <div className="h-6 w-6 animate-pulse rounded-md bg-muted" />
+                              <div className="min-w-0 flex-1 space-y-2">
+                                <div className="h-4 w-28 max-w-[60%] animate-pulse rounded bg-muted" />
+                                <div className="h-3 w-44 max-w-[80%] animate-pulse rounded bg-muted" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CustomScrollArea>
+              </div>
+            ) : isSectionsLevel ? (
               <MobileSlidingLayout
                 sidebar={
                   // 设置分区导航由分组列表首页承载；抽屉只保留统一应用导航，与其他页面同构

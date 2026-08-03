@@ -640,7 +640,7 @@
     "thinking_auto_collapse_description": "思维链输出完成后自动折叠，保持对话界面更简洁。",
     "accent_label": "强调色",
     "accent_hint": "只调整按钮、链接和选中态的颜色。背景、卡片和文本保持稳定。",
-    "system_default": "系统默认",
+    "system_default": "系统",
     "system_default_hint": "匹配系统外观设置",
     "system_status": "当前系统：{{mode}}",
     "modes": {

@@ -19,7 +19,7 @@ const appearanceCopy: Record<string, string> = {
   'settings:theme.sidebar_translucent_title': '侧边栏半透明',
   'settings:theme.modes.light': '亮色',
   'settings:theme.modes.dark': '暗色',
-  'settings:theme.system_default': '系统默认',
+  'settings:theme.system_default': '系统',
 };
 
 vi.mock('react-i18next', () => ({
