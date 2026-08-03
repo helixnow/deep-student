@@ -122,6 +122,11 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Refresh release lock metadata and third-party notices
+        run: |
+          (cd src-tauri && cargo metadata --format-version 1 > /dev/null)
+          npm run licenses:generate
+
       - name: Install Sentry CLI (pinned)
         if: ${{ env.SENTRY_UPLOAD_ENABLED == 'true' }}
         run: npm install --global "@sentry/cli@${SENTRY_CLI_VERSION}"
