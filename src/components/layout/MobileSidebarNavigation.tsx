@@ -196,15 +196,22 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
   return (
     <div
       data-mobile-shell="sidebar-nav"
-      className={cn('mt-3 space-y-0.5 pb-1', className)}
+      className={cn(
+        'mt-4 border-t border-[color:var(--shell-navigation-border)] pt-3 pb-1',
+        className,
+      )}
     >
       <nav aria-label={t('common:navigation_label')} className="space-y-0.5">
-        {commandPalette && renderRow(
-          'command-palette',
-          t('sidebar:navigation.command_palette'),
-          MagnifyingGlass,
-          handleOpenCommandPalette,
-        )}
+        {commandPalette ? (
+          <div className="mb-2">
+            {renderRow(
+              'command-palette',
+              t('sidebar:navigation.command_palette'),
+              MagnifyingGlass,
+              handleOpenCommandPalette,
+            )}
+          </div>
+        ) : null}
         {sections.map(({ id, label, items }) =>
           items.length > 0 ? (
             <div key={id} className="space-y-0.5">

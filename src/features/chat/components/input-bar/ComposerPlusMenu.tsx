@@ -279,6 +279,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                 iconOnly
                 className={cn(
                   iconButtonClass,
+                  isMobile && '!rounded-full',
                   'relative transition-colors disabled:opacity-60',
                   open && 'bg-[color:var(--button-secondary-surface)]',
                 )}

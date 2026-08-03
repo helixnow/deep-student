@@ -6,6 +6,8 @@ export interface ThreadEmptyStateShellProps extends Omit<React.HTMLAttributes<HT
   title: React.ReactNode;
   /** 品牌/图标区，渲染在标题上方（如无会话空态的 Chat 图标） */
   brandIcon?: React.ReactNode;
+  /** 品牌区容器样式覆盖（默认带卡片描边；Boot 风格 logo 可传无边框透明类） */
+  brandIconClassName?: string;
   /** 标题下方的一句描述文案 */
   description?: React.ReactNode;
   /** CTA 区（按钮组），渲染在描述之后 */
@@ -27,6 +29,7 @@ export interface ThreadEmptyStateShellProps extends Omit<React.HTMLAttributes<HT
 export const ThreadEmptyStateShell: React.FC<ThreadEmptyStateShellProps> = ({
   title,
   brandIcon,
+  brandIconClassName,
   description,
   actions,
   hint,
@@ -47,7 +50,10 @@ export const ThreadEmptyStateShell: React.FC<ThreadEmptyStateShellProps> = ({
           <div
             aria-hidden="true"
             data-slot="thread-empty-brand"
-            className="flex h-14 w-14 items-center justify-center rounded-[var(--radius-shell-panel)] border border-border/60 bg-card text-primary shadow-[var(--shadow-shell-soft)]"
+            className={cn(
+              'flex h-14 w-14 items-center justify-center rounded-[var(--radius-shell-panel)] border border-border/60 bg-card text-primary shadow-[var(--shadow-shell-soft)]',
+              brandIconClassName
+            )}
           >
             {brandIcon}
           </div>
