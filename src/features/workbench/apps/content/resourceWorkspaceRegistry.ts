@@ -70,16 +70,14 @@ export function waitForResourceWorkspaceActive(
   if (activeResources.get(type) === resourceId) return Promise.resolve(true);
   return new Promise<boolean>((resolve) => {
     const waiters = activeWaiters.get(type) ?? new Set<ActiveResourceWaiter>();
-    let waiter: ActiveResourceWaiter;
-    const timer = setTimeout(() => {
-      waiters.delete(waiter);
-      if (waiters.size === 0) activeWaiters.delete(type);
-      resolve(false);
-    }, timeoutMs);
-    waiter = {
+    const waiter: ActiveResourceWaiter = {
       resourceId,
       resolve,
-      timer,
+      timer: setTimeout(() => {
+        waiters.delete(waiter);
+        if (waiters.size === 0) activeWaiters.delete(type);
+        resolve(false);
+      }, timeoutMs),
     };
     waiters.add(waiter);
     activeWaiters.set(type, waiters);

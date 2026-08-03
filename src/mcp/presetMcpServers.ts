@@ -332,8 +332,6 @@ export function presetToMcpConfig(
       redirect_uri: 'http://127.0.0.1/auth/callback',
       scopes: [],
     };
-  } else if (preset.requiresApiKey && options?.apiKey) {
-    config.apiKey = options.apiKey;
   }
 
   return config;

@@ -28,7 +28,10 @@ vi.mock('../../../registry/eventRegistry', () => ({
 import { approvalEventHandler } from '../approval';
 
 function createStoreHarness() {
-  let store: ChatStore;
+  const store = {
+    sessionId: 'session-1',
+    pendingBlockingInteraction: null,
+  } as unknown as ChatStore;
   const setPendingApproval = vi.fn((request: Record<string, unknown> | null) => {
     store.pendingBlockingInteraction = request
       ? { kind: 'tool_approval', ...request } as ChatStore['pendingBlockingInteraction']
@@ -37,12 +40,8 @@ function createStoreHarness() {
   const clearPendingApproval = vi.fn(() => {
     store.pendingBlockingInteraction = null;
   });
-  store = {
-    sessionId: 'session-1',
-    pendingBlockingInteraction: null,
-    setPendingApproval,
-    clearPendingApproval,
-  } as unknown as ChatStore;
+  store.setPendingApproval = setPendingApproval;
+  store.clearPendingApproval = clearPendingApproval;
   return { store, setPendingApproval, clearPendingApproval };
 }
 

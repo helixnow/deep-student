@@ -237,7 +237,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       )}
     >
       {/* 双击全屏只挂在 video 上，避免快速双击控制条按钮误触全屏 */}
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption -- 本地文件预览无字幕轨 */}
       <video
         ref={mediaRef}
         src={src}

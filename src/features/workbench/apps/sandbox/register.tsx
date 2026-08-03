@@ -33,7 +33,7 @@ export function handleSandboxActivation(ctx: ActivationContext): ActivationResul
   const current = selectSandboxWorkbenchOwnerState(store, LEGACY_SANDBOX_OWNER_KEY);
   const payload = payloadRecord(ctx.payload);
   switch (ctx.action) {
-    case 'refresh':
+    case 'refresh': {
       if (!current.activeSession) {
         return { handled: false, code: 'INVALID_STATE', hint: 'Sandbox 当前没有活动会话' };
       }
@@ -46,6 +46,7 @@ export function handleSandboxActivation(ctx: ActivationContext): ActivationResul
       return refreshed?.updatedAt !== beforeUpdatedAt
         ? { handled: true, acknowledged: true }
         : unavailable('Sandbox 刷新未产生新的表面版本');
+    }
     case 'setViewport': {
       const viewport = payload.viewport as SandboxViewportPreset;
       if (viewport !== 'desktop' && viewport !== 'tablet' && viewport !== 'mobile') {

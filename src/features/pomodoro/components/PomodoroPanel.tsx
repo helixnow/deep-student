@@ -41,7 +41,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
+import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Slider } from '@/components/ui/shad/Slider';
 import { SnappySlider } from '@/components/ui/SnappySlider';
@@ -1030,8 +1030,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             )}
             <div className="ml-auto flex flex-shrink-0 items-center gap-1.5">
               {pauseLocked && isRunning && !isCountUpWork && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
+                <CommonTooltip content={t('pomodoro.strictHint')} position="top">
                     {/* tap 切换内联说明行（触屏无 hover）；桌面 hover Tooltip 照常 */}
                     <button
                       type="button"
@@ -1041,9 +1040,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                     >
                       {t('pomodoro.strictBadge')}
                     </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">{t('pomodoro.strictHint')}</TooltipContent>
-                </Tooltip>
+                </CommonTooltip>
               )}
               {/* 单一主 CTA：开始/暂停/继续（44px 触控） */}
               {!(pauseLocked && isRunning) && (
@@ -1283,8 +1280,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             </DsButton>
           )}
           {pauseLocked && isRunning && !isCountUpWork && (
-            <Tooltip>
-              <TooltipTrigger asChild>
+            <CommonTooltip content={t('pomodoro.strictHint')} position="top">
                 {/* tap 切换内联说明行（触屏无 hover）；桌面 hover Tooltip 照常 */}
                 <button
                   type="button"
@@ -1294,9 +1290,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                 >
                   {t('pomodoro.strictBadge')}
                 </button>
-              </TooltipTrigger>
-              <TooltipContent side="top">{t('pomodoro.strictHint')}</TooltipContent>
-            </Tooltip>
+            </CommonTooltip>
           )}
 
           {(mode === 'short_break' || mode === 'long_break') && (

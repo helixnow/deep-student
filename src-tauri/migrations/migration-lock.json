@@ -202,6 +202,14 @@
       ]
     },
     {
+      "database": "chat_v2",
+      "version": 20260721,
+      "name": "workspace_deletion_intent_journal",
+      "path": "chat_v2/V20260721__workspace_deletion_intent_journal.sql",
+      "sha256": "508e43bd6fce24220ca286162210902d547aa8e51eade709920677be537b5162",
+      "dangers": []
+    },
+    {
       "database": "llm_usage",
       "version": 20260130,
       "name": "init",
@@ -428,7 +436,9 @@
       "name": "anki_dedup_index_exclude_deleted",
       "path": "mistakes/V20260724__anki_dedup_index_exclude_deleted.sql",
       "sha256": "99bc6dba815dfa36d11a6ebf6e6b453b15f536adb9a257d5f9e265bc4fb03302",
-      "dangers": []
+      "dangers": [
+        "unique_constraint"
+      ]
     },
     {
       "database": "vfs",
@@ -877,6 +887,30 @@
       "name": "todo_pomodoro_stats_indexes",
       "path": "vfs/V20260801__todo_pomodoro_stats_indexes.sql",
       "sha256": "2f1dadfaeae3a3220f129c9319d088cf2915f805e7d54dac3c5153243fc5b8b1",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260806,
+      "name": "mindmap_versions_lookup_index",
+      "path": "vfs/V20260806__mindmap_versions_lookup_index.sql",
+      "sha256": "d9aec2e39df489c6ea33edefcc7f986ca66c2fe21ab8f51beb878242e1e6a1b3",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260807,
+      "name": "question_structured_data",
+      "path": "vfs/V20260807__question_structured_data.sql",
+      "sha256": "81fbf663f3a07ed8e9ac5d6bf5fd3d13ffaf8d329fc46006944677afba9c4581",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260808,
+      "name": "file_deletion_intent_journal",
+      "path": "vfs/V20260808__file_deletion_intent_journal.sql",
+      "sha256": "6f3aed34ac12166a5bd0540383e8e3a366a2442b0adae51464031557aec65dff",
       "dangers": []
     }
   ]

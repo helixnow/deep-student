@@ -18,7 +18,7 @@ import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
 import { useReferenceToChat, type SourceType } from '@/features/learning-hub/useReferenceToChat';
 import type { DstuNode } from '@/dstu/types';
 import { DsButton } from '@/components/ui/DsButton';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
+import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import {
   AppMenu,
   AppMenuContent,
@@ -263,8 +263,17 @@ const ToolbarAction: React.FC<ToolbarActionProps> = ({
   onClick,
   children,
 }) => (
-  <Tooltip>
-    <TooltipTrigger className="wb-file-preview-tip-anchor">
+  <CommonTooltip
+    position="bottom"
+    content={
+      <>
+        {label}
+        {shortcut ? <span className="wb-file-preview-kbd">{shortcut}</span> : null}
+        {note ? <span className="wb-file-preview-tip-note">{note}</span> : null}
+      </>
+    }
+  >
+    <span className="wb-file-preview-tip-anchor">
       <DsButton
         variant="ghost"
         size="icon"
@@ -277,13 +286,8 @@ const ToolbarAction: React.FC<ToolbarActionProps> = ({
       >
         {busy ? <span className="wb-file-preview-spinner" aria-hidden="true" /> : children}
       </DsButton>
-    </TooltipTrigger>
-    <TooltipContent side="bottom">
-      {label}
-      {shortcut ? <span className="wb-file-preview-kbd">{shortcut}</span> : null}
-      {note ? <span className="wb-file-preview-tip-note">{note}</span> : null}
-    </TooltipContent>
-  </Tooltip>
+    </span>
+  </CommonTooltip>
 );
 
 const ToolbarSeparator: React.FC = () => (

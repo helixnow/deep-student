@@ -22,7 +22,7 @@ import { Flame, TrendDown, TrendUp } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
+import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
 import { getPomodoroDailyStats, listPomodorosInRange, type PomodoroDailyStat } from '../api';
 
@@ -374,8 +374,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
             <div key={wi} className="flex flex-col gap-[3px]">
               {week.map((d, di) =>
                 d ? (
-                  <Tooltip key={d.date}>
-                    <TooltipTrigger asChild>
+                  <CommonTooltip key={d.date} content={<span className="tabular-nums">{dayDetail(d)}</span>} position="top">
                       {/* tap 选中：触屏无 hover，选中后数值显示在图表下方明细行 */}
                       <button
                         type="button"
@@ -390,11 +389,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
                           selectedDate === d.date && 'ring-1 ring-primary ring-offset-1',
                         )}
                       />
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="tabular-nums">
-                      {dayDetail(d)}
-                    </TooltipContent>
-                  </Tooltip>
+                  </CommonTooltip>
                 ) : (
                   <div key={`pad-${wi}-${di}`} className="h-2.5 w-2.5 [@media(pointer:coarse)]:h-3.5 [@media(pointer:coarse)]:w-3.5" />
                 ),
@@ -414,8 +409,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
                 key={d.date}
                 className="h-full min-w-0 flex-1 [&>span]:h-full [&>span]:w-full"
               >
-                <Tooltip>
-                  <TooltipTrigger asChild>
+                <CommonTooltip content={<span className="tabular-nums">{dayDetail(d)}</span>} position="top">
                     {/* 可聚焦柱：Tab 走查每日数值，focus 与 hover 同样弹 Tooltip；
                         触屏 tap 选中后数值固定显示在图表下方明细行 */}
                     <div
@@ -447,11 +441,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
                         <div className="h-[3px] w-full rounded-sm bg-[color:var(--shell-workspace-border)]" />
                       )}
                     </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="tabular-nums">
-                    {dayDetail(d)}
-                  </TooltipContent>
-                </Tooltip>
+                </CommonTooltip>
               </div>
             );
           })}

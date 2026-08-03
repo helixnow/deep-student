@@ -17,7 +17,7 @@ import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Input } from '@/components/ui/shad/Input';
-import { Button } from '@/components/ui/shad/Button';
+import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -548,7 +548,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               width={100}
             />
           ) : (
-            <Button
+            <DsButton
               type="button"
               variant="outline"
               size="sm"
@@ -565,9 +565,9 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               {wallpaperImportPending
                 ? t('workbench:settings.wallpaper.importing', '正在导入…')
                 : t('workbench:settings.wallpaper.changeImage', '更换图片')}
-            </Button>
+            </DsButton>
           )}
-          <Button
+          <DsButton
             type="button"
             variant="outline"
             size="sm"
@@ -581,7 +581,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             className="h-8 gap-1.5 text-xs"
           >
             {t('workbench:settings.wallpaper.manage', '管理壁纸')}
-          </Button>
+          </DsButton>
         </div>
       </SettingRow>
 

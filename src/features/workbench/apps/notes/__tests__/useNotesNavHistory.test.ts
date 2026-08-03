@@ -78,7 +78,7 @@ describe('notesNavHistory pure logic', () => {
     expect(backNavHistory(empty)).toEqual({ state: empty, entry: null });
     expect(forwardNavHistory(empty)).toEqual({ state: empty, entry: null });
 
-    let state = pushNavHistory(empty, entry('note', 'only'));
+    const state = pushNavHistory(empty, entry('note', 'only'));
     const back = backNavHistory(state);
     expect(back.entry).toBeNull();
     expect(back.state).toBe(state);
@@ -285,4 +285,3 @@ describe('useNotesNavHistory', () => {
     expect(target).toEqual(entry('note', 'c'));
   });
 });
-

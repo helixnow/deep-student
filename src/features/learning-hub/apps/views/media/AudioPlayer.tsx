@@ -118,7 +118,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   return (
     <CustomScrollArea className="h-full min-h-0 bg-background" orientation="both">
       <div className="flex min-h-full min-w-full items-center justify-center p-6">
-        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- 播放器容器承载快捷键 */}
         <div
           role="group"
           aria-label={fileName}

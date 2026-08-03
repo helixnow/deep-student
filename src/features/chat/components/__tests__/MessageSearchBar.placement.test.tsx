@@ -24,7 +24,7 @@ describe('MessageSearchBar placement', () => {
 
     expect(root).toHaveClass('relative', 'h-full');
     expect(root).not.toHaveClass('fixed');
-    expect(search).toHaveClass('h-8', 'bg-background\/95');
+    expect(search).toHaveClass('h-12', 'bg-background/95');
   });
 
   it('keeps the floating layout as the default for mobile and fallback rendering', () => {

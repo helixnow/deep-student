@@ -158,13 +158,12 @@ export function waitForChatEvent<K extends keyof ChatEventMap>(
 
   return new Promise((resolve, reject) => {
     let disposed = false;
-    let removeListener: (() => void) | undefined;
 
     const cleanup = () => {
       if (disposed) return;
       disposed = true;
       clearTimeout(timeoutId);
-      removeListener?.();
+      removeListener();
     };
 
     const timeoutId = setTimeout(() => {
@@ -172,7 +171,7 @@ export function waitForChatEvent<K extends keyof ChatEventMap>(
       reject(new Error(`事件超时: ${eventName} (${timeout}ms)`));
     }, timeout);
 
-    removeListener = addTypedEventListener<ChatEventMap[K]['detail']>(
+    const removeListener = addTypedEventListener<ChatEventMap[K]['detail']>(
       eventName,
       (detail) => {
         if (filter && !filter(detail)) {

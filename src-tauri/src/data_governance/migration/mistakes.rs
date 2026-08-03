@@ -260,6 +260,18 @@ pub const V20260723_TEMPLATE_USER_STATE: MigrationDef = MigrationDef::new(
 .with_expected_indexes(&["idx_custom_anki_templates_user_deleted"])
 .idempotent();
 
+/// V20260724: Anki 去重索引忽略软删除卡片。
+///
+/// 旧索引已经保证活跃卡片不存在重复；重建为 partial unique index 后，
+/// 软删除卡片不再阻止重新生成相同内容。
+pub const V20260724_ANKI_DEDUP_INDEX_EXCLUDE_DELETED: MigrationDef = MigrationDef::new(
+    20260724,
+    "anki_dedup_index_exclude_deleted",
+    include_str!("../../../migrations/mistakes/V20260724__anki_dedup_index_exclude_deleted.sql"),
+)
+.with_expected_indexes(MISTAKES_V20260209_DEDUP_INDEXES)
+.idempotent();
+
 /// V20260720: durable FSRS -> mastery outbox marker.
 pub const V20260720_FSRS_MASTERY_OUTBOX: MigrationDef = MigrationDef::new(
     20260720,
@@ -411,6 +423,7 @@ pub const MISTAKES_MIGRATIONS: MigrationSet = MigrationSet {
         V20260721_TRUSTED_AUTOMATION_PROFILE,
         V20260722_FSRS_SCHEDULER_HARDENING,
         V20260723_TEMPLATE_USER_STATE,
+        V20260724_ANKI_DEDUP_INDEX_EXCLUDE_DELETED,
     ],
 };
 
