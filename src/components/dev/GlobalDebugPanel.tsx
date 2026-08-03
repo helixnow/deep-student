@@ -195,7 +195,9 @@ const GlobalDebugPanel = ({ openRequest = 0 }: GlobalDebugPanelProps) => {
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const el = document.createElement('div');
-    el.id = 'dstu-debug-toggle-portal';
+    // The shared debug-overlay cleanup CSS intentionally hides generic debug
+    // IDs/classes. Keep this portal under the debugger whitelist.
+    el.id = 'dstu-debugger-toggle-portal';
     el.style.position = 'fixed';
     el.style.left = '0';
     el.style.top = '0';
@@ -262,16 +264,16 @@ const GlobalDebugPanel = ({ openRequest = 0 }: GlobalDebugPanelProps) => {
 
   const tooltipContent = (
     <>
-      <div className="dstu-debug-toggle__tooltip-label">
+      <div className="dstu-dbg-toggle__tooltip-label">
         {visible ? t('debug_panel.close_hint') : t('debug_panel.open_hint')}
       </div>
       {hasUnseenEvent && !visible && (
-        <div className="dstu-debug-toggle__tooltip-sub">
+        <div className="dstu-dbg-toggle__tooltip-sub">
           {t('debug_panel.new_events')}
         </div>
       )}
       {currentStreamId && (
-        <div className="dstu-debug-toggle__tooltip-sub">
+        <div className="dstu-dbg-toggle__tooltip-sub">
           {t('debug_panel.current_stream', { id: currentStreamId })}
         </div>
       )}
@@ -301,14 +303,14 @@ const GlobalDebugPanel = ({ openRequest = 0 }: GlobalDebugPanelProps) => {
 
   // 面板未显示时显示悬浮球
   const toggleButton = !visible ? (
-    <CommonTooltip content={tooltipContent} className="dstu-debug-toggle__tooltip">
+    <CommonTooltip content={tooltipContent} className="dstu-dbg-toggle__tooltip">
       <DsButton
         ref={toggleBtnRef}
         variant="ghost" size="icon" iconOnly
         className={clsx(
-          'dstu-debug-toggle',
-          hasUnseenEvent && 'dstu-debug-toggle--pulse',
-          isDraggingToggle && 'dstu-debug-toggle--dragging',
+          'dstu-dbg-toggle',
+          hasUnseenEvent && 'dstu-dbg-toggle--pulse',
+          isDraggingToggle && 'dstu-dbg-toggle--dragging',
         )}
         aria-label={t('debug_panel.open')}
         aria-pressed={visible}
@@ -328,11 +330,11 @@ const GlobalDebugPanel = ({ openRequest = 0 }: GlobalDebugPanelProps) => {
           transition: isDraggingToggle ? 'none' : 'transform 0.2s, box-shadow 0.2s, border-color 0.2s',
         }}
       >
-        <Bug className="dstu-debug-toggle__icon" aria-hidden="true" />
+        <Bug className="dstu-dbg-toggle__icon" aria-hidden="true" />
         <span
           className={clsx(
-            'dstu-debug-toggle__status',
-            hasUnseenEvent && 'dstu-debug-toggle__status--active',
+            'dstu-dbg-toggle__status',
+            hasUnseenEvent && 'dstu-dbg-toggle__status--active',
           )}
 />
       </DsButton>
