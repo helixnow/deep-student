@@ -207,14 +207,23 @@ jobs:
               # fail-close：历史 rerun / 手工标签若指向其他提交，绝不能继续构建并
               # 发布错误源码。fetch 后用 rev-list 同时兼容轻量与 annotated tag。
               git fetch --force --no-tags origin "refs/tags/${TAG}:refs/tags/${TAG}"
-              local ACTUAL_SHA EXPECTED_SHA
+              local ACTUAL_SHA EXPECTED_SHA TAG_COMMIT_PARENTS PARENT_COUNT
               ACTUAL_SHA=$(git rev-list -n 1 "${TAG}")
               EXPECTED_SHA=$(git rev-parse "${TARGET_SHA}^{commit}")
+              TAG_COMMIT_PARENTS=$(git rev-list --parents -n 1 "${TAG}")
+              PARENT_COUNT=$(wc -w <<< "${TAG_COMMIT_PARENTS}")
               if [[ "${ACTUAL_SHA}" != "${EXPECTED_SHA}" ]]; then
-                echo "❌ Existing tag ${TAG} points to ${ACTUAL_SHA}, expected ${EXPECTED_SHA}"
-                exit 1
+                # release-please PR 合并后，tag 可能合法地指向 merge commit，
+                # 其第二个 parent 是 release commit。只接受这种直接合并关系，
+                # 不接受 release commit 之后的任意普通提交，避免构建错误源码。
+                if [[ "${PARENT_COUNT}" -ne 3 ]] || ! grep -Fq " ${EXPECTED_SHA}" <<< "${TAG_COMMIT_PARENTS}"; then
+                  echo "❌ Existing tag ${TAG} points to ${ACTUAL_SHA}, expected ${EXPECTED_SHA}"
+                  exit 1
+                fi
+                echo "  ℹ️ Tag ${TAG} points to merge commit ${ACTUAL_SHA} containing expected release commit"
+              else
+                echo "  ℹ️ Tag ${TAG} already exists and points to expected commit"
               fi
-              echo "  ℹ️ Tag ${TAG} already exists and points to expected commit"
               return 0
             fi
             gh api "repos/${GH_REPO}/git/refs" \

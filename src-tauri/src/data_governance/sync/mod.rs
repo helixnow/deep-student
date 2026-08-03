@@ -10180,6 +10180,23 @@ impl SyncManager {
         &self,
         storage: &dyn CloudStorage,
     ) -> Result<AssetDirsManifest, SyncError> {
+        self.download_assets_manifest_with_tombstone_filter(storage, true)
+            .await
+    }
+
+    async fn download_assets_manifest_before_tombstones(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<AssetDirsManifest, SyncError> {
+        self.download_assets_manifest_with_tombstone_filter(storage, false)
+            .await
+    }
+
+    async fn download_assets_manifest_with_tombstone_filter(
+        &self,
+        storage: &dyn CloudStorage,
+        filter_tombstones: bool,
+    ) -> Result<AssetDirsManifest, SyncError> {
         let mut manifests = Vec::new();
         if let Some(bytes) = storage
             .get(Self::ASSETS_MANIFEST_KEY)
@@ -10253,15 +10270,17 @@ impl SyncManager {
                 }
             }
         }
-        let tombstones = tombstone::download_asset_tombstones(storage, self).await?;
-        for (key, tombstone) in tombstones.entries {
-            let should_remove = merged
-                .entries
-                .get(&key)
-                .map(|entry| !Self::timestamp_after(&entry.updated_at, &tombstone.deleted_at))
-                .unwrap_or(false);
-            if should_remove {
-                merged.entries.remove(&key);
+        if filter_tombstones {
+            let tombstones = tombstone::download_asset_tombstones(storage, self).await?;
+            for (key, tombstone) in tombstones.entries {
+                let should_remove = merged
+                    .entries
+                    .get(&key)
+                    .map(|entry| !Self::timestamp_after(&entry.updated_at, &tombstone.deleted_at))
+                    .unwrap_or(false);
+                if should_remove {
+                    merged.entries.remove(&key);
+                }
             }
         }
         Ok(merged)
@@ -10798,7 +10817,9 @@ impl SyncManager {
         // 1. 拉取 asset tombstone 并删除本地/云端对应文件
         let instance_id = self.ensure_remote_instance_id(storage).await?;
         let state_store = SyncStateStore::open_default()?;
-        let cloud_manifest = self.download_assets_manifest(storage).await?;
+        let cloud_manifest = self
+            .download_assets_manifest_before_tombstones(storage)
+            .await?;
         let (tombstones, tombstone_advances) =
             tombstone::download_asset_tombstones_after(storage, self, |source| {
                 state_store.get_tombstone_watermark(&instance_id, source, "assets")

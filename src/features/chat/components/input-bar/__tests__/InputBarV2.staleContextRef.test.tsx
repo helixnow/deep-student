@@ -70,7 +70,12 @@ vi.mock('react-i18next', async (importOriginal) => {
       (typeof defaultValueOrOptions === 'object' && defaultValueOrOptions !== null
         ? (defaultValueOrOptions as Record<string, unknown>)
         : maybeOptions) ?? {};
-    const template = defaultValue ?? key;
+    const translations: Record<string, string> = {
+      'chatV2:inputBar.thinkingState.unsupported': '推理: 不支持',
+      'chatV2:inputBar.thinkingState.off': '推理: 关闭',
+      'chatV2:inputBar.thinkingState.on': '推理: {{depth}}',
+    };
+    const template = defaultValue ?? translations[key] ?? key;
     return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
       options[name] !== undefined ? String(options[name]) : match
     );

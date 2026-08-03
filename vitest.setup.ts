@@ -1,11 +1,13 @@
-import '@testing-library/jest-dom/vitest';
-import { afterEach, vi } from 'vitest';
-import { cleanup } from '@testing-library/react';
+import { expect, afterEach, vi } from "vitest";
+import * as jestDomMatchers from "@testing-library/jest-dom/matchers";
+import { cleanup } from "@testing-library/react";
+
+expect.extend(jestDomMatchers);
 
 // Node 26 exposes a configurable global `localStorage` getter that returns
 // undefined unless `--localstorage-file` is set. That getter can shadow the
 // JSDOM storage installed on `window`, so bind tests to the browser-like store.
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   const values = new Map<string, string>();
   const browserStorage: Storage = {
     get length() {
@@ -21,7 +23,7 @@ if (typeof window !== 'undefined') {
       values.set(String(key), String(value));
     },
   };
-  Object.defineProperty(globalThis, 'localStorage', {
+  Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
     enumerable: true,
     value: browserStorage,
@@ -30,7 +32,7 @@ if (typeof window !== 'undefined') {
 
 // Force i18n language for deterministic snapshot/labels in tests.
 try {
-  localStorage.setItem('i18nextLng', 'zh-CN');
+  localStorage.setItem("i18nextLng", "zh-CN");
 } catch {
   // ignore
 }
@@ -41,17 +43,17 @@ afterEach(() => {
 });
 
 // Mock SubjectContext used by components to avoid hitting real Tauri in tests
-vi.mock('/src/contexts/SubjectContext.tsx', () => {
+vi.mock("/src/contexts/SubjectContext.tsx", () => {
   const ctx = {
-    currentSubject: '数学',
+    currentSubject: "数学",
     setCurrentSubject: () => {},
-    availableSubjects: ['数学'],
+    availableSubjects: ["数学"],
     subjectConfigs: [],
     loading: false,
     error: null,
     refreshSubjects: async () => {},
-    getEnabledSubjects: () => ['数学'],
-    getAllSubjects: () => ['数学'],
+    getEnabledSubjects: () => ["数学"],
+    getAllSubjects: () => ["数学"],
   };
   return {
     SubjectProvider: ({ children }: any) => children,
@@ -68,8 +70,8 @@ class RO {
 // @ts-ignore
 global.ResizeObserver = (global as any).ResizeObserver || RO;
 
-if (typeof window !== 'undefined') {
-  Object.defineProperty(window, 'matchMedia', {
+if (typeof window !== "undefined") {
+  Object.defineProperty(window, "matchMedia", {
     writable: true,
     value: vi.fn().mockImplementation((query: string) => ({
       matches: false,
@@ -84,7 +86,7 @@ if (typeof window !== 'undefined') {
   });
 }
 
-if (typeof Element !== 'undefined') {
+if (typeof Element !== "undefined") {
   if (!Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = () => {};
   }

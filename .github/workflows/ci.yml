@@ -17,7 +17,7 @@ permissions:
 # 非 release job 统一注入确定性构建号，保持默认浅 checkout 便宜。
 # （审查 F16：此前该值在 3 个文件里重复 10 处，改契约要改 10 处）
 env:
-  DEEP_STUDENT_BUILD_NUMBER: '14635'
+  DEEP_STUDENT_BUILD_NUMBER: "14635"
 
 jobs:
   # Only this contract job needs full history. Non-release jobs use the
@@ -34,7 +34,7 @@ jobs:
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Test version and proxy contracts
         run: node --test scripts/__tests__/*.test.mjs
@@ -65,8 +65,8 @@ jobs:
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
 
       - run: npm ci --legacy-peer-deps
 
@@ -116,25 +116,24 @@ jobs:
   # CI 完全没有前端测试信号。维护者转入兼职模式后，这是外部贡献者 PR
   # 的第一道回归防线。
   #
-  # vitest.config.ts 为规避 Node22 tinypool 崩溃使用 forks 多进程池
-  # （不要改回 singleFork：单进程串行会因 jsdom 内存跨文件累积触发
-  # GC 抖动近似死锁，分片会卡死直到 45 分钟超时）。4 路分片并行跑。
+  # forks 池限制为每个 runner 最多 2 个 worker；8 路分片缩短普通分片的
+  # jsdom/module 生命周期，降低单个 runner 触及 4GB V8 堆上限的概率。
   # ============================================
   frontend-tests:
-    name: Frontend Tests (Vitest ${{ matrix.shard }}/4)
+    name: Frontend Tests (Vitest ${{ matrix.shard }}/8)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
 
       - run: npm ci --legacy-peer-deps
 
@@ -142,7 +141,7 @@ jobs:
         run: node scripts/generate-version.mjs
 
       - name: Run vitest shard
-        run: npx vitest run --shard=${{ matrix.shard }}/4
+        run: npx vitest run --shard=${{ matrix.shard }}/8 --maxWorkers=2
 
   # ============================================
   # 后端静态检查（fmt + clippy）
@@ -199,7 +198,7 @@ jobs:
     timeout-minutes: 120
     env:
       CARGO_INCREMENTAL: 0
-      DS_SYNC_TEST_DOCKER: '1'
+      DS_SYNC_TEST_DOCKER: "1"
     steps:
       - name: Free disk space
         run: |
@@ -410,7 +409,7 @@ jobs:
         partition: [1, 2, 3, 4, 5, 6, 7, 8]
     env:
       # proptest 在 CI 里用随机种子；固定用例数（64）控制单 case 时长
-      PROPTEST_CASES: '64'
+      PROPTEST_CASES: "64"
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -471,7 +470,7 @@ jobs:
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Static migration gate (lock manifest + dangerous SQL)
         run: |

@@ -121,7 +121,10 @@ test('explicit build number override remains validated against the published bas
 test('repository config has no pinned proxy and keeps a non-regressing fallback code', () => {
   const { androidVersionCode, appVersion } = validateBuildConfiguration(projectRoot);
   assert.equal(androidVersionCode, ANDROID_VERSION_CODE);
-  assert.equal(appVersion, ANDROID_VERSION_BASE_APP_VERSION);
+  assert.ok(
+    resolveAndroidVersionCode(appVersion) >= ANDROID_VERSION_CODE,
+    `repository version ${appVersion} must not regress below Android baseline ${ANDROID_VERSION_BASE_APP_VERSION}`,
+  );
 
   const cargoConfig = readFileSync(
     join(projectRoot, 'src-tauri', '.cargo', 'config.toml'),
