@@ -26,6 +26,11 @@ on:
         description: '构建的 tag（如 v0.9.42）'
         required: true
         type: string
+      allow_unsigned:
+        description: '仅供手动恢复发布：缺少 Windows 生产签名凭据时允许未签名构建'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -53,10 +58,14 @@ jobs:
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned && '1' || '0' }}
         run: |
           MISSING=""
-          for VAR in WINDOWS_CERTIFICATE_BASE64 WINDOWS_CERTIFICATE_PASSWORD \
-                     TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+          REQUIRED_VARS="TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          if [ "$ALLOW_UNSIGNED" != "1" ]; then
+            REQUIRED_VARS="WINDOWS_CERTIFICATE_BASE64 WINDOWS_CERTIFICATE_PASSWORD $REQUIRED_VARS"
+          fi
+          for VAR in $REQUIRED_VARS; do
             if [ -z "${!VAR}" ]; then
               MISSING="${MISSING} ${VAR}"
             fi
@@ -66,6 +75,10 @@ jobs:
             echo "::error::Missing secrets:${MISSING}"
             echo "::error::Configure them in repository/organization secrets. Unsigned builds are only allowed via local scripts (e.g. scripts/build_windows.sh with DS_ALLOW_UNSIGNED=1)."
             exit 1
+          fi
+          if [ "$ALLOW_UNSIGNED" = "1" ]; then
+            echo "::warning::Building Windows without Authenticode under an explicit manual rebuild override."
+            exit 0
           fi
           echo "✅ All required Windows production signing secrets are present"
 
@@ -145,6 +158,7 @@ jobs:
 
       # ── Authenticode 签名 + 时间戳 + 验证（fail-closed）──
       - name: Authenticode sign NSIS installer (signtool + timestamp + verify)
+        if: ${{ !inputs.allow_unsigned }}
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
@@ -208,6 +222,7 @@ jobs:
 
       # ── Authenticode 改写了 exe 字节 ⇒ 必须重签 updater .sig ──
       - name: Re-sign updater signature after Authenticode (tauri signer)
+        if: ${{ !inputs.allow_unsigned }}
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -234,6 +249,20 @@ jobs:
             exit 1
           fi
           echo "✅ Updater .sig regenerated over the Authenticode-signed installer"
+
+      - name: Verify updater artifact and signature exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUNDLE_DIR="src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
+          EXE_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*-setup.exe' ! -name '*.sig' | wc -l | tr -d ' ')
+          SIG_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*-setup.exe.sig' | wc -l | tr -d ' ')
+          if [ "$EXE_COUNT" -ne 1 ] || [ "$SIG_COUNT" -ne 1 ]; then
+            echo "::error::Expected exactly 1 updater installer + 1 .sig, got ${EXE_COUNT} installer(s) / ${SIG_COUNT} sig(s)"
+            ls -la "$BUNDLE_DIR" || true
+            exit 1
+          fi
+          echo "✅ Updater installer + signature present"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
