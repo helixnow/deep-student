@@ -27,9 +27,10 @@
  *   Tailwind 标准刻度，跨组件对齐处必须引 token。
  *
  * 【字号】
- *   - 助手正文     --chat-md-font-size          1rem（阅读节奏见下方 md 组）
- *   - 用户气泡     --chat-user-font-size        0.9375rem（15px）
- *   - 紧凑正文     --chat-md-compact-font-size  0.9375rem
+ *   - 会话正文     --chat-body-font-size         --font-size-lg（默认 16px）/ 400
+ *   - 用户气泡     --chat-user-font-size         继承会话正文（默认 16px）/ 400
+ *   - 强调与标题   --chat-emphasis-font-weight / --chat-heading-font-weight = 600
+ *   - 紧凑正文     --chat-md-compact-font-size    0.9375rem
  *   - 辅助说明     0.875rem（14px，等待文案 .chat-wait-text 同值）
  *   - caption 地板 --chat-caption-font-size     0.75rem（12px）——
  *     任何可读文本不得低于此值（免责声明、时间戳等）。
@@ -85,10 +86,32 @@
   --chat-spacing-md: 1rem;
   --chat-spacing-lg: 1.5rem;
 
+  /* 会话文字层级 —— 具体组件只消费这些语义 token，避免局部字号覆盖。 */
+  --chat-body-font-size: var(--font-size-lg);
+  --chat-body-font-weight: var(--font-weight-normal);
+  --chat-body-line-height: 1.72;
+  --chat-body-letter-spacing: 0.01em;
+  --chat-user-font-size: var(--chat-body-font-size);
+  --chat-user-font-weight: var(--chat-body-font-weight);
+  --chat-user-line-height: 1.65;
+  --chat-user-letter-spacing: var(--chat-body-letter-spacing);
+  --chat-status-line-height: var(--line-height-relaxed);
+  --chat-failure-line-height: var(--line-height-relaxed);
+  --chat-emphasis-font-size: var(--chat-body-font-size);
+  --chat-emphasis-font-weight: var(--font-weight-semibold);
+  --chat-heading-font-size: var(--chat-body-font-size);
+  --chat-heading-font-weight: var(--font-weight-semibold);
+  --chat-heading-h1-font-size: calc(var(--chat-heading-font-size) * 1.5);
+  --chat-heading-h2-font-size: calc(var(--chat-heading-font-size) * 1.3);
+  --chat-heading-h3-font-size: calc(var(--chat-heading-font-size) * 1.15);
+  --chat-heading-h4-font-size: calc(var(--chat-heading-font-size) * 1.05);
+  --chat-heading-h5-font-size: var(--chat-heading-font-size);
+  --chat-heading-h6-font-size: calc(var(--chat-heading-font-size) * 0.95);
+
   /* LLM 输出阅读节奏 */
-  --chat-md-font-size: 1rem;
-  --chat-md-line-height: 1.72;
-  --chat-md-letter-spacing: 0.01em;
+  --chat-md-font-size: var(--chat-body-font-size);
+  --chat-md-line-height: var(--chat-body-line-height);
+  --chat-md-letter-spacing: var(--chat-body-letter-spacing);
   --chat-md-paragraph-gap: 0.9rem;
   --chat-md-heading-top-gap: 1.85rem;
   --chat-md-heading-bottom-gap: 0.72rem;
@@ -105,8 +128,25 @@
   --chat-md-compact-line-height: 1.6;
   --chat-thinking-font-size: var(--chat-md-compact-font-size);
 
-  /* 用户气泡正文字号（15px）与 caption 字号地板（12px，可读文本最小值） */
-  --chat-user-font-size: 0.9375rem;
+  /* Activity timeline hierarchy: body-like summaries/details, quiet status metadata. */
+  --chat-activity-summary-font-size: var(--chat-body-font-size);
+  --chat-activity-summary-font-weight: var(--chat-body-font-weight);
+  --chat-activity-summary-line-height: var(--chat-body-line-height);
+  --chat-activity-summary-row-height: 1.75rem;
+  --chat-activity-font-size: var(--chat-activity-summary-font-size);
+  --chat-activity-font-weight: var(--chat-activity-summary-font-weight);
+  --chat-activity-line-height: var(--chat-activity-summary-line-height);
+  --chat-activity-detail-font-size: var(--chat-body-font-size);
+  --chat-activity-detail-font-weight: var(--chat-body-font-weight);
+  --chat-activity-detail-line-height: var(--chat-body-line-height);
+  --chat-activity-tool-detail-font-size: var(--chat-md-compact-font-size);
+  --chat-activity-tool-detail-line-height: var(--chat-md-compact-line-height);
+  --chat-activity-status-font-size: var(--font-size-sm);
+  --chat-activity-status-line-height: 1.5rem;
+  --chat-activity-node-gap: 0.75rem;
+  --chat-activity-content-gap: 0.75rem;
+
+  /* 用户气泡正文与 caption 字号地板（12px，可读文本最小值） */
   --chat-caption-font-size: 0.75rem;
 
   /* 边框圆角 —— 2026-07 二轮收敛：映射到全局 shell 半径阶梯（单一来源
@@ -128,6 +168,25 @@
 }
 
 /* 暗色模式覆写：用户气泡文字色已亮暗同源（foreground），无需单独覆写 */
+
+/* 会话正文语义类：Markdown、重连和失败提示共享同一正文基线。 */
+.chat-v2 .chat-message-body,
+.chat-v2 .chat-message-status,
+.chat-v2 .chat-message-failure {
+  color: hsl(var(--foreground));
+  font-size: var(--chat-body-font-size);
+  font-weight: var(--chat-body-font-weight);
+  line-height: var(--chat-body-line-height);
+  letter-spacing: var(--chat-body-letter-spacing);
+}
+
+.chat-v2 .chat-message-status {
+  line-height: var(--chat-status-line-height);
+}
+
+.chat-v2 .chat-message-failure {
+  line-height: var(--chat-failure-line-height);
+}
 
 /* ============================================================================
    文本选择 - Text Selection

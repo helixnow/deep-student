@@ -252,10 +252,14 @@
 
 /* 更加舒展、以阅读为中心的正文字体节奏 */
 .chat-v2 .message.assistant .message-content .markdown-content {
-  font-size: var(--chat-md-font-size);
-  line-height: var(--chat-md-line-height);
-  letter-spacing: var(--chat-md-letter-spacing);
+  font-size: var(--chat-body-font-size);
+  font-weight: var(--chat-body-font-weight);
+  line-height: var(--chat-body-line-height);
+  letter-spacing: var(--chat-body-letter-spacing);
   color: hsl(var(--foreground));
+
+  --chat-heading-h2-font-size: calc(var(--chat-heading-font-size) * 1.35);
+  --chat-heading-h3-font-size: calc(var(--chat-heading-font-size) * 1.15);
 }
 
 .chat-v2 .message.assistant .message-content .markdown-content p {
@@ -263,12 +267,14 @@
 }
 
 .chat-v2 .message.assistant .message-content .markdown-content h2 {
-  font-size: 1.35rem;
+  font-size: var(--chat-heading-h2-font-size);
+  font-weight: var(--chat-heading-font-weight);
   margin: var(--chat-md-heading-top-gap) 0 var(--chat-md-heading-bottom-gap);
 }
 
 .chat-v2 .message.assistant .message-content .markdown-content h3 {
-  font-size: 1.15rem;
+  font-size: var(--chat-heading-h3-font-size);
+  font-weight: var(--chat-heading-font-weight);
   margin: var(--chat-md-heading-top-gap) 0 var(--chat-md-heading-bottom-gap);
 }
 
@@ -306,22 +312,24 @@
   word-break: break-word;
 }
 
-.chat-v2 .user-message-bubble .prose {
-  font-size: var(--chat-user-font-size, 0.9375rem); /* 15px，token 见 chat.css */
-  line-height: 1.65;
-  letter-spacing: 0.01em;
+.chat-v2 .user-message-bubble .chat-message-body,
+.chat-v2 .user-message-bubble .chat-message-body :where(.markdown-content) {
+  font-size: var(--chat-user-font-size);
+  font-weight: var(--chat-user-font-weight);
+  line-height: var(--chat-user-line-height);
+  letter-spacing: var(--chat-user-letter-spacing);
   color: var(--chat-user-message-text, hsl(var(--foreground)));
 }
 
-.chat-v2 .user-message-bubble .prose p {
+.chat-v2 .user-message-bubble .chat-message-body p {
   margin: 0.25rem 0;
 }
 
-.chat-v2 .user-message-bubble .prose p:first-child {
+.chat-v2 .user-message-bubble .chat-message-body p:where(:first-child) {
   margin-top: 0;
 }
 
-.chat-v2 .user-message-bubble .prose p:last-child {
+.chat-v2 .user-message-bubble .chat-message-body p:where(:last-child) {
   margin-bottom: 0;
 }
 

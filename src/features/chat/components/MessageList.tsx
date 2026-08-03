@@ -1205,6 +1205,16 @@ const MessageListInner: React.FC<MessageListProps> = ({
         >
           <ThreadEmptyStateShell
             title={emptyStatePrimaryAction}
+            brandIcon={
+              <img
+                src="/logo-black.svg"
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                className="h-9 w-9 select-none brightness-0 invert-[0.55] transition-[filter] duration-200 hover:invert-[0.4]"
+              />
+            }
+            brandIconClassName="border-0 bg-transparent shadow-none"
             contentClassName={isSmallScreen ? 'py-10' : 'py-16'}
           />
         </CustomScrollArea>

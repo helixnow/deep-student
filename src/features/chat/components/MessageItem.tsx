@@ -942,8 +942,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 <div className={cn(
                   'space-y-2',
                   isUser && 'flex flex-col items-end',
-                  // 用户消息优化字体和间距
-                  isUser && 'text-md leading-relaxed tracking-wide'
+                  isUser && 'chat-message-user'
                 )}>
                   {/* 🚀 P1 性能优化：分组渲染使用 BlockRendererWithStore 独立订阅 */}
                   {(() => {
@@ -983,15 +982,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                       // 🔧 重连中：显示重连文本（正文样式），而非"正在思考"
                       if (shouldShowReconnectInline && streamReconnectState) {
                         return (
-                          <div
-                            className={cn(
-                              'prose prose-sm dark:prose-invert max-w-none',
-                              'text-foreground',
-                              'prose-p:text-md prose-p:leading-relaxed prose-p:tracking-wide'
-                            )}
-                          >
-                            <p className="m-0 text-md leading-relaxed tracking-wide text-foreground">
-                              <TextShimmer className="text-md leading-relaxed tracking-wide text-foreground" duration={1.6} spread={3}>
+                          <div className="chat-message-status">
+                            <p className="m-0 chat-message-status__text">
+                              <TextShimmer className="chat-message-status__text" duration={1.6} spread={3}>
                                 {reconnectInlineText}
                               </TextShimmer>
                             </p>
@@ -1172,16 +1165,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
           )}
 
           {!isInlineEditing && !isWaitingForContent && shouldShowReconnectInline && streamReconnectState && (
-            <div
-              className={cn(
-                'prose prose-sm dark:prose-invert max-w-none',
-                'text-foreground',
-                'prose-p:text-md prose-p:leading-relaxed prose-p:tracking-wide',
-                'mt-2'
-              )}
-            >
-              <p className="m-0 text-md leading-relaxed tracking-wide text-foreground">
-                <TextShimmer className="text-md leading-relaxed tracking-wide text-foreground" duration={1.6} spread={3}>
+            <div className="chat-message-status mt-2">
+              <p className="m-0 chat-message-status__text">
+                <TextShimmer className="chat-message-status__text" duration={1.6} spread={3}>
                   {reconnectInlineText}
                 </TextShimmer>
               </p>
@@ -1190,14 +1176,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
           {showActions && !isReadOnlySession && !isInlineEditing && !isWaitingForContent && hasZeroOutputFailure && (
             <div className="mt-2">
-              <div
-                className={cn(
-                  'prose prose-sm dark:prose-invert max-w-none',
-                  'text-foreground',
-                  'prose-p:text-md prose-p:leading-relaxed prose-p:tracking-wide'
-                )}
-              >
-                <p className="m-0 whitespace-pre-wrap break-words text-md leading-relaxed text-foreground">
+              <div className="chat-message-failure">
+                <p className="m-0 whitespace-pre-wrap break-words">
                   {assistantFailureDetails || t('messageItem.failure.genericError')}
                 </p>
               </div>

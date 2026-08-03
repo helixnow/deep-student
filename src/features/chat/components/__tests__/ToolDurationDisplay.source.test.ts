@@ -17,7 +17,7 @@ describe('tool duration display source', () => {
   );
 
   it('keeps tool status copy separate from duration in the activity timeline', () => {
-    expect(activityTimelineSource).toContain('<span className="text-base font-medium text-foreground">');
+    expect(activityTimelineSource).toContain('activity-timeline-tool-name shrink-0');
     expect(activityTimelineSource).toContain("return t('timeline.tool.success', { ns: 'chatV2' });");
     expect(activityTimelineSource).not.toContain("t('timeline.tool.completed', { ms: durationMs, ns: 'chatV2' })");
     expect(activityTimelineSource).toContain('formatToolDurationShort(durationMs)');

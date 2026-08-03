@@ -23,15 +23,60 @@ button.timeline-node-dot {
 }
 
 .activity-timeline {
-  margin-block: 0 calc(var(--chat-md-paragraph-gap, 0.9rem) * 0.42);
+  margin-block: 0 var(--chat-activity-content-gap, 0.75rem);
+  font-size: var(--chat-activity-font-size, var(--chat-body-font-size, 1rem));
+  font-weight: var(--chat-activity-font-weight, var(--chat-body-font-weight, 400));
+  line-height: var(--chat-activity-line-height, var(--chat-body-line-height, 1.5));
 }
 
 .activity-timeline__node {
-  padding-bottom: 0.375rem;
+  padding-bottom: var(--chat-activity-node-gap, 0.75rem);
 }
 
 .activity-timeline__node:last-child {
   padding-bottom: 0;
+}
+
+.activity-timeline-icon-column {
+  height: var(--chat-activity-summary-row-height, 1.75rem);
+  width: var(--chat-activity-summary-row-height, 1.75rem);
+}
+
+.activity-timeline-summary,
+.activity-timeline-tool-name,
+.activity-timeline-thinking-trigger,
+.activity-timeline-tool-trigger {
+  font-size: var(--chat-activity-summary-font-size, var(--chat-body-font-size, 1rem));
+  font-weight: var(--chat-activity-summary-font-weight, var(--chat-body-font-weight, 400));
+  line-height: var(--chat-activity-summary-line-height, var(--chat-body-line-height, 1.5));
+}
+
+.activity-timeline-thinking-trigger,
+.activity-timeline-tool-trigger {
+  min-height: var(--chat-activity-summary-row-height, 1.75rem);
+}
+
+.activity-timeline-thinking-details,
+.activity-timeline-thinking-content {
+  font-size: var(--chat-activity-detail-font-size, var(--chat-body-font-size, 1rem));
+  font-weight: var(--chat-activity-detail-font-weight, var(--chat-body-font-weight, 400));
+  line-height: var(--chat-activity-detail-line-height, var(--chat-body-line-height, 1.5));
+}
+
+.activity-timeline-tool-details {
+  font-size: var(--chat-activity-tool-detail-font-size, var(--chat-md-compact-font-size, 0.9375rem));
+  line-height: var(--chat-activity-tool-detail-line-height, var(--chat-md-compact-line-height, 1.6));
+}
+
+.activity-timeline-tool-command {
+  font-size: var(--chat-md-compact-font-size, 0.9375rem);
+  line-height: var(--chat-md-compact-line-height, 1.6);
+}
+
+.activity-timeline-status {
+  font-size: var(--chat-activity-status-font-size, var(--font-size-sm, 0.75rem));
+  font-weight: var(--chat-body-font-weight, 400);
+  line-height: var(--chat-activity-status-line-height, 1.5rem);
 }
 
 /* When tool activity hands off to the answer body, avoid stacking the

@@ -57,19 +57,26 @@
 .chat-v2 .thinking-trace__text {
   position: relative;
   padding-right: 3px;
-  font-size: var(--chat-md-compact-font-size);
-  line-height: var(--chat-md-compact-line-height);
+  font-size: var(--chat-activity-detail-font-size, var(--chat-body-font-size));
+  line-height: var(--chat-activity-detail-line-height, var(--chat-body-line-height));
 }
 
-/* 思维链内容块字号 - Tier S-1：使用全局 token，去 !important，回归用户可缩放 */
-.chat-v2 .thinking-content,
-.chat-v2 .thinking-content .markdown-content,
-.chat-v2 .thinking-content .markdown-content p,
-.chat-v2 .thinking-content .markdown-content li,
-.chat-v2 .thinking-content .markdown-content ul,
-.chat-v2 .thinking-content .markdown-content ol {
-  font-size: var(--chat-thinking-font-size, var(--chat-md-compact-font-size));
-  line-height: var(--chat-md-compact-line-height);
+/* 思维链展开内容与正文共用阅读节奏；状态摘要仍由 ActivityTimeline 的 status token 控制。 */
+.chat-v2 .chain-of-thought .thinking-content,
+.chat-v2 .chain-of-thought .thinking-content .markdown-content,
+.chat-v2 .chain-of-thought .thinking-content .markdown-content p,
+.chat-v2 .chain-of-thought .thinking-content .markdown-content li,
+.chat-v2 .chain-of-thought .thinking-content .markdown-content ul,
+.chat-v2 .chain-of-thought .thinking-content .markdown-content ol,
+.chat-v2 .thinking-chain-content,
+.chat-v2 .thinking-chain-content .markdown-content,
+.chat-v2 .thinking-chain-content .markdown-content p,
+.chat-v2 .thinking-chain-content .markdown-content li,
+.chat-v2 .thinking-chain-content .markdown-content ul,
+.chat-v2 .thinking-chain-content .markdown-content ol {
+  font-size: var(--chat-activity-detail-font-size, var(--chat-body-font-size));
+  font-weight: var(--chat-activity-detail-font-weight, var(--chat-body-font-weight));
+  line-height: var(--chat-activity-detail-line-height, var(--chat-body-line-height));
 }
 
 .chat-v2 .thinking-trace__text::before,
@@ -330,8 +337,6 @@
 .thinking-chain-content .markdown-content li,
 .thinking-chain-content .markdown-content ul,
 .thinking-chain-content .markdown-content ol {
-  font-size: var(--chat-thinking-font-size, var(--chat-md-compact-font-size));
-  line-height: var(--chat-md-compact-line-height);
   color: hsl(var(--muted-foreground));
 }
 
@@ -861,9 +866,9 @@
   background: transparent;
   cursor: pointer;
   color: hsl(var(--muted-foreground));
-  font-size: var(--font-size-sm);
-  line-height: 1.2;
-  font-weight: 500;
+  font-size: var(--chat-activity-summary-font-size, var(--chat-body-font-size));
+  line-height: var(--chat-activity-summary-line-height, var(--chat-body-line-height));
+  font-weight: var(--chat-activity-summary-font-weight, var(--chat-body-font-weight));
   user-select: none;
   -webkit-user-select: none;
   transition: background-color 0.15s;
@@ -985,8 +990,9 @@
 /* ─── Typography inside thinking block ────────────────────────────────────── */
 
 .think-content .markdown-content {
-  font-size: var(--chat-thinking-font-size, var(--chat-md-compact-font-size));
-  line-height: var(--chat-md-compact-line-height);
+  font-size: var(--chat-activity-detail-font-size, var(--chat-body-font-size));
+  font-weight: var(--chat-activity-detail-font-weight, var(--chat-body-font-weight));
+  line-height: var(--chat-activity-detail-line-height, var(--chat-body-line-height));
   color: hsl(var(--muted-foreground));
 }
 

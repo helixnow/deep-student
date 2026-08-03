@@ -6,7 +6,6 @@
  */
 
 import React, { useMemo, useCallback } from 'react';
-import { cn } from '@/utils/cn';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { StreamingBlockRenderer } from '../../components/renderers';
 import { citationEvents } from '../../utils/citationEvents';
@@ -56,16 +55,7 @@ const ContentBlockBase: React.FC<ContentBlockBaseProps> = ({ block, isStreaming,
   }
 
   return (
-    <div
-      className={cn(
-        'prose prose-sm dark:prose-invert max-w-none',
-        'text-foreground',
-        // 优化聊天字体：更大的字号、更舒适的行高
-        'prose-p:text-md prose-p:leading-relaxed prose-p:tracking-wide',
-        'prose-li:text-md prose-li:leading-relaxed',
-        'prose-headings:tracking-tight'
-      )}
-    >
+    <div className="chat-message-body chat-message-body--markdown">
       <StreamingBlockRenderer
         content={content}
         isStreaming={isStreaming ?? false}

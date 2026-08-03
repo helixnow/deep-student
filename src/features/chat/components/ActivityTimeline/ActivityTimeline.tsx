@@ -436,11 +436,11 @@ const TimelineNode: React.FC<TimelineNodeProps> = ({
   return (
     <div className="activity-timeline__node flex gap-1.5">
       {/* Fixed icon column keeps every tool label on one visual axis. */}
-      <div className="flex h-5 w-5 shrink-0 items-center justify-center">
+      <div className="activity-timeline-icon-column flex shrink-0 items-center justify-center">
         {icon && (
           <div
             aria-hidden="true"
-            className={cn('inline-flex h-4 w-4 items-center justify-center leading-none', stickyIcon && 'sticky top-0')}
+            className={cn('inline-flex h-5 w-5 items-center justify-center leading-none', stickyIcon && 'sticky top-0')}
           >
             {icon}
           </div>
@@ -623,23 +623,23 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
             aria-expanded={hasContent ? isExpanded : undefined}
             aria-controls={hasContent ? contentId : undefined}
             className={cn(
-              'thinking-summary-trigger w-full !h-5 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-5 rounded-[var(--radius-shell-control)] transition-colors group',
-              'text-sm text-muted-foreground hover:text-foreground',
+              'thinking-summary-trigger activity-timeline-thinking-trigger activity-timeline-summary w-full !h-7 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-7 rounded-[var(--radius-shell-control)] transition-colors group',
+              'text-muted-foreground hover:text-foreground',
               'focus-visible:text-foreground',
               hasContent && 'hover:text-foreground cursor-pointer',
               'disabled:cursor-default disabled:hover:!bg-transparent'
             )}
           >
             {node.isThinking ? (
-              <TextShimmer className="text-sm leading-5" duration={1.5} spread={3}>
+              <TextShimmer className="activity-timeline-summary" duration={1.5} spread={3}>
                 {t('timeline.thinking.inProgress', { seconds: liveDurationSeconds })}
               </TextShimmer>
             ) : node.isAborted ? (
-              <span className="leading-5 text-muted-foreground/80">
+              <span className="activity-timeline-summary text-muted-foreground/80">
                 {t('timeline.thinking.stopped')}
               </span>
             ) : (
-              <span className="leading-5">
+              <span className="activity-timeline-summary">
                 {t('timeline.thinking.completed', { seconds: displayDurationSeconds })}
               </span>
             )}
@@ -665,12 +665,12 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
             id={contentId}
             role="region"
             aria-label={t('timeline.thinking.contentLabel')}
-            className={cn('overflow-hidden', shouldStickSummary && 'pt-2')}
+            className={cn('activity-timeline-thinking-details overflow-hidden', shouldStickSummary && 'pt-2')}
           >
             <div
-              className="py-1.5 pl-2 pr-1 text-gray-500 dark:text-gray-400 text-xs leading-snug"
+              className="activity-timeline-thinking-content py-2 pl-2 pr-1 text-gray-500 dark:text-gray-400"
             >
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 {paragraphs.map((paragraph, idx, arr) => (
                   <div key={idx} className="thinking-chain-content text-gray-500 dark:text-gray-400">
                     <StreamingMarkdownRenderer
@@ -747,7 +747,7 @@ const ToolOutputSummary: React.FC<{ output: unknown }> = ({ output }) => {
                 {loadedSkillIds.map((skillId) => (
                   <span
                     key={skillId}
-                    className="inline-flex items-center rounded-full border border-border/50 bg-background/70 px-2 py-0.5 text-[11px] text-foreground"
+                    className="inline-flex items-center rounded-full border border-border/50 bg-background/70 px-2 py-0.5 text-caption text-foreground"
                   >
                     {skillId}
                   </span>
@@ -763,7 +763,7 @@ const ToolOutputSummary: React.FC<{ output: unknown }> = ({ output }) => {
                 {loadedToolNames.map((toolName) => (
                   <code
                     key={toolName}
-                    className="inline-flex items-center rounded-md border border-border/40 bg-background/60 px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                    className="inline-flex items-center rounded-md border border-border/40 bg-background/60 px-1.5 py-0.5 text-caption text-muted-foreground"
                   >
                     {toolName}
                   </code>
@@ -826,7 +826,7 @@ const ToolOutputSummary: React.FC<{ output: unknown }> = ({ output }) => {
     // 其他对象：紧凑 JSON 预览
     try {
       const json = JSON.stringify(output);
-      return <span className="font-mono text-[11px] break-all">{json.length > 120 ? json.slice(0, 120) + '...' : json}</span>;
+      return <span className="font-mono text-caption break-all">{json.length > 120 ? json.slice(0, 120) + '...' : json}</span>;
     } catch {
       return <span className="italic">{t('timeline.tool.objectResult')}</span>;
     }
@@ -989,7 +989,7 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
         </ToolActivitySweep>
       }
     >
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-1">
         {/* 工具头部 - 🔧 统一交互：文字区域也可以点击展开 */}
         <DsButton
           variant="ghost"
@@ -999,28 +999,28 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
           aria-expanded={hasDetails ? isExpanded : undefined}
           aria-controls={hasDetails ? contentId : undefined}
           className={cn(
-            '!h-5 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-5 max-w-full hover:!bg-transparent',
+            'activity-timeline-tool-trigger activity-timeline-summary !h-7 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-7 max-w-full hover:!bg-transparent',
             isShellCommand ? 'w-full min-w-0' : 'w-fit min-w-0',
-            'text-xs text-muted-foreground hover:text-foreground',
+            'text-muted-foreground hover:text-foreground',
             'disabled:cursor-default disabled:hover:text-muted-foreground'
           )}
         >
           {shellDescriptor ? (
-            <span className="flex h-5 min-w-0 items-center gap-1.5 text-muted-foreground">
+            <span className="flex h-7 min-w-0 items-center gap-1.5 text-muted-foreground">
               <Terminal size={13} className="shrink-0 text-muted-foreground" />
-              <span className={cn('shrink-0 text-xs font-medium leading-5', statusColor)}>
+              <span className={cn('activity-timeline-tool-name shrink-0', statusColor)}>
                 {shellCommandVerb(shellDescriptor, t)}
               </span>
               <code
-                className="min-w-0 truncate font-mono text-xs leading-5 text-foreground"
+                className="activity-timeline-tool-command min-w-0 truncate font-mono text-foreground"
                 title={shellCommandPlaceholder(shellDescriptor, t)}
               >
                 {shellCommandPlaceholder(shellDescriptor, t)}
               </code>
             </span>
           ) : (
-            <ToolActivitySweep active={isPreparing || isRunning} className="min-w-0 leading-5">
-              <span className="block truncate text-xs font-medium leading-5 text-muted-foreground">
+            <ToolActivitySweep active={isPreparing || isRunning} className="activity-timeline-tool-name min-w-0">
+              <span className="activity-timeline-tool-name block truncate text-muted-foreground">
                 {displayToolName}
               </span>
             </ToolActivitySweep>
@@ -1029,14 +1029,14 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
           {!shellDescriptor && (isPreparing || isRunning) ? (
             <>
               <TextShimmer
-                className={cn('text-[11px] leading-5', statusColor)}
+                className={cn('activity-timeline-status', statusColor)}
                 duration={1.5}
                 spread={3}
               >
                 {statusText}
               </TextShimmer>
               {isRunning && liveRunningSeconds > 0 && (
-                <span className="text-[11px] leading-5 tabular-nums text-muted-foreground/70">
+                <span className="activity-timeline-status tabular-nums text-muted-foreground/70">
                   {liveRunningSeconds}s
                 </span>
               )}
@@ -1045,23 +1045,23 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
             <>
               {StatusIcon && (
                 <StatusIcon
-                  size={13}
+                  size={14}
                   className={cn('flex-shrink-0', statusColor)}
                 />
               )}
-              <span className={cn('text-[11px] leading-5', statusColor)}>
+              <span className={cn('activity-timeline-status', statusColor)}>
                 {statusText}
               </span>
               {durationText && (
-                <span className="text-[11px] leading-5 text-muted-foreground/70">
+                <span className="activity-timeline-status text-muted-foreground/70">
                   {durationText}
                 </span>
               )}
             </>
           ) : durationText ? (
-            <span className="ml-auto shrink-0 text-[11px] leading-5 text-muted-foreground/70">{durationText}</span>
+            <span className="activity-timeline-status ml-auto shrink-0 text-muted-foreground/70">{durationText}</span>
           ) : isRunning && liveRunningSeconds > 0 ? (
-            <span className="ml-auto shrink-0 text-[11px] leading-5 tabular-nums text-muted-foreground/70">
+            <span className="activity-timeline-status ml-auto shrink-0 tabular-nums text-muted-foreground/70">
               {liveRunningSeconds}s
             </span>
           ) : null}
@@ -1078,7 +1078,7 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
               className="overflow-hidden"
             >
               {isShellCommand ? (
-                <div className="pb-1 pt-1 text-xs">
+                <div className="activity-timeline-tool-details pb-1 pt-1">
                   <ShellCommandTimelineView
                     toolName={node.toolName}
                     toolInput={node.toolInput}
@@ -1090,7 +1090,7 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
                   />
                 </div>
               ) : (
-                <div className="space-y-2 text-xs">
+                <div className="activity-timeline-tool-details space-y-2">
                   {/* 错误信息 */}
                   {isError && node.toolError && (
                     <div className="flex items-start gap-1.5 p-2 rounded-md bg-destructive/10 border border-destructive/20">
@@ -1135,7 +1135,7 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
                         <CircleNotch size={12} className="animate-spin text-primary" />
                         <span>{t('timeline.tool.liveOutput', { ns: 'chatV2' })}</span>
                       </div>
-                      <pre className="ml-4 max-h-24 overflow-hidden whitespace-pre-wrap break-all rounded-md bg-muted/60 px-2 py-1.5 font-mono text-[11px] leading-snug text-muted-foreground">
+                      <pre className="ml-4 max-h-24 overflow-hidden whitespace-pre-wrap break-all rounded-md bg-muted/60 px-2 py-1.5 font-mono text-caption leading-snug text-muted-foreground">
                         {node.block.content.split('\n').slice(-6).join('\n')}
                       </pre>
                     </div>
@@ -1219,12 +1219,12 @@ const ToolGroupNodeContent: React.FC<ToolGroupNodeContentProps> = ({ node, isFir
         onClick={() => setIsExpanded((value) => !value)}
         aria-expanded={isExpanded}
         aria-controls={contentId}
-        className="!h-5 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-5 text-xs text-muted-foreground hover:!bg-transparent hover:text-foreground"
+        className="activity-timeline-tool-trigger activity-timeline-summary !h-7 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-7 text-muted-foreground hover:!bg-transparent hover:text-foreground"
       >
-        <ToolActivitySweep active={isActive} className="min-w-0 leading-5">
-          <span className="truncate font-medium leading-5">{summary}</span>
+        <ToolActivitySweep active={isActive} className="activity-timeline-tool-name min-w-0">
+          <span className="activity-timeline-tool-name truncate">{summary}</span>
         </ToolActivitySweep>
-        <span className="text-[11px] leading-5 text-muted-foreground/70">{groupStatus}</span>
+        <span className="activity-timeline-status text-muted-foreground/70">{groupStatus}</span>
         <CaretRight size={12} className={cn('transition-transform', isExpanded && 'rotate-90')} aria-hidden="true" />
       </DsButton>
 
@@ -1237,7 +1237,7 @@ const ToolGroupNodeContent: React.FC<ToolGroupNodeContentProps> = ({ node, isFir
             aria-label={summary}
             className="overflow-hidden"
           >
-            <div className="space-y-1 pt-1 text-xs text-muted-foreground">
+            <div className="activity-timeline-tool-details space-y-2 pt-2 text-muted-foreground">
               {toolNodes.map((toolNode) => {
                 const visual = getToolVisual(toolNode.toolName);
                 const ToolIcon = visual.Icon;
@@ -1253,14 +1253,14 @@ const ToolGroupNodeContent: React.FC<ToolGroupNodeContentProps> = ({ node, isFir
                     <ToolActivitySweep active={isToolActive} className="h-4 w-4 items-center justify-center">
                       <ToolIcon size={13} className="text-muted-foreground" />
                     </ToolActivitySweep>
-                    <ToolActivitySweep active={isToolActive} className="min-w-0 leading-4">
-                      <span className="block truncate leading-4">
+                    <ToolActivitySweep active={isToolActive} className="activity-timeline-tool-name min-w-0">
+                      <span className="activity-timeline-tool-name block truncate">
                         {getReadableToolName(toolNode.toolName || '', t, {
                           providerName: getExternalToolProviderName(toolNode.toolInput),
                         })}
                       </span>
                     </ToolActivitySweep>
-                    <span className="shrink-0 text-[11px] leading-4 text-muted-foreground/70">{toolStatus}</span>
+                    <span className="activity-timeline-status shrink-0 text-muted-foreground/70">{toolStatus}</span>
                   </div>
                 );
               })}
@@ -1433,7 +1433,7 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
   }
 
   return (
-    <div className={cn('activity-timeline text-sm', className)}>
+    <div className={cn('activity-timeline', className)}>
       {nodes.map((node, idx) => {
         const isFirst = idx === 0;
         const isLast = idx === nodes.length - 1;
