@@ -2554,11 +2554,7 @@ function App() {
   // needsAgreement: null=检查中, true=需同意, false=已同意
   // 🔧 时序修复：数据库迁移期间检查可能需要重试，显示轻量加载状态替代白屏
   if (needsAgreement === null) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-background">
-        <div className="animate-pulse text-muted-foreground text-sm">{t('common:status.loading')}</div>
-      </div>
-    );
+    return <PageLoadingFallback fullScreen />;
   }
   if (needsAgreement === true) {
     return <UserAgreementDialog onAccept={acceptAgreement} />;

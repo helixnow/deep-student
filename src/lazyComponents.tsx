@@ -15,8 +15,9 @@
  * - 基础 UI 组件
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import './styles/page-loading.css';
 
 // ============================================================================
 // 懒加载 fallback 组件
@@ -25,11 +26,44 @@ import { useTranslation } from 'react-i18next';
 /**
  * 页面加载占位符（极简，避免布局抖动）
  */
-export const PageLoadingFallback: React.FC = () => {
+interface PageLoadingFallbackProps {
+  fullScreen?: boolean;
+}
+
+export const PageLoadingFallback: React.FC<PageLoadingFallbackProps> = ({ fullScreen = false }) => {
   const { t } = useTranslation('common');
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setIsVisible(true), 220);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   return (
-    <div className="flex-1 flex items-center justify-center min-h-[200px]">
-      <div className="animate-pulse text-muted-foreground text-sm">{t('loading')}</div>
+    <div
+      className={fullScreen ? 'page-loading-fallback page-loading-fallback--fullscreen bg-background' : 'page-loading-fallback bg-background'}
+      role="status"
+      aria-label={t('loading')}
+      aria-busy="true"
+    >
+      <div className="page-loading-fallback__logo-wrap" data-visible={isVisible}>
+        <img
+          className="page-loading-fallback__logo"
+          src="/logo-black.svg"
+          alt=""
+          aria-hidden="true"
+          width="60"
+          height="60"
+        />
+        <img
+          className="page-loading-fallback__logo page-loading-fallback__shine"
+          src="/logo-black.svg"
+          alt=""
+          aria-hidden="true"
+          width="60"
+          height="60"
+        />
+      </div>
     </div>
   );
 };
