@@ -2233,7 +2233,9 @@ function App() {
       return '';
     }
 
-    return getSessionTitleText(state.title, t('chatV2:page.untitled'));
+    // 空标题代表尚未命名的当前会话；壳层保持标题区域为空，避免把
+    // “未命名会话”误呈现为新会话的真实标题。
+    return getSessionTitleText(state.title, '');
   }, [t]);
 
   const getChatHeaderGroupNameFromStoreState = useCallback((state?: ChatStore | null) => {
@@ -2360,9 +2362,8 @@ function App() {
 
   const desktopShellViewLabel = useMemo(() => {
     if (currentView === 'chat-v2') {
-      // 冷启动 / 新会话尚未写入标题时仍给统一移动顶栏一个稳定页面名，
-      // 避免 lazy 页面注册 useMobileHeader 前出现空白标题。
-      return currentChatHeaderTitle || t('sidebar:navigation.chat_v2');
+      // 新会话尚未写入标题时，按 Codex 的行为保持标题区域为空。
+      return currentChatHeaderTitle;
     }
 
     const labels: Partial<Record<CurrentView, string>> = {

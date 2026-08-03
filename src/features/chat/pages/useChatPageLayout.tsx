@@ -70,7 +70,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     if (viewMode === 'browser') {
       return t('browser.titleWithCount', { count: sessionCount });
     }
-    return currentSession?.title || t('page.newChat');
+    return currentSession?.title?.trim() || undefined;
   }, [viewMode, currentSession?.title, t, sessionCount]);
 
   // 同步窗口标题栏
